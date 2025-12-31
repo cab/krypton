@@ -1,4 +1,4 @@
-// alang compiler library
+// alang-parser library
 // Provides lexer, parser, and AST for the alang programming language
 
 pub mod ast;

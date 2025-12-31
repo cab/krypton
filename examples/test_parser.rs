@@ -1,4 +1,4 @@
-use alang::parse_program_with_filename;
+use alang_parser::parse_program_with_filename;
 use std::env;
 use std::fs;
 use std::process;

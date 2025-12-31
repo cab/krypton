@@ -1,11 +1,22 @@
-[package]
-name = "alang"
+[workspace]
+members = ["crates/alang-parser"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
 chumsky = "0.12.0"
 ariadne = "0.5"
+
+[package]
+name = "alang"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+alang-parser = { path = "crates/alang-parser" }
 
 [[example]]
 name = "test_parser"

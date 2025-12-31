@@ -15,6 +15,13 @@ dependencies = [
 name = "alang"
 version = "0.1.0"
 dependencies = [
+ "alang-parser",
+]
+
+[[package]]
+name = "alang-parser"
+version = "0.1.0"
+dependencies = [
  "ariadne",
  "chumsky",
 ]

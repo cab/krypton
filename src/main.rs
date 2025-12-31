@@ -1,4 +1,4 @@
-use alang::parse_program;
+use alang_parser::parse_program;
 
 fn main() {
     // Example alang program
@@ -27,14 +27,14 @@ fn main() {
             println!("Successfully parsed {} declarations:", program.decls.len());
             for (i, decl) in program.decls.iter().enumerate() {
                 match decl {
-                    alang::Decl::Type { name, params, .. } => {
+                    alang_parser::Decl::Type { name, params, .. } => {
                         if params.is_empty() {
                             println!("  {}. Type: {}", i + 1, name);
                         } else {
                             println!("  {}. Type: {}[{}]", i + 1, name, params.join(", "));
                         }
                     }
-                    alang::Decl::Def {
+                    alang_parser::Decl::Def {
                         name, type_params, ..
                     } => {
                         if type_params.is_empty() {
