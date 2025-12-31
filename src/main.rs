@@ -34,11 +34,18 @@ fn main() {
                             println!("  {}. Type: {}[{}]", i + 1, name, params.join(", "));
                         }
                     }
-                    alang::Decl::Def { name, type_params, .. } => {
+                    alang::Decl::Def {
+                        name, type_params, ..
+                    } => {
                         if type_params.is_empty() {
                             println!("  {}. Function: {}", i + 1, name);
                         } else {
-                            println!("  {}. Function: {}[{}]", i + 1, name, type_params.join(", "));
+                            println!(
+                                "  {}. Function: {}[{}]",
+                                i + 1,
+                                name,
+                                type_params.join(", ")
+                            );
                         }
                     }
                 }
@@ -46,7 +53,7 @@ fn main() {
             println!("\nParse successful!");
         }
         Err(error) => {
-            eprintln!("Parse error: {}", error);
+            eprint!("{}", error);
             std::process::exit(1);
         }
     }

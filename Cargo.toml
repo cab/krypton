@@ -5,3 +5,8 @@ edition = "2024"
 
 [dependencies]
 chumsky = "0.12.0"
+ariadne = "0.5"
+
+[[example]]
+name = "test_parser"
+path = "examples/test_parser.rs"
