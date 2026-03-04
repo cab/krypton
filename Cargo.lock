@@ -46,6 +46,8 @@ version = "0.1.0"
 dependencies = [
  "alang-parser",
  "ariadne",
+ "insta",
+ "serde",
 ]
 
 [[package]]

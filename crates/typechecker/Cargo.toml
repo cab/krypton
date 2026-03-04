@@ -6,3 +6,7 @@ edition.workspace = true
 [dependencies]
 alang-parser = { path = "../parser" }
 ariadne.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
