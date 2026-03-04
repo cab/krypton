@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/parser", "crates/typechecker", "crates/alang", "crates/test-harness"]
+members = ["crates/parser", "crates/typechecker", "crates/alang", "crates/test-harness", "crates/codegen"]
 resolver = "2"
 
 [workspace.package]
@@ -12,4 +12,5 @@ chumsky = "0.12"
 ariadne = "0.5"
 insta = { version = "1", features = ["yaml"] }
 serde = { version = "1", features = ["derive"] }
+ristretto_classfile = "0.29"
 

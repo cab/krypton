@@ -1,0 +1,12 @@
+[package]
+name = "alang-codegen"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ristretto_classfile.workspace = true
+alang-parser = { path = "../parser" }
+
+[dev-dependencies]
+insta.workspace = true
+tempfile = "3"
