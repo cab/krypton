@@ -6,19 +6,3 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 
-[workspace.dependencies]
-chumsky = "0.12.0"
-ariadne = "0.5"
-
-[package]
-name = "alang"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-alang-parser = { path = "crates/alang-parser" }
-alang-typechecker = { path = "crates/typechecker" }
-
-[[example]]
-name = "test_parser"
-path = "examples/test_parser.rs"
