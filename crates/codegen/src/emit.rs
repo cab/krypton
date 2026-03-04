@@ -28,6 +28,7 @@ pub enum CodegenError {
     UnsupportedExpr(String),
     UndefinedVariable(String),
     TypeError(String),
+    RecurNotInTailPosition,
 }
 
 impl From<ristretto_classfile::Error> for CodegenError {
@@ -44,6 +45,9 @@ impl std::fmt::Display for CodegenError {
             CodegenError::UnsupportedExpr(s) => write!(f, "unsupported expression: {s}"),
             CodegenError::UndefinedVariable(s) => write!(f, "undefined variable: {s}"),
             CodegenError::TypeError(s) => write!(f, "type error: {s}"),
+            CodegenError::RecurNotInTailPosition => {
+                write!(f, "recur must be in tail position")
+            }
         }
     }
 }
@@ -109,9 +113,11 @@ struct Compiler {
     string_class: u16,
     ps_class: u16,
     // Function codegen support
-    #[allow(dead_code)]
     this_class: u16,
     functions: HashMap<String, FunctionInfo>,
+    // Recur support: parameter slots and return type for current function
+    fn_params: Vec<(u16, JvmType)>,
+    fn_return_type: Option<JvmType>,
 }
 
 impl Compiler {
@@ -167,6 +173,8 @@ impl Compiler {
             ps_class,
             this_class,
             functions: HashMap::new(),
+            fn_params: Vec::new(),
+            fn_return_type: None,
         };
 
         Ok((compiler, this_class, object_class))
@@ -180,6 +188,8 @@ impl Compiler {
         self.stack_types.clear();
         self.local_types.clear();
         self.frames.clear();
+        self.fn_params.clear();
+        self.fn_return_type = None;
     }
 
     fn emit(&mut self, instr: Instruction) {
@@ -271,7 +281,7 @@ impl Compiler {
         frames
     }
 
-    fn compile_expr(&mut self, expr: &Expr) -> Result<JvmType, CodegenError> {
+    fn compile_expr(&mut self, expr: &Expr, in_tail: bool) -> Result<JvmType, CodegenError> {
         match expr {
             Expr::Lit { value, .. } => self.compile_lit(value),
             Expr::BinaryOp {
@@ -282,13 +292,14 @@ impl Compiler {
                 then_,
                 else_,
                 ..
-            } => self.compile_if(cond, then_, else_),
+            } => self.compile_if(cond, then_, else_, in_tail),
             Expr::Let {
                 name, value, body, ..
-            } => self.compile_let(name, value, body),
+            } => self.compile_let(name, value, body, in_tail),
             Expr::Var { name, .. } => self.compile_var(name),
-            Expr::Do { exprs, .. } => self.compile_do(exprs),
+            Expr::Do { exprs, .. } => self.compile_do(exprs, in_tail),
             Expr::App { func, args, .. } => self.compile_app(func, args),
+            Expr::Recur { args, .. } => self.compile_recur(args, in_tail),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -349,8 +360,8 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                self.compile_expr(lhs)?;
-                self.compile_expr(rhs)?;
+                self.compile_expr(lhs, false)?;
+                self.compile_expr(rhs, false)?;
                 let instr = match op {
                     BinOp::Add => Instruction::Ladd,
                     BinOp::Sub => Instruction::Lsub,
@@ -376,8 +387,8 @@ impl Compiler {
         lhs: &Expr,
         rhs: &Expr,
     ) -> Result<JvmType, CodegenError> {
-        self.compile_expr(lhs)?;
-        self.compile_expr(rhs)?;
+        self.compile_expr(lhs, false)?;
+        self.compile_expr(rhs, false)?;
         self.emit(Instruction::Lcmp);
 
         // Lcmp: pop two longs (4 slots), push int
@@ -442,9 +453,10 @@ impl Compiler {
         cond: &Expr,
         then_: &Expr,
         else_: &Expr,
+        in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
         // Compile condition (produces Int 0/1 on stack)
-        self.compile_expr(cond)?;
+        self.compile_expr(cond, false)?;
 
         // Ifeq consumes the int
         self.pop_type();
@@ -457,7 +469,7 @@ impl Compiler {
         let stack_at_branch = self.stack_types.clone();
 
         // Compile then branch
-        let then_type = self.compile_expr(then_)?;
+        let then_type = self.compile_expr(then_, in_tail)?;
         let stack_after_then = self.stack_types.clone();
 
         // Emit Goto with placeholder
@@ -472,7 +484,7 @@ impl Compiler {
         self.record_frame(else_start);
 
         // Compile else branch
-        let _else_type = self.compile_expr(else_)?;
+        let _else_type = self.compile_expr(else_, in_tail)?;
 
         let after_else = self.code.len() as u16;
 
@@ -494,8 +506,9 @@ impl Compiler {
         name: &str,
         value: &Expr,
         body: &Option<Box<Expr>>,
+        in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
-        let ty = self.compile_expr(value)?;
+        let ty = self.compile_expr(value, false)?;
         let slot = self.next_local;
         let slot_size = match ty {
             JvmType::Long | JvmType::Double => 2,
@@ -520,7 +533,7 @@ impl Compiler {
         self.local_types.extend(vtypes);
 
         if let Some(body) = body {
-            self.compile_expr(body)
+            self.compile_expr(body, in_tail)
         } else {
             // In a do-block, let without body is a statement — no value on stack
             // We return Int as a placeholder type (no value actually pushed)
@@ -570,7 +583,7 @@ impl Compiler {
 
         // Compile each argument
         for arg in args {
-            self.compile_expr(arg)?;
+            self.compile_expr(arg, false)?;
         }
 
         // Pop argument types from stack
@@ -587,14 +600,66 @@ impl Compiler {
         Ok(return_type)
     }
 
-    fn compile_do(&mut self, exprs: &[Expr]) -> Result<JvmType, CodegenError> {
+    fn compile_recur(
+        &mut self,
+        args: &[Expr],
+        in_tail: bool,
+    ) -> Result<JvmType, CodegenError> {
+        if !in_tail {
+            return Err(CodegenError::RecurNotInTailPosition);
+        }
+        let return_type = self.fn_return_type.ok_or_else(|| {
+            CodegenError::UnsupportedExpr("recur outside function".to_string())
+        })?;
+        let fn_params = self.fn_params.clone();
+
+        // Compile all args onto the stack
+        for arg in args {
+            self.compile_expr(arg, false)?;
+        }
+
+        // Store to param local slots in reverse order (stack is LIFO)
+        for &(slot, jvm_ty) in fn_params.iter().rev() {
+            let store = match jvm_ty {
+                JvmType::Long => Instruction::Lstore(slot as u8),
+                JvmType::Double => Instruction::Dstore(slot as u8),
+                JvmType::Int => Instruction::Istore(slot as u8),
+                JvmType::Ref => Instruction::Astore(slot as u8),
+            };
+            self.emit(store);
+            self.pop_jvm_type(jvm_ty);
+        }
+
+        // Record StackMapTable frame at instruction 1 (after Nop) for back-edge.
+        // Must use initial locals (params only) and empty stack.
+        let initial_locals: Vec<VerificationType> = fn_params
+            .iter()
+            .flat_map(|&(_, jvm_ty)| self.jvm_type_to_vtypes(jvm_ty))
+            .collect();
+        self.frames.insert(1, (
+            initial_locals.iter().filter(|vt| !matches!(vt, VerificationType::Top)).cloned().collect(),
+            vec![],
+        ));
+
+        // Goto instruction 1 (after Nop at instruction 0)
+        self.emit(Instruction::Goto(1));
+
+        // Push return type onto stack tracker for consistency with if-else merging.
+        // Code after goto is unreachable, but compile_if asserts both branches match.
+        self.push_jvm_type(return_type);
+
+        Ok(return_type)
+    }
+
+    fn compile_do(&mut self, exprs: &[Expr], in_tail: bool) -> Result<JvmType, CodegenError> {
         let mut last_type = JvmType::Int;
         for (i, expr) in exprs.iter().enumerate() {
             let is_last = i == exprs.len() - 1;
             let is_let_stmt =
                 matches!(expr, Expr::Let { body: None, .. });
 
-            let ty = self.compile_expr(expr)?;
+            let expr_tail = in_tail && is_last;
+            let ty = self.compile_expr(expr, expr_tail)?;
 
             if !is_last && !is_let_stmt {
                 // Pop the value — it's not used
@@ -614,7 +679,7 @@ impl Compiler {
         Ok(last_type)
     }
 
-    /// Compile a non-main function declaration into a JVM Method.
+    /// Compile a function declaration into a JVM Method.
     fn compile_function(&mut self, decl: &FnDecl) -> Result<Method, CodegenError> {
         self.reset_method_state();
 
@@ -625,7 +690,8 @@ impl Compiler {
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
-        // Register parameters as locals
+        // Register parameters as locals and save fn_params for recur
+        let mut fn_params = Vec::new();
         for (param, &jvm_ty) in decl.params.iter().zip(param_types.iter()) {
             let slot = self.next_local;
             let slot_size: u16 = match jvm_ty {
@@ -633,15 +699,25 @@ impl Compiler {
                 _ => 1,
             };
             self.locals.insert(param.name.clone(), (slot, jvm_ty));
+            fn_params.push((slot, jvm_ty));
             self.next_local += slot_size;
 
             // Track local verification types
             let vtypes = self.jvm_type_to_vtypes(jvm_ty);
             self.local_types.extend(vtypes);
         }
+        self.fn_params = fn_params;
+        self.fn_return_type = Some(return_type);
+
+        // Emit Nop as recur back-edge target at instruction 0.
+        // Recur uses Goto(1) to jump to instruction 1 (after Nop), but we
+        // actually target the Nop itself — no, we target instruction 1.
+        // The Nop ensures the recur target (instruction 1) has byte offset > 0,
+        // avoiding conflict with the implicit initial StackMapTable frame.
+        self.emit(Instruction::Nop);
 
         // Compile function body
-        let body_type = self.compile_expr(&decl.body)?;
+        let body_type = self.compile_expr(&decl.body, true)?;
 
         // Emit typed return
         let ret_instr = match body_type {
@@ -779,20 +855,23 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
         CodegenError::TypeError(format!("{e:?}"))
     })?;
 
-    // Register all non-main functions in the function registry
+    // Register all functions (including main) in the function registry.
+    // Main gets a JVM-internal name "alang_main" to avoid clashing with JVM main(String[]).
     for (name, scheme) in &type_info {
-        if name == "main" {
-            continue;
-        }
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
             let param_types: Vec<JvmType> = param_tys
                 .iter()
                 .map(type_to_jvm)
                 .collect::<Result<_, _>>()?;
             let return_type = type_to_jvm(ret_ty)?;
+            let jvm_name = if name == "main" {
+                "alang_main"
+            } else {
+                name.as_str()
+            };
             let descriptor = build_method_descriptor(&param_types, return_type);
             let method_ref =
-                compiler.cp.add_method_ref(this_class, name, &descriptor)?;
+                compiler.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
             compiler.functions.insert(
                 name.clone(),
                 FunctionInfo {
@@ -804,31 +883,32 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
         }
     }
 
-    // Compile each non-main function
+    // Collect all function declarations
     let fn_decls: Vec<&FnDecl> = module
         .decls
         .iter()
         .filter_map(|decl| match decl {
-            Decl::DefFn(f) if f.name != "main" => Some(f),
+            Decl::DefFn(f) => Some(f),
             _ => None,
         })
         .collect();
 
+    // Compile all functions (including main) as static methods
     let mut extra_methods = Vec::new();
     for decl in &fn_decls {
-        let method = compiler.compile_function(decl)?;
+        let mut method = compiler.compile_function(decl)?;
+        // Rename main → alang_main in the method
+        if decl.name == "main" {
+            let name_idx = compiler.cp.add_utf8("alang_main")?;
+            method.name_index = name_idx;
+        }
         extra_methods.push(method);
     }
 
-    // Now compile main: reset state for main method
-    let main_fn = module
-        .decls
-        .iter()
-        .find_map(|decl| match decl {
-            Decl::DefFn(f) if f.name == "main" => Some(f),
-            _ => None,
-        })
-        .unwrap();
+    // Build JVM main(String[])V — calls alang_main and prints the result
+    let main_info = compiler.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
+    let alang_main_ref = main_info.method_ref;
+    let main_return_type = main_info.return_type;
 
     compiler.reset_method_state();
     compiler.next_local = 1; // slot 0 = String[] args
@@ -837,18 +917,19 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
         cpool_index: string_arr_class,
     }];
 
-    // Emit: getstatic System.out (push PrintStream ref)
+    // Emit: getstatic System.out
     let system_out = compiler.system_out;
     compiler.emit(Instruction::Getstatic(system_out));
     compiler.push_type(VerificationType::Object {
         cpool_index: compiler.ps_class,
     });
 
-    // Compile the body expression
-    let result_type = compiler.compile_expr(&main_fn.body)?;
+    // Call alang_main
+    compiler.emit(Instruction::Invokestatic(alang_main_ref));
+    compiler.push_jvm_type(main_return_type);
 
     // Emit the appropriate println call
-    let println_ref = match result_type {
+    let println_ref = match main_return_type {
         JvmType::Long => compiler.println_long,
         JvmType::Double => compiler.println_double,
         JvmType::Ref => compiler.println_string,
@@ -857,7 +938,7 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
     compiler.emit(Instruction::Invokevirtual(println_ref));
 
     // Pop println args + PrintStream from stack tracker
-    compiler.pop_jvm_type(result_type);
+    compiler.pop_jvm_type(main_return_type);
     compiler.pop_type(); // PrintStream
 
     compiler.emit(Instruction::Return);

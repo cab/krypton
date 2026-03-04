@@ -235,6 +235,15 @@ pub fn infer_expr(
             }
         }
 
+        Expr::Recur { args, .. } => {
+            // Infer arg types for unification side effects; return fresh var
+            // that will be unified via the enclosing if-else branches.
+            for a in args {
+                infer_expr(a, env, subst, gen)?;
+            }
+            Ok(Type::Var(gen.fresh()))
+        }
+
         // Unsupported expression forms return a fresh type variable for now
         _ => Ok(Type::Var(gen.fresh())),
     }

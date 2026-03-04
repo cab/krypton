@@ -28,6 +28,7 @@ dependencies = [
 name = "alang"
 version = "0.1.0"
 dependencies = [
+ "alang-codegen",
  "alang-parser",
  "alang-typechecker",
  "clap",

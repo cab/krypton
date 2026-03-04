@@ -6,4 +6,5 @@ edition.workspace = true
 [dependencies]
 alang-parser = { path = "../parser" }
 alang-typechecker = { path = "../typechecker" }
+alang-codegen = { path = "../codegen" }
 clap = { workspace = true }

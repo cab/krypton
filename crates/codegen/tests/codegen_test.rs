@@ -134,6 +134,32 @@ fn test_do_block_let_bindings() {
 }
 
 #[test]
+fn test_hello_world() {
+    assert_eq!(
+        run_program(r#"(def main (fn [] "hello world"))"#),
+        "hello world"
+    );
+}
+
+#[test]
+fn test_recur_loop() {
+    let src = r#"
+(def loop_fn (fn [n] (if (== n 0) 0 (recur (- n 1)))))
+(def main (fn [] (loop_fn 1000000)))
+"#;
+    assert_eq!(run_program(src), "0");
+}
+
+#[test]
+fn test_recur_countdown() {
+    let src = r#"
+(def sum (fn [n acc] (if (== n 0) acc (recur (- n 1) (+ acc n)))))
+(def main (fn [] (sum 100 0)))
+"#;
+    assert_eq!(run_program(src), "5050");
+}
+
+#[test]
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("(def main (fn [] 42))");
     assert!(errors.is_empty());
