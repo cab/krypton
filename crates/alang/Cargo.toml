@@ -1,8 +1,8 @@
 [package]
-name = "alang-typechecker"
+name = "alang"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 alang-parser = { path = "../parser" }
-ariadne.workspace = true
+alang-typechecker = { path = "../typechecker" }

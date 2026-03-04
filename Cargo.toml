@@ -1,8 +1,12 @@
 [workspace]
-members = ["crates/alang-parser", "crates/typechecker"]
+members = ["crates/parser", "crates/typechecker", "crates/alang"]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[workspace.dependencies]
+chumsky = "0.12"
+ariadne = "0.5"
 
