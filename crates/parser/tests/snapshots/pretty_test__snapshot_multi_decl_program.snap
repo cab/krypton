@@ -1,0 +1,11 @@
+---
+source: crates/parser/tests/pretty_test.rs
+expression: output
+---
+(import core.option [Option Some None])
+(type Point (record (x Int) (y Int)))
+(type Option [a] (| (Some a) None) deriving [Eq Show])
+(trait Eq [a] (def eq [a a] Bool))
+(impl Eq Point (def eq [a b] (== a b)))
+(def add (fn [a b] [Int Int] Int (+ a b)))
+(def main (fn [] (do (let x 1) (let y 2) (+ x y))))
