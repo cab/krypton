@@ -10,3 +10,4 @@ serde.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+strip-ansi-escapes = "0.2"

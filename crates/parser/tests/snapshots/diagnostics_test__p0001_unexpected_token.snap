@@ -1,0 +1,11 @@
+---
+source: crates/parser/tests/diagnostics_test.rs
+expression: plain
+---
+[P0001] Error: found '42' expected something else
+   ╭─[ test.al:1:6 ]
+   │
+ 1 │ (def 42)
+   │      ─┬  
+   │       ╰── P0001: found '42' expected something else
+───╯

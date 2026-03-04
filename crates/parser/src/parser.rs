@@ -5,8 +5,26 @@ use serde::Serialize;
 use crate::ast::*;
 use crate::lexer::{self, Span as LexSpan, Token};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ErrorCode {
+    P0001, // Unexpected token
+    P0002, // Unclosed delimiter
+    P0003, // Invalid literal / lex error
+}
+
+impl std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ErrorCode::P0001 => write!(f, "P0001"),
+            ErrorCode::P0002 => write!(f, "P0002"),
+            ErrorCode::P0003 => write!(f, "P0003"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParseError {
+    pub code: ErrorCode,
     pub message: String,
     pub span: Span,
 }
@@ -733,6 +751,25 @@ where
         })
 }
 
+fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
+    if let chumsky::error::RichReason::ExpectedFound { expected, found } = e.reason() {
+        // If we hit end-of-input and expected a closing delimiter, it's unclosed
+        if found.is_none() {
+            return ErrorCode::P0002;
+        }
+        // If expected tokens include closing delimiters, it's unclosed
+        for pat in expected {
+            if let chumsky::error::RichPattern::Token(tok) = pat {
+                let tok: &Token = tok;
+                if matches!(tok, Token::RParen | Token::RBracket) {
+                    return ErrorCode::P0002;
+                }
+            }
+        }
+    }
+    ErrorCode::P0001
+}
+
 pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
     let tokens = tokens.unwrap_or_default();
@@ -742,6 +779,7 @@ pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
         .map(|e| {
             let span = e.span();
             ParseError {
+                code: ErrorCode::P0003,
                 message: e.to_string(),
                 span: (span.start, span.end),
             }
@@ -758,7 +796,9 @@ pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
 
     errors.extend(parse_errors.into_iter().map(|e| {
         let span = e.span();
+        let code = classify_parse_error(&e);
         ParseError {
+            code,
             message: e.to_string(),
             span: (span.start, span.end),
         }

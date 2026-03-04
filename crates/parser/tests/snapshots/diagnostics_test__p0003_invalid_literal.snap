@@ -1,0 +1,18 @@
+---
+source: crates/parser/tests/diagnostics_test.rs
+expression: plain
+---
+[P0003] Error: found ')' expected '='
+   ╭─[ test.al:1:26 ]
+   │
+ 1 │ (def foo (fn [] 0xFF_bad!))
+   │                          ┬  
+   │                          ╰── P0003: found ')' expected '='
+───╯
+[P0002] Error: found 'xFF_bad' expected ')'
+   ╭─[ test.al:1:18 ]
+   │
+ 1 │ (def foo (fn [] 0xFF_bad!))
+   │                  ───┬───  
+   │                     ╰───── P0002: found 'xFF_bad' expected ')'
+───╯

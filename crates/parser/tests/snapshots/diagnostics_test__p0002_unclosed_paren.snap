@@ -1,0 +1,11 @@
+---
+source: crates/parser/tests/diagnostics_test.rs
+expression: plain
+---
+[P0002] Error: found end of input expected ')'
+   ╭─[ test.al:1:27 ]
+   │
+ 1 │ (def add (fn [a b] (+ a b)
+   │                           │ 
+   │                           ╰─ P0002: found end of input expected ')'
+───╯
