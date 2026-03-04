@@ -1,0 +1,31 @@
+---
+source: crates/parser/tests/snapshot_test.rs
+expression: decl
+---
+name: Option
+type_params:
+  - a
+kind:
+  Sum:
+    variants:
+      - name: Some
+        fields:
+          - Var:
+              name: a
+              span:
+                - 20
+                - 21
+        span:
+          - 15
+          - 22
+      - name: None
+        fields: []
+        span:
+          - 25
+          - 29
+deriving:
+  - Eq
+  - Show
+span:
+  - 0
+  - 50

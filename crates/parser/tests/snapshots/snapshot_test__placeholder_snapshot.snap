@@ -1,6 +1,0 @@
----
-source: crates/parser/tests/snapshot_test.rs
-expression: node
----
-kind: IntLiteral
-value: 42

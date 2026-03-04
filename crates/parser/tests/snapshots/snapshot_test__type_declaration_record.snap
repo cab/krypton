@@ -1,0 +1,27 @@
+---
+source: crates/parser/tests/snapshot_test.rs
+expression: decl
+---
+name: Point
+type_params: []
+kind:
+  Record:
+    fields:
+      - - x
+        - Named:
+            name: Int
+            span:
+              - 20
+              - 23
+      - - y
+        - Named:
+            name: Int
+            span:
+              - 28
+              - 31
+deriving:
+  - Eq
+  - Show
+span:
+  - 0
+  - 40

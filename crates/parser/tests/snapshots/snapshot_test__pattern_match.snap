@@ -1,0 +1,68 @@
+---
+source: crates/parser/tests/snapshot_test.rs
+expression: expr
+---
+Match:
+  scrutinee:
+    Var:
+      name: opt
+      span:
+        - 7
+        - 10
+  arms:
+    - pattern:
+        Constructor:
+          name: Some
+          args:
+            - Var:
+                name: x
+                span:
+                  - 17
+                  - 18
+          span:
+            - 12
+            - 19
+      body:
+        Var:
+          name: x
+          span:
+            - 20
+            - 21
+      span:
+        - 12
+        - 21
+    - pattern:
+        Constructor:
+          name: None
+          args: []
+          span:
+            - 22
+            - 26
+      body:
+        Lit:
+          value:
+            Int: 0
+          span:
+            - 27
+            - 28
+      span:
+        - 22
+        - 28
+    - pattern:
+        Wildcard:
+          span:
+            - 0
+            - 0
+      body:
+        Lit:
+          value:
+            Int: -1
+          span:
+            - 0
+            - 0
+      span:
+        - 0
+        - 0
+  span:
+    - 0
+    - 30
