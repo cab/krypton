@@ -9,4 +9,5 @@ ariadne.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
+chumsky.workspace = true
 insta.workspace = true

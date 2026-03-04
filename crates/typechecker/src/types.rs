@@ -242,6 +242,15 @@ impl TypeEnv {
         }
         None
     }
+
+    /// Iterate over all type schemes in the environment.
+    pub fn for_each_scheme(&self, mut f: impl FnMut(&TypeScheme)) {
+        for scope in &self.scopes {
+            for scheme in scope.values() {
+                f(scheme);
+            }
+        }
+    }
 }
 
 impl Default for TypeEnv {
