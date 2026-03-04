@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: "render_error(\"(fn [x] (x x))\")"
+---
+[E0007] Error: infinite type: variable 0 occurs in fn(a) -> b
+   ╭─[ test.al:1:9 ]
+   │
+ 1 │ (fn [x] (x x))
+   │         ──┬──  
+   │           ╰──── E0007: infinite type: variable 0 occurs in fn(a) -> b
+   │ 
+   │ Help: this creates a type that contains itself
+───╯

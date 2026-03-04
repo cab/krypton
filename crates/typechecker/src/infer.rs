@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use alang_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
 
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
-use crate::unify::{unify, TypeError};
+use crate::unify::{unify, SpannedTypeError, TypeError};
 
 /// Collect free type variables in a type.
 fn free_vars(ty: &Type) -> HashSet<TypeVarId> {
@@ -67,13 +67,24 @@ fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> TypeScheme {
     TypeScheme { vars, ty }
 }
 
+/// Attach a span to a TypeError, producing a SpannedTypeError.
+fn spanned(error: TypeError, span: alang_parser::ast::Span) -> SpannedTypeError {
+    SpannedTypeError { error, span }
+}
+
+/// Check if a type is concretely not a function (after walking substitution).
+fn is_concrete_non_function(ty: &Type, subst: &Substitution) -> bool {
+    let walked = subst.apply(ty);
+    !matches!(walked, Type::Var(_) | Type::Fn(_, _))
+}
+
 /// Infer the type of an expression using Algorithm J.
 pub fn infer_expr(
     expr: &Expr,
     env: &mut TypeEnv,
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
-) -> Result<Type, TypeError> {
+) -> Result<Type, SpannedTypeError> {
     match expr {
         Expr::Lit { value, .. } => match value {
             Lit::Int(_) => Ok(Type::Int),
@@ -83,14 +94,15 @@ pub fn infer_expr(
             Lit::Unit => Ok(Type::Unit),
         },
 
-        Expr::Var { name, .. } => match env.lookup(name) {
+        Expr::Var { name, span, .. } => match env.lookup(name) {
             Some(scheme) => {
                 let scheme = scheme.clone();
                 Ok(scheme.instantiate(&mut || gen.fresh()))
             }
-            None => Err(TypeError::UnknownVariable {
-                name: name.clone(),
-            }),
+            None => Err(spanned(
+                TypeError::UnknownVariable { name: name.clone() },
+                *span,
+            )),
         },
 
         Expr::Lambda { params, body, .. } => {
@@ -108,15 +120,25 @@ pub fn infer_expr(
             Ok(Type::Fn(param_types, Box::new(body_ty)))
         }
 
-        Expr::App { func, args, .. } => {
+        Expr::App {
+            func, args, span, ..
+        } => {
             let func_ty = infer_expr(func, env, subst, gen)?;
             let mut arg_types = Vec::new();
             for a in args {
                 arg_types.push(infer_expr(a, env, subst, gen)?);
             }
+
+            // Check if the function type is concretely not a function
+            if is_concrete_non_function(&func_ty, subst) {
+                let actual = subst.apply(&func_ty);
+                return Err(spanned(TypeError::NotAFunction { actual }, *span));
+            }
+
             let ret_var = Type::Var(gen.fresh());
             let expected_fn = Type::Fn(arg_types, Box::new(ret_var.clone()));
-            unify(&func_ty, &expected_fn, subst)?;
+            unify(&func_ty, &expected_fn, subst)
+                .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&ret_var))
         }
 
@@ -149,13 +171,16 @@ pub fn infer_expr(
             cond,
             then_,
             else_,
+            span,
             ..
         } => {
             let cond_ty = infer_expr(cond, env, subst, gen)?;
-            unify(&cond_ty, &Type::Bool, subst)?;
+            unify(&cond_ty, &Type::Bool, subst)
+                .map_err(|e| spanned(e, *span))?;
             let then_ty = infer_expr(then_, env, subst, gen)?;
             let else_ty = infer_expr(else_, env, subst, gen)?;
-            unify(&then_ty, &else_ty, subst)?;
+            unify(&then_ty, &else_ty, subst)
+                .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&then_ty))
         }
 
@@ -170,28 +195,37 @@ pub fn infer_expr(
             Ok(last_ty)
         }
 
-        Expr::BinaryOp { op, lhs, rhs, .. } => {
+        Expr::BinaryOp {
+            op, lhs, rhs, span, ..
+        } => {
             let lhs_ty = infer_expr(lhs, env, subst, gen)?;
             let rhs_ty = infer_expr(rhs, env, subst, gen)?;
             match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                    unify(&lhs_ty, &Type::Int, subst)?;
-                    unify(&rhs_ty, &Type::Int, subst)?;
+                    unify(&lhs_ty, &Type::Int, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                    unify(&rhs_ty, &Type::Int, subst)
+                        .map_err(|e| spanned(e, *span))?;
                     Ok(Type::Int)
                 }
                 BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                    unify(&lhs_ty, &Type::Int, subst)?;
-                    unify(&rhs_ty, &Type::Int, subst)?;
+                    unify(&lhs_ty, &Type::Int, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                    unify(&rhs_ty, &Type::Int, subst)
+                        .map_err(|e| spanned(e, *span))?;
                     Ok(Type::Bool)
                 }
             }
         }
 
-        Expr::UnaryOp { op, operand, .. } => {
+        Expr::UnaryOp {
+            op, operand, span, ..
+        } => {
             let operand_ty = infer_expr(operand, env, subst, gen)?;
             match op {
                 UnaryOp::Neg => {
-                    unify(&operand_ty, &Type::Int, subst)?;
+                    unify(&operand_ty, &Type::Int, subst)
+                        .map_err(|e| spanned(e, *span))?;
                     Ok(Type::Int)
                 }
             }
@@ -215,7 +249,7 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 /// 1. Bind each def name to a fresh type variable
 /// 2. Infer each def body and unify with its pre-bound variable
 /// 3. Apply final substitution and generalize into type schemes
-pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, TypeError> {
+pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
@@ -255,7 +289,8 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, TypeEr
         let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
         let body_ty = subst.apply(&body_ty);
         let fn_ty = Type::Fn(param_types, Box::new(body_ty));
-        unify(&pre_bound[i].1, &fn_ty, &mut subst)?;
+        unify(&pre_bound[i].1, &fn_ty, &mut subst)
+            .map_err(|e| spanned(e, decl.span))?;
     }
 
     // Pass 3: apply final substitution and generalize

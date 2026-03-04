@@ -23,7 +23,7 @@ fn infer(src: &str) -> String {
 
     match infer::infer_expr(&expr, &mut env, &mut subst, &mut gen) {
         Ok(ty) => infer::display_type(&ty, &subst, &env),
-        Err(e) => format!("TypeError: {}", e),
+        Err(e) => format!("TypeError: {}", e.error),
     }
 }
 
@@ -121,13 +121,13 @@ fn infer_module_types(src: &str) -> String {
             .map(|(name, scheme)| format!("{}: {}", name, scheme))
             .collect::<Vec<_>>()
             .join("\n"),
-        Err(e) => format!("TypeError: {}", e),
+        Err(e) => format!("TypeError: {}", e.error),
     }
 }
 
 #[test]
 fn infer_undefined_variable() {
-    insta::assert_snapshot!(infer("x"), @"TypeError: unknown variable: x [E0003]");
+    insta::assert_snapshot!(infer("x"), @"TypeError: unknown variable: x");
 }
 
 #[test]

@@ -1,5 +1,29 @@
+use alang_parser::ast::Span;
+
 use crate::types::{Substitution, Type, TypeVarId};
 use std::fmt;
+
+/// Error codes for type errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeErrorCode {
+    E0001, // Type mismatch
+    E0003, // Unknown variable
+    E0004, // Not a function
+    E0005, // Wrong arity
+    E0007, // Infinite type
+}
+
+impl fmt::Display for TypeErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeErrorCode::E0001 => write!(f, "E0001"),
+            TypeErrorCode::E0003 => write!(f, "E0003"),
+            TypeErrorCode::E0004 => write!(f, "E0004"),
+            TypeErrorCode::E0005 => write!(f, "E0005"),
+            TypeErrorCode::E0007 => write!(f, "E0007"),
+        }
+    }
+}
 
 /// Errors that can occur during type unification.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,6 +32,39 @@ pub enum TypeError {
     InfiniteType { var: TypeVarId, ty: Type },
     WrongArity { expected: usize, actual: usize },
     UnknownVariable { name: String },
+    NotAFunction { actual: Type },
+}
+
+impl TypeError {
+    /// Return the error code for this error.
+    pub fn error_code(&self) -> TypeErrorCode {
+        match self {
+            TypeError::Mismatch { .. } => TypeErrorCode::E0001,
+            TypeError::UnknownVariable { .. } => TypeErrorCode::E0003,
+            TypeError::NotAFunction { .. } => TypeErrorCode::E0004,
+            TypeError::WrongArity { .. } => TypeErrorCode::E0005,
+            TypeError::InfiniteType { .. } => TypeErrorCode::E0007,
+        }
+    }
+
+    /// Return optional help text for this error.
+    pub fn help(&self) -> Option<String> {
+        match self {
+            TypeError::Mismatch { .. } => None,
+            TypeError::UnknownVariable { name } => {
+                Some(format!("did you mean to define `{}` first?", name))
+            }
+            TypeError::NotAFunction { actual } => {
+                Some(format!("the expression has type `{}`, which is not callable", actual))
+            }
+            TypeError::WrongArity { expected, .. } => {
+                Some(format!("this function expects {} argument(s)", expected))
+            }
+            TypeError::InfiniteType { .. } => {
+                Some("this creates a type that contains itself".to_string())
+            }
+        }
+    }
 }
 
 impl fmt::Display for TypeError {
@@ -27,10 +84,20 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::UnknownVariable { name } => {
-                write!(f, "unknown variable: {} [E0003]", name)
+                write!(f, "unknown variable: {}", name)
+            }
+            TypeError::NotAFunction { actual } => {
+                write!(f, "not a function: type {} is not callable", actual)
             }
         }
     }
+}
+
+/// A type error paired with the source span where it occurred.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpannedTypeError {
+    pub error: TypeError,
+    pub span: Span,
 }
 
 impl std::error::Error for TypeError {}
