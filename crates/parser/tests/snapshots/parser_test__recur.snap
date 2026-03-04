@@ -1,0 +1,27 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(recur (+ n 1))\")"
+---
+Recur:
+  args:
+    - BinaryOp:
+        op: Add
+        lhs:
+          Var:
+            name: n
+            span:
+              - 10
+              - 11
+        rhs:
+          Lit:
+            value:
+              Int: 1
+            span:
+              - 12
+              - 13
+        span:
+          - 7
+          - 14
+  span:
+    - 0
+    - 15

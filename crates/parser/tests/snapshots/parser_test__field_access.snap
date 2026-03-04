@@ -1,0 +1,15 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(. point x)\")"
+---
+FieldAccess:
+  expr:
+    Var:
+      name: point
+      span:
+        - 3
+        - 8
+  field: x
+  span:
+    - 0
+    - 11

@@ -1,0 +1,29 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(if true 1 2)\")"
+---
+If:
+  cond:
+    Lit:
+      value:
+        Bool: true
+      span:
+        - 4
+        - 8
+  then_:
+    Lit:
+      value:
+        Int: 1
+      span:
+        - 9
+        - 10
+  else_:
+    Lit:
+      value:
+        Int: 2
+      span:
+        - 11
+        - 12
+  span:
+    - 0
+    - 13

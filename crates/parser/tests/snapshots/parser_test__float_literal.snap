@@ -1,0 +1,10 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"3.14\")"
+---
+Lit:
+  value:
+    Float: 3.14
+  span:
+    - 0
+    - 4

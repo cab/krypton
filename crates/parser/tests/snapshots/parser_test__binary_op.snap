@@ -1,0 +1,23 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(+ 1 2)\")"
+---
+BinaryOp:
+  op: Add
+  lhs:
+    Lit:
+      value:
+        Int: 1
+      span:
+        - 3
+        - 4
+  rhs:
+    Lit:
+      value:
+        Int: 2
+      span:
+        - 5
+        - 6
+  span:
+    - 0
+    - 7

@@ -1,0 +1,25 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(? (read_file path))\")"
+---
+QuestionMark:
+  expr:
+    App:
+      func:
+        Var:
+          name: read_file
+          span:
+            - 4
+            - 13
+      args:
+        - Var:
+            name: path
+            span:
+              - 14
+              - 18
+      span:
+        - 3
+        - 19
+  span:
+    - 0
+    - 20

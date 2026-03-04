@@ -1,0 +1,49 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(+ (* 2 3) (- 5 1))\")"
+---
+BinaryOp:
+  op: Add
+  lhs:
+    BinaryOp:
+      op: Mul
+      lhs:
+        Lit:
+          value:
+            Int: 2
+          span:
+            - 6
+            - 7
+      rhs:
+        Lit:
+          value:
+            Int: 3
+          span:
+            - 8
+            - 9
+      span:
+        - 3
+        - 10
+  rhs:
+    BinaryOp:
+      op: Sub
+      lhs:
+        Lit:
+          value:
+            Int: 5
+          span:
+            - 14
+            - 15
+      rhs:
+        Lit:
+          value:
+            Int: 1
+          span:
+            - 16
+            - 17
+      span:
+        - 11
+        - 18
+  span:
+    - 0
+    - 19

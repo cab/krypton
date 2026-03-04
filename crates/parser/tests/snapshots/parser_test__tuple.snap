@@ -1,0 +1,27 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(tuple 1 \\\"two\\\" 3)\")"
+---
+Tuple:
+  elements:
+    - Lit:
+        value:
+          Int: 1
+        span:
+          - 7
+          - 8
+    - Lit:
+        value:
+          String: two
+        span:
+          - 9
+          - 14
+    - Lit:
+        value:
+          Int: 3
+        span:
+          - 15
+          - 16
+  span:
+    - 0
+    - 17

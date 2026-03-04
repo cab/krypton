@@ -1,0 +1,10 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"42\")"
+---
+Lit:
+  value:
+    Int: 42
+  span:
+    - 0
+    - 2

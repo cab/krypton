@@ -1,0 +1,52 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(do (let x 1) (let y 2) (+ x y))\")"
+---
+Do:
+  exprs:
+    - Let:
+        name: x
+        value:
+          Lit:
+            value:
+              Int: 1
+            span:
+              - 11
+              - 12
+        body: ~
+        span:
+          - 4
+          - 13
+    - Let:
+        name: y
+        value:
+          Lit:
+            value:
+              Int: 2
+            span:
+              - 21
+              - 22
+        body: ~
+        span:
+          - 14
+          - 23
+    - BinaryOp:
+        op: Add
+        lhs:
+          Var:
+            name: x
+            span:
+              - 27
+              - 28
+        rhs:
+          Var:
+            name: y
+            span:
+              - 29
+              - 30
+        span:
+          - 24
+          - 31
+  span:
+    - 0
+    - 32

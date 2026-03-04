@@ -1,0 +1,64 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(match x (0 \\\"zero\\\") (1 \\\"one\\\") (_ \\\"other\\\"))\")"
+---
+Match:
+  scrutinee:
+    Var:
+      name: x
+      span:
+        - 7
+        - 8
+  arms:
+    - pattern:
+        Lit:
+          value:
+            Int: 0
+          span:
+            - 10
+            - 11
+      body:
+        Lit:
+          value:
+            String: zero
+          span:
+            - 12
+            - 18
+      span:
+        - 9
+        - 19
+    - pattern:
+        Lit:
+          value:
+            Int: 1
+          span:
+            - 21
+            - 22
+      body:
+        Lit:
+          value:
+            String: one
+          span:
+            - 23
+            - 28
+      span:
+        - 20
+        - 29
+    - pattern:
+        Wildcard:
+          span:
+            - 31
+            - 32
+      body:
+        Lit:
+          value:
+            String: other
+          span:
+            - 33
+            - 40
+      span:
+        - 30
+        - 41
+  span:
+    - 0
+    - 42

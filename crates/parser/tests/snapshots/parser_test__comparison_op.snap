@@ -1,0 +1,21 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(== x y)\")"
+---
+BinaryOp:
+  op: Eq
+  lhs:
+    Var:
+      name: x
+      span:
+        - 4
+        - 5
+  rhs:
+    Var:
+      name: y
+      span:
+        - 6
+        - 7
+  span:
+    - 0
+    - 8

@@ -1,0 +1,27 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse(\"(list 1 2 3)\")"
+---
+List:
+  elements:
+    - Lit:
+        value:
+          Int: 1
+        span:
+          - 6
+          - 7
+    - Lit:
+        value:
+          Int: 2
+        span:
+          - 8
+          - 9
+    - Lit:
+        value:
+          Int: 3
+        span:
+          - 10
+          - 11
+  span:
+    - 0
+    - 12
