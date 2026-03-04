@@ -108,6 +108,32 @@ fn test_mutual_recursion() {
 }
 
 #[test]
+fn test_if_gt_positive() {
+    let src = r#"
+(def classify (fn [n] (if (> n 0) "positive" "non-positive")))
+(def main (fn [] (classify 5)))
+"#;
+    assert_eq!(run_program(src), "positive");
+}
+
+#[test]
+fn test_if_gt_non_positive() {
+    let src = r#"
+(def classify (fn [n] (if (> n 0) "positive" "non-positive")))
+(def main (fn [] (classify 0)))
+"#;
+    assert_eq!(run_program(src), "non-positive");
+}
+
+#[test]
+fn test_do_block_let_bindings() {
+    assert_eq!(
+        run_program("(def main (fn [] (do (let x 10) (let y 20) (+ x y))))"),
+        "30"
+    );
+}
+
+#[test]
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("(def main (fn [] 42))");
     assert!(errors.is_empty());
