@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
-use alang_parser::ast::{BinOp, Decl, Expr, Lit, Module};
+use alang_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, Module};
+use alang_typechecker::infer::infer_module;
+use alang_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags, Version,
@@ -25,6 +27,7 @@ pub enum CodegenError {
     NoMainFunction,
     UnsupportedExpr(String),
     UndefinedVariable(String),
+    TypeError(String),
 }
 
 impl From<ristretto_classfile::Error> for CodegenError {
@@ -40,8 +43,48 @@ impl std::fmt::Display for CodegenError {
             CodegenError::NoMainFunction => write!(f, "no main function found"),
             CodegenError::UnsupportedExpr(s) => write!(f, "unsupported expression: {s}"),
             CodegenError::UndefinedVariable(s) => write!(f, "undefined variable: {s}"),
+            CodegenError::TypeError(s) => write!(f, "type error: {s}"),
         }
     }
+}
+
+/// Info about a compiled user-defined function, used for invokestatic calls.
+struct FunctionInfo {
+    method_ref: u16,
+    param_types: Vec<JvmType>,
+    return_type: JvmType,
+}
+
+fn type_to_jvm(ty: &Type) -> Result<JvmType, CodegenError> {
+    match ty {
+        Type::Int => Ok(JvmType::Long),
+        Type::Float => Ok(JvmType::Double),
+        Type::Bool => Ok(JvmType::Int),
+        Type::String => Ok(JvmType::Ref),
+        Type::Unit => Ok(JvmType::Int),
+        other => Err(CodegenError::TypeError(format!(
+            "cannot map type to JVM: {other:?}"
+        ))),
+    }
+}
+
+fn jvm_type_to_descriptor(ty: JvmType) -> &'static str {
+    match ty {
+        JvmType::Long => "J",
+        JvmType::Double => "D",
+        JvmType::Int => "Z",
+        JvmType::Ref => "Ljava/lang/String;",
+    }
+}
+
+fn build_method_descriptor(params: &[JvmType], ret: JvmType) -> String {
+    let mut desc = String::from("(");
+    for p in params {
+        desc.push_str(jvm_type_to_descriptor(*p));
+    }
+    desc.push(')');
+    desc.push_str(jvm_type_to_descriptor(ret));
+    desc
 }
 
 struct Compiler {
@@ -65,6 +108,10 @@ struct Compiler {
     smt_name: u16,
     string_class: u16,
     ps_class: u16,
+    // Function codegen support
+    #[allow(dead_code)]
+    this_class: u16,
+    functions: HashMap<String, FunctionInfo>,
 }
 
 impl Compiler {
@@ -100,7 +147,7 @@ impl Compiler {
             cp,
             code: Vec::new(),
             locals: HashMap::new(),
-            next_local: 1, // slot 0 = String[] args
+            next_local: 1, // slot 0 = String[] args for main
             code_utf8,
             object_init,
             init_name,
@@ -118,9 +165,21 @@ impl Compiler {
             smt_name,
             string_class,
             ps_class,
+            this_class,
+            functions: HashMap::new(),
         };
 
         Ok((compiler, this_class, object_class))
+    }
+
+    /// Reset per-method compilation state.
+    fn reset_method_state(&mut self) {
+        self.code.clear();
+        self.locals.clear();
+        self.next_local = 0;
+        self.stack_types.clear();
+        self.local_types.clear();
+        self.frames.clear();
     }
 
     fn emit(&mut self, instr: Instruction) {
@@ -151,9 +210,18 @@ impl Compiler {
     }
 
     fn record_frame(&mut self, instr_idx: u16) {
+        // StackMapTable FullFrame format does not include Top entries after
+        // Long/Double — those second slots are implicit.
+        fn strip_tops(types: &[VerificationType]) -> Vec<VerificationType> {
+            types
+                .iter()
+                .filter(|vt| !matches!(vt, VerificationType::Top))
+                .cloned()
+                .collect()
+        }
         self.frames.insert(
             instr_idx,
-            (self.local_types.clone(), self.stack_types.clone()),
+            (strip_tops(&self.local_types), strip_tops(&self.stack_types)),
         );
     }
 
@@ -220,6 +288,7 @@ impl Compiler {
             } => self.compile_let(name, value, body),
             Expr::Var { name, .. } => self.compile_var(name),
             Expr::Do { exprs, .. } => self.compile_do(exprs),
+            Expr::App { func, args, .. } => self.compile_app(func, args),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -480,6 +549,44 @@ impl Compiler {
         Ok(ty)
     }
 
+    fn compile_app(&mut self, func: &Expr, args: &[Expr]) -> Result<JvmType, CodegenError> {
+        let name = match func {
+            Expr::Var { name, .. } => name.as_str(),
+            other => {
+                return Err(CodegenError::UnsupportedExpr(format!(
+                    "non-variable function call: {other:?}"
+                )))
+            }
+        };
+
+        // Look up function info (need to clone out to avoid borrow conflict)
+        let info = self
+            .functions
+            .get(name)
+            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
+        let method_ref = info.method_ref;
+        let param_types = info.param_types.clone();
+        let return_type = info.return_type;
+
+        // Compile each argument
+        for arg in args {
+            self.compile_expr(arg)?;
+        }
+
+        // Pop argument types from stack
+        for pt in param_types.iter().rev() {
+            self.pop_jvm_type(*pt);
+        }
+
+        // Emit invokestatic
+        self.emit(Instruction::Invokestatic(method_ref));
+
+        // Push return type
+        self.push_jvm_type(return_type);
+
+        Ok(return_type)
+    }
+
     fn compile_do(&mut self, exprs: &[Expr]) -> Result<JvmType, CodegenError> {
         let mut last_type = JvmType::Int;
         for (i, expr) in exprs.iter().enumerate() {
@@ -507,10 +614,77 @@ impl Compiler {
         Ok(last_type)
     }
 
+    /// Compile a non-main function declaration into a JVM Method.
+    fn compile_function(&mut self, decl: &FnDecl) -> Result<Method, CodegenError> {
+        self.reset_method_state();
+
+        // Look up the function's type info
+        let info = self.functions.get(&decl.name).ok_or_else(|| {
+            CodegenError::UndefinedVariable(decl.name.clone())
+        })?;
+        let param_types = info.param_types.clone();
+        let return_type = info.return_type;
+
+        // Register parameters as locals
+        for (param, &jvm_ty) in decl.params.iter().zip(param_types.iter()) {
+            let slot = self.next_local;
+            let slot_size: u16 = match jvm_ty {
+                JvmType::Long | JvmType::Double => 2,
+                _ => 1,
+            };
+            self.locals.insert(param.name.clone(), (slot, jvm_ty));
+            self.next_local += slot_size;
+
+            // Track local verification types
+            let vtypes = self.jvm_type_to_vtypes(jvm_ty);
+            self.local_types.extend(vtypes);
+        }
+
+        // Compile function body
+        let body_type = self.compile_expr(&decl.body)?;
+
+        // Emit typed return
+        let ret_instr = match body_type {
+            JvmType::Long => Instruction::Lreturn,
+            JvmType::Double => Instruction::Dreturn,
+            JvmType::Int => Instruction::Ireturn,
+            JvmType::Ref => Instruction::Areturn,
+        };
+        self.emit(ret_instr);
+
+        // Build the method descriptor string for the constant pool
+        let descriptor = build_method_descriptor(&param_types, return_type);
+        let name_idx = self.cp.add_utf8(&decl.name)?;
+        let desc_idx = self.cp.add_utf8(&descriptor)?;
+
+        // Build StackMapTable
+        let stack_map_frames = self.build_stack_map_frames();
+        let code_attributes = if stack_map_frames.is_empty() {
+            vec![]
+        } else {
+            vec![Attribute::StackMapTable {
+                name_index: self.smt_name,
+                frames: stack_map_frames,
+            }]
+        };
+
+        Ok(Method {
+            access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::STATIC,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: self.code_utf8,
+                max_stack: 20, // conservative estimate
+                max_locals: self.next_local,
+                code: std::mem::take(&mut self.code),
+                exception_table: vec![],
+                attributes: code_attributes,
+            }],
+        })
+    }
+
     /// Calculate max stack depth needed (conservative estimate).
     fn estimate_max_stack(&self) -> u16 {
-        // Conservative: count through instructions
-        // For simplicity, use a generous fixed estimate
         20
     }
 
@@ -518,7 +692,7 @@ impl Compiler {
         mut self,
         this_class: u16,
         object_class: u16,
-        class_name: &str,
+        extra_methods: Vec<Method>,
     ) -> Result<Vec<u8>, CodegenError> {
         let main_name = self.cp.add_utf8("main")?;
         let main_desc = self.cp.add_utf8("([Ljava/lang/String;)V")?;
@@ -566,27 +740,30 @@ impl Compiler {
             }],
         };
 
+        let mut methods = vec![constructor];
+        methods.extend(extra_methods);
+        methods.push(main_method);
+
         let class_file = ClassFile {
             version: JAVA_21,
             access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER,
             constant_pool: self.cp,
             this_class,
             super_class: object_class,
-            methods: vec![constructor, main_method],
+            methods,
             ..Default::default()
         };
 
-        let _ = class_name;
         let mut buffer = Vec::new();
         class_file.to_bytes(&mut buffer)?;
         Ok(buffer)
     }
 }
 
-/// Compile a module's `main` function to JVM bytecode.
+/// Compile a module to JVM bytecode.
 pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, CodegenError> {
     // Find the main function
-    let main_fn = module
+    let _main_fn = module
         .decls
         .iter()
         .find_map(|decl| match decl {
@@ -596,6 +773,69 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
         .ok_or(CodegenError::NoMainFunction)?;
 
     let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
+
+    // Run the typechecker to get function types
+    let type_info = infer_module(module).map_err(|e| {
+        CodegenError::TypeError(format!("{e:?}"))
+    })?;
+
+    // Register all non-main functions in the function registry
+    for (name, scheme) in &type_info {
+        if name == "main" {
+            continue;
+        }
+        if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
+            let param_types: Vec<JvmType> = param_tys
+                .iter()
+                .map(type_to_jvm)
+                .collect::<Result<_, _>>()?;
+            let return_type = type_to_jvm(ret_ty)?;
+            let descriptor = build_method_descriptor(&param_types, return_type);
+            let method_ref =
+                compiler.cp.add_method_ref(this_class, name, &descriptor)?;
+            compiler.functions.insert(
+                name.clone(),
+                FunctionInfo {
+                    method_ref,
+                    param_types,
+                    return_type,
+                },
+            );
+        }
+    }
+
+    // Compile each non-main function
+    let fn_decls: Vec<&FnDecl> = module
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::DefFn(f) if f.name != "main" => Some(f),
+            _ => None,
+        })
+        .collect();
+
+    let mut extra_methods = Vec::new();
+    for decl in &fn_decls {
+        let method = compiler.compile_function(decl)?;
+        extra_methods.push(method);
+    }
+
+    // Now compile main: reset state for main method
+    let main_fn = module
+        .decls
+        .iter()
+        .find_map(|decl| match decl {
+            Decl::DefFn(f) if f.name == "main" => Some(f),
+            _ => None,
+        })
+        .unwrap();
+
+    compiler.reset_method_state();
+    compiler.next_local = 1; // slot 0 = String[] args
+    let string_arr_class = compiler.cp.add_class("[Ljava/lang/String;")?;
+    compiler.local_types = vec![VerificationType::Object {
+        cpool_index: string_arr_class,
+    }];
 
     // Emit: getstatic System.out (push PrintStream ref)
     let system_out = compiler.system_out;
@@ -622,7 +862,7 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
 
     compiler.emit(Instruction::Return);
 
-    compiler.build_class(this_class, object_class, class_name)
+    compiler.build_class(this_class, object_class, extra_methods)
 }
 
 /// Generate a minimal valid `.class` file containing a no-op

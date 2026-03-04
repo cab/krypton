@@ -89,6 +89,25 @@ fn test_comparison_lt() {
 }
 
 #[test]
+fn test_factorial() {
+    let src = r#"
+(def factorial (fn [n] (if (== n 0) 1 (* n (factorial (- n 1))))))
+(def main (fn [] (factorial 10)))
+"#;
+    assert_eq!(run_program(src), "3628800");
+}
+
+#[test]
+fn test_mutual_recursion() {
+    let src = r#"
+(def is_even (fn [n] (if (== n 0) true (is_odd (- n 1)))))
+(def is_odd (fn [n] (if (== n 0) false (is_even (- n 1)))))
+(def main (fn [] (is_even 10)))
+"#;
+    assert_eq!(run_program(src), "true");
+}
+
+#[test]
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("(def main (fn [] 42))");
     assert!(errors.is_empty());

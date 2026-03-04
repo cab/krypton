@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 ristretto_classfile.workspace = true
 alang-parser = { path = "../parser" }
+alang-typechecker = { path = "../typechecker" }
 
 [dev-dependencies]
 insta.workspace = true

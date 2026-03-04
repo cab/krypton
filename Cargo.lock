@@ -38,6 +38,7 @@ name = "alang-codegen"
 version = "0.1.0"
 dependencies = [
  "alang-parser",
+ "alang-typechecker",
  "insta",
  "ristretto_classfile",
  "tempfile",
