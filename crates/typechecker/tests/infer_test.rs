@@ -2,6 +2,7 @@ use alang_parser::ast::{Expr, Module};
 use alang_parser::lexer;
 use alang_parser::parser::{parse as parse_module_src, parse_expr};
 use alang_typechecker::infer;
+use alang_typechecker::scc;
 use alang_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 use chumsky::prelude::*;
 
@@ -166,6 +167,52 @@ fn infer_module_forward_ref() {
         @r#"
     f: fn(Int) -> Int
     g: fn(Int) -> Int
+    "#
+    );
+}
+
+#[test]
+fn infer_mutual_recursion() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def is_even (fn [n] (if (== n 0) true (is_odd (- n 1))))) \
+             (def is_odd (fn [n] (if (== n 0) false (is_even (- n 1)))))"
+        ),
+        @r#"
+    is_even: fn(Int) -> Bool
+    is_odd: fn(Int) -> Bool
+    "#
+    );
+}
+
+#[test]
+fn scc_tarjan_unit_test() {
+    // Graph: a(0) -> b(1), b(1) -> a(0), c(2) -> a(0)
+    let adj = vec![
+        vec![1],    // a -> b
+        vec![0],    // b -> a
+        vec![0],    // c -> a
+    ];
+    let sccs = scc::tarjan_scc(&adj);
+    assert_eq!(sccs.len(), 2);
+    assert_eq!(sccs[0], vec![0, 1]); // {a, b} — mutual recursion
+    assert_eq!(sccs[1], vec![2]);    // {c} — depends on a
+}
+
+#[test]
+fn infer_scc_generalization_order() {
+    // id should be generalized (polymorphic) before f and g use it,
+    // so f and g can each instantiate id at different types.
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def id (fn [x] x)) \
+             (def f (fn [n] (id n))) \
+             (def g (fn [s] (id s)))"
+        ),
+        @r#"
+    id: forall b. fn(b) -> b
+    f: forall f. fn(f) -> f
+    g: forall j. fn(j) -> j
     "#
     );
 }

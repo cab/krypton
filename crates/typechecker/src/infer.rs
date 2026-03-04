@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use alang_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
 
+use crate::scc;
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -248,10 +249,9 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 
 /// Infer types for all top-level definitions in a module.
 ///
-/// Uses a three-pass approach to support forward references:
-/// 1. Bind each def name to a fresh type variable
-/// 2. Infer each def body and unify with its pre-bound variable
-/// 3. Apply final substitution and generalize into type schemes
+/// Uses SCC (strongly connected component) analysis to process definitions
+/// in dependency order. Functions within the same SCC are inferred together
+/// as a mutually recursive group, then generalized before later SCCs see them.
 pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
@@ -267,46 +267,59 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
         })
         .collect();
 
-    // Pass 1: bind each name to a fresh type variable
-    let mut pre_bound: Vec<(String, Type)> = Vec::new();
-    for decl in &fn_decls {
-        let tv = Type::Var(gen.fresh());
-        env.bind(decl.name.clone(), TypeScheme::mono(tv.clone()));
-        pre_bound.push((decl.name.clone(), tv));
-    }
+    // Build dependency graph and compute SCCs in topological order
+    let adj = scc::build_dependency_graph(&fn_decls);
+    let sccs = scc::tarjan_scc(&adj);
 
-    // Pass 2: infer each body and unify with the pre-bound variable
-    for (i, decl) in fn_decls.iter().enumerate() {
-        // Create a scope for the function parameters
-        env.push_scope();
-        let mut param_types = Vec::new();
-        for p in &decl.params {
+    // Store results indexed by declaration order
+    let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
+
+    // Process each SCC in topological order (dependencies first)
+    for component in &sccs {
+        // Bind each name in the SCC to a fresh type variable (monomorphic within SCC)
+        let mut pre_bound: Vec<(usize, Type)> = Vec::new();
+        for &idx in component {
             let tv = Type::Var(gen.fresh());
-            param_types.push(tv.clone());
-            env.bind(p.name.clone(), TypeScheme::mono(tv));
+            env.bind(fn_decls[idx].name.clone(), TypeScheme::mono(tv.clone()));
+            pre_bound.push((idx, tv));
         }
-        let body_ty = infer_expr(&decl.body, &mut env, &mut subst, &mut gen)?;
-        env.pop_scope();
 
-        // Build the function type and unify with the pre-bound variable
-        let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
-        let body_ty = subst.apply(&body_ty);
-        let fn_ty = Type::Fn(param_types, Box::new(body_ty));
-        unify(&pre_bound[i].1, &fn_ty, &mut subst)
-            .map_err(|e| spanned(e, decl.span))?;
+        // Infer all bodies in the SCC
+        for &(idx, ref tv) in &pre_bound {
+            let decl = fn_decls[idx];
+            env.push_scope();
+            let mut param_types = Vec::new();
+            for p in &decl.params {
+                let ptv = Type::Var(gen.fresh());
+                param_types.push(ptv.clone());
+                env.bind(p.name.clone(), TypeScheme::mono(ptv));
+            }
+            let body_ty = infer_expr(&decl.body, &mut env, &mut subst, &mut gen)?;
+            env.pop_scope();
+
+            let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
+            let body_ty = subst.apply(&body_ty);
+            let fn_ty = Type::Fn(param_types, Box::new(body_ty));
+            unify(tv, &fn_ty, &mut subst)
+                .map_err(|e| spanned(e, decl.span))?;
+        }
+
+        // Generalize all types in the SCC and update env with polymorphic schemes
+        let empty_env = TypeEnv::new();
+        for &(idx, ref tv) in &pre_bound {
+            let final_ty = subst.apply(tv);
+            let scheme = generalize(&final_ty, &empty_env, &subst);
+            env.bind(fn_decls[idx].name.clone(), scheme.clone());
+            result_schemes[idx] = Some(scheme);
+        }
     }
 
-    // Pass 3: apply final substitution and generalize
-    // Use an empty env for generalization — all free vars in top-level defs
-    // should be universally quantified (the pre-bound names in env would
-    // incorrectly prevent generalization of their own type variables).
-    let empty_env = TypeEnv::new();
-    let mut results = Vec::new();
-    for (name, tv) in &pre_bound {
-        let final_ty = subst.apply(tv);
-        let scheme = generalize(&final_ty, &empty_env, &subst);
-        results.push((name.clone(), scheme));
-    }
+    // Collect results in original declaration order
+    let results: Vec<(String, TypeScheme)> = fn_decls
+        .iter()
+        .enumerate()
+        .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap()))
+        .collect();
 
     Ok(results)
 }
