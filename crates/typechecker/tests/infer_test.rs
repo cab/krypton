@@ -147,6 +147,11 @@ fn infer_forward_reference() {
 }
 
 #[test]
+fn infer_do_block_scoping() {
+    insta::assert_snapshot!(infer("(do (do (let x 1)) x)"), @"TypeError: unknown variable: x");
+}
+
+#[test]
 fn infer_module_basic() {
     insta::assert_snapshot!(
         infer_module_types("(def add (fn [a b] (+ a b)))"),

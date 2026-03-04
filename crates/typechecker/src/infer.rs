@@ -185,13 +185,16 @@ pub fn infer_expr(
         }
 
         Expr::Do { exprs, .. } => {
+            env.push_scope();
             if exprs.is_empty() {
+                env.pop_scope();
                 return Ok(Type::Unit);
             }
             let mut last_ty = Type::Unit;
             for e in exprs {
                 last_ty = infer_expr(e, env, subst, gen)?;
             }
+            env.pop_scope();
             Ok(last_ty)
         }
 

@@ -100,6 +100,12 @@ pub struct SpannedTypeError {
     pub span: Span,
 }
 
+impl fmt::Display for SpannedTypeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} [{}]", self.error, self.error.error_code())
+    }
+}
+
 impl std::error::Error for TypeError {}
 
 /// Resolve type variable chains through the substitution.
@@ -109,7 +115,7 @@ fn walk(ty: &Type, subst: &Substitution) -> Type {
             Some(t) => walk(t, subst),
             None => ty.clone(),
         },
-        _ => subst.apply(ty),
+        _ => ty.clone(),
     }
 }
 
