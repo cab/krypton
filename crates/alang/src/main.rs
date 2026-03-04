@@ -18,6 +18,8 @@ enum Commands {
     },
     /// Parse and pretty-print a file
     Fmt { file: String },
+    /// Type-check a file and print inferred types
+    Check { file: String },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -57,6 +59,31 @@ fn main() {
                 process::exit(1);
             }
             println!("{}", alang_parser::pretty::pretty_print(&module));
+        }
+        Commands::Check { file } => {
+            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", file, e);
+                process::exit(1);
+            });
+            let (module, errors) = alang_parser::parser::parse(&source);
+            if !errors.is_empty() {
+                let diag = alang_parser::diagnostics::render_errors(&file, &source, &errors);
+                eprint!("{}", diag);
+                process::exit(1);
+            }
+            match alang_typechecker::infer::infer_module(&module) {
+                Ok(schemes) => {
+                    for (name, scheme) in &schemes {
+                        println!("{} : {}", name, scheme);
+                    }
+                }
+                Err(e) => {
+                    let diag =
+                        alang_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                    eprint!("{}", diag);
+                    process::exit(1);
+                }
+            }
         }
     }
 }

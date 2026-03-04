@@ -56,6 +56,48 @@ fn test_parse_errors_exit_1() {
 }
 
 #[test]
+fn test_check_identity() {
+    let output = alang_bin()
+        .args(["check", "tests/fixtures/m2/identity.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(output.status.success(), "exit code should be 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("identity : forall"),
+        "stdout should contain polymorphic inferred type: {stdout}"
+    );
+}
+
+#[test]
+fn test_check_type_error() {
+    let output = alang_bin()
+        .args(["check", "tests/fixtures/m2/type_error_check.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(!output.status.success(), "exit code should be non-zero");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("E0001"),
+        "stderr should contain E0001 error code: {stderr}"
+    );
+}
+
+#[test]
+fn test_check_prints_multiple_defs() {
+    let output = alang_bin()
+        .args(["check", "tests/fixtures/m2/multi_def.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(output.status.success(), "exit code should be 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("id :") && stdout.contains("always :"),
+        "stdout should contain types for both defs: {stdout}"
+    );
+}
+
+#[test]
 fn test_fmt_pretty_prints() {
     let output = alang_bin()
         .args(["fmt", "tests/fixtures/m1/hello.al"])

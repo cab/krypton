@@ -297,10 +297,14 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
     }
 
     // Pass 3: apply final substitution and generalize
+    // Use an empty env for generalization — all free vars in top-level defs
+    // should be universally quantified (the pre-bound names in env would
+    // incorrectly prevent generalization of their own type variables).
+    let empty_env = TypeEnv::new();
     let mut results = Vec::new();
     for (name, tv) in &pre_bound {
         let final_ty = subst.apply(tv);
-        let scheme = generalize(&final_ty, &env, &subst);
+        let scheme = generalize(&final_ty, &empty_env, &subst);
         results.push((name.clone(), scheme));
     }
 
