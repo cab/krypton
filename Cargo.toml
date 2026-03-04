@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/alang-parser"]
+members = ["crates/alang-parser", "crates/typechecker"]
 resolver = "2"
 
 [workspace.package]
@@ -17,6 +17,7 @@ edition.workspace = true
 
 [dependencies]
 alang-parser = { path = "crates/alang-parser" }
+alang-typechecker = { path = "crates/typechecker" }
 
 [[example]]
 name = "test_parser"
