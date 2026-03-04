@@ -145,7 +145,7 @@ impl Substitution {
     pub fn apply(&self, ty: &Type) -> Type {
         match ty {
             Type::Var(id) => match self.map.get(id) {
-                Some(t) => t.clone(),
+                Some(t) => self.apply(t),
                 None => ty.clone(),
             },
             Type::Fn(params, ret) => Type::Fn(
@@ -192,6 +192,11 @@ impl Substitution {
     /// Look up a variable in the substitution.
     pub fn get(&self, var: TypeVarId) -> Option<&Type> {
         self.map.get(&var)
+    }
+
+    /// Insert a binding into the substitution.
+    pub fn insert(&mut self, var: TypeVarId, ty: Type) {
+        self.map.insert(var, ty);
     }
 }
 
