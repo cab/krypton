@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use alang_parser::ast::{BinOp, Expr, Lit, UnaryOp};
+use alang_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
 
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, TypeError};
@@ -88,9 +88,8 @@ pub fn infer_expr(
                 let scheme = scheme.clone();
                 Ok(scheme.instantiate(&mut || gen.fresh()))
             }
-            None => Err(TypeError::Mismatch {
-                expected: Type::Unit,
-                actual: Type::Named(format!("undefined: {}", name), vec![]),
+            None => Err(TypeError::UnknownVariable {
+                name: name.clone(),
             }),
         },
 
@@ -208,4 +207,64 @@ pub fn infer_expr(
 pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
     let scheme = generalize(ty, env, subst);
     format!("{}", scheme)
+}
+
+/// Infer types for all top-level definitions in a module.
+///
+/// Uses a three-pass approach to support forward references:
+/// 1. Bind each def name to a fresh type variable
+/// 2. Infer each def body and unify with its pre-bound variable
+/// 3. Apply final substitution and generalize into type schemes
+pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, TypeError> {
+    let mut env = TypeEnv::new();
+    let mut subst = Substitution::new();
+    let mut gen = TypeVarGen::new();
+
+    // Collect DefFn declarations
+    let fn_decls: Vec<&alang_parser::ast::FnDecl> = module
+        .decls
+        .iter()
+        .filter_map(|d| match d {
+            Decl::DefFn(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+
+    // Pass 1: bind each name to a fresh type variable
+    let mut pre_bound: Vec<(String, Type)> = Vec::new();
+    for decl in &fn_decls {
+        let tv = Type::Var(gen.fresh());
+        env.bind(decl.name.clone(), TypeScheme::mono(tv.clone()));
+        pre_bound.push((decl.name.clone(), tv));
+    }
+
+    // Pass 2: infer each body and unify with the pre-bound variable
+    for (i, decl) in fn_decls.iter().enumerate() {
+        // Create a scope for the function parameters
+        env.push_scope();
+        let mut param_types = Vec::new();
+        for p in &decl.params {
+            let tv = Type::Var(gen.fresh());
+            param_types.push(tv.clone());
+            env.bind(p.name.clone(), TypeScheme::mono(tv));
+        }
+        let body_ty = infer_expr(&decl.body, &mut env, &mut subst, &mut gen)?;
+        env.pop_scope();
+
+        // Build the function type and unify with the pre-bound variable
+        let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
+        let body_ty = subst.apply(&body_ty);
+        let fn_ty = Type::Fn(param_types, Box::new(body_ty));
+        unify(&pre_bound[i].1, &fn_ty, &mut subst)?;
+    }
+
+    // Pass 3: apply final substitution and generalize
+    let mut results = Vec::new();
+    for (name, tv) in &pre_bound {
+        let final_ty = subst.apply(tv);
+        let scheme = generalize(&final_ty, &env, &subst);
+        results.push((name.clone(), scheme));
+    }
+
+    Ok(results)
 }

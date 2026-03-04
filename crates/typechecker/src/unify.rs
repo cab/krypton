@@ -7,6 +7,7 @@ pub enum TypeError {
     Mismatch { expected: Type, actual: Type },
     InfiniteType { var: TypeVarId, ty: Type },
     WrongArity { expected: usize, actual: usize },
+    UnknownVariable { name: String },
 }
 
 impl fmt::Display for TypeError {
@@ -24,6 +25,9 @@ impl fmt::Display for TypeError {
                     "wrong arity: expected {} arguments, found {}",
                     expected, actual
                 )
+            }
+            TypeError::UnknownVariable { name } => {
+                write!(f, "unknown variable: {} [E0003]", name)
             }
         }
     }
