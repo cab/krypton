@@ -7,6 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
 chumsky = "0.12"
 ariadne = "0.5"
 insta = { version = "1", features = ["yaml"] }
