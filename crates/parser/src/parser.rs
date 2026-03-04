@@ -1,8 +1,15 @@
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
+use serde::Serialize;
 
 use crate::ast::*;
-use crate::lexer::{Span as LexSpan, Token};
+use crate::lexer::{self, Span as LexSpan, Token};
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ParseError {
+    pub message: String,
+    pub span: Span,
+}
 
 fn to_span(s: LexSpan) -> Span {
     (s.start, s.end)
@@ -60,7 +67,7 @@ where
 }
 
 pub fn expr_parser<'tokens, 'src: 'tokens, I>(
-) -> impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+) -> impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
@@ -327,4 +334,435 @@ pub fn parse_expr<'tokens, 'src: 'tokens>(
         .unwrap_or((0..0).into());
     let input = tokens.map(eoi, |(t, s)| (t, s));
     expr_parser().parse(input).into_output_errors()
+}
+
+fn is_uppercase(s: &str) -> bool {
+    s.starts_with(|c: char| c.is_uppercase())
+}
+
+fn type_expr_parser<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, TypeExpr, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    recursive(|ty| {
+        // Uppercase ident → Named, lowercase → Var
+        let named_or_var =
+            select! { Token::Ident(s) => s.to_string() }.map_with(|name, e| {
+                if is_uppercase(&name) {
+                    TypeExpr::Named {
+                        name,
+                        span: to_span(e.span()),
+                    }
+                } else {
+                    TypeExpr::Var {
+                        name,
+                        span: to_span(e.span()),
+                    }
+                }
+            });
+
+        // (fn [param_types] return_type)
+        let fn_type = just(Token::Fn)
+            .ignore_then(
+                ty.clone()
+                    .repeated()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+            )
+            .then(ty.clone())
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map_with(|(params, ret), e| TypeExpr::Fn {
+                params,
+                ret: Box::new(ret),
+                span: to_span(e.span()),
+            });
+
+        // (own inner_type)
+        let own_type = just(Token::Own)
+            .ignore_then(ty.clone())
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map_with(|inner, e| TypeExpr::Own {
+                inner: Box::new(inner),
+                span: to_span(e.span()),
+            });
+
+        // (tuple types...)
+        let tuple_type = just(Token::Tuple)
+            .ignore_then(ty.clone().repeated().collect::<Vec<_>>())
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map_with(|elements, e| TypeExpr::Tuple {
+                elements,
+                span: to_span(e.span()),
+            });
+
+        // (Name types...) → App
+        let app_type = select! { Token::Ident(s) => s.to_string() }
+            .then(ty.clone().repeated().at_least(1).collect::<Vec<_>>())
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map_with(|(name, args), e| TypeExpr::App {
+                name,
+                args,
+                span: to_span(e.span()),
+            });
+
+        choice((fn_type, own_type, tuple_type, app_type, named_or_var))
+    })
+}
+
+#[allow(clippy::type_complexity)]
+fn decl_parser<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, Decl, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    let expr = expr_parser();
+    let ty = type_expr_parser();
+
+    // --- def_fn_parser ---
+    // (def name (fn [params] body))
+    // (def name (fn [params] [param_types] RetType body))
+    let param_names = select! { Token::Ident(s) => s.to_string() }
+        .map_with(|name, e| (name, to_span(e.span())))
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    let param_types = ty
+        .clone()
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    let fn_inner = just(Token::Fn)
+        .ignore_then(param_names)
+        .then(
+            // Optional: [param_types] RetType before body
+            param_types
+                .then(ty.clone())
+                .or_not(),
+        )
+        .then(expr.clone())
+        .delimited_by(just(Token::LParen), just(Token::RParen));
+
+    let def_fn = just(Token::Def)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(fn_inner)
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(name, ((param_names, type_info), body)): (String, ((Vec<(String, Span)>, Option<(Vec<TypeExpr>, TypeExpr)>), Expr)), e| {
+            let params = if let Some((ref ptypes, _)) = type_info {
+                param_names
+                    .into_iter()
+                    .zip(ptypes.iter().cloned().map(Some).chain(std::iter::repeat(None)))
+                    .map(|((pname, pspan), pty)| Param {
+                        name: pname,
+                        ty: pty,
+                        span: pspan,
+                    })
+                    .collect()
+            } else {
+                param_names
+                    .into_iter()
+                    .map(|(pname, pspan)| Param {
+                        name: pname,
+                        ty: None,
+                        span: pspan,
+                    })
+                    .collect()
+            };
+            let return_type = type_info.map(|(_, ret)| ret);
+            Decl::DefFn(FnDecl {
+                name,
+                params,
+                constraints: vec![],
+                return_type,
+                body: Box::new(body),
+                span: to_span(e.span()),
+            })
+        });
+
+    // --- type_parser ---
+    // Record field: (name Type)
+    let record_field = select! { Token::Ident(s) => s.to_string() }
+        .then(ty.clone())
+        .delimited_by(just(Token::LParen), just(Token::RParen));
+
+    // (record (field Type)...)
+    let record_kind = just(Token::Ident("record"))
+        .ignore_then(record_field.repeated().at_least(1).collect::<Vec<_>>())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map(|fields| TypeDeclKind::Record { fields });
+
+    // Sum variant: bare ident or (Name types...)
+    let variant_bare = select! { Token::Ident(s) => s.to_string() }
+        .map_with(|name, e| Variant {
+            name,
+            fields: vec![],
+            span: to_span(e.span()),
+        });
+
+    let variant_paren = select! { Token::Ident(s) => s.to_string() }
+        .then(ty.clone().repeated().collect::<Vec<_>>())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(name, fields), e| Variant {
+            name,
+            fields,
+            span: to_span(e.span()),
+        });
+
+    let variant = variant_paren.or(variant_bare);
+
+    // (| variants...)
+    let sum_kind = just(Token::Pipe)
+        .ignore_then(variant.repeated().at_least(1).collect::<Vec<_>>())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map(|variants| TypeDeclKind::Sum { variants });
+
+    // Optional type params [a b ...]
+    let type_params = select! { Token::Ident(s) => s.to_string() }
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    // Optional deriving [Trait1 Trait2 ...]
+    let deriving = just(Token::Deriving)
+        .ignore_then(
+            select! { Token::Ident(s) => s.to_string() }
+                .repeated()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+        )
+        .or_not()
+        .map(|d| d.unwrap_or_default());
+
+    let type_decl = just(Token::Type)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(type_params.or_not().map(|tp| tp.unwrap_or_default()))
+        .then(record_kind.or(sum_kind))
+        .then(deriving.clone())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(((name, type_params), kind), deriving), e| {
+            Decl::DefType(TypeDecl {
+                name,
+                type_params,
+                kind,
+                deriving,
+                span: to_span(e.span()),
+            })
+        });
+
+    // --- trait method: (def name [param_types] RetType? body?) ---
+    let trait_method_param_types = ty
+        .clone()
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    let trait_method = just(Token::Def)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(trait_method_param_types)
+        .then(ty.clone().or_not())
+        .then(expr.clone().or_not())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(((name, ptypes), ret_type), body), e| {
+            let params = ptypes
+                .into_iter()
+                .enumerate()
+                .map(|(i, t)| Param {
+                    name: format!("_{i}"),
+                    ty: Some(t),
+                    span: to_span(e.span()),
+                })
+                .collect();
+            FnDecl {
+                name,
+                params,
+                constraints: vec![],
+                return_type: ret_type,
+                body: Box::new(body.unwrap_or(Expr::Lit {
+                    value: Lit::Unit,
+                    span: to_span(e.span()),
+                })),
+                span: to_span(e.span()),
+            }
+        });
+
+    // --- trait_parser ---
+    // (trait Name [tvar] :? [superclasses]? methods...)
+    let superclasses = just(Token::Colon)
+        .ignore_then(
+            select! { Token::Ident(s) => s.to_string() }
+                .repeated()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+        )
+        .or_not()
+        .map(|s| s.unwrap_or_default());
+
+    let trait_decl = just(Token::Trait)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(
+            select! { Token::Ident(s) => s.to_string() }
+                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+        )
+        .then(superclasses.clone())
+        .then(trait_method.clone().repeated().collect::<Vec<_>>())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(((name, type_var), superclasses), methods), e| Decl::DefTrait {
+            name,
+            type_var,
+            superclasses,
+            methods,
+            span: to_span(e.span()),
+        });
+
+    // --- impl_parser ---
+    // (impl TraitName TargetType :? [constraints]? methods...)
+    // impl method: (def name [params] body)
+    let impl_method_params = select! { Token::Ident(s) => s.to_string() }
+        .map_with(|name, e| Param {
+            name,
+            ty: None,
+            span: to_span(e.span()),
+        })
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    let impl_method = just(Token::Def)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(impl_method_params)
+        .then(expr.clone())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|((name, params), body), e| FnDecl {
+            name,
+            params,
+            constraints: vec![],
+            return_type: None,
+            body: Box::new(body),
+            span: to_span(e.span()),
+        });
+
+    let impl_constraints = just(Token::Colon)
+        .ignore_then(
+            select! { Token::Ident(s) => s.to_string() }
+                .then(select! { Token::Ident(s) => s.to_string() })
+                .map_with(|(trait_name, type_var), e| TypeConstraint {
+                    trait_name,
+                    type_var,
+                    span: to_span(e.span()),
+                })
+                .repeated()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+        )
+        .or_not()
+        .map(|c| c.unwrap_or_default());
+
+    let impl_decl = just(Token::Impl)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(ty.clone())
+        .then(impl_constraints)
+        .then(impl_method.repeated().collect::<Vec<_>>())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(((trait_name, target_type), type_constraints), methods), e| {
+            Decl::DefImpl {
+                trait_name,
+                target_type,
+                type_constraints,
+                methods,
+                span: to_span(e.span()),
+            }
+        });
+
+    // --- import_parser ---
+    // (import dotted.path [name1 name2 ...])
+    let import_path = select! { Token::Ident(s) => s.to_string() }
+        .separated_by(just(Token::Dot))
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .map(|parts| parts.join("."));
+
+    let import_names = select! { Token::Ident(s) => s.to_string() }
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    let import_decl = just(Token::Import)
+        .ignore_then(import_path)
+        .then(import_names)
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(path, names), e| Decl::Import {
+            path,
+            names,
+            span: to_span(e.span()),
+        });
+
+    // --- Combined decl parser with error recovery ---
+    choice((def_fn, type_decl, trait_decl, impl_decl, import_decl)).recover_with(via_parser(
+        nested_delimiters(
+            Token::LParen,
+            Token::RParen,
+            [(Token::LBracket, Token::RBracket)],
+            |_span| Decl::Import {
+                path: String::new(),
+                names: vec![],
+                span: (0, 0),
+            },
+        ),
+    ))
+}
+
+fn module_parser<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, Module, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    decl_parser()
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|decls| {
+            // Filter out recovery placeholders
+            let decls = decls
+                .into_iter()
+                .filter(|d| {
+                    !matches!(d, Decl::Import { path, names, .. } if path.is_empty() && names.is_empty())
+                })
+                .collect();
+            Module { decls }
+        })
+}
+
+pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
+    let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
+    let tokens = tokens.unwrap_or_default();
+
+    let mut errors: Vec<ParseError> = lex_errors
+        .into_iter()
+        .map(|e| {
+            let span = e.span();
+            ParseError {
+                message: e.to_string(),
+                span: (span.start, span.end),
+            }
+        })
+        .collect();
+
+    let eoi: LexSpan = tokens
+        .last()
+        .map(|(_, s)| (s.end..s.end).into())
+        .unwrap_or((0..0).into());
+    let input = tokens.map(eoi, |(t, s)| (t, s));
+
+    let (module, parse_errors) = module_parser().parse(input).into_output_errors();
+
+    errors.extend(parse_errors.into_iter().map(|e| {
+        let span = e.span();
+        ParseError {
+            message: e.to_string(),
+            span: (span.start, span.end),
+        }
+    }));
+
+    (module.unwrap_or(Module { decls: vec![] }), errors)
 }

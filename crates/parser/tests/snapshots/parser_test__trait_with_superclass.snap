@@ -1,0 +1,52 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse_module(\"(trait Ord [a] : [Eq] (def compare [a a] Ordering))\")"
+---
+decls:
+  - DefTrait:
+      name: Ord
+      type_var: a
+      superclasses:
+        - Eq
+      methods:
+        - name: compare
+          params:
+            - name: _0
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 36
+                    - 37
+              span:
+                - 22
+                - 50
+            - name: _1
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 38
+                    - 39
+              span:
+                - 22
+                - 50
+          constraints: []
+          return_type:
+            Named:
+              name: Ordering
+              span:
+                - 41
+                - 49
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 22
+                - 50
+          span:
+            - 22
+            - 50
+      span:
+        - 0
+        - 51

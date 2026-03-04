@@ -1,0 +1,116 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse_module(\"(trait Eq [a] (def eq [a a] Bool) (def neq [a a] Bool (not (eq a b))))\")"
+---
+decls:
+  - DefTrait:
+      name: Eq
+      type_var: a
+      superclasses: []
+      methods:
+        - name: eq
+          params:
+            - name: _0
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 23
+                    - 24
+              span:
+                - 14
+                - 33
+            - name: _1
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 25
+                    - 26
+              span:
+                - 14
+                - 33
+          constraints: []
+          return_type:
+            Named:
+              name: Bool
+              span:
+                - 28
+                - 32
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 14
+                - 33
+          span:
+            - 14
+            - 33
+        - name: neq
+          params:
+            - name: _0
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 44
+                    - 45
+              span:
+                - 34
+                - 69
+            - name: _1
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 46
+                    - 47
+              span:
+                - 34
+                - 69
+          constraints: []
+          return_type:
+            Named:
+              name: Bool
+              span:
+                - 49
+                - 53
+          body:
+            App:
+              func:
+                Var:
+                  name: not
+                  span:
+                    - 55
+                    - 58
+              args:
+                - App:
+                    func:
+                      Var:
+                        name: eq
+                        span:
+                          - 60
+                          - 62
+                    args:
+                      - Var:
+                          name: a
+                          span:
+                            - 63
+                            - 64
+                      - Var:
+                          name: b
+                          span:
+                            - 65
+                            - 66
+                    span:
+                      - 59
+                      - 67
+              span:
+                - 54
+                - 68
+          span:
+            - 34
+            - 69
+      span:
+        - 0
+        - 70

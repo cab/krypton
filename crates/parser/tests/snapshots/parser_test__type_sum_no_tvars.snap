@@ -1,0 +1,41 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: "parse_module(\"(type CounterMsg (| Inc Dec (Get (ActorRef Int))))\")"
+---
+decls:
+  - DefType:
+      name: CounterMsg
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Inc
+              fields: []
+              span:
+                - 20
+                - 23
+            - name: Dec
+              fields: []
+              span:
+                - 24
+                - 27
+            - name: Get
+              fields:
+                - App:
+                    name: ActorRef
+                    args:
+                      - Named:
+                          name: Int
+                          span:
+                            - 43
+                            - 46
+                    span:
+                      - 33
+                      - 47
+              span:
+                - 28
+                - 48
+      deriving: []
+      span:
+        - 0
+        - 50
