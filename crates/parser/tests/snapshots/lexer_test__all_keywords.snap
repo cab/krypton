@@ -1,0 +1,23 @@
+---
+source: crates/parser/tests/lexer_test.rs
+expression: "lex(\"def fn let if match type do receive recur send spawn self own trait impl import list tuple deriving\")"
+---
+- Def
+- Fn
+- Let
+- If
+- Match
+- Type
+- Do
+- Receive
+- Recur
+- Send
+- Spawn
+- Self_
+- Own
+- Trait
+- Impl
+- Import
+- List
+- Tuple
+- Deriving

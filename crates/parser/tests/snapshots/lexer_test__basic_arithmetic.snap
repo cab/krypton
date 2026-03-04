@@ -1,0 +1,9 @@
+---
+source: crates/parser/tests/lexer_test.rs
+expression: "lex(\"(+ 1 2)\")"
+---
+- LParen
+- Plus
+- Int: 1
+- Int: 2
+- RParen
