@@ -87,3 +87,13 @@ fn test_comparison_lt() {
         "yes"
     );
 }
+
+#[test]
+fn test_java_21_classfile_version() {
+    let (module, errors) = parse("(def main (fn [] 42))");
+    assert!(errors.is_empty());
+    let bytes = compile_module(&module, "Test").expect("compile_module should succeed");
+    // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
+    assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
+    assert_eq!(bytes[6..8], [0, 65], "major version should be 65 (Java 21)");
+}
