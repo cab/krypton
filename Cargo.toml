@@ -9,4 +9,6 @@ edition = "2021"
 [workspace.dependencies]
 chumsky = "0.12"
 ariadne = "0.5"
+insta = { version = "1", features = ["yaml"] }
+serde = { version = "1", features = ["derive"] }
 
