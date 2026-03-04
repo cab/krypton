@@ -1,0 +1,84 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: simple_let
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Let:
+          name: x
+          value:
+            Lit:
+              value:
+                Int: 42
+              span:
+                - 43
+                - 45
+          body: ~
+          span:
+            - 36
+            - 46
+      span:
+        - 13
+        - 48
+  - DefFn:
+      name: nested_let
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: x
+                value:
+                  Lit:
+                    value:
+                      Int: 1
+                    span:
+                      - 89
+                      - 90
+                body: ~
+                span:
+                  - 82
+                  - 91
+            - Let:
+                name: y
+                value:
+                  Lit:
+                    value:
+                      Int: 2
+                    span:
+                      - 103
+                      - 104
+                body: ~
+                span:
+                  - 96
+                  - 105
+            - BinaryOp:
+                op: Add
+                lhs:
+                  Var:
+                    name: x
+                    span:
+                      - 113
+                      - 114
+                rhs:
+                  Var:
+                    name: y
+                    span:
+                      - 115
+                      - 116
+                span:
+                  - 110
+                  - 117
+          span:
+            - 74
+            - 118
+      span:
+        - 49
+        - 120

@@ -1,0 +1,20 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Int: 42
+          span:
+            - 30
+            - 32
+      span:
+        - 13
+        - 34

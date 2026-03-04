@@ -1,0 +1,365 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: add
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 27
+            - 28
+        - name: y
+          ty: ~
+          span:
+            - 29
+            - 30
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: x
+              span:
+                - 35
+                - 36
+          rhs:
+            Var:
+              name: y
+              span:
+                - 37
+                - 38
+          span:
+            - 32
+            - 39
+      span:
+        - 13
+        - 41
+  - DefFn:
+      name: sub
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 56
+            - 57
+        - name: y
+          ty: ~
+          span:
+            - 58
+            - 59
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Sub
+          lhs:
+            Var:
+              name: x
+              span:
+                - 64
+                - 65
+          rhs:
+            Var:
+              name: y
+              span:
+                - 66
+                - 67
+          span:
+            - 61
+            - 68
+      span:
+        - 42
+        - 70
+  - DefFn:
+      name: mul
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 85
+            - 86
+        - name: y
+          ty: ~
+          span:
+            - 87
+            - 88
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Mul
+          lhs:
+            Var:
+              name: x
+              span:
+                - 93
+                - 94
+          rhs:
+            Var:
+              name: y
+              span:
+                - 95
+                - 96
+          span:
+            - 90
+            - 97
+      span:
+        - 71
+        - 99
+  - DefFn:
+      name: div
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 114
+            - 115
+        - name: y
+          ty: ~
+          span:
+            - 116
+            - 117
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Div
+          lhs:
+            Var:
+              name: x
+              span:
+                - 122
+                - 123
+          rhs:
+            Var:
+              name: y
+              span:
+                - 124
+                - 125
+          span:
+            - 119
+            - 126
+      span:
+        - 100
+        - 128
+  - DefFn:
+      name: eq
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 142
+            - 143
+        - name: y
+          ty: ~
+          span:
+            - 144
+            - 145
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Eq
+          lhs:
+            Var:
+              name: x
+              span:
+                - 151
+                - 152
+          rhs:
+            Var:
+              name: y
+              span:
+                - 153
+                - 154
+          span:
+            - 147
+            - 155
+      span:
+        - 129
+        - 157
+  - DefFn:
+      name: neq
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 172
+            - 173
+        - name: y
+          ty: ~
+          span:
+            - 174
+            - 175
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Neq
+          lhs:
+            Var:
+              name: x
+              span:
+                - 181
+                - 182
+          rhs:
+            Var:
+              name: y
+              span:
+                - 183
+                - 184
+          span:
+            - 177
+            - 185
+      span:
+        - 158
+        - 187
+  - DefFn:
+      name: lt
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 201
+            - 202
+        - name: y
+          ty: ~
+          span:
+            - 203
+            - 204
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Lt
+          lhs:
+            Var:
+              name: x
+              span:
+                - 209
+                - 210
+          rhs:
+            Var:
+              name: y
+              span:
+                - 211
+                - 212
+          span:
+            - 206
+            - 213
+      span:
+        - 188
+        - 215
+  - DefFn:
+      name: gt
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 229
+            - 230
+        - name: y
+          ty: ~
+          span:
+            - 231
+            - 232
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Gt
+          lhs:
+            Var:
+              name: x
+              span:
+                - 237
+                - 238
+          rhs:
+            Var:
+              name: y
+              span:
+                - 239
+                - 240
+          span:
+            - 234
+            - 241
+      span:
+        - 216
+        - 243
+  - DefFn:
+      name: le
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 257
+            - 258
+        - name: y
+          ty: ~
+          span:
+            - 259
+            - 260
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Le
+          lhs:
+            Var:
+              name: x
+              span:
+                - 266
+                - 267
+          rhs:
+            Var:
+              name: y
+              span:
+                - 268
+                - 269
+          span:
+            - 262
+            - 270
+      span:
+        - 244
+        - 272
+  - DefFn:
+      name: ge
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 286
+            - 287
+        - name: y
+          ty: ~
+          span:
+            - 288
+            - 289
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Ge
+          lhs:
+            Var:
+              name: x
+              span:
+                - 295
+                - 296
+          rhs:
+            Var:
+              name: y
+              span:
+                - 297
+                - 298
+          span:
+            - 291
+            - 299
+      span:
+        - 273
+        - 301

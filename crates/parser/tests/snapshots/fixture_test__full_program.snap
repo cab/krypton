@@ -1,0 +1,252 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Point
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 36
+                    - 39
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 44
+                    - 47
+      deriving: []
+      span:
+        - 13
+        - 50
+  - DefType:
+      name: Shape
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Circle
+              fields:
+                - Named:
+                    name: Int
+                    span:
+                      - 75
+                      - 78
+              span:
+                - 67
+                - 79
+            - name: Rect
+              fields:
+                - Named:
+                    name: Int
+                    span:
+                      - 86
+                      - 89
+                - Named:
+                    name: Int
+                    span:
+                      - 90
+                      - 93
+              span:
+                - 80
+                - 94
+      deriving: []
+      span:
+        - 52
+        - 96
+  - DefFn:
+      name: area
+      params:
+        - name: s
+          ty: ~
+          span:
+            - 113
+            - 114
+      constraints: []
+      return_type: ~
+      body:
+        Match:
+          scrutinee:
+            Var:
+              name: s
+              span:
+                - 125
+                - 126
+          arms:
+            - pattern:
+                Constructor:
+                  name: Circle
+                  args:
+                    - Var:
+                        name: r
+                        span:
+                          - 140
+                          - 141
+                  span:
+                    - 132
+                    - 142
+              body:
+                BinaryOp:
+                  op: Mul
+                  lhs:
+                    Var:
+                      name: r
+                      span:
+                        - 146
+                        - 147
+                  rhs:
+                    Var:
+                      name: r
+                      span:
+                        - 148
+                        - 149
+                  span:
+                    - 143
+                    - 150
+              span:
+                - 131
+                - 151
+            - pattern:
+                Constructor:
+                  name: Rect
+                  args:
+                    - Var:
+                        name: w
+                        span:
+                          - 163
+                          - 164
+                    - Var:
+                        name: h
+                        span:
+                          - 165
+                          - 166
+                  span:
+                    - 157
+                    - 167
+              body:
+                BinaryOp:
+                  op: Mul
+                  lhs:
+                    Var:
+                      name: w
+                      span:
+                        - 171
+                        - 172
+                  rhs:
+                    Var:
+                      name: h
+                      span:
+                        - 173
+                        - 174
+                  span:
+                    - 168
+                    - 175
+              span:
+                - 156
+                - 176
+          span:
+            - 118
+            - 177
+      span:
+        - 98
+        - 179
+  - DefFn:
+      name: origin
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Let:
+          name: x
+          value:
+            Lit:
+              value:
+                Int: 0
+              span:
+                - 207
+                - 208
+          body: ~
+          span:
+            - 200
+            - 209
+      span:
+        - 181
+        - 211
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: p
+                value:
+                  App:
+                    func:
+                      Var:
+                        name: origin
+                        span:
+                          - 248
+                          - 254
+                    args: []
+                    span:
+                      - 247
+                      - 255
+                body: ~
+                span:
+                  - 240
+                  - 256
+            - Let:
+                name: s
+                value:
+                  App:
+                    func:
+                      Var:
+                        name: Circle
+                        span:
+                          - 269
+                          - 275
+                    args:
+                      - Lit:
+                          value:
+                            Int: 5
+                          span:
+                            - 276
+                            - 277
+                    span:
+                      - 268
+                      - 278
+                body: ~
+                span:
+                  - 261
+                  - 279
+            - App:
+                func:
+                  Var:
+                    name: area
+                    span:
+                      - 285
+                      - 289
+                args:
+                  - Var:
+                      name: s
+                      span:
+                        - 290
+                        - 291
+                span:
+                  - 284
+                  - 292
+          span:
+            - 232
+            - 293
+      span:
+        - 213
+        - 295

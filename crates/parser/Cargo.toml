@@ -11,3 +11,4 @@ serde.workspace = true
 [dev-dependencies]
 insta.workspace = true
 strip-ansi-escapes = "0.2"
+alang-test-harness = { path = "../test-harness" }

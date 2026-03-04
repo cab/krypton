@@ -1,0 +1,4 @@
+# expect: ok
+(type Color (| Red Green Blue))
+(type Option [a] (| None (Some a)))
+(type Result [a b] (| (Ok a) (Err b)) deriving [Eq Show])

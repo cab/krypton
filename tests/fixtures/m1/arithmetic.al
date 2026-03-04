@@ -1,0 +1,11 @@
+# expect: ok
+(def add (fn [x y] (+ x y)))
+(def sub (fn [x y] (- x y)))
+(def mul (fn [x y] (* x y)))
+(def div (fn [x y] (/ x y)))
+(def eq (fn [x y] (== x y)))
+(def neq (fn [x y] (!= x y)))
+(def lt (fn [x y] (< x y)))
+(def gt (fn [x y] (> x y)))
+(def le (fn [x y] (<= x y)))
+(def ge (fn [x y] (>= x y)))

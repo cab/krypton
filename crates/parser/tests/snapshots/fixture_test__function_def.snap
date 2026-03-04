@@ -1,0 +1,90 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: untyped
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 31
+            - 32
+      constraints: []
+      return_type: ~
+      body:
+        Var:
+          name: x
+          span:
+            - 34
+            - 35
+      span:
+        - 13
+        - 37
+  - DefFn:
+      name: typed
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 60
+                - 63
+          span:
+            - 54
+            - 55
+        - name: y
+          ty:
+            Named:
+              name: Int
+              span:
+                - 64
+                - 67
+          span:
+            - 56
+            - 57
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 69
+            - 72
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: x
+              span:
+                - 76
+                - 77
+          rhs:
+            Var:
+              name: y
+              span:
+                - 78
+                - 79
+          span:
+            - 73
+            - 80
+      span:
+        - 38
+        - 82
+  - DefFn:
+      name: no_args
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Int: 42
+          span:
+            - 103
+            - 105
+      span:
+        - 83
+        - 107

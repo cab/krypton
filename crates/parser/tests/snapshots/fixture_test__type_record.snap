@@ -1,0 +1,76 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Point
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 36
+                    - 39
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 44
+                    - 47
+      deriving: []
+      span:
+        - 13
+        - 50
+  - DefType:
+      name: Person
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - name
+              - Named:
+                  name: String
+                  span:
+                    - 78
+                    - 84
+            - - age
+              - Named:
+                  name: Int
+                  span:
+                    - 91
+                    - 94
+      deriving:
+        - Eq
+        - Show
+      span:
+        - 51
+        - 116
+  - DefFn:
+      name: get_x
+      params:
+        - name: p
+          ty: ~
+          span:
+            - 133
+            - 134
+      constraints: []
+      return_type: ~
+      body:
+        FieldAccess:
+          expr:
+            Var:
+              name: p
+              span:
+                - 139
+                - 140
+          field: x
+          span:
+            - 136
+            - 143
+      span:
+        - 117
+        - 145

@@ -24,6 +24,7 @@ dependencies = [
 name = "alang-parser"
 version = "0.1.0"
 dependencies = [
+ "alang-test-harness",
  "ariadne",
  "chumsky",
  "insta",

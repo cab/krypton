@@ -1,0 +1,138 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: simple_if
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 33
+            - 34
+      constraints: []
+      return_type: ~
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Gt
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 43
+                    - 44
+              rhs:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 45
+                    - 46
+              span:
+                - 40
+                - 47
+          then_:
+            Lit:
+              value:
+                Int: 1
+              span:
+                - 48
+                - 49
+          else_:
+            Lit:
+              value:
+                Int: 0
+              span:
+                - 50
+                - 51
+          span:
+            - 36
+            - 52
+      span:
+        - 13
+        - 54
+  - DefFn:
+      name: nested_if
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 75
+            - 76
+      constraints: []
+      return_type: ~
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Gt
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 87
+                    - 88
+              rhs:
+                Lit:
+                  value:
+                    Int: 10
+                  span:
+                    - 89
+                    - 91
+              span:
+                - 84
+                - 92
+          then_:
+            Lit:
+              value:
+                String: big
+              span:
+                - 97
+                - 102
+          else_:
+            If:
+              cond:
+                BinaryOp:
+                  op: Gt
+                  lhs:
+                    Var:
+                      name: x
+                      span:
+                        - 114
+                        - 115
+                  rhs:
+                    Lit:
+                      value:
+                        Int: 0
+                      span:
+                        - 116
+                        - 117
+                  span:
+                    - 111
+                    - 118
+              then_:
+                Lit:
+                  value:
+                    String: small
+                  span:
+                    - 119
+                    - 126
+              else_:
+                Lit:
+                  value:
+                    String: non-positive
+                  span:
+                    - 127
+                    - 141
+              span:
+                - 107
+                - 142
+          span:
+            - 80
+            - 143
+      span:
+        - 55
+        - 145

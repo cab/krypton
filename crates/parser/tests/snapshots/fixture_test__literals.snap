@@ -1,0 +1,122 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: int_lit
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Int: 42
+          span:
+            - 33
+            - 35
+      span:
+        - 13
+        - 37
+  - DefFn:
+      name: neg_int
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Sub
+          lhs:
+            Lit:
+              value:
+                Int: 0
+              span:
+                - 61
+                - 62
+          rhs:
+            Lit:
+              value:
+                Int: 1
+              span:
+                - 63
+                - 64
+          span:
+            - 58
+            - 65
+      span:
+        - 38
+        - 67
+  - DefFn:
+      name: float_lit
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Float: 3.14
+          span:
+            - 90
+            - 94
+      span:
+        - 68
+        - 96
+  - DefFn:
+      name: bool_true
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Bool: true
+          span:
+            - 119
+            - 123
+      span:
+        - 97
+        - 125
+  - DefFn:
+      name: bool_false
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Bool: false
+          span:
+            - 149
+            - 154
+      span:
+        - 126
+        - 156
+  - DefFn:
+      name: string_lit
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            String: hello world
+          span:
+            - 180
+            - 193
+      span:
+        - 157
+        - 195
+  - DefFn:
+      name: unit_lit
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Tuple:
+          elements: []
+          span:
+            - 217
+            - 224
+      span:
+        - 196
+        - 226

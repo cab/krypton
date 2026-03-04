@@ -1,0 +1,155 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: identity
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 32
+            - 33
+      constraints: []
+      return_type: ~
+      body:
+        Var:
+          name: x
+          span:
+            - 35
+            - 36
+      span:
+        - 13
+        - 38
+  - DefFn:
+      name: multi_param
+      params:
+        - name: a
+          ty: ~
+          span:
+            - 61
+            - 62
+        - name: b
+          ty: ~
+          span:
+            - 63
+            - 64
+        - name: c
+          ty: ~
+          span:
+            - 65
+            - 66
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: a
+              span:
+                - 71
+                - 72
+          rhs:
+            BinaryOp:
+              op: Add
+              lhs:
+                Var:
+                  name: b
+                  span:
+                    - 76
+                    - 77
+              rhs:
+                Var:
+                  name: c
+                  span:
+                    - 78
+                    - 79
+              span:
+                - 73
+                - 80
+          span:
+            - 68
+            - 81
+      span:
+        - 39
+        - 83
+  - DefFn:
+      name: higher_order
+      params:
+        - name: f
+          ty: ~
+          span:
+            - 107
+            - 108
+        - name: x
+          ty: ~
+          span:
+            - 109
+            - 110
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: f
+              span:
+                - 113
+                - 114
+          args:
+            - Var:
+                name: x
+                span:
+                  - 115
+                  - 116
+          span:
+            - 112
+            - 117
+      span:
+        - 84
+        - 119
+  - DefFn:
+      name: closure
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 138
+            - 139
+      constraints: []
+      return_type: ~
+      body:
+        Lambda:
+          params:
+            - name: y
+              ty: ~
+              span:
+                - 146
+                - 147
+          return_type: ~
+          body:
+            BinaryOp:
+              op: Add
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 152
+                    - 153
+              rhs:
+                Var:
+                  name: y
+                  span:
+                    - 154
+                    - 155
+              span:
+                - 149
+                - 156
+          span:
+            - 141
+            - 157
+      span:
+        - 120
+        - 159
