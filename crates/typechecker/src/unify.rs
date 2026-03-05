@@ -16,6 +16,7 @@ pub enum TypeErrorCode {
     E0008, // Unknown field
     E0009, // Missing fields
     E0010, // Not a struct
+    E0101, // Value already moved
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -31,6 +32,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0008 => write!(f, "E0008"),
             TypeErrorCode::E0009 => write!(f, "E0009"),
             TypeErrorCode::E0010 => write!(f, "E0010"),
+            TypeErrorCode::E0101 => write!(f, "E0101"),
         }
     }
 }
@@ -48,6 +50,7 @@ pub enum TypeError {
     MissingFields { type_name: String, fields: Vec<String> },
     NotAStruct { actual: Type },
     NonExhaustive { missing: Vec<String> },
+    AlreadyMoved { name: String },
 }
 
 impl TypeError {
@@ -64,6 +67,7 @@ impl TypeError {
             TypeError::MissingFields { .. } => TypeErrorCode::E0009,
             TypeError::NotAStruct { .. } => TypeErrorCode::E0010,
             TypeError::NonExhaustive { .. } => TypeErrorCode::E0006,
+            TypeError::AlreadyMoved { .. } => TypeErrorCode::E0101,
         }
     }
 
@@ -97,6 +101,9 @@ impl TypeError {
             }
             TypeError::NonExhaustive { missing } => {
                 Some(format!("add arms for: {}", missing.join(", ")))
+            }
+            TypeError::AlreadyMoved { name } => {
+                Some(format!("`{}` was already consumed by a previous use", name))
             }
         }
     }
@@ -138,6 +145,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::NonExhaustive { missing } => {
                 write!(f, "non-exhaustive match: missing {}", missing.join(", "))
+            }
+            TypeError::AlreadyMoved { name } => {
+                write!(f, "value already moved: `{}`", name)
             }
         }
     }
