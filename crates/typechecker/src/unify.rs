@@ -7,6 +7,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeErrorCode {
     E0001, // Type mismatch
+    E0002, // Duplicate type
     E0003, // Unknown variable
     E0004, // Not a function
     E0005, // Wrong arity
@@ -17,6 +18,7 @@ impl fmt::Display for TypeErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TypeErrorCode::E0001 => write!(f, "E0001"),
+            TypeErrorCode::E0002 => write!(f, "E0002"),
             TypeErrorCode::E0003 => write!(f, "E0003"),
             TypeErrorCode::E0004 => write!(f, "E0004"),
             TypeErrorCode::E0005 => write!(f, "E0005"),
@@ -33,6 +35,7 @@ pub enum TypeError {
     WrongArity { expected: usize, actual: usize },
     UnknownVariable { name: String },
     NotAFunction { actual: Type },
+    DuplicateType { name: String },
 }
 
 impl TypeError {
@@ -40,6 +43,7 @@ impl TypeError {
     pub fn error_code(&self) -> TypeErrorCode {
         match self {
             TypeError::Mismatch { .. } => TypeErrorCode::E0001,
+            TypeError::DuplicateType { .. } => TypeErrorCode::E0002,
             TypeError::UnknownVariable { .. } => TypeErrorCode::E0003,
             TypeError::NotAFunction { .. } => TypeErrorCode::E0004,
             TypeError::WrongArity { .. } => TypeErrorCode::E0005,
@@ -51,6 +55,9 @@ impl TypeError {
     pub fn help(&self) -> Option<String> {
         match self {
             TypeError::Mismatch { .. } => None,
+            TypeError::DuplicateType { name } => {
+                Some(format!("type `{}` is already defined", name))
+            }
             TypeError::UnknownVariable { name } => {
                 Some(format!("did you mean to define `{}` first?", name))
             }
@@ -85,6 +92,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownVariable { name } => {
                 write!(f, "unknown variable: {}", name)
+            }
+            TypeError::DuplicateType { name } => {
+                write!(f, "duplicate type definition: {}", name)
             }
             TypeError::NotAFunction { actual } => {
                 write!(f, "not a function: type {} is not callable", actual)

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
 
 use crate::scc;
+use crate::type_registry::{self, TypeRegistry};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -265,6 +266,19 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
+    let mut registry = TypeRegistry::new();
+
+    // First pass: process all DefType declarations
+    for decl in &module.decls {
+        if let Decl::DefType(type_decl) = decl {
+            let constructors =
+                type_registry::process_type_decl(type_decl, &mut registry, &mut gen)
+                    .map_err(|e| spanned(e, type_decl.span))?;
+            for (name, scheme) in constructors {
+                env.bind(name, scheme);
+            }
+        }
+    }
 
     // Collect DefFn declarations
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module

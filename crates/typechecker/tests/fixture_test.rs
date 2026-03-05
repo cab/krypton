@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use krypton_parser::ast::Decl;
+use krypton_parser::ast::{Decl};
 use krypton_parser::lexer;
 use krypton_parser::parser::{parse, parse_expr};
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
@@ -8,9 +8,9 @@ use krypton_typechecker::infer;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 use chumsky::prelude::*;
 
-fn has_def_fn(source: &str) -> bool {
+fn has_module_decls(source: &str) -> bool {
     let (module, _) = parse(source);
-    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_)))
+    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_)))
 }
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
@@ -46,14 +46,13 @@ fn infer_expr_snapshot(source: &str) -> Result<String, String> {
     }
 }
 
-#[test]
-fn m2_fixtures() {
+fn run_fixtures(subdir: &str) {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .parent()
         .unwrap()
-        .join("tests/fixtures/m2");
+        .join(format!("tests/fixtures/{}", subdir));
 
     let fixtures = discover_fixtures(&fixture_dir);
     assert!(
@@ -70,7 +69,7 @@ fn m2_fixtures() {
             .to_string_lossy()
             .to_string();
 
-        let use_module = has_def_fn(&fixture.source);
+        let use_module = has_module_decls(&fixture.source);
 
         for expectation in &fixture.expectations {
             match expectation {
@@ -109,4 +108,14 @@ fn m2_fixtures() {
             }
         }
     }
+}
+
+#[test]
+fn m2_fixtures() {
+    run_fixtures("m2");
+}
+
+#[test]
+fn m3_fixtures() {
+    run_fixtures("m3");
 }

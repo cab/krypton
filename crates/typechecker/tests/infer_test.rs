@@ -200,6 +200,51 @@ fn scc_tarjan_unit_test() {
 }
 
 #[test]
+fn infer_record_constructor() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Point (record (x Int) (y Int))) \
+             (def p (fn [] (Point 1 2)))"
+        ),
+        @"p: fn() -> Point"
+    );
+}
+
+#[test]
+fn infer_sum_constructor() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def wrap (fn [x] (Some x)))"
+        ),
+        @"wrap: forall c. fn(c) -> Option<c>"
+    );
+}
+
+#[test]
+fn infer_bare_variant() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def none (fn [] None))"
+        ),
+        @"none: forall c. fn() -> Option<c>"
+    );
+}
+
+#[test]
+fn infer_duplicate_type_error() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Foo (record (x Int))) \
+             (type Foo (record (y Int))) \
+             (def f (fn [x] x))"
+        ),
+        @"TypeError: duplicate type definition: Foo"
+    );
+}
+
+#[test]
 fn infer_scc_generalization_order() {
     // id should be generalized (polymorphic) before f and g use it,
     // so f and g can each instantiate id at different types.
