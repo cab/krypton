@@ -1,0 +1,6 @@
+# expect: output 3628800
+(def factorial (fn [n] [Int] Int
+  (if (== n 0)
+    1
+    (* n (factorial (- n 1))))))
+(def main (fn [] (factorial 10)))

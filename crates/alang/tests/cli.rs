@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+use tempfile::tempdir;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -109,4 +110,65 @@ fn test_fmt_pretty_prints() {
         stdout.contains("(def main"),
         "stdout should contain (def main: {stdout}"
     );
+}
+
+#[test]
+fn test_compile_produces_class_file() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let fixture = workspace_root().join("tests/fixtures/m4/hello.al");
+    std::fs::copy(&fixture, dir.path().join("hello.al")).expect("failed to copy fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_alang"))
+        .current_dir(dir.path())
+        .args(["compile", "hello.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(dir.path().join("Hello.class").exists(), "Hello.class should be created");
+}
+
+#[test]
+fn test_run_hello_world() {
+    let output = alang_bin()
+        .args(["run", "tests/fixtures/m4/hello.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("hello world"),
+        "stdout should contain 'hello world': {stdout}"
+    );
+}
+
+#[test]
+fn test_run_factorial() {
+    let output = alang_bin()
+        .args(["run", "tests/fixtures/m4/factorial.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("3628800"),
+        "stdout should contain '3628800': {stdout}"
+    );
+}
+
+#[test]
+fn test_run_parse_error_exits_1() {
+    let output = alang_bin()
+        .args(["run", "tests/fixtures/m1/bad.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(!output.status.success(), "exit code should be non-zero");
+}
+
+#[test]
+fn test_run_type_error_exits_1() {
+    let output = alang_bin()
+        .args(["run", "tests/fixtures/m2/type_error_check.al"])
+        .output()
+        .expect("failed to run alang");
+    assert!(!output.status.success(), "exit code should be non-zero");
 }

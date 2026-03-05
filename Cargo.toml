@@ -13,4 +13,5 @@ ariadne = "0.5"
 insta = { version = "1", features = ["yaml"] }
 serde = { version = "1", features = ["derive"] }
 ristretto_classfile = "0.29"
+tempfile = "3"
 
