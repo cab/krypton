@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"(+ x 1)\")"
 ---
 [E0003] Error: unknown variable: x
-   ╭─[ test.al:1:4 ]
+   ╭─[ test.kr:1:4 ]
    │
  1 │ (+ x 1)
    │    ┬  

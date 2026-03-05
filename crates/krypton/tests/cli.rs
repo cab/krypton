@@ -11,18 +11,18 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn alang_bin() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_alang"));
+fn krypton_bin() -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_krypton"));
     cmd.current_dir(workspace_root());
     cmd
 }
 
 #[test]
 fn test_parse_prints_ast() {
-    let output = alang_bin()
-        .args(["parse", "tests/fixtures/m1/hello.al"])
+    let output = krypton_bin()
+        .args(["parse", "tests/fixtures/m1/hello.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("DefFn"), "stdout should contain DefFn: {stdout}");
@@ -30,10 +30,10 @@ fn test_parse_prints_ast() {
 
 #[test]
 fn test_parse_sexp_format() {
-    let output = alang_bin()
-        .args(["parse", "--format", "sexp", "tests/fixtures/m1/hello.al"])
+    let output = krypton_bin()
+        .args(["parse", "--format", "sexp", "tests/fixtures/m1/hello.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -44,10 +44,10 @@ fn test_parse_sexp_format() {
 
 #[test]
 fn test_parse_errors_exit_1() {
-    let output = alang_bin()
-        .args(["parse", "tests/fixtures/m1/bad.al"])
+    let output = krypton_bin()
+        .args(["parse", "tests/fixtures/m1/bad.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -58,10 +58,10 @@ fn test_parse_errors_exit_1() {
 
 #[test]
 fn test_check_identity() {
-    let output = alang_bin()
-        .args(["check", "tests/fixtures/m2/identity.al"])
+    let output = krypton_bin()
+        .args(["check", "tests/fixtures/m2/identity.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -72,10 +72,10 @@ fn test_check_identity() {
 
 #[test]
 fn test_check_type_error() {
-    let output = alang_bin()
-        .args(["check", "tests/fixtures/m2/type_error_check.al"])
+    let output = krypton_bin()
+        .args(["check", "tests/fixtures/m2/type_error_check.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -86,10 +86,10 @@ fn test_check_type_error() {
 
 #[test]
 fn test_check_prints_multiple_defs() {
-    let output = alang_bin()
-        .args(["check", "tests/fixtures/m2/multi_def.al"])
+    let output = krypton_bin()
+        .args(["check", "tests/fixtures/m2/multi_def.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -100,10 +100,10 @@ fn test_check_prints_multiple_defs() {
 
 #[test]
 fn test_fmt_pretty_prints() {
-    let output = alang_bin()
-        .args(["fmt", "tests/fixtures/m1/hello.al"])
+    let output = krypton_bin()
+        .args(["fmt", "tests/fixtures/m1/hello.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -115,24 +115,24 @@ fn test_fmt_pretty_prints() {
 #[test]
 fn test_compile_produces_class_file() {
     let dir = tempdir().expect("failed to create temp dir");
-    let fixture = workspace_root().join("tests/fixtures/m4/hello.al");
-    std::fs::copy(&fixture, dir.path().join("hello.al")).expect("failed to copy fixture");
+    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_alang"))
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(dir.path())
-        .args(["compile", "hello.al"])
+        .args(["compile", "hello.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
     assert!(dir.path().join("Hello.class").exists(), "Hello.class should be created");
 }
 
 #[test]
 fn test_run_hello_world() {
-    let output = alang_bin()
-        .args(["run", "tests/fixtures/m4/hello.al"])
+    let output = krypton_bin()
+        .args(["run", "tests/fixtures/m4/hello.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -143,10 +143,10 @@ fn test_run_hello_world() {
 
 #[test]
 fn test_run_factorial() {
-    let output = alang_bin()
-        .args(["run", "tests/fixtures/m4/factorial.al"])
+    let output = krypton_bin()
+        .args(["run", "tests/fixtures/m4/factorial.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -157,18 +157,18 @@ fn test_run_factorial() {
 
 #[test]
 fn test_run_parse_error_exits_1() {
-    let output = alang_bin()
-        .args(["run", "tests/fixtures/m1/bad.al"])
+    let output = krypton_bin()
+        .args(["run", "tests/fixtures/m1/bad.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
 }
 
 #[test]
 fn test_run_type_error_exits_1() {
-    let output = alang_bin()
-        .args(["run", "tests/fixtures/m2/type_error_check.al"])
+    let output = krypton_bin()
+        .args(["run", "tests/fixtures/m2/type_error_check.kr"])
         .output()
-        .expect("failed to run alang");
+        .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
 }

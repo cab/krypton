@@ -15,7 +15,7 @@ fn var_name(id: TypeVarId) -> String {
     }
 }
 
-/// Core type representation for the alang type system.
+/// Core type representation for the krypton type system.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Int,

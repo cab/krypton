@@ -1,4 +1,4 @@
-use alang_parser::ast::*;
+use krypton_parser::ast::*;
 use insta::assert_yaml_snapshot;
 
 #[test]

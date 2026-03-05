@@ -1,9 +1,9 @@
-use alang_parser::lexer;
-use alang_parser::parser::parse_expr;
-use alang_typechecker::diagnostics::render_type_errors;
-use alang_typechecker::infer;
-use alang_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
-use alang_typechecker::unify::SpannedTypeError;
+use krypton_parser::lexer;
+use krypton_parser::parser::parse_expr;
+use krypton_typechecker::diagnostics::render_type_errors;
+use krypton_typechecker::infer;
+use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
+use krypton_typechecker::unify::SpannedTypeError;
 use chumsky::prelude::*;
 
 fn parse_and_infer_error(src: &str) -> SpannedTypeError {
@@ -24,7 +24,7 @@ fn parse_and_infer_error(src: &str) -> SpannedTypeError {
 
 fn render_error(src: &str) -> String {
     let err = parse_and_infer_error(src);
-    let rendered = render_type_errors("test.al", src, &[err]);
+    let rendered = render_type_errors("test.kr", src, &[err]);
     // Strip ANSI escape codes for snapshot stability
     strip_ansi_escapes(rendered)
 }

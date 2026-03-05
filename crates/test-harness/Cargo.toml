@@ -1,5 +1,5 @@
 [package]
-name = "alang-test-harness"
+name = "krypton-test-harness"
 version.workspace = true
 edition.workspace = true
 

@@ -1,4 +1,4 @@
-use alang_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 use std::path::Path;
 
 fn fixtures_dir() -> &'static Path {
@@ -16,14 +16,14 @@ fn discovers_smoke_fixtures() {
     let paths = discover_fixtures(&dir);
     assert!(!paths.is_empty(), "should find at least one fixture in smoke/");
     assert!(
-        paths.iter().any(|p| p.ends_with("empty.al")),
-        "should find empty.al"
+        paths.iter().any(|p| p.ends_with("empty.kr")),
+        "should find empty.kr"
     );
 }
 
 #[test]
 fn loads_empty_fixture() {
-    let path = fixtures_dir().join("tests/fixtures/smoke/empty.al");
+    let path = fixtures_dir().join("tests/fixtures/smoke/empty.kr");
     let fixture = load_fixture(&path);
     assert_eq!(fixture.expectations, vec![Expectation::Ok]);
     assert!(fixture.source.contains("# expect: ok"));

@@ -1,6 +1,6 @@
-use alang_parser::ast::*;
-use alang_parser::parser::parse;
-use alang_parser::pretty::pretty_print;
+use krypton_parser::ast::*;
+use krypton_parser::parser::parse;
+use krypton_parser::pretty::pretty_print;
 use insta::assert_snapshot;
 
 fn zero_spans_module(module: &Module) -> Module {

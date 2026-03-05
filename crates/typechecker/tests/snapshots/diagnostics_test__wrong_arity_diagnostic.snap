@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"(do (let f (fn [x] x)) (f 1 2))\")"
 ---
 [E0005] Error: wrong arity: expected 1 arguments, found 2
-   ╭─[ test.al:1:24 ]
+   ╭─[ test.kr:1:24 ]
    │
  1 │ (do (let f (fn [x] x)) (f 1 2))
    │                        ───┬───  

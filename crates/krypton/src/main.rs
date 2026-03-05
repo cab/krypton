@@ -3,7 +3,7 @@ use std::process;
 use tempfile::tempdir;
 
 #[derive(Parser)]
-#[command(name = "alang")]
+#[command(name = "krypton")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -41,15 +41,15 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = alang_parser::parser::parse(&source);
+            let (module, errors) = krypton_parser::parser::parse(&source);
             if !errors.is_empty() {
-                let diag = alang_parser::diagnostics::render_errors(&file, &source, &errors);
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
             match format {
                 OutputFormat::Debug => println!("{:#?}", module),
-                OutputFormat::Sexp => println!("{}", alang_parser::pretty::pretty_print(&module)),
+                OutputFormat::Sexp => println!("{}", krypton_parser::pretty::pretty_print(&module)),
             }
         }
         Commands::Fmt { file } => {
@@ -57,33 +57,33 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = alang_parser::parser::parse(&source);
+            let (module, errors) = krypton_parser::parser::parse(&source);
             if !errors.is_empty() {
-                let diag = alang_parser::diagnostics::render_errors(&file, &source, &errors);
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
-            println!("{}", alang_parser::pretty::pretty_print(&module));
+            println!("{}", krypton_parser::pretty::pretty_print(&module));
         }
         Commands::Compile { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = alang_parser::parser::parse(&source);
+            let (module, errors) = krypton_parser::parser::parse(&source);
             if !errors.is_empty() {
-                let diag = alang_parser::diagnostics::render_errors(&file, &source, &errors);
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
             // Typecheck for error reporting
-            if let Err(e) = alang_typechecker::infer::infer_module(&module) {
+            if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
                 let diag =
-                    alang_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                    krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
                 eprint!("{}", diag);
                 process::exit(1);
             }
-            // Derive class name from filename (e.g., hello.al → Hello)
+            // Derive class name from filename (e.g., hello.kr → Hello)
             let stem = std::path::Path::new(&file)
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -97,7 +97,7 @@ fn main() {
                     }
                 }
             };
-            match alang_codegen::emit::compile_module(&module, &class_name) {
+            match krypton_codegen::emit::compile_module(&module, &class_name) {
                 Ok(bytes) => {
                     let out_path = format!("{}.class", class_name);
                     std::fs::write(&out_path, &bytes).unwrap_or_else(|e| {
@@ -117,15 +117,15 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = alang_parser::parser::parse(&source);
+            let (module, errors) = krypton_parser::parser::parse(&source);
             if !errors.is_empty() {
-                let diag = alang_parser::diagnostics::render_errors(&file, &source, &errors);
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
-            if let Err(e) = alang_typechecker::infer::infer_module(&module) {
+            if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
                 let diag =
-                    alang_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                    krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
                 eprint!("{}", diag);
                 process::exit(1);
             }
@@ -140,7 +140,7 @@ fn main() {
                     Some(first) => first.to_uppercase().to_string() + c.as_str(),
                 }
             };
-            match alang_codegen::emit::compile_module(&module, &class_name) {
+            match krypton_codegen::emit::compile_module(&module, &class_name) {
                 Ok(bytes) => {
                     let dir = tempdir().unwrap_or_else(|e| {
                         eprintln!("Error creating temp dir: {}", e);
@@ -173,13 +173,13 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = alang_parser::parser::parse(&source);
+            let (module, errors) = krypton_parser::parser::parse(&source);
             if !errors.is_empty() {
-                let diag = alang_parser::diagnostics::render_errors(&file, &source, &errors);
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
-            match alang_typechecker::infer::infer_module(&module) {
+            match krypton_typechecker::infer::infer_module(&module) {
                 Ok(schemes) => {
                     for (name, scheme) in &schemes {
                         println!("{} : {}", name, scheme);
@@ -187,7 +187,7 @@ fn main() {
                 }
                 Err(e) => {
                     let diag =
-                        alang_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
                     eprint!("{}", diag);
                     process::exit(1);
                 }

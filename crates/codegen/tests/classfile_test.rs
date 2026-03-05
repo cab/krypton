@@ -1,4 +1,4 @@
-use alang_codegen::emit::generate_empty_main;
+use krypton_codegen::emit::generate_empty_main;
 use std::io::Write;
 use std::process::Command;
 

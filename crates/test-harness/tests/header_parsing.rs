@@ -1,4 +1,4 @@
-use alang_test_harness::{parse_expectations, Expectation};
+use krypton_test_harness::{parse_expectations, Expectation};
 
 #[test]
 fn expect_ok() {

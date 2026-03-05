@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"(if true 1 \\\"hi\\\")\")"
 ---
 [E0001] Error: type mismatch: expected Int, found String
-   ╭─[ test.al:1:1 ]
+   ╭─[ test.kr:1:1 ]
    │
  1 │ (if true 1 "hi")
    │ ────────┬───────  

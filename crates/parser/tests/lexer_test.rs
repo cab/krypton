@@ -1,4 +1,4 @@
-use alang_parser::lexer::{lexer, Token};
+use krypton_parser::lexer::{lexer, Token};
 use chumsky::Parser;
 use insta::assert_yaml_snapshot;
 

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
-use alang_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, Module};
-use alang_typechecker::infer::infer_module;
-use alang_typechecker::types::Type;
+use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, Module};
+use krypton_typechecker::infer::infer_module;
+use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags, Version,
@@ -856,7 +856,7 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
     })?;
 
     // Register all functions (including main) in the function registry.
-    // Main gets a JVM-internal name "alang_main" to avoid clashing with JVM main(String[]).
+    // Main gets a JVM-internal name "krypton_main" to avoid clashing with JVM main(String[]).
     for (name, scheme) in &type_info {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
             let param_types: Vec<JvmType> = param_tys
@@ -865,7 +865,7 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
                 .collect::<Result<_, _>>()?;
             let return_type = type_to_jvm(ret_ty)?;
             let jvm_name = if name == "main" {
-                "alang_main"
+                "krypton_main"
             } else {
                 name.as_str()
             };
@@ -897,17 +897,17 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
     let mut extra_methods = Vec::new();
     for decl in &fn_decls {
         let mut method = compiler.compile_function(decl)?;
-        // Rename main → alang_main in the method
+        // Rename main → krypton_main in the method
         if decl.name == "main" {
-            let name_idx = compiler.cp.add_utf8("alang_main")?;
+            let name_idx = compiler.cp.add_utf8("krypton_main")?;
             method.name_index = name_idx;
         }
         extra_methods.push(method);
     }
 
-    // Build JVM main(String[])V — calls alang_main and prints the result
+    // Build JVM main(String[])V — calls krypton_main and prints the result
     let main_info = compiler.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
-    let alang_main_ref = main_info.method_ref;
+    let krypton_main_ref = main_info.method_ref;
     let main_return_type = main_info.return_type;
 
     compiler.reset_method_state();
@@ -924,8 +924,8 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
         cpool_index: compiler.ps_class,
     });
 
-    // Call alang_main
-    compiler.emit(Instruction::Invokestatic(alang_main_ref));
+    // Call krypton_main
+    compiler.emit(Instruction::Invokestatic(krypton_main_ref));
     compiler.push_jvm_type(main_return_type);
 
     // Emit the appropriate println call

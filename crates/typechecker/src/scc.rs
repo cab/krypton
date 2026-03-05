@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use alang_parser::ast::{Expr, FnDecl};
+use krypton_parser::ast::{Expr, FnDecl};
 
 /// Collect references to top-level names in an expression.
 fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>) {

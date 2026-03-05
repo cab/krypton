@@ -1,13 +1,11 @@
 [package]
-name = "krypton-codegen"
+name = "krypton"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-ristretto_classfile.workspace = true
 krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }
-
-[dev-dependencies]
-insta.workspace = true
-tempfile = "3"
+krypton-codegen = { path = "../codegen" }
+clap = { workspace = true }
+tempfile = { workspace = true }

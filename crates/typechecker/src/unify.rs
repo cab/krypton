@@ -1,4 +1,4 @@
-use alang_parser::ast::Span;
+use krypton_parser::ast::Span;
 
 use crate::types::{Substitution, Type, TypeVarId};
 use std::fmt;

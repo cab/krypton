@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use alang_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
+use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
 
 use crate::scc;
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
@@ -69,7 +69,7 @@ fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> TypeScheme {
 }
 
 /// Attach a span to a TypeError, producing a SpannedTypeError.
-fn spanned(error: TypeError, span: alang_parser::ast::Span) -> SpannedTypeError {
+fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> SpannedTypeError {
     SpannedTypeError { error, span }
 }
 
@@ -267,7 +267,7 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
     let mut gen = TypeVarGen::new();
 
     // Collect DefFn declarations
-    let fn_decls: Vec<&alang_parser::ast::FnDecl> = module
+    let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
         .iter()
         .filter_map(|d| match d {

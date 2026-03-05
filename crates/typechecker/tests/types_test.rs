@@ -1,4 +1,4 @@
-use alang_typechecker::types::*;
+use krypton_typechecker::types::*;
 
 // ── 1a. Types construct, substitute, and pretty-print ──
 

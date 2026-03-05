@@ -58,7 +58,7 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
     expectations
 }
 
-/// Recursively discover `.al` fixture files under `dir`.
+/// Recursively discover `.kr` fixture files under `dir`.
 ///
 /// Returns paths sorted for determinism.
 pub fn discover_fixtures(dir: &Path) -> Vec<PathBuf> {
@@ -72,7 +72,7 @@ pub fn discover_fixtures(dir: &Path) -> Vec<PathBuf> {
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "al") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "kr") {
             paths.push(path.to_path_buf());
         }
     }

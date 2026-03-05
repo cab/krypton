@@ -1,5 +1,5 @@
-use alang_codegen::emit::compile_module;
-use alang_parser::parser::parse;
+use krypton_codegen::emit::compile_module;
+use krypton_parser::parser::parse;
 use std::io::Write;
 use std::process::Command;
 

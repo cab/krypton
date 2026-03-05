@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use alang_parser::ast::Decl;
-use alang_parser::lexer;
-use alang_parser::parser::{parse, parse_expr};
-use alang_test_harness::{discover_fixtures, load_fixture, Expectation};
-use alang_typechecker::infer;
-use alang_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
+use krypton_parser::ast::Decl;
+use krypton_parser::lexer;
+use krypton_parser::parser::{parse, parse_expr};
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_typechecker::infer;
+use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 use chumsky::prelude::*;
 
 fn has_def_fn(source: &str) -> bool {

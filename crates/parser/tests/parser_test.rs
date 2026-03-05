@@ -1,6 +1,6 @@
-use alang_parser::ast::{Expr, Module};
-use alang_parser::lexer::lexer;
-use alang_parser::parser::{parse as parse_source, parse_expr};
+use krypton_parser::ast::{Expr, Module};
+use krypton_parser::lexer::lexer;
+use krypton_parser::parser::{parse as parse_source, parse_expr};
 use chumsky::Parser;
 use insta::assert_yaml_snapshot;
 

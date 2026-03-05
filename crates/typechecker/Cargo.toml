@@ -1,14 +1,14 @@
 [package]
-name = "alang-typechecker"
+name = "krypton-typechecker"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-alang-parser = { path = "../parser" }
+krypton-parser = { path = "../parser" }
 ariadne.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-alang-test-harness = { path = "../test-harness" }
+krypton-test-harness = { path = "../test-harness" }
 chumsky.workspace = true
 insta.workspace = true

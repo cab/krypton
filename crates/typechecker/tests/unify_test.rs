@@ -1,5 +1,5 @@
-use alang_typechecker::types::{Substitution, Type, TypeVarGen};
-use alang_typechecker::unify::{unify, TypeError};
+use krypton_typechecker::types::{Substitution, Type, TypeVarGen};
+use krypton_typechecker::unify::{unify, TypeError};
 
 fn fresh_var(gen: &mut TypeVarGen) -> Type {
     Type::Var(gen.fresh())

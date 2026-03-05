@@ -1,5 +1,5 @@
 [package]
-name = "alang-parser"
+name = "krypton-parser"
 version.workspace = true
 edition.workspace = true
 
@@ -11,4 +11,4 @@ serde.workspace = true
 [dev-dependencies]
 insta.workspace = true
 strip-ansi-escapes = "0.2"
-alang-test-harness = { path = "../test-harness" }
+krypton-test-harness = { path = "../test-harness" }

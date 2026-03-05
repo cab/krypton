@@ -1,46 +1,46 @@
-use alang_test_harness::discover_fixtures;
+use krypton_test_harness::discover_fixtures;
 use std::fs;
 use std::path::Path;
 
 #[test]
-fn discovers_al_files_in_subdirectories() {
+fn discovers_kr_files_in_subdirectories() {
     let dir = tempfile::tempdir().unwrap();
     let sub = dir.path().join("sub");
     fs::create_dir_all(&sub).unwrap();
-    fs::write(dir.path().join("a.al"), "# expect: ok\n").unwrap();
-    fs::write(sub.join("b.al"), "# expect: ok\n").unwrap();
+    fs::write(dir.path().join("a.kr"), "# expect: ok\n").unwrap();
+    fs::write(sub.join("b.kr"), "# expect: ok\n").unwrap();
 
     let paths = discover_fixtures(dir.path());
     assert_eq!(paths.len(), 2);
-    assert!(paths[0].ends_with("a.al"));
-    assert!(paths[1].ends_with("b.al"));
+    assert!(paths[0].ends_with("a.kr"));
+    assert!(paths[1].ends_with("b.kr"));
 }
 
 #[test]
 fn returns_sorted_paths() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("z.al"), "").unwrap();
-    fs::write(dir.path().join("a.al"), "").unwrap();
-    fs::write(dir.path().join("m.al"), "").unwrap();
+    fs::write(dir.path().join("z.kr"), "").unwrap();
+    fs::write(dir.path().join("a.kr"), "").unwrap();
+    fs::write(dir.path().join("m.kr"), "").unwrap();
 
     let paths = discover_fixtures(dir.path());
     let names: Vec<&str> = paths
         .iter()
         .map(|p| p.file_name().unwrap().to_str().unwrap())
         .collect();
-    assert_eq!(names, vec!["a.al", "m.al", "z.al"]);
+    assert_eq!(names, vec!["a.kr", "m.kr", "z.kr"]);
 }
 
 #[test]
-fn skips_non_al_files() {
+fn skips_non_kr_files() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("test.al"), "").unwrap();
+    fs::write(dir.path().join("test.kr"), "").unwrap();
     fs::write(dir.path().join("readme.md"), "").unwrap();
     fs::write(dir.path().join("notes.txt"), "").unwrap();
 
     let paths = discover_fixtures(dir.path());
     assert_eq!(paths.len(), 1);
-    assert!(paths[0].ends_with("test.al"));
+    assert!(paths[0].ends_with("test.kr"));
 }
 
 #[test]

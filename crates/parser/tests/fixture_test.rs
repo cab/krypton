@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use alang_parser::parser::parse;
-use alang_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_parser::parser::parse;
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
 #[test]
 fn m1_fixtures() {

@@ -1,9 +1,9 @@
-use alang_parser::ast::{Expr, Module};
-use alang_parser::lexer;
-use alang_parser::parser::{parse as parse_module_src, parse_expr};
-use alang_typechecker::infer;
-use alang_typechecker::scc;
-use alang_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
+use krypton_parser::ast::{Expr, Module};
+use krypton_parser::lexer;
+use krypton_parser::parser::{parse as parse_module_src, parse_expr};
+use krypton_typechecker::infer;
+use krypton_typechecker::scc;
+use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 use chumsky::prelude::*;
 
 fn parse(src: &str) -> Expr {
