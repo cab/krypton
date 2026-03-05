@@ -1,0 +1,5 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+sum_first_two: fn(List<Int>) -> Int

@@ -316,3 +316,72 @@ fn infer_struct_update_unknown_field() {
         @"TypeError: unknown field: type Point has no field z"
     );
 }
+
+#[test]
+fn infer_match_option() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def unwrap_or (fn [opt default] \
+               (match opt \
+                 ((Some x) x) \
+                 ((None) default))))"
+        ),
+        @"unwrap_or: forall d. fn(Option<d>, d) -> d"
+    );
+}
+
+#[test]
+fn infer_match_literal() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def describe (fn [x] \
+               (match x \
+                 (1 \"one\") \
+                 (2 \"two\") \
+                 (_ \"other\"))))"
+        ),
+        @"describe: fn(Int) -> String"
+    );
+}
+
+#[test]
+fn infer_match_variable() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def identity (fn [x] \
+               (match x \
+                 (y y))))"
+        ),
+        @"identity: forall b. fn(b) -> b"
+    );
+}
+
+#[test]
+fn infer_match_nested_constructor() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type List [a] (| (Cons a (List a)) Nil)) \
+             (def sum2 (fn [xs] \
+               (match xs \
+                 ((Cons h (Cons h2 t)) (+ h h2)) \
+                 (_ 0))))"
+        ),
+        @"sum2: fn(List<Int>) -> Int"
+    );
+}
+
+#[test]
+fn infer_match_wrong_constructor() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Color (| Red Green Blue)) \
+             (type Option [a] (| (Some a) None)) \
+             (def bad (fn [c] \
+               (match Red \
+                 ((Some x) x) \
+                 (_ 0))))"
+        ),
+        @"TypeError: type mismatch: expected Color, found Option<e>"
+    );
+}

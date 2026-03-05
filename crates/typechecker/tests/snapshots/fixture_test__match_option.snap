@@ -1,0 +1,5 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+unwrap_or: forall d. fn(Option<d>, d) -> d

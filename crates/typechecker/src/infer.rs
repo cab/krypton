@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, UnaryOp};
+use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, UnaryOp};
 
 use crate::scc;
 use crate::type_registry::{self, TypeRegistry};
@@ -270,8 +270,149 @@ fn infer_expr_inner(
             Ok(resolved)
         }
 
+        Expr::Match { scrutinee, arms, span } => {
+            let scrutinee_ty = infer_expr_inner(scrutinee, env, subst, gen, registry)?;
+            let result_ty = Type::Var(gen.fresh());
+            for arm in arms {
+                env.push_scope();
+                check_pattern(&arm.pattern, &subst.apply(&scrutinee_ty), env, subst, gen, registry, *span)?;
+                let body_ty = infer_expr_inner(&arm.body, env, subst, gen, registry)?;
+                unify(&result_ty, &body_ty, subst).map_err(|e| spanned(e, *span))?;
+                env.pop_scope();
+            }
+            Ok(subst.apply(&result_ty))
+        }
+
         // Unsupported expression forms return a fresh type variable for now
         _ => Ok(Type::Var(gen.fresh())),
+    }
+}
+
+/// Check a pattern against an expected type, binding variables in the environment.
+fn check_pattern(
+    pattern: &Pattern,
+    expected: &Type,
+    env: &mut TypeEnv,
+    subst: &mut Substitution,
+    gen: &mut TypeVarGen,
+    registry: Option<&TypeRegistry>,
+    span: krypton_parser::ast::Span,
+) -> Result<(), SpannedTypeError> {
+    match pattern {
+        Pattern::Wildcard { .. } => Ok(()),
+
+        Pattern::Var { name, .. } => {
+            env.bind(name.clone(), TypeScheme::mono(expected.clone()));
+            Ok(())
+        }
+
+        Pattern::Lit { value, .. } => {
+            let lit_ty = match value {
+                Lit::Int(_) => Type::Int,
+                Lit::Float(_) => Type::Float,
+                Lit::Bool(_) => Type::Bool,
+                Lit::String(_) => Type::String,
+                Lit::Unit => Type::Unit,
+            };
+            unify(expected, &lit_ty, subst).map_err(|e| spanned(e, span))
+        }
+
+        Pattern::Constructor { name, args, .. } => {
+            match env.lookup(name) {
+                Some(scheme) => {
+                    let scheme = scheme.clone();
+                    let instantiated = scheme.instantiate(&mut || gen.fresh());
+                    match instantiated {
+                        Type::Fn(param_types, ret_type) => {
+                            unify(expected, &ret_type, subst).map_err(|e| spanned(e, span))?;
+                            if args.len() != param_types.len() {
+                                return Err(spanned(
+                                    TypeError::WrongArity {
+                                        expected: param_types.len(),
+                                        actual: args.len(),
+                                    },
+                                    span,
+                                ));
+                            }
+                            for (arg_pat, param_ty) in args.iter().zip(param_types.iter()) {
+                                let resolved_param = subst.apply(param_ty);
+                                check_pattern(arg_pat, &resolved_param, env, subst, gen, registry, span)?;
+                            }
+                            Ok(())
+                        }
+                        _ => {
+                            // Nullary variant
+                            unify(expected, &instantiated, subst).map_err(|e| spanned(e, span))?;
+                            if !args.is_empty() {
+                                return Err(spanned(
+                                    TypeError::WrongArity {
+                                        expected: 0,
+                                        actual: args.len(),
+                                    },
+                                    span,
+                                ));
+                            }
+                            Ok(())
+                        }
+                    }
+                }
+                None => Err(spanned(
+                    TypeError::UnknownVariable { name: name.clone() },
+                    span,
+                )),
+            }
+        }
+
+        Pattern::Tuple { elements, .. } => {
+            let fresh_vars: Vec<Type> = elements.iter().map(|_| Type::Var(gen.fresh())).collect();
+            unify(expected, &Type::Tuple(fresh_vars.clone()), subst).map_err(|e| spanned(e, span))?;
+            for (elem_pat, fresh_var) in elements.iter().zip(fresh_vars.iter()) {
+                let resolved = subst.apply(fresh_var);
+                check_pattern(elem_pat, &resolved, env, subst, gen, registry, span)?;
+            }
+            Ok(())
+        }
+
+        Pattern::StructPat { name, fields, .. } => {
+            let reg = registry.ok_or_else(|| {
+                spanned(TypeError::NotAStruct { actual: expected.clone() }, span)
+            })?;
+            let info = reg.lookup_type(name).ok_or_else(|| {
+                spanned(TypeError::UnknownVariable { name: name.clone() }, span)
+            })?;
+            // Create fresh type args for the struct's type params
+            let fresh_args: Vec<Type> = info.type_param_vars.iter().map(|_| Type::Var(gen.fresh())).collect();
+            let struct_ty = Type::Named(name.clone(), fresh_args.clone());
+            unify(expected, &struct_ty, subst).map_err(|e| spanned(e, span))?;
+            match &info.kind {
+                type_registry::TypeKind::Record { fields: record_fields } => {
+                    for (field_name, field_pat) in fields {
+                        let record_field = record_fields.iter().find(|(n, _)| n == field_name);
+                        match record_field {
+                            Some((_, field_ty)) => {
+                                let instantiated = instantiate_field_type(field_ty, info, &fresh_args);
+                                let resolved = subst.apply(&instantiated);
+                                check_pattern(field_pat, &resolved, env, subst, gen, registry, span)?;
+                            }
+                            None => {
+                                return Err(spanned(
+                                    TypeError::UnknownField {
+                                        type_name: name.clone(),
+                                        field_name: field_name.clone(),
+                                    },
+                                    span,
+                                ));
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                _ => Err(spanned(
+                    TypeError::NotAStruct { actual: expected.clone() },
+                    span,
+                )),
+            }
+        }
     }
 }
 
