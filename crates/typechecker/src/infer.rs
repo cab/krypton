@@ -87,6 +87,18 @@ pub fn infer_expr(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) -> Result<Type, SpannedTypeError> {
+    infer_expr_inner(expr, env, subst, gen, None)
+}
+
+/// Infer the type of an expression, with optional access to the type registry
+/// for struct field access and update operations.
+fn infer_expr_inner(
+    expr: &Expr,
+    env: &mut TypeEnv,
+    subst: &mut Substitution,
+    gen: &mut TypeVarGen,
+    registry: Option<&TypeRegistry>,
+) -> Result<Type, SpannedTypeError> {
     match expr {
         Expr::Lit { value, .. } => match value {
             Lit::Int(_) => Ok(Type::Int),
@@ -115,7 +127,7 @@ pub fn infer_expr(
                 param_types.push(tv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(tv));
             }
-            let body_ty = infer_expr(body, env, subst, gen)?;
+            let body_ty = infer_expr_inner(body, env, subst, gen, registry)?;
             env.pop_scope();
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
             let body_ty = subst.apply(&body_ty);
@@ -125,10 +137,10 @@ pub fn infer_expr(
         Expr::App {
             func, args, span, ..
         } => {
-            let func_ty = infer_expr(func, env, subst, gen)?;
+            let func_ty = infer_expr_inner(func, env, subst, gen, registry)?;
             let mut arg_types = Vec::new();
             for a in args {
-                arg_types.push(infer_expr(a, env, subst, gen)?);
+                arg_types.push(infer_expr_inner(a, env, subst, gen, registry)?);
             }
 
             // Check if the function type is concretely not a function
@@ -150,13 +162,13 @@ pub fn infer_expr(
             body,
             ..
         } => {
-            let val_ty = infer_expr(value, env, subst, gen)?;
+            let val_ty = infer_expr_inner(value, env, subst, gen, registry)?;
             match body {
                 Some(body) => {
                     let scheme = generalize(&val_ty, env, subst);
                     env.push_scope();
                     env.bind(name.clone(), scheme);
-                    let body_ty = infer_expr(body, env, subst, gen)?;
+                    let body_ty = infer_expr_inner(body, env, subst, gen, registry)?;
                     env.pop_scope();
                     Ok(body_ty)
                 }
@@ -176,11 +188,11 @@ pub fn infer_expr(
             span,
             ..
         } => {
-            let cond_ty = infer_expr(cond, env, subst, gen)?;
+            let cond_ty = infer_expr_inner(cond, env, subst, gen, registry)?;
             unify(&cond_ty, &Type::Bool, subst)
                 .map_err(|e| spanned(e, *span))?;
-            let then_ty = infer_expr(then_, env, subst, gen)?;
-            let else_ty = infer_expr(else_, env, subst, gen)?;
+            let then_ty = infer_expr_inner(then_, env, subst, gen, registry)?;
+            let else_ty = infer_expr_inner(else_, env, subst, gen, registry)?;
             unify(&then_ty, &else_ty, subst)
                 .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&then_ty))
@@ -194,7 +206,7 @@ pub fn infer_expr(
             }
             let mut last_ty = Type::Unit;
             for e in exprs {
-                last_ty = infer_expr(e, env, subst, gen)?;
+                last_ty = infer_expr_inner(e, env, subst, gen, registry)?;
             }
             env.pop_scope();
             Ok(last_ty)
@@ -203,8 +215,8 @@ pub fn infer_expr(
         Expr::BinaryOp {
             op, lhs, rhs, span, ..
         } => {
-            let lhs_ty = infer_expr(lhs, env, subst, gen)?;
-            let rhs_ty = infer_expr(rhs, env, subst, gen)?;
+            let lhs_ty = infer_expr_inner(lhs, env, subst, gen, registry)?;
+            let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry)?;
             match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                     unify(&lhs_ty, &Type::Int, subst)
@@ -226,7 +238,7 @@ pub fn infer_expr(
         Expr::UnaryOp {
             op, operand, span, ..
         } => {
-            let operand_ty = infer_expr(operand, env, subst, gen)?;
+            let operand_ty = infer_expr_inner(operand, env, subst, gen, registry)?;
             match op {
                 UnaryOp::Neg => {
                     unify(&operand_ty, &Type::Int, subst)
@@ -240,13 +252,145 @@ pub fn infer_expr(
             // Infer arg types for unification side effects; return fresh var
             // that will be unified via the enclosing if-else branches.
             for a in args {
-                infer_expr(a, env, subst, gen)?;
+                infer_expr_inner(a, env, subst, gen, registry)?;
             }
             Ok(Type::Var(gen.fresh()))
         }
 
+        Expr::FieldAccess { expr: target, field, span } => {
+            let target_ty = infer_expr_inner(target, env, subst, gen, registry)?;
+            let resolved = subst.apply(&target_ty);
+            resolve_field_access(&resolved, field, *span, registry)
+        }
+
+        Expr::StructUpdate { base, fields, span } => {
+            let base_ty = infer_expr_inner(base, env, subst, gen, registry)?;
+            let resolved = subst.apply(&base_ty);
+            resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry)?;
+            Ok(resolved)
+        }
+
         // Unsupported expression forms return a fresh type variable for now
         _ => Ok(Type::Var(gen.fresh())),
+    }
+}
+
+/// Given a resolved type and a field name, look up the field in the type registry
+/// and return the field's type with type parameters instantiated.
+fn resolve_field_access(
+    resolved_ty: &Type,
+    field_name: &str,
+    span: krypton_parser::ast::Span,
+    registry: Option<&TypeRegistry>,
+) -> Result<Type, SpannedTypeError> {
+    match resolved_ty {
+        Type::Named(name, type_args) => {
+            let registry = registry.ok_or_else(|| {
+                spanned(TypeError::NotAStruct { actual: resolved_ty.clone() }, span)
+            })?;
+            let info = registry.lookup_type(name).ok_or_else(|| {
+                spanned(TypeError::NotAStruct { actual: resolved_ty.clone() }, span)
+            })?;
+            match &info.kind {
+                type_registry::TypeKind::Record { fields } => {
+                    let field_ty = fields.iter().find(|(n, _)| n == field_name);
+                    match field_ty {
+                        Some((_, ty)) => {
+                            let instantiated = instantiate_field_type(ty, info, type_args);
+                            Ok(instantiated)
+                        }
+                        None => Err(spanned(
+                            TypeError::UnknownField {
+                                type_name: name.clone(),
+                                field_name: field_name.to_string(),
+                            },
+                            span,
+                        )),
+                    }
+                }
+                _ => Err(spanned(
+                    TypeError::NotAStruct { actual: resolved_ty.clone() },
+                    span,
+                )),
+            }
+        }
+        _ => Err(spanned(
+            TypeError::NotAStruct { actual: resolved_ty.clone() },
+            span,
+        )),
+    }
+}
+
+/// Instantiate a field type from the registry by substituting the original
+/// type parameter var ids with the concrete type arguments.
+fn instantiate_field_type(
+    field_ty: &Type,
+    info: &type_registry::TypeInfo,
+    type_args: &[Type],
+) -> Type {
+    if info.type_param_vars.is_empty() {
+        return field_ty.clone();
+    }
+    // Build a substitution from registry's original var ids to the actual type args
+    let mut subst = Substitution::new();
+    for (var_id, arg) in info.type_param_vars.iter().zip(type_args.iter()) {
+        subst.insert(*var_id, arg.clone());
+    }
+    subst.apply(field_ty)
+}
+
+/// Validate a struct update expression.
+fn resolve_struct_update(
+    resolved_ty: &Type,
+    fields: &[(String, Expr)],
+    span: krypton_parser::ast::Span,
+    env: &mut TypeEnv,
+    subst: &mut Substitution,
+    gen: &mut TypeVarGen,
+    registry: Option<&TypeRegistry>,
+) -> Result<(), SpannedTypeError> {
+    match resolved_ty {
+        Type::Named(name, type_args) => {
+            let reg = registry.ok_or_else(|| {
+                spanned(TypeError::NotAStruct { actual: resolved_ty.clone() }, span)
+            })?;
+            let info = reg.lookup_type(name).ok_or_else(|| {
+                spanned(TypeError::NotAStruct { actual: resolved_ty.clone() }, span)
+            })?;
+            match &info.kind {
+                type_registry::TypeKind::Record { fields: record_fields } => {
+                    for (field_name, field_expr) in fields {
+                        let record_field = record_fields.iter().find(|(n, _)| n == field_name);
+                        match record_field {
+                            Some((_, expected_ty)) => {
+                                let expected = instantiate_field_type(expected_ty, info, type_args);
+                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry)?;
+                                unify(&actual_ty, &expected, subst)
+                                    .map_err(|e| spanned(e, span))?;
+                            }
+                            None => {
+                                return Err(spanned(
+                                    TypeError::UnknownField {
+                                        type_name: name.clone(),
+                                        field_name: field_name.clone(),
+                                    },
+                                    span,
+                                ));
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                _ => Err(spanned(
+                    TypeError::NotAStruct { actual: resolved_ty.clone() },
+                    span,
+                )),
+            }
+        }
+        _ => Err(spanned(
+            TypeError::NotAStruct { actual: resolved_ty.clone() },
+            span,
+        )),
     }
 }
 
@@ -317,7 +461,7 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
                 param_types.push(ptv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
-            let body_ty = infer_expr(&decl.body, &mut env, &mut subst, &mut gen)?;
+            let body_ty = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry))?;
             env.pop_scope();
 
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();

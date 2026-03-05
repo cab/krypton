@@ -1,0 +1,3 @@
+# expect: ok
+(type Point (record (x Int) (y Int)))
+(def get_x (fn [] (. (Point 1 2) x)))

@@ -12,6 +12,9 @@ pub enum TypeErrorCode {
     E0004, // Not a function
     E0005, // Wrong arity
     E0007, // Infinite type
+    E0008, // Unknown field
+    E0009, // Missing fields
+    E0010, // Not a struct
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -23,6 +26,9 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0004 => write!(f, "E0004"),
             TypeErrorCode::E0005 => write!(f, "E0005"),
             TypeErrorCode::E0007 => write!(f, "E0007"),
+            TypeErrorCode::E0008 => write!(f, "E0008"),
+            TypeErrorCode::E0009 => write!(f, "E0009"),
+            TypeErrorCode::E0010 => write!(f, "E0010"),
         }
     }
 }
@@ -36,6 +42,9 @@ pub enum TypeError {
     UnknownVariable { name: String },
     NotAFunction { actual: Type },
     DuplicateType { name: String },
+    UnknownField { type_name: String, field_name: String },
+    MissingFields { type_name: String, fields: Vec<String> },
+    NotAStruct { actual: Type },
 }
 
 impl TypeError {
@@ -48,6 +57,9 @@ impl TypeError {
             TypeError::NotAFunction { .. } => TypeErrorCode::E0004,
             TypeError::WrongArity { .. } => TypeErrorCode::E0005,
             TypeError::InfiniteType { .. } => TypeErrorCode::E0007,
+            TypeError::UnknownField { .. } => TypeErrorCode::E0008,
+            TypeError::MissingFields { .. } => TypeErrorCode::E0009,
+            TypeError::NotAStruct { .. } => TypeErrorCode::E0010,
         }
     }
 
@@ -69,6 +81,15 @@ impl TypeError {
             }
             TypeError::InfiniteType { .. } => {
                 Some("this creates a type that contains itself".to_string())
+            }
+            TypeError::UnknownField { type_name, field_name } => {
+                Some(format!("type `{}` has no field `{}`", type_name, field_name))
+            }
+            TypeError::MissingFields { type_name, fields } => {
+                Some(format!("type `{}` requires fields: {}", type_name, fields.join(", ")))
+            }
+            TypeError::NotAStruct { actual } => {
+                Some(format!("the expression has type `{}`, which is not a struct", actual))
             }
         }
     }
@@ -98,6 +119,15 @@ impl fmt::Display for TypeError {
             }
             TypeError::NotAFunction { actual } => {
                 write!(f, "not a function: type {} is not callable", actual)
+            }
+            TypeError::UnknownField { type_name, field_name } => {
+                write!(f, "unknown field: type {} has no field {}", type_name, field_name)
+            }
+            TypeError::MissingFields { type_name, fields } => {
+                write!(f, "missing fields on {}: {}", type_name, fields.join(", "))
+            }
+            TypeError::NotAStruct { actual } => {
+                write!(f, "not a struct: type {} is not a record", actual)
             }
         }
     }

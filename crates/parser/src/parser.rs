@@ -298,6 +298,22 @@ where
                 })
             });
 
+        // (.. base (field val) ...) — struct update
+        let field_pair = select! { Token::Ident(s) => s.to_string() }
+            .then(expr.clone())
+            .delimited_by(just(Token::LParen), just(Token::RParen));
+
+        let struct_update_form = just(Token::DotDot)
+            .ignore_then(expr.clone())
+            .then(field_pair.repeated().at_least(1).collect::<Vec<_>>())
+            .map(|(base, fields)| -> Builder {
+                Box::new(move |span| Expr::StructUpdate {
+                    base: Box::new(base),
+                    fields,
+                    span,
+                })
+            });
+
         // (f args...) — application, must be last
         let app_form = expr
             .clone()
@@ -325,6 +341,7 @@ where
             send_form,
             spawn_form,
             receive_form,
+            struct_update_form,
             app_form,
         ))
         .delimited_by(just(Token::LParen), just(Token::RParen))

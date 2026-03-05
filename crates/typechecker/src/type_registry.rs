@@ -8,6 +8,7 @@ use crate::unify::TypeError;
 pub struct TypeInfo {
     pub name: String,
     pub type_params: Vec<String>,
+    pub type_param_vars: Vec<TypeVarId>,
     pub kind: TypeKind,
 }
 
@@ -205,6 +206,7 @@ pub fn process_type_decl(
     registry.register_type(TypeInfo {
         name: decl.name.clone(),
         type_params: decl.type_params.clone(),
+        type_param_vars: quantified_vars.clone(),
         kind,
     })?;
 

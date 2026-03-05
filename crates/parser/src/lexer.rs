@@ -52,6 +52,7 @@ pub enum Token<'src> {
     Ge,
     Question,
     Pipe,
+    DotDot,
     Dot,
     Colon,
     Underscore,
@@ -102,6 +103,7 @@ impl fmt::Display for Token<'_> {
             Token::Ge => write!(f, ">="),
             Token::Question => write!(f, "?"),
             Token::Pipe => write!(f, "|"),
+            Token::DotDot => write!(f, ".."),
             Token::Dot => write!(f, "."),
             Token::Colon => write!(f, ":"),
             Token::Underscore => write!(f, "_"),
@@ -162,6 +164,7 @@ pub fn lexer<'src>(
         just("!=").to(Token::Neq),
         just("<=").to(Token::Le),
         just(">=").to(Token::Ge),
+        just("..").to(Token::DotDot),
     ));
 
     // Single-char operators

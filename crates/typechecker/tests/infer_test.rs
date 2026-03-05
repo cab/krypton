@@ -261,3 +261,58 @@ fn infer_scc_generalization_order() {
     "#
     );
 }
+
+#[test]
+fn infer_field_access() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Point (record (x Int) (y Int))) \
+             (def get_x (fn [] (. (Point 1 2) x)))"
+        ),
+        @"get_x: fn() -> Int"
+    );
+}
+
+#[test]
+fn infer_struct_update() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Point (record (x Int) (y Int))) \
+             (def move_x (fn [] (.. (Point 1 2) (x 42))))"
+        ),
+        @"move_x: fn() -> Point"
+    );
+}
+
+#[test]
+fn infer_unknown_field_error() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Point (record (x Int) (y Int))) \
+             (def bad (fn [] (. (Point 1 2) z)))"
+        ),
+        @"TypeError: unknown field: type Point has no field z"
+    );
+}
+
+#[test]
+fn infer_field_access_non_struct() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Point (record (x Int) (y Int))) \
+             (def bad (fn [] (. 42 y)))"
+        ),
+        @"TypeError: not a struct: type Int is not a record"
+    );
+}
+
+#[test]
+fn infer_struct_update_unknown_field() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Point (record (x Int) (y Int))) \
+             (def bad (fn [] (.. (Point 1 2) (z 42))))"
+        ),
+        @"TypeError: unknown field: type Point has no field z"
+    );
+}
