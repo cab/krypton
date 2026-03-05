@@ -1,0 +1,6 @@
+# expect: ok
+(type Option [a] (| (Some a) None))
+(def map_option (fn [opt f]
+  (match opt
+    ((Some x) (Some (f x)))
+    ((None) None))))

@@ -1,0 +1,7 @@
+# expect: ok
+(type Result [e a] (| (Ok a) (Err e)))
+(def extract (fn [r]
+  (match r
+    ((Ok v) v)
+    ((Err e) (- 0 1)))))
+(def test (fn [] (extract (Ok 42))))

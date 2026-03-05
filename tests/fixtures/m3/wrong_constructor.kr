@@ -1,0 +1,8 @@
+# expect: error E0001
+(type Shape (| Circle Square Triangle))
+(type Color (| Red Green Blue))
+(def test (fn [s]
+  (match s
+    ((Red) 1)
+    ((Square) 2)
+    ((Triangle) 3))))

@@ -1,0 +1,8 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+Ok: forall a b. fn(b) -> Result<a, b>
+Err: forall a b. fn(a) -> Result<a, b>
+extract: forall h. fn(Result<h, Int>) -> Int
+test: fn() -> Int

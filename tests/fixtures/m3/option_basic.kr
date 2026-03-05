@@ -1,0 +1,7 @@
+# expect: ok
+(type Option [a] (| (Some a) None))
+(def unwrap (fn [opt]
+  (match opt
+    ((Some x) x)
+    ((None) 0))))
+(def test (fn [] (unwrap (Some 42))))

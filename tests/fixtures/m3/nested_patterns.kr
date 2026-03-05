@@ -1,0 +1,12 @@
+# expect: ok
+(type Option [a] (| (Some a) None))
+(type List [a] (| (Cons a (List a)) Nil))
+(def unwrap_nested (fn [opt]
+  (match opt
+    ((Some (Some x)) x)
+    ((Some (None)) 0)
+    ((None) 0))))
+(def first_two (fn [xs]
+  (match xs
+    ((Cons h (Cons h2 _)) (+ h h2))
+    (_ 0))))
