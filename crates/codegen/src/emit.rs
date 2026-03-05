@@ -70,6 +70,20 @@ struct StructInfo {
     accessor_refs: HashMap<String, u16>,
 }
 
+/// Info about a single variant of a sum type.
+struct VariantInfo {
+    class_index: u16,
+    class_name: String,
+    fields: Vec<(String, JvmType, bool)>, // (name, jvm_type, is_erased)
+    constructor_ref: u16,
+}
+
+/// Info about a sum type (sealed interface).
+struct SumTypeInfo {
+    interface_class_index: u16,
+    variants: HashMap<String, VariantInfo>,
+}
+
 fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
     match ty {
         Type::Int => Ok(JvmType::Long),
@@ -131,6 +145,13 @@ struct Compiler {
     // Struct codegen support
     struct_info: HashMap<String, StructInfo>,
     class_descriptors: HashMap<u16, String>, // class_idx -> "LClassName;"
+    // Sum type codegen support
+    sum_type_info: HashMap<String, SumTypeInfo>,
+    variant_to_sum: HashMap<String, String>, // variant_name -> sum_type_name
+    // Boxing support
+    long_box_valueof: u16,
+    double_box_valueof: u16,
+    bool_box_valueof: u16,
     // Recur support: parameter slots and return type for current function
     fn_params: Vec<(u16, JvmType)>,
     fn_return_type: Option<JvmType>,
@@ -167,6 +188,17 @@ impl Compiler {
         let string_class = cp.add_class("java/lang/String")?;
         let string_arr_class = cp.add_class("[Ljava/lang/String;")?;
 
+        // Boxing support: Long.valueOf, Double.valueOf, Boolean.valueOf
+        let long_box_class = cp.add_class("java/lang/Long")?;
+        let long_box_valueof =
+            cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
+        let double_box_class = cp.add_class("java/lang/Double")?;
+        let double_box_valueof =
+            cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
+        let bool_box_class = cp.add_class("java/lang/Boolean")?;
+        let bool_box_valueof =
+            cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+
         let compiler = Compiler {
             cp,
             code: Vec::new(),
@@ -194,6 +226,11 @@ impl Compiler {
             functions: HashMap::new(),
             struct_info: HashMap::new(),
             class_descriptors: HashMap::new(),
+            sum_type_info: HashMap::new(),
+            variant_to_sum: HashMap::new(),
+            long_box_valueof,
+            double_box_valueof,
+            bool_box_valueof,
             fn_params: Vec::new(),
             fn_return_type: None,
         };
@@ -201,14 +238,19 @@ impl Compiler {
         Ok((compiler, this_class, object_class))
     }
 
-    /// Map a typechecker Type to a JvmType, using struct_info for Named types.
+    /// Map a typechecker Type to a JvmType, using struct_info/sum_type_info for Named types.
     fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
-                let info = self.struct_info.get(name).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown struct type: {name}"))
-                })?;
-                Ok(JvmType::StructRef(info.class_index))
+                if let Some(info) = self.struct_info.get(name) {
+                    Ok(JvmType::StructRef(info.class_index))
+                } else if let Some(info) = self.sum_type_info.get(name) {
+                    Ok(JvmType::StructRef(info.interface_class_index))
+                } else {
+                    Err(CodegenError::TypeError(format!(
+                        "unknown named type: {name}"
+                    )))
+                }
             }
             other => type_to_jvm_basic(other),
         }
@@ -600,6 +642,27 @@ impl Compiler {
     }
 
     fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
+        // Check if this is a nullary variant constructor
+        if let Some(sum_name) = self.variant_to_sum.get(name).cloned() {
+            let sum_info = &self.sum_type_info[&sum_name];
+            let vi = &sum_info.variants[name];
+            if vi.fields.is_empty() {
+                let class_index = vi.class_index;
+                let constructor_ref = vi.constructor_ref;
+                let interface_class_index = sum_info.interface_class_index;
+                self.emit(Instruction::New(class_index));
+                self.push_type(VerificationType::UninitializedThis);
+                self.emit(Instruction::Dup);
+                self.push_type(VerificationType::UninitializedThis);
+                self.emit(Instruction::Invokespecial(constructor_ref));
+                self.pop_type(); // dup'd uninit
+                self.pop_type(); // original uninit
+                let result_type = JvmType::StructRef(interface_class_index);
+                self.push_jvm_type(result_type);
+                return Ok(result_type);
+            }
+        }
+
         let (slot, ty) = self
             .locals
             .get(name)
@@ -649,6 +712,46 @@ impl Compiler {
             let fields = self.struct_info[name].fields.clone();
             for (_, ft) in &fields {
                 self.pop_jvm_type(*ft);
+            }
+            self.pop_type(); // dup'd uninit
+            self.pop_type(); // original uninit
+
+            self.emit(Instruction::Invokespecial(constructor_ref));
+            self.push_jvm_type(result_type);
+
+            return Ok(result_type);
+        }
+
+        // Check if this is a variant constructor call
+        if let Some(sum_name) = self.variant_to_sum.get(name).cloned() {
+            let sum_info = &self.sum_type_info[&sum_name];
+            let vi = &sum_info.variants[name];
+            let class_index = vi.class_index;
+            let constructor_ref = vi.constructor_ref;
+            let interface_class_index = sum_info.interface_class_index;
+            let fields: Vec<(String, JvmType, bool)> = vi.fields.clone();
+            let result_type = JvmType::StructRef(interface_class_index);
+
+            self.emit(Instruction::New(class_index));
+            self.push_type(VerificationType::UninitializedThis);
+            self.emit(Instruction::Dup);
+            self.push_type(VerificationType::UninitializedThis);
+
+            for (i, arg) in args.iter().enumerate() {
+                let arg_type = self.compile_expr(arg, false)?;
+                let (_fname, _field_jvm_type, is_erased) = &fields[i];
+                if *is_erased {
+                    self.box_if_needed(arg_type);
+                }
+            }
+
+            // Pop args + 2 uninit refs, push one StructRef
+            for (_, ft, is_erased) in &fields {
+                if *is_erased {
+                    self.pop_type(); // Object ref
+                } else {
+                    self.pop_jvm_type(*ft);
+                }
             }
             self.pop_type(); // dup'd uninit
             self.pop_type(); // original uninit
@@ -850,6 +953,37 @@ impl Compiler {
         self.push_jvm_type(return_type);
 
         Ok(return_type)
+    }
+
+    /// Box a primitive value on the stack if needed for erased type params.
+    fn box_if_needed(&mut self, actual_type: JvmType) -> JvmType {
+        match actual_type {
+            JvmType::Long => {
+                self.pop_type_n(2); // Long + Top
+                self.emit(Instruction::Invokestatic(self.long_box_valueof));
+                self.push_type(VerificationType::Object {
+                    cpool_index: self.string_class, // doesn't matter, it's an Object
+                });
+                JvmType::Ref
+            }
+            JvmType::Double => {
+                self.pop_type_n(2); // Double + Top
+                self.emit(Instruction::Invokestatic(self.double_box_valueof));
+                self.push_type(VerificationType::Object {
+                    cpool_index: self.string_class,
+                });
+                JvmType::Ref
+            }
+            JvmType::Int => {
+                self.pop_type(); // Integer
+                self.emit(Instruction::Invokestatic(self.bool_box_valueof));
+                self.push_type(VerificationType::Object {
+                    cpool_index: self.string_class,
+                });
+                JvmType::Ref
+            }
+            _ => actual_type, // already a reference type
+        }
     }
 
     fn compile_do(&mut self, exprs: &[Expr], in_tail: bool) -> Result<JvmType, CodegenError> {
@@ -1199,6 +1333,186 @@ fn generate_struct_class(
     Ok(buffer)
 }
 
+/// Generate a sealed interface class file for a sum type.
+fn generate_sealed_interface_class(
+    name: &str,
+    variant_class_names: &[&str],
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+
+    // Add class refs for each variant (for PermittedSubclasses)
+    let mut variant_class_indexes = Vec::new();
+    for vname in variant_class_names {
+        let idx = cp.add_class(vname)?;
+        variant_class_indexes.push(idx);
+    }
+
+    let permitted_name = cp.add_utf8("PermittedSubclasses")?;
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC
+            | ClassAccessFlags::INTERFACE
+            | ClassAccessFlags::ABSTRACT,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        attributes: vec![Attribute::PermittedSubclasses {
+            name_index: permitted_name,
+            class_indexes: variant_class_indexes,
+        }],
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Generate a variant class file that implements a sealed interface.
+fn generate_variant_class(
+    variant_name: &str,
+    interface_name: &str,
+    fields: &[(String, JvmType, bool)], // (name, jvm_type, is_erased)
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(variant_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let interface_class = cp.add_class(interface_name)?;
+    let code_utf8 = cp.add_utf8("Code")?;
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+    let init_name = cp.add_utf8("<init>")?;
+
+    // Build constructor descriptor — erased fields use Ljava/lang/Object;
+    let mut ctor_desc = String::from("(");
+    for (_, jt, is_erased) in fields {
+        if *is_erased {
+            ctor_desc.push_str("Ljava/lang/Object;");
+        } else {
+            ctor_desc.push_str(&jvm_type_to_field_descriptor(*jt));
+        }
+    }
+    ctor_desc.push_str(")V");
+    let init_desc = cp.add_utf8(&ctor_desc)?;
+
+    // Build fields and field refs
+    let mut field_refs = Vec::new();
+    let mut jvm_fields = Vec::new();
+    for (i, (fname, jt, is_erased)) in fields.iter().enumerate() {
+        let fdesc = if *is_erased {
+            "Ljava/lang/Object;".to_string()
+        } else {
+            jvm_type_to_field_descriptor(*jt)
+        };
+        let field_ref = cp.add_field_ref(this_class, fname, &fdesc)?;
+        field_refs.push(field_ref);
+
+        let name_idx = cp.add_utf8(fname)?;
+        let desc_idx = cp.add_utf8(&fdesc)?;
+        let field_type = if *is_erased {
+            FieldType::Object("java/lang/Object".to_string())
+        } else {
+            jvm_type_to_base_field_type(*jt)
+        };
+        jvm_fields.push(Field {
+            access_flags: FieldAccessFlags::PRIVATE | FieldAccessFlags::FINAL,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            field_type,
+            attributes: vec![],
+        });
+        let _ = i; // suppress unused
+    }
+
+    // Constructor code
+    let mut ctor_code = vec![
+        Instruction::Aload_0,
+        Instruction::Invokespecial(object_init),
+    ];
+
+    let mut param_slot: u16 = 1;
+    for (i, (_, jt, is_erased)) in fields.iter().enumerate() {
+        ctor_code.push(Instruction::Aload_0);
+        if *is_erased {
+            ctor_code.push(Instruction::Aload(param_slot as u8));
+            param_slot += 1;
+        } else {
+            let load = match jt {
+                JvmType::Long => Instruction::Lload(param_slot as u8),
+                JvmType::Double => Instruction::Dload(param_slot as u8),
+                JvmType::Int => Instruction::Iload(param_slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
+            };
+            ctor_code.push(load);
+            param_slot += match jt {
+                JvmType::Long | JvmType::Double => 2,
+                _ => 1,
+            };
+        }
+        ctor_code.push(Instruction::Putfield(field_refs[i]));
+    }
+    ctor_code.push(Instruction::Return);
+
+    let constructor = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: init_name,
+        descriptor_index: init_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 20,
+            max_locals: param_slot,
+            code: ctor_code,
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let mut methods = vec![constructor];
+
+    // toString() method returning the variant name
+    let tostring_name = cp.add_utf8("toString")?;
+    let tostring_desc = cp.add_utf8("()Ljava/lang/String;")?;
+    let variant_str = cp.add_string(variant_name)?;
+    let ldc = if variant_str <= 255 {
+        Instruction::Ldc(variant_str as u8)
+    } else {
+        Instruction::Ldc_w(variant_str)
+    };
+    methods.push(Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: tostring_name,
+        descriptor_index: tostring_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 1,
+            max_locals: 1,
+            code: vec![ldc, Instruction::Areturn],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    });
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        interfaces: vec![interface_class],
+        fields: jvm_fields,
+        methods,
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
 /// Compile a module to JVM bytecode. Returns a list of (class_name, bytes) pairs.
 pub fn compile_module(
     module: &Module,
@@ -1303,12 +1617,121 @@ pub fn compile_module(
         result_classes.push((struct_name.clone(), struct_bytes));
     }
 
+    // Collect sum type declarations from AST
+    let sum_decls: Vec<_> = module
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::DefType(td) => match &td.kind {
+                TypeDeclKind::Sum { variants } => {
+                    Some((td.name.clone(), td.type_params.clone(), variants.clone()))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+
+    // Process sum types: generate sealed interface + variant classes
+    for (sum_name, type_params, variants) in &sum_decls {
+        // Register interface class in main cpool
+        let interface_class_index = compiler.cp.add_class(sum_name)?;
+        let interface_desc = format!("L{sum_name};");
+        compiler
+            .class_descriptors
+            .insert(interface_class_index, interface_desc);
+
+        let mut variant_infos = HashMap::new();
+        let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+
+        for variant in variants {
+            // Resolve fields: type params are erased to Object
+            let fields: Vec<(String, JvmType, bool)> = variant
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, texpr)| {
+                    let field_name = format!("field{i}");
+                    let is_erased = match texpr {
+                        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
+                            type_params.contains(name)
+                        }
+                        _ => false,
+                    };
+                    let jt = if is_erased {
+                        JvmType::Ref // erased to Object
+                    } else {
+                        type_expr_to_jvm(texpr)?
+                    };
+                    Ok((field_name, jt, is_erased))
+                })
+                .collect::<Result<_, CodegenError>>()?;
+
+            // Register variant class in main cpool
+            let variant_class_index = compiler.cp.add_class(&variant.name)?;
+            let variant_desc = format!("L{};", variant.name);
+            compiler
+                .class_descriptors
+                .insert(variant_class_index, variant_desc);
+
+            // Build constructor descriptor — erased fields use Ljava/lang/Object;
+            let mut ctor_desc = String::from("(");
+            for (_, jt, is_erased) in &fields {
+                if *is_erased {
+                    ctor_desc.push_str("Ljava/lang/Object;");
+                } else {
+                    ctor_desc.push_str(&jvm_type_to_field_descriptor(*jt));
+                }
+            }
+            ctor_desc.push_str(")V");
+
+            let constructor_ref = compiler.cp.add_method_ref(
+                variant_class_index,
+                "<init>",
+                &ctor_desc,
+            )?;
+
+            compiler
+                .variant_to_sum
+                .insert(variant.name.clone(), sum_name.clone());
+
+            variant_infos.insert(
+                variant.name.clone(),
+                VariantInfo {
+                    class_index: variant_class_index,
+                    class_name: variant.name.clone(),
+                    fields: fields.clone(),
+                    constructor_ref,
+                },
+            );
+
+            // Generate variant class file
+            let variant_bytes =
+                generate_variant_class(&variant.name, sum_name, &fields)?;
+            result_classes.push((variant.name.clone(), variant_bytes));
+        }
+
+        compiler.sum_type_info.insert(
+            sum_name.clone(),
+            SumTypeInfo {
+                interface_class_index,
+                variants: variant_infos,
+            },
+        );
+
+        // Generate sealed interface class file
+        let interface_bytes = generate_sealed_interface_class(sum_name, &variant_names)?;
+        result_classes.push((sum_name.clone(), interface_bytes));
+    }
+
     // Register all functions (including main) in the function registry.
-    // Skip constructor entries (they're handled as struct constructors).
+    // Skip constructor entries (they're handled as struct/variant constructors).
     for (name, scheme) in &type_info {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
-            // Skip if this is a struct constructor
-            if compiler.struct_info.contains_key(name) {
+            // Skip if this is a struct constructor or variant constructor
+            if compiler.struct_info.contains_key(name)
+                || compiler.variant_to_sum.contains_key(name)
+            {
                 continue;
             }
             let param_types: Vec<JvmType> = param_tys

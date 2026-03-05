@@ -2,6 +2,7 @@ use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
 use std::io::Write;
 use std::process::Command;
+use tempfile;
 
 /// Parse source, compile to .class files, run java, return trimmed stdout.
 fn run_program(source: &str) -> String {
@@ -205,4 +206,49 @@ fn test_struct_update_preserves_unchanged() {
 (def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 99))) (. p2 y))))
 "#;
     assert_eq!(run_program(src), "2");
+}
+
+#[test]
+fn test_sum_type_option() {
+    let src = r#"
+(type Option [a] (| (Some a) (None)))
+(def main (fn [] (do (let s (Some 42)) (let n None) s)))
+"#;
+    assert_eq!(run_program(src), "Some");
+}
+
+#[test]
+fn test_sum_type_sealed_interface_structure() {
+    let src = r#"
+(type Option [a] (| (Some a) (None)))
+(def main (fn [] None))
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let classes = compile_module(&module, "Test").expect("compile");
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let path = dir.path().join(format!("{name}.class"));
+        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+    }
+    let output = Command::new("javap")
+        .arg("-v")
+        .arg(dir.path().join("Option.class"))
+        .output()
+        .expect("javap");
+    let javap_out = String::from_utf8_lossy(&output.stdout);
+    assert!(javap_out.contains("interface"), "should be interface");
+    assert!(
+        javap_out.contains("PermittedSubclasses"),
+        "should have PermittedSubclasses"
+    );
+}
+
+#[test]
+fn test_sum_type_nullary_variant() {
+    let src = r#"
+(type Color (| (Red) (Green) (Blue)))
+(def main (fn [] Green))
+"#;
+    assert_eq!(run_program(src), "Green");
 }
