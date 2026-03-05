@@ -51,6 +51,7 @@ pub enum TypeError {
     NotAStruct { actual: Type },
     NonExhaustive { missing: Vec<String> },
     AlreadyMoved { name: String },
+    UnsupportedExpr { description: String },
 }
 
 impl TypeError {
@@ -68,6 +69,7 @@ impl TypeError {
             TypeError::NotAStruct { .. } => TypeErrorCode::E0010,
             TypeError::NonExhaustive { .. } => TypeErrorCode::E0006,
             TypeError::AlreadyMoved { .. } => TypeErrorCode::E0101,
+            TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
         }
     }
 
@@ -105,6 +107,7 @@ impl TypeError {
             TypeError::AlreadyMoved { name } => {
                 Some(format!("`{}` was already consumed by a previous use", name))
             }
+            TypeError::UnsupportedExpr { .. } => None,
         }
     }
 }
@@ -148,6 +151,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::AlreadyMoved { name } => {
                 write!(f, "value already moved: `{}`", name)
+            }
+            TypeError::UnsupportedExpr { description } => {
+                write!(f, "not yet implemented: {}", description)
             }
         }
     }

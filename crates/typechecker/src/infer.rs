@@ -325,8 +325,78 @@ fn infer_expr_inner(
             }
         }
 
-        // Unsupported expression forms return a fresh type variable for now
-        _ => Ok(Type::Var(gen.fresh())),
+        Expr::StructLit { name, fields, span } => {
+            let reg = registry.ok_or_else(|| {
+                spanned(TypeError::UnknownVariable { name: name.clone() }, *span)
+            })?;
+            let info = reg.lookup_type(name).ok_or_else(|| {
+                spanned(TypeError::UnknownVariable { name: name.clone() }, *span)
+            })?;
+            match &info.kind {
+                type_registry::TypeKind::Record { fields: record_fields } => {
+                    // Create fresh type args for generic structs
+                    let fresh_args: Vec<Type> = info.type_param_vars.iter().map(|_| Type::Var(gen.fresh())).collect();
+                    let struct_ty = Type::Named(name.clone(), fresh_args.clone());
+
+                    // Check for missing fields
+                    let provided: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                    let missing: Vec<String> = record_fields.iter()
+                        .filter(|(n, _)| !provided.contains(n.as_str()))
+                        .map(|(n, _)| n.clone())
+                        .collect();
+                    if !missing.is_empty() {
+                        return Err(spanned(TypeError::MissingFields { type_name: name.clone(), fields: missing }, *span));
+                    }
+
+                    // Type-check each provided field
+                    for (field_name, field_expr) in fields {
+                        let record_field = record_fields.iter().find(|(n, _)| n == field_name);
+                        match record_field {
+                            Some((_, expected_ty)) => {
+                                let expected = instantiate_field_type(expected_ty, info, &fresh_args);
+                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+                                unify(&actual_ty, &expected, subst)
+                                    .map_err(|e| spanned(e, *span))?;
+                            }
+                            None => {
+                                return Err(spanned(
+                                    TypeError::UnknownField {
+                                        type_name: name.clone(),
+                                        field_name: field_name.clone(),
+                                    },
+                                    *span,
+                                ));
+                            }
+                        }
+                    }
+
+                    Ok(struct_ty)
+                }
+                _ => Err(spanned(
+                    TypeError::NotAStruct { actual: Type::Named(name.clone(), vec![]) },
+                    *span,
+                )),
+            }
+        }
+
+        Expr::List { span, .. } => Err(spanned(
+            TypeError::UnsupportedExpr { description: "list literals".to_string() }, *span,
+        )),
+        Expr::Receive { span, .. } => Err(spanned(
+            TypeError::UnsupportedExpr { description: "receive expressions".to_string() }, *span,
+        )),
+        Expr::Send { span, .. } => Err(spanned(
+            TypeError::UnsupportedExpr { description: "send expressions".to_string() }, *span,
+        )),
+        Expr::Spawn { span, .. } => Err(spanned(
+            TypeError::UnsupportedExpr { description: "spawn expressions".to_string() }, *span,
+        )),
+        Expr::Self_ { span, .. } => Err(spanned(
+            TypeError::UnsupportedExpr { description: "self() expressions".to_string() }, *span,
+        )),
+        Expr::QuestionMark { span, .. } => Err(spanned(
+            TypeError::UnsupportedExpr { description: "? operator".to_string() }, *span,
+        )),
     }
 }
 
