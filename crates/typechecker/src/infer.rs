@@ -554,13 +554,15 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
     let mut registry = TypeRegistry::new();
 
     // First pass: process all DefType declarations
+    let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
         if let Decl::DefType(type_decl) = decl {
             let constructors =
                 type_registry::process_type_decl(type_decl, &mut registry, &mut gen)
                     .map_err(|e| spanned(e, type_decl.span))?;
             for (name, scheme) in constructors {
-                env.bind(name, scheme);
+                env.bind(name.clone(), scheme.clone());
+                constructor_schemes.push((name, scheme));
             }
         }
     }
@@ -622,12 +624,14 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
         }
     }
 
-    // Collect results in original declaration order
-    let results: Vec<(String, TypeScheme)> = fn_decls
-        .iter()
-        .enumerate()
-        .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap()))
-        .collect();
+    // Collect results: constructors first, then functions in declaration order
+    let mut results: Vec<(String, TypeScheme)> = constructor_schemes;
+    results.extend(
+        fn_decls
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
+    );
 
     Ok(results)
 }

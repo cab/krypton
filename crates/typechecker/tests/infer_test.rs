@@ -206,7 +206,10 @@ fn infer_record_constructor() {
             "(type Point (record (x Int) (y Int))) \
              (def p (fn [] (Point 1 2)))"
         ),
-        @"p: fn() -> Point"
+        @"
+    Point: fn(Int, Int) -> Point
+    p: fn() -> Point
+    "
     );
 }
 
@@ -217,7 +220,11 @@ fn infer_sum_constructor() {
             "(type Option [a] (| (Some a) None)) \
              (def wrap (fn [x] (Some x)))"
         ),
-        @"wrap: forall c. fn(c) -> Option<c>"
+        @"
+    Some: forall a. fn(a) -> Option<a>
+    None: forall a. Option<a>
+    wrap: forall c. fn(c) -> Option<c>
+    "
     );
 }
 
@@ -228,7 +235,11 @@ fn infer_bare_variant() {
             "(type Option [a] (| (Some a) None)) \
              (def none (fn [] None))"
         ),
-        @"none: forall c. fn() -> Option<c>"
+        @"
+    Some: forall a. fn(a) -> Option<a>
+    None: forall a. Option<a>
+    none: forall c. fn() -> Option<c>
+    "
     );
 }
 
@@ -269,7 +280,10 @@ fn infer_field_access() {
             "(type Point (record (x Int) (y Int))) \
              (def get_x (fn [] (. (Point 1 2) x)))"
         ),
-        @"get_x: fn() -> Int"
+        @"
+    Point: fn(Int, Int) -> Point
+    get_x: fn() -> Int
+    "
     );
 }
 
@@ -280,7 +294,10 @@ fn infer_struct_update() {
             "(type Point (record (x Int) (y Int))) \
              (def move_x (fn [] (.. (Point 1 2) (x 42))))"
         ),
-        @"move_x: fn() -> Point"
+        @"
+    Point: fn(Int, Int) -> Point
+    move_x: fn() -> Point
+    "
     );
 }
 
@@ -327,7 +344,11 @@ fn infer_match_option() {
                  ((Some x) x) \
                  ((None) default))))"
         ),
-        @"unwrap_or: forall d. fn(Option<d>, d) -> d"
+        @"
+    Some: forall a. fn(a) -> Option<a>
+    None: forall a. Option<a>
+    unwrap_or: forall d. fn(Option<d>, d) -> d
+    "
     );
 }
 
@@ -367,7 +388,11 @@ fn infer_match_nested_constructor() {
                  ((Cons h (Cons h2 t)) (+ h h2)) \
                  (_ 0))))"
         ),
-        @"sum2: fn(List<Int>) -> Int"
+        @"
+    Cons: forall a. fn(a, List<a>) -> List<a>
+    Nil: forall a. List<a>
+    sum2: fn(List<Int>) -> Int
+    "
     );
 }
 

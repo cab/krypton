@@ -2,4 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
+Point: fn(Int, Int) -> Point
 make_point: fn(Int, Int) -> Point

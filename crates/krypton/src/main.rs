@@ -98,13 +98,15 @@ fn main() {
                 }
             };
             match krypton_codegen::emit::compile_module(&module, &class_name) {
-                Ok(bytes) => {
-                    let out_path = format!("{}.class", class_name);
-                    std::fs::write(&out_path, &bytes).unwrap_or_else(|e| {
-                        eprintln!("Error writing {}: {}", out_path, e);
-                        process::exit(1);
-                    });
-                    println!("Wrote {}", out_path);
+                Ok(classes) => {
+                    for (name, bytes) in &classes {
+                        let out_path = format!("{}.class", name);
+                        std::fs::write(&out_path, bytes).unwrap_or_else(|e| {
+                            eprintln!("Error writing {}: {}", out_path, e);
+                            process::exit(1);
+                        });
+                        println!("Wrote {}", out_path);
+                    }
                 }
                 Err(e) => {
                     eprintln!("Codegen error: {}", e);
@@ -141,16 +143,18 @@ fn main() {
                 }
             };
             match krypton_codegen::emit::compile_module(&module, &class_name) {
-                Ok(bytes) => {
+                Ok(classes) => {
                     let dir = tempdir().unwrap_or_else(|e| {
                         eprintln!("Error creating temp dir: {}", e);
                         process::exit(1);
                     });
-                    let class_path = dir.path().join(format!("{}.class", class_name));
-                    std::fs::write(&class_path, &bytes).unwrap_or_else(|e| {
-                        eprintln!("Error writing class file: {}", e);
-                        process::exit(1);
-                    });
+                    for (name, bytes) in &classes {
+                        let class_path = dir.path().join(format!("{name}.class"));
+                        std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
+                            eprintln!("Error writing class file: {}", e);
+                            process::exit(1);
+                        });
+                    }
                     let status = process::Command::new("java")
                         .arg("-cp")
                         .arg(dir.path())

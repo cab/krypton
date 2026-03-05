@@ -3,18 +3,19 @@ use krypton_parser::parser::parse;
 use std::io::Write;
 use std::process::Command;
 
-/// Parse source, compile to .class, run java, return trimmed stdout.
+/// Parse source, compile to .class files, run java, return trimmed stdout.
 fn run_program(source: &str) -> String {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let bytes = compile_module(&module, "Test").expect("compile_module should succeed");
+    let classes = compile_module(&module, "Test").expect("compile_module should succeed");
 
     let dir = tempfile::tempdir().unwrap();
-    let class_path = dir.path().join("Test.class");
-    let mut f = std::fs::File::create(&class_path).unwrap();
-    f.write_all(&bytes).unwrap();
-    drop(f);
+    for (name, bytes) in &classes {
+        let class_path = dir.path().join(format!("{name}.class"));
+        let mut f = std::fs::File::create(&class_path).unwrap();
+        f.write_all(bytes).unwrap();
+    }
 
     let output = Command::new("java")
         .arg("-cp")
@@ -163,8 +164,45 @@ fn test_recur_countdown() {
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("(def main (fn [] 42))");
     assert!(errors.is_empty());
-    let bytes = compile_module(&module, "Test").expect("compile_module should succeed");
+    let classes = compile_module(&module, "Test").expect("compile_module should succeed");
+    let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
     assert_eq!(bytes[6..8], [0, 65], "major version should be 65 (Java 21)");
+}
+
+#[test]
+fn test_struct_create_and_field_access() {
+    let src = r#"
+(type Point (record (x Int) (y Int)))
+(def main (fn [] (do (let p (Point 1 2)) (. p x))))
+"#;
+    assert_eq!(run_program(src), "1");
+}
+
+#[test]
+fn test_struct_update() {
+    let src = r#"
+(type Point (record (x Int) (y Int)))
+(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 3))) (. p2 x))))
+"#;
+    assert_eq!(run_program(src), "3");
+}
+
+#[test]
+fn test_struct_field_y() {
+    let src = r#"
+(type Point (record (x Int) (y Int)))
+(def main (fn [] (do (let p (Point 10 20)) (. p y))))
+"#;
+    assert_eq!(run_program(src), "20");
+}
+
+#[test]
+fn test_struct_update_preserves_unchanged() {
+    let src = r#"
+(type Point (record (x Int) (y Int)))
+(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 99))) (. p2 y))))
+"#;
+    assert_eq!(run_program(src), "2");
 }

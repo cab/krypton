@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 
-use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, Module};
+use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, Module, TypeDeclKind, TypeExpr};
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
-    ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags, Version,
+    ClassAccessFlags, ClassFile, ConstantPool, Field, FieldAccessFlags, FieldType, Method,
+    MethodAccessFlags, Version,
 };
 
 /// Java 21 class file version (major 65).
@@ -18,6 +19,7 @@ pub enum JvmType {
     Double,
     Int,
     Ref,
+    StructRef(u16), // cpool class index for struct type
 }
 
 /// Error type for codegen failures.
@@ -59,7 +61,16 @@ struct FunctionInfo {
     return_type: JvmType,
 }
 
-fn type_to_jvm(ty: &Type) -> Result<JvmType, CodegenError> {
+/// Info about a struct type for codegen.
+struct StructInfo {
+    class_index: u16,
+    class_name: String,
+    fields: Vec<(String, JvmType)>,
+    constructor_ref: u16,
+    accessor_refs: HashMap<String, u16>,
+}
+
+fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
     match ty {
         Type::Int => Ok(JvmType::Long),
         Type::Float => Ok(JvmType::Double),
@@ -72,23 +83,24 @@ fn type_to_jvm(ty: &Type) -> Result<JvmType, CodegenError> {
     }
 }
 
-fn jvm_type_to_descriptor(ty: JvmType) -> &'static str {
+fn jvm_type_to_field_descriptor(ty: JvmType) -> String {
     match ty {
-        JvmType::Long => "J",
-        JvmType::Double => "D",
-        JvmType::Int => "Z",
-        JvmType::Ref => "Ljava/lang/String;",
+        JvmType::Long => "J".to_string(),
+        JvmType::Double => "D".to_string(),
+        JvmType::Int => "Z".to_string(),
+        JvmType::Ref => "Ljava/lang/String;".to_string(),
+        JvmType::StructRef(_) => unreachable!("StructRef descriptor handled by caller"),
     }
 }
 
-fn build_method_descriptor(params: &[JvmType], ret: JvmType) -> String {
-    let mut desc = String::from("(");
-    for p in params {
-        desc.push_str(jvm_type_to_descriptor(*p));
+fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
+    match ty {
+        JvmType::Long => FieldType::Base(ristretto_classfile::BaseType::Long),
+        JvmType::Double => FieldType::Base(ristretto_classfile::BaseType::Double),
+        JvmType::Int => FieldType::Base(ristretto_classfile::BaseType::Boolean),
+        JvmType::Ref => FieldType::Object("java/lang/String".to_string()),
+        JvmType::StructRef(_) => unreachable!("StructRef field type handled by caller"),
     }
-    desc.push(')');
-    desc.push_str(jvm_type_to_descriptor(ret));
-    desc
 }
 
 struct Compiler {
@@ -112,9 +124,13 @@ struct Compiler {
     smt_name: u16,
     string_class: u16,
     ps_class: u16,
+    println_object: u16,
     // Function codegen support
     this_class: u16,
     functions: HashMap<String, FunctionInfo>,
+    // Struct codegen support
+    struct_info: HashMap<String, StructInfo>,
+    class_descriptors: HashMap<u16, String>, // class_idx -> "LClassName;"
     // Recur support: parameter slots and return type for current function
     fn_params: Vec<(u16, JvmType)>,
     fn_return_type: Option<JvmType>,
@@ -143,6 +159,8 @@ impl Compiler {
             cp.add_method_ref(ps_class, "println", "(Ljava/lang/String;)V")?;
         let println_double = cp.add_method_ref(ps_class, "println", "(D)V")?;
         let println_bool = cp.add_method_ref(ps_class, "println", "(Z)V")?;
+        let println_object =
+            cp.add_method_ref(ps_class, "println", "(Ljava/lang/Object;)V")?;
 
         // StackMapTable support
         let smt_name = cp.add_utf8("StackMapTable")?;
@@ -163,6 +181,7 @@ impl Compiler {
             println_string,
             println_double,
             println_bool,
+            println_object,
             stack_types: Vec::new(),
             local_types: vec![VerificationType::Object {
                 cpool_index: string_arr_class,
@@ -173,11 +192,45 @@ impl Compiler {
             ps_class,
             this_class,
             functions: HashMap::new(),
+            struct_info: HashMap::new(),
+            class_descriptors: HashMap::new(),
             fn_params: Vec::new(),
             fn_return_type: None,
         };
 
         Ok((compiler, this_class, object_class))
+    }
+
+    /// Map a typechecker Type to a JvmType, using struct_info for Named types.
+    fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
+        match ty {
+            Type::Named(name, _) => {
+                let info = self.struct_info.get(name).ok_or_else(|| {
+                    CodegenError::TypeError(format!("unknown struct type: {name}"))
+                })?;
+                Ok(JvmType::StructRef(info.class_index))
+            }
+            other => type_to_jvm_basic(other),
+        }
+    }
+
+    /// Get the JVM type descriptor for a JvmType.
+    fn jvm_type_descriptor(&self, ty: JvmType) -> String {
+        match ty {
+            JvmType::StructRef(idx) => self.class_descriptors[&idx].clone(),
+            other => jvm_type_to_field_descriptor(other),
+        }
+    }
+
+    /// Build a method descriptor from param and return JvmTypes.
+    fn build_descriptor(&self, params: &[JvmType], ret: JvmType) -> String {
+        let mut desc = String::from("(");
+        for p in params {
+            desc.push_str(&self.jvm_type_descriptor(*p));
+        }
+        desc.push(')');
+        desc.push_str(&self.jvm_type_descriptor(ret));
+        desc
     }
 
     /// Reset per-method compilation state.
@@ -243,6 +296,9 @@ impl Compiler {
             JvmType::Ref => vec![VerificationType::Object {
                 cpool_index: self.string_class,
             }],
+            JvmType::StructRef(idx) => vec![VerificationType::Object {
+                cpool_index: idx,
+            }],
         }
     }
 
@@ -255,7 +311,7 @@ impl Compiler {
     fn pop_jvm_type(&mut self, ty: JvmType) {
         match ty {
             JvmType::Long | JvmType::Double => self.pop_type_n(2),
-            JvmType::Int | JvmType::Ref => self.pop_type(),
+            JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => self.pop_type(),
         }
     }
 
@@ -300,6 +356,8 @@ impl Compiler {
             Expr::Do { exprs, .. } => self.compile_do(exprs, in_tail),
             Expr::App { func, args, .. } => self.compile_app(func, args),
             Expr::Recur { args, .. } => self.compile_recur(args, in_tail),
+            Expr::FieldAccess { expr, field, .. } => self.compile_field_access(expr, field),
+            Expr::StructUpdate { base, fields, .. } => self.compile_struct_update(base, fields),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -520,7 +578,7 @@ impl Compiler {
             JvmType::Long => Instruction::Lstore(slot as u8),
             JvmType::Double => Instruction::Dstore(slot as u8),
             JvmType::Int => Instruction::Istore(slot as u8),
-            JvmType::Ref => Instruction::Astore(slot as u8),
+            JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(slot as u8),
         };
         self.emit(store);
         self.locals.insert(name.to_string(), (slot, ty));
@@ -552,7 +610,7 @@ impl Compiler {
             JvmType::Long => Instruction::Lload(slot as u8),
             JvmType::Double => Instruction::Dload(slot as u8),
             JvmType::Int => Instruction::Iload(slot as u8),
-            JvmType::Ref => Instruction::Aload(slot as u8),
+            JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(slot as u8),
         };
         self.emit(load);
 
@@ -571,6 +629,35 @@ impl Compiler {
                 )))
             }
         };
+
+        // Check if this is a struct constructor call
+        if let Some(si) = self.struct_info.get(name) {
+            let class_index = si.class_index;
+            let constructor_ref = si.constructor_ref;
+            let result_type = JvmType::StructRef(class_index);
+
+            self.emit(Instruction::New(class_index));
+            self.push_type(VerificationType::UninitializedThis);
+            self.emit(Instruction::Dup);
+            self.push_type(VerificationType::UninitializedThis);
+
+            for arg in args {
+                self.compile_expr(arg, false)?;
+            }
+
+            // Pop args + 2 uninit refs, push one StructRef
+            let fields = self.struct_info[name].fields.clone();
+            for (_, ft) in &fields {
+                self.pop_jvm_type(*ft);
+            }
+            self.pop_type(); // dup'd uninit
+            self.pop_type(); // original uninit
+
+            self.emit(Instruction::Invokespecial(constructor_ref));
+            self.push_jvm_type(result_type);
+
+            return Ok(result_type);
+        }
 
         // Look up function info (need to clone out to avoid borrow conflict)
         let info = self
@@ -600,6 +687,120 @@ impl Compiler {
         Ok(return_type)
     }
 
+    fn compile_field_access(
+        &mut self,
+        expr: &Expr,
+        field: &str,
+    ) -> Result<JvmType, CodegenError> {
+        let base_type = self.compile_expr(expr, false)?;
+        let class_idx = match base_type {
+            JvmType::StructRef(idx) => idx,
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "field access on non-struct type".to_string(),
+                ))
+            }
+        };
+
+        // Find struct info by class index
+        let (_struct_name, accessor_ref, field_type) = {
+            let si = self
+                .struct_info
+                .values()
+                .find(|s| s.class_index == class_idx)
+                .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
+            let accessor_ref = *si.accessor_refs.get(field).ok_or_else(|| {
+                CodegenError::TypeError(format!("unknown field: {field}"))
+            })?;
+            let field_type = si
+                .fields
+                .iter()
+                .find(|(n, _)| n == field)
+                .map(|(_, t)| *t)
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}")))?;
+            (si.class_name.clone(), accessor_ref, field_type)
+        };
+
+        self.pop_jvm_type(base_type);
+        self.emit(Instruction::Invokevirtual(accessor_ref));
+        self.push_jvm_type(field_type);
+
+        Ok(field_type)
+    }
+
+    fn compile_struct_update(
+        &mut self,
+        base: &Expr,
+        updates: &[(String, Expr)],
+    ) -> Result<JvmType, CodegenError> {
+        // Compile base expression and store in temp local
+        let base_type = self.compile_expr(base, false)?;
+        let class_idx = match base_type {
+            JvmType::StructRef(idx) => idx,
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "struct update on non-struct type".to_string(),
+                ))
+            }
+        };
+
+        let base_slot = self.next_local;
+        self.next_local += 1;
+        self.emit(Instruction::Astore(base_slot as u8));
+        self.pop_jvm_type(base_type);
+        let vtypes = self.jvm_type_to_vtypes(base_type);
+        self.local_types.extend(vtypes);
+
+        // Look up struct info
+        let si = self
+            .struct_info
+            .values()
+            .find(|s| s.class_index == class_idx)
+            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
+        let constructor_ref = si.constructor_ref;
+        let fields = si.fields.clone();
+        let accessor_refs = si.accessor_refs.clone();
+
+        self.emit(Instruction::New(class_idx));
+        self.push_type(VerificationType::UninitializedThis);
+        self.emit(Instruction::Dup);
+        self.push_type(VerificationType::UninitializedThis);
+
+        // Build update map
+        let update_names: HashMap<&str, usize> = updates
+            .iter()
+            .enumerate()
+            .map(|(i, (name, _))| (name.as_str(), i))
+            .collect();
+
+        for (field_name, field_type) in &fields {
+            if let Some(&idx) = update_names.get(field_name.as_str()) {
+                // Use updated value
+                self.compile_expr(&updates[idx].1, false)?;
+            } else {
+                // Copy from base using accessor
+                self.emit(Instruction::Aload(base_slot as u8));
+                self.push_jvm_type(base_type);
+                let accessor_ref = accessor_refs[field_name];
+                self.emit(Instruction::Invokevirtual(accessor_ref));
+                self.pop_jvm_type(base_type);
+                self.push_jvm_type(*field_type);
+            }
+        }
+
+        // Pop args + uninit refs
+        for (_, ft) in &fields {
+            self.pop_jvm_type(*ft);
+        }
+        self.pop_type(); // dup'd uninit
+        self.pop_type(); // original uninit
+
+        self.emit(Instruction::Invokespecial(constructor_ref));
+        self.push_jvm_type(base_type);
+
+        Ok(base_type)
+    }
+
     fn compile_recur(
         &mut self,
         args: &[Expr],
@@ -624,7 +825,7 @@ impl Compiler {
                 JvmType::Long => Instruction::Lstore(slot as u8),
                 JvmType::Double => Instruction::Dstore(slot as u8),
                 JvmType::Int => Instruction::Istore(slot as u8),
-                JvmType::Ref => Instruction::Astore(slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(slot as u8),
             };
             self.emit(store);
             self.pop_jvm_type(jvm_ty);
@@ -724,12 +925,12 @@ impl Compiler {
             JvmType::Long => Instruction::Lreturn,
             JvmType::Double => Instruction::Dreturn,
             JvmType::Int => Instruction::Ireturn,
-            JvmType::Ref => Instruction::Areturn,
+            JvmType::Ref | JvmType::StructRef(_) => Instruction::Areturn,
         };
         self.emit(ret_instr);
 
         // Build the method descriptor string for the constant pool
-        let descriptor = build_method_descriptor(&param_types, return_type);
+        let descriptor = self.build_descriptor(&param_types, return_type);
         let name_idx = self.cp.add_utf8(&decl.name)?;
         let desc_idx = self.cp.add_utf8(&descriptor)?;
 
@@ -836,8 +1037,173 @@ impl Compiler {
     }
 }
 
-/// Compile a module to JVM bytecode.
-pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, CodegenError> {
+/// Map a TypeExpr to a JvmType (for struct field declarations in AST).
+fn type_expr_to_jvm(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
+    match texpr {
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => match name.as_str() {
+            "Int" => Ok(JvmType::Long),
+            "Float" => Ok(JvmType::Double),
+            "Bool" => Ok(JvmType::Int),
+            "String" => Ok(JvmType::Ref),
+            "Unit" => Ok(JvmType::Int),
+            _ => Err(CodegenError::TypeError(format!(
+                "cannot map type expr to JVM: {name}"
+            ))),
+        },
+        _ => Err(CodegenError::TypeError(format!(
+            "unsupported type expr in struct field: {texpr:?}"
+        ))),
+    }
+}
+
+/// Generate a standalone class file for a struct type.
+fn generate_struct_class(
+    name: &str,
+    fields: &[(String, JvmType)],
+    class_descriptors: &HashMap<u16, String>,
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let code_utf8 = cp.add_utf8("Code")?;
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+    let init_name = cp.add_utf8("<init>")?;
+
+    // Build constructor descriptor
+    let mut ctor_desc = String::from("(");
+    for (_, jt) in fields {
+        let desc = match jt {
+            JvmType::StructRef(idx) => class_descriptors[idx].clone(),
+            other => jvm_type_to_field_descriptor(*other),
+        };
+        ctor_desc.push_str(&desc);
+    }
+    ctor_desc.push_str(")V");
+    let init_desc = cp.add_utf8(&ctor_desc)?;
+
+    // Build field refs for putfield/getfield
+    let mut field_refs = Vec::new();
+    let mut jvm_fields = Vec::new();
+    for (fname, jt) in fields {
+        let fdesc = match jt {
+            JvmType::StructRef(idx) => class_descriptors[idx].clone(),
+            other => jvm_type_to_field_descriptor(*other),
+        };
+        let field_ref = cp.add_field_ref(this_class, fname, &fdesc)?;
+        field_refs.push(field_ref);
+
+        let name_idx = cp.add_utf8(fname)?;
+        let desc_idx = cp.add_utf8(&fdesc)?;
+        let field_type = match jt {
+            JvmType::StructRef(_) => FieldType::Object(name.to_string()),
+            other => jvm_type_to_base_field_type(*other),
+        };
+        jvm_fields.push(Field {
+            access_flags: FieldAccessFlags::PRIVATE | FieldAccessFlags::FINAL,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            field_type,
+            attributes: vec![],
+        });
+    }
+
+    // Constructor code: aload_0, invokespecial Object.<init>, then store each field
+    let mut ctor_code = vec![
+        Instruction::Aload_0,
+        Instruction::Invokespecial(object_init),
+    ];
+
+    let mut param_slot: u16 = 1; // slot 0 = this
+    for (i, (_, jt)) in fields.iter().enumerate() {
+        ctor_code.push(Instruction::Aload_0);
+        let load = match jt {
+            JvmType::Long => Instruction::Lload(param_slot as u8),
+            JvmType::Double => Instruction::Dload(param_slot as u8),
+            JvmType::Int => Instruction::Iload(param_slot as u8),
+            JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
+        };
+        ctor_code.push(load);
+        ctor_code.push(Instruction::Putfield(field_refs[i]));
+        param_slot += match jt {
+            JvmType::Long | JvmType::Double => 2,
+            _ => 1,
+        };
+    }
+    ctor_code.push(Instruction::Return);
+
+    let constructor = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: init_name,
+        descriptor_index: init_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 20,
+            max_locals: param_slot,
+            code: ctor_code,
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    // Accessor methods
+    let mut methods = vec![constructor];
+    for (i, (fname, jt)) in fields.iter().enumerate() {
+        let ret_desc = match jt {
+            JvmType::StructRef(idx) => class_descriptors[idx].clone(),
+            other => jvm_type_to_field_descriptor(*other),
+        };
+        let method_desc = format!("(){ret_desc}");
+        let method_name_idx = cp.add_utf8(fname)?;
+        let method_desc_idx = cp.add_utf8(&method_desc)?;
+
+        let ret_instr = match jt {
+            JvmType::Long => Instruction::Lreturn,
+            JvmType::Double => Instruction::Dreturn,
+            JvmType::Int => Instruction::Ireturn,
+            JvmType::Ref | JvmType::StructRef(_) => Instruction::Areturn,
+        };
+
+        methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: method_name_idx,
+            descriptor_index: method_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 4,
+                max_locals: 1,
+                code: vec![
+                    Instruction::Aload_0,
+                    Instruction::Getfield(field_refs[i]),
+                    ret_instr,
+                ],
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        fields: jvm_fields,
+        methods,
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Compile a module to JVM bytecode. Returns a list of (class_name, bytes) pairs.
+pub fn compile_module(
+    module: &Module,
+    class_name: &str,
+) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     // Find the main function
     let _main_fn = module
         .decls
@@ -850,26 +1216,112 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
 
     let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
 
-    // Run the typechecker to get function types
+    // Run the typechecker to get function types (includes constructors)
     let type_info = infer_module(module).map_err(|e| {
         CodegenError::TypeError(format!("{e:?}"))
     })?;
 
+    // Collect struct declarations from AST
+    let struct_decls: Vec<_> = module
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::DefType(td) => match &td.kind {
+                TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+
+    // Process struct types: register in compiler, generate class files
+    let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
+    for (struct_name, ast_fields) in &struct_decls {
+        // Resolve field types to JvmTypes
+        let jvm_fields: Vec<(String, JvmType)> = ast_fields
+            .iter()
+            .map(|(fname, texpr)| {
+                // For struct-typed fields, we need to check if it refers to a known struct
+                let jt = match texpr {
+                    TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
+                        if let Some(si) = compiler.struct_info.get(name.as_str()) {
+                            JvmType::StructRef(si.class_index)
+                        } else {
+                            type_expr_to_jvm(texpr)?
+                        }
+                    }
+                    _ => type_expr_to_jvm(texpr)?,
+                };
+                Ok((fname.clone(), jt))
+            })
+            .collect::<Result<_, CodegenError>>()?;
+
+        // Register the struct class in main class's constant pool
+        let class_index = compiler.cp.add_class(struct_name)?;
+        let class_desc = format!("L{struct_name};");
+        compiler
+            .class_descriptors
+            .insert(class_index, class_desc.clone());
+
+        // Add constructor methodref in main class's cpool
+        let mut ctor_desc = String::from("(");
+        for (_, jt) in &jvm_fields {
+            ctor_desc.push_str(&compiler.jvm_type_descriptor(*jt));
+        }
+        ctor_desc.push_str(")V");
+        let constructor_ref =
+            compiler
+                .cp
+                .add_method_ref(class_index, "<init>", &ctor_desc)?;
+
+        // Add accessor methodrefs in main class's cpool
+        let mut accessor_refs = HashMap::new();
+        for (fname, jt) in &jvm_fields {
+            let ret_desc = compiler.jvm_type_descriptor(*jt);
+            let method_desc = format!("(){ret_desc}");
+            let accessor_ref =
+                compiler
+                    .cp
+                    .add_method_ref(class_index, fname, &method_desc)?;
+            accessor_refs.insert(fname.clone(), accessor_ref);
+        }
+
+        compiler.struct_info.insert(
+            struct_name.clone(),
+            StructInfo {
+                class_index,
+                class_name: struct_name.clone(),
+                fields: jvm_fields.clone(),
+                constructor_ref,
+                accessor_refs,
+            },
+        );
+
+        // Generate the struct class file
+        let struct_bytes =
+            generate_struct_class(struct_name, &jvm_fields, &compiler.class_descriptors)?;
+        result_classes.push((struct_name.clone(), struct_bytes));
+    }
+
     // Register all functions (including main) in the function registry.
-    // Main gets a JVM-internal name "krypton_main" to avoid clashing with JVM main(String[]).
+    // Skip constructor entries (they're handled as struct constructors).
     for (name, scheme) in &type_info {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
+            // Skip if this is a struct constructor
+            if compiler.struct_info.contains_key(name) {
+                continue;
+            }
             let param_types: Vec<JvmType> = param_tys
                 .iter()
-                .map(type_to_jvm)
+                .map(|t| compiler.type_to_jvm(t))
                 .collect::<Result<_, _>>()?;
-            let return_type = type_to_jvm(ret_ty)?;
+            let return_type = compiler.type_to_jvm(ret_ty)?;
             let jvm_name = if name == "main" {
                 "krypton_main"
             } else {
                 name.as_str()
             };
-            let descriptor = build_method_descriptor(&param_types, return_type);
+            let descriptor = compiler.build_descriptor(&param_types, return_type);
             let method_ref =
                 compiler.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
             compiler.functions.insert(
@@ -934,6 +1386,7 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
         JvmType::Double => compiler.println_double,
         JvmType::Ref => compiler.println_string,
         JvmType::Int => compiler.println_bool,
+        JvmType::StructRef(_) => compiler.println_object,
     };
     compiler.emit(Instruction::Invokevirtual(println_ref));
 
@@ -943,7 +1396,10 @@ pub fn compile_module(module: &Module, class_name: &str) -> Result<Vec<u8>, Code
 
     compiler.emit(Instruction::Return);
 
-    compiler.build_class(this_class, object_class, extra_methods)
+    let main_bytes = compiler.build_class(this_class, object_class, extra_methods)?;
+    result_classes.push((class_name.to_string(), main_bytes));
+
+    Ok(result_classes)
 }
 
 /// Generate a minimal valid `.class` file containing a no-op
