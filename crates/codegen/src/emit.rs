@@ -516,7 +516,8 @@ impl Compiler {
                 Ok(JvmType::Ref)
             }
             Lit::Unit => {
-                // Push nothing; return Int as a placeholder
+                self.emit(Instruction::Iconst_0);
+                self.push_type(VerificationType::Integer);
                 Ok(JvmType::Int)
             }
         }
@@ -2381,7 +2382,10 @@ fn generate_struct_class(
         let name_idx = cp.add_utf8(fname)?;
         let desc_idx = cp.add_utf8(&fdesc)?;
         let field_type = match jt {
-            JvmType::StructRef(_) => FieldType::Object(name.to_string()),
+            JvmType::StructRef(_) => {
+                // fdesc is "LClassName;" — extract "ClassName"
+                FieldType::Object(fdesc[1..fdesc.len()-1].to_string())
+            }
             other => jvm_type_to_base_field_type(*other),
         };
         jvm_fields.push(Field {
