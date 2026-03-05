@@ -71,6 +71,7 @@ name = "alang-typechecker"
 version = "0.1.0"
 dependencies = [
  "alang-parser",
+ "alang-test-harness",
  "ariadne",
  "chumsky",
  "insta",

@@ -9,5 +9,6 @@ ariadne.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
+alang-test-harness = { path = "../test-harness" }
 chumsky.workspace = true
 insta.workspace = true

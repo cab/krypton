@@ -1,0 +1,112 @@
+use std::path::Path;
+
+use alang_parser::ast::Decl;
+use alang_parser::lexer;
+use alang_parser::parser::{parse, parse_expr};
+use alang_test_harness::{discover_fixtures, load_fixture, Expectation};
+use alang_typechecker::infer;
+use alang_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
+use chumsky::prelude::*;
+
+fn has_def_fn(source: &str) -> bool {
+    let (module, _) = parse(source);
+    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_)))
+}
+
+fn infer_module_snapshot(source: &str) -> Result<String, String> {
+    let (module, errors) = parse(source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    match infer::infer_module(&module) {
+        Ok(schemes) => {
+            let lines: Vec<String> = schemes
+                .iter()
+                .map(|(name, scheme)| format!("{name}: {scheme}"))
+                .collect();
+            Ok(lines.join("\n"))
+        }
+        Err(e) => Err(e.error.error_code().to_string()),
+    }
+}
+
+fn infer_expr_snapshot(source: &str) -> Result<String, String> {
+    let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
+    assert!(lex_errors.is_empty(), "lex errors: {lex_errors:?}");
+    let tokens = tokens.unwrap();
+    let (expr, parse_errors) = parse_expr(&tokens);
+    assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
+    let expr = expr.expect("no expression parsed");
+
+    let mut env = TypeEnv::new();
+    let mut subst = Substitution::new();
+    let mut gen = TypeVarGen::new();
+
+    match infer::infer_expr(&expr, &mut env, &mut subst, &mut gen) {
+        Ok(ty) => Ok(infer::display_type(&ty, &subst, &env)),
+        Err(e) => Err(e.error.error_code().to_string()),
+    }
+}
+
+#[test]
+fn m2_fixtures() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/m2");
+
+    let fixtures = discover_fixtures(&fixture_dir);
+    assert!(
+        !fixtures.is_empty(),
+        "no fixtures found in {}",
+        fixture_dir.display()
+    );
+
+    for fixture_path in fixtures {
+        let fixture = load_fixture(&fixture_path);
+        let name = fixture_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let use_module = has_def_fn(&fixture.source);
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Ok => {
+                    let result = if use_module {
+                        infer_module_snapshot(&fixture.source)
+                    } else {
+                        infer_expr_snapshot(&fixture.source)
+                    };
+                    let snapshot = result.unwrap_or_else(|code| {
+                        panic!("fixture {name}: expected ok but got error {code}")
+                    });
+                    insta::assert_snapshot!(name.clone(), snapshot);
+                }
+                Expectation::Error(code) => {
+                    let result = if use_module {
+                        infer_module_snapshot(&fixture.source)
+                    } else {
+                        infer_expr_snapshot(&fixture.source)
+                    };
+                    match result {
+                        Ok(ty) => {
+                            panic!("fixture {name}: expected error {code} but inferred: {ty}")
+                        }
+                        Err(actual_code) => {
+                            assert_eq!(
+                                &actual_code, code,
+                                "fixture {name}: expected error {code} but got {actual_code}"
+                            );
+                        }
+                    }
+                }
+                Expectation::Output(_) => {
+                    // Output expectations are for runtime, not type checking
+                }
+            }
+        }
+    }
+}
