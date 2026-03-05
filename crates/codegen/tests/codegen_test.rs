@@ -252,3 +252,44 @@ fn test_sum_type_nullary_variant() {
 "#;
     assert_eq!(run_program(src), "Green");
 }
+
+#[test]
+fn test_match_option_int() {
+    let src = r#"
+(type Option [a] (| (Some a) (None)))
+(def unwrap_or (fn [opt default]
+  (match opt
+    ((Some x) x)
+    ((None) default))))
+(def main (fn [] (unwrap_or (Some 42) 0)))
+"#;
+    assert_eq!(run_program(src), "42");
+}
+
+#[test]
+fn test_match_four_variants() {
+    let src = r#"
+(type Dir (| (North) (South) (East) (West)))
+(def to_num (fn [d]
+  (match d
+    ((North) 1)
+    ((South) 2)
+    ((East) 3)
+    ((West) 4))))
+(def main (fn [] (to_num East)))
+"#;
+    assert_eq!(run_program(src), "3");
+}
+
+#[test]
+fn test_match_nested_pattern() {
+    let src = r#"
+(type List [a] (| (Cons a (List a)) (Nil)))
+(def second (fn [xs]
+  (match xs
+    ((Cons h (Cons h2 _)) h2)
+    (_ 0))))
+(def main (fn [] (second (Cons 10 (Cons 20 Nil)))))
+"#;
+    assert_eq!(run_program(src), "20");
+}
