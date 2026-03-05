@@ -184,8 +184,8 @@ fn main() {
                 process::exit(1);
             }
             match krypton_typechecker::infer::infer_module(&module) {
-                Ok(schemes) => {
-                    for (name, scheme) in &schemes {
+                Ok(info) => {
+                    for (name, scheme) in &info.fn_types {
                         println!("{} : {}", name, scheme);
                     }
                 }

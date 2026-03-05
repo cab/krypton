@@ -281,6 +281,29 @@ fn test_match_four_variants() {
     assert_eq!(run_program(src), "3");
 }
 
+// Lambda / closure tests
+
+#[test]
+fn test_lambda_basic() {
+    let src = "(def main (fn [] (do (let f (fn [x] (+ x 1))) (f 5))))";
+    assert_eq!(run_program(src), "6");
+}
+
+#[test]
+fn test_lambda_capture() {
+    let src = "(def main (fn [] (do (let y 10) (let f (fn [x] (+ x y))) (f 5))))";
+    assert_eq!(run_program(src), "15");
+}
+
+#[test]
+fn test_higher_order() {
+    let src = r#"
+(def apply_fn (fn [f x] (f x)))
+(def main (fn [] (apply_fn (fn [x] (+ x 1)) 5)))
+"#;
+    assert_eq!(run_program(src), "6");
+}
+
 #[test]
 fn test_match_nested_pattern() {
     let src = r#"

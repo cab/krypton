@@ -117,7 +117,7 @@ fn parse_module(src: &str) -> Module {
 fn infer_module_types(src: &str) -> String {
     let module = parse_module(src);
     match infer::infer_module(&module) {
-        Ok(results) => results
+        Ok(info) => info.fn_types
             .iter()
             .map(|(name, scheme)| format!("{}: {}", name, scheme))
             .collect::<Vec<_>>()

@@ -17,8 +17,8 @@ fn infer_module_snapshot(source: &str) -> Result<String, String> {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     match infer::infer_module(&module) {
-        Ok(schemes) => {
-            let lines: Vec<String> = schemes
+        Ok(info) => {
+            let lines: Vec<String> = info.fn_types
                 .iter()
                 .map(|(name, scheme)| format!("{name}: {scheme}"))
                 .collect();

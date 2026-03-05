@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 
-use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, MatchArm, Module, Pattern, TypeDeclKind, TypeExpr};
+use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, MatchArm, Module, Pattern, Span, TypeDeclKind, TypeExpr};
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::types::Type;
-use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
+use ristretto_classfile::attributes::{Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, Field, FieldAccessFlags, FieldType, Method,
-    MethodAccessFlags, Version,
+    MethodAccessFlags, ReferenceKind, Version,
 };
 
 /// Java 21 class file version (major 65).
@@ -167,6 +167,21 @@ struct Compiler {
     nested_ifeq_patches: Vec<usize>,
     // Object class index for erased type variables
     object_class: u16,
+    // Lambda / closure support
+    lambda_counter: u16,
+    lambda_methods: Vec<Method>,
+    bootstrap_methods: Vec<BootstrapMethod>,
+    lambda_types: HashMap<Span, (Vec<JvmType>, JvmType)>,
+    /// For let-bound lambdas: var name -> (param_jvm_types, return_jvm_type)
+    local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
+    /// Lazily initialized cpool index for LambdaMetafactory.metafactory MethodHandle
+    metafactory_handle: Option<u16>,
+    /// FunN interface class indices by arity
+    fun_classes: HashMap<u8, u16>,
+    /// FunN.apply interface method refs by arity
+    fun_apply_refs: HashMap<u8, u16>,
+    /// Original typechecker types for top-level functions, for inspecting Fn-typed params
+    fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
 
 impl Compiler {
@@ -261,6 +276,15 @@ impl Compiler {
             fn_return_type: None,
             nested_ifeq_patches: Vec::new(),
             object_class,
+            lambda_counter: 0,
+            lambda_methods: Vec::new(),
+            bootstrap_methods: Vec::new(),
+            lambda_types: HashMap::new(),
+            local_fn_info: HashMap::new(),
+            metafactory_handle: None,
+            fun_classes: HashMap::new(),
+            fun_apply_refs: HashMap::new(),
+            fn_tc_types: HashMap::new(),
         };
 
         Ok((compiler, this_class, object_class))
@@ -281,6 +305,15 @@ impl Compiler {
                 }
             }
             Type::Var(_) => Ok(JvmType::StructRef(self.object_class)), // erased type variable → Object
+            Type::Fn(params, _) => {
+                let arity = params.len() as u8;
+                // Return FunN interface ref if registered, else Object
+                if let Some(&class_idx) = self.fun_classes.get(&arity) {
+                    Ok(JvmType::StructRef(class_idx))
+                } else {
+                    Ok(JvmType::StructRef(self.object_class))
+                }
+            }
             other => type_to_jvm_basic(other),
         }
     }
@@ -314,6 +347,7 @@ impl Compiler {
         self.frames.clear();
         self.fn_params.clear();
         self.fn_return_type = None;
+        self.local_fn_info.clear();
     }
 
     fn emit(&mut self, instr: Instruction) {
@@ -432,6 +466,9 @@ impl Compiler {
             Expr::Match {
                 scrutinee, arms, ..
             } => self.compile_match(scrutinee, arms, in_tail),
+            Expr::Lambda {
+                params, body, span, ..
+            } => self.compile_lambda(params, body, span),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -640,6 +677,14 @@ impl Compiler {
         body: &Option<Box<Expr>>,
         in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
+        // Check if the value is a lambda — record its type info for higher-order calls
+        let is_lambda = matches!(value, Expr::Lambda { .. });
+        let lambda_span = if let Expr::Lambda { span, .. } = value {
+            Some(*span)
+        } else {
+            None
+        };
+
         let ty = self.compile_expr(value, false)?;
         let slot = self.next_local;
         let slot_size = match ty {
@@ -656,6 +701,15 @@ impl Compiler {
         };
         self.emit(store);
         self.locals.insert(name.to_string(), (slot, ty));
+
+        // If the value was a lambda, record local_fn_info for higher-order calls
+        if is_lambda {
+            if let Some(span) = lambda_span {
+                if let Some((param_types, ret_type)) = self.lambda_types.get(&span).cloned() {
+                    self.local_fn_info.insert(name.to_string(), (param_types, ret_type));
+                }
+            }
+        }
 
         // Pop value from stack tracker
         self.pop_jvm_type(ty);
@@ -792,6 +846,34 @@ impl Compiler {
             self.push_jvm_type(result_type);
 
             return Ok(result_type);
+        }
+
+        // Check if this is a higher-order call (calling a local variable holding a lambda)
+        if let Some(&(slot, jvm_ty)) = self.locals.get(name) {
+            if let Some((_ho_param_types, ho_ret_type)) = self.local_fn_info.get(name).cloned() {
+                let arity = args.len() as u8;
+                // Load the function object
+                self.emit(Instruction::Aload(slot as u8));
+                self.push_jvm_type(jvm_ty);
+                // Compile and box each argument
+                for arg in args {
+                    let arg_type = self.compile_expr(arg, false)?;
+                    self.box_if_needed(arg_type);
+                }
+                // invokeinterface FunN.apply
+                let apply_ref = self.fun_apply_refs[&arity];
+                self.emit(Instruction::Invokeinterface(apply_ref, arity + 1));
+                // Pop args + receiver
+                for _ in 0..arity {
+                    self.pop_type(); // each boxed arg
+                }
+                self.pop_jvm_type(jvm_ty); // receiver
+                // Push Object result
+                self.push_type(VerificationType::Object { cpool_index: self.object_class });
+                // Unbox if needed
+                self.unbox_if_needed(ho_ret_type);
+                return Ok(ho_ret_type);
+            }
         }
 
         // Look up function info (need to clone out to avoid borrow conflict)
@@ -1057,6 +1139,352 @@ impl Compiler {
                 self.push_type(VerificationType::Integer);
             }
             _ => {} // already a reference type, no unboxing needed
+        }
+    }
+
+    /// Ensure a FunN interface is registered in the constant pool.
+    fn ensure_fun_interface(&mut self, arity: u8) -> Result<(), CodegenError> {
+        if self.fun_classes.contains_key(&arity) {
+            return Ok(());
+        }
+        let class_name = format!("Fun{arity}");
+        let class_idx = self.cp.add_class(&class_name)?;
+        let class_desc = format!("L{class_name};");
+        self.class_descriptors.insert(class_idx, class_desc);
+
+        // Build apply descriptor: (Object, ..., Object)Object
+        let mut apply_desc = String::from("(");
+        for _ in 0..arity {
+            apply_desc.push_str("Ljava/lang/Object;");
+        }
+        apply_desc.push_str(")Ljava/lang/Object;");
+
+        let apply_ref = self.cp.add_interface_method_ref(class_idx, "apply", &apply_desc)?;
+        self.fun_classes.insert(arity, class_idx);
+        self.fun_apply_refs.insert(arity, apply_ref);
+        Ok(())
+    }
+
+    /// Initialize the LambdaMetafactory bootstrap method handle (lazy, once).
+    fn ensure_metafactory(&mut self) -> Result<u16, CodegenError> {
+        if let Some(handle) = self.metafactory_handle {
+            return Ok(handle);
+        }
+        let lmf_class = self.cp.add_class("java/lang/invoke/LambdaMetafactory")?;
+        let metafactory_ref = self.cp.add_method_ref(
+            lmf_class,
+            "metafactory",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
+        )?;
+        let handle = self.cp.add_method_handle(ReferenceKind::InvokeStatic, metafactory_ref)?;
+        self.metafactory_handle = Some(handle);
+        Ok(handle)
+    }
+
+    /// Compile a lambda expression.
+    fn compile_lambda(
+        &mut self,
+        params: &[krypton_parser::ast::Param],
+        body: &Expr,
+        span: &Span,
+    ) -> Result<JvmType, CodegenError> {
+        let arity = params.len() as u8;
+
+        // Look up lambda types from typechecker
+        let (param_jvm_types, _return_jvm_type) = self.lambda_types.get(span).cloned()
+            .ok_or_else(|| CodegenError::TypeError("lambda type info not found".to_string()))?;
+
+        // Ensure FunN interface exists
+        self.ensure_fun_interface(arity)?;
+        let fun_class_idx = self.fun_classes[&arity];
+
+        // Find captured variables: scan body for Var names that are in self.locals but not lambda params
+        let param_names: std::collections::HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        let mut captures: Vec<(String, u16, JvmType)> = Vec::new();
+        self.collect_captures(body, &param_names, &mut captures);
+        // Deduplicate
+        let mut seen = std::collections::HashSet::new();
+        captures.retain(|(name, _, _)| seen.insert(name.clone()));
+
+        // Save compiler state for the outer method
+        let saved_code = std::mem::take(&mut self.code);
+        let saved_locals = std::mem::take(&mut self.locals);
+        let saved_local_types = std::mem::take(&mut self.local_types);
+        let saved_next_local = self.next_local;
+        let saved_stack_types = std::mem::take(&mut self.stack_types);
+        let saved_frames = std::mem::take(&mut self.frames);
+        let saved_fn_params = std::mem::take(&mut self.fn_params);
+        let saved_fn_return_type = self.fn_return_type.take();
+        let saved_local_fn_info = std::mem::take(&mut self.local_fn_info);
+
+        // Reset for lambda body compilation
+        self.code.clear();
+        self.locals.clear();
+        self.local_types.clear();
+        self.next_local = 0;
+        self.stack_types.clear();
+        self.frames.clear();
+        self.fn_params.clear();
+        self.fn_return_type = None;
+
+        // Register captured vars as first params (all boxed to Object)
+        for (cap_name, _, cap_type) in &captures {
+            let slot = self.next_local;
+            self.locals.insert(cap_name.clone(), (slot, *cap_type));
+            self.local_types.push(VerificationType::Object { cpool_index: self.object_class });
+            self.next_local += 1;
+        }
+
+        // Register lambda params (all as Object, will unbox)
+        let mut lambda_param_slots = Vec::new();
+        for (i, p) in params.iter().enumerate() {
+            let slot = self.next_local;
+            // Store as Object initially
+            self.locals.insert(p.name.clone(), (slot, JvmType::StructRef(self.object_class)));
+            self.local_types.push(VerificationType::Object { cpool_index: self.object_class });
+            lambda_param_slots.push((slot, param_jvm_types[i]));
+            self.next_local += 1;
+        }
+
+        // Unbox params from Object to actual types
+        for (i, p) in params.iter().enumerate() {
+            let actual_type = param_jvm_types[i];
+            if matches!(actual_type, JvmType::Long | JvmType::Double | JvmType::Int) {
+                let slot = lambda_param_slots[i].0;
+                // Load the Object param
+                self.emit(Instruction::Aload(slot as u8));
+                self.push_type(VerificationType::Object { cpool_index: self.object_class });
+                // Unbox
+                self.unbox_if_needed(actual_type);
+                // Store back to a new slot with correct type
+                let new_slot = self.next_local;
+                let slot_size = match actual_type {
+                    JvmType::Long | JvmType::Double => 2,
+                    _ => 1,
+                };
+                self.next_local += slot_size;
+                let store = match actual_type {
+                    JvmType::Long => Instruction::Lstore(new_slot as u8),
+                    JvmType::Double => Instruction::Dstore(new_slot as u8),
+                    JvmType::Int => Instruction::Istore(new_slot as u8),
+                    _ => unreachable!(),
+                };
+                self.emit(store);
+                self.pop_jvm_type(actual_type);
+                let vtypes = self.jvm_type_to_vtypes(actual_type);
+                self.local_types.extend(vtypes);
+                self.locals.insert(p.name.clone(), (new_slot, actual_type));
+            }
+        }
+
+        // Also unbox captured vars if they are primitive types
+        for (cap_name, _, cap_type) in &captures {
+            let actual_type = *cap_type;
+            if matches!(actual_type, JvmType::Long | JvmType::Double | JvmType::Int) {
+                let (slot, _) = self.locals[cap_name];
+                self.emit(Instruction::Aload(slot as u8));
+                self.push_type(VerificationType::Object { cpool_index: self.object_class });
+                self.unbox_if_needed(actual_type);
+                let new_slot = self.next_local;
+                let slot_size = match actual_type {
+                    JvmType::Long | JvmType::Double => 2,
+                    _ => 1,
+                };
+                self.next_local += slot_size;
+                let store = match actual_type {
+                    JvmType::Long => Instruction::Lstore(new_slot as u8),
+                    JvmType::Double => Instruction::Dstore(new_slot as u8),
+                    JvmType::Int => Instruction::Istore(new_slot as u8),
+                    _ => unreachable!(),
+                };
+                self.emit(store);
+                self.pop_jvm_type(actual_type);
+                let vtypes = self.jvm_type_to_vtypes(actual_type);
+                self.local_types.extend(vtypes);
+                self.locals.insert(cap_name.clone(), (new_slot, actual_type));
+            }
+        }
+
+        // Compile the body
+        let body_type = self.compile_expr(body, false)?;
+
+        // Box the result if needed
+        self.box_if_needed(body_type);
+
+        // Return
+        self.emit(Instruction::Areturn);
+
+        // Build the lambda method
+        let lambda_name = format!("lambda${}", self.lambda_counter);
+        self.lambda_counter += 1;
+
+        // Descriptor: all Object params (captures + lambda params) -> Object
+        let total_params = captures.len() + params.len();
+        let mut lambda_desc = String::from("(");
+        for _ in 0..total_params {
+            lambda_desc.push_str("Ljava/lang/Object;");
+        }
+        lambda_desc.push_str(")Ljava/lang/Object;");
+
+        let lambda_name_idx = self.cp.add_utf8(&lambda_name)?;
+        let lambda_desc_idx = self.cp.add_utf8(&lambda_desc)?;
+
+        let stack_map_frames = self.build_stack_map_frames();
+        let code_attributes = if stack_map_frames.is_empty() {
+            vec![]
+        } else {
+            vec![Attribute::StackMapTable {
+                name_index: self.smt_name,
+                frames: stack_map_frames,
+            }]
+        };
+
+        let lambda_method = Method {
+            access_flags: MethodAccessFlags::PRIVATE | MethodAccessFlags::STATIC | MethodAccessFlags::SYNTHETIC,
+            name_index: lambda_name_idx,
+            descriptor_index: lambda_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: self.code_utf8,
+                max_stack: 20,
+                max_locals: self.next_local,
+                code: std::mem::take(&mut self.code),
+                exception_table: vec![],
+                attributes: code_attributes,
+            }],
+        };
+
+        self.lambda_methods.push(lambda_method);
+
+        // Restore compiler state
+        self.code = saved_code;
+        self.locals = saved_locals;
+        self.local_types = saved_local_types;
+        self.next_local = saved_next_local;
+        self.stack_types = saved_stack_types;
+        self.frames = saved_frames;
+        self.fn_params = saved_fn_params;
+        self.fn_return_type = saved_fn_return_type;
+        self.local_fn_info = saved_local_fn_info;
+
+        // Now set up invokedynamic in the outer method
+
+        // 1. Ensure metafactory bootstrap handle
+        let bsm_handle = self.ensure_metafactory()?;
+
+        // 2. Create method ref for the lambda impl
+        let this_class = self.this_class;
+        let lambda_impl_ref = self.cp.add_method_ref(this_class, &lambda_name, &lambda_desc)?;
+        let lambda_impl_handle = self.cp.add_method_handle(ReferenceKind::InvokeStatic, lambda_impl_ref)?;
+
+        // 3. SAM method type: (Object, ...)Object for the apply method
+        let mut sam_desc = String::from("(");
+        for _ in 0..arity {
+            sam_desc.push_str("Ljava/lang/Object;");
+        }
+        sam_desc.push_str(")Ljava/lang/Object;");
+        let sam_type = self.cp.add_method_type(&sam_desc)?;
+        let instantiated_type = self.cp.add_method_type(&sam_desc)?;
+
+        // 4. Create bootstrap method entry
+        let bsm_index = self.bootstrap_methods.len() as u16;
+        self.bootstrap_methods.push(BootstrapMethod {
+            bootstrap_method_ref: bsm_handle,
+            arguments: vec![sam_type, lambda_impl_handle, instantiated_type],
+        });
+
+        // 5. Build the call site descriptor
+        // If no captures: ()LFunN;
+        // If captures: (Object, ...)LFunN;  (one Object per capture)
+        let fun_class_name = format!("Fun{arity}");
+        let mut callsite_desc = String::from("(");
+        for _ in 0..captures.len() {
+            callsite_desc.push_str("Ljava/lang/Object;");
+        }
+        callsite_desc.push_str(&format!(")L{fun_class_name};"));
+
+        let indy_idx = self.cp.add_invoke_dynamic(bsm_index, "apply", &callsite_desc)?;
+
+        // 6. Push captured variables onto stack (boxed)
+        for (_cap_name, cap_slot, cap_type) in &captures {
+            let load = match cap_type {
+                JvmType::Long => Instruction::Lload(*cap_slot as u8),
+                JvmType::Double => Instruction::Dload(*cap_slot as u8),
+                JvmType::Int => Instruction::Iload(*cap_slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(*cap_slot as u8),
+            };
+            self.emit(load);
+            self.push_jvm_type(*cap_type);
+            self.box_if_needed(*cap_type);
+        }
+
+        // 7. Emit invokedynamic
+        self.emit(Instruction::Invokedynamic(indy_idx));
+
+        // Pop capture args from stack
+        for _ in 0..captures.len() {
+            self.pop_type(); // each boxed capture is a single Object ref
+        }
+
+        // Push result type
+        let result_type = JvmType::StructRef(fun_class_idx);
+        self.push_jvm_type(result_type);
+
+        Ok(result_type)
+    }
+
+    /// Collect captured variables from an expression.
+    fn collect_captures(
+        &self,
+        expr: &Expr,
+        param_names: &std::collections::HashSet<&str>,
+        captures: &mut Vec<(String, u16, JvmType)>,
+    ) {
+        match expr {
+            Expr::Var { name, .. } => {
+                if !param_names.contains(name.as_str()) {
+                    if let Some(&(slot, ty)) = self.locals.get(name) {
+                        captures.push((name.clone(), slot, ty));
+                    }
+                }
+            }
+            Expr::BinaryOp { lhs, rhs, .. } => {
+                self.collect_captures(lhs, param_names, captures);
+                self.collect_captures(rhs, param_names, captures);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                self.collect_captures(operand, param_names, captures);
+            }
+            Expr::If { cond, then_, else_, .. } => {
+                self.collect_captures(cond, param_names, captures);
+                self.collect_captures(then_, param_names, captures);
+                self.collect_captures(else_, param_names, captures);
+            }
+            Expr::Let { value, body, .. } => {
+                self.collect_captures(value, param_names, captures);
+                if let Some(body) = body {
+                    self.collect_captures(body, param_names, captures);
+                }
+            }
+            Expr::Do { exprs, .. } => {
+                for e in exprs {
+                    self.collect_captures(e, param_names, captures);
+                }
+            }
+            Expr::App { func, args, .. } => {
+                self.collect_captures(func, param_names, captures);
+                for a in args {
+                    self.collect_captures(a, param_names, captures);
+                }
+            }
+            Expr::Lambda { body, params, .. } => {
+                // For nested lambdas, the inner params shadow
+                let mut inner_params = param_names.clone();
+                for p in params {
+                    inner_params.insert(&p.name);
+                }
+                self.collect_captures(body, &inner_params, captures);
+            }
+            _ => {}
         }
     }
 
@@ -1662,9 +2090,12 @@ impl Compiler {
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
+        // Get typechecker types for this function's params (for detecting Fn-typed params)
+        let tc_types = self.fn_tc_types.get(&decl.name).cloned();
+
         // Register parameters as locals and save fn_params for recur
         let mut fn_params = Vec::new();
-        for (param, &jvm_ty) in decl.params.iter().zip(param_types.iter()) {
+        for (i, (param, &jvm_ty)) in decl.params.iter().zip(param_types.iter()).enumerate() {
             let slot = self.next_local;
             let slot_size: u16 = match jvm_ty {
                 JvmType::Long | JvmType::Double => 2,
@@ -1677,6 +2108,20 @@ impl Compiler {
             // Track local verification types
             let vtypes = self.jvm_type_to_vtypes(jvm_ty);
             self.local_types.extend(vtypes);
+
+            // If this param is function-typed, register in local_fn_info
+            if let Some((ref tc_param_types, _)) = tc_types {
+                if let Type::Fn(inner_params, inner_ret) = &tc_param_types[i] {
+                    let inner_param_jvm: Vec<JvmType> = inner_params
+                        .iter()
+                        .map(|t| self.type_to_jvm(t))
+                        .collect::<Result<_, _>>()?;
+                    let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
+                    let arity = inner_params.len() as u8;
+                    self.ensure_fun_interface(arity)?;
+                    self.local_fn_info.insert(param.name.clone(), (inner_param_jvm, inner_ret_jvm));
+                }
+            }
         }
         self.fn_params = fn_params;
         self.fn_return_type = Some(return_type);
@@ -1803,7 +2248,19 @@ impl Compiler {
 
         let mut methods = vec![constructor];
         methods.extend(extra_methods);
+        // Add lambda methods
+        methods.extend(std::mem::take(&mut self.lambda_methods));
         methods.push(main_method);
+
+        // Build class attributes (BootstrapMethods if any)
+        let mut class_attributes = Vec::new();
+        if !self.bootstrap_methods.is_empty() {
+            let bsm_name = self.cp.add_utf8("BootstrapMethods")?;
+            class_attributes.push(Attribute::BootstrapMethods {
+                name_index: bsm_name,
+                methods: std::mem::take(&mut self.bootstrap_methods),
+            });
+        }
 
         let class_file = ClassFile {
             version: JAVA_21,
@@ -1812,6 +2269,7 @@ impl Compiler {
             this_class,
             super_class: object_class,
             methods,
+            attributes: class_attributes,
             ..Default::default()
         };
 
@@ -2198,10 +2656,15 @@ pub fn compile_module(
         .class_descriptors
         .insert(object_class, "Ljava/lang/Object;".to_string());
 
-    // Run the typechecker to get function types (includes constructors)
-    let type_info = infer_module(module).map_err(|e| {
+    // Run the typechecker to get function types (includes constructors) and lambda types
+    let module_type_info = infer_module(module).map_err(|e| {
         CodegenError::TypeError(format!("{e:?}"))
     })?;
+    let type_info = module_type_info.fn_types;
+
+    // We'll convert lambda types after struct/sum types are registered
+    // (so type_to_jvm can resolve Named types). Store raw lambda types for now.
+    let raw_lambda_types = module_type_info.lambda_types;
 
     // Collect struct declarations from AST
     let struct_decls: Vec<_> = module
@@ -2400,6 +2863,39 @@ pub fn compile_module(
         result_classes.push((sum_name.clone(), interface_bytes));
     }
 
+    // Pre-scan for function-typed params so we can register FunN interfaces first
+    for (name, scheme) in &type_info {
+        if let Type::Fn(param_tys, _) = &scheme.ty {
+            if compiler.struct_info.contains_key(name)
+                || compiler.variant_to_sum.contains_key(name)
+            {
+                continue;
+            }
+            for pt in param_tys {
+                if let Type::Fn(inner_params, _) = pt {
+                    let arity = inner_params.len() as u8;
+                    compiler.ensure_fun_interface(arity)?;
+                }
+            }
+        }
+    }
+
+    // Also pre-scan lambda types to register FunN interfaces
+    for (_, (param_types, _)) in &raw_lambda_types {
+        let arity = param_types.len() as u8;
+        compiler.ensure_fun_interface(arity)?;
+    }
+
+    // Convert lambda types from Type to JvmType
+    for (span, (param_types, ret_type)) in &raw_lambda_types {
+        let jvm_params: Vec<JvmType> = param_types
+            .iter()
+            .map(|t| compiler.type_to_jvm(t))
+            .collect::<Result<_, _>>()?;
+        let jvm_ret = compiler.type_to_jvm(ret_type)?;
+        compiler.lambda_types.insert(*span, (jvm_params, jvm_ret));
+    }
+
     // Register all functions (including main) in the function registry.
     // Skip constructor entries (they're handled as struct/variant constructors).
     for (name, scheme) in &type_info {
@@ -2430,6 +2926,11 @@ pub fn compile_module(
                     param_types,
                     return_type,
                 },
+            );
+            // Store TC types for detecting Fn-typed params in compile_function
+            compiler.fn_tc_types.insert(
+                name.clone(),
+                (param_tys.clone(), (**ret_ty).clone()),
             );
         }
     }
@@ -2495,10 +2996,59 @@ pub fn compile_module(
 
     compiler.emit(Instruction::Return);
 
+    // Generate FunN interface class files
+    let fun_arities: Vec<u8> = compiler.fun_classes.keys().copied().collect();
+    for arity in fun_arities {
+        let fun_bytes = generate_fun_interface(arity)?;
+        result_classes.push((format!("Fun{arity}"), fun_bytes));
+    }
+
     let main_bytes = compiler.build_class(this_class, object_class, extra_methods)?;
     result_classes.push((class_name.to_string(), main_bytes));
 
     Ok(result_classes)
+}
+
+/// Generate a functional interface class file: `public interface FunN { Object apply(Object, ...); }`
+fn generate_fun_interface(arity: u8) -> Result<Vec<u8>, CodegenError> {
+    let class_name = format!("Fun{arity}");
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(&class_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+
+    // Build apply method descriptor: (Object, ..., Object)Object
+    let mut apply_desc = String::from("(");
+    for _ in 0..arity {
+        apply_desc.push_str("Ljava/lang/Object;");
+    }
+    apply_desc.push_str(")Ljava/lang/Object;");
+
+    let apply_name = cp.add_utf8("apply")?;
+    let apply_desc_idx = cp.add_utf8(&apply_desc)?;
+
+    let apply_method = Method {
+        access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
+        name_index: apply_name,
+        descriptor_index: apply_desc_idx,
+        attributes: vec![],
+    };
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC
+            | ClassAccessFlags::INTERFACE
+            | ClassAccessFlags::ABSTRACT,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        methods: vec![apply_method],
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
 }
 
 /// Generate a minimal valid `.class` file containing a no-op

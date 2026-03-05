@@ -1,11 +1,18 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, UnaryOp};
+use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp};
 
 use crate::scc;
 use crate::type_registry::{self, TypeRegistry};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
+
+/// Result of type inference for a module.
+pub struct ModuleTypeInfo {
+    pub fn_types: Vec<(String, TypeScheme)>,
+    /// Maps each lambda's span (start, end) to its (param_types, return_type).
+    pub lambda_types: HashMap<Span, (Vec<Type>, Type)>,
+}
 
 /// Collect free type variables in a type.
 fn free_vars(ty: &Type) -> HashSet<TypeVarId> {
@@ -87,7 +94,7 @@ pub fn infer_expr(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) -> Result<Type, SpannedTypeError> {
-    infer_expr_inner(expr, env, subst, gen, None)
+    infer_expr_inner(expr, env, subst, gen, None, None)
 }
 
 /// Infer the type of an expression, with optional access to the type registry
@@ -98,6 +105,7 @@ fn infer_expr_inner(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
+    mut lambda_types: Option<&mut HashMap<Span, (Vec<Type>, Type)>>,
 ) -> Result<Type, SpannedTypeError> {
     match expr {
         Expr::Lit { value, .. } => match value {
@@ -119,7 +127,7 @@ fn infer_expr_inner(
             )),
         },
 
-        Expr::Lambda { params, body, .. } => {
+        Expr::Lambda { params, body, span, .. } => {
             let mut param_types = Vec::new();
             env.push_scope();
             for p in params {
@@ -127,20 +135,23 @@ fn infer_expr_inner(
                 param_types.push(tv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(tv));
             }
-            let body_ty = infer_expr_inner(body, env, subst, gen, registry)?;
+            let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             env.pop_scope();
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
             let body_ty = subst.apply(&body_ty);
+            if let Some(lt) = lambda_types {
+                lt.insert(*span, (param_types.clone(), body_ty.clone()));
+            }
             Ok(Type::Fn(param_types, Box::new(body_ty)))
         }
 
         Expr::App {
             func, args, span, ..
         } => {
-            let func_ty = infer_expr_inner(func, env, subst, gen, registry)?;
+            let func_ty = infer_expr_inner(func, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             let mut arg_types = Vec::new();
             for a in args {
-                arg_types.push(infer_expr_inner(a, env, subst, gen, registry)?);
+                arg_types.push(infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut())?);
             }
 
             // Check if the function type is concretely not a function
@@ -162,13 +173,13 @@ fn infer_expr_inner(
             body,
             ..
         } => {
-            let val_ty = infer_expr_inner(value, env, subst, gen, registry)?;
+            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             match body {
                 Some(body) => {
                     let scheme = generalize(&val_ty, env, subst);
                     env.push_scope();
                     env.bind(name.clone(), scheme);
-                    let body_ty = infer_expr_inner(body, env, subst, gen, registry)?;
+                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types)?;
                     env.pop_scope();
                     Ok(body_ty)
                 }
@@ -188,11 +199,11 @@ fn infer_expr_inner(
             span,
             ..
         } => {
-            let cond_ty = infer_expr_inner(cond, env, subst, gen, registry)?;
+            let cond_ty = infer_expr_inner(cond, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             unify(&cond_ty, &Type::Bool, subst)
                 .map_err(|e| spanned(e, *span))?;
-            let then_ty = infer_expr_inner(then_, env, subst, gen, registry)?;
-            let else_ty = infer_expr_inner(else_, env, subst, gen, registry)?;
+            let then_ty = infer_expr_inner(then_, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let else_ty = infer_expr_inner(else_, env, subst, gen, registry, lambda_types)?;
             unify(&then_ty, &else_ty, subst)
                 .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&then_ty))
@@ -206,7 +217,7 @@ fn infer_expr_inner(
             }
             let mut last_ty = Type::Unit;
             for e in exprs {
-                last_ty = infer_expr_inner(e, env, subst, gen, registry)?;
+                last_ty = infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             }
             env.pop_scope();
             Ok(last_ty)
@@ -215,8 +226,8 @@ fn infer_expr_inner(
         Expr::BinaryOp {
             op, lhs, rhs, span, ..
         } => {
-            let lhs_ty = infer_expr_inner(lhs, env, subst, gen, registry)?;
-            let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry)?;
+            let lhs_ty = infer_expr_inner(lhs, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry, lambda_types)?;
             match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                     unify(&lhs_ty, &Type::Int, subst)
@@ -238,7 +249,7 @@ fn infer_expr_inner(
         Expr::UnaryOp {
             op, operand, span, ..
         } => {
-            let operand_ty = infer_expr_inner(operand, env, subst, gen, registry)?;
+            let operand_ty = infer_expr_inner(operand, env, subst, gen, registry, lambda_types)?;
             match op {
                 UnaryOp::Neg => {
                     unify(&operand_ty, &Type::Int, subst)
@@ -252,31 +263,31 @@ fn infer_expr_inner(
             // Infer arg types for unification side effects; return fresh var
             // that will be unified via the enclosing if-else branches.
             for a in args {
-                infer_expr_inner(a, env, subst, gen, registry)?;
+                infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             }
             Ok(Type::Var(gen.fresh()))
         }
 
         Expr::FieldAccess { expr: target, field, span } => {
-            let target_ty = infer_expr_inner(target, env, subst, gen, registry)?;
+            let target_ty = infer_expr_inner(target, env, subst, gen, registry, lambda_types)?;
             let resolved = subst.apply(&target_ty);
             resolve_field_access(&resolved, field, *span, registry)
         }
 
         Expr::StructUpdate { base, fields, span } => {
-            let base_ty = infer_expr_inner(base, env, subst, gen, registry)?;
+            let base_ty = infer_expr_inner(base, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             let resolved = subst.apply(&base_ty);
-            resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry)?;
+            resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry, lambda_types)?;
             Ok(resolved)
         }
 
         Expr::Match { scrutinee, arms, span } => {
-            let scrutinee_ty = infer_expr_inner(scrutinee, env, subst, gen, registry)?;
+            let scrutinee_ty = infer_expr_inner(scrutinee, env, subst, gen, registry, lambda_types.as_deref_mut())?;
             let result_ty = Type::Var(gen.fresh());
             for arm in arms {
                 env.push_scope();
                 check_pattern(&arm.pattern, &subst.apply(&scrutinee_ty), env, subst, gen, registry, *span)?;
-                let body_ty = infer_expr_inner(&arm.body, env, subst, gen, registry)?;
+                let body_ty = infer_expr_inner(&arm.body, env, subst, gen, registry, lambda_types.as_deref_mut())?;
                 unify(&result_ty, &body_ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
             }
@@ -489,6 +500,7 @@ fn resolve_struct_update(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
+    mut lambda_types: Option<&mut HashMap<Span, (Vec<Type>, Type)>>,
 ) -> Result<(), SpannedTypeError> {
     match resolved_ty {
         Type::Named(name, type_args) => {
@@ -505,7 +517,7 @@ fn resolve_struct_update(
                         match record_field {
                             Some((_, expected_ty)) => {
                                 let expected = instantiate_field_type(expected_ty, info, type_args);
-                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry)?;
+                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut())?;
                                 unify(&actual_ty, &expected, subst)
                                     .map_err(|e| spanned(e, span))?;
                             }
@@ -547,11 +559,12 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 /// Uses SCC (strongly connected component) analysis to process definitions
 /// in dependency order. Functions within the same SCC are inferred together
 /// as a mutually recursive group, then generalized before later SCCs see them.
-pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
+pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
     let mut registry = TypeRegistry::new();
+    let mut lambda_types: HashMap<Span, (Vec<Type>, Type)> = HashMap::new();
 
     // First pass: process all DefType declarations
     let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
@@ -604,7 +617,7 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
                 param_types.push(ptv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
-            let body_ty = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry))?;
+            let body_ty = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&mut lambda_types))?;
             env.pop_scope();
 
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
@@ -633,5 +646,18 @@ pub fn infer_module(module: &Module) -> Result<Vec<(String, TypeScheme)>, Spanne
             .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
     );
 
-    Ok(results)
+    // Apply final substitution to lambda types
+    let lambda_types = lambda_types
+        .into_iter()
+        .map(|(span, (params, ret))| {
+            let params = params.iter().map(|t| subst.apply(t)).collect();
+            let ret = subst.apply(&ret);
+            (span, (params, ret))
+        })
+        .collect();
+
+    Ok(ModuleTypeInfo {
+        fn_types: results,
+        lambda_types,
+    })
 }
