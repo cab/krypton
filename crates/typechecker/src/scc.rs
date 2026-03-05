@@ -10,7 +10,7 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
                 refs.insert(name.clone());
             }
         }
-        Expr::Lit { .. } | Expr::Self_ { .. } => {}
+        Expr::Lit { .. } => {}
         Expr::App { func, args, .. } => {
             collect_refs(func, names, refs);
             for a in args {
@@ -66,27 +66,6 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
             collect_refs(expr, names, refs);
         }
         Expr::Recur { args, .. } => {
-            for a in args {
-                collect_refs(a, names, refs);
-            }
-        }
-        Expr::Receive { arms, timeout, .. } => {
-            for arm in arms {
-                collect_refs(&arm.body, names, refs);
-            }
-            if let Some(t) = timeout {
-                collect_refs(&t.duration, names, refs);
-                collect_refs(&t.body, names, refs);
-            }
-        }
-        Expr::Send {
-            target, message, ..
-        } => {
-            collect_refs(target, names, refs);
-            collect_refs(message, names, refs);
-        }
-        Expr::Spawn { func, args, .. } => {
-            collect_refs(func, names, refs);
             for a in args {
                 collect_refs(a, names, refs);
             }

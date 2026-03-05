@@ -135,44 +135,6 @@ fn test_nested_arithmetic() {
 }
 
 #[test]
-fn test_actor_expressions() {
-    let s = (0, 0);
-    let exprs = vec![
-        Expr::Spawn {
-            func: Box::new(Expr::Var { name: "counter".into(), span: s }),
-            args: vec![Expr::Lit { value: Lit::Int(0), span: s }],
-            span: s,
-        },
-        Expr::Send {
-            target: Box::new(Expr::Var { name: "pid".into(), span: s }),
-            message: Box::new(Expr::Var { name: "msg".into(), span: s }),
-            span: s,
-        },
-        Expr::Receive {
-            arms: vec![
-                MatchArm {
-                    pattern: Pattern::Constructor {
-                        name: "Inc".into(),
-                        args: vec![],
-                        span: s,
-                    },
-                    body: Expr::Lit { value: Lit::Int(1), span: s },
-                    span: s,
-                },
-            ],
-            timeout: Some(Timeout {
-                duration: Box::new(Expr::Lit { value: Lit::Int(5000), span: s }),
-                body: Box::new(Expr::Lit { value: Lit::Unit, span: s }),
-                span: s,
-            }),
-            span: s,
-        },
-        Expr::Self_ { span: s },
-    ];
-    assert_yaml_snapshot!(exprs);
-}
-
-#[test]
 fn test_lambda_let_do_if() {
     let s = (0, 0);
     let exprs = vec![

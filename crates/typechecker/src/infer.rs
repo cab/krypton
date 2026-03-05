@@ -382,18 +382,6 @@ fn infer_expr_inner(
         Expr::List { span, .. } => Err(spanned(
             TypeError::UnsupportedExpr { description: "list literals".to_string() }, *span,
         )),
-        Expr::Receive { span, .. } => Err(spanned(
-            TypeError::UnsupportedExpr { description: "receive expressions".to_string() }, *span,
-        )),
-        Expr::Send { span, .. } => Err(spanned(
-            TypeError::UnsupportedExpr { description: "send expressions".to_string() }, *span,
-        )),
-        Expr::Spawn { span, .. } => Err(spanned(
-            TypeError::UnsupportedExpr { description: "spawn expressions".to_string() }, *span,
-        )),
-        Expr::Self_ { span, .. } => Err(spanned(
-            TypeError::UnsupportedExpr { description: "self() expressions".to_string() }, *span,
-        )),
         Expr::QuestionMark { span, .. } => Err(spanned(
             TypeError::UnsupportedExpr { description: "? operator".to_string() }, *span,
         )),

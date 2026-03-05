@@ -118,7 +118,6 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             name: name.clone(),
             span: (0, 0),
         },
-        Expr::Self_ { .. } => Expr::Self_ { span: (0, 0) },
         Expr::BinaryOp { op, lhs, rhs, .. } => Expr::BinaryOp {
             op: op.clone(),
             lhs: Box::new(zero_spans_expr(lhs)),
@@ -199,27 +198,6 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
         },
         Expr::Recur { args, .. } => Expr::Recur {
             args: args.iter().map(zero_spans_expr).collect(),
-            span: (0, 0),
-        },
-        Expr::Send {
-            target, message, ..
-        } => Expr::Send {
-            target: Box::new(zero_spans_expr(target)),
-            message: Box::new(zero_spans_expr(message)),
-            span: (0, 0),
-        },
-        Expr::Spawn { func, args, .. } => Expr::Spawn {
-            func: Box::new(zero_spans_expr(func)),
-            args: args.iter().map(zero_spans_expr).collect(),
-            span: (0, 0),
-        },
-        Expr::Receive { arms, timeout, .. } => Expr::Receive {
-            arms: arms.iter().map(zero_spans_match_arm).collect(),
-            timeout: timeout.as_ref().map(|t| Timeout {
-                duration: Box::new(zero_spans_expr(&t.duration)),
-                body: Box::new(zero_spans_expr(&t.body)),
-                span: (0, 0),
-            }),
             span: (0, 0),
         },
         Expr::StructLit { name, fields, .. } => Expr::StructLit {
@@ -419,26 +397,6 @@ fn roundtrip_question_mark() {
 #[test]
 fn roundtrip_recur() {
     assert_roundtrip("(def f (fn [n] (recur (- n 1))))");
-}
-
-#[test]
-fn roundtrip_send() {
-    assert_roundtrip("(def f (fn [pid msg] (send pid msg)))");
-}
-
-#[test]
-fn roundtrip_spawn() {
-    assert_roundtrip("(def f (fn [] (spawn handler 1 2)))");
-}
-
-#[test]
-fn roundtrip_receive() {
-    assert_roundtrip("(def f (fn [] (receive (x x))))");
-}
-
-#[test]
-fn roundtrip_self() {
-    assert_roundtrip("(def f (fn [] self))");
 }
 
 #[test]

@@ -9,10 +9,10 @@ expression: "lex(\"def fn let if match type do receive recur send spawn self own
 - Match
 - Type
 - Do
-- Receive
+- Ident: receive
 - Recur
-- Send
-- Spawn
+- Ident: send
+- Ident: spawn
 - Self_
 - Own
 - Trait

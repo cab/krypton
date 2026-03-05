@@ -163,19 +163,6 @@ fn check_expr(
             Ok(())
         }
 
-        Expr::Send { target, message, .. } => {
-            check_expr(target, owned, consumed)?;
-            check_expr(message, owned, consumed)
-        }
-
-        Expr::Spawn { func, args, .. } => {
-            check_expr(func, owned, consumed)?;
-            for a in args {
-                check_expr(a, owned, consumed)?;
-            }
-            Ok(())
-        }
-
         Expr::QuestionMark { expr, .. } => {
             check_expr(expr, owned, consumed)
         }
@@ -187,7 +174,7 @@ fn check_expr(
             Ok(())
         }
 
-        // Lit, Self_, Receive — no owned vars to consume
-        Expr::Lit { .. } | Expr::Self_ { .. } | Expr::Receive { .. } => Ok(()),
+        // Lit — no owned vars to consume
+        Expr::Lit { .. } => Ok(()),
     }
 }

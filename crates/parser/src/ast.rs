@@ -130,24 +130,6 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
-    Receive {
-        arms: Vec<MatchArm>,
-        timeout: Option<Timeout>,
-        span: Span,
-    },
-    Send {
-        target: Box<Expr>,
-        message: Box<Expr>,
-        span: Span,
-    },
-    Spawn {
-        func: Box<Expr>,
-        args: Vec<Expr>,
-        span: Span,
-    },
-    Self_ {
-        span: Span,
-    },
     QuestionMark {
         expr: Box<Expr>,
         span: Span,
@@ -187,13 +169,6 @@ pub enum Expr {
         body: Option<Box<Expr>>,
         span: Span,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Timeout {
-    pub duration: Box<Expr>,
-    pub body: Box<Expr>,
-    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

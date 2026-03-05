@@ -163,7 +163,6 @@ fn pp_expr(expr: &Expr) -> String {
     match expr {
         Expr::Lit { value, .. } => pp_lit(value),
         Expr::Var { name, .. } => name.clone(),
-        Expr::Self_ { .. } => "self".to_string(),
         Expr::BinaryOp { op, lhs, rhs, .. } => {
             format!("({} {} {})", pp_binop(op), pp_expr(lhs), pp_expr(rhs))
         }
@@ -214,22 +213,6 @@ fn pp_expr(expr: &Expr) -> String {
         Expr::Recur { args, .. } => {
             let parts: Vec<String> = args.iter().map(pp_expr).collect();
             format!("(recur {})", parts.join(" "))
-        }
-        Expr::Send { target, message, .. } => {
-            format!("(send {} {})", pp_expr(target), pp_expr(message))
-        }
-        Expr::Spawn { func, args, .. } => {
-            let mut parts = vec![pp_expr(func)];
-            parts.extend(args.iter().map(pp_expr));
-            format!("(spawn {})", parts.join(" "))
-        }
-        Expr::Receive { arms, .. } => {
-            let mut s = String::from("(receive");
-            for arm in arms {
-                s.push_str(&format!(" ({} {})", pp_pattern(&arm.pattern), pp_expr(&arm.body)));
-            }
-            s.push(')');
-            s
         }
         Expr::StructLit { name, fields, .. } => {
             let mut s = format!("({}", name);

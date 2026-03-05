@@ -107,11 +107,7 @@ where
             span: to_span(e.span()),
         });
 
-        let self_ = just(Token::Self_).map_with(|_, e| Expr::Self_ {
-            span: to_span(e.span()),
-        });
-
-        let atom = choice((lit, self_, var));
+        let atom = choice((lit, var));
 
         // --- Operator token to BinOp ---
         let bin_op_token = select! {
@@ -300,41 +296,6 @@ where
             .ignore_then(expr.clone().repeated().collect::<Vec<_>>())
             .map(|args| -> Builder { Box::new(move |span| Expr::Recur { args, span }) });
 
-        // (send target message)
-        let send_form = just(Token::Send)
-            .ignore_then(expr.clone())
-            .then(expr.clone())
-            .map(|(target, message)| -> Builder {
-                Box::new(move |span| Expr::Send {
-                    target: Box::new(target),
-                    message: Box::new(message),
-                    span,
-                })
-            });
-
-        // (spawn func args...)
-        let spawn_form = just(Token::Spawn)
-            .ignore_then(expr.clone())
-            .then(expr.clone().repeated().collect::<Vec<_>>())
-            .map(|(func, args)| -> Builder {
-                Box::new(move |span| Expr::Spawn {
-                    func: Box::new(func),
-                    args,
-                    span,
-                })
-            });
-
-        // (receive (pat body)...)
-        let receive_form = just(Token::Receive)
-            .ignore_then(match_arm.repeated().at_least(1).collect::<Vec<_>>())
-            .map(|arms| -> Builder {
-                Box::new(move |span| Expr::Receive {
-                    arms,
-                    timeout: None,
-                    span,
-                })
-            });
-
         // (.. base (field val) ...) — struct update
         let field_pair = select! { Token::Ident(s) => s.to_string() }
             .then(expr.clone())
@@ -376,9 +337,6 @@ where
             list_form,
             tuple_form,
             recur_form,
-            send_form,
-            spawn_form,
-            receive_form,
             struct_update_form,
             app_form,
         ))

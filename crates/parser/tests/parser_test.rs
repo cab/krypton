@@ -130,11 +130,6 @@ fn test_recur() {
 }
 
 #[test]
-fn test_self() {
-    assert_yaml_snapshot!(parse("self"));
-}
-
-#[test]
 fn test_error_recovery() {
     // Malformed inner expression — outer should still parse via error recovery
     let (expr, error_count) = parse_with_errors("(+ 1 (let) 2)");
