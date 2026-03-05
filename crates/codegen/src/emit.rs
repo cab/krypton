@@ -462,6 +462,7 @@ impl Compiler {
             Expr::App { func, args, .. } => self.compile_app(func, args),
             Expr::Recur { args, .. } => self.compile_recur(args, in_tail),
             Expr::FieldAccess { expr, field, .. } => self.compile_field_access(expr, field),
+            Expr::LetPattern { .. } => Err(CodegenError::UnsupportedExpr("let-pattern destructuring".into())),
             Expr::StructUpdate { base, fields, .. } => self.compile_struct_update(base, fields),
             Expr::Match {
                 scrutinee, arms, ..
@@ -1473,7 +1474,7 @@ impl Compiler {
                 self.collect_captures(then_, param_names, captures);
                 self.collect_captures(else_, param_names, captures);
             }
-            Expr::Let { value, body, .. } => {
+            Expr::Let { value, body, .. } | Expr::LetPattern { value, body, .. } => {
                 self.collect_captures(value, param_names, captures);
                 if let Some(body) = body {
                     self.collect_captures(body, param_names, captures);
@@ -2084,7 +2085,7 @@ impl Compiler {
         for (i, expr) in exprs.iter().enumerate() {
             let is_last = i == exprs.len() - 1;
             let is_let_stmt =
-                matches!(expr, Expr::Let { body: None, .. });
+                matches!(expr, Expr::Let { body: None, .. } | Expr::LetPattern { body: None, .. });
 
             let expr_tail = in_tail && is_last;
             let ty = self.compile_expr(expr, expr_tail)?;

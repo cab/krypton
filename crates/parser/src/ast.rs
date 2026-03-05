@@ -181,6 +181,12 @@ pub enum Expr {
         fields: Vec<(String, Expr)>,
         span: Span,
     },
+    LetPattern {
+        pattern: Pattern,
+        value: Box<Expr>,
+        body: Option<Box<Expr>>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

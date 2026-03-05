@@ -239,6 +239,9 @@ fn pp_expr(expr: &Expr) -> String {
             s.push(')');
             s
         }
+        Expr::LetPattern { pattern, value, .. } => {
+            format!("(let {} {})", pp_pattern(pattern), pp_expr(value))
+        }
         Expr::StructUpdate { base, fields, .. } => {
             let mut s = format!("(.. {}", pp_expr(base));
             for (fname, fval) in fields {

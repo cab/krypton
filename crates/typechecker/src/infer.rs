@@ -300,6 +300,31 @@ fn infer_expr_inner(
             Ok(subst.apply(&result_ty))
         }
 
+        Expr::Tuple { elements, .. } => {
+            let mut elem_types = Vec::new();
+            for e in elements {
+                elem_types.push(infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut())?);
+            }
+            Ok(Type::Tuple(elem_types))
+        }
+
+        Expr::LetPattern { pattern, value, body, span } => {
+            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            match body {
+                Some(body) => {
+                    env.push_scope();
+                    check_pattern(pattern, &subst.apply(&val_ty), env, subst, gen, registry, *span)?;
+                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types)?;
+                    env.pop_scope();
+                    Ok(body_ty)
+                }
+                None => {
+                    check_pattern(pattern, &subst.apply(&val_ty), env, subst, gen, registry, *span)?;
+                    Ok(Type::Unit)
+                }
+            }
+        }
+
         // Unsupported expression forms return a fresh type variable for now
         _ => Ok(Type::Var(gen.fresh())),
     }

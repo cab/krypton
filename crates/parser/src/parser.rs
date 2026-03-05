@@ -182,6 +182,43 @@ where
                 })
             });
 
+        // (let (tuple a b) value) — destructuring let with a paren-delimited pattern
+        // Only matches patterns that start with '(' (tuple, constructor), so it's
+        // unambiguous with let_form which expects a bare ident after 'let'.
+        let paren_pattern = {
+            let pat = pattern.clone();
+            // tuple pattern: (tuple p1 p2 ...)
+            let tuple_pat = just(Token::Tuple)
+                .ignore_then(pat.clone().repeated().at_least(1).collect::<Vec<_>>())
+                .delimited_by(just(Token::LParen), just(Token::RParen))
+                .map_with(|elements, e| Pattern::Tuple {
+                    elements,
+                    span: to_span(e.span()),
+                });
+            // constructor pattern: (Name args...)
+            let constructor_pat = select! { Token::Ident(s) => s.to_string() }
+                .then(pat.repeated().collect::<Vec<_>>())
+                .delimited_by(just(Token::LParen), just(Token::RParen))
+                .map_with(|(name, args), e| Pattern::Constructor {
+                    name,
+                    args,
+                    span: to_span(e.span()),
+                });
+            choice((tuple_pat, constructor_pat))
+        };
+
+        let let_pattern_form = just(Token::Let)
+            .ignore_then(paren_pattern)
+            .then(expr.clone())
+            .map(|(pat, value)| -> Builder {
+                Box::new(move |span| Expr::LetPattern {
+                    pattern: pat,
+                    value: Box::new(value),
+                    body: None,
+                    span,
+                })
+            });
+
         // (let name value)
         let let_form = just(Token::Let)
             .ignore_then(select! { Token::Ident(s) => s.to_string() })
@@ -329,6 +366,7 @@ where
         let paren_form = choice((
             binary_op,
             fn_form,
+            let_pattern_form,
             let_form,
             do_form,
             if_form,

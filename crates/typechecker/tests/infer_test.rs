@@ -397,6 +397,41 @@ fn infer_match_nested_constructor() {
 }
 
 #[test]
+fn infer_tuple_creation() {
+    insta::assert_snapshot!(infer("(tuple 1 \"hi\")"), @"(Int, String)");
+}
+
+#[test]
+fn infer_tuple_nested() {
+    insta::assert_snapshot!(infer("(tuple 1 (tuple true \"x\"))"), @"(Int, (Bool, String))");
+}
+
+#[test]
+fn infer_tuple_in_match() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def first (fn [p] (match p ((tuple a b) a))))"
+        ),
+        @"first: forall d e. fn((d, e)) -> d"
+    );
+}
+
+#[test]
+fn infer_let_destructure_tuple() {
+    insta::assert_snapshot!(infer("(do (let (tuple a b) (tuple 1 \"hi\")) a)"), @"Int");
+}
+
+#[test]
+fn infer_tuple_polymorphic() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def swap (fn [p] (match p ((tuple a b) (tuple b a)))))"
+        ),
+        @"swap: forall d e. fn((d, e)) -> (e, d)"
+    );
+}
+
+#[test]
 fn infer_match_wrong_constructor() {
     insta::assert_snapshot!(
         infer_module_types(

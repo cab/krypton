@@ -33,6 +33,12 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
                 collect_refs(body, names, refs);
             }
         }
+        Expr::LetPattern { value, body, .. } => {
+            collect_refs(value, names, refs);
+            if let Some(body) = body {
+                collect_refs(body, names, refs);
+            }
+        }
         Expr::Do { exprs, .. } => {
             for e in exprs {
                 collect_refs(e, names, refs);

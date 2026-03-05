@@ -230,6 +230,12 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
                 .collect(),
             span: (0, 0),
         },
+        Expr::LetPattern { pattern, value, body, .. } => Expr::LetPattern {
+            pattern: zero_spans_pattern(pattern),
+            value: Box::new(zero_spans_expr(value)),
+            body: body.as_ref().map(|b| Box::new(zero_spans_expr(b))),
+            span: (0, 0),
+        },
         Expr::StructUpdate { base, fields, .. } => Expr::StructUpdate {
             base: Box::new(zero_spans_expr(base)),
             fields: fields
@@ -453,6 +459,11 @@ fn roundtrip_all_binops() {
 #[test]
 fn roundtrip_tuple_pattern() {
     assert_roundtrip("(def f (fn [x] (match x ((tuple a b) (+ a b)))))");
+}
+
+#[test]
+fn roundtrip_let_pattern_tuple() {
+    assert_roundtrip("(def f (fn [p] (do (let (tuple a b) p) a)))");
 }
 
 #[test]
