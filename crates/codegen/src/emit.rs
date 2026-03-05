@@ -872,6 +872,20 @@ impl Compiler {
                 self.push_type(VerificationType::Object { cpool_index: self.object_class });
                 // Unbox if needed
                 self.unbox_if_needed(ho_ret_type);
+                // Checkcast Object → specific ref type if needed
+                match ho_ret_type {
+                    JvmType::Ref => {
+                        self.emit(Instruction::Checkcast(self.string_class));
+                        self.pop_type();
+                        self.push_type(VerificationType::Object { cpool_index: self.string_class });
+                    }
+                    JvmType::StructRef(idx) if idx != self.object_class => {
+                        self.emit(Instruction::Checkcast(idx));
+                        self.pop_type();
+                        self.push_type(VerificationType::Object { cpool_index: idx });
+                    }
+                    _ => {}
+                }
                 return Ok(ho_ret_type);
             }
         }
@@ -1568,6 +1582,20 @@ impl Compiler {
             {
                 self.unbox_if_needed(target_type);
             }
+            // Checkcast Object to specific ref type if needed
+            else if matches!(target_type, JvmType::Ref | JvmType::StructRef(_))
+                && !matches!(target_type, JvmType::StructRef(idx) if idx == self.object_class)
+                && matches!(arm_type, JvmType::StructRef(idx) if idx == self.object_class)
+            {
+                let cast_class = match target_type {
+                    JvmType::Ref => self.string_class,
+                    JvmType::StructRef(idx) => idx,
+                    _ => unreachable!(),
+                };
+                self.emit(Instruction::Checkcast(cast_class));
+                self.pop_type();
+                self.push_type(VerificationType::Object { cpool_index: cast_class });
+            }
 
             // Goto after_match (except last arm)
             if !is_last {
@@ -2148,6 +2176,20 @@ impl Compiler {
         {
             self.box_if_needed(body_type);
         }
+        // If body type is Object but return type is a specific reference type, checkcast
+        else if matches!(body_type, JvmType::StructRef(idx) if idx == self.object_class)
+            && matches!(return_type, JvmType::Ref | JvmType::StructRef(_))
+            && !matches!(return_type, JvmType::StructRef(idx) if idx == self.object_class)
+        {
+            let cast_class = match return_type {
+                JvmType::Ref => self.string_class,
+                JvmType::StructRef(idx) => idx,
+                _ => unreachable!(),
+            };
+            self.emit(Instruction::Checkcast(cast_class));
+            self.pop_type();
+            self.push_type(VerificationType::Object { cpool_index: cast_class });
+        }
 
         // Emit typed return
         let ret_instr = match return_type {
@@ -2484,6 +2526,7 @@ fn generate_sealed_interface_class(
 fn generate_variant_class(
     variant_name: &str,
     interface_name: &str,
+    display_name: &str,
     fields: &[(String, JvmType, bool)], // (name, jvm_type, is_erased)
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
@@ -2584,7 +2627,7 @@ fn generate_variant_class(
     // toString() method returning the variant name
     let tostring_name = cp.add_utf8("toString")?;
     let tostring_desc = cp.add_utf8("()Ljava/lang/String;")?;
-    let variant_str = cp.add_string(variant_name)?;
+    let variant_str = cp.add_string(display_name)?;
     let ldc = if variant_str <= 255 {
         Instruction::Ldc(variant_str as u8)
     } else {
@@ -2773,7 +2816,7 @@ pub fn compile_module(
             .insert(interface_class_index, interface_desc);
 
         let mut variant_infos = HashMap::new();
-        let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+        let variant_names: Vec<String> = variants.iter().map(|v| format!("{}${}", sum_name, v.name)).collect();
 
         for variant in variants {
             // Resolve fields: type params are erased to Object
@@ -2794,8 +2837,9 @@ pub fn compile_module(
                 .collect::<Result<_, CodegenError>>()?;
 
             // Register variant class in main cpool
-            let variant_class_index = compiler.cp.add_class(&variant.name)?;
-            let variant_desc = format!("L{};", variant.name);
+            let qualified_name = format!("{}${}", sum_name, variant.name);
+            let variant_class_index = compiler.cp.add_class(&qualified_name)?;
+            let variant_desc = format!("L{qualified_name};");
             compiler
                 .class_descriptors
                 .insert(variant_class_index, variant_desc);
@@ -2837,7 +2881,7 @@ pub fn compile_module(
                 variant.name.clone(),
                 VariantInfo {
                     class_index: variant_class_index,
-                    class_name: variant.name.clone(),
+                    class_name: qualified_name.clone(),
                     fields: fields.clone(),
                     constructor_ref,
                     field_refs: main_field_refs,
@@ -2846,8 +2890,8 @@ pub fn compile_module(
 
             // Generate variant class file
             let variant_bytes =
-                generate_variant_class(&variant.name, sum_name, &fields)?;
-            result_classes.push((variant.name.clone(), variant_bytes));
+                generate_variant_class(&qualified_name, sum_name, &variant.name, &fields)?;
+            result_classes.push((qualified_name.clone(), variant_bytes));
         }
 
         compiler.sum_type_info.insert(
@@ -2859,7 +2903,8 @@ pub fn compile_module(
         );
 
         // Generate sealed interface class file
-        let interface_bytes = generate_sealed_interface_class(sum_name, &variant_names)?;
+        let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
+        let interface_bytes = generate_sealed_interface_class(sum_name, &variant_name_refs)?;
         result_classes.push((sum_name.clone(), interface_bytes));
     }
 
