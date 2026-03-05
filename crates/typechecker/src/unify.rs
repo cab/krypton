@@ -11,6 +11,7 @@ pub enum TypeErrorCode {
     E0003, // Unknown variable
     E0004, // Not a function
     E0005, // Wrong arity
+    E0006, // Non-exhaustive match
     E0007, // Infinite type
     E0008, // Unknown field
     E0009, // Missing fields
@@ -25,6 +26,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0003 => write!(f, "E0003"),
             TypeErrorCode::E0004 => write!(f, "E0004"),
             TypeErrorCode::E0005 => write!(f, "E0005"),
+            TypeErrorCode::E0006 => write!(f, "E0006"),
             TypeErrorCode::E0007 => write!(f, "E0007"),
             TypeErrorCode::E0008 => write!(f, "E0008"),
             TypeErrorCode::E0009 => write!(f, "E0009"),
@@ -45,6 +47,7 @@ pub enum TypeError {
     UnknownField { type_name: String, field_name: String },
     MissingFields { type_name: String, fields: Vec<String> },
     NotAStruct { actual: Type },
+    NonExhaustive { missing: Vec<String> },
 }
 
 impl TypeError {
@@ -60,6 +63,7 @@ impl TypeError {
             TypeError::UnknownField { .. } => TypeErrorCode::E0008,
             TypeError::MissingFields { .. } => TypeErrorCode::E0009,
             TypeError::NotAStruct { .. } => TypeErrorCode::E0010,
+            TypeError::NonExhaustive { .. } => TypeErrorCode::E0006,
         }
     }
 
@@ -90,6 +94,9 @@ impl TypeError {
             }
             TypeError::NotAStruct { actual } => {
                 Some(format!("the expression has type `{}`, which is not a struct", actual))
+            }
+            TypeError::NonExhaustive { missing } => {
+                Some(format!("add arms for: {}", missing.join(", ")))
             }
         }
     }
@@ -128,6 +135,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::NotAStruct { actual } => {
                 write!(f, "not a struct: type {} is not a record", actual)
+            }
+            TypeError::NonExhaustive { missing } => {
+                write!(f, "non-exhaustive match: missing {}", missing.join(", "))
             }
         }
     }

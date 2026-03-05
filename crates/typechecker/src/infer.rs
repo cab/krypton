@@ -291,6 +291,12 @@ fn infer_expr_inner(
                 unify(&result_ty, &body_ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
             }
+            crate::exhaustiveness::check_exhaustiveness(
+                &subst.apply(&scrutinee_ty),
+                arms,
+                registry,
+                *span,
+            )?;
             Ok(subst.apply(&result_ty))
         }
 

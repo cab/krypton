@@ -1,0 +1,6 @@
+# expect: ok
+(type Option [a] (| (Some a) None))
+(def test (fn [opt]
+  (match opt
+    ((Some x) x)
+    ((None) 0))))

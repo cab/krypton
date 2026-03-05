@@ -410,3 +410,65 @@ fn infer_match_wrong_constructor() {
         @"TypeError: type mismatch: expected Color, found Option<e>"
     );
 }
+
+#[test]
+fn test_exhaustive_complete() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def unwrap (fn [opt] \
+               (match opt \
+                 ((Some x) x) \
+                 ((None) 0))))"
+        ),
+        @"
+    Some: forall a. fn(a) -> Option<a>
+    None: forall a. Option<a>
+    unwrap: fn(Option<Int>) -> Int
+    "
+    );
+}
+
+#[test]
+fn test_exhaustive_missing_variant() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def test (fn [opt] \
+               (match opt \
+                 ((Some x) x))))"
+        ),
+        @"TypeError: non-exhaustive match: missing None"
+    );
+}
+
+#[test]
+fn test_exhaustive_wildcard_covers_all() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def test (fn [opt] \
+               (match opt \
+                 (_ 0))))"
+        ),
+        @"
+    Some: forall a. fn(a) -> Option<a>
+    None: forall a. Option<a>
+    test: forall c. fn(c) -> Int
+    "
+    );
+}
+
+#[test]
+fn test_exhaustive_nested() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type Option [a] (| (Some a) None)) \
+             (def test (fn [opt] \
+               (match opt \
+                 ((Some (Some x)) x) \
+                 ((Some (None)) 0))))"
+        ),
+        @"TypeError: non-exhaustive match: missing None"
+    );
+}

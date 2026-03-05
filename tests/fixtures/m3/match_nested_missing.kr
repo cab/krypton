@@ -1,0 +1,6 @@
+# expect: error E0006
+(type Option [a] (| (Some a) None))
+(def test (fn [opt]
+  (match opt
+    ((Some (Some x)) x)
+    ((Some (None)) 0))))
