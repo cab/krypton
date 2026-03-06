@@ -1,0 +1,7 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+call_once: fn(own fn() -> String) -> String
+make_fn: fn() -> String
+main: fn() -> String
