@@ -118,11 +118,8 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
     }
 }
 
-struct Compiler {
-    cp: ConstantPool,
-    code: Vec<Instruction>,
-    locals: HashMap<String, (u16, JvmType)>,
-    next_local: u16,
+/// Well-known constant pool indices, set once in `new()`, read-only after.
+struct CpoolRefs {
     code_utf8: u16,
     object_init: u16,
     init_name: u16,
@@ -132,56 +129,219 @@ struct Compiler {
     println_string: u16,
     println_double: u16,
     println_bool: u16,
-    // StackMapTable support
-    stack_types: Vec<VerificationType>,
-    local_types: Vec<VerificationType>,
-    frames: BTreeMap<u16, (Vec<VerificationType>, Vec<VerificationType>)>,
+    println_object: u16,
     smt_name: u16,
     string_class: u16,
     ps_class: u16,
-    println_object: u16,
-    // Function codegen support
-    this_class: u16,
-    functions: HashMap<String, FunctionInfo>,
-    // Struct codegen support
-    struct_info: HashMap<String, StructInfo>,
-    class_descriptors: HashMap<u16, String>, // class_idx -> "LClassName;"
-    // Sum type codegen support
-    sum_type_info: HashMap<String, SumTypeInfo>,
-    variant_to_sum: HashMap<String, String>, // variant_name -> sum_type_name
-    // Boxing support
     long_box_valueof: u16,
     double_box_valueof: u16,
     bool_box_valueof: u16,
-    // Unboxing support
     long_box_class: u16,
     long_unbox: u16,
     double_box_class: u16,
     double_unbox: u16,
     bool_box_class: u16,
     bool_unbox: u16,
-    // Recur support: parameter slots and return type for current function
-    fn_params: Vec<(u16, JvmType)>,
-    fn_return_type: Option<JvmType>,
-    // Pattern match: nested ifeq patches for nested constructor patterns
-    nested_ifeq_patches: Vec<usize>,
-    // Object class index for erased type variables
     object_class: u16,
-    // Lambda / closure support
+}
+
+/// StackMapTable / verification type tracking.
+struct FrameState {
+    stack_types: Vec<VerificationType>,
+    local_types: Vec<VerificationType>,
+    frames: BTreeMap<u16, (Vec<VerificationType>, Vec<VerificationType>)>,
+}
+
+impl FrameState {
+    fn push_type(&mut self, vt: VerificationType) {
+        self.stack_types.push(vt);
+    }
+
+    fn push_long_type(&mut self) {
+        self.stack_types.push(VerificationType::Long);
+        self.stack_types.push(VerificationType::Top);
+    }
+
+    fn push_double_type(&mut self) {
+        self.stack_types.push(VerificationType::Double);
+        self.stack_types.push(VerificationType::Top);
+    }
+
+    fn pop_type(&mut self) {
+        self.stack_types.pop();
+    }
+
+    fn pop_type_n(&mut self, n: usize) {
+        self.stack_types.truncate(self.stack_types.len() - n);
+    }
+
+    fn record_frame(&mut self, instr_idx: u16) {
+        fn strip_tops(types: &[VerificationType]) -> Vec<VerificationType> {
+            types
+                .iter()
+                .filter(|vt| !matches!(vt, VerificationType::Top))
+                .cloned()
+                .collect()
+        }
+        self.frames.insert(
+            instr_idx,
+            (strip_tops(&self.local_types), strip_tops(&self.stack_types)),
+        );
+    }
+
+    fn jvm_type_to_vtypes(&self, ty: JvmType, string_class: u16) -> Vec<VerificationType> {
+        match ty {
+            JvmType::Long => vec![VerificationType::Long, VerificationType::Top],
+            JvmType::Double => vec![VerificationType::Double, VerificationType::Top],
+            JvmType::Int => vec![VerificationType::Integer],
+            JvmType::Ref => vec![VerificationType::Object {
+                cpool_index: string_class,
+            }],
+            JvmType::StructRef(idx) => vec![VerificationType::Object {
+                cpool_index: idx,
+            }],
+        }
+    }
+
+    fn push_jvm_type(&mut self, ty: JvmType, string_class: u16) {
+        for vt in self.jvm_type_to_vtypes(ty, string_class) {
+            self.stack_types.push(vt);
+        }
+    }
+
+    fn pop_jvm_type(&mut self, ty: JvmType) {
+        match ty {
+            JvmType::Long | JvmType::Double => self.pop_type_n(2),
+            JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => self.pop_type(),
+        }
+    }
+
+    fn build_stack_map_frames(&self) -> Vec<StackFrame> {
+        let mut frames = Vec::new();
+        let mut prev_offset: Option<u16> = None;
+
+        for (&instr_idx, (locals, stack)) in &self.frames {
+            let offset_delta = match prev_offset {
+                None => instr_idx,
+                Some(prev) => instr_idx - prev - 1,
+            };
+            prev_offset = Some(instr_idx);
+
+            frames.push(StackFrame::FullFrame {
+                frame_type: 255,
+                offset_delta,
+                locals: locals.clone(),
+                stack: stack.clone(),
+            });
+        }
+
+        frames
+    }
+
+    fn reset(&mut self) {
+        self.stack_types.clear();
+        self.local_types.clear();
+        self.frames.clear();
+    }
+}
+
+/// Lambda/closure compilation state.
+struct LambdaState {
     lambda_counter: u16,
     lambda_methods: Vec<Method>,
     bootstrap_methods: Vec<BootstrapMethod>,
     lambda_types: HashMap<Span, (Vec<JvmType>, JvmType)>,
-    /// For let-bound lambdas: var name -> (param_jvm_types, return_jvm_type)
-    local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
-    /// Lazily initialized cpool index for LambdaMetafactory.metafactory MethodHandle
     metafactory_handle: Option<u16>,
-    /// FunN interface class indices by arity
     fun_classes: HashMap<u8, u16>,
-    /// FunN.apply interface method refs by arity
     fun_apply_refs: HashMap<u8, u16>,
-    /// Original typechecker types for top-level functions, for inspecting Fn-typed params
+}
+
+impl LambdaState {
+    fn ensure_fun_interface(
+        &mut self,
+        arity: u8,
+        cp: &mut ConstantPool,
+        class_descriptors: &mut HashMap<u16, String>,
+    ) -> Result<(), CodegenError> {
+        if self.fun_classes.contains_key(&arity) {
+            return Ok(());
+        }
+        let class_name = format!("Fun{arity}");
+        let class_idx = cp.add_class(&class_name)?;
+        let class_desc = format!("L{class_name};");
+        class_descriptors.insert(class_idx, class_desc);
+
+        let mut apply_desc = String::from("(");
+        for _ in 0..arity {
+            apply_desc.push_str("Ljava/lang/Object;");
+        }
+        apply_desc.push_str(")Ljava/lang/Object;");
+
+        let apply_ref = cp.add_interface_method_ref(class_idx, "apply", &apply_desc)?;
+        self.fun_classes.insert(arity, class_idx);
+        self.fun_apply_refs.insert(arity, apply_ref);
+        Ok(())
+    }
+
+    fn ensure_metafactory(&mut self, cp: &mut ConstantPool) -> Result<u16, CodegenError> {
+        if let Some(handle) = self.metafactory_handle {
+            return Ok(handle);
+        }
+        let lmf_class = cp.add_class("java/lang/invoke/LambdaMetafactory")?;
+        let metafactory_ref = cp.add_method_ref(
+            lmf_class,
+            "metafactory",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
+        )?;
+        let handle = cp.add_method_handle(ReferenceKind::InvokeStatic, metafactory_ref)?;
+        self.metafactory_handle = Some(handle);
+        Ok(handle)
+    }
+}
+
+/// Type registry for codegen (structs, sum types, functions).
+struct CodegenTypeInfo {
+    struct_info: HashMap<String, StructInfo>,
+    class_descriptors: HashMap<u16, String>,
+    sum_type_info: HashMap<String, SumTypeInfo>,
+    variant_to_sum: HashMap<String, String>,
+    functions: HashMap<String, FunctionInfo>,
     fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
+}
+
+impl CodegenTypeInfo {
+    fn jvm_type_descriptor(&self, ty: JvmType) -> String {
+        match ty {
+            JvmType::StructRef(idx) => self.class_descriptors[&idx].clone(),
+            other => jvm_type_to_field_descriptor(other),
+        }
+    }
+
+    fn build_descriptor(&self, params: &[JvmType], ret: JvmType) -> String {
+        let mut desc = String::from("(");
+        for p in params {
+            desc.push_str(&self.jvm_type_descriptor(*p));
+        }
+        desc.push(')');
+        desc.push_str(&self.jvm_type_descriptor(ret));
+        desc
+    }
+}
+
+struct Compiler {
+    cp: ConstantPool,
+    this_class: u16,
+    refs: CpoolRefs,
+    frame: FrameState,
+    lambda: LambdaState,
+    types: CodegenTypeInfo,
+    code: Vec<Instruction>,
+    locals: HashMap<String, (u16, JvmType)>,
+    next_local: u16,
+    fn_params: Vec<(u16, JvmType)>,
+    fn_return_type: Option<JvmType>,
+    nested_ifeq_patches: Vec<usize>,
+    local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
 }
 
 impl Compiler {
@@ -236,55 +396,63 @@ impl Compiler {
 
         let compiler = Compiler {
             cp,
+            this_class,
+            refs: CpoolRefs {
+                code_utf8,
+                object_init,
+                init_name,
+                init_desc,
+                system_out,
+                println_long,
+                println_string,
+                println_double,
+                println_bool,
+                println_object,
+                smt_name,
+                string_class,
+                ps_class,
+                long_box_valueof,
+                double_box_valueof,
+                bool_box_valueof,
+                long_box_class,
+                long_unbox,
+                double_box_class,
+                double_unbox,
+                bool_box_class,
+                bool_unbox,
+                object_class,
+            },
+            frame: FrameState {
+                stack_types: Vec::new(),
+                local_types: vec![VerificationType::Object {
+                    cpool_index: string_arr_class,
+                }],
+                frames: BTreeMap::new(),
+            },
+            lambda: LambdaState {
+                lambda_counter: 0,
+                lambda_methods: Vec::new(),
+                bootstrap_methods: Vec::new(),
+                lambda_types: HashMap::new(),
+                metafactory_handle: None,
+                fun_classes: HashMap::new(),
+                fun_apply_refs: HashMap::new(),
+            },
+            types: CodegenTypeInfo {
+                struct_info: HashMap::new(),
+                class_descriptors: HashMap::new(),
+                sum_type_info: HashMap::new(),
+                variant_to_sum: HashMap::new(),
+                functions: HashMap::new(),
+                fn_tc_types: HashMap::new(),
+            },
             code: Vec::new(),
             locals: HashMap::new(),
             next_local: 1, // slot 0 = String[] args for main
-            code_utf8,
-            object_init,
-            init_name,
-            init_desc,
-            system_out,
-            println_long,
-            println_string,
-            println_double,
-            println_bool,
-            println_object,
-            stack_types: Vec::new(),
-            local_types: vec![VerificationType::Object {
-                cpool_index: string_arr_class,
-            }],
-            frames: BTreeMap::new(),
-            smt_name,
-            string_class,
-            ps_class,
-            this_class,
-            functions: HashMap::new(),
-            struct_info: HashMap::new(),
-            class_descriptors: HashMap::new(),
-            sum_type_info: HashMap::new(),
-            variant_to_sum: HashMap::new(),
-            long_box_valueof,
-            double_box_valueof,
-            bool_box_valueof,
-            long_box_class,
-            long_unbox,
-            double_box_class,
-            double_unbox,
-            bool_box_class,
-            bool_unbox,
             fn_params: Vec::new(),
             fn_return_type: None,
             nested_ifeq_patches: Vec::new(),
-            object_class,
-            lambda_counter: 0,
-            lambda_methods: Vec::new(),
-            bootstrap_methods: Vec::new(),
-            lambda_types: HashMap::new(),
             local_fn_info: HashMap::new(),
-            metafactory_handle: None,
-            fun_classes: HashMap::new(),
-            fun_apply_refs: HashMap::new(),
-            fn_tc_types: HashMap::new(),
         };
 
         Ok((compiler, this_class, object_class))
@@ -294,9 +462,9 @@ impl Compiler {
     fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
-                if let Some(info) = self.struct_info.get(name) {
+                if let Some(info) = self.types.struct_info.get(name) {
                     Ok(JvmType::StructRef(info.class_index))
-                } else if let Some(info) = self.sum_type_info.get(name) {
+                } else if let Some(info) = self.types.sum_type_info.get(name) {
                     Ok(JvmType::StructRef(info.interface_class_index))
                 } else {
                     Err(CodegenError::TypeError(format!(
@@ -304,37 +472,17 @@ impl Compiler {
                     )))
                 }
             }
-            Type::Var(_) => Ok(JvmType::StructRef(self.object_class)), // erased type variable → Object
+            Type::Var(_) => Ok(JvmType::StructRef(self.refs.object_class)),
             Type::Fn(params, _) => {
                 let arity = params.len() as u8;
-                // Return FunN interface ref if registered, else Object
-                if let Some(&class_idx) = self.fun_classes.get(&arity) {
+                if let Some(&class_idx) = self.lambda.fun_classes.get(&arity) {
                     Ok(JvmType::StructRef(class_idx))
                 } else {
-                    Ok(JvmType::StructRef(self.object_class))
+                    Ok(JvmType::StructRef(self.refs.object_class))
                 }
             }
             other => type_to_jvm_basic(other),
         }
-    }
-
-    /// Get the JVM type descriptor for a JvmType.
-    fn jvm_type_descriptor(&self, ty: JvmType) -> String {
-        match ty {
-            JvmType::StructRef(idx) => self.class_descriptors[&idx].clone(),
-            other => jvm_type_to_field_descriptor(other),
-        }
-    }
-
-    /// Build a method descriptor from param and return JvmTypes.
-    fn build_descriptor(&self, params: &[JvmType], ret: JvmType) -> String {
-        let mut desc = String::from("(");
-        for p in params {
-            desc.push_str(&self.jvm_type_descriptor(*p));
-        }
-        desc.push(')');
-        desc.push_str(&self.jvm_type_descriptor(ret));
-        desc
     }
 
     /// Reset per-method compilation state.
@@ -342,9 +490,7 @@ impl Compiler {
         self.code.clear();
         self.locals.clear();
         self.next_local = 0;
-        self.stack_types.clear();
-        self.local_types.clear();
-        self.frames.clear();
+        self.frame.reset();
         self.fn_params.clear();
         self.fn_return_type = None;
         self.local_fn_info.clear();
@@ -354,92 +500,17 @@ impl Compiler {
         self.code.push(instr);
     }
 
-    // Stack type tracking helpers
-    fn push_type(&mut self, vt: VerificationType) {
-        self.stack_types.push(vt);
-    }
-
-    fn push_long_type(&mut self) {
-        self.stack_types.push(VerificationType::Long);
-        self.stack_types.push(VerificationType::Top);
-    }
-
-    fn push_double_type(&mut self) {
-        self.stack_types.push(VerificationType::Double);
-        self.stack_types.push(VerificationType::Top);
-    }
-
-    fn pop_type(&mut self) {
-        self.stack_types.pop();
-    }
-
-    fn pop_type_n(&mut self, n: usize) {
-        self.stack_types.truncate(self.stack_types.len() - n);
-    }
-
-    fn record_frame(&mut self, instr_idx: u16) {
-        // StackMapTable FullFrame format does not include Top entries after
-        // Long/Double — those second slots are implicit.
-        fn strip_tops(types: &[VerificationType]) -> Vec<VerificationType> {
-            types
-                .iter()
-                .filter(|vt| !matches!(vt, VerificationType::Top))
-                .cloned()
-                .collect()
-        }
-        self.frames.insert(
-            instr_idx,
-            (strip_tops(&self.local_types), strip_tops(&self.stack_types)),
-        );
-    }
-
-    fn jvm_type_to_vtypes(&self, ty: JvmType) -> Vec<VerificationType> {
-        match ty {
-            JvmType::Long => vec![VerificationType::Long, VerificationType::Top],
-            JvmType::Double => vec![VerificationType::Double, VerificationType::Top],
-            JvmType::Int => vec![VerificationType::Integer],
-            JvmType::Ref => vec![VerificationType::Object {
-                cpool_index: self.string_class,
-            }],
-            JvmType::StructRef(idx) => vec![VerificationType::Object {
-                cpool_index: idx,
-            }],
-        }
-    }
-
+    // Convenience delegators to FrameState (avoid passing string_class everywhere)
     fn push_jvm_type(&mut self, ty: JvmType) {
-        for vt in self.jvm_type_to_vtypes(ty) {
-            self.stack_types.push(vt);
-        }
+        self.frame.push_jvm_type(ty, self.refs.string_class);
     }
 
     fn pop_jvm_type(&mut self, ty: JvmType) {
-        match ty {
-            JvmType::Long | JvmType::Double => self.pop_type_n(2),
-            JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => self.pop_type(),
-        }
+        self.frame.pop_jvm_type(ty);
     }
 
-    fn build_stack_map_frames(&self) -> Vec<StackFrame> {
-        let mut frames = Vec::new();
-        let mut prev_offset: Option<u16> = None;
-
-        for (&instr_idx, (locals, stack)) in &self.frames {
-            let offset_delta = match prev_offset {
-                None => instr_idx,
-                Some(prev) => instr_idx - prev - 1,
-            };
-            prev_offset = Some(instr_idx);
-
-            frames.push(StackFrame::FullFrame {
-                frame_type: 255,
-                offset_delta,
-                locals: locals.clone(),
-                stack: stack.clone(),
-            });
-        }
-
-        frames
+    fn jvm_type_to_vtypes(&self, ty: JvmType) -> Vec<VerificationType> {
+        self.frame.jvm_type_to_vtypes(ty, self.refs.string_class)
     }
 
     fn compile_expr(&mut self, expr: &Expr, in_tail: bool) -> Result<JvmType, CodegenError> {
@@ -485,13 +556,13 @@ impl Compiler {
                         self.emit(Instruction::Ldc2_w(idx));
                     }
                 }
-                self.push_long_type();
+                self.frame.push_long_type();
                 Ok(JvmType::Long)
             }
             Lit::Float(f) => {
                 let idx = self.cp.add_double(*f)?;
                 self.emit(Instruction::Ldc2_w(idx));
-                self.push_double_type();
+                self.frame.push_double_type();
                 Ok(JvmType::Double)
             }
             Lit::Bool(b) => {
@@ -500,7 +571,7 @@ impl Compiler {
                 } else {
                     Instruction::Iconst_0
                 });
-                self.push_type(VerificationType::Integer);
+                self.frame.push_type(VerificationType::Integer);
                 Ok(JvmType::Int)
             }
             Lit::String(s) => {
@@ -510,14 +581,14 @@ impl Compiler {
                 } else {
                     self.emit(Instruction::Ldc_w(idx));
                 }
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.string_class,
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.string_class,
                 });
                 Ok(JvmType::Ref)
             }
             Lit::Unit => {
                 self.emit(Instruction::Iconst_0);
-                self.push_type(VerificationType::Integer);
+                self.frame.push_type(VerificationType::Integer);
                 Ok(JvmType::Int)
             }
         }
@@ -542,8 +613,8 @@ impl Compiler {
                 };
                 self.emit(instr);
                 // Pop two longs, push one long
-                self.pop_type_n(4);
-                self.push_long_type();
+                self.frame.pop_type_n(4);
+                self.frame.push_long_type();
                 Ok(JvmType::Long)
             }
             BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
@@ -563,8 +634,8 @@ impl Compiler {
         self.emit(Instruction::Lcmp);
 
         // Lcmp: pop two longs (4 slots), push int
-        self.pop_type_n(4);
-        self.push_type(VerificationType::Integer);
+        self.frame.pop_type_n(4);
+        self.frame.push_type(VerificationType::Integer);
 
         // Materialize boolean (0/1) using branch-if-NOT pattern.
         // Ristretto uses logical instruction indices for branch targets.
@@ -592,29 +663,29 @@ impl Compiler {
         self.emit(branch);
 
         // Ifxx consumes the int
-        self.pop_type();
+        self.frame.pop_type();
 
         // Record frame at false_target (stack state after Ifxx consumes int)
-        let stack_at_false = self.stack_types.clone();
-        self.record_frame(false_target);
+        let stack_at_false = self.frame.stack_types.clone();
+        self.frame.record_frame(false_target);
 
         // True path: push 1
         self.emit(Instruction::Iconst_1);
-        self.push_type(VerificationType::Integer);
+        self.frame.push_type(VerificationType::Integer);
 
         // Record frame at after_target (stack has Integer on top)
-        self.record_frame(after_target);
-        let stack_after = self.stack_types.clone();
+        self.frame.record_frame(after_target);
+        let stack_after = self.frame.stack_types.clone();
 
         self.emit(Instruction::Goto(after_target));
 
         // False path: restore stack to state at false_target
-        self.stack_types = stack_at_false;
+        self.frame.stack_types = stack_at_false;
         self.emit(Instruction::Iconst_0);
-        self.push_type(VerificationType::Integer);
+        self.frame.push_type(VerificationType::Integer);
 
         // After both paths merge, stack should match
-        debug_assert_eq!(self.stack_types, stack_after);
+        debug_assert_eq!(self.frame.stack_types, stack_after);
 
         Ok(JvmType::Int)
     }
@@ -630,18 +701,18 @@ impl Compiler {
         self.compile_expr(cond, false)?;
 
         // Ifeq consumes the int
-        self.pop_type();
+        self.frame.pop_type();
 
         // Emit Ifeq with placeholder — will be patched with instruction index
         let ifeq_idx = self.code.len();
         self.emit(Instruction::Ifeq(0)); // placeholder
 
         // Save stack state at branch point (after consuming condition)
-        let stack_at_branch = self.stack_types.clone();
+        let stack_at_branch = self.frame.stack_types.clone();
 
         // Compile then branch
         let then_type = self.compile_expr(then_, in_tail)?;
-        let stack_after_then = self.stack_types.clone();
+        let stack_after_then = self.frame.stack_types.clone();
 
         // Emit Goto with placeholder
         let goto_idx = self.code.len();
@@ -651,8 +722,8 @@ impl Compiler {
         let else_start = self.code.len() as u16;
 
         // Record frame at else_start with stack state from branch point
-        self.stack_types = stack_at_branch;
-        self.record_frame(else_start);
+        self.frame.stack_types = stack_at_branch;
+        self.frame.record_frame(else_start);
 
         // Compile else branch
         let _else_type = self.compile_expr(else_, in_tail)?;
@@ -660,9 +731,9 @@ impl Compiler {
         let after_else = self.code.len() as u16;
 
         // Record frame at after_else
-        self.record_frame(after_else);
+        self.frame.record_frame(after_else);
 
-        debug_assert_eq!(self.stack_types, stack_after_then);
+        debug_assert_eq!(self.frame.stack_types, stack_after_then);
 
         // Patch: Ifeq should jump to else_start instruction index
         self.code[ifeq_idx] = Instruction::Ifeq(else_start);
@@ -707,7 +778,7 @@ impl Compiler {
         // If the value was a lambda, record local_fn_info for higher-order calls
         if is_lambda {
             if let Some(span) = lambda_span {
-                if let Some((param_types, ret_type)) = self.lambda_types.get(&span).cloned() {
+                if let Some((param_types, ret_type)) = self.lambda.lambda_types.get(&span).cloned() {
                     self.local_fn_info.insert(name.to_string(), (param_types, ret_type));
                 }
             }
@@ -718,7 +789,7 @@ impl Compiler {
 
         // Extend local_types with verification type(s)
         let vtypes = self.jvm_type_to_vtypes(ty);
-        self.local_types.extend(vtypes);
+        self.frame.local_types.extend(vtypes);
 
         if let Some(body) = body {
             self.compile_expr(body, in_tail)
@@ -731,20 +802,20 @@ impl Compiler {
 
     fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
         // Check if this is a nullary variant constructor
-        if let Some(sum_name) = self.variant_to_sum.get(name).cloned() {
-            let sum_info = &self.sum_type_info[&sum_name];
+        if let Some(sum_name) = self.types.variant_to_sum.get(name).cloned() {
+            let sum_info = &self.types.sum_type_info[&sum_name];
             let vi = &sum_info.variants[name];
             if vi.fields.is_empty() {
                 let class_index = vi.class_index;
                 let constructor_ref = vi.constructor_ref;
                 let interface_class_index = sum_info.interface_class_index;
                 self.emit(Instruction::New(class_index));
-                self.push_type(VerificationType::UninitializedThis);
+                self.frame.push_type(VerificationType::UninitializedThis);
                 self.emit(Instruction::Dup);
-                self.push_type(VerificationType::UninitializedThis);
+                self.frame.push_type(VerificationType::UninitializedThis);
                 self.emit(Instruction::Invokespecial(constructor_ref));
-                self.pop_type(); // dup'd uninit
-                self.pop_type(); // original uninit
+                self.frame.pop_type(); // dup'd uninit
+                self.frame.pop_type(); // original uninit
                 let result_type = JvmType::StructRef(interface_class_index);
                 self.push_jvm_type(result_type);
                 return Ok(result_type);
@@ -782,27 +853,27 @@ impl Compiler {
         };
 
         // Check if this is a struct constructor call
-        if let Some(si) = self.struct_info.get(name) {
+        if let Some(si) = self.types.struct_info.get(name) {
             let class_index = si.class_index;
             let constructor_ref = si.constructor_ref;
             let result_type = JvmType::StructRef(class_index);
 
             self.emit(Instruction::New(class_index));
-            self.push_type(VerificationType::UninitializedThis);
+            self.frame.push_type(VerificationType::UninitializedThis);
             self.emit(Instruction::Dup);
-            self.push_type(VerificationType::UninitializedThis);
+            self.frame.push_type(VerificationType::UninitializedThis);
 
             for arg in args {
                 self.compile_expr(arg, false)?;
             }
 
             // Pop args + 2 uninit refs, push one StructRef
-            let fields = self.struct_info[name].fields.clone();
+            let fields = self.types.struct_info[name].fields.clone();
             for (_, ft) in &fields {
                 self.pop_jvm_type(*ft);
             }
-            self.pop_type(); // dup'd uninit
-            self.pop_type(); // original uninit
+            self.frame.pop_type(); // dup'd uninit
+            self.frame.pop_type(); // original uninit
 
             self.emit(Instruction::Invokespecial(constructor_ref));
             self.push_jvm_type(result_type);
@@ -811,8 +882,8 @@ impl Compiler {
         }
 
         // Check if this is a variant constructor call
-        if let Some(sum_name) = self.variant_to_sum.get(name).cloned() {
-            let sum_info = &self.sum_type_info[&sum_name];
+        if let Some(sum_name) = self.types.variant_to_sum.get(name).cloned() {
+            let sum_info = &self.types.sum_type_info[&sum_name];
             let vi = &sum_info.variants[name];
             let class_index = vi.class_index;
             let constructor_ref = vi.constructor_ref;
@@ -821,9 +892,9 @@ impl Compiler {
             let result_type = JvmType::StructRef(interface_class_index);
 
             self.emit(Instruction::New(class_index));
-            self.push_type(VerificationType::UninitializedThis);
+            self.frame.push_type(VerificationType::UninitializedThis);
             self.emit(Instruction::Dup);
-            self.push_type(VerificationType::UninitializedThis);
+            self.frame.push_type(VerificationType::UninitializedThis);
 
             for (i, arg) in args.iter().enumerate() {
                 let arg_type = self.compile_expr(arg, false)?;
@@ -836,13 +907,13 @@ impl Compiler {
             // Pop args + 2 uninit refs, push one StructRef
             for (_, ft, is_erased) in &fields {
                 if *is_erased {
-                    self.pop_type(); // Object ref
+                    self.frame.pop_type(); // Object ref
                 } else {
                     self.pop_jvm_type(*ft);
                 }
             }
-            self.pop_type(); // dup'd uninit
-            self.pop_type(); // original uninit
+            self.frame.pop_type(); // dup'd uninit
+            self.frame.pop_type(); // original uninit
 
             self.emit(Instruction::Invokespecial(constructor_ref));
             self.push_jvm_type(result_type);
@@ -863,28 +934,28 @@ impl Compiler {
                     self.box_if_needed(arg_type);
                 }
                 // invokeinterface FunN.apply
-                let apply_ref = self.fun_apply_refs[&arity];
+                let apply_ref = self.lambda.fun_apply_refs[&arity];
                 self.emit(Instruction::Invokeinterface(apply_ref, arity + 1));
                 // Pop args + receiver
                 for _ in 0..arity {
-                    self.pop_type(); // each boxed arg
+                    self.frame.pop_type(); // each boxed arg
                 }
                 self.pop_jvm_type(jvm_ty); // receiver
                 // Push Object result
-                self.push_type(VerificationType::Object { cpool_index: self.object_class });
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                 // Unbox if needed
                 self.unbox_if_needed(ho_ret_type);
                 // Checkcast Object → specific ref type if needed
                 match ho_ret_type {
                     JvmType::Ref => {
-                        self.emit(Instruction::Checkcast(self.string_class));
-                        self.pop_type();
-                        self.push_type(VerificationType::Object { cpool_index: self.string_class });
+                        self.emit(Instruction::Checkcast(self.refs.string_class));
+                        self.frame.pop_type();
+                        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
                     }
-                    JvmType::StructRef(idx) if idx != self.object_class => {
+                    JvmType::StructRef(idx) if idx != self.refs.object_class => {
                         self.emit(Instruction::Checkcast(idx));
-                        self.pop_type();
-                        self.push_type(VerificationType::Object { cpool_index: idx });
+                        self.frame.pop_type();
+                        self.frame.push_type(VerificationType::Object { cpool_index: idx });
                     }
                     _ => {}
                 }
@@ -893,7 +964,7 @@ impl Compiler {
         }
 
         // Look up function info (need to clone out to avoid borrow conflict)
-        let info = self
+        let info = self.types
             .functions
             .get(name)
             .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
@@ -905,7 +976,7 @@ impl Compiler {
         for (i, arg) in args.iter().enumerate() {
             let arg_type = self.compile_expr(arg, false)?;
             if let JvmType::StructRef(idx) = param_types[i] {
-                if idx == self.object_class && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref) {
+                if idx == self.refs.object_class && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref) {
                     self.box_if_needed(arg_type);
                 }
             }
@@ -942,7 +1013,7 @@ impl Compiler {
 
         // Find struct info by class index
         let (_struct_name, accessor_ref, field_type) = {
-            let si = self
+            let si = self.types
                 .struct_info
                 .values()
                 .find(|s| s.class_index == class_idx)
@@ -987,10 +1058,10 @@ impl Compiler {
         self.emit(Instruction::Astore(base_slot as u8));
         self.pop_jvm_type(base_type);
         let vtypes = self.jvm_type_to_vtypes(base_type);
-        self.local_types.extend(vtypes);
+        self.frame.local_types.extend(vtypes);
 
         // Look up struct info
-        let si = self
+        let si = self.types
             .struct_info
             .values()
             .find(|s| s.class_index == class_idx)
@@ -1000,9 +1071,9 @@ impl Compiler {
         let accessor_refs = si.accessor_refs.clone();
 
         self.emit(Instruction::New(class_idx));
-        self.push_type(VerificationType::UninitializedThis);
+        self.frame.push_type(VerificationType::UninitializedThis);
         self.emit(Instruction::Dup);
-        self.push_type(VerificationType::UninitializedThis);
+        self.frame.push_type(VerificationType::UninitializedThis);
 
         // Build update map
         let update_names: HashMap<&str, usize> = updates
@@ -1030,8 +1101,8 @@ impl Compiler {
         for (_, ft) in &fields {
             self.pop_jvm_type(*ft);
         }
-        self.pop_type(); // dup'd uninit
-        self.pop_type(); // original uninit
+        self.frame.pop_type(); // dup'd uninit
+        self.frame.pop_type(); // original uninit
 
         self.emit(Instruction::Invokespecial(constructor_ref));
         self.push_jvm_type(base_type);
@@ -1075,7 +1146,7 @@ impl Compiler {
             .iter()
             .flat_map(|&(_, jvm_ty)| self.jvm_type_to_vtypes(jvm_ty))
             .collect();
-        self.frames.insert(1, (
+        self.frame.frames.insert(1, (
             initial_locals.iter().filter(|vt| !matches!(vt, VerificationType::Top)).cloned().collect(),
             vec![],
         ));
@@ -1094,26 +1165,26 @@ impl Compiler {
     fn box_if_needed(&mut self, actual_type: JvmType) -> JvmType {
         match actual_type {
             JvmType::Long => {
-                self.pop_type_n(2); // Long + Top
-                self.emit(Instruction::Invokestatic(self.long_box_valueof));
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.long_box_class,
+                self.frame.pop_type_n(2); // Long + Top
+                self.emit(Instruction::Invokestatic(self.refs.long_box_valueof));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.long_box_class,
                 });
                 JvmType::Ref
             }
             JvmType::Double => {
-                self.pop_type_n(2); // Double + Top
-                self.emit(Instruction::Invokestatic(self.double_box_valueof));
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.double_box_class,
+                self.frame.pop_type_n(2); // Double + Top
+                self.emit(Instruction::Invokestatic(self.refs.double_box_valueof));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.double_box_class,
                 });
                 JvmType::Ref
             }
             JvmType::Int => {
-                self.pop_type(); // Integer
-                self.emit(Instruction::Invokestatic(self.bool_box_valueof));
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.bool_box_class,
+                self.frame.pop_type(); // Integer
+                self.emit(Instruction::Invokestatic(self.refs.bool_box_valueof));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.bool_box_class,
                 });
                 JvmType::Ref
             }
@@ -1125,76 +1196,37 @@ impl Compiler {
     fn unbox_if_needed(&mut self, target: JvmType) {
         match target {
             JvmType::Long => {
-                self.emit(Instruction::Checkcast(self.long_box_class));
-                self.pop_type();
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.long_box_class,
+                self.emit(Instruction::Checkcast(self.refs.long_box_class));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.long_box_class,
                 });
-                self.emit(Instruction::Invokevirtual(self.long_unbox));
-                self.pop_type();
-                self.push_long_type();
+                self.emit(Instruction::Invokevirtual(self.refs.long_unbox));
+                self.frame.pop_type();
+                self.frame.push_long_type();
             }
             JvmType::Double => {
-                self.emit(Instruction::Checkcast(self.double_box_class));
-                self.pop_type();
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.double_box_class,
+                self.emit(Instruction::Checkcast(self.refs.double_box_class));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.double_box_class,
                 });
-                self.emit(Instruction::Invokevirtual(self.double_unbox));
-                self.pop_type();
-                self.push_double_type();
+                self.emit(Instruction::Invokevirtual(self.refs.double_unbox));
+                self.frame.pop_type();
+                self.frame.push_double_type();
             }
             JvmType::Int => {
-                self.emit(Instruction::Checkcast(self.bool_box_class));
-                self.pop_type();
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.bool_box_class,
+                self.emit(Instruction::Checkcast(self.refs.bool_box_class));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.bool_box_class,
                 });
-                self.emit(Instruction::Invokevirtual(self.bool_unbox));
-                self.pop_type();
-                self.push_type(VerificationType::Integer);
+                self.emit(Instruction::Invokevirtual(self.refs.bool_unbox));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Integer);
             }
             _ => {} // already a reference type, no unboxing needed
         }
-    }
-
-    /// Ensure a FunN interface is registered in the constant pool.
-    fn ensure_fun_interface(&mut self, arity: u8) -> Result<(), CodegenError> {
-        if self.fun_classes.contains_key(&arity) {
-            return Ok(());
-        }
-        let class_name = format!("Fun{arity}");
-        let class_idx = self.cp.add_class(&class_name)?;
-        let class_desc = format!("L{class_name};");
-        self.class_descriptors.insert(class_idx, class_desc);
-
-        // Build apply descriptor: (Object, ..., Object)Object
-        let mut apply_desc = String::from("(");
-        for _ in 0..arity {
-            apply_desc.push_str("Ljava/lang/Object;");
-        }
-        apply_desc.push_str(")Ljava/lang/Object;");
-
-        let apply_ref = self.cp.add_interface_method_ref(class_idx, "apply", &apply_desc)?;
-        self.fun_classes.insert(arity, class_idx);
-        self.fun_apply_refs.insert(arity, apply_ref);
-        Ok(())
-    }
-
-    /// Initialize the LambdaMetafactory bootstrap method handle (lazy, once).
-    fn ensure_metafactory(&mut self) -> Result<u16, CodegenError> {
-        if let Some(handle) = self.metafactory_handle {
-            return Ok(handle);
-        }
-        let lmf_class = self.cp.add_class("java/lang/invoke/LambdaMetafactory")?;
-        let metafactory_ref = self.cp.add_method_ref(
-            lmf_class,
-            "metafactory",
-            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
-        )?;
-        let handle = self.cp.add_method_handle(ReferenceKind::InvokeStatic, metafactory_ref)?;
-        self.metafactory_handle = Some(handle);
-        Ok(handle)
     }
 
     /// Compile a lambda expression.
@@ -1207,12 +1239,12 @@ impl Compiler {
         let arity = params.len() as u8;
 
         // Look up lambda types from typechecker
-        let (param_jvm_types, _return_jvm_type) = self.lambda_types.get(span).cloned()
+        let (param_jvm_types, _return_jvm_type) = self.lambda.lambda_types.get(span).cloned()
             .ok_or_else(|| CodegenError::TypeError("lambda type info not found".to_string()))?;
 
         // Ensure FunN interface exists
-        self.ensure_fun_interface(arity)?;
-        let fun_class_idx = self.fun_classes[&arity];
+        self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
+        let fun_class_idx = self.lambda.fun_classes[&arity];
 
         // Find captured variables: scan body for Var names that are in self.locals but not lambda params
         let param_names: std::collections::HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
@@ -1225,10 +1257,10 @@ impl Compiler {
         // Save compiler state for the outer method
         let saved_code = std::mem::take(&mut self.code);
         let saved_locals = std::mem::take(&mut self.locals);
-        let saved_local_types = std::mem::take(&mut self.local_types);
+        let saved_local_types = std::mem::take(&mut self.frame.local_types);
         let saved_next_local = self.next_local;
-        let saved_stack_types = std::mem::take(&mut self.stack_types);
-        let saved_frames = std::mem::take(&mut self.frames);
+        let saved_stack_types = std::mem::take(&mut self.frame.stack_types);
+        let saved_frames = std::mem::take(&mut self.frame.frames);
         let saved_fn_params = std::mem::take(&mut self.fn_params);
         let saved_fn_return_type = self.fn_return_type.take();
         let saved_local_fn_info = std::mem::take(&mut self.local_fn_info);
@@ -1236,10 +1268,10 @@ impl Compiler {
         // Reset for lambda body compilation
         self.code.clear();
         self.locals.clear();
-        self.local_types.clear();
+        self.frame.local_types.clear();
         self.next_local = 0;
-        self.stack_types.clear();
-        self.frames.clear();
+        self.frame.stack_types.clear();
+        self.frame.frames.clear();
         self.fn_params.clear();
         self.fn_return_type = None;
 
@@ -1247,7 +1279,7 @@ impl Compiler {
         for (cap_name, _, cap_type) in &captures {
             let slot = self.next_local;
             self.locals.insert(cap_name.clone(), (slot, *cap_type));
-            self.local_types.push(VerificationType::Object { cpool_index: self.object_class });
+            self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
             self.next_local += 1;
         }
 
@@ -1256,8 +1288,8 @@ impl Compiler {
         for (i, p) in params.iter().enumerate() {
             let slot = self.next_local;
             // Store as Object initially
-            self.locals.insert(p.name.clone(), (slot, JvmType::StructRef(self.object_class)));
-            self.local_types.push(VerificationType::Object { cpool_index: self.object_class });
+            self.locals.insert(p.name.clone(), (slot, JvmType::StructRef(self.refs.object_class)));
+            self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
             lambda_param_slots.push((slot, param_jvm_types[i]));
             self.next_local += 1;
         }
@@ -1269,7 +1301,7 @@ impl Compiler {
                 let slot = lambda_param_slots[i].0;
                 // Load the Object param
                 self.emit(Instruction::Aload(slot as u8));
-                self.push_type(VerificationType::Object { cpool_index: self.object_class });
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                 // Unbox
                 self.unbox_if_needed(actual_type);
                 // Store back to a new slot with correct type
@@ -1288,7 +1320,7 @@ impl Compiler {
                 self.emit(store);
                 self.pop_jvm_type(actual_type);
                 let vtypes = self.jvm_type_to_vtypes(actual_type);
-                self.local_types.extend(vtypes);
+                self.frame.local_types.extend(vtypes);
                 self.locals.insert(p.name.clone(), (new_slot, actual_type));
             }
         }
@@ -1299,7 +1331,7 @@ impl Compiler {
             if matches!(actual_type, JvmType::Long | JvmType::Double | JvmType::Int) {
                 let (slot, _) = self.locals[cap_name];
                 self.emit(Instruction::Aload(slot as u8));
-                self.push_type(VerificationType::Object { cpool_index: self.object_class });
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                 self.unbox_if_needed(actual_type);
                 let new_slot = self.next_local;
                 let slot_size = match actual_type {
@@ -1316,7 +1348,7 @@ impl Compiler {
                 self.emit(store);
                 self.pop_jvm_type(actual_type);
                 let vtypes = self.jvm_type_to_vtypes(actual_type);
-                self.local_types.extend(vtypes);
+                self.frame.local_types.extend(vtypes);
                 self.locals.insert(cap_name.clone(), (new_slot, actual_type));
             }
         }
@@ -1331,8 +1363,8 @@ impl Compiler {
         self.emit(Instruction::Areturn);
 
         // Build the lambda method
-        let lambda_name = format!("lambda${}", self.lambda_counter);
-        self.lambda_counter += 1;
+        let lambda_name = format!("lambda${}", self.lambda.lambda_counter);
+        self.lambda.lambda_counter += 1;
 
         // Descriptor: all Object params (captures + lambda params) -> Object
         let total_params = captures.len() + params.len();
@@ -1345,12 +1377,12 @@ impl Compiler {
         let lambda_name_idx = self.cp.add_utf8(&lambda_name)?;
         let lambda_desc_idx = self.cp.add_utf8(&lambda_desc)?;
 
-        let stack_map_frames = self.build_stack_map_frames();
+        let stack_map_frames = self.frame.build_stack_map_frames();
         let code_attributes = if stack_map_frames.is_empty() {
             vec![]
         } else {
             vec![Attribute::StackMapTable {
-                name_index: self.smt_name,
+                name_index: self.refs.smt_name,
                 frames: stack_map_frames,
             }]
         };
@@ -1360,7 +1392,7 @@ impl Compiler {
             name_index: lambda_name_idx,
             descriptor_index: lambda_desc_idx,
             attributes: vec![Attribute::Code {
-                name_index: self.code_utf8,
+                name_index: self.refs.code_utf8,
                 max_stack: 20,
                 max_locals: self.next_local,
                 code: std::mem::take(&mut self.code),
@@ -1369,15 +1401,15 @@ impl Compiler {
             }],
         };
 
-        self.lambda_methods.push(lambda_method);
+        self.lambda.lambda_methods.push(lambda_method);
 
         // Restore compiler state
         self.code = saved_code;
         self.locals = saved_locals;
-        self.local_types = saved_local_types;
+        self.frame.local_types = saved_local_types;
         self.next_local = saved_next_local;
-        self.stack_types = saved_stack_types;
-        self.frames = saved_frames;
+        self.frame.stack_types = saved_stack_types;
+        self.frame.frames = saved_frames;
         self.fn_params = saved_fn_params;
         self.fn_return_type = saved_fn_return_type;
         self.local_fn_info = saved_local_fn_info;
@@ -1385,7 +1417,7 @@ impl Compiler {
         // Now set up invokedynamic in the outer method
 
         // 1. Ensure metafactory bootstrap handle
-        let bsm_handle = self.ensure_metafactory()?;
+        let bsm_handle = self.lambda.ensure_metafactory(&mut self.cp)?;
 
         // 2. Create method ref for the lambda impl
         let this_class = self.this_class;
@@ -1402,8 +1434,8 @@ impl Compiler {
         let instantiated_type = self.cp.add_method_type(&sam_desc)?;
 
         // 4. Create bootstrap method entry
-        let bsm_index = self.bootstrap_methods.len() as u16;
-        self.bootstrap_methods.push(BootstrapMethod {
+        let bsm_index = self.lambda.bootstrap_methods.len() as u16;
+        self.lambda.bootstrap_methods.push(BootstrapMethod {
             bootstrap_method_ref: bsm_handle,
             arguments: vec![sam_type, lambda_impl_handle, instantiated_type],
         });
@@ -1438,7 +1470,7 @@ impl Compiler {
 
         // Pop capture args from stack
         for _ in 0..captures.len() {
-            self.pop_type(); // each boxed capture is a single Object ref
+            self.frame.pop_type(); // each boxed capture is a single Object ref
         }
 
         // Push result type
@@ -1517,11 +1549,11 @@ impl Compiler {
         self.emit(Instruction::Astore(scrutinee_slot as u8));
         self.pop_jvm_type(scrutinee_type);
         let vtypes = self.jvm_type_to_vtypes(scrutinee_type);
-        self.local_types.extend(vtypes);
+        self.frame.local_types.extend(vtypes);
 
-        let stack_at_match = self.stack_types.clone();
+        let stack_at_match = self.frame.stack_types.clone();
         let locals_at_match = self.locals.clone();
-        let local_types_at_match = self.local_types.clone();
+        let local_types_at_match = self.frame.local_types.clone();
         let next_local_at_match = self.next_local;
 
         let mut goto_patches: Vec<usize> = Vec::new();
@@ -1537,15 +1569,15 @@ impl Compiler {
             }
 
             // Restore state for each arm
-            self.stack_types = stack_at_match.clone();
+            self.frame.stack_types = stack_at_match.clone();
             self.locals = locals_at_match.clone();
-            self.local_types = local_types_at_match.clone();
+            self.frame.local_types = local_types_at_match.clone();
             self.next_local = next_local_at_match;
 
             // Record frame at this arm's start (branch target) — except first arm
             if i > 0 {
                 let arm_start = self.code.len() as u16;
-                self.record_frame(arm_start);
+                self.frame.record_frame(arm_start);
             }
 
             // Compile pattern check (if not wildcard/var on last arm)
@@ -1568,35 +1600,35 @@ impl Compiler {
                 result_type = Some(target_type);
             }
             // Box primitive to Object if needed
-            if matches!(target_type, JvmType::StructRef(idx) if idx == self.object_class)
+            if matches!(target_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
                 && !matches!(arm_type, JvmType::StructRef(_) | JvmType::Ref)
             {
                 self.box_if_needed(arm_type);
                 // Fix stack type to match target (Object)
-                self.pop_type();
-                self.push_type(VerificationType::Object {
-                    cpool_index: self.object_class,
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
                 });
             }
             // Unbox Object to primitive if needed
             else if !matches!(target_type, JvmType::StructRef(_) | JvmType::Ref)
-                && matches!(arm_type, JvmType::StructRef(idx) if idx == self.object_class)
+                && matches!(arm_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
             {
                 self.unbox_if_needed(target_type);
             }
             // Checkcast Object to specific ref type if needed
             else if matches!(target_type, JvmType::Ref | JvmType::StructRef(_))
-                && !matches!(target_type, JvmType::StructRef(idx) if idx == self.object_class)
-                && matches!(arm_type, JvmType::StructRef(idx) if idx == self.object_class)
+                && !matches!(target_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
+                && matches!(arm_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
             {
                 let cast_class = match target_type {
-                    JvmType::Ref => self.string_class,
+                    JvmType::Ref => self.refs.string_class,
                     JvmType::StructRef(idx) => idx,
                     _ => unreachable!(),
                 };
                 self.emit(Instruction::Checkcast(cast_class));
-                self.pop_type();
-                self.push_type(VerificationType::Object { cpool_index: cast_class });
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object { cpool_index: cast_class });
             }
 
             // Goto after_match (except last arm)
@@ -1623,7 +1655,7 @@ impl Compiler {
 
         // after_match: record frame
         let after_match = self.code.len() as u16;
-        self.record_frame(after_match);
+        self.frame.record_frame(after_match);
 
         // Patch all goto instructions
         for goto_idx in goto_patches {
@@ -1648,10 +1680,10 @@ impl Compiler {
         match pattern {
             Pattern::Constructor { name, args, .. } => {
                 // Look up variant info
-                let sum_name = self.variant_to_sum.get(name).cloned().ok_or_else(|| {
+                let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown variant: {name}"))
                 })?;
-                let sum_info = &self.sum_type_info[&sum_name];
+                let sum_info = &self.types.sum_type_info[&sum_name];
                 let vi = &sum_info.variants[name];
                 let variant_class_index = vi.class_index;
                 let fields = vi.fields.clone();
@@ -1662,12 +1694,12 @@ impl Compiler {
                 self.push_jvm_type(scrutinee_type);
                 self.emit(Instruction::Instanceof(variant_class_index));
                 self.pop_jvm_type(scrutinee_type);
-                self.push_type(VerificationType::Integer);
+                self.frame.push_type(VerificationType::Integer);
 
                 // ifeq placeholder → next arm
                 let ifeq_idx = self.code.len();
                 self.emit(Instruction::Ifeq(0)); // placeholder
-                self.pop_type(); // consume int from instanceof
+                self.frame.pop_type(); // consume int from instanceof
 
                 // If has sub-patterns, checkcast and extract fields
                 if !args.is_empty() {
@@ -1676,15 +1708,15 @@ impl Compiler {
                     self.push_jvm_type(scrutinee_type);
                     self.emit(Instruction::Checkcast(variant_class_index));
                     self.pop_jvm_type(scrutinee_type);
-                    self.push_type(VerificationType::Object {
+                    self.frame.push_type(VerificationType::Object {
                         cpool_index: variant_class_index,
                     });
 
                     let cast_slot = self.next_local;
                     self.next_local += 1;
                     self.emit(Instruction::Astore(cast_slot as u8));
-                    self.pop_type();
-                    self.local_types.push(VerificationType::Object {
+                    self.frame.pop_type();
+                    self.frame.local_types.push(VerificationType::Object {
                         cpool_index: variant_class_index,
                     });
 
@@ -1697,14 +1729,14 @@ impl Compiler {
 
                         // Load cast ref, getfield
                         self.emit(Instruction::Aload(cast_slot as u8));
-                        self.push_type(VerificationType::Object {
+                        self.frame.push_type(VerificationType::Object {
                             cpool_index: variant_class_index,
                         });
                         self.emit(Instruction::Getfield(field_ref));
-                        self.pop_type(); // pop cast ref
+                        self.frame.pop_type(); // pop cast ref
                         if *is_erased {
-                            self.push_type(VerificationType::Object {
-                                cpool_index: self.string_class,
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: self.refs.string_class,
                             });
                         } else {
                             self.push_jvm_type(*field_jvm_type);
@@ -1715,7 +1747,7 @@ impl Compiler {
                                 // Erased fields stay as Object refs — no unboxing here.
                                 // Unboxing happens at monomorphic call sites.
                                 let actual_type = if *is_erased {
-                                    JvmType::StructRef(self.object_class)
+                                    JvmType::StructRef(self.refs.object_class)
                                 } else {
                                     *field_jvm_type
                                 };
@@ -1736,7 +1768,7 @@ impl Compiler {
                                 self.emit(store);
                                 self.pop_jvm_type(actual_type);
                                 let vtypes = self.jvm_type_to_vtypes(actual_type);
-                                self.local_types.extend(vtypes);
+                                self.frame.local_types.extend(vtypes);
                                 self.locals
                                     .insert(var_name.clone(), (var_slot, actual_type));
                             }
@@ -1752,11 +1784,11 @@ impl Compiler {
                                 let nested_slot = self.next_local;
                                 self.next_local += 1;
                                 self.emit(Instruction::Astore(nested_slot as u8));
-                                self.pop_type(); // pop the field value (object ref)
-                                self.local_types.push(VerificationType::Object {
+                                self.frame.pop_type(); // pop the field value (object ref)
+                                self.frame.local_types.push(VerificationType::Object {
                                     cpool_index: match nested_type {
                                         JvmType::StructRef(idx) => idx,
-                                        _ => self.string_class,
+                                        _ => self.refs.string_class,
                                     },
                                 });
                                 // Recursively compile the nested pattern check
@@ -1770,7 +1802,7 @@ impl Compiler {
                             }
                             Pattern::Wildcard { .. } => {
                                 // Already handled above, but just in case
-                                self.pop_type();
+                                self.frame.pop_type();
                                 self.emit(Instruction::Pop);
                             }
                             _ => {}
@@ -1793,7 +1825,7 @@ impl Compiler {
                 self.emit(Instruction::Astore(var_slot as u8));
                 self.pop_jvm_type(scrutinee_type);
                 let vtypes = self.jvm_type_to_vtypes(scrutinee_type);
-                self.local_types.extend(vtypes);
+                self.frame.local_types.extend(vtypes);
                 self.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(None)
             }
@@ -1820,16 +1852,16 @@ impl Compiler {
                 self.emit(Instruction::Astore(var_slot as u8));
                 self.pop_jvm_type(scrutinee_type);
                 let vtypes = self.jvm_type_to_vtypes(scrutinee_type);
-                self.local_types.extend(vtypes);
+                self.frame.local_types.extend(vtypes);
                 self.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(())
             }
             Pattern::Constructor { name, args, .. } => {
                 // Last arm constructor — still need to extract fields
-                let sum_name = self.variant_to_sum.get(name).cloned().ok_or_else(|| {
+                let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown variant: {name}"))
                 })?;
-                let sum_info = &self.sum_type_info[&sum_name];
+                let sum_info = &self.types.sum_type_info[&sum_name];
                 let vi = &sum_info.variants[name];
                 let variant_class_index = vi.class_index;
                 let fields = vi.fields.clone();
@@ -1840,15 +1872,15 @@ impl Compiler {
                     self.push_jvm_type(scrutinee_type);
                     self.emit(Instruction::Checkcast(variant_class_index));
                     self.pop_jvm_type(scrutinee_type);
-                    self.push_type(VerificationType::Object {
+                    self.frame.push_type(VerificationType::Object {
                         cpool_index: variant_class_index,
                     });
 
                     let cast_slot = self.next_local;
                     self.next_local += 1;
                     self.emit(Instruction::Astore(cast_slot as u8));
-                    self.pop_type();
-                    self.local_types.push(VerificationType::Object {
+                    self.frame.pop_type();
+                    self.frame.local_types.push(VerificationType::Object {
                         cpool_index: variant_class_index,
                     });
 
@@ -1860,14 +1892,14 @@ impl Compiler {
                         let field_ref = field_refs[j];
 
                         self.emit(Instruction::Aload(cast_slot as u8));
-                        self.push_type(VerificationType::Object {
+                        self.frame.push_type(VerificationType::Object {
                             cpool_index: variant_class_index,
                         });
                         self.emit(Instruction::Getfield(field_ref));
-                        self.pop_type();
+                        self.frame.pop_type();
                         if *is_erased {
-                            self.push_type(VerificationType::Object {
-                                cpool_index: self.string_class,
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: self.refs.string_class,
                             });
                         } else {
                             self.push_jvm_type(*field_jvm_type);
@@ -1875,7 +1907,7 @@ impl Compiler {
 
                         if let Pattern::Var { name: var_name, .. } = sub_pat {
                             let actual_type = if *is_erased {
-                                JvmType::StructRef(self.object_class)
+                                JvmType::StructRef(self.refs.object_class)
                             } else {
                                 *field_jvm_type
                             };
@@ -1896,7 +1928,7 @@ impl Compiler {
                             self.emit(store);
                             self.pop_jvm_type(actual_type);
                             let vtypes = self.jvm_type_to_vtypes(actual_type);
-                            self.local_types.extend(vtypes);
+                            self.frame.local_types.extend(vtypes);
                             self.locals.insert(var_name.clone(), (var_slot, actual_type));
                         }
                     }
@@ -1913,10 +1945,10 @@ impl Compiler {
     fn get_pattern_class_index(&self, pattern: &Pattern) -> Result<u16, CodegenError> {
         match pattern {
             Pattern::Constructor { name, .. } => {
-                let sum_name = self.variant_to_sum.get(name).ok_or_else(|| {
+                let sum_name = self.types.variant_to_sum.get(name).ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown variant: {name}"))
                 })?;
-                let sum_info = &self.sum_type_info[sum_name];
+                let sum_info = &self.types.sum_type_info[sum_name];
                 Ok(sum_info.interface_class_index)
             }
             _ => Err(CodegenError::TypeError(
@@ -1934,10 +1966,10 @@ impl Compiler {
         _outer_ifeq_idx: usize,
     ) -> Result<(), CodegenError> {
         if let Pattern::Constructor { name, args, .. } = pattern {
-            let sum_name = self.variant_to_sum.get(name).cloned().ok_or_else(|| {
+            let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
                 CodegenError::TypeError(format!("unknown variant: {name}"))
             })?;
-            let sum_info = &self.sum_type_info[&sum_name];
+            let sum_info = &self.types.sum_type_info[&sum_name];
             let vi = &sum_info.variants[name];
             let variant_class_index = vi.class_index;
             let fields = vi.fields.clone();
@@ -1945,41 +1977,41 @@ impl Compiler {
 
             // instanceof check
             self.emit(Instruction::Aload(scrutinee_slot as u8));
-            self.push_type(VerificationType::Object {
+            self.frame.push_type(VerificationType::Object {
                 cpool_index: match scrutinee_type {
                     JvmType::StructRef(idx) => idx,
-                    _ => self.string_class,
+                    _ => self.refs.string_class,
                 },
             });
             self.emit(Instruction::Instanceof(variant_class_index));
-            self.pop_type();
-            self.push_type(VerificationType::Integer);
+            self.frame.pop_type();
+            self.frame.push_type(VerificationType::Integer);
 
             // ifeq → same outer target (we'll add a new ifeq that also jumps to next arm)
             let nested_ifeq_idx = self.code.len();
             self.emit(Instruction::Ifeq(0)); // placeholder — will share target with outer
-            self.pop_type();
+            self.frame.pop_type();
 
             // Extract fields if needed
             if !args.is_empty() {
                 self.emit(Instruction::Aload(scrutinee_slot as u8));
-                self.push_type(VerificationType::Object {
+                self.frame.push_type(VerificationType::Object {
                     cpool_index: match scrutinee_type {
                         JvmType::StructRef(idx) => idx,
-                        _ => self.string_class,
+                        _ => self.refs.string_class,
                     },
                 });
                 self.emit(Instruction::Checkcast(variant_class_index));
-                self.pop_type();
-                self.push_type(VerificationType::Object {
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
                     cpool_index: variant_class_index,
                 });
 
                 let cast_slot = self.next_local;
                 self.next_local += 1;
                 self.emit(Instruction::Astore(cast_slot as u8));
-                self.pop_type();
-                self.local_types.push(VerificationType::Object {
+                self.frame.pop_type();
+                self.frame.local_types.push(VerificationType::Object {
                     cpool_index: variant_class_index,
                 });
 
@@ -1991,14 +2023,14 @@ impl Compiler {
                     let field_ref = field_refs[j];
 
                     self.emit(Instruction::Aload(cast_slot as u8));
-                    self.push_type(VerificationType::Object {
+                    self.frame.push_type(VerificationType::Object {
                         cpool_index: variant_class_index,
                     });
                     self.emit(Instruction::Getfield(field_ref));
-                    self.pop_type();
+                    self.frame.pop_type();
                     if *is_erased {
-                        self.push_type(VerificationType::Object {
-                            cpool_index: self.string_class,
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: self.refs.string_class,
                         });
                     } else {
                         self.push_jvm_type(*field_jvm_type);
@@ -2007,7 +2039,7 @@ impl Compiler {
                     match sub_pat {
                         Pattern::Var { name: var_name, .. } => {
                             let actual_type = if *is_erased {
-                                JvmType::StructRef(self.object_class)
+                                JvmType::StructRef(self.refs.object_class)
                             } else {
                                 *field_jvm_type
                             };
@@ -2028,7 +2060,7 @@ impl Compiler {
                             self.emit(store);
                             self.pop_jvm_type(actual_type);
                             let vtypes = self.jvm_type_to_vtypes(actual_type);
-                            self.local_types.extend(vtypes);
+                            self.frame.local_types.extend(vtypes);
                             self.locals.insert(var_name.clone(), (var_slot, actual_type));
                         }
                         Pattern::Constructor { .. } => {
@@ -2041,11 +2073,11 @@ impl Compiler {
                             let nested_slot = self.next_local;
                             self.next_local += 1;
                             self.emit(Instruction::Astore(nested_slot as u8));
-                            self.pop_type();
-                            self.local_types.push(VerificationType::Object {
+                            self.frame.pop_type();
+                            self.frame.local_types.push(VerificationType::Object {
                                 cpool_index: match nested_type {
                                     JvmType::StructRef(idx) => idx,
-                                    _ => self.string_class,
+                                    _ => self.refs.string_class,
                                 },
                             });
                             self.compile_nested_pattern(
@@ -2096,11 +2128,11 @@ impl Compiler {
                 match ty {
                     JvmType::Long | JvmType::Double => {
                         self.emit(Instruction::Pop2);
-                        self.pop_type_n(2);
+                        self.frame.pop_type_n(2);
                     }
                     _ => {
                         self.emit(Instruction::Pop);
-                        self.pop_type();
+                        self.frame.pop_type();
                     }
                 }
             }
@@ -2114,14 +2146,14 @@ impl Compiler {
         self.reset_method_state();
 
         // Look up the function's type info
-        let info = self.functions.get(&decl.name).ok_or_else(|| {
+        let info = self.types.functions.get(&decl.name).ok_or_else(|| {
             CodegenError::UndefinedVariable(decl.name.clone())
         })?;
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
         // Get typechecker types for this function's params (for detecting Fn-typed params)
-        let tc_types = self.fn_tc_types.get(&decl.name).cloned();
+        let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
 
         // Register parameters as locals and save fn_params for recur
         let mut fn_params = Vec::new();
@@ -2137,7 +2169,7 @@ impl Compiler {
 
             // Track local verification types
             let vtypes = self.jvm_type_to_vtypes(jvm_ty);
-            self.local_types.extend(vtypes);
+            self.frame.local_types.extend(vtypes);
 
             // If this param is function-typed, register in local_fn_info
             if let Some((ref tc_param_types, _)) = tc_types {
@@ -2148,7 +2180,7 @@ impl Compiler {
                         .collect::<Result<_, _>>()?;
                     let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
                     let arity = inner_params.len() as u8;
-                    self.ensure_fun_interface(arity)?;
+                    self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
                     self.local_fn_info.insert(param.name.clone(), (inner_param_jvm, inner_ret_jvm));
                 }
             }
@@ -2167,30 +2199,30 @@ impl Compiler {
         let body_type = self.compile_expr(&decl.body, true)?;
 
         // If body type is Object but return type is primitive, unbox
-        if matches!(body_type, JvmType::StructRef(idx) if idx == self.object_class)
+        if matches!(body_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
             && !matches!(return_type, JvmType::StructRef(_) | JvmType::Ref)
         {
             self.unbox_if_needed(return_type);
         }
         // If body type is primitive but return type is Object, box
-        else if matches!(return_type, JvmType::StructRef(idx) if idx == self.object_class)
+        else if matches!(return_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
             && !matches!(body_type, JvmType::StructRef(_) | JvmType::Ref)
         {
             self.box_if_needed(body_type);
         }
         // If body type is Object but return type is a specific reference type, checkcast
-        else if matches!(body_type, JvmType::StructRef(idx) if idx == self.object_class)
+        else if matches!(body_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
             && matches!(return_type, JvmType::Ref | JvmType::StructRef(_))
-            && !matches!(return_type, JvmType::StructRef(idx) if idx == self.object_class)
+            && !matches!(return_type, JvmType::StructRef(idx) if idx == self.refs.object_class)
         {
             let cast_class = match return_type {
-                JvmType::Ref => self.string_class,
+                JvmType::Ref => self.refs.string_class,
                 JvmType::StructRef(idx) => idx,
                 _ => unreachable!(),
             };
             self.emit(Instruction::Checkcast(cast_class));
-            self.pop_type();
-            self.push_type(VerificationType::Object { cpool_index: cast_class });
+            self.frame.pop_type();
+            self.frame.push_type(VerificationType::Object { cpool_index: cast_class });
         }
 
         // Emit typed return
@@ -2203,17 +2235,17 @@ impl Compiler {
         self.emit(ret_instr);
 
         // Build the method descriptor string for the constant pool
-        let descriptor = self.build_descriptor(&param_types, return_type);
+        let descriptor = self.types.build_descriptor(&param_types, return_type);
         let name_idx = self.cp.add_utf8(&decl.name)?;
         let desc_idx = self.cp.add_utf8(&descriptor)?;
 
         // Build StackMapTable
-        let stack_map_frames = self.build_stack_map_frames();
+        let stack_map_frames = self.frame.build_stack_map_frames();
         let code_attributes = if stack_map_frames.is_empty() {
             vec![]
         } else {
             vec![Attribute::StackMapTable {
-                name_index: self.smt_name,
+                name_index: self.refs.smt_name,
                 frames: stack_map_frames,
             }]
         };
@@ -2223,7 +2255,7 @@ impl Compiler {
             name_index: name_idx,
             descriptor_index: desc_idx,
             attributes: vec![Attribute::Code {
-                name_index: self.code_utf8,
+                name_index: self.refs.code_utf8,
                 max_stack: 20, // conservative estimate
                 max_locals: self.next_local,
                 code: std::mem::take(&mut self.code),
@@ -2249,15 +2281,15 @@ impl Compiler {
 
         let constructor = Method {
             access_flags: MethodAccessFlags::PUBLIC,
-            name_index: self.init_name,
-            descriptor_index: self.init_desc,
+            name_index: self.refs.init_name,
+            descriptor_index: self.refs.init_desc,
             attributes: vec![Attribute::Code {
-                name_index: self.code_utf8,
+                name_index: self.refs.code_utf8,
                 max_stack: 1,
                 max_locals: 1,
                 code: vec![
                     Instruction::Aload_0,
-                    Instruction::Invokespecial(self.object_init),
+                    Instruction::Invokespecial(self.refs.object_init),
                     Instruction::Return,
                 ],
                 exception_table: vec![],
@@ -2266,12 +2298,12 @@ impl Compiler {
         };
 
         // Build StackMapTable if we have frames
-        let stack_map_frames = self.build_stack_map_frames();
+        let stack_map_frames = self.frame.build_stack_map_frames();
         let code_attributes = if stack_map_frames.is_empty() {
             vec![]
         } else {
             vec![Attribute::StackMapTable {
-                name_index: self.smt_name,
+                name_index: self.refs.smt_name,
                 frames: stack_map_frames,
             }]
         };
@@ -2281,7 +2313,7 @@ impl Compiler {
             name_index: main_name,
             descriptor_index: main_desc,
             attributes: vec![Attribute::Code {
-                name_index: self.code_utf8,
+                name_index: self.refs.code_utf8,
                 max_stack: self.estimate_max_stack(),
                 max_locals: self.next_local,
                 code: std::mem::take(&mut self.code),
@@ -2293,16 +2325,16 @@ impl Compiler {
         let mut methods = vec![constructor];
         methods.extend(extra_methods);
         // Add lambda methods
-        methods.extend(std::mem::take(&mut self.lambda_methods));
+        methods.extend(std::mem::take(&mut self.lambda.lambda_methods));
         methods.push(main_method);
 
         // Build class attributes (BootstrapMethods if any)
         let mut class_attributes = Vec::new();
-        if !self.bootstrap_methods.is_empty() {
+        if !self.lambda.bootstrap_methods.is_empty() {
             let bsm_name = self.cp.add_utf8("BootstrapMethods")?;
             class_attributes.push(Attribute::BootstrapMethods {
                 name_index: bsm_name,
-                methods: std::mem::take(&mut self.bootstrap_methods),
+                methods: std::mem::take(&mut self.lambda.bootstrap_methods),
             });
         }
 
@@ -2700,7 +2732,7 @@ pub fn compile_module(
     let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
 
     // Register java/lang/Object in class_descriptors for erased type variables
-    compiler
+    compiler.types
         .class_descriptors
         .insert(object_class, "Ljava/lang/Object;".to_string());
 
@@ -2737,7 +2769,7 @@ pub fn compile_module(
                 // For struct-typed fields, we need to check if it refers to a known struct
                 let jt = match texpr {
                     TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
-                        if let Some(si) = compiler.struct_info.get(name.as_str()) {
+                        if let Some(si) = compiler.types.struct_info.get(name.as_str()) {
                             JvmType::StructRef(si.class_index)
                         } else {
                             type_expr_to_jvm(texpr)?
@@ -2752,14 +2784,14 @@ pub fn compile_module(
         // Register the struct class in main class's constant pool
         let class_index = compiler.cp.add_class(struct_name)?;
         let class_desc = format!("L{struct_name};");
-        compiler
+        compiler.types
             .class_descriptors
             .insert(class_index, class_desc.clone());
 
         // Add constructor methodref in main class's cpool
         let mut ctor_desc = String::from("(");
         for (_, jt) in &jvm_fields {
-            ctor_desc.push_str(&compiler.jvm_type_descriptor(*jt));
+            ctor_desc.push_str(&compiler.types.jvm_type_descriptor(*jt));
         }
         ctor_desc.push_str(")V");
         let constructor_ref =
@@ -2770,7 +2802,7 @@ pub fn compile_module(
         // Add accessor methodrefs in main class's cpool
         let mut accessor_refs = HashMap::new();
         for (fname, jt) in &jvm_fields {
-            let ret_desc = compiler.jvm_type_descriptor(*jt);
+            let ret_desc = compiler.types.jvm_type_descriptor(*jt);
             let method_desc = format!("(){ret_desc}");
             let accessor_ref =
                 compiler
@@ -2779,7 +2811,7 @@ pub fn compile_module(
             accessor_refs.insert(fname.clone(), accessor_ref);
         }
 
-        compiler.struct_info.insert(
+        compiler.types.struct_info.insert(
             struct_name.clone(),
             StructInfo {
                 class_index,
@@ -2792,7 +2824,7 @@ pub fn compile_module(
 
         // Generate the struct class file
         let struct_bytes =
-            generate_struct_class(struct_name, &jvm_fields, &compiler.class_descriptors)?;
+            generate_struct_class(struct_name, &jvm_fields, &compiler.types.class_descriptors)?;
         result_classes.push((struct_name.clone(), struct_bytes));
     }
 
@@ -2816,7 +2848,7 @@ pub fn compile_module(
         // Register interface class in main cpool
         let interface_class_index = compiler.cp.add_class(sum_name)?;
         let interface_desc = format!("L{sum_name};");
-        compiler
+        compiler.types
             .class_descriptors
             .insert(interface_class_index, interface_desc);
 
@@ -2845,7 +2877,7 @@ pub fn compile_module(
             let qualified_name = format!("{}${}", sum_name, variant.name);
             let variant_class_index = compiler.cp.add_class(&qualified_name)?;
             let variant_desc = format!("L{qualified_name};");
-            compiler
+            compiler.types
                 .class_descriptors
                 .insert(variant_class_index, variant_desc);
 
@@ -2878,7 +2910,7 @@ pub fn compile_module(
                 main_field_refs.push(fr);
             }
 
-            compiler
+            compiler.types
                 .variant_to_sum
                 .insert(variant.name.clone(), sum_name.clone());
 
@@ -2899,7 +2931,7 @@ pub fn compile_module(
             result_classes.push((qualified_name.clone(), variant_bytes));
         }
 
-        compiler.sum_type_info.insert(
+        compiler.types.sum_type_info.insert(
             sum_name.clone(),
             SumTypeInfo {
                 interface_class_index,
@@ -2916,15 +2948,15 @@ pub fn compile_module(
     // Pre-scan for function-typed params so we can register FunN interfaces first
     for (name, scheme) in &type_info {
         if let Type::Fn(param_tys, _) = &scheme.ty {
-            if compiler.struct_info.contains_key(name)
-                || compiler.variant_to_sum.contains_key(name)
+            if compiler.types.struct_info.contains_key(name)
+                || compiler.types.variant_to_sum.contains_key(name)
             {
                 continue;
             }
             for pt in param_tys {
                 if let Type::Fn(inner_params, _) = pt {
                     let arity = inner_params.len() as u8;
-                    compiler.ensure_fun_interface(arity)?;
+                    compiler.lambda.ensure_fun_interface(arity, &mut compiler.cp, &mut compiler.types.class_descriptors)?;
                 }
             }
         }
@@ -2933,7 +2965,7 @@ pub fn compile_module(
     // Also pre-scan lambda types to register FunN interfaces
     for (_, (param_types, _)) in &raw_lambda_types {
         let arity = param_types.len() as u8;
-        compiler.ensure_fun_interface(arity)?;
+        compiler.lambda.ensure_fun_interface(arity, &mut compiler.cp, &mut compiler.types.class_descriptors)?;
     }
 
     // Convert lambda types from Type to JvmType
@@ -2943,7 +2975,7 @@ pub fn compile_module(
             .map(|t| compiler.type_to_jvm(t))
             .collect::<Result<_, _>>()?;
         let jvm_ret = compiler.type_to_jvm(ret_type)?;
-        compiler.lambda_types.insert(*span, (jvm_params, jvm_ret));
+        compiler.lambda.lambda_types.insert(*span, (jvm_params, jvm_ret));
     }
 
     // Register all functions (including main) in the function registry.
@@ -2951,8 +2983,8 @@ pub fn compile_module(
     for (name, scheme) in &type_info {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
             // Skip if this is a struct constructor or variant constructor
-            if compiler.struct_info.contains_key(name)
-                || compiler.variant_to_sum.contains_key(name)
+            if compiler.types.struct_info.contains_key(name)
+                || compiler.types.variant_to_sum.contains_key(name)
             {
                 continue;
             }
@@ -2966,10 +2998,10 @@ pub fn compile_module(
             } else {
                 name.as_str()
             };
-            let descriptor = compiler.build_descriptor(&param_types, return_type);
+            let descriptor = compiler.types.build_descriptor(&param_types, return_type);
             let method_ref =
                 compiler.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
-            compiler.functions.insert(
+            compiler.types.functions.insert(
                 name.clone(),
                 FunctionInfo {
                     method_ref,
@@ -2978,7 +3010,7 @@ pub fn compile_module(
                 },
             );
             // Store TC types for detecting Fn-typed params in compile_function
-            compiler.fn_tc_types.insert(
+            compiler.types.fn_tc_types.insert(
                 name.clone(),
                 (param_tys.clone(), (**ret_ty).clone()),
             );
@@ -3008,22 +3040,22 @@ pub fn compile_module(
     }
 
     // Build JVM main(String[])V — calls krypton_main and prints the result
-    let main_info = compiler.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
+    let main_info = compiler.types.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
     let krypton_main_ref = main_info.method_ref;
     let main_return_type = main_info.return_type;
 
     compiler.reset_method_state();
     compiler.next_local = 1; // slot 0 = String[] args
     let string_arr_class = compiler.cp.add_class("[Ljava/lang/String;")?;
-    compiler.local_types = vec![VerificationType::Object {
+    compiler.frame.local_types = vec![VerificationType::Object {
         cpool_index: string_arr_class,
     }];
 
     // Emit: getstatic System.out
-    let system_out = compiler.system_out;
+    let system_out = compiler.refs.system_out;
     compiler.emit(Instruction::Getstatic(system_out));
-    compiler.push_type(VerificationType::Object {
-        cpool_index: compiler.ps_class,
+    compiler.frame.push_type(VerificationType::Object {
+        cpool_index: compiler.refs.ps_class,
     });
 
     // Call krypton_main
@@ -3032,22 +3064,22 @@ pub fn compile_module(
 
     // Emit the appropriate println call
     let println_ref = match main_return_type {
-        JvmType::Long => compiler.println_long,
-        JvmType::Double => compiler.println_double,
-        JvmType::Ref => compiler.println_string,
-        JvmType::Int => compiler.println_bool,
-        JvmType::StructRef(_) => compiler.println_object,
+        JvmType::Long => compiler.refs.println_long,
+        JvmType::Double => compiler.refs.println_double,
+        JvmType::Ref => compiler.refs.println_string,
+        JvmType::Int => compiler.refs.println_bool,
+        JvmType::StructRef(_) => compiler.refs.println_object,
     };
     compiler.emit(Instruction::Invokevirtual(println_ref));
 
     // Pop println args + PrintStream from stack tracker
     compiler.pop_jvm_type(main_return_type);
-    compiler.pop_type(); // PrintStream
+    compiler.frame.pop_type(); // PrintStream
 
     compiler.emit(Instruction::Return);
 
     // Generate FunN interface class files
-    let fun_arities: Vec<u8> = compiler.fun_classes.keys().copied().collect();
+    let fun_arities: Vec<u8> = compiler.lambda.fun_classes.keys().copied().collect();
     for arity in fun_arities {
         let fun_bytes = generate_fun_interface(arity)?;
         result_classes.push((format!("Fun{arity}"), fun_bytes));
