@@ -1,0 +1,3 @@
+# expect: ok
+(def identity (fn [x] [(own String)] String x))
+(def passthrough (fn [val] [(own String)] String (identity val)))
