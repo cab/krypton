@@ -88,7 +88,26 @@ impl TypeError {
     /// Return optional help text for this error.
     pub fn help(&self) -> Option<String> {
         match self {
-            TypeError::Mismatch { .. } => None,
+            TypeError::Mismatch { expected, actual } => {
+                match (expected, actual) {
+                    (Type::Own(inner_e), _)
+                        if matches!(inner_e.as_ref(), Type::Fn(_, _))
+                            && matches!(actual, Type::Fn(_, _)) =>
+                    {
+                        Some("a single-use closure (`own fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
+                    }
+                    (_, Type::Own(inner_a))
+                        if matches!(inner_a.as_ref(), Type::Fn(_, _))
+                            && matches!(expected, Type::Fn(_, _)) =>
+                    {
+                        Some("a single-use closure (`own fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
+                    }
+                    (Type::Own(_), _) | (_, Type::Own(_)) => {
+                        Some("an `own` value must be passed to a parameter that accepts ownership".to_string())
+                    }
+                    _ => None,
+                }
+            }
             TypeError::DuplicateType { name } => {
                 Some(format!("type `{}` is already defined", name))
             }

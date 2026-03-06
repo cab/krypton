@@ -1,0 +1,3 @@
+# expect: error E0001
+(type Box (record (value String)))
+(def bad (fn [x] [(own String)] Box (Box x)))

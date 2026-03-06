@@ -1,5 +1,5 @@
 use krypton_parser::lexer;
-use krypton_parser::parser::parse_expr;
+use krypton_parser::parser::{parse, parse_expr};
 use krypton_typechecker::diagnostics::render_type_errors;
 use krypton_typechecker::infer;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
@@ -71,6 +71,46 @@ fn infinite_type_diagnostic() {
 #[test]
 fn unknown_var_diagnostic() {
     insta::assert_snapshot!(render_error("(+ x 1)"));
+}
+
+fn render_module_error(src: &str) -> String {
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let err = match infer::infer_module(&module) {
+        Ok(_) => panic!("expected a type error"),
+        Err(e) => e,
+    };
+    let rendered = render_type_errors("test.kr", src, &[err]);
+    strip_ansi_escapes(rendered)
+}
+
+#[test]
+fn own_fn_vs_fn_help_text() {
+    let src = "(def call_many (fn [f] [(fn [] String)] String (f)))\n(def bad (fn [x] [(own String)] String\n  (call_many (fn [] x))))";
+    let output = render_module_error(src);
+    assert!(
+        output.contains("single-use closure"),
+        "expected own fn help text in:\n{output}"
+    );
+}
+
+#[test]
+fn own_t_vs_t_help_text() {
+    let src = "(type Box (record (value String)))\n(def bad (fn [x] [(own String)] Box (Box x)))";
+    let output = render_module_error(src);
+    assert!(
+        output.contains("own"),
+        "expected ownership help text in:\n{output}"
+    );
+}
+
+#[test]
+fn no_own_mismatch_no_help() {
+    let output = render_error("(if true 1 \"hi\")");
+    assert!(
+        !output.contains("single-use closure") && !output.contains("own"),
+        "expected no ownership help text in:\n{output}"
+    );
 }
 
 #[test]
