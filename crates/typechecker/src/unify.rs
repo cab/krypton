@@ -17,6 +17,7 @@ pub enum TypeErrorCode {
     E0009, // Missing fields
     E0010, // Not a struct
     E0101, // Value already moved
+    E0102, // Value may have been moved in a branch
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -33,6 +34,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0009 => write!(f, "E0009"),
             TypeErrorCode::E0010 => write!(f, "E0010"),
             TypeErrorCode::E0101 => write!(f, "E0101"),
+            TypeErrorCode::E0102 => write!(f, "E0102"),
         }
     }
 }
@@ -51,6 +53,7 @@ pub enum TypeError {
     NotAStruct { actual: Type },
     NonExhaustive { missing: Vec<String> },
     AlreadyMoved { name: String },
+    MovedInBranch { name: String },
     UnsupportedExpr { description: String },
 }
 
@@ -69,6 +72,7 @@ impl TypeError {
             TypeError::NotAStruct { .. } => TypeErrorCode::E0010,
             TypeError::NonExhaustive { .. } => TypeErrorCode::E0006,
             TypeError::AlreadyMoved { .. } => TypeErrorCode::E0101,
+            TypeError::MovedInBranch { .. } => TypeErrorCode::E0102,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
         }
     }
@@ -106,6 +110,9 @@ impl TypeError {
             }
             TypeError::AlreadyMoved { name } => {
                 Some(format!("`{}` was already consumed by a previous use", name))
+            }
+            TypeError::MovedInBranch { name } => {
+                Some(format!("`{}` was consumed in some but not all branches of a conditional", name))
             }
             TypeError::UnsupportedExpr { .. } => None,
         }
@@ -151,6 +158,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::AlreadyMoved { name } => {
                 write!(f, "value already moved: `{}`", name)
+            }
+            TypeError::MovedInBranch { name } => {
+                write!(f, "value may have been moved in a prior branch: `{}`", name)
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)

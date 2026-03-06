@@ -1,0 +1,6 @@
+# expect: ok
+(def consume (fn [buf] [(own String)] String buf))
+(def test (fn [x] [(own String)] String
+  (do
+    (if true "a" "b")
+    (consume x))))

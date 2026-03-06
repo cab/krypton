@@ -1,0 +1,6 @@
+# expect: error E0101
+(def consume (fn [buf] [(own String)] String buf))
+(def test (fn [x] [(own String)] String
+  (do
+    (if true (consume x) (consume x))
+    x)))

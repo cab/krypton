@@ -1,0 +1,9 @@
+# expect: error E0102
+(type Option [a] (| (Some a) None))
+(def consume (fn [buf] [(own String)] String buf))
+(def test (fn [x opt] [(own String) (Option Int)] String
+  (do
+    (match opt
+      ((Some _) (consume x))
+      ((None) "kept"))
+    x)))
