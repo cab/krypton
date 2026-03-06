@@ -207,8 +207,24 @@ fn check_expr(
             check_expr(operand, owned, consumed, partially_consumed, fn_param_info)
         }
 
-        Expr::Lambda { body, .. } => {
-            check_expr(body, owned, consumed, partially_consumed, fn_param_info)
+        Expr::Lambda { params, body, span, .. } => {
+            let lambda_params: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
+            let captured = free_owned_vars(body, owned, &lambda_params);
+            for name in &captured {
+                if consumed.contains(name) || partially_consumed.contains(name) {
+                    return Err(SpannedTypeError {
+                        error: TypeError::CapturedMoved { name: name.clone() },
+                        span: *span,
+                    });
+                }
+                consumed.insert(name.clone());
+            }
+            // Recurse into the body with fresh consumed/partially_consumed sets
+            // (the lambda body is a new ownership scope — captured vars are consumed
+            // at the creation site, not inside the body)
+            let mut body_consumed = HashSet::new();
+            let mut body_partial = HashSet::new();
+            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info)
         }
 
         Expr::FieldAccess { expr, .. } => {
@@ -257,5 +273,106 @@ fn check_expr(
 
         // Lit — no owned vars to consume
         Expr::Lit { .. } => Ok(()),
+    }
+}
+
+/// Collect free variables in an expression that are in the `owned` set,
+/// excluding those in `bound` (lambda params or let-bound names).
+fn free_owned_vars(expr: &Expr, owned: &HashSet<String>, bound: &HashSet<String>) -> HashSet<String> {
+    let mut result = HashSet::new();
+    collect_free_owned(expr, owned, bound, &mut result);
+    result
+}
+
+fn collect_free_owned(expr: &Expr, owned: &HashSet<String>, bound: &HashSet<String>, acc: &mut HashSet<String>) {
+    match expr {
+        Expr::Var { name, .. } => {
+            if owned.contains(name) && !bound.contains(name) {
+                acc.insert(name.clone());
+            }
+        }
+        Expr::App { func, args, .. } => {
+            collect_free_owned(func, owned, bound, acc);
+            for a in args {
+                collect_free_owned(a, owned, bound, acc);
+            }
+        }
+        Expr::Let { name, value, body, .. } => {
+            collect_free_owned(value, owned, bound, acc);
+            if let Some(body) = body {
+                let mut inner_bound = bound.clone();
+                inner_bound.insert(name.clone());
+                collect_free_owned(body, owned, &inner_bound, acc);
+            }
+        }
+        Expr::LetPattern { value, body, .. } => {
+            collect_free_owned(value, owned, bound, acc);
+            if let Some(body) = body {
+                collect_free_owned(body, owned, bound, acc);
+            }
+        }
+        Expr::Do { exprs, .. } => {
+            for e in exprs {
+                collect_free_owned(e, owned, bound, acc);
+            }
+        }
+        Expr::If { cond, then_, else_, .. } => {
+            collect_free_owned(cond, owned, bound, acc);
+            collect_free_owned(then_, owned, bound, acc);
+            collect_free_owned(else_, owned, bound, acc);
+        }
+        Expr::Match { scrutinee, arms, .. } => {
+            collect_free_owned(scrutinee, owned, bound, acc);
+            for arm in arms {
+                collect_free_owned(&arm.body, owned, bound, acc);
+            }
+        }
+        Expr::BinaryOp { lhs, rhs, .. } => {
+            collect_free_owned(lhs, owned, bound, acc);
+            collect_free_owned(rhs, owned, bound, acc);
+        }
+        Expr::UnaryOp { operand, .. } => {
+            collect_free_owned(operand, owned, bound, acc);
+        }
+        Expr::Lambda { params, body, .. } => {
+            let mut inner_bound = bound.clone();
+            for p in params {
+                inner_bound.insert(p.name.clone());
+            }
+            collect_free_owned(body, owned, &inner_bound, acc);
+        }
+        Expr::FieldAccess { expr, .. } => {
+            collect_free_owned(expr, owned, bound, acc);
+        }
+        Expr::StructLit { fields, .. } => {
+            for (_, e) in fields {
+                collect_free_owned(e, owned, bound, acc);
+            }
+        }
+        Expr::StructUpdate { base, fields, .. } => {
+            collect_free_owned(base, owned, bound, acc);
+            for (_, e) in fields {
+                collect_free_owned(e, owned, bound, acc);
+            }
+        }
+        Expr::Tuple { elements, .. } => {
+            for e in elements {
+                collect_free_owned(e, owned, bound, acc);
+            }
+        }
+        Expr::Recur { args, .. } => {
+            for a in args {
+                collect_free_owned(a, owned, bound, acc);
+            }
+        }
+        Expr::QuestionMark { expr, .. } => {
+            collect_free_owned(expr, owned, bound, acc);
+        }
+        Expr::List { elements, .. } => {
+            for e in elements {
+                collect_free_owned(e, owned, bound, acc);
+            }
+        }
+        Expr::Lit { .. } => {}
     }
 }

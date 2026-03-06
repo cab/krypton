@@ -1,0 +1,6 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+consume: fn(own String) -> own String
+make: fn(own String) -> own String

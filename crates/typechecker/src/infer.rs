@@ -110,7 +110,11 @@ fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> SpannedTypeErro
 /// Check if a type is concretely not a function (after walking substitution).
 fn is_concrete_non_function(ty: &Type, subst: &Substitution) -> bool {
     let walked = subst.apply(ty);
-    !matches!(walked, Type::Var(_) | Type::Fn(_, _))
+    match &walked {
+        Type::Var(_) | Type::Fn(_, _) => false,
+        Type::Own(inner) => is_concrete_non_function(inner, subst),
+        _ => true,
+    }
 }
 
 /// Infer the type of an expression using Algorithm J.
@@ -166,10 +170,16 @@ fn infer_expr_inner(
             env.pop_scope();
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
             let body_ty = subst.apply(&body_ty);
-            if let Some(lt) = lambda_types {
+            if let Some(lt) = lambda_types.as_deref_mut() {
                 lt.insert(*span, (param_types.clone(), body_ty.clone()));
             }
-            Ok(Type::Fn(param_types, Box::new(body_ty)))
+            let fn_ty = Type::Fn(param_types, Box::new(body_ty));
+            let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
+            if captures_own_value(body, &param_names, env, subst) {
+                Ok(Type::Own(Box::new(fn_ty)))
+            } else {
+                Ok(fn_ty)
+            }
         }
 
         Expr::App {
@@ -200,7 +210,12 @@ fn infer_expr_inner(
                 coerce_own_args(&func_ty, &arg_types, subst)
             };
             let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
-            unify(&func_ty, &expected_fn, subst)
+            // Unwrap Own wrapper for callable own fn types
+            let unwrapped_func_ty = match subst.apply(&func_ty) {
+                Type::Own(inner) if matches!(*inner, Type::Fn(_, _)) => *inner,
+                _ => func_ty,
+            };
+            unify(&unwrapped_func_ty, &expected_fn, subst)
                 .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&ret_var))
         }
@@ -709,6 +724,73 @@ fn resolve_struct_update(
             TypeError::NotAStruct { actual: resolved_ty.clone() },
             span,
         )),
+    }
+}
+
+/// Check if a lambda body references any free variables (not in `params`) whose
+/// type in `env` (after substitution) is `Own(...)`.
+fn captures_own_value(body: &Expr, params: &HashSet<&str>, env: &TypeEnv, subst: &Substitution) -> bool {
+    match body {
+        Expr::Var { name, .. } => {
+            if !params.contains(name.as_str()) {
+                if let Some(scheme) = env.lookup(name) {
+                    let ty = subst.apply(&scheme.ty);
+                    return matches!(ty, Type::Own(_));
+                }
+            }
+            false
+        }
+        Expr::App { func, args, .. } => {
+            captures_own_value(func, params, env, subst)
+                || args.iter().any(|a| captures_own_value(a, params, env, subst))
+        }
+        Expr::Let { name, value, body: let_body, .. } => {
+            if captures_own_value(value, params, env, subst) {
+                return true;
+            }
+            if let Some(b) = let_body {
+                let mut inner = params.clone();
+                inner.insert(name.as_str());
+                return captures_own_value(b, &inner, env, subst);
+            }
+            false
+        }
+        Expr::LetPattern { value, body, .. } => {
+            captures_own_value(value, params, env, subst)
+                || body.as_ref().is_some_and(|b| captures_own_value(b, params, env, subst))
+        }
+        Expr::Do { exprs, .. } => exprs.iter().any(|e| captures_own_value(e, params, env, subst)),
+        Expr::If { cond, then_, else_, .. } => {
+            captures_own_value(cond, params, env, subst)
+                || captures_own_value(then_, params, env, subst)
+                || captures_own_value(else_, params, env, subst)
+        }
+        Expr::Match { scrutinee, arms, .. } => {
+            captures_own_value(scrutinee, params, env, subst)
+                || arms.iter().any(|a| captures_own_value(&a.body, params, env, subst))
+        }
+        Expr::BinaryOp { lhs, rhs, .. } => {
+            captures_own_value(lhs, params, env, subst) || captures_own_value(rhs, params, env, subst)
+        }
+        Expr::UnaryOp { operand, .. } => captures_own_value(operand, params, env, subst),
+        Expr::Lambda { params: inner_params, body, .. } => {
+            let mut inner = params.clone();
+            for p in inner_params {
+                inner.insert(p.name.as_str());
+            }
+            captures_own_value(body, &inner, env, subst)
+        }
+        Expr::FieldAccess { expr, .. } => captures_own_value(expr, params, env, subst),
+        Expr::StructLit { fields, .. } => fields.iter().any(|(_, e)| captures_own_value(e, params, env, subst)),
+        Expr::StructUpdate { base, fields, .. } => {
+            captures_own_value(base, params, env, subst)
+                || fields.iter().any(|(_, e)| captures_own_value(e, params, env, subst))
+        }
+        Expr::Tuple { elements, .. } => elements.iter().any(|e| captures_own_value(e, params, env, subst)),
+        Expr::Recur { args, .. } => args.iter().any(|a| captures_own_value(a, params, env, subst)),
+        Expr::QuestionMark { expr, .. } => captures_own_value(expr, params, env, subst),
+        Expr::List { elements, .. } => elements.iter().any(|e| captures_own_value(e, params, env, subst)),
+        Expr::Lit { .. } => false,
     }
 }
 

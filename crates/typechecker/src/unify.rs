@@ -18,6 +18,7 @@ pub enum TypeErrorCode {
     E0010, // Not a struct
     E0101, // Value already moved
     E0102, // Value may have been moved in a branch
+    E0103, // Capture of moved value
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -35,6 +36,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0010 => write!(f, "E0010"),
             TypeErrorCode::E0101 => write!(f, "E0101"),
             TypeErrorCode::E0102 => write!(f, "E0102"),
+            TypeErrorCode::E0103 => write!(f, "E0103"),
         }
     }
 }
@@ -54,6 +56,7 @@ pub enum TypeError {
     NonExhaustive { missing: Vec<String> },
     AlreadyMoved { name: String },
     MovedInBranch { name: String },
+    CapturedMoved { name: String },
     UnsupportedExpr { description: String },
 }
 
@@ -73,6 +76,7 @@ impl TypeError {
             TypeError::NonExhaustive { .. } => TypeErrorCode::E0006,
             TypeError::AlreadyMoved { .. } => TypeErrorCode::E0101,
             TypeError::MovedInBranch { .. } => TypeErrorCode::E0102,
+            TypeError::CapturedMoved { .. } => TypeErrorCode::E0103,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
         }
     }
@@ -113,6 +117,9 @@ impl TypeError {
             }
             TypeError::MovedInBranch { name } => {
                 Some(format!("`{}` was consumed in some but not all branches of a conditional", name))
+            }
+            TypeError::CapturedMoved { name } => {
+                Some(format!("`{}` was already consumed before the closure was created", name))
             }
             TypeError::UnsupportedExpr { .. } => None,
         }
@@ -161,6 +168,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::MovedInBranch { name } => {
                 write!(f, "value may have been moved in a prior branch: `{}`", name)
+            }
+            TypeError::CapturedMoved { name } => {
+                write!(f, "capture of moved value: `{}`", name)
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
