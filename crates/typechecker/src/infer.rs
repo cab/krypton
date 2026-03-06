@@ -94,7 +94,7 @@ pub fn infer_expr(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) -> Result<Type, SpannedTypeError> {
-    infer_expr_inner(expr, env, subst, gen, None, None)
+    infer_expr_inner(expr, env, subst, gen, None, None, None)
 }
 
 /// Infer the type of an expression, with optional access to the type registry
@@ -106,6 +106,7 @@ fn infer_expr_inner(
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
     mut lambda_types: Option<&mut HashMap<Span, (Vec<Type>, Type)>>,
+    recur_params: Option<&[Type]>,
 ) -> Result<Type, SpannedTypeError> {
     match expr {
         Expr::Lit { value, .. } => match value {
@@ -135,7 +136,7 @@ fn infer_expr_inner(
                 param_types.push(tv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(tv));
             }
-            let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types.as_deref_mut(), None)?;
             env.pop_scope();
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
             let body_ty = subst.apply(&body_ty);
@@ -148,10 +149,10 @@ fn infer_expr_inner(
         Expr::App {
             func, args, span, ..
         } => {
-            let func_ty = infer_expr_inner(func, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let func_ty = infer_expr_inner(func, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             let mut arg_types = Vec::new();
             for a in args {
-                arg_types.push(infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut())?);
+                arg_types.push(infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?);
             }
 
             // Check if the function type is concretely not a function
@@ -173,13 +174,13 @@ fn infer_expr_inner(
             body,
             ..
         } => {
-            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             match body {
                 Some(body) => {
                     let scheme = generalize(&val_ty, env, subst);
                     env.push_scope();
                     env.bind(name.clone(), scheme);
-                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types)?;
+                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types, recur_params)?;
                     env.pop_scope();
                     Ok(body_ty)
                 }
@@ -199,11 +200,11 @@ fn infer_expr_inner(
             span,
             ..
         } => {
-            let cond_ty = infer_expr_inner(cond, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let cond_ty = infer_expr_inner(cond, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             unify(&cond_ty, &Type::Bool, subst)
                 .map_err(|e| spanned(e, *span))?;
-            let then_ty = infer_expr_inner(then_, env, subst, gen, registry, lambda_types.as_deref_mut())?;
-            let else_ty = infer_expr_inner(else_, env, subst, gen, registry, lambda_types)?;
+            let then_ty = infer_expr_inner(then_, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
+            let else_ty = infer_expr_inner(else_, env, subst, gen, registry, lambda_types, recur_params)?;
             unify(&then_ty, &else_ty, subst)
                 .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&then_ty))
@@ -217,7 +218,7 @@ fn infer_expr_inner(
             }
             let mut last_ty = Type::Unit;
             for e in exprs {
-                last_ty = infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+                last_ty = infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             }
             env.pop_scope();
             Ok(last_ty)
@@ -226,8 +227,8 @@ fn infer_expr_inner(
         Expr::BinaryOp {
             op, lhs, rhs, span, ..
         } => {
-            let lhs_ty = infer_expr_inner(lhs, env, subst, gen, registry, lambda_types.as_deref_mut())?;
-            let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry, lambda_types)?;
+            let lhs_ty = infer_expr_inner(lhs, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
+            let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry, lambda_types, recur_params)?;
             match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                     unify(&lhs_ty, &Type::Int, subst)
@@ -249,7 +250,7 @@ fn infer_expr_inner(
         Expr::UnaryOp {
             op, operand, span, ..
         } => {
-            let operand_ty = infer_expr_inner(operand, env, subst, gen, registry, lambda_types)?;
+            let operand_ty = infer_expr_inner(operand, env, subst, gen, registry, lambda_types, recur_params)?;
             match op {
                 UnaryOp::Neg => {
                     unify(&operand_ty, &Type::Int, subst)
@@ -259,35 +260,50 @@ fn infer_expr_inner(
             }
         }
 
-        Expr::Recur { args, .. } => {
-            // Infer arg types for unification side effects; return fresh var
-            // that will be unified via the enclosing if-else branches.
-            for a in args {
-                infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+        Expr::Recur { args, span, .. } => {
+            match recur_params {
+                Some(params) => {
+                    if args.len() != params.len() {
+                        return Err(spanned(
+                            TypeError::WrongArity { expected: params.len(), actual: args.len() },
+                            *span,
+                        ));
+                    }
+                    for (a, p) in args.iter().zip(params.iter()) {
+                        let arg_ty = infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
+                        unify(&arg_ty, p, subst).map_err(|e| spanned(e, *span))?;
+                    }
+                    Ok(Type::Var(gen.fresh()))
+                }
+                None => {
+                    for a in args {
+                        infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut(), None)?;
+                    }
+                    Ok(Type::Var(gen.fresh()))
+                }
             }
-            Ok(Type::Var(gen.fresh()))
         }
 
         Expr::FieldAccess { expr: target, field, span } => {
-            let target_ty = infer_expr_inner(target, env, subst, gen, registry, lambda_types)?;
+            let target_ty = infer_expr_inner(target, env, subst, gen, registry, lambda_types, recur_params)?;
             let resolved = subst.apply(&target_ty);
             resolve_field_access(&resolved, field, *span, registry)
         }
 
         Expr::StructUpdate { base, fields, span } => {
-            let base_ty = infer_expr_inner(base, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let base_ty = infer_expr_inner(base, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             let resolved = subst.apply(&base_ty);
-            resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry, lambda_types)?;
+            resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry, lambda_types, recur_params)?;
             Ok(resolved)
         }
 
         Expr::Match { scrutinee, arms, span } => {
-            let scrutinee_ty = infer_expr_inner(scrutinee, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let scrutinee_ty = infer_expr_inner(scrutinee, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             let result_ty = Type::Var(gen.fresh());
             for arm in arms {
                 env.push_scope();
                 check_pattern(&arm.pattern, &subst.apply(&scrutinee_ty), env, subst, gen, registry, *span)?;
-                let body_ty = infer_expr_inner(&arm.body, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+                let body_ty = infer_expr_inner(&arm.body, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
                 unify(&result_ty, &body_ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
             }
@@ -303,18 +319,18 @@ fn infer_expr_inner(
         Expr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
-                elem_types.push(infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut())?);
+                elem_types.push(infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?);
             }
             Ok(Type::Tuple(elem_types))
         }
 
         Expr::LetPattern { pattern, value, body, span } => {
-            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
             match body {
                 Some(body) => {
                     env.push_scope();
                     check_pattern(pattern, &subst.apply(&val_ty), env, subst, gen, registry, *span)?;
-                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types)?;
+                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types, recur_params)?;
                     env.pop_scope();
                     Ok(body_ty)
                 }
@@ -354,7 +370,7 @@ fn infer_expr_inner(
                         match record_field {
                             Some((_, expected_ty)) => {
                                 let expected = instantiate_field_type(expected_ty, info, &fresh_args);
-                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
                                 unify(&actual_ty, &expected, subst)
                                     .map_err(|e| spanned(e, *span))?;
                             }
@@ -590,6 +606,7 @@ fn resolve_struct_update(
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
     mut lambda_types: Option<&mut HashMap<Span, (Vec<Type>, Type)>>,
+    recur_params: Option<&[Type]>,
 ) -> Result<(), SpannedTypeError> {
     match resolved_ty {
         Type::Named(name, type_args) => {
@@ -606,7 +623,7 @@ fn resolve_struct_update(
                         match record_field {
                             Some((_, expected_ty)) => {
                                 let expected = instantiate_field_type(expected_ty, info, type_args);
-                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut())?;
+                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params)?;
                                 unify(&actual_ty, &expected, subst)
                                     .map_err(|e| spanned(e, span))?;
                             }
@@ -706,7 +723,7 @@ pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError>
                 param_types.push(ptv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
-            let body_ty = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&mut lambda_types))?;
+            let body_ty = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&mut lambda_types), Some(&param_types))?;
             env.pop_scope();
 
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();

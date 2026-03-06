@@ -1,0 +1,2 @@
+# expect: error E0001
+(def countdown (fn [n] (if (== n 0) 0 (recur "hello"))))
