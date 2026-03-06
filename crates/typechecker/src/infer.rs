@@ -4,6 +4,7 @@ use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp
 
 use crate::scc;
 use crate::type_registry::{self, TypeRegistry};
+use crate::typed_ast::{self, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -41,17 +42,6 @@ fn coerce_own_args(func_ty: &Type, arg_types: &[Type], subst: &Substitution) -> 
     } else {
         arg_types.to_vec()
     }
-}
-
-/// Result of type inference for a module.
-pub struct ModuleTypeInfo {
-    pub fn_types: Vec<(String, TypeScheme)>,
-    /// Maps each lambda's span (start, end) to its (param_types, return_type).
-    pub lambda_types: HashMap<Span, (Vec<Type>, Type)>,
-    /// Spans of `let` bindings whose inferred type is `Own(Fn(...))`.
-    pub let_own_spans: HashSet<Span>,
-    /// Maps each lambda span to the name of the first own-captured variable.
-    pub lambda_own_captures: HashMap<Span, String>,
 }
 
 /// Collect free type variables in a type.
@@ -138,7 +128,7 @@ pub fn infer_expr(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) -> Result<Type, SpannedTypeError> {
-    infer_expr_inner(expr, env, subst, gen, None, None, None, None, None)
+    infer_expr_inner(expr, env, subst, gen, None, None, None, None).map(|te| te.ty)
 }
 
 /// Infer the type of an expression, with optional access to the type registry
@@ -149,24 +139,27 @@ fn infer_expr_inner(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
-    mut lambda_types: Option<&mut HashMap<Span, (Vec<Type>, Type)>>,
     recur_params: Option<&[Type]>,
     mut let_own_spans: Option<&mut HashSet<Span>>,
     mut lambda_own_captures: Option<&mut HashMap<Span, String>>,
-) -> Result<Type, SpannedTypeError> {
+) -> Result<TypedExpr, SpannedTypeError> {
     match expr {
-        Expr::Lit { value, .. } => match value {
-            Lit::Int(_) => Ok(Type::Int),
-            Lit::Float(_) => Ok(Type::Float),
-            Lit::Bool(_) => Ok(Type::Bool),
-            Lit::String(_) => Ok(Type::String),
-            Lit::Unit => Ok(Type::Unit),
-        },
+        Expr::Lit { value, span } => {
+            let ty = match value {
+                Lit::Int(_) => Type::Int,
+                Lit::Float(_) => Type::Float,
+                Lit::Bool(_) => Type::Bool,
+                Lit::String(_) => Type::String,
+                Lit::Unit => Type::Unit,
+            };
+            Ok(TypedExpr { kind: TypedExprKind::Lit(value.clone()), ty, span: *span })
+        }
 
         Expr::Var { name, span, .. } => match env.lookup(name) {
             Some(scheme) => {
                 let scheme = scheme.clone();
-                Ok(scheme.instantiate(&mut || gen.fresh()))
+                let ty = scheme.instantiate(&mut || gen.fresh());
+                Ok(TypedExpr { kind: TypedExprKind::Var(name.clone()), ty, span: *span })
             }
             None => Err(spanned(
                 TypeError::UnknownVariable { name: name.clone() },
@@ -182,44 +175,47 @@ fn infer_expr_inner(
                 param_types.push(tv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(tv));
             }
-            let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types.as_deref_mut(), None, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let body_typed = infer_expr_inner(body, env, subst, gen, registry, None, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
             env.pop_scope();
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
-            let body_ty = subst.apply(&body_ty);
-            if let Some(lt) = lambda_types.as_deref_mut() {
-                lt.insert(*span, (param_types.clone(), body_ty.clone()));
-            }
+            let body_ty = subst.apply(&body_typed.ty);
             let fn_ty = Type::Fn(param_types, Box::new(body_ty));
             let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
-            if captures_own_value(body, &param_names, env, subst) {
+            let ty = if captures_own_value(body, &param_names, env, subst) {
                 if let Some(ref mut captures) = lambda_own_captures {
                     if let Some(cap_name) = first_own_capture(body, &param_names, env, subst) {
                         captures.insert(*span, cap_name);
                     }
                 }
-                Ok(Type::Own(Box::new(fn_ty)))
+                Type::Own(Box::new(fn_ty))
             } else {
-                Ok(fn_ty)
-            }
+                fn_ty
+            };
+            let kind = TypedExprKind::Lambda {
+                params: params.iter().map(|p| p.name.clone()).collect(),
+                body: Box::new(body_typed),
+            };
+            Ok(TypedExpr { kind, ty, span: *span })
         }
 
         Expr::App {
             func, args, span, ..
         } => {
-            let func_ty = infer_expr_inner(func, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let func_typed = infer_expr_inner(func, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let mut args_typed = Vec::new();
             let mut arg_types = Vec::new();
             for a in args {
-                arg_types.push(infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?);
+                let a_typed = infer_expr_inner(a, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                arg_types.push(a_typed.ty.clone());
+                args_typed.push(a_typed);
             }
 
-            // Check if the function type is concretely not a function
-            if is_concrete_non_function(&func_ty, subst) {
-                let actual = subst.apply(&func_ty);
+            if is_concrete_non_function(&func_typed.ty, subst) {
+                let actual = subst.apply(&func_typed.ty);
                 return Err(spanned(TypeError::NotAFunction { actual }, *span));
             }
 
             let ret_var = Type::Var(gen.fresh());
-            // Only apply own coercion for non-constructor calls
             let is_constructor = if let Expr::Var { name, .. } = func.as_ref() {
                 registry.is_some_and(|r| r.is_constructor(name))
             } else {
@@ -228,13 +224,12 @@ fn infer_expr_inner(
             let coerced_args = if is_constructor {
                 arg_types.clone()
             } else {
-                coerce_own_args(&func_ty, &arg_types, subst)
+                coerce_own_args(&func_typed.ty, &arg_types, subst)
             };
             let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
-            // Unwrap Own wrapper for callable own fn types
-            let unwrapped_func_ty = match subst.apply(&func_ty) {
+            let unwrapped_func_ty = match subst.apply(&func_typed.ty) {
                 Type::Own(inner) if matches!(*inner, Type::Fn(_, _)) => *inner,
-                _ => func_ty,
+                _ => func_typed.ty.clone(),
             };
             unify(&unwrapped_func_ty, &expected_fn, subst)
                 .map_err(|e| {
@@ -256,7 +251,12 @@ fn infer_expr_inner(
                     }
                     err
                 })?;
-            Ok(subst.apply(&ret_var))
+            let ty = subst.apply(&ret_var);
+            Ok(TypedExpr {
+                kind: TypedExprKind::App { func: Box::new(func_typed), args: args_typed },
+                ty,
+                span: *span,
+            })
         }
 
         Expr::Let {
@@ -265,9 +265,8 @@ fn infer_expr_inner(
             body,
             span,
         } => {
-            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-            // Track let bindings whose type is Own(Fn(...))
-            let resolved_val = subst.apply(&val_ty);
+            let val_typed = infer_expr_inner(value, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let resolved_val = subst.apply(&val_typed.ty);
             if matches!(&resolved_val, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _))) {
                 if let Some(ref mut los) = let_own_spans {
                     los.insert(*span);
@@ -275,18 +274,34 @@ fn infer_expr_inner(
             }
             match body {
                 Some(body) => {
-                    let scheme = generalize(&val_ty, env, subst);
+                    let scheme = generalize(&val_typed.ty, env, subst);
                     env.push_scope();
                     env.bind(name.clone(), scheme);
-                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
+                    let body_typed = infer_expr_inner(body, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
                     env.pop_scope();
-                    Ok(body_ty)
+                    let ty = body_typed.ty.clone();
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::Let {
+                            name: name.clone(),
+                            value: Box::new(val_typed),
+                            body: Some(Box::new(body_typed)),
+                        },
+                        ty,
+                        span: *span,
+                    })
                 }
                 None => {
-                    // Statement form in a do block — generalize for let-polymorphism
-                    let scheme = generalize(&val_ty, env, subst);
+                    let scheme = generalize(&val_typed.ty, env, subst);
                     env.bind(name.clone(), scheme);
-                    Ok(Type::Unit)
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::Let {
+                            name: name.clone(),
+                            value: Box::new(val_typed),
+                            body: None,
+                        },
+                        ty: Type::Unit,
+                        span: *span,
+                    })
                 }
             }
         }
@@ -298,55 +313,72 @@ fn infer_expr_inner(
             span,
             ..
         } => {
-            let cond_ty = infer_expr_inner(cond, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-            unify(&cond_ty, &Type::Bool, subst)
+            let cond_typed = infer_expr_inner(cond, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            unify(&cond_typed.ty, &Type::Bool, subst)
                 .map_err(|e| spanned(e, *span))?;
-            let then_ty = infer_expr_inner(then_, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-            let else_ty = infer_expr_inner(else_, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
-            unify(&then_ty, &else_ty, subst)
+            let then_typed = infer_expr_inner(then_, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let else_typed = infer_expr_inner(else_, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
+            unify(&then_typed.ty, &else_typed.ty, subst)
                 .map_err(|e| spanned(e, *span))?;
-            Ok(subst.apply(&then_ty))
+            let ty = subst.apply(&then_typed.ty);
+            Ok(TypedExpr {
+                kind: TypedExprKind::If {
+                    cond: Box::new(cond_typed),
+                    then_: Box::new(then_typed),
+                    else_: Box::new(else_typed),
+                },
+                ty,
+                span: *span,
+            })
         }
 
-        Expr::Do { exprs, .. } => {
+        Expr::Do { exprs, span } => {
             env.push_scope();
             if exprs.is_empty() {
                 env.pop_scope();
-                return Ok(Type::Unit);
+                return Ok(TypedExpr {
+                    kind: TypedExprKind::Do(Vec::new()),
+                    ty: Type::Unit,
+                    span: *span,
+                });
             }
-            let mut last_ty = Type::Unit;
+            let mut typed_exprs = Vec::new();
             for e in exprs {
-                last_ty = infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                typed_exprs.push(infer_expr_inner(e, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?);
             }
             env.pop_scope();
-            Ok(last_ty)
+            let ty = typed_exprs.last().unwrap().ty.clone();
+            Ok(TypedExpr {
+                kind: TypedExprKind::Do(typed_exprs),
+                ty,
+                span: *span,
+            })
         }
 
         Expr::BinaryOp {
             op, lhs, rhs, span, ..
         } => {
-            let lhs_ty = infer_expr_inner(lhs, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-            let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
-            match op {
+            let lhs_typed = infer_expr_inner(lhs, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let rhs_typed = infer_expr_inner(rhs, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
+            let ty = match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                    unify(&lhs_ty, &rhs_ty, subst)
+                    unify(&lhs_typed.ty, &rhs_typed.ty, subst)
                         .map_err(|e| spanned(e, *span))?;
-                    let resolved = subst.apply(&lhs_ty);
+                    let resolved = subst.apply(&lhs_typed.ty);
                     match &resolved {
-                        Type::Int | Type::Float => Ok(resolved),
+                        Type::Int | Type::Float => resolved,
                         Type::Var(_) => {
-                            // Unconstrained numeric type defaults to Int
                             unify(&resolved, &Type::Int, subst)
                                 .map_err(|e| spanned(e, *span))?;
-                            Ok(Type::Int)
+                            Type::Int
                         }
-                        _ => Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                        _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
                     }
                 }
                 BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                    unify(&lhs_ty, &rhs_ty, subst)
+                    unify(&lhs_typed.ty, &rhs_typed.ty, subst)
                         .map_err(|e| spanned(e, *span))?;
-                    let resolved = subst.apply(&lhs_ty);
+                    let resolved = subst.apply(&lhs_typed.ty);
                     match &resolved {
                         Type::Int | Type::Float => {}
                         Type::Var(_) => {
@@ -355,32 +387,50 @@ fn infer_expr_inner(
                         }
                         _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
                     }
-                    Ok(Type::Bool)
+                    Type::Bool
                 }
-            }
+            };
+            Ok(TypedExpr {
+                kind: TypedExprKind::BinaryOp {
+                    op: op.clone(),
+                    lhs: Box::new(lhs_typed),
+                    rhs: Box::new(rhs_typed),
+                },
+                ty,
+                span: *span,
+            })
         }
 
         Expr::UnaryOp {
             op, operand, span, ..
         } => {
-            let operand_ty = infer_expr_inner(operand, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
-            match op {
+            let operand_typed = infer_expr_inner(operand, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
+            let ty = match op {
                 UnaryOp::Neg => {
-                    let resolved = subst.apply(&operand_ty);
+                    let resolved = subst.apply(&operand_typed.ty);
                     match &resolved {
-                        Type::Int | Type::Float => Ok(resolved),
+                        Type::Int | Type::Float => resolved,
                         Type::Var(_) => {
                             unify(&resolved, &Type::Int, subst)
                                 .map_err(|e| spanned(e, *span))?;
-                            Ok(Type::Int)
+                            Type::Int
                         }
-                        _ => Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                        _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
                     }
                 }
-            }
+            };
+            Ok(TypedExpr {
+                kind: TypedExprKind::UnaryOp {
+                    op: op.clone(),
+                    operand: Box::new(operand_typed),
+                },
+                ty,
+                span: *span,
+            })
         }
 
         Expr::Recur { args, span, .. } => {
+            let mut typed_args = Vec::new();
             match recur_params {
                 Some(params) => {
                     if args.len() != params.len() {
@@ -390,73 +440,128 @@ fn infer_expr_inner(
                         ));
                     }
                     for (a, p) in args.iter().zip(params.iter()) {
-                        let arg_ty = infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-                        unify(&arg_ty, p, subst).map_err(|e| spanned(e, *span))?;
+                        let a_typed = infer_expr_inner(a, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                        unify(&a_typed.ty, p, subst).map_err(|e| spanned(e, *span))?;
+                        typed_args.push(a_typed);
                     }
-                    Ok(Type::Var(gen.fresh()))
                 }
                 None => {
                     for a in args {
-                        infer_expr_inner(a, env, subst, gen, registry, lambda_types.as_deref_mut(), None, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                        typed_args.push(infer_expr_inner(a, env, subst, gen, registry, None, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?);
                     }
-                    Ok(Type::Var(gen.fresh()))
                 }
             }
+            let ty = Type::Var(gen.fresh());
+            Ok(TypedExpr {
+                kind: TypedExprKind::Recur(typed_args),
+                ty,
+                span: *span,
+            })
         }
 
         Expr::FieldAccess { expr: target, field, span } => {
-            let target_ty = infer_expr_inner(target, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
-            let resolved = subst.apply(&target_ty);
-            resolve_field_access(&resolved, field, *span, registry)
+            let target_typed = infer_expr_inner(target, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
+            let resolved = subst.apply(&target_typed.ty);
+            let ty = resolve_field_access(&resolved, field, *span, registry)?;
+            Ok(TypedExpr {
+                kind: TypedExprKind::FieldAccess {
+                    expr: Box::new(target_typed),
+                    field: field.clone(),
+                },
+                ty,
+                span: *span,
+            })
         }
 
         Expr::StructUpdate { base, fields, span } => {
-            let base_ty = infer_expr_inner(base, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-            let resolved = subst.apply(&base_ty);
-            resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
-            Ok(resolved)
+            let base_typed = infer_expr_inner(base, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let resolved = subst.apply(&base_typed.ty);
+            let typed_fields = resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
+            Ok(TypedExpr {
+                kind: TypedExprKind::StructUpdate {
+                    base: Box::new(base_typed),
+                    fields: typed_fields,
+                },
+                ty: resolved,
+                span: *span,
+            })
         }
 
         Expr::Match { scrutinee, arms, span } => {
-            let scrutinee_ty = infer_expr_inner(scrutinee, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let scrutinee_typed = infer_expr_inner(scrutinee, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
             let result_ty = Type::Var(gen.fresh());
+            let mut typed_arms = Vec::new();
             for arm in arms {
                 env.push_scope();
-                check_pattern(&arm.pattern, &subst.apply(&scrutinee_ty), env, subst, gen, registry, *span)?;
-                let body_ty = infer_expr_inner(&arm.body, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-                unify(&result_ty, &body_ty, subst).map_err(|e| spanned(e, *span))?;
+                check_pattern(&arm.pattern, &subst.apply(&scrutinee_typed.ty), env, subst, gen, registry, *span)?;
+                let body_typed = infer_expr_inner(&arm.body, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                unify(&result_ty, &body_typed.ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
+                typed_arms.push(TypedMatchArm {
+                    pattern: arm.pattern.clone(),
+                    body: body_typed,
+                });
             }
             crate::exhaustiveness::check_exhaustiveness(
-                &subst.apply(&scrutinee_ty),
+                &subst.apply(&scrutinee_typed.ty),
                 arms,
                 registry,
                 *span,
             )?;
-            Ok(subst.apply(&result_ty))
+            let ty = subst.apply(&result_ty);
+            Ok(TypedExpr {
+                kind: TypedExprKind::Match {
+                    scrutinee: Box::new(scrutinee_typed),
+                    arms: typed_arms,
+                },
+                ty,
+                span: *span,
+            })
         }
 
-        Expr::Tuple { elements, .. } => {
-            let mut elem_types = Vec::new();
+        Expr::Tuple { elements, span } => {
+            let mut typed_elems = Vec::new();
             for e in elements {
-                elem_types.push(infer_expr_inner(e, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?);
+                typed_elems.push(infer_expr_inner(e, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?);
             }
-            Ok(Type::Tuple(elem_types))
+            let ty = Type::Tuple(typed_elems.iter().map(|te| te.ty.clone()).collect());
+            Ok(TypedExpr {
+                kind: TypedExprKind::Tuple(typed_elems),
+                ty,
+                span: *span,
+            })
         }
 
         Expr::LetPattern { pattern, value, body, span } => {
-            let val_ty = infer_expr_inner(value, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let val_typed = infer_expr_inner(value, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
             match body {
                 Some(body) => {
                     env.push_scope();
-                    check_pattern(pattern, &subst.apply(&val_ty), env, subst, gen, registry, *span)?;
-                    let body_ty = infer_expr_inner(body, env, subst, gen, registry, lambda_types, recur_params, let_own_spans, lambda_own_captures)?;
+                    check_pattern(pattern, &subst.apply(&val_typed.ty), env, subst, gen, registry, *span)?;
+                    let body_typed = infer_expr_inner(body, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
                     env.pop_scope();
-                    Ok(body_ty)
+                    let ty = body_typed.ty.clone();
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::LetPattern {
+                            pattern: pattern.clone(),
+                            value: Box::new(val_typed),
+                            body: Some(Box::new(body_typed)),
+                        },
+                        ty,
+                        span: *span,
+                    })
                 }
                 None => {
-                    check_pattern(pattern, &subst.apply(&val_ty), env, subst, gen, registry, *span)?;
-                    Ok(Type::Unit)
+                    check_pattern(pattern, &subst.apply(&val_typed.ty), env, subst, gen, registry, *span)?;
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::LetPattern {
+                            pattern: pattern.clone(),
+                            value: Box::new(val_typed),
+                            body: None,
+                        },
+                        ty: Type::Unit,
+                        span: *span,
+                    })
                 }
             }
         }
@@ -470,11 +575,9 @@ fn infer_expr_inner(
             })?;
             match &info.kind {
                 type_registry::TypeKind::Record { fields: record_fields } => {
-                    // Create fresh type args for generic structs
                     let fresh_args: Vec<Type> = info.type_param_vars.iter().map(|_| Type::Var(gen.fresh())).collect();
                     let struct_ty = Type::Named(name.clone(), fresh_args.clone());
 
-                    // Check for missing fields
                     let provided: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
                     let missing: Vec<String> = record_fields.iter()
                         .filter(|(n, _)| !provided.contains(n.as_str()))
@@ -484,15 +587,16 @@ fn infer_expr_inner(
                         return Err(spanned(TypeError::MissingFields { type_name: name.clone(), fields: missing }, *span));
                     }
 
-                    // Type-check each provided field
+                    let mut typed_fields = Vec::new();
                     for (field_name, field_expr) in fields {
                         let record_field = record_fields.iter().find(|(n, _)| n == field_name);
                         match record_field {
                             Some((_, expected_ty)) => {
                                 let expected = instantiate_field_type(expected_ty, info, &fresh_args);
-                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-                                unify(&actual_ty, &expected, subst)
+                                let field_typed = infer_expr_inner(field_expr, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                                unify(&field_typed.ty, &expected, subst)
                                     .map_err(|e| spanned(e, *span))?;
+                                typed_fields.push((field_name.clone(), field_typed));
                             }
                             None => {
                                 return Err(spanned(
@@ -506,7 +610,14 @@ fn infer_expr_inner(
                         }
                     }
 
-                    Ok(struct_ty)
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::StructLit {
+                            name: name.clone(),
+                            fields: typed_fields,
+                        },
+                        ty: struct_ty,
+                        span: *span,
+                    })
                 }
                 _ => Err(spanned(
                     TypeError::NotAStruct { actual: Type::Named(name.clone(), vec![]) },
@@ -716,7 +827,7 @@ fn instantiate_field_type(
     subst.apply(field_ty)
 }
 
-/// Validate a struct update expression.
+/// Validate a struct update expression and return typed field expressions.
 fn resolve_struct_update(
     resolved_ty: &Type,
     fields: &[(String, Expr)],
@@ -725,11 +836,10 @@ fn resolve_struct_update(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
-    mut lambda_types: Option<&mut HashMap<Span, (Vec<Type>, Type)>>,
     recur_params: Option<&[Type]>,
     mut let_own_spans: Option<&mut HashSet<Span>>,
     mut lambda_own_captures: Option<&mut HashMap<Span, String>>,
-) -> Result<(), SpannedTypeError> {
+) -> Result<Vec<(String, TypedExpr)>, SpannedTypeError> {
     match resolved_ty {
         Type::Named(name, type_args) => {
             let reg = registry.ok_or_else(|| {
@@ -740,14 +850,16 @@ fn resolve_struct_update(
             })?;
             match &info.kind {
                 type_registry::TypeKind::Record { fields: record_fields } => {
+                    let mut typed_fields = Vec::new();
                     for (field_name, field_expr) in fields {
                         let record_field = record_fields.iter().find(|(n, _)| n == field_name);
                         match record_field {
                             Some((_, expected_ty)) => {
                                 let expected = instantiate_field_type(expected_ty, info, type_args);
-                                let actual_ty = infer_expr_inner(field_expr, env, subst, gen, registry, lambda_types.as_deref_mut(), recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
-                                unify(&actual_ty, &expected, subst)
+                                let field_typed = infer_expr_inner(field_expr, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                                unify(&field_typed.ty, &expected, subst)
                                     .map_err(|e| spanned(e, span))?;
+                                typed_fields.push((field_name.clone(), field_typed));
                             }
                             None => {
                                 return Err(spanned(
@@ -760,7 +872,7 @@ fn resolve_struct_update(
                             }
                         }
                     }
-                    Ok(())
+                    Ok(typed_fields)
                 }
                 _ => Err(spanned(
                     TypeError::NotAStruct { actual: resolved_ty.clone() },
@@ -924,12 +1036,11 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 /// Uses SCC (strongly connected component) analysis to process definitions
 /// in dependency order. Functions within the same SCC are inferred together
 /// as a mutually recursive group, then generalized before later SCCs see them.
-pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError> {
+pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
     let mut registry = TypeRegistry::new();
-    let mut lambda_types: HashMap<Span, (Vec<Type>, Type)> = HashMap::new();
     let mut let_own_spans: HashSet<Span> = HashSet::new();
     let mut lambda_own_captures: HashMap<Span, String> = HashMap::new();
 
@@ -963,6 +1074,7 @@ pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError>
 
     // Store results indexed by declaration order
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
+    let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
 
     // Process each SCC in topological order (dependencies first)
     for component in &sccs {
@@ -990,14 +1102,16 @@ pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError>
                 param_types.push(ptv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
-            let body_ty = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&mut lambda_types), Some(&param_types), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
+            let body_typed = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&param_types), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
             env.pop_scope();
 
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
-            let body_ty = subst.apply(&body_ty);
+            let body_ty = subst.apply(&body_typed.ty);
             let fn_ty = Type::Fn(param_types, Box::new(body_ty));
             unify(tv, &fn_ty, &mut subst)
                 .map_err(|e| spanned(e, decl.span))?;
+
+            fn_bodies[idx] = Some(body_typed);
         }
 
         // Generalize all types in the SCC and update env with polymorphic schemes
@@ -1019,23 +1133,23 @@ pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError>
             .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
     );
 
-    // Apply final substitution to lambda types
-    let lambda_types = lambda_types
-        .into_iter()
-        .map(|(span, (params, ret))| {
-            let params = params.iter().map(|t| subst.apply(t)).collect();
-            let ret = subst.apply(&ret);
-            (span, (params, ret))
-        })
-        .collect();
+    // Apply final substitution to all typed function bodies
+    let mut functions = Vec::new();
+    for (i, decl) in fn_decls.iter().enumerate() {
+        let mut body = fn_bodies[i].take().unwrap();
+        typed_ast::apply_subst(&mut body, &subst);
+        functions.push(TypedFnDecl {
+            name: decl.name.clone(),
+            params: decl.params.iter().map(|p| p.name.clone()).collect(),
+            body,
+        });
+    }
 
     // Run affine ownership verification after successful inference
     crate::ownership::check_ownership(module, &results, &registry, &let_own_spans, &lambda_own_captures)?;
 
-    Ok(ModuleTypeInfo {
+    Ok(TypedModule {
         fn_types: results,
-        lambda_types,
-        let_own_spans,
-        lambda_own_captures,
+        functions,
     })
 }

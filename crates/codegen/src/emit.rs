@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
-use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, MatchArm, Module, Pattern, Span, TypeDeclKind, TypeExpr, UnaryOp};
+use krypton_parser::ast::{BinOp, Decl, Lit, Module, Pattern, TypeDeclKind, TypeExpr, UnaryOp};
 use krypton_typechecker::infer::infer_module;
+use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm};
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
@@ -250,7 +251,6 @@ struct LambdaState {
     lambda_counter: u16,
     lambda_methods: Vec<Method>,
     bootstrap_methods: Vec<BootstrapMethod>,
-    lambda_types: HashMap<Span, (Vec<JvmType>, JvmType)>,
     metafactory_handle: Option<u16>,
     fun_classes: HashMap<u8, u16>,
     fun_apply_refs: HashMap<u8, u16>,
@@ -433,7 +433,6 @@ impl Compiler {
                 lambda_counter: 0,
                 lambda_methods: Vec::new(),
                 bootstrap_methods: Vec::new(),
-                lambda_types: HashMap::new(),
                 metafactory_handle: None,
                 fun_classes: HashMap::new(),
                 fun_apply_refs: HashMap::new(),
@@ -513,35 +512,22 @@ impl Compiler {
         self.frame.jvm_type_to_vtypes(ty, self.refs.string_class)
     }
 
-    fn compile_expr(&mut self, expr: &Expr, in_tail: bool) -> Result<JvmType, CodegenError> {
-        match expr {
-            Expr::Lit { value, .. } => self.compile_lit(value),
-            Expr::BinaryOp {
-                op, lhs, rhs, ..
-            } => self.compile_binop(op, lhs, rhs),
-            Expr::If {
-                cond,
-                then_,
-                else_,
-                ..
-            } => self.compile_if(cond, then_, else_, in_tail),
-            Expr::Let {
-                name, value, body, ..
-            } => self.compile_let(name, value, body, in_tail),
-            Expr::Var { name, .. } => self.compile_var(name),
-            Expr::Do { exprs, .. } => self.compile_do(exprs, in_tail),
-            Expr::App { func, args, .. } => self.compile_app(func, args),
-            Expr::Recur { args, .. } => self.compile_recur(args, in_tail),
-            Expr::FieldAccess { expr, field, .. } => self.compile_field_access(expr, field),
-            Expr::LetPattern { .. } => Err(CodegenError::UnsupportedExpr("let-pattern destructuring".into())),
-            Expr::StructUpdate { base, fields, .. } => self.compile_struct_update(base, fields),
-            Expr::Match {
-                scrutinee, arms, ..
-            } => self.compile_match(scrutinee, arms, in_tail),
-            Expr::UnaryOp { op, operand, .. } => self.compile_unaryop(op, operand),
-            Expr::Lambda {
-                params, body, span, ..
-            } => self.compile_lambda(params, body, span),
+    fn compile_expr(&mut self, expr: &TypedExpr, in_tail: bool) -> Result<JvmType, CodegenError> {
+        match &expr.kind {
+            TypedExprKind::Lit(value) => self.compile_lit(value),
+            TypedExprKind::BinaryOp { op, lhs, rhs } => self.compile_binop(op, lhs, rhs),
+            TypedExprKind::If { cond, then_, else_ } => self.compile_if(cond, then_, else_, in_tail),
+            TypedExprKind::Let { name, value, body } => self.compile_let(name, value, body, in_tail),
+            TypedExprKind::Var(name) => self.compile_var(name),
+            TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
+            TypedExprKind::App { func, args } => self.compile_app(func, args),
+            TypedExprKind::Recur(args) => self.compile_recur(args, in_tail),
+            TypedExprKind::FieldAccess { expr: target, field } => self.compile_field_access(target, field),
+            TypedExprKind::LetPattern { .. } => Err(CodegenError::UnsupportedExpr("let-pattern destructuring".into())),
+            TypedExprKind::StructUpdate { base, fields } => self.compile_struct_update(base, fields),
+            TypedExprKind::Match { scrutinee, arms } => self.compile_match(scrutinee, arms, in_tail),
+            TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
+            TypedExprKind::Lambda { params, body } => self.compile_lambda(params, body, &expr.ty),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -598,8 +584,8 @@ impl Compiler {
     fn compile_binop(
         &mut self,
         op: &BinOp,
-        lhs: &Expr,
-        rhs: &Expr,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
@@ -644,8 +630,8 @@ impl Compiler {
     fn compile_comparison(
         &mut self,
         op: &BinOp,
-        lhs: &Expr,
-        rhs: &Expr,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
         let lhs_ty = self.compile_expr(lhs, false)?;
         self.compile_expr(rhs, false)?;
@@ -717,7 +703,7 @@ impl Compiler {
     fn compile_unaryop(
         &mut self,
         op: &UnaryOp,
-        operand: &Expr,
+        operand: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
         let operand_ty = self.compile_expr(operand, false)?;
         match op {
@@ -737,9 +723,9 @@ impl Compiler {
 
     fn compile_if(
         &mut self,
-        cond: &Expr,
-        then_: &Expr,
-        else_: &Expr,
+        cond: &TypedExpr,
+        then_: &TypedExpr,
+        else_: &TypedExpr,
         in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
         // Compile condition (produces Int 0/1 on stack)
@@ -791,17 +777,12 @@ impl Compiler {
     fn compile_let(
         &mut self,
         name: &str,
-        value: &Expr,
-        body: &Option<Box<Expr>>,
+        value: &TypedExpr,
+        body: &Option<Box<TypedExpr>>,
         in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
         // Check if the value is a lambda — record its type info for higher-order calls
-        let is_lambda = matches!(value, Expr::Lambda { .. });
-        let lambda_span = if let Expr::Lambda { span, .. } = value {
-            Some(*span)
-        } else {
-            None
-        };
+        let is_lambda = matches!(value.kind, TypedExprKind::Lambda { .. });
 
         let ty = self.compile_expr(value, false)?;
         let slot = self.next_local;
@@ -820,11 +801,18 @@ impl Compiler {
         self.emit(store);
         self.locals.insert(name.to_string(), (slot, ty));
 
-        // If the value was a lambda, record local_fn_info for higher-order calls
+        // If the value was a lambda, record local_fn_info from the TypedExpr's type
         if is_lambda {
-            if let Some(span) = lambda_span {
-                if let Some((param_types, ret_type)) = self.lambda.lambda_types.get(&span).cloned() {
-                    self.local_fn_info.insert(name.to_string(), (param_types, ret_type));
+            let fn_type = match &value.ty {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            if let Type::Fn(param_types, ret_type) = fn_type {
+                let param_jvm: Result<Vec<JvmType>, _> = param_types.iter().map(|t| self.type_to_jvm(t)).collect();
+                if let Ok(param_jvm) = param_jvm {
+                    if let Ok(ret_jvm) = self.type_to_jvm(ret_type) {
+                        self.local_fn_info.insert(name.to_string(), (param_jvm, ret_jvm));
+                    }
                 }
             }
         }
@@ -839,8 +827,6 @@ impl Compiler {
         if let Some(body) = body {
             self.compile_expr(body, in_tail)
         } else {
-            // In a do-block, let without body is a statement — no value on stack
-            // We return Int as a placeholder type (no value actually pushed)
             Ok(JvmType::Int)
         }
     }
@@ -887,9 +873,9 @@ impl Compiler {
         Ok(ty)
     }
 
-    fn compile_app(&mut self, func: &Expr, args: &[Expr]) -> Result<JvmType, CodegenError> {
-        let name = match func {
-            Expr::Var { name, .. } => name.as_str(),
+    fn compile_app(&mut self, func: &TypedExpr, args: &[TypedExpr]) -> Result<JvmType, CodegenError> {
+        let name = match &func.kind {
+            TypedExprKind::Var(name) => name.as_str(),
             other => {
                 return Err(CodegenError::UnsupportedExpr(format!(
                     "non-variable function call: {other:?}"
@@ -1043,7 +1029,7 @@ impl Compiler {
 
     fn compile_field_access(
         &mut self,
-        expr: &Expr,
+        expr: &TypedExpr,
         field: &str,
     ) -> Result<JvmType, CodegenError> {
         let base_type = self.compile_expr(expr, false)?;
@@ -1084,8 +1070,8 @@ impl Compiler {
 
     fn compile_struct_update(
         &mut self,
-        base: &Expr,
-        updates: &[(String, Expr)],
+        base: &TypedExpr,
+        updates: &[(String, TypedExpr)],
     ) -> Result<JvmType, CodegenError> {
         // Compile base expression and store in temp local
         let base_type = self.compile_expr(base, false)?;
@@ -1157,7 +1143,7 @@ impl Compiler {
 
     fn compile_recur(
         &mut self,
-        args: &[Expr],
+        args: &[TypedExpr],
         in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
         if !in_tail {
@@ -1277,22 +1263,30 @@ impl Compiler {
     /// Compile a lambda expression.
     fn compile_lambda(
         &mut self,
-        params: &[krypton_parser::ast::Param],
-        body: &Expr,
-        span: &Span,
+        params: &[String],
+        body: &TypedExpr,
+        lambda_ty: &Type,
     ) -> Result<JvmType, CodegenError> {
         let arity = params.len() as u8;
 
-        // Look up lambda types from typechecker
-        let (param_jvm_types, _return_jvm_type) = self.lambda.lambda_types.get(span).cloned()
-            .ok_or_else(|| CodegenError::TypeError("lambda type info not found".to_string()))?;
+        // Extract param types from the TypedExpr's type
+        let fn_type = match lambda_ty {
+            Type::Own(inner) => inner.as_ref(),
+            other => other,
+        };
+        let param_jvm_types = match fn_type {
+            Type::Fn(param_types, _) => {
+                param_types.iter().map(|t| self.type_to_jvm(t)).collect::<Result<Vec<_>, _>>()?
+            }
+            _ => return Err(CodegenError::TypeError("lambda has non-function type".to_string())),
+        };
 
         // Ensure FunN interface exists
         self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
         let fun_class_idx = self.lambda.fun_classes[&arity];
 
         // Find captured variables: scan body for Var names that are in self.locals but not lambda params
-        let param_names: std::collections::HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        let param_names: std::collections::HashSet<&str> = params.iter().map(|s| s.as_str()).collect();
         let mut captures: Vec<(String, u16, JvmType)> = Vec::new();
         self.collect_captures(body, &param_names, &mut captures);
         // Deduplicate
@@ -1333,7 +1327,7 @@ impl Compiler {
         for (i, p) in params.iter().enumerate() {
             let slot = self.next_local;
             // Store as Object initially
-            self.locals.insert(p.name.clone(), (slot, JvmType::StructRef(self.refs.object_class)));
+            self.locals.insert(p.clone(), (slot, JvmType::StructRef(self.refs.object_class)));
             self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
             lambda_param_slots.push((slot, param_jvm_types[i]));
             self.next_local += 1;
@@ -1366,7 +1360,7 @@ impl Compiler {
                 self.pop_jvm_type(actual_type);
                 let vtypes = self.jvm_type_to_vtypes(actual_type);
                 self.frame.local_types.extend(vtypes);
-                self.locals.insert(p.name.clone(), (new_slot, actual_type));
+                self.locals.insert(p.clone(), (new_slot, actual_type));
             }
         }
 
@@ -1528,63 +1522,92 @@ impl Compiler {
     /// Collect captured variables from an expression.
     fn collect_captures(
         &self,
-        expr: &Expr,
+        expr: &TypedExpr,
         param_names: &std::collections::HashSet<&str>,
         captures: &mut Vec<(String, u16, JvmType)>,
     ) {
-        match expr {
-            Expr::Var { name, .. } => {
+        match &expr.kind {
+            TypedExprKind::Var(name) => {
                 if !param_names.contains(name.as_str()) {
                     if let Some(&(slot, ty)) = self.locals.get(name) {
                         captures.push((name.clone(), slot, ty));
                     }
                 }
             }
-            Expr::BinaryOp { lhs, rhs, .. } => {
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
                 self.collect_captures(lhs, param_names, captures);
                 self.collect_captures(rhs, param_names, captures);
             }
-            Expr::UnaryOp { operand, .. } => {
+            TypedExprKind::UnaryOp { operand, .. } => {
                 self.collect_captures(operand, param_names, captures);
             }
-            Expr::If { cond, then_, else_, .. } => {
+            TypedExprKind::If { cond, then_, else_ } => {
                 self.collect_captures(cond, param_names, captures);
                 self.collect_captures(then_, param_names, captures);
                 self.collect_captures(else_, param_names, captures);
             }
-            Expr::Let { value, body, .. } | Expr::LetPattern { value, body, .. } => {
+            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
                 self.collect_captures(value, param_names, captures);
                 if let Some(body) = body {
                     self.collect_captures(body, param_names, captures);
                 }
             }
-            Expr::Do { exprs, .. } => {
+            TypedExprKind::Do(exprs) => {
                 for e in exprs {
                     self.collect_captures(e, param_names, captures);
                 }
             }
-            Expr::App { func, args, .. } => {
+            TypedExprKind::App { func, args } => {
                 self.collect_captures(func, param_names, captures);
                 for a in args {
                     self.collect_captures(a, param_names, captures);
                 }
             }
-            Expr::Lambda { body, params, .. } => {
-                // For nested lambdas, the inner params shadow
+            TypedExprKind::Lambda { body, params } => {
                 let mut inner_params = param_names.clone();
                 for p in params {
-                    inner_params.insert(&p.name);
+                    inner_params.insert(p.as_str());
                 }
                 self.collect_captures(body, &inner_params, captures);
             }
-            _ => {}
+            TypedExprKind::Match { scrutinee, arms } => {
+                self.collect_captures(scrutinee, param_names, captures);
+                for arm in arms {
+                    self.collect_captures(&arm.body, param_names, captures);
+                }
+            }
+            TypedExprKind::FieldAccess { expr, .. } => {
+                self.collect_captures(expr, param_names, captures);
+            }
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields {
+                    self.collect_captures(e, param_names, captures);
+                }
+            }
+            TypedExprKind::StructUpdate { base, fields } => {
+                self.collect_captures(base, param_names, captures);
+                for (_, e) in fields {
+                    self.collect_captures(e, param_names, captures);
+                }
+            }
+            TypedExprKind::Tuple(elems) => {
+                for e in elems {
+                    self.collect_captures(e, param_names, captures);
+                }
+            }
+            TypedExprKind::Recur(args) => {
+                for a in args {
+                    self.collect_captures(a, param_names, captures);
+                }
+            }
+            TypedExprKind::Lit(_) => {}
         }
     }
 
     fn compile_match(
         &mut self,
-        scrutinee: &Expr,
-        arms: &[MatchArm],
+        scrutinee: &TypedExpr,
+        arms: &[TypedMatchArm],
         in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
         // 1. Compile scrutinee and store in temp local
@@ -2158,12 +2181,12 @@ impl Compiler {
         }
     }
 
-    fn compile_do(&mut self, exprs: &[Expr], in_tail: bool) -> Result<JvmType, CodegenError> {
+    fn compile_do(&mut self, exprs: &[TypedExpr], in_tail: bool) -> Result<JvmType, CodegenError> {
         let mut last_type = JvmType::Int;
         for (i, expr) in exprs.iter().enumerate() {
             let is_last = i == exprs.len() - 1;
             let is_let_stmt =
-                matches!(expr, Expr::Let { body: None, .. } | Expr::LetPattern { body: None, .. });
+                matches!(expr.kind, TypedExprKind::Let { body: None, .. } | TypedExprKind::LetPattern { body: None, .. });
 
             let expr_tail = in_tail && is_last;
             let ty = self.compile_expr(expr, expr_tail)?;
@@ -2187,7 +2210,7 @@ impl Compiler {
     }
 
     /// Compile a function declaration into a JVM Method.
-    fn compile_function(&mut self, decl: &FnDecl) -> Result<Method, CodegenError> {
+    fn compile_function(&mut self, decl: &TypedFnDecl) -> Result<Method, CodegenError> {
         self.reset_method_state();
 
         // Look up the function's type info
@@ -2202,13 +2225,13 @@ impl Compiler {
 
         // Register parameters as locals and save fn_params for recur
         let mut fn_params = Vec::new();
-        for (i, (param, &jvm_ty)) in decl.params.iter().zip(param_types.iter()).enumerate() {
+        for (i, (param_name, &jvm_ty)) in decl.params.iter().zip(param_types.iter()).enumerate() {
             let slot = self.next_local;
             let slot_size: u16 = match jvm_ty {
                 JvmType::Long | JvmType::Double => 2,
                 _ => 1,
             };
-            self.locals.insert(param.name.clone(), (slot, jvm_ty));
+            self.locals.insert(param_name.clone(), (slot, jvm_ty));
             fn_params.push((slot, jvm_ty));
             self.next_local += slot_size;
 
@@ -2226,7 +2249,7 @@ impl Compiler {
                     let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
                     let arity = inner_params.len() as u8;
                     self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
-                    self.local_fn_info.insert(param.name.clone(), (inner_param_jvm, inner_ret_jvm));
+                    self.local_fn_info.insert(param_name.clone(), (inner_param_jvm, inner_ret_jvm));
                 }
             }
         }
@@ -2781,15 +2804,11 @@ pub fn compile_module(
         .class_descriptors
         .insert(object_class, "Ljava/lang/Object;".to_string());
 
-    // Run the typechecker to get function types (includes constructors) and lambda types
-    let module_type_info = infer_module(module).map_err(|e| {
+    // Run the typechecker to get typed module with function types and typed bodies
+    let typed_module = infer_module(module).map_err(|e| {
         CodegenError::TypeError(format!("{e:?}"))
     })?;
-    let type_info = module_type_info.fn_types;
-
-    // We'll convert lambda types after struct/sum types are registered
-    // (so type_to_jvm can resolve Named types). Store raw lambda types for now.
-    let raw_lambda_types = module_type_info.lambda_types;
+    let type_info = &typed_module.fn_types;
 
     // Collect struct declarations from AST
     let struct_decls: Vec<_> = module
@@ -2991,7 +3010,7 @@ pub fn compile_module(
     }
 
     // Pre-scan for function-typed params so we can register FunN interfaces first
-    for (name, scheme) in &type_info {
+    for (name, scheme) in type_info.iter() {
         if let Type::Fn(param_tys, _) = &scheme.ty {
             if compiler.types.struct_info.contains_key(name)
                 || compiler.types.variant_to_sum.contains_key(name)
@@ -3007,25 +3026,9 @@ pub fn compile_module(
         }
     }
 
-    // Also pre-scan lambda types to register FunN interfaces
-    for (_, (param_types, _)) in &raw_lambda_types {
-        let arity = param_types.len() as u8;
-        compiler.lambda.ensure_fun_interface(arity, &mut compiler.cp, &mut compiler.types.class_descriptors)?;
-    }
-
-    // Convert lambda types from Type to JvmType
-    for (span, (param_types, ret_type)) in &raw_lambda_types {
-        let jvm_params: Vec<JvmType> = param_types
-            .iter()
-            .map(|t| compiler.type_to_jvm(t))
-            .collect::<Result<_, _>>()?;
-        let jvm_ret = compiler.type_to_jvm(ret_type)?;
-        compiler.lambda.lambda_types.insert(*span, (jvm_params, jvm_ret));
-    }
-
     // Register all functions (including main) in the function registry.
     // Skip constructor entries (they're handled as struct/variant constructors).
-    for (name, scheme) in &type_info {
+    for (name, scheme) in type_info.iter() {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
             // Skip if this is a struct constructor or variant constructor
             if compiler.types.struct_info.contains_key(name)
@@ -3062,22 +3065,12 @@ pub fn compile_module(
         }
     }
 
-    // Collect all function declarations
-    let fn_decls: Vec<&FnDecl> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefFn(f) => Some(f),
-            _ => None,
-        })
-        .collect();
-
-    // Compile all functions (including main) as static methods
+    // Compile all functions (including main) as static methods using typed bodies
     let mut extra_methods = Vec::new();
-    for decl in &fn_decls {
-        let mut method = compiler.compile_function(decl)?;
+    for typed_fn in &typed_module.functions {
+        let mut method = compiler.compile_function(typed_fn)?;
         // Rename main → krypton_main in the method
-        if decl.name == "main" {
+        if typed_fn.name == "main" {
             let name_idx = compiler.cp.add_utf8("krypton_main")?;
             method.name_index = name_idx;
         }
