@@ -1,0 +1,7 @@
+# expect: output 20
+(type List [a] (| (Cons a (List a)) (Nil)))
+(def second (fn [xs]
+  (match xs
+    ((Cons h (Cons h2 _)) h2)
+    (_ 0))))
+(def main (fn [] (second (Cons 10 (Cons 20 Nil)))))

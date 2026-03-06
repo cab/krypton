@@ -1,0 +1,3 @@
+# expect: output 6
+(def apply_fn (fn [f x] (f x)))
+(def main (fn [] (apply_fn (fn [x] (+ x 1)) 5)))

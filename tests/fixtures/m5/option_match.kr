@@ -1,0 +1,7 @@
+# expect: output 42
+(type Option [a] (| (Some a) (None)))
+(def unwrap_or (fn [opt default]
+  (match opt
+    ((Some x) x)
+    ((None) default))))
+(def main (fn [] (unwrap_or (Some 42) 0)))

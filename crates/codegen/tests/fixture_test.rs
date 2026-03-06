@@ -91,3 +91,59 @@ fn m4_fixtures() {
 
     assert!(ran > 0, "no output/ok fixtures were found to run");
 }
+
+#[test]
+fn m5_fixtures() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/m5");
+
+    let fixtures = discover_fixtures(&fixture_dir);
+    assert!(
+        !fixtures.is_empty(),
+        "no fixtures found in {}",
+        fixture_dir.display()
+    );
+
+    let mut ran = 0;
+    for fixture_path in fixtures {
+        let fixture = load_fixture(&fixture_path);
+        let name = fixture_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Output(expected) => {
+                    let actual = run_program(&fixture.source);
+                    assert_eq!(
+                        actual, *expected,
+                        "fixture {name}: expected output {expected:?} but got {actual:?}"
+                    );
+                    ran += 1;
+                }
+                Expectation::Ok => {
+                    let (module, errors) = parse(&fixture.source);
+                    assert!(
+                        errors.is_empty(),
+                        "fixture {name}: expected ok but got parse errors: {errors:?}"
+                    );
+                    compile_module(&module, "Test").unwrap_or_else(|e| {
+                        panic!("fixture {name}: expected ok but compile failed: {e}")
+                    });
+                    ran += 1;
+                }
+                Expectation::Error(_) => {
+                    // Skip error expectations in codegen fixtures
+                }
+            }
+        }
+    }
+
+    assert!(ran > 0, "no output/ok fixtures were found to run");
+}
