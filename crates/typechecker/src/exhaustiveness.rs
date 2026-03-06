@@ -51,6 +51,7 @@ pub fn check_exhaustiveness(
                         return Err(SpannedTypeError {
                             error: TypeError::NonExhaustive { missing },
                             span,
+                            note: None,
                         });
                     }
 
@@ -103,6 +104,7 @@ pub fn check_exhaustiveness(
                                 missing: vec![name.clone()],
                             },
                             span,
+                            note: None,
                         })
                     } else {
                         Ok(())
@@ -118,6 +120,7 @@ pub fn check_exhaustiveness(
                     missing: vec!["_".to_string()],
                 },
                 span,
+                note: None,
             })
         }
         // Type variables, functions, etc. — skip checking

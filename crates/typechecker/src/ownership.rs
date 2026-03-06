@@ -260,6 +260,7 @@ pub fn check_ownership(
     fn_types: &[(String, TypeScheme)],
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
+    lambda_own_captures: &HashMap<Span, String>,
 ) -> Result<(), SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
@@ -286,7 +287,7 @@ pub fn check_ownership(
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
             let affine = build_affine_set(fn_decl, registry);
-            check_fn(fn_decl, &fn_param_info, &affine, &fn_qualifiers, let_own_spans)?;
+            check_fn(fn_decl, &fn_param_info, &affine, &fn_qualifiers, let_own_spans, lambda_own_captures)?;
         }
     }
     Ok(())
@@ -298,6 +299,7 @@ fn check_fn(
     affine: &HashSet<String>,
     fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
     let_own_spans: &HashSet<Span>,
+    lambda_own_captures: &HashMap<Span, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
@@ -312,7 +314,8 @@ fn check_fn(
 
     let mut consumed = HashSet::new();
     let mut partially_consumed = HashSet::new();
-    check_expr(&decl.body, &mut owned, &mut consumed, &mut partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)
+    let mut own_fn_notes: HashMap<String, String> = HashMap::new();
+    check_expr(&decl.body, &mut owned, &mut consumed, &mut partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, &mut own_fn_notes)
 }
 
 fn check_expr(
@@ -324,6 +327,8 @@ fn check_expr(
     affine: &HashSet<String>,
     fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
     let_own_spans: &HashSet<Span>,
+    lambda_own_captures: &HashMap<Span, String>,
+    own_fn_notes: &mut HashMap<String, String>,
 ) -> Result<(), SpannedTypeError> {
     match expr {
         Expr::Var { name, span, .. } => {
@@ -334,6 +339,7 @@ fn check_expr(
                             name: name.clone(),
                         },
                         span: *span,
+                        note: own_fn_notes.get(name).cloned(),
                     });
                 }
                 if partially_consumed.contains(name) {
@@ -342,6 +348,7 @@ fn check_expr(
                             name: name.clone(),
                         },
                         span: *span,
+                        note: None,
                     });
                 }
                 consumed.insert(name.clone());
@@ -350,7 +357,7 @@ fn check_expr(
         }
 
         Expr::App { func, args, span, .. } => {
-            check_expr(func, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(func, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             // Determine which params are non-own (for non-consuming borrow)
             let callee_params = if let Expr::Var { name, .. } = func.as_ref() {
                 fn_param_info.get(name)
@@ -374,6 +381,7 @@ fn check_expr(
                                         name: arg_name.clone(),
                                     },
                                     span: *arg_span,
+                                    note: None,
                                 });
                             }
                         }
@@ -393,17 +401,19 @@ fn check_expr(
                             return Err(SpannedTypeError {
                                 error: TypeError::AlreadyMoved { name: name.clone() },
                                 span: *span,
+                                note: None,
                             });
                         }
                         if partially_consumed.contains(name) {
                             return Err(SpannedTypeError {
                                 error: TypeError::MovedInBranch { name: name.clone() },
                                 span: *span,
+                                note: None,
                             });
                         }
                     }
                 } else {
-                    check_expr(arg, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                    check_expr(arg, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
                 }
             }
             let _ = span;
@@ -411,13 +421,22 @@ fn check_expr(
         }
 
         Expr::Let { name, value, body, span } => {
-            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             let is_own_let = let_own_spans.contains(span);
             if is_own_let {
                 owned.insert(name.clone());
+                // Record note for own fn closures
+                if let Expr::Lambda { span: lspan, .. } = value.as_ref() {
+                    if let Some(cap_name) = lambda_own_captures.get(lspan) {
+                        own_fn_notes.insert(
+                            name.clone(),
+                            format!("closure is single-use because it captures own value `{}`", cap_name),
+                        );
+                    }
+                }
             }
             if let Some(body) = body {
-                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
                 // Restore owned state after body scope
                 if is_own_let {
                     owned.remove(name);
@@ -429,29 +448,29 @@ fn check_expr(
         }
 
         Expr::LetPattern { value, body, .. } => {
-            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             if let Some(body) = body {
-                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }
 
         Expr::Do { exprs, .. } => {
             for e in exprs {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }
 
         Expr::If { cond, then_, else_, .. } => {
-            check_expr(cond, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(cond, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             let before = consumed.clone();
             let mut then_consumed = consumed.clone();
             let mut then_partial = partially_consumed.clone();
             let mut else_consumed = consumed.clone();
             let mut else_partial = partially_consumed.clone();
-            check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
-            check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
 
             let newly_in_then: HashSet<String> = then_consumed.difference(&before).cloned().collect();
             let newly_in_else: HashSet<String> = else_consumed.difference(&before).cloned().collect();
@@ -472,7 +491,7 @@ fn check_expr(
         }
 
         Expr::Match { scrutinee, arms, .. } => {
-            check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             let before = consumed.clone();
             let n = arms.len();
             let mut per_arm_new: Vec<HashSet<String>> = Vec::new();
@@ -481,7 +500,7 @@ fn check_expr(
             for arm in arms {
                 let mut arm_consumed = consumed.clone();
                 let mut arm_partial = partially_consumed.clone();
-                check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
                 let newly: HashSet<String> = arm_consumed.difference(&before).cloned().collect();
                 per_arm_new.push(newly);
                 for name in &arm_partial {
@@ -504,12 +523,12 @@ fn check_expr(
         }
 
         Expr::BinaryOp { lhs, rhs, .. } => {
-            check_expr(lhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
-            check_expr(rhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)
+            check_expr(lhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(rhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
         }
 
         Expr::UnaryOp { operand, .. } => {
-            check_expr(operand, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)
+            check_expr(operand, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
         }
 
         Expr::Lambda { params, body, span, .. } => {
@@ -520,55 +539,56 @@ fn check_expr(
                     return Err(SpannedTypeError {
                         error: TypeError::CapturedMoved { name: name.clone() },
                         span: *span,
+                        note: None,
                     });
                 }
                 consumed.insert(name.clone());
             }
             let mut body_consumed = HashSet::new();
             let mut body_partial = HashSet::new();
-            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info, affine, fn_qualifiers, let_own_spans)
+            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
         }
 
         Expr::FieldAccess { expr, .. } => {
-            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)
+            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
         }
 
         Expr::StructLit { fields, .. } => {
             for (_, field_expr) in fields {
-                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }
 
         Expr::StructUpdate { base, fields, .. } => {
-            check_expr(base, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+            check_expr(base, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             for (_, field_expr) in fields {
-                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }
 
         Expr::Tuple { elements, .. } => {
             for e in elements {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }
 
         Expr::Recur { args, .. } => {
             for a in args {
-                check_expr(a, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(a, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }
 
         Expr::QuestionMark { expr, .. } => {
-            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)
+            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
         }
 
         Expr::List { elements, .. } => {
             for e in elements {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
             }
             Ok(())
         }

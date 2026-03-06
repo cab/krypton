@@ -114,6 +114,36 @@ fn no_own_mismatch_no_help() {
 }
 
 #[test]
+fn own_fn_capture_note_e0101() {
+    let src = "(def consume (fn [buf] [(own String)] String buf))\n(def bad (fn [x] [(own String)] String\n  (do (let f (fn [] (consume x)))\n      (f)\n      (f))))";
+    let output = render_module_error(src);
+    assert!(
+        output.contains("captures own value `x`"),
+        "expected own capture note in:\n{output}"
+    );
+}
+
+#[test]
+fn own_fn_capture_note_e0001() {
+    let src = "(def call_many (fn [f] [(fn [] String)] String (f)))\n(def bad (fn [x] [(own String)] String\n  (call_many (fn [] x))))";
+    let output = render_module_error(src);
+    assert!(
+        output.contains("captures own value `x`"),
+        "expected own capture note in:\n{output}"
+    );
+}
+
+#[test]
+fn own_fn_capture_note_correct_name() {
+    let src = "(def consume (fn [buf] [(own String)] String buf))\n(def bad (fn [a b] [String (own String)] String\n  (do (let f (fn [] (consume b)))\n      (f)\n      (f))))";
+    let output = render_module_error(src);
+    assert!(
+        output.contains("captures own value `b`"),
+        "expected own capture note mentioning `b` in:\n{output}"
+    );
+}
+
+#[test]
 fn error_codes_present() {
     // Verify each error code appears in at least one diagnostic
     let cases = [

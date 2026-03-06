@@ -27,6 +27,10 @@ pub fn render_type_errors(filename: &str, source: &str, errors: &[SpannedTypeErr
             report = report.with_help(help);
         }
 
+        if let Some(note) = &err.note {
+            report = report.with_note(note);
+        }
+
         report
             .finish()
             .write(sources([(fname.clone(), src.clone())]), &mut output)

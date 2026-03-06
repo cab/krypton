@@ -213,6 +213,7 @@ impl fmt::Display for TypeError {
 pub struct SpannedTypeError {
     pub error: TypeError,
     pub span: Span,
+    pub note: Option<String>,
 }
 
 impl fmt::Display for SpannedTypeError {

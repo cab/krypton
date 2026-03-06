@@ -1,0 +1,6 @@
+# expect: error E0101
+(def consume (fn [buf] [(own String)] String buf))
+(def bad (fn [a b] [String (own String)] String
+  (do (let f (fn [] (consume b)))
+      (f)
+      (f))))
