@@ -1,0 +1,5 @@
+# expect: ok
+(def len (fn [s] [String] Int 42))
+(def consume (fn [s] [(own String)] String s))
+(def test (fn [buf] [(own String)] String
+  (do (len buf) (consume buf))))

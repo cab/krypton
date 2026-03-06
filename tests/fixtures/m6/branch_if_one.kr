@@ -1,6 +1,6 @@
 # expect: error E0102
-(def consume (fn [buf] [(own String)] String buf))
+(def consume (fn [buf] [(own String)] Int 42))
 (def test (fn [x] [(own String)] String
   (do
-    (if true (consume x) "kept")
+    (if true (consume x) 0)
     x)))

@@ -52,6 +52,25 @@ impl TypeRegistry {
     pub fn lookup_type(&self, name: &str) -> Option<&TypeInfo> {
         self.types.get(name)
     }
+
+    /// Check if a name is a constructor (record or sum variant).
+    pub fn is_constructor(&self, name: &str) -> bool {
+        for info in self.types.values() {
+            // Record constructor has same name as the type
+            if info.name == name {
+                if let TypeKind::Record { .. } = &info.kind {
+                    return true;
+                }
+            }
+            // Sum variant constructors
+            if let TypeKind::Sum { variants } = &info.kind {
+                if variants.iter().any(|v| v.name == name) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 /// Resolve an AST `TypeExpr` to an internal `Type`, using the type parameter

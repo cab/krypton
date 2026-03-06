@@ -507,3 +507,43 @@ fn test_exhaustive_nested() {
         @"TypeError: non-exhaustive match: missing None"
     );
 }
+
+#[test]
+fn infer_call_site_coercion_borrow() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(def len (fn [s] [String] Int 42)) \
+             (def test (fn [buf] [(own String)] Int (do (len buf) (len buf))))"
+        ),
+        @r#"
+    len: fn(String) -> Int
+    test: fn(own String) -> Int
+    "#
+    );
+}
+
+#[test]
+fn infer_call_site_coercion_no_collection() {
+    insta::assert_snapshot!(
+        infer_module_types(
+            "(type MyList (| (Cons String MyList) Nil)) \
+             (def test (fn [buf] [(own String)] MyList (Cons buf Nil)))"
+        ),
+        @"TypeError: type mismatch: expected String, found own String"
+    );
+}
+
+#[test]
+fn float_add_infers_float() {
+    insta::assert_snapshot!(infer("(+ 1.0 2.0)"), @"Float");
+}
+
+#[test]
+fn float_lt_infers_bool() {
+    insta::assert_snapshot!(infer("(< 1.0 2.0)"), @"Bool");
+}
+
+#[test]
+fn float_neg_infers_float() {
+    insta::assert_snapshot!(infer("(- 3.14)"), @"Float");
+}

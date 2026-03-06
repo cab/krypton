@@ -1,0 +1,3 @@
+# expect: error E0001
+(type MyList (| (Cons String MyList) Nil))
+(def test (fn [buf] [(own String)] MyList (Cons buf Nil)))

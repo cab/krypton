@@ -7,6 +7,32 @@ use crate::type_registry::{self, TypeRegistry};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
+/// Attempt call-site own→T coercion: if an arg is `Own(inner)` and the
+/// corresponding param is a concrete non-Own, non-Var type, strip the Own wrapper.
+fn coerce_own_args(func_ty: &Type, arg_types: &[Type], subst: &Substitution) -> Vec<Type> {
+    let walked = subst.apply(func_ty);
+    if let Type::Fn(param_types, _) = &walked {
+        arg_types
+            .iter()
+            .enumerate()
+            .map(|(i, arg)| {
+                let resolved_arg = subst.apply(arg);
+                if let Type::Own(inner) = &resolved_arg {
+                    if let Some(param) = param_types.get(i) {
+                        let resolved_param = subst.apply(param);
+                        if !matches!(resolved_param, Type::Own(_) | Type::Var(_)) {
+                            return *inner.clone();
+                        }
+                    }
+                }
+                arg.clone()
+            })
+            .collect()
+    } else {
+        arg_types.to_vec()
+    }
+}
+
 /// Result of type inference for a module.
 pub struct ModuleTypeInfo {
     pub fn_types: Vec<(String, TypeScheme)>,
@@ -162,7 +188,18 @@ fn infer_expr_inner(
             }
 
             let ret_var = Type::Var(gen.fresh());
-            let expected_fn = Type::Fn(arg_types, Box::new(ret_var.clone()));
+            // Only apply own coercion for non-constructor calls
+            let is_constructor = if let Expr::Var { name, .. } = func.as_ref() {
+                registry.is_some_and(|r| r.is_constructor(name))
+            } else {
+                false
+            };
+            let coerced_args = if is_constructor {
+                arg_types.clone()
+            } else {
+                coerce_own_args(&func_ty, &arg_types, subst)
+            };
+            let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
             unify(&func_ty, &expected_fn, subst)
                 .map_err(|e| spanned(e, *span))?;
             Ok(subst.apply(&ret_var))
@@ -231,17 +268,32 @@ fn infer_expr_inner(
             let rhs_ty = infer_expr_inner(rhs, env, subst, gen, registry, lambda_types, recur_params)?;
             match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                    unify(&lhs_ty, &Type::Int, subst)
+                    unify(&lhs_ty, &rhs_ty, subst)
                         .map_err(|e| spanned(e, *span))?;
-                    unify(&rhs_ty, &Type::Int, subst)
-                        .map_err(|e| spanned(e, *span))?;
-                    Ok(Type::Int)
+                    let resolved = subst.apply(&lhs_ty);
+                    match &resolved {
+                        Type::Int | Type::Float => Ok(resolved),
+                        Type::Var(_) => {
+                            // Unconstrained numeric type defaults to Int
+                            unify(&resolved, &Type::Int, subst)
+                                .map_err(|e| spanned(e, *span))?;
+                            Ok(Type::Int)
+                        }
+                        _ => Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                    }
                 }
                 BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                    unify(&lhs_ty, &Type::Int, subst)
+                    unify(&lhs_ty, &rhs_ty, subst)
                         .map_err(|e| spanned(e, *span))?;
-                    unify(&rhs_ty, &Type::Int, subst)
-                        .map_err(|e| spanned(e, *span))?;
+                    let resolved = subst.apply(&lhs_ty);
+                    match &resolved {
+                        Type::Int | Type::Float => {}
+                        Type::Var(_) => {
+                            unify(&resolved, &Type::Int, subst)
+                                .map_err(|e| spanned(e, *span))?;
+                        }
+                        _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                    }
                     Ok(Type::Bool)
                 }
             }
@@ -253,9 +305,16 @@ fn infer_expr_inner(
             let operand_ty = infer_expr_inner(operand, env, subst, gen, registry, lambda_types, recur_params)?;
             match op {
                 UnaryOp::Neg => {
-                    unify(&operand_ty, &Type::Int, subst)
-                        .map_err(|e| spanned(e, *span))?;
-                    Ok(Type::Int)
+                    let resolved = subst.apply(&operand_ty);
+                    match &resolved {
+                        Type::Int | Type::Float => Ok(resolved),
+                        Type::Var(_) => {
+                            unify(&resolved, &Type::Int, subst)
+                                .map_err(|e| spanned(e, *span))?;
+                            Ok(Type::Int)
+                        }
+                        _ => Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                    }
                 }
             }
         }
@@ -720,6 +779,12 @@ pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError>
             let mut param_types = Vec::new();
             for p in &decl.params {
                 let ptv = Type::Var(gen.fresh());
+                if let Some(ref ty_expr) = p.ty {
+                    let empty_map = HashMap::new();
+                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry);
+                    unify(&ptv, &annotated_ty, &mut subst)
+                        .map_err(|e| spanned(e, decl.span))?;
+                }
                 param_types.push(ptv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
