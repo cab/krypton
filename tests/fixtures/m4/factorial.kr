@@ -1,5 +1,5 @@
 # expect: output 3628800
-(def factorial (fn [n] [Int] Int
+(def factorial (fn [n]
   (if (== n 0)
     1
     (* n (factorial (- n 1))))))

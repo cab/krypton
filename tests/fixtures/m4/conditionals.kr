@@ -1,0 +1,2 @@
+# expect: output "yes"
+(def main (fn [] (if (== 1 1) "yes" "no")))

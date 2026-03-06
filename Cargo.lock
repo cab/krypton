@@ -353,6 +353,7 @@ version = "0.1.0"
 dependencies = [
  "insta",
  "krypton-parser",
+ "krypton-test-harness",
  "krypton-typechecker",
  "ristretto_classfile",
  "tempfile",

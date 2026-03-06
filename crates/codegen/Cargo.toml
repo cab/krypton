@@ -11,3 +11,4 @@ krypton-typechecker = { path = "../typechecker" }
 [dev-dependencies]
 insta.workspace = true
 tempfile = "3"
+krypton-test-harness = { path = "../test-harness" }
