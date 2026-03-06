@@ -1,0 +1,4 @@
+# expect: error E0104
+(type Buffer (record (data (own String))))
+(def dup (fn [x] (tuple x x)))
+(def test (fn [b] [Buffer] (tuple Buffer Buffer) (dup b)))

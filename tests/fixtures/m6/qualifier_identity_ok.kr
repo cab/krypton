@@ -1,0 +1,3 @@
+# expect: ok
+(def identity (fn [x] x))
+(def test (fn [buf] [(own String)] String (identity buf)))

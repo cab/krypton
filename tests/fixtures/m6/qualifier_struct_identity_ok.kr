@@ -1,0 +1,4 @@
+# expect: ok
+(type Buffer (record (data (own String))))
+(def identity (fn [x] x))
+(def test (fn [b] [Buffer] Buffer (identity b)))

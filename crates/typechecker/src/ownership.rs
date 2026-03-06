@@ -2,16 +2,264 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{Expr, FnDecl, Module, Decl, TypeExpr};
 
+use crate::type_registry::{TypeKind, TypeRegistry};
+use crate::types::{Type, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
+
+/// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParamQualifier {
+    /// Used more than once in the body — caller must not pass affine values.
+    RequiresU,
+    /// Used at most once — accepts both affine and unlimited values.
+    Polymorphic,
+}
 
 /// Check if a param has an `own` type annotation.
 fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
     matches!(&param.ty, Some(TypeExpr::Own { .. }))
 }
 
+/// Check if a type contains `Type::Own` anywhere within it.
+fn type_contains_own(ty: &Type) -> bool {
+    match ty {
+        Type::Own(_) => true,
+        Type::Fn(params, ret) => params.iter().any(type_contains_own) || type_contains_own(ret),
+        Type::Named(_, args) => args.iter().any(type_contains_own),
+        Type::Tuple(elems) => elems.iter().any(type_contains_own),
+        _ => false,
+    }
+}
+
+/// Check if a named type has any field that contains `own`.
+fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
+    if let Some(info) = registry.lookup_type(type_name) {
+        match &info.kind {
+            TypeKind::Record { fields } => fields.iter().any(|(_, ty)| type_contains_own(ty)),
+            TypeKind::Sum { variants } => variants
+                .iter()
+                .any(|v| v.fields.iter().any(type_contains_own)),
+        }
+    } else {
+        false
+    }
+}
+
+/// Count the maximum number of uses of `name` along any single execution path.
+fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
+    match expr {
+        Expr::Var { name: v, .. } => {
+            if v == name && !bound.contains(name) {
+                1
+            } else {
+                0
+            }
+        }
+
+        Expr::App { func, args, .. } => {
+            let mut total = count_max_uses(func, name, bound);
+            for a in args {
+                total += count_max_uses(a, name, bound);
+            }
+            total
+        }
+
+        Expr::Let { name: let_name, value, body, .. } => {
+            let v = count_max_uses(value, name, bound);
+            if let_name == name {
+                // Shadowed — body doesn't count
+                v
+            } else if let Some(body) = body {
+                v + count_max_uses(body, name, bound)
+            } else {
+                v
+            }
+        }
+
+        Expr::LetPattern { value, body, .. } => {
+            let v = count_max_uses(value, name, bound);
+            if let Some(body) = body {
+                v + count_max_uses(body, name, bound)
+            } else {
+                v
+            }
+        }
+
+        Expr::Do { exprs, .. } => {
+            exprs.iter().map(|e| count_max_uses(e, name, bound)).sum()
+        }
+
+        Expr::If { cond, then_, else_, .. } => {
+            let c = count_max_uses(cond, name, bound);
+            let t = count_max_uses(then_, name, bound);
+            let e = count_max_uses(else_, name, bound);
+            c + t.max(e)
+        }
+
+        Expr::Match { scrutinee, arms, .. } => {
+            let s = count_max_uses(scrutinee, name, bound);
+            let max_arm = arms
+                .iter()
+                .map(|arm| count_max_uses(&arm.body, name, bound))
+                .max()
+                .unwrap_or(0);
+            s + max_arm
+        }
+
+        Expr::BinaryOp { lhs, rhs, .. } => {
+            count_max_uses(lhs, name, bound) + count_max_uses(rhs, name, bound)
+        }
+
+        Expr::UnaryOp { operand, .. } => count_max_uses(operand, name, bound),
+
+        Expr::Lambda { params, body, .. } => {
+            let mut inner_bound = bound.clone();
+            for p in params {
+                inner_bound.insert(p.name.clone());
+            }
+            if inner_bound.contains(name) {
+                0
+            } else {
+                // Captured — count as at most 1
+                let uses = count_max_uses(body, name, &inner_bound);
+                if uses > 0 { 1 } else { 0 }
+            }
+        }
+
+        Expr::FieldAccess { expr, .. } => count_max_uses(expr, name, bound),
+
+        Expr::StructLit { fields, .. } => {
+            fields.iter().map(|(_, e)| count_max_uses(e, name, bound)).sum()
+        }
+
+        Expr::StructUpdate { base, fields, .. } => {
+            let b = count_max_uses(base, name, bound);
+            let f: usize = fields.iter().map(|(_, e)| count_max_uses(e, name, bound)).sum();
+            b + f
+        }
+
+        Expr::Tuple { elements, .. } => {
+            elements.iter().map(|e| count_max_uses(e, name, bound)).sum()
+        }
+
+        Expr::Recur { args, .. } => {
+            args.iter().map(|a| count_max_uses(a, name, bound)).sum()
+        }
+
+        Expr::QuestionMark { expr, .. } => count_max_uses(expr, name, bound),
+
+        Expr::List { elements, .. } => {
+            elements.iter().map(|e| count_max_uses(e, name, bound)).sum()
+        }
+
+        Expr::Lit { .. } => 0,
+    }
+}
+
+/// Compute qualifier requirements for each function's parameters.
+///
+/// For each function, returns a Vec<ParamQualifier> parallel to its params.
+/// A type-variable-typed param that is used >1 time in the body gets `RequiresU`.
+fn compute_fn_qualifiers(
+    fn_decls: &[&FnDecl],
+    fn_types: &[(String, TypeScheme)],
+) -> HashMap<String, Vec<ParamQualifier>> {
+    let type_map: HashMap<&str, &TypeScheme> = fn_types
+        .iter()
+        .map(|(n, s)| (n.as_str(), s))
+        .collect();
+
+    let mut result = HashMap::new();
+
+    for decl in fn_decls {
+        let scheme = match type_map.get(decl.name.as_str()) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        let param_types = match &scheme.ty {
+            Type::Fn(params, _) => params,
+            _ => continue,
+        };
+
+        let quantified: HashSet<_> = scheme.vars.iter().copied().collect();
+        let mut qualifiers = Vec::new();
+
+        for (i, param_ty) in param_types.iter().enumerate() {
+            // Strip Own wrapper to get the inner type
+            let inner = match param_ty {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+
+            // Check if the inner type is a quantified type variable
+            let is_type_var = matches!(inner, Type::Var(id) if quantified.contains(id));
+
+            if is_type_var {
+                if let Some(param) = decl.params.get(i) {
+                    let bound = HashSet::new();
+                    let uses = count_max_uses(&decl.body, &param.name, &bound);
+                    if uses > 1 {
+                        qualifiers.push(ParamQualifier::RequiresU);
+                    } else {
+                        qualifiers.push(ParamQualifier::Polymorphic);
+                    }
+                } else {
+                    qualifiers.push(ParamQualifier::Polymorphic);
+                }
+            } else {
+                qualifiers.push(ParamQualifier::Polymorphic);
+            }
+        }
+
+        result.insert(decl.name.clone(), qualifiers);
+    }
+
+    result
+}
+
+/// Build the set of affine params for a function — params that cannot be passed
+/// to unlimited-qualifier positions.
+fn build_affine_set(decl: &FnDecl, registry: &TypeRegistry) -> HashSet<String> {
+    let mut affine = HashSet::new();
+    for param in &decl.params {
+        if is_own_param(param) {
+            affine.insert(param.name.clone());
+            continue;
+        }
+        // Check if the param type annotation refers to a type with own fields
+        if let Some(ref ty_expr) = param.ty {
+            if param_type_is_affine(ty_expr, registry) {
+                affine.insert(param.name.clone());
+            }
+        }
+    }
+    affine
+}
+
+/// Check if a type expression refers to an affine type (contains own or is a
+/// struct/sum with own fields).
+fn param_type_is_affine(ty_expr: &TypeExpr, registry: &TypeRegistry) -> bool {
+    match ty_expr {
+        TypeExpr::Own { .. } => true,
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
+            has_own_field(name, registry)
+        }
+        TypeExpr::App { name, .. } => has_own_field(name, registry),
+        TypeExpr::Tuple { elements, .. } => {
+            elements.iter().any(|e| param_type_is_affine(e, registry))
+        }
+        TypeExpr::Fn { .. } => false,
+    }
+}
+
 /// Affine verification: track `own` bindings and flag double-use as E0101,
-/// or partial-branch use as E0102.
-pub fn check_ownership(module: &Module) -> Result<(), SpannedTypeError> {
+/// partial-branch use as E0102, and qualifier mismatches as E0104.
+pub fn check_ownership(
+    module: &Module,
+    fn_types: &[(String, TypeScheme)],
+    registry: &TypeRegistry,
+) -> Result<(), SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
     for decl in &module.decls {
@@ -20,15 +268,35 @@ pub fn check_ownership(module: &Module) -> Result<(), SpannedTypeError> {
             fn_param_info.insert(fn_decl.name.clone(), own_params);
         }
     }
+
+    // Collect fn decls
+    let fn_decls: Vec<&FnDecl> = module
+        .decls
+        .iter()
+        .filter_map(|d| match d {
+            Decl::DefFn(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+
+    // Compute qualifier requirements per function
+    let fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types);
+
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
-            check_fn(fn_decl, &fn_param_info)?;
+            let affine = build_affine_set(fn_decl, registry);
+            check_fn(fn_decl, &fn_param_info, &affine, &fn_qualifiers)?;
         }
     }
     Ok(())
 }
 
-fn check_fn(decl: &FnDecl, fn_param_info: &HashMap<String, Vec<bool>>) -> Result<(), SpannedTypeError> {
+fn check_fn(
+    decl: &FnDecl,
+    fn_param_info: &HashMap<String, Vec<bool>>,
+    affine: &HashSet<String>,
+    fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
+) -> Result<(), SpannedTypeError> {
     let owned: HashSet<String> = decl
         .params
         .iter()
@@ -36,13 +304,13 @@ fn check_fn(decl: &FnDecl, fn_param_info: &HashMap<String, Vec<bool>>) -> Result
         .map(|p| p.name.clone())
         .collect();
 
-    if owned.is_empty() {
+    if owned.is_empty() && affine.is_empty() {
         return Ok(());
     }
 
     let mut consumed = HashSet::new();
     let mut partially_consumed = HashSet::new();
-    check_expr(&decl.body, &owned, &mut consumed, &mut partially_consumed, fn_param_info)
+    check_expr(&decl.body, &owned, &mut consumed, &mut partially_consumed, fn_param_info, affine, fn_qualifiers)
 }
 
 fn check_expr(
@@ -51,6 +319,8 @@ fn check_expr(
     consumed: &mut HashSet<String>,
     partially_consumed: &mut HashSet<String>,
     fn_param_info: &HashMap<String, Vec<bool>>,
+    affine: &HashSet<String>,
+    fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
 ) -> Result<(), SpannedTypeError> {
     match expr {
         Expr::Var { name, span, .. } => {
@@ -77,14 +347,36 @@ fn check_expr(
         }
 
         Expr::App { func, args, span, .. } => {
-            check_expr(func, owned, consumed, partially_consumed, fn_param_info)?;
+            check_expr(func, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             // Determine which params are non-own (for non-consuming borrow)
             let callee_params = if let Expr::Var { name, .. } = func.as_ref() {
                 fn_param_info.get(name)
             } else {
                 None
             };
+            // Get qualifier requirements for the callee
+            let callee_qualifiers = if let Expr::Var { name, .. } = func.as_ref() {
+                fn_qualifiers.get(name)
+            } else {
+                None
+            };
             for (i, arg) in args.iter().enumerate() {
+                // Check qualifier mismatch: affine arg passed to RequiresU param
+                if let Expr::Var { name: arg_name, span: arg_span, .. } = arg {
+                    if affine.contains(arg_name) {
+                        if let Some(quals) = callee_qualifiers {
+                            if i < quals.len() && quals[i] == ParamQualifier::RequiresU {
+                                return Err(SpannedTypeError {
+                                    error: TypeError::QualifierMismatch {
+                                        name: arg_name.clone(),
+                                    },
+                                    span: *arg_span,
+                                });
+                            }
+                        }
+                    }
+                }
+
                 let is_non_consuming_borrow = if let Expr::Var { name: arg_name, .. } = arg {
                     owned.contains(arg_name)
                         && callee_params.is_some_and(|params| i < params.len() && !params[i])
@@ -108,7 +400,7 @@ fn check_expr(
                         }
                     }
                 } else {
-                    check_expr(arg, owned, consumed, partially_consumed, fn_param_info)?;
+                    check_expr(arg, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
                 }
             }
             let _ = span;
@@ -116,37 +408,37 @@ fn check_expr(
         }
 
         Expr::Let { value, body, .. } => {
-            check_expr(value, owned, consumed, partially_consumed, fn_param_info)?;
+            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             if let Some(body) = body {
-                check_expr(body, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::LetPattern { value, body, .. } => {
-            check_expr(value, owned, consumed, partially_consumed, fn_param_info)?;
+            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             if let Some(body) = body {
-                check_expr(body, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::Do { exprs, .. } => {
             for e in exprs {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::If { cond, then_, else_, .. } => {
-            check_expr(cond, owned, consumed, partially_consumed, fn_param_info)?;
+            check_expr(cond, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             let before = consumed.clone();
             let mut then_consumed = consumed.clone();
             let mut then_partial = partially_consumed.clone();
             let mut else_consumed = consumed.clone();
             let mut else_partial = partially_consumed.clone();
-            check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info)?;
-            check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info)?;
+            check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info, affine, fn_qualifiers)?;
+            check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info, affine, fn_qualifiers)?;
 
             let newly_in_then: HashSet<String> = then_consumed.difference(&before).cloned().collect();
             let newly_in_else: HashSet<String> = else_consumed.difference(&before).cloned().collect();
@@ -167,7 +459,7 @@ fn check_expr(
         }
 
         Expr::Match { scrutinee, arms, .. } => {
-            check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info)?;
+            check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             let before = consumed.clone();
             let n = arms.len();
             let mut per_arm_new: Vec<HashSet<String>> = Vec::new();
@@ -176,7 +468,7 @@ fn check_expr(
             for arm in arms {
                 let mut arm_consumed = consumed.clone();
                 let mut arm_partial = partially_consumed.clone();
-                check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info)?;
+                check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info, affine, fn_qualifiers)?;
                 let newly: HashSet<String> = arm_consumed.difference(&before).cloned().collect();
                 per_arm_new.push(newly);
                 for name in &arm_partial {
@@ -199,12 +491,12 @@ fn check_expr(
         }
 
         Expr::BinaryOp { lhs, rhs, .. } => {
-            check_expr(lhs, owned, consumed, partially_consumed, fn_param_info)?;
-            check_expr(rhs, owned, consumed, partially_consumed, fn_param_info)
+            check_expr(lhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
+            check_expr(rhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)
         }
 
         Expr::UnaryOp { operand, .. } => {
-            check_expr(operand, owned, consumed, partially_consumed, fn_param_info)
+            check_expr(operand, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)
         }
 
         Expr::Lambda { params, body, span, .. } => {
@@ -219,54 +511,51 @@ fn check_expr(
                 }
                 consumed.insert(name.clone());
             }
-            // Recurse into the body with fresh consumed/partially_consumed sets
-            // (the lambda body is a new ownership scope — captured vars are consumed
-            // at the creation site, not inside the body)
             let mut body_consumed = HashSet::new();
             let mut body_partial = HashSet::new();
-            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info)
+            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info, affine, fn_qualifiers)
         }
 
         Expr::FieldAccess { expr, .. } => {
-            check_expr(expr, owned, consumed, partially_consumed, fn_param_info)
+            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)
         }
 
         Expr::StructLit { fields, .. } => {
             for (_, field_expr) in fields {
-                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::StructUpdate { base, fields, .. } => {
-            check_expr(base, owned, consumed, partially_consumed, fn_param_info)?;
+            check_expr(base, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             for (_, field_expr) in fields {
-                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::Tuple { elements, .. } => {
             for e in elements {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::Recur { args, .. } => {
             for a in args {
-                check_expr(a, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(a, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }
 
         Expr::QuestionMark { expr, .. } => {
-            check_expr(expr, owned, consumed, partially_consumed, fn_param_info)
+            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)
         }
 
         Expr::List { elements, .. } => {
             for e in elements {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers)?;
             }
             Ok(())
         }

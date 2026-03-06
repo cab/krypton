@@ -19,6 +19,7 @@ pub enum TypeErrorCode {
     E0101, // Value already moved
     E0102, // Value may have been moved in a branch
     E0103, // Capture of moved value
+    E0104, // Qualifier mismatch
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -37,6 +38,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0101 => write!(f, "E0101"),
             TypeErrorCode::E0102 => write!(f, "E0102"),
             TypeErrorCode::E0103 => write!(f, "E0103"),
+            TypeErrorCode::E0104 => write!(f, "E0104"),
         }
     }
 }
@@ -57,6 +59,7 @@ pub enum TypeError {
     AlreadyMoved { name: String },
     MovedInBranch { name: String },
     CapturedMoved { name: String },
+    QualifierMismatch { name: String },
     UnsupportedExpr { description: String },
 }
 
@@ -77,6 +80,7 @@ impl TypeError {
             TypeError::AlreadyMoved { .. } => TypeErrorCode::E0101,
             TypeError::MovedInBranch { .. } => TypeErrorCode::E0102,
             TypeError::CapturedMoved { .. } => TypeErrorCode::E0103,
+            TypeError::QualifierMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
         }
     }
@@ -120,6 +124,9 @@ impl TypeError {
             }
             TypeError::CapturedMoved { name } => {
                 Some(format!("`{}` was already consumed before the closure was created", name))
+            }
+            TypeError::QualifierMismatch { name } => {
+                Some(format!("`{}` has affine qualifier (own or contains own field) but the function requires unlimited usage", name))
             }
             TypeError::UnsupportedExpr { .. } => None,
         }
@@ -171,6 +178,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::CapturedMoved { name } => {
                 write!(f, "capture of moved value: `{}`", name)
+            }
+            TypeError::QualifierMismatch { name } => {
+                write!(f, "qualifier mismatch: cannot pass affine value to unlimited parameter: `{}`", name)
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)

@@ -1,0 +1,6 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+identity: forall b. fn(b) -> b
+test: fn(own String) -> own String

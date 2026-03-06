@@ -1,0 +1,7 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+Buffer: fn(own String) -> Buffer
+identity: forall b. fn(b) -> b
+test: fn(Buffer) -> Buffer

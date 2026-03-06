@@ -910,7 +910,7 @@ pub fn infer_module(module: &Module) -> Result<ModuleTypeInfo, SpannedTypeError>
         .collect();
 
     // Run affine ownership verification after successful inference
-    crate::ownership::check_ownership(module)?;
+    crate::ownership::check_ownership(module, &results, &registry)?;
 
     Ok(ModuleTypeInfo {
         fn_types: results,
