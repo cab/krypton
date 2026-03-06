@@ -152,16 +152,23 @@ where
         // --- Parenthesized forms (each returns a closure |Span| -> Expr) ---
         type Builder = Box<dyn FnOnce(Span) -> Expr>;
 
-        // (op lhs rhs)
+        // (op lhs rhs) or (- expr) for unary negation
         let binary_op = bin_op_token
             .then(expr.clone())
-            .then(expr.clone())
+            .then(expr.clone().or_not())
             .map(|((op, lhs), rhs)| -> Builder {
-                Box::new(move |span| Expr::BinaryOp {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                    span,
+                Box::new(move |span| match rhs {
+                    Some(rhs) => Expr::BinaryOp {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                        span,
+                    },
+                    None => Expr::UnaryOp {
+                        op: UnaryOp::Neg,
+                        operand: Box::new(lhs),
+                        span,
+                    },
                 })
             });
 

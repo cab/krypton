@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, MatchArm, Module, Pattern, Span, TypeDeclKind, TypeExpr};
+use krypton_parser::ast::{BinOp, Decl, Expr, FnDecl, Lit, MatchArm, Module, Pattern, Span, TypeDeclKind, TypeExpr, UnaryOp};
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType};
@@ -538,6 +538,7 @@ impl Compiler {
             Expr::Match {
                 scrutinee, arms, ..
             } => self.compile_match(scrutinee, arms, in_tail),
+            Expr::UnaryOp { op, operand, .. } => self.compile_unaryop(op, operand),
             Expr::Lambda {
                 params, body, span, ..
             } => self.compile_lambda(params, body, span),
@@ -602,20 +603,37 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                self.compile_expr(lhs, false)?;
+                let lhs_ty = self.compile_expr(lhs, false)?;
                 self.compile_expr(rhs, false)?;
-                let instr = match op {
-                    BinOp::Add => Instruction::Ladd,
-                    BinOp::Sub => Instruction::Lsub,
-                    BinOp::Mul => Instruction::Lmul,
-                    BinOp::Div => Instruction::Ldiv,
-                    _ => unreachable!(),
-                };
-                self.emit(instr);
-                // Pop two longs, push one long
-                self.frame.pop_type_n(4);
-                self.frame.push_long_type();
-                Ok(JvmType::Long)
+                match lhs_ty {
+                    JvmType::Long => {
+                        let instr = match op {
+                            BinOp::Add => Instruction::Ladd,
+                            BinOp::Sub => Instruction::Lsub,
+                            BinOp::Mul => Instruction::Lmul,
+                            BinOp::Div => Instruction::Ldiv,
+                            _ => unreachable!(),
+                        };
+                        self.emit(instr);
+                        self.frame.pop_type_n(4);
+                        self.frame.push_long_type();
+                        Ok(JvmType::Long)
+                    }
+                    JvmType::Double => {
+                        let instr = match op {
+                            BinOp::Add => Instruction::Dadd,
+                            BinOp::Sub => Instruction::Dsub,
+                            BinOp::Mul => Instruction::Dmul,
+                            BinOp::Div => Instruction::Ddiv,
+                            _ => unreachable!(),
+                        };
+                        self.emit(instr);
+                        self.frame.pop_type_n(4);
+                        self.frame.push_double_type();
+                        Ok(JvmType::Double)
+                    }
+                    _ => Err(CodegenError::UnsupportedExpr("arithmetic on non-numeric type".into())),
+                }
             }
             BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                 self.compile_comparison(op, lhs, rhs)
@@ -629,11 +647,17 @@ impl Compiler {
         lhs: &Expr,
         rhs: &Expr,
     ) -> Result<JvmType, CodegenError> {
-        self.compile_expr(lhs, false)?;
+        let lhs_ty = self.compile_expr(lhs, false)?;
         self.compile_expr(rhs, false)?;
-        self.emit(Instruction::Lcmp);
 
-        // Lcmp: pop two longs (4 slots), push int
+        let cmp_instr = match lhs_ty {
+            JvmType::Long => Instruction::Lcmp,
+            JvmType::Double => Instruction::Dcmpl,
+            _ => return Err(CodegenError::UnsupportedExpr("comparison of non-numeric type".into())),
+        };
+        self.emit(cmp_instr);
+
+        // Lcmp/Dcmpl: pop two 2-slot values (4 slots), push int
         self.frame.pop_type_n(4);
         self.frame.push_type(VerificationType::Integer);
 
@@ -688,6 +712,27 @@ impl Compiler {
         debug_assert_eq!(self.frame.stack_types, stack_after);
 
         Ok(JvmType::Int)
+    }
+
+    fn compile_unaryop(
+        &mut self,
+        op: &UnaryOp,
+        operand: &Expr,
+    ) -> Result<JvmType, CodegenError> {
+        let operand_ty = self.compile_expr(operand, false)?;
+        match op {
+            UnaryOp::Neg => match operand_ty {
+                JvmType::Long => {
+                    self.emit(Instruction::Lneg);
+                    Ok(JvmType::Long)
+                }
+                JvmType::Double => {
+                    self.emit(Instruction::Dneg);
+                    Ok(JvmType::Double)
+                }
+                _ => Err(CodegenError::UnsupportedExpr("negation of non-numeric type".into())),
+            },
+        }
     }
 
     fn compile_if(
