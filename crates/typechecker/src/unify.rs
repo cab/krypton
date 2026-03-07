@@ -67,9 +67,8 @@ pub enum TypeError {
     CapturedMoved { name: String },
     QualifierMismatch { name: String, callee: String, param: String },
     UnsupportedExpr { description: String },
-    NoInstance { trait_name: String, ty: Type },
+    NoInstance { trait_name: String, ty: String, required_by: Option<String> },
     OrphanInstance { trait_name: String, ty: String },
-    TraitNotImplemented { trait_name: String, ty: String, required_by: String },
 }
 
 impl TypeError {
@@ -91,9 +90,9 @@ impl TypeError {
             TypeError::CapturedMoved { .. } => TypeErrorCode::E0103,
             TypeError::QualifierMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
-            TypeError::NoInstance { .. } => TypeErrorCode::E0301,
+            TypeError::NoInstance { required_by: None, .. } => TypeErrorCode::E0301,
+            TypeError::NoInstance { required_by: Some(_), .. } => TypeErrorCode::E0303,
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
-            TypeError::TraitNotImplemented { .. } => TypeErrorCode::E0303,
         }
     }
 
@@ -160,14 +159,12 @@ impl TypeError {
                 Some(format!("`{callee}` uses parameter `{param}` more than once, so it cannot accept `own` values. Consider cloning first, or use a function that consumes its argument at most once."))
             }
             TypeError::UnsupportedExpr { .. } => None,
-            TypeError::NoInstance { trait_name, ty } => {
-                Some(format!("no implementation of trait `{}` for type `{}`", trait_name, ty))
+            TypeError::NoInstance { required_by: Some(bound), .. } => {
+                Some(format!("required by a bound in `{}`", bound))
             }
+            TypeError::NoInstance { .. } => None,
             TypeError::OrphanInstance { trait_name, ty } => {
                 Some(format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty))
-            }
-            TypeError::TraitNotImplemented { required_by, .. } => {
-                Some(format!("required by a bound in `{}`", required_by))
             }
         }
     }
@@ -225,14 +222,11 @@ impl fmt::Display for TypeError {
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
             }
-            TypeError::NoInstance { trait_name, ty } => {
-                write!(f, "no instance of trait `{}` for type `{}`", trait_name, ty)
+            TypeError::NoInstance { trait_name, ty, .. } => {
+                write!(f, "the trait `{}` is not implemented for `{}`", trait_name, ty)
             }
             TypeError::OrphanInstance { trait_name, ty } => {
                 write!(f, "orphan instance: cannot implement `{}` for `{}`", trait_name, ty)
-            }
-            TypeError::TraitNotImplemented { trait_name, ty, .. } => {
-                write!(f, "the trait `{}` is not implemented for `{}`", trait_name, ty)
             }
         }
     }

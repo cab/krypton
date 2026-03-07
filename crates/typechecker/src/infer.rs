@@ -1078,7 +1078,8 @@ fn check_trait_instances(
                             return Err(spanned(
                                 TypeError::NoInstance {
                                     trait_name: trait_name.clone(),
-                                    ty: concrete_ty,
+                                    ty: format!("{}", concrete_ty),
+                                    required_by: None,
                                 },
                                 expr.span,
                             ));
