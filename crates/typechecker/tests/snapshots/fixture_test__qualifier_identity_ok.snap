@@ -2,5 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-identity: forall i. fn(i) -> i
+identity: forall k. fn(k) -> k
 test: fn(own String) -> String

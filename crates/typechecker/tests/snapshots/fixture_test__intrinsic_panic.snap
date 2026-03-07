@@ -2,5 +2,4 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-id: forall k. fn(k) -> k
-always: forall m n. fn(m, n) -> m
+main: fn() -> Int

@@ -1316,6 +1316,9 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     let mut let_own_spans: HashSet<Span> = HashSet::new();
     let mut lambda_own_captures: HashMap<Span, String> = HashMap::new();
 
+    // Seed intrinsic function types (user defs can shadow these)
+    crate::intrinsics::register_intrinsics(&mut env, &mut gen);
+
     // First pass: process all DefType declarations
     let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {

@@ -2,6 +2,6 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-Some: forall a. fn(a) -> Option<a>
-None: forall a. Option<a>
-unwrap_or: forall k. fn(Option<k>, k) -> k
+Some: forall b. fn(b) -> Option<b>
+None: forall b. Option<b>
+unwrap_or: forall m. fn(Option<m>, m) -> m

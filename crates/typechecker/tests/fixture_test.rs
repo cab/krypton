@@ -129,3 +129,8 @@ fn m6_fixtures() {
 fn m8_fixtures() {
     run_fixtures("m8");
 }
+
+#[test]
+fn m9_fixtures() {
+    run_fixtures("m9");
+}

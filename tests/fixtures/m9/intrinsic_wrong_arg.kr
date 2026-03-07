@@ -1,0 +1,2 @@
+# expect: error E0001
+(def main (fn [] (println 42)))
