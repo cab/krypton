@@ -157,6 +157,8 @@ struct CpoolRefs {
     bool_box_class: u16,
     bool_unbox: u16,
     object_class: u16,
+    string_concat: u16,
+    string_equals: u16,
 }
 
 /// StackMapTable / verification type tracking.
@@ -424,6 +426,12 @@ impl Compiler {
         let bool_unbox =
             cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
 
+        // String operations
+        let string_concat =
+            cp.add_method_ref(string_class, "concat", "(Ljava/lang/String;)Ljava/lang/String;")?;
+        let string_equals =
+            cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
+
         let compiler = Compiler {
             cp,
             this_class,
@@ -451,6 +459,8 @@ impl Compiler {
                 bool_box_class,
                 bool_unbox,
                 object_class,
+                string_concat,
+                string_equals,
             },
             frame: FrameState {
                 stack_types: Vec::new(),
@@ -624,12 +634,15 @@ impl Compiler {
         lhs: &TypedExpr,
         rhs: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
+        // Check the operand type from the typed AST to determine dispatch strategy
+        let operand_jvm = self.type_to_jvm(&lhs.ty)?;
+
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                let lhs_ty = self.compile_expr(lhs, false)?;
-                self.compile_expr(rhs, false)?;
-                match lhs_ty {
+                match operand_jvm {
                     JvmType::Long => {
+                        self.compile_expr(lhs, false)?;
+                        self.compile_expr(rhs, false)?;
                         let instr = match op {
                             BinOp::Add => Instruction::Ladd,
                             BinOp::Sub => Instruction::Lsub,
@@ -643,6 +656,8 @@ impl Compiler {
                         Ok(JvmType::Long)
                     }
                     JvmType::Double => {
+                        self.compile_expr(lhs, false)?;
+                        self.compile_expr(rhs, false)?;
                         let instr = match op {
                             BinOp::Add => Instruction::Dadd,
                             BinOp::Sub => Instruction::Dsub,
@@ -655,7 +670,27 @@ impl Compiler {
                         self.frame.push_double_type();
                         Ok(JvmType::Double)
                     }
-                    _ => Err(CodegenError::UnsupportedExpr("arithmetic on non-numeric type".into())),
+                    JvmType::Ref if matches!(op, BinOp::Add) => {
+                        // String concat: invokevirtual String.concat
+                        self.compile_expr(lhs, false)?;
+                        self.compile_expr(rhs, false)?;
+                        self.emit(Instruction::Invokevirtual(self.refs.string_concat));
+                        self.frame.pop_type(); // pop rhs string
+                        // receiver consumed, result string pushed (net: pop 1 push 0, but
+                        // invokevirtual pops receiver+arg and pushes result, so just pop rhs)
+                        Ok(JvmType::Ref)
+                    }
+                    _ => {
+                        // User-type trait dispatch
+                        let (trait_name, method_name) = match op {
+                            BinOp::Add => ("Add", "add"),
+                            BinOp::Sub => ("Sub", "sub"),
+                            BinOp::Mul => ("Mul", "mul"),
+                            BinOp::Div => ("Div", "div"),
+                            _ => unreachable!(),
+                        };
+                        self.compile_trait_binop(trait_name, method_name, lhs, rhs, operand_jvm)
+                    }
                 }
             }
             BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
@@ -664,19 +699,168 @@ impl Compiler {
         }
     }
 
+    /// Compile a binary operator via trait dictionary dispatch for user types.
+    /// Emits: getstatic INSTANCE, box(lhs), box(rhs), invokeinterface, unbox result
+    fn compile_trait_binop(
+        &mut self,
+        trait_name: &str,
+        method_name: &str,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
+        result_jvm: JvmType,
+    ) -> Result<JvmType, CodegenError> {
+        let type_name = type_to_name(&lhs.ty);
+
+        let dispatch = self.trait_dispatch.get(trait_name)
+            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}")))?;
+        let iface_method_ref = *dispatch.method_refs.get(method_name)
+            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}")))?;
+        let iface_class = dispatch.interface_class;
+
+        let singleton = self.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
+            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no instance of {trait_name} for {type_name}")))?;
+        let field_ref = singleton.instance_field_ref;
+
+        // Load singleton instance
+        self.emit(Instruction::Getstatic(field_ref));
+        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+
+        // Compile and box lhs
+        let lhs_jvm = self.compile_expr(lhs, false)?;
+        self.box_if_needed(lhs_jvm);
+
+        // Compile and box rhs
+        let rhs_jvm = self.compile_expr(rhs, false)?;
+        self.box_if_needed(rhs_jvm);
+
+        // invokeinterface (receiver + 2 args = 3)
+        self.emit(Instruction::Invokeinterface(iface_method_ref, 3));
+        self.frame.pop_type(); // rhs
+        self.frame.pop_type(); // lhs
+        self.frame.pop_type(); // receiver
+        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+
+        // Unbox result
+        self.unbox_if_needed(result_jvm);
+        Ok(result_jvm)
+    }
+
+    /// Compile a unary operator via trait dictionary dispatch for user types.
+    fn compile_trait_unaryop(
+        &mut self,
+        trait_name: &str,
+        method_name: &str,
+        operand: &TypedExpr,
+        result_jvm: JvmType,
+    ) -> Result<JvmType, CodegenError> {
+        let type_name = type_to_name(&operand.ty);
+
+        let dispatch = self.trait_dispatch.get(trait_name)
+            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}")))?;
+        let iface_method_ref = *dispatch.method_refs.get(method_name)
+            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}")))?;
+        let iface_class = dispatch.interface_class;
+
+        let singleton = self.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
+            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no instance of {trait_name} for {type_name}")))?;
+        let field_ref = singleton.instance_field_ref;
+
+        // Load singleton instance
+        self.emit(Instruction::Getstatic(field_ref));
+        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+
+        // Compile and box operand
+        let op_jvm = self.compile_expr(operand, false)?;
+        self.box_if_needed(op_jvm);
+
+        // invokeinterface (receiver + 1 arg = 2)
+        self.emit(Instruction::Invokeinterface(iface_method_ref, 2));
+        self.frame.pop_type(); // operand
+        self.frame.pop_type(); // receiver
+        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+
+        // Unbox result
+        self.unbox_if_needed(result_jvm);
+        Ok(result_jvm)
+    }
+
     fn compile_comparison(
         &mut self,
         op: &BinOp,
         lhs: &TypedExpr,
         rhs: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
-        let lhs_ty = self.compile_expr(lhs, false)?;
+        let operand_jvm = self.type_to_jvm(&lhs.ty)?;
+
+        // String equality: use String.equals
+        if operand_jvm == JvmType::Ref && matches!(op, BinOp::Eq | BinOp::Neq) {
+            self.compile_expr(lhs, false)?;
+            self.compile_expr(rhs, false)?;
+            self.emit(Instruction::Invokevirtual(self.refs.string_equals));
+            self.frame.pop_type(); // pop arg
+            self.frame.pop_type(); // pop receiver
+            self.frame.push_type(VerificationType::Integer); // boolean result
+            if matches!(op, BinOp::Neq) {
+                // Negate: XOR with 1
+                self.emit(Instruction::Iconst_1);
+                self.frame.push_type(VerificationType::Integer);
+                self.emit(Instruction::Ixor);
+                self.frame.pop_type_n(2);
+                self.frame.push_type(VerificationType::Integer);
+            }
+            return Ok(JvmType::Int);
+        }
+
+        // Bool equality: use integer comparison (bools are JvmType::Int)
+        if operand_jvm == JvmType::Int && matches!(op, BinOp::Eq | BinOp::Neq) {
+            self.compile_expr(lhs, false)?;
+            self.compile_expr(rhs, false)?;
+            // XOR gives 0 if equal, 1 if different
+            self.emit(Instruction::Ixor);
+            self.frame.pop_type_n(2);
+            self.frame.push_type(VerificationType::Integer);
+            if matches!(op, BinOp::Eq) {
+                // Negate: XOR with 1 (0→1, 1→0)
+                self.emit(Instruction::Iconst_1);
+                self.frame.push_type(VerificationType::Integer);
+                self.emit(Instruction::Ixor);
+                self.frame.pop_type_n(2);
+                self.frame.push_type(VerificationType::Integer);
+            }
+            return Ok(JvmType::Int);
+        }
+
+        // User-type trait dispatch for Eq/Ord
+        if !matches!(operand_jvm, JvmType::Long | JvmType::Double) {
+            let (trait_name, method_name, swap, negate) = match op {
+                BinOp::Eq  => ("Eq",  "eq", false, false),
+                BinOp::Neq => ("Eq",  "eq", false, true),
+                BinOp::Lt  => ("Ord", "lt", false, false),
+                BinOp::Gt  => ("Ord", "lt", true,  false),
+                BinOp::Le  => ("Ord", "lt", true,  true),
+                BinOp::Ge  => ("Ord", "lt", false, true),
+                _ => unreachable!(),
+            };
+            let (lhs_arg, rhs_arg) = if swap { (rhs, lhs) } else { (lhs, rhs) };
+            self.compile_trait_binop(trait_name, method_name, lhs_arg, rhs_arg, JvmType::Int)?;
+            if negate {
+                self.emit(Instruction::Iconst_1);
+                self.frame.push_type(VerificationType::Integer);
+                self.emit(Instruction::Ixor);
+                self.frame.pop_type_n(2);
+                self.frame.push_type(VerificationType::Integer);
+            }
+            return Ok(JvmType::Int);
+        }
+
+        // Primitive numeric comparison (Long/Double)
+        self.compile_expr(lhs, false)?;
         self.compile_expr(rhs, false)?;
 
-        let cmp_instr = match lhs_ty {
+        let cmp_instr = match operand_jvm {
             JvmType::Long => Instruction::Lcmp,
             JvmType::Double => Instruction::Dcmpl,
-            _ => return Err(CodegenError::UnsupportedExpr("comparison of non-numeric type".into())),
+            _ => unreachable!(),
         };
         self.emit(cmp_instr);
 
@@ -742,18 +926,22 @@ impl Compiler {
         op: &UnaryOp,
         operand: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
-        let operand_ty = self.compile_expr(operand, false)?;
+        let operand_jvm = self.type_to_jvm(&operand.ty)?;
         match op {
-            UnaryOp::Neg => match operand_ty {
+            UnaryOp::Neg => match operand_jvm {
                 JvmType::Long => {
+                    self.compile_expr(operand, false)?;
                     self.emit(Instruction::Lneg);
                     Ok(JvmType::Long)
                 }
                 JvmType::Double => {
+                    self.compile_expr(operand, false)?;
                     self.emit(Instruction::Dneg);
                     Ok(JvmType::Double)
                 }
-                _ => Err(CodegenError::UnsupportedExpr("negation of non-numeric type".into())),
+                _ => {
+                    self.compile_trait_unaryop("Neg", "neg", operand, operand_jvm)
+                }
             },
         }
     }

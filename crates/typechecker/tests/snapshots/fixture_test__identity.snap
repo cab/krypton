@@ -2,4 +2,4 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-identity: forall b. fn(b) -> b
+identity: forall i. fn(i) -> i

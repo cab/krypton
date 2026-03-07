@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::Span;
 
-use crate::types::Type;
+use crate::types::{Type, TypeEnv, TypeScheme, TypeVarGen};
 use crate::unify::TypeError;
 
 pub struct TraitInfo {
@@ -26,6 +26,7 @@ pub struct InstanceInfo {
     pub target_type_name: String,
     pub methods: Vec<String>,
     pub span: Span,
+    pub is_builtin: bool,
 }
 
 pub struct TraitRegistry {
@@ -115,6 +116,126 @@ impl TraitRegistry {
             }
         }
         result
+    }
+
+    pub fn traits(&self) -> &HashMap<String, TraitInfo> {
+        &self.traits
+    }
+
+    pub fn instances(&self) -> &[InstanceInfo] {
+        &self.instances
+    }
+}
+
+/// Register all built-in operator traits and their instances for primitive types.
+pub fn register_builtin_traits(
+    registry: &mut TraitRegistry,
+    env: &mut TypeEnv,
+    gen: &mut TypeVarGen,
+) {
+    let builtin_span: Span = (0, 0);
+
+    // Helper: register a binary trait (a, a) -> ret_type
+    struct BinTraitDef {
+        name: &'static str,
+        method: &'static str,
+        returns_self: bool, // true = returns a, false = returns Bool
+    }
+
+    let binary_traits = [
+        BinTraitDef { name: "Add", method: "add", returns_self: true },
+        BinTraitDef { name: "Sub", method: "sub", returns_self: true },
+        BinTraitDef { name: "Mul", method: "mul", returns_self: true },
+        BinTraitDef { name: "Div", method: "div", returns_self: true },
+        BinTraitDef { name: "Eq",  method: "eq",  returns_self: false },
+        BinTraitDef { name: "Ord", method: "lt",  returns_self: false },
+    ];
+
+    for def in &binary_traits {
+        let tv_id = gen.fresh();
+        let type_var = Type::Var(tv_id);
+        let ret = if def.returns_self { type_var.clone() } else { Type::Bool };
+        let superclasses = if def.name == "Ord" { vec!["Eq".to_string()] } else { vec![] };
+
+        let _ = registry.register_trait(TraitInfo {
+            name: def.name.to_string(),
+            type_var: "a".to_string(),
+            type_var_id: tv_id,
+            superclasses,
+            methods: vec![TraitMethod {
+                name: def.method.to_string(),
+                param_types: vec![type_var.clone(), type_var.clone()],
+                return_type: ret.clone(),
+            }],
+            span: builtin_span,
+        });
+
+        // Bind method in env as polymorphic: forall a. fn(a, a) -> ret
+        let fn_ty = Type::Fn(vec![type_var.clone(), type_var.clone()], Box::new(ret));
+        env.bind(def.method.to_string(), TypeScheme { vars: vec![tv_id], ty: fn_ty });
+    }
+
+    // Neg: unary trait (a) -> a
+    {
+        let tv_id = gen.fresh();
+        let type_var = Type::Var(tv_id);
+        let _ = registry.register_trait(TraitInfo {
+            name: "Neg".to_string(),
+            type_var: "a".to_string(),
+            type_var_id: tv_id,
+            superclasses: vec![],
+            methods: vec![TraitMethod {
+                name: "neg".to_string(),
+                param_types: vec![type_var.clone()],
+                return_type: type_var.clone(),
+            }],
+            span: builtin_span,
+        });
+        let fn_ty = Type::Fn(vec![type_var.clone()], Box::new(type_var));
+        env.bind("neg".to_string(), TypeScheme { vars: vec![tv_id], ty: fn_ty });
+    }
+
+    // Register built-in instances
+    struct BuiltinInstance {
+        trait_name: &'static str,
+        target_type: Type,
+        target_name: &'static str,
+        method: &'static str,
+    }
+
+    let instances = vec![
+        // Int: Add, Sub, Mul, Div, Neg, Eq, Ord
+        BuiltinInstance { trait_name: "Add", target_type: Type::Int, target_name: "Int", method: "add" },
+        BuiltinInstance { trait_name: "Sub", target_type: Type::Int, target_name: "Int", method: "sub" },
+        BuiltinInstance { trait_name: "Mul", target_type: Type::Int, target_name: "Int", method: "mul" },
+        BuiltinInstance { trait_name: "Div", target_type: Type::Int, target_name: "Int", method: "div" },
+        BuiltinInstance { trait_name: "Neg", target_type: Type::Int, target_name: "Int", method: "neg" },
+        BuiltinInstance { trait_name: "Eq",  target_type: Type::Int, target_name: "Int", method: "eq" },
+        BuiltinInstance { trait_name: "Ord", target_type: Type::Int, target_name: "Int", method: "lt" },
+        // Float: Add, Sub, Mul, Div, Neg, Eq, Ord
+        BuiltinInstance { trait_name: "Add", target_type: Type::Float, target_name: "Float", method: "add" },
+        BuiltinInstance { trait_name: "Sub", target_type: Type::Float, target_name: "Float", method: "sub" },
+        BuiltinInstance { trait_name: "Mul", target_type: Type::Float, target_name: "Float", method: "mul" },
+        BuiltinInstance { trait_name: "Div", target_type: Type::Float, target_name: "Float", method: "div" },
+        BuiltinInstance { trait_name: "Neg", target_type: Type::Float, target_name: "Float", method: "neg" },
+        BuiltinInstance { trait_name: "Eq",  target_type: Type::Float, target_name: "Float", method: "eq" },
+        BuiltinInstance { trait_name: "Ord", target_type: Type::Float, target_name: "Float", method: "lt" },
+        // String: Add (concat), Eq
+        BuiltinInstance { trait_name: "Add", target_type: Type::String, target_name: "String", method: "add" },
+        BuiltinInstance { trait_name: "Eq",  target_type: Type::String, target_name: "String", method: "eq" },
+        // Bool: Eq
+        BuiltinInstance { trait_name: "Eq",  target_type: Type::Bool, target_name: "Bool", method: "eq" },
+    ];
+
+    for inst in instances {
+        let _ = registry.register_instance(InstanceInfo {
+            trait_name: inst.trait_name.to_string(),
+            target_type: inst.target_type,
+            target_type_name: inst.target_name.to_string(),
+            methods: vec![inst.method.to_string()],
+            span: builtin_span,
+            is_builtin: true,
+        });
     }
 }
 

@@ -4,4 +4,4 @@ expression: snapshot
 ---
 Some: forall a. fn(a) -> Option<a>
 None: forall a. Option<a>
-unwrap_or: forall d. fn(Option<d>, d) -> d
+unwrap_or: forall k. fn(Option<k>, k) -> k

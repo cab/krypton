@@ -1,0 +1,2 @@
+# expect: error E0301
+(def main (fn [] (+ true false)))

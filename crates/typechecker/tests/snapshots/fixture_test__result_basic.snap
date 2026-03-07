@@ -4,5 +4,5 @@ expression: snapshot
 ---
 Ok: forall a b. fn(b) -> Result<a, b>
 Err: forall a b. fn(a) -> Result<a, b>
-extract: forall h. fn(Result<h, Int>) -> Int
+extract: forall o. fn(Result<o, Int>) -> Int
 test: fn() -> Int

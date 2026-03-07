@@ -223,7 +223,7 @@ fn infer_sum_constructor() {
         @"
     Some: forall a. fn(a) -> Option<a>
     None: forall a. Option<a>
-    wrap: forall c. fn(c) -> Option<c>
+    wrap: forall j. fn(j) -> Option<j>
     "
     );
 }
@@ -238,7 +238,7 @@ fn infer_bare_variant() {
         @"
     Some: forall a. fn(a) -> Option<a>
     None: forall a. Option<a>
-    none: forall c. fn() -> Option<c>
+    none: forall j. fn() -> Option<j>
     "
     );
 }
@@ -265,11 +265,11 @@ fn infer_scc_generalization_order() {
              (def f (fn [n] (id n))) \
              (def g (fn [s] (id s)))"
         ),
-        @r#"
-    id: forall b. fn(b) -> b
-    f: forall f. fn(f) -> f
-    g: forall j. fn(j) -> j
-    "#
+        @"
+    id: forall i. fn(i) -> i
+    f: forall m. fn(m) -> m
+    g: forall q. fn(q) -> q
+    "
     );
 }
 
@@ -347,7 +347,7 @@ fn infer_match_option() {
         @"
     Some: forall a. fn(a) -> Option<a>
     None: forall a. Option<a>
-    unwrap_or: forall d. fn(Option<d>, d) -> d
+    unwrap_or: forall k. fn(Option<k>, k) -> k
     "
     );
 }
@@ -374,7 +374,7 @@ fn infer_match_variable() {
                (match x \
                  (y y))))"
         ),
-        @"identity: forall b. fn(b) -> b"
+        @"identity: forall i. fn(i) -> i"
     );
 }
 
@@ -412,7 +412,7 @@ fn infer_tuple_in_match() {
         infer_module_types(
             "(def first (fn [p] (match p ((tuple a b) a))))"
         ),
-        @"first: forall d e. fn((d, e)) -> d"
+        @"first: forall k l. fn((k, l)) -> k"
     );
 }
 
@@ -427,7 +427,7 @@ fn infer_tuple_polymorphic() {
         infer_module_types(
             "(def swap (fn [p] (match p ((tuple a b) (tuple b a)))))"
         ),
-        @"swap: forall d e. fn((d, e)) -> (e, d)"
+        @"swap: forall k l. fn((k, l)) -> (l, k)"
     );
 }
 
@@ -442,7 +442,7 @@ fn infer_match_wrong_constructor() {
                  ((Some x) x) \
                  (_ 0))))"
         ),
-        @"TypeError: type mismatch: expected Color, found Option<e>"
+        @"TypeError: type mismatch: expected Color, found Option<l>"
     );
 }
 
@@ -489,7 +489,7 @@ fn test_exhaustive_wildcard_covers_all() {
         @"
     Some: forall a. fn(a) -> Option<a>
     None: forall a. Option<a>
-    test: forall c. fn(c) -> Int
+    test: forall j. fn(j) -> Int
     "
     );
 }

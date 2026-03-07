@@ -1,0 +1,9 @@
+# expect: output true
+(type Wrapper (record (val Int)))
+(trait Eq [a] (def eq [a a] Bool))
+(impl Eq Wrapper
+  (def eq [a b] (== (. a val) (. b val))))
+(trait Ord [a] : [Eq] (def lt [a a] Bool))
+(impl Ord Wrapper
+  (def lt [a b] (< (. a val) (. b val))))
+(def main (fn [] (lt (Wrapper 1) (Wrapper 2))))

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp};
 
 use crate::scc;
-use crate::trait_registry::{TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
+use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{self, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
@@ -380,26 +380,21 @@ fn infer_expr_inner(
                         .map_err(|e| spanned(e, *span))?;
                     let resolved = strip_own(&subst.apply(&lhs_typed.ty));
                     match &resolved {
-                        Type::Int | Type::Float => resolved,
                         Type::Var(_) => {
                             unify(&resolved, &Type::Int, subst)
                                 .map_err(|e| spanned(e, *span))?;
                             Type::Int
                         }
-                        _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                        _ => resolved,
                     }
                 }
                 BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                     unify(&lhs_typed.ty, &rhs_typed.ty, subst)
                         .map_err(|e| spanned(e, *span))?;
                     let resolved = strip_own(&subst.apply(&lhs_typed.ty));
-                    match &resolved {
-                        Type::Int | Type::Float => {}
-                        Type::Var(_) => {
-                            unify(&resolved, &Type::Int, subst)
-                                .map_err(|e| spanned(e, *span))?;
-                        }
-                        _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                    if let Type::Var(_) = &resolved {
+                        unify(&resolved, &Type::Int, subst)
+                            .map_err(|e| spanned(e, *span))?;
                     }
                     Type::Bool
                 }
@@ -423,13 +418,12 @@ fn infer_expr_inner(
                 UnaryOp::Neg => {
                     let resolved = strip_own(&subst.apply(&operand_typed.ty));
                     match &resolved {
-                        Type::Int | Type::Float => resolved,
                         Type::Var(_) => {
                             unify(&resolved, &Type::Int, subst)
                                 .map_err(|e| spanned(e, *span))?;
                             Type::Int
                         }
-                        _ => return Err(spanned(TypeError::Mismatch { expected: Type::Int, actual: resolved }, *span)),
+                        _ => resolved,
                     }
                 }
             };
@@ -1232,11 +1226,49 @@ fn check_trait_instances(
         TypedExprKind::FieldAccess { expr: inner, .. } => {
             check_trait_instances(inner, trait_method_map, trait_registry, subst)?;
         }
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+        TypedExprKind::BinaryOp { op, lhs, rhs } => {
+            // Check that the operand type has the required trait instance
+            let trait_name = match op {
+                BinOp::Add => "Add",
+                BinOp::Sub => "Sub",
+                BinOp::Mul => "Mul",
+                BinOp::Div => "Div",
+                BinOp::Eq | BinOp::Neq => "Eq",
+                BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => "Ord",
+            };
+            let operand_ty = strip_own(&subst.apply(&lhs.ty));
+            if !matches!(operand_ty, Type::Var(_))
+                && trait_registry.find_instance(trait_name, &operand_ty).is_none()
+            {
+                return Err(spanned(
+                    TypeError::NoInstance {
+                        trait_name: trait_name.to_string(),
+                        ty: format!("{}", operand_ty),
+                        required_by: None,
+                    },
+                    expr.span,
+                ));
+            }
             check_trait_instances(lhs, trait_method_map, trait_registry, subst)?;
             check_trait_instances(rhs, trait_method_map, trait_registry, subst)?;
         }
-        TypedExprKind::UnaryOp { operand, .. } => {
+        TypedExprKind::UnaryOp { op, operand } => {
+            let trait_name = match op {
+                UnaryOp::Neg => "Neg",
+            };
+            let operand_ty = strip_own(&subst.apply(&operand.ty));
+            if !matches!(operand_ty, Type::Var(_))
+                && trait_registry.find_instance(trait_name, &operand_ty).is_none()
+            {
+                return Err(spanned(
+                    TypeError::NoInstance {
+                        trait_name: trait_name.to_string(),
+                        ty: format!("{}", operand_ty),
+                        required_by: None,
+                    },
+                    expr.span,
+                ));
+            }
             check_trait_instances(operand, trait_method_map, trait_registry, subst)?;
         }
         TypedExprKind::Tuple(elems) => {
@@ -1298,10 +1330,17 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         }
     }
 
-    // Second pass: process DefTrait declarations
+    // Register built-in operator traits (Add, Sub, Mul, Div, Eq, Ord, Neg)
     let mut trait_registry = TraitRegistry::new();
+    trait_registry::register_builtin_traits(&mut trait_registry, &mut env, &mut gen);
+
+    // Second pass: process DefTrait declarations
     for decl in &module.decls {
         if let Decl::DefTrait { name, type_var, superclasses, methods, span } = decl {
+            // Skip if this trait is already registered as a built-in
+            if trait_registry.lookup_trait(name).is_some() {
+                continue;
+            }
             let tv_id = gen.fresh();
             let mut type_param_map = HashMap::new();
             type_param_map.insert(type_var.clone(), tv_id);
@@ -1385,6 +1424,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                 target_type_name: target_name,
                 methods: method_names,
                 span: *span,
+                is_builtin: false,
             };
 
             // Superclass check before registering
@@ -1607,17 +1647,32 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         }
     }
 
-    // Build trait_defs for codegen
+    // Build trait_defs for codegen (include built-in traits that have user instances)
     let mut trait_defs = Vec::new();
+    let mut seen_traits = std::collections::HashSet::new();
+    // First add built-in traits (needed if user code has `impl Add Vec2` etc.)
+    for (trait_name, info) in trait_registry.traits() {
+        let method_info: Vec<(String, usize)> = info.methods.iter().map(|m| {
+            (m.name.clone(), m.param_types.len())
+        }).collect();
+        trait_defs.push(TraitDefInfo {
+            name: trait_name.clone(),
+            methods: method_info,
+        });
+        seen_traits.insert(trait_name.clone());
+    }
+    // Then add user-defined traits (skip if already registered as built-in)
     for decl in &module.decls {
         if let Decl::DefTrait { name, methods, .. } = decl {
-            let method_info: Vec<(String, usize)> = methods.iter().map(|m| {
-                (m.name.clone(), m.params.len())
-            }).collect();
-            trait_defs.push(TraitDefInfo {
-                name: name.clone(),
-                methods: method_info,
-            });
+            if !seen_traits.contains(name) {
+                let method_info: Vec<(String, usize)> = methods.iter().map(|m| {
+                    (m.name.clone(), m.params.len())
+                }).collect();
+                trait_defs.push(TraitDefInfo {
+                    name: name.clone(),
+                    methods: method_info,
+                });
+            }
         }
     }
 

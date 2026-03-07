@@ -1,0 +1,7 @@
+# expect: output 4
+(type Vec2 (record (x Int) (y Int)))
+(trait Add [a] (def add [a a] a))
+(impl Add Vec2
+  (def add [a b] (Vec2 (+ (. a x) (. b x)) (+ (. a y) (. b y)))))
+(def main (fn []
+  (. (add (Vec2 1 1) (Vec2 3 2)) x)))

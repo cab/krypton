@@ -1,0 +1,6 @@
+# expect: output true
+(type Point (record (x Int) (y Int)))
+(trait Eq [a] (def eq [a a] Bool))
+(impl Eq Point
+  (def eq [a b] (if (== (. a x) (. b x)) (== (. a y) (. b y)) false)))
+(def main (fn [] (eq (Point 1 2) (Point 1 2))))
