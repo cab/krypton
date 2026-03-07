@@ -163,7 +163,7 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
     fn_types: &[(String, TypeScheme)],
-) -> HashMap<String, Vec<ParamQualifier>> {
+) -> HashMap<String, Vec<(ParamQualifier, String)>> {
     let type_map: HashMap<&str, &TypeScheme> = fn_types
         .iter()
         .map(|(n, s)| (n.as_str(), s))
@@ -195,20 +195,21 @@ fn compute_fn_qualifiers(
             // Check if the inner type is a quantified type variable
             let is_type_var = matches!(inner, Type::Var(id) if quantified.contains(id));
 
+            let param_name = decl.params.get(i).map(|p| p.name.clone()).unwrap_or_default();
             if is_type_var {
                 if let Some(param) = decl.params.get(i) {
                     let bound = HashSet::new();
                     let uses = count_max_uses(&decl.body, &param.name, &bound);
                     if uses > 1 {
-                        qualifiers.push(ParamQualifier::RequiresU);
+                        qualifiers.push((ParamQualifier::RequiresU, param_name));
                     } else {
-                        qualifiers.push(ParamQualifier::Polymorphic);
+                        qualifiers.push((ParamQualifier::Polymorphic, param_name));
                     }
                 } else {
-                    qualifiers.push(ParamQualifier::Polymorphic);
+                    qualifiers.push((ParamQualifier::Polymorphic, param_name));
                 }
             } else {
-                qualifiers.push(ParamQualifier::Polymorphic);
+                qualifiers.push((ParamQualifier::Polymorphic, param_name));
             }
         }
 
@@ -298,7 +299,7 @@ fn check_fn(
     decl: &FnDecl,
     fn_param_info: &HashMap<String, Vec<bool>>,
     affine: &HashSet<String>,
-    fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
+    fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
@@ -315,8 +316,8 @@ fn check_fn(
         return Ok(());
     }
 
-    let mut consumed = HashSet::new();
-    let mut partially_consumed = HashSet::new();
+    let mut consumed = HashMap::new();
+    let mut partially_consumed = HashMap::new();
     let mut own_fn_notes: HashMap<String, String> = HashMap::new();
     check_expr(&decl.body, &mut owned, &mut consumed, &mut partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, &mut own_fn_notes, struct_update_info, registry)
 }
@@ -324,11 +325,11 @@ fn check_fn(
 fn check_expr(
     expr: &Expr,
     owned: &mut HashSet<String>,
-    consumed: &mut HashSet<String>,
-    partially_consumed: &mut HashSet<String>,
+    consumed: &mut HashMap<String, Span>,
+    partially_consumed: &mut HashMap<String, Span>,
     fn_param_info: &HashMap<String, Vec<bool>>,
     affine: &HashSet<String>,
-    fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
+    fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
     own_fn_notes: &mut HashMap<String, String>,
@@ -338,25 +339,27 @@ fn check_expr(
     match expr {
         Expr::Var { name, span, .. } => {
             if owned.contains(name) {
-                if consumed.contains(name) {
+                if let Some(&first_span) = consumed.get(name) {
                     return Err(SpannedTypeError {
                         error: TypeError::AlreadyMoved {
                             name: name.clone(),
                         },
                         span: *span,
                         note: own_fn_notes.get(name).cloned(),
+                        secondary_span: Some((first_span, "first use here".into())),
                     });
                 }
-                if partially_consumed.contains(name) {
+                if let Some(&branch_span) = partially_consumed.get(name) {
                     return Err(SpannedTypeError {
                         error: TypeError::MovedInBranch {
                             name: name.clone(),
                         },
                         span: *span,
                         note: None,
+                        secondary_span: Some((branch_span, "consumed here".into())),
                     });
                 }
-                consumed.insert(name.clone());
+                consumed.insert(name.clone(), *span);
             }
             Ok(())
         }
@@ -380,13 +383,21 @@ fn check_expr(
                 if let Expr::Var { name: arg_name, span: arg_span, .. } = arg {
                     if affine.contains(arg_name) {
                         if let Some(quals) = callee_qualifiers {
-                            if i < quals.len() && quals[i] == ParamQualifier::RequiresU {
+                            if let Some((ParamQualifier::RequiresU, param_name)) = quals.get(i) {
+                                let callee_name = if let Expr::Var { name, .. } = func.as_ref() {
+                                    name.clone()
+                                } else {
+                                    "<anonymous>".to_string()
+                                };
                                 return Err(SpannedTypeError {
                                     error: TypeError::QualifierMismatch {
                                         name: arg_name.clone(),
+                                        callee: callee_name,
+                                        param: param_name.clone(),
                                     },
                                     span: *arg_span,
                                     note: None,
+                                    secondary_span: None,
                                 });
                             }
                         }
@@ -402,18 +413,20 @@ fn check_expr(
                 if is_non_consuming_borrow {
                     // Non-consuming borrow: check prior consumption but don't mark consumed
                     if let Expr::Var { name, span, .. } = arg {
-                        if consumed.contains(name) {
+                        if let Some(&first_span) = consumed.get(name) {
                             return Err(SpannedTypeError {
                                 error: TypeError::AlreadyMoved { name: name.clone() },
                                 span: *span,
                                 note: None,
+                                secondary_span: Some((first_span, "first use here".into())),
                             });
                         }
-                        if partially_consumed.contains(name) {
+                        if let Some(&branch_span) = partially_consumed.get(name) {
                             return Err(SpannedTypeError {
                                 error: TypeError::MovedInBranch { name: name.clone() },
                                 span: *span,
                                 note: None,
+                                secondary_span: Some((branch_span, "consumed here".into())),
                             });
                         }
                     }
@@ -469,7 +482,7 @@ fn check_expr(
 
         Expr::If { cond, then_, else_, .. } => {
             check_expr(cond, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
-            let before = consumed.clone();
+            let before: HashSet<String> = consumed.keys().cloned().collect();
             let mut then_consumed = consumed.clone();
             let mut then_partial = partially_consumed.clone();
             let mut else_consumed = consumed.clone();
@@ -477,50 +490,60 @@ fn check_expr(
             check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
 
-            let newly_in_then: HashSet<String> = then_consumed.difference(&before).cloned().collect();
-            let newly_in_else: HashSet<String> = else_consumed.difference(&before).cloned().collect();
+            let then_keys: HashSet<String> = then_consumed.keys().cloned().collect();
+            let else_keys: HashSet<String> = else_consumed.keys().cloned().collect();
+            let newly_in_then: HashSet<String> = then_keys.difference(&before).cloned().collect();
+            let newly_in_else: HashSet<String> = else_keys.difference(&before).cloned().collect();
             let in_all: HashSet<String> = newly_in_then.intersection(&newly_in_else).cloned().collect();
             let in_some: HashSet<String> = newly_in_then.symmetric_difference(&newly_in_else).cloned().collect();
 
             for name in &in_all {
-                consumed.insert(name.clone());
+                // Pick span from either branch
+                if let Some(&span) = then_consumed.get(name) {
+                    consumed.insert(name.clone(), span);
+                }
             }
             for name in &in_some {
-                partially_consumed.insert(name.clone());
+                let span = then_consumed.get(name).or_else(|| else_consumed.get(name)).copied().unwrap();
+                partially_consumed.insert(name.clone(), span);
             }
             // Merge partial sets from branches
-            for name in then_partial.union(&else_partial) {
-                partially_consumed.insert(name.clone());
+            for (name, span) in then_partial.iter().chain(else_partial.iter()) {
+                partially_consumed.entry(name.clone()).or_insert(*span);
             }
             Ok(())
         }
 
         Expr::Match { scrutinee, arms, .. } => {
             check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
-            let before = consumed.clone();
+            let before: HashSet<String> = consumed.keys().cloned().collect();
             let n = arms.len();
-            let mut per_arm_new: Vec<HashSet<String>> = Vec::new();
+            let mut per_arm_new: Vec<HashMap<String, Span>> = Vec::new();
             let mut merged_partial = partially_consumed.clone();
 
             for arm in arms {
                 let mut arm_consumed = consumed.clone();
                 let mut arm_partial = partially_consumed.clone();
                 check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
-                let newly: HashSet<String> = arm_consumed.difference(&before).cloned().collect();
+                let newly: HashMap<String, Span> = arm_consumed.into_iter().filter(|(k, _)| !before.contains(k)).collect();
                 per_arm_new.push(newly);
-                for name in &arm_partial {
-                    merged_partial.insert(name.clone());
+                for (name, span) in &arm_partial {
+                    merged_partial.entry(name.clone()).or_insert(*span);
                 }
             }
 
             // Count how many arms consumed each name
-            let all_names: HashSet<String> = per_arm_new.iter().flat_map(|s| s.iter().cloned()).collect();
+            let all_names: HashSet<String> = per_arm_new.iter().flat_map(|s| s.keys().cloned()).collect();
             for name in &all_names {
-                let count = per_arm_new.iter().filter(|s| s.contains(name)).count();
+                let count = per_arm_new.iter().filter(|s| s.contains_key(name)).count();
                 if count == n {
-                    consumed.insert(name.clone());
+                    // Pick span from first arm that has it
+                    if let Some(span) = per_arm_new.iter().find_map(|s| s.get(name)).copied() {
+                        consumed.insert(name.clone(), span);
+                    }
                 } else {
-                    merged_partial.insert(name.clone());
+                    let span = per_arm_new.iter().find_map(|s| s.get(name)).copied().unwrap();
+                    merged_partial.insert(name.clone(), span);
                 }
             }
             *partially_consumed = merged_partial;
@@ -540,17 +563,18 @@ fn check_expr(
             let lambda_params: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
             let captured = free_owned_vars(body, owned, &lambda_params);
             for name in &captured {
-                if consumed.contains(name) || partially_consumed.contains(name) {
+                if let Some(&first_span) = consumed.get(name).or_else(|| partially_consumed.get(name)) {
                     return Err(SpannedTypeError {
                         error: TypeError::CapturedMoved { name: name.clone() },
                         span: *span,
                         note: None,
+                        secondary_span: Some((first_span, "consumed here".into())),
                     });
                 }
-                consumed.insert(name.clone());
+                consumed.insert(name.clone(), *span);
             }
-            let mut body_consumed = HashSet::new();
-            let mut body_partial = HashSet::new();
+            let mut body_consumed = HashMap::new();
+            let mut body_partial = HashMap::new();
             check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)
         }
 
@@ -595,18 +619,20 @@ fn check_expr(
                 // Non-consuming: check base isn't already consumed but don't mark it
                 if let Expr::Var { name, span, .. } = base.as_ref() {
                     if owned.contains(name) {
-                        if consumed.contains(name) {
+                        if let Some(&first_span) = consumed.get(name) {
                             return Err(SpannedTypeError {
                                 error: TypeError::AlreadyMoved { name: name.clone() },
                                 span: *span,
                                 note: None,
+                                secondary_span: Some((first_span, "first use here".into())),
                             });
                         }
-                        if partially_consumed.contains(name) {
+                        if let Some(&branch_span) = partially_consumed.get(name) {
                             return Err(SpannedTypeError {
                                 error: TypeError::MovedInBranch { name: name.clone() },
                                 span: *span,
                                 note: None,
+                                secondary_span: Some((branch_span, "consumed here".into())),
                             });
                         }
                     }

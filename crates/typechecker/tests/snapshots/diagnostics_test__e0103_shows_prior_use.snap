@@ -1,0 +1,16 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: output
+---
+[E0103] Error: capture of moved value: `x`
+   ╭─[ ../../tests/fixtures/m6/own_capture_moved.kr:5:14 ]
+   │
+ 4 │   (do (consume x)
+   │                ┬  
+   │                ╰── consumed here
+ 5 │       (let f (fn [] (consume x)))
+   │              ─────────┬─────────  
+   │                       ╰─────────── E0103: capture of moved value: `x`
+   │ 
+   │ Help: `x` was already consumed before the closure was created
+───╯

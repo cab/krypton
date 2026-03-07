@@ -73,6 +73,18 @@ fn unknown_var_diagnostic() {
     insta::assert_snapshot!(render_error("(+ x 1)"));
 }
 
+fn render_fixture_error(fixture: &str) -> String {
+    let src = std::fs::read_to_string(fixture).unwrap();
+    let (module, errors) = parse(&src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let err = match infer::infer_module(&module) {
+        Ok(_) => panic!("expected a type error"),
+        Err(e) => e,
+    };
+    let rendered = render_type_errors(fixture, &src, &[err]);
+    strip_ansi_escapes(rendered)
+}
+
 fn render_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
@@ -140,6 +152,50 @@ fn own_fn_capture_note_correct_name() {
     assert!(
         output.contains("captures own value `b`"),
         "expected own capture note mentioning `b` in:\n{output}"
+    );
+}
+
+#[test]
+fn test_qualifier_mismatch_diagnostic() {
+    let output = render_fixture_error("../../tests/fixtures/m6/qualifier_dup_error.kr");
+    insta::assert_snapshot!(output);
+    // No type-theory jargon in error/help lines (exclude file path lines)
+    let message_lines: String = output.lines()
+        .filter(|l| !l.contains("qualifier_dup_error.kr"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!message_lines.contains("affine"), "should not contain 'affine': {message_lines}");
+    assert!(!message_lines.contains("qualifier"), "should not contain 'qualifier': {message_lines}");
+    assert!(!message_lines.contains("unlimited"), "should not contain 'unlimited': {message_lines}");
+}
+
+#[test]
+fn test_e0101_shows_first_use() {
+    let output = render_fixture_error("../../tests/fixtures/m6/own_double_use.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("first use here"),
+        "expected 'first use here' secondary label in:\n{output}"
+    );
+}
+
+#[test]
+fn test_e0102_shows_consuming_branch() {
+    let output = render_fixture_error("../../tests/fixtures/m6/branch_if_one.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("consumed here"),
+        "expected 'consumed here' secondary label in:\n{output}"
+    );
+}
+
+#[test]
+fn test_e0103_shows_prior_use() {
+    let output = render_fixture_error("../../tests/fixtures/m6/own_capture_moved.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("consumed here"),
+        "expected 'consumed here' secondary label in:\n{output}"
     );
 }
 

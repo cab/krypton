@@ -108,7 +108,7 @@ fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> TypeScheme {
 
 /// Attach a span to a TypeError, producing a SpannedTypeError.
 fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> SpannedTypeError {
-    SpannedTypeError { error, span, note: None }
+    SpannedTypeError { error, span, note: None, secondary_span: None }
 }
 
 /// Check if a type is concretely not a function (after walking substitution).

@@ -23,6 +23,15 @@ pub fn render_type_errors(filename: &str, source: &str, errors: &[SpannedTypeErr
                     .with_color(Color::Red),
             );
 
+        if let Some((sec_span, sec_msg)) = &err.secondary_span {
+            let (sec_start, sec_end) = *sec_span;
+            report = report.with_label(
+                Label::new((fname.clone(), sec_start..sec_end))
+                    .with_message(sec_msg)
+                    .with_color(Color::Blue),
+            );
+        }
+
         if let Some(help) = err.error.help() {
             report = report.with_help(help);
         }

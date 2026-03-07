@@ -59,7 +59,7 @@ pub enum TypeError {
     AlreadyMoved { name: String },
     MovedInBranch { name: String },
     CapturedMoved { name: String },
-    QualifierMismatch { name: String },
+    QualifierMismatch { name: String, callee: String, param: String },
     UnsupportedExpr { description: String },
 }
 
@@ -144,8 +144,8 @@ impl TypeError {
             TypeError::CapturedMoved { name } => {
                 Some(format!("`{}` was already consumed before the closure was created", name))
             }
-            TypeError::QualifierMismatch { name } => {
-                Some(format!("`{}` has affine qualifier (own or contains own field) but the function requires unlimited usage", name))
+            TypeError::QualifierMismatch { callee, param, .. } => {
+                Some(format!("`{callee}` uses parameter `{param}` more than once, so it cannot accept `own` values. Consider cloning first, or use a function that consumes its argument at most once."))
             }
             TypeError::UnsupportedExpr { .. } => None,
         }
@@ -198,8 +198,8 @@ impl fmt::Display for TypeError {
             TypeError::CapturedMoved { name } => {
                 write!(f, "capture of moved value: `{}`", name)
             }
-            TypeError::QualifierMismatch { name } => {
-                write!(f, "qualifier mismatch: cannot pass affine value to unlimited parameter: `{}`", name)
+            TypeError::QualifierMismatch { name, callee, .. } => {
+                write!(f, "cannot pass `{name}` to `{callee}`: `{callee}` uses its argument multiple times, but `{name}` is single-use (`own`)")
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
@@ -214,6 +214,7 @@ pub struct SpannedTypeError {
     pub error: TypeError,
     pub span: Span,
     pub note: Option<String>,
+    pub secondary_span: Option<(Span, String)>,
 }
 
 impl fmt::Display for SpannedTypeError {

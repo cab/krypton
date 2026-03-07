@@ -52,6 +52,7 @@ pub fn check_exhaustiveness(
                             error: TypeError::NonExhaustive { missing },
                             span,
                             note: None,
+                            secondary_span: None,
                         });
                     }
 
@@ -105,6 +106,7 @@ pub fn check_exhaustiveness(
                             },
                             span,
                             note: None,
+                            secondary_span: None,
                         })
                     } else {
                         Ok(())
@@ -121,6 +123,7 @@ pub fn check_exhaustiveness(
                 },
                 span,
                 note: None,
+                secondary_span: None,
             })
         }
         // Type variables, functions, etc. — skip checking
