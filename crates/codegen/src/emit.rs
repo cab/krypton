@@ -86,6 +86,19 @@ struct SumTypeInfo {
     variants: HashMap<String, VariantInfo>,
 }
 
+/// Extract the type name from a Type for instance lookup.
+fn type_to_name(ty: &Type) -> String {
+    match ty {
+        Type::Named(name, _) => name.clone(),
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Own(inner) => type_to_name(inner),
+        other => format!("{other:?}"),
+    }
+}
+
 fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
     match ty {
         Type::Int => Ok(JvmType::Long),
@@ -328,6 +341,17 @@ impl CodegenTypeInfo {
     }
 }
 
+/// Info about a trait for dispatch.
+struct TraitDispatchInfo {
+    interface_class: u16,       // class index of the trait interface in main cpool
+    method_refs: HashMap<String, u16>, // method_name → interface method_ref
+}
+
+/// Info about a trait instance singleton.
+struct InstanceSingletonInfo {
+    instance_field_ref: u16,    // field_ref for INSTANCE field (for getstatic)
+}
+
 struct Compiler {
     cp: ConstantPool,
     this_class: u16,
@@ -342,6 +366,12 @@ struct Compiler {
     fn_return_type: Option<JvmType>,
     nested_ifeq_patches: Vec<usize>,
     local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
+    // Trait dispatch info
+    trait_dispatch: HashMap<String, TraitDispatchInfo>,           // trait_name → dispatch info
+    instance_singletons: HashMap<(String, String), InstanceSingletonInfo>, // (trait, type) → singleton
+    trait_method_map: HashMap<String, String>,                    // method_name → trait_name
+    fn_constraints: HashMap<String, Vec<String>>,                 // fn_name → [trait_names]
+    dict_locals: HashMap<String, u16>,                            // trait_name → local slot (per-method)
 }
 
 impl Compiler {
@@ -452,6 +482,11 @@ impl Compiler {
             fn_return_type: None,
             nested_ifeq_patches: Vec::new(),
             local_fn_info: HashMap::new(),
+            trait_dispatch: HashMap::new(),
+            instance_singletons: HashMap::new(),
+            trait_method_map: HashMap::new(),
+            fn_constraints: HashMap::new(),
+            dict_locals: HashMap::new(),
         };
 
         Ok((compiler, this_class, object_class))
@@ -494,6 +529,7 @@ impl Compiler {
         self.fn_params.clear();
         self.fn_return_type = None;
         self.local_fn_info.clear();
+        self.dict_locals.clear();
     }
 
     fn emit(&mut self, instr: Instruction) {
@@ -995,6 +1031,95 @@ impl Compiler {
             }
         }
 
+        // Check if this is a trait method call
+        if let Some(trait_name) = self.trait_method_map.get(name).cloned() {
+            if let Some(dispatch) = self.trait_dispatch.get(&trait_name) {
+                let iface_method_ref = dispatch.method_refs[name];
+                let iface_class = dispatch.interface_class;
+
+                // Determine the concrete type from the first arg's type in the typechecker
+                let first_arg_ty = &args[0].ty;
+                let is_type_var = matches!(first_arg_ty, Type::Var(_));
+
+                // Load the dictionary (trait interface reference)
+                if is_type_var {
+                    // Load dict from local variable (constrained function's dict param)
+                    if let Some(&dict_slot) = self.dict_locals.get(&trait_name) {
+                        self.emit(Instruction::Aload(dict_slot as u8));
+                        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+                    } else {
+                        return Err(CodegenError::UndefinedVariable(
+                            format!("no dict local for trait {trait_name}"),
+                        ));
+                    }
+                } else {
+                    // Concrete type — getstatic Instance.INSTANCE
+                    let type_name = type_to_name(first_arg_ty);
+                    if let Some(singleton) = self.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
+                        let field_ref = singleton.instance_field_ref;
+                        self.emit(Instruction::Getstatic(field_ref));
+                        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+                    } else {
+                        return Err(CodegenError::UndefinedVariable(
+                            format!("no instance of {trait_name} for {type_name}"),
+                        ));
+                    }
+                }
+
+                // Compile and box all arguments
+                let arity = args.len();
+                for arg in args {
+                    let arg_type = self.compile_expr(arg, false)?;
+                    self.box_if_needed(arg_type);
+                }
+
+                // invokeinterface
+                self.emit(Instruction::Invokeinterface(iface_method_ref, (arity + 1) as u8));
+
+                // Pop args + receiver from stack tracker
+                for _ in 0..arity {
+                    self.frame.pop_type(); // each boxed arg
+                }
+                self.frame.pop_type(); // receiver (dict)
+
+                // Push Object result
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+
+                // Determine expected return type from the interface method
+                // The return type is always Object from the interface — need to unbox
+                // based on expected result type. Look at the expr's type.
+                let result_jvm = self.type_to_jvm(&func.ty).unwrap_or(JvmType::StructRef(self.refs.object_class));
+                let expected_ret = if let Type::Fn(_, ret) = &func.ty {
+                    self.type_to_jvm(ret).unwrap_or(JvmType::StructRef(self.refs.object_class))
+                } else {
+                    result_jvm
+                };
+
+                // Unbox the Object result to the expected type
+                match expected_ret {
+                    JvmType::Long | JvmType::Double | JvmType::Int => {
+                        self.unbox_if_needed(expected_ret);
+                    }
+                    JvmType::Ref => {
+                        self.emit(Instruction::Checkcast(self.refs.string_class));
+                        self.frame.pop_type();
+                        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                    }
+                    JvmType::StructRef(idx) if idx != self.refs.object_class => {
+                        self.emit(Instruction::Checkcast(idx));
+                        self.frame.pop_type();
+                        self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                    }
+                    _ => {}
+                }
+
+                return Ok(expected_ret);
+            }
+        }
+
+        // Check if calling a constrained function — need to prepend dict args
+        let constraint_traits = self.fn_constraints.get(name).cloned().unwrap_or_default();
+
         // Look up function info (need to clone out to avoid borrow conflict)
         let info = self.types
             .functions
@@ -1004,10 +1129,37 @@ impl Compiler {
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
+        // Push dict args first for constrained functions
+        if !constraint_traits.is_empty() {
+            for trait_name in &constraint_traits {
+                // Determine concrete type from the first user arg
+                // (same logic as trait method dispatch)
+                if !args.is_empty() {
+                    let first_arg_ty = &args[0].ty;
+                    let is_type_var = matches!(first_arg_ty, Type::Var(_));
+                    if is_type_var {
+                        // Forward our own dict local
+                        if let Some(&dict_slot) = self.dict_locals.get(trait_name) {
+                            self.emit(Instruction::Aload(dict_slot as u8));
+                            self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                        }
+                    } else {
+                        let type_name = type_to_name(first_arg_ty);
+                        if let Some(singleton) = self.instance_singletons.get(&(trait_name.clone(), type_name)) {
+                            let field_ref = singleton.instance_field_ref;
+                            self.emit(Instruction::Getstatic(field_ref));
+                            self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                        }
+                    }
+                }
+            }
+        }
+
         // Compile each argument, boxing if needed for erased type params
+        let dict_offset = constraint_traits.len();
         for (i, arg) in args.iter().enumerate() {
             let arg_type = self.compile_expr(arg, false)?;
-            if let JvmType::StructRef(idx) = param_types[i] {
+            if let JvmType::StructRef(idx) = param_types[i + dict_offset] {
                 if idx == self.refs.object_class && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref) {
                     self.box_if_needed(arg_type);
                 }
@@ -2224,9 +2376,21 @@ impl Compiler {
         // Get typechecker types for this function's params (for detecting Fn-typed params)
         let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
 
-        // Register parameters as locals and save fn_params for recur
+        // Register dict params for constrained functions (leading params before user params)
+        let constraint_traits = self.fn_constraints.get(&decl.name).cloned().unwrap_or_default();
+        let num_dict_params = constraint_traits.len();
         let mut fn_params = Vec::new();
-        for (i, (param_name, &jvm_ty)) in decl.params.iter().zip(param_types.iter()).enumerate() {
+        for trait_name in &constraint_traits {
+            let slot = self.next_local;
+            let jvm_ty = JvmType::StructRef(self.refs.object_class);
+            self.dict_locals.insert(trait_name.clone(), slot);
+            fn_params.push((slot, jvm_ty));
+            self.next_local += 1;
+            self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
+        }
+
+        // Register user parameters as locals and save fn_params for recur
+        for (i, (param_name, &jvm_ty)) in decl.params.iter().zip(param_types[num_dict_params..].iter()).enumerate() {
             let slot = self.next_local;
             let slot_size: u16 = match jvm_ty {
                 JvmType::Long | JvmType::Double => 2,
@@ -3027,6 +3191,94 @@ pub fn compile_module(
         }
     }
 
+    // Process trait definitions: generate interface classes
+    compiler.trait_method_map = typed_module.trait_method_map.clone();
+    compiler.fn_constraints = typed_module.fn_constraints.clone();
+
+    for trait_def in &typed_module.trait_defs {
+        let interface_bytes = generate_trait_interface_class(&trait_def.name, &trait_def.methods)?;
+        result_classes.push((trait_def.name.clone(), interface_bytes));
+
+        // Register interface class in main cpool
+        let iface_class = compiler.cp.add_class(&trait_def.name)?;
+        compiler.types.class_descriptors.insert(iface_class, format!("L{};", trait_def.name));
+
+        // Register interface method refs in main cpool
+        let mut method_refs = HashMap::new();
+        for (method_name, param_count) in &trait_def.methods {
+            let mut desc = String::from("(");
+            for _ in 0..*param_count {
+                desc.push_str("Ljava/lang/Object;");
+            }
+            desc.push_str(")Ljava/lang/Object;");
+            let mref = compiler.cp.add_interface_method_ref(iface_class, method_name, &desc)?;
+            method_refs.insert(method_name.clone(), mref);
+        }
+
+        compiler.trait_dispatch.insert(trait_def.name.clone(), TraitDispatchInfo {
+            interface_class: iface_class,
+            method_refs,
+        });
+    }
+
+    // Process instance definitions: generate singleton classes
+    for instance_def in &typed_module.instance_defs {
+        let instance_class_name = format!("{}${}", instance_def.trait_name, instance_def.target_type_name);
+
+        // Collect method info for the instance class
+        let mut method_info = Vec::new();
+        let mut param_jvm_types_map: HashMap<String, Vec<JvmType>> = HashMap::new();
+        let mut return_jvm_types_map: HashMap<String, JvmType> = HashMap::new();
+        let mut param_class_names_map: HashMap<String, Vec<Option<String>>> = HashMap::new();
+
+        for (method_name, qualified_name) in &instance_def.qualified_method_names {
+            // Look up the qualified method's type from fn_types
+            if let Some((_, scheme)) = typed_module.fn_types.iter().find(|(n, _)| n == qualified_name) {
+                if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
+                    let param_jvm: Vec<JvmType> = param_tys.iter()
+                        .map(|t| compiler.type_to_jvm(t))
+                        .collect::<Result<_, _>>()?;
+                    let ret_jvm = compiler.type_to_jvm(ret_ty)?;
+                    // Build the static method descriptor using string descriptors
+                    let static_desc = compiler.types.build_descriptor(&param_jvm, ret_jvm);
+                    // Collect class names for checkcast in bridge methods
+                    let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
+                        match t {
+                            Type::Named(name, _) => Some(name.clone()),
+                            _ => None,
+                        }
+                    }).collect();
+                    param_class_names_map.insert(method_name.clone(), class_names);
+                    param_jvm_types_map.insert(method_name.clone(), param_jvm);
+                    return_jvm_types_map.insert(method_name.clone(), ret_jvm);
+                    method_info.push((method_name.clone(), qualified_name.clone(), param_tys.len(), static_desc));
+                }
+            }
+        }
+
+        let instance_bytes = generate_instance_class(
+            &instance_class_name,
+            &instance_def.trait_name,
+            class_name,
+            &method_info,
+            &param_jvm_types_map,
+            &return_jvm_types_map,
+            &param_class_names_map,
+        )?;
+        result_classes.push((instance_class_name.clone(), instance_bytes));
+
+        // Register INSTANCE field ref in main cpool
+        let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
+        let inst_desc = format!("L{instance_class_name};");
+        compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
+        let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+
+        compiler.instance_singletons.insert(
+            (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
+            InstanceSingletonInfo { instance_field_ref },
+        );
+    }
+
     // Register all functions (including main) in the function registry.
     // Skip constructor entries (they're handled as struct/variant constructors).
     for (name, scheme) in type_info.iter() {
@@ -3037,24 +3289,31 @@ pub fn compile_module(
             {
                 continue;
             }
-            let param_types: Vec<JvmType> = param_tys
+            // For constrained functions, prepend dict params (one Object per trait constraint)
+            let constraint_traits = compiler.fn_constraints.get(name).cloned().unwrap_or_default();
+            let mut all_param_types: Vec<JvmType> = Vec::new();
+            for _ in &constraint_traits {
+                all_param_types.push(JvmType::StructRef(compiler.refs.object_class));
+            }
+            let user_param_types: Vec<JvmType> = param_tys
                 .iter()
                 .map(|t| compiler.type_to_jvm(t))
                 .collect::<Result<_, _>>()?;
+            all_param_types.extend(user_param_types);
             let return_type = compiler.type_to_jvm(ret_ty)?;
             let jvm_name = if name == "main" {
                 "krypton_main"
             } else {
                 name.as_str()
             };
-            let descriptor = compiler.types.build_descriptor(&param_types, return_type);
+            let descriptor = compiler.types.build_descriptor(&all_param_types, return_type);
             let method_ref =
                 compiler.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
             compiler.types.functions.insert(
                 name.clone(),
                 FunctionInfo {
                     method_ref,
-                    param_types,
+                    param_types: all_param_types,
                     return_type,
                 },
             );
@@ -3164,6 +3423,251 @@ fn generate_fun_interface(arity: u8) -> Result<Vec<u8>, CodegenError> {
         this_class,
         super_class: object_class,
         methods: vec![apply_method],
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Generate a trait interface class file (e.g., `Eq.class`).
+/// All methods take and return Object (type erasure).
+fn generate_trait_interface_class(
+    name: &str,
+    methods: &[(String, usize)], // (method_name, param_count)
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+
+    let mut jvm_methods = Vec::new();
+    for (method_name, param_count) in methods {
+        let mut desc = String::from("(");
+        for _ in 0..*param_count {
+            desc.push_str("Ljava/lang/Object;");
+        }
+        desc.push_str(")Ljava/lang/Object;");
+
+        let name_idx = cp.add_utf8(method_name)?;
+        let desc_idx = cp.add_utf8(&desc)?;
+
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            attributes: vec![],
+        });
+    }
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC
+            | ClassAccessFlags::INTERFACE
+            | ClassAccessFlags::ABSTRACT,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        methods: jvm_methods,
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Generate an instance singleton class (e.g., `Eq$Point.class`).
+/// Implements the trait interface, delegates to static methods on the main class.
+fn generate_instance_class(
+    class_name: &str,
+    trait_interface_name: &str,
+    main_class_name: &str,
+    methods: &[(String, String, usize, String)], // (iface_method_name, static_method_name, param_count, static_descriptor)
+    param_jvm_types: &HashMap<String, Vec<JvmType>>,
+    return_jvm_types: &HashMap<String, JvmType>,
+    param_class_names: &HashMap<String, Vec<Option<String>>>, // method_name → per-param class names for checkcast
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(class_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let interface_class = cp.add_class(trait_interface_name)?;
+    let main_class = cp.add_class(main_class_name)?;
+    let code_utf8 = cp.add_utf8("Code")?;
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+    let init_name = cp.add_utf8("<init>")?;
+    let init_desc = cp.add_utf8("()V")?;
+
+    // INSTANCE field
+    let self_desc = format!("L{class_name};");
+    let instance_name = cp.add_utf8("INSTANCE")?;
+    let instance_desc = cp.add_utf8(&self_desc)?;
+    let instance_field_ref = cp.add_field_ref(this_class, "INSTANCE", &self_desc)?;
+    let self_init = cp.add_method_ref(this_class, "<init>", "()V")?;
+
+    // Boxing/unboxing refs
+    let long_box_class = cp.add_class("java/lang/Long")?;
+    let long_valueof = cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
+    let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
+    let double_box_class = cp.add_class("java/lang/Double")?;
+    let double_valueof = cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
+    let _double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
+    let bool_box_class = cp.add_class("java/lang/Boolean")?;
+    let bool_valueof = cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+    let _bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
+
+    // Constructor
+    let constructor = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: init_name,
+        descriptor_index: init_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 2,
+            max_locals: 1,
+            code: vec![
+                Instruction::Aload_0,
+                Instruction::Invokespecial(object_init),
+                Instruction::Return,
+            ],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    // <clinit> — static initializer
+    let clinit_name = cp.add_utf8("<clinit>")?;
+    let clinit_desc = cp.add_utf8("()V")?;
+    let clinit = Method {
+        access_flags: MethodAccessFlags::STATIC,
+        name_index: clinit_name,
+        descriptor_index: clinit_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 2,
+            max_locals: 0,
+            code: vec![
+                Instruction::New(this_class),
+                Instruction::Dup,
+                Instruction::Invokespecial(self_init),
+                Instruction::Putstatic(instance_field_ref),
+                Instruction::Return,
+            ],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let mut jvm_methods = vec![constructor, clinit];
+
+    // Bridge methods: implement interface methods delegating to static impls
+    for (iface_method_name, static_method_name, param_count, static_desc) in methods {
+        // Interface method descriptor: all Object
+        let mut iface_desc = String::from("(");
+        for _ in 0..*param_count {
+            iface_desc.push_str("Ljava/lang/Object;");
+        }
+        iface_desc.push_str(")Ljava/lang/Object;");
+
+        let concrete_params = param_jvm_types.get(iface_method_name)
+            .cloned()
+            .unwrap_or_default();
+        let concrete_ret = return_jvm_types.get(iface_method_name)
+            .copied()
+            .unwrap_or(JvmType::Int);
+
+        let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
+
+        let method_name_idx = cp.add_utf8(iface_method_name)?;
+        let method_desc_idx = cp.add_utf8(&iface_desc)?;
+
+        // Build bridge code: unbox params → invokestatic → box result
+        let mut bridge_code: Vec<Instruction> = Vec::new();
+        let mut slot: u8 = 1; // slot 0 = this
+
+        let class_names_for_method = param_class_names.get(iface_method_name)
+            .cloned()
+            .unwrap_or_default();
+
+        for (param_idx, pt) in concrete_params.iter().enumerate() {
+            bridge_code.push(Instruction::Aload(slot));
+            match pt {
+                JvmType::Long => {
+                    bridge_code.push(Instruction::Checkcast(long_box_class));
+                    bridge_code.push(Instruction::Invokevirtual(long_unbox));
+                }
+                JvmType::Double => {
+                    bridge_code.push(Instruction::Checkcast(double_box_class));
+                    bridge_code.push(Instruction::Invokevirtual(_double_unbox));
+                }
+                JvmType::Int => {
+                    bridge_code.push(Instruction::Checkcast(bool_box_class));
+                    bridge_code.push(Instruction::Invokevirtual(_bool_unbox));
+                }
+                JvmType::StructRef(_) => {
+                    // Checkcast Object → concrete struct type if we know the class name
+                    if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
+                        let cast_class = cp.add_class(cn)?;
+                        bridge_code.push(Instruction::Checkcast(cast_class));
+                    }
+                }
+                _ => {}
+            }
+            slot += 1;
+        }
+
+        bridge_code.push(Instruction::Invokestatic(static_ref));
+
+        // Box the result back to Object
+        match concrete_ret {
+            JvmType::Long => {
+                bridge_code.push(Instruction::Invokestatic(long_valueof));
+            }
+            JvmType::Double => {
+                bridge_code.push(Instruction::Invokestatic(double_valueof));
+            }
+            JvmType::Int => {
+                bridge_code.push(Instruction::Invokestatic(bool_valueof));
+            }
+            _ => {}
+        }
+        bridge_code.push(Instruction::Areturn);
+
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: method_name_idx,
+            descriptor_index: method_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 20,
+                max_locals: (1 + *param_count) as u16,
+                code: bridge_code,
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
+    // INSTANCE field declaration
+    let field = Field {
+        access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
+        name_index: instance_name,
+        descriptor_index: instance_desc,
+        field_type: FieldType::Object(class_name.to_string()),
+        attributes: vec![],
+    };
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        interfaces: vec![interface_class],
+        fields: vec![field],
+        methods: jvm_methods,
         ..Default::default()
     };
 

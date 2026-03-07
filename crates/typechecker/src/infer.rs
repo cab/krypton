@@ -5,7 +5,7 @@ use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp
 use crate::scc;
 use crate::trait_registry::{TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
 use crate::type_registry::{self, TypeRegistry};
-use crate::typed_ast::{self, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
+use crate::typed_ast::{self, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -1057,6 +1057,114 @@ fn collect_struct_update_info(expr: &TypedExpr, info: &mut HashMap<Span, (String
     }
 }
 
+/// Substitute a type variable with a concrete type throughout a type.
+fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type {
+    match ty {
+        Type::Var(id) if *id == var_id => replacement.clone(),
+        Type::Var(_) | Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit => ty.clone(),
+        Type::Fn(params, ret) => {
+            let new_params = params.iter().map(|p| substitute_type_var(p, var_id, replacement)).collect();
+            let new_ret = substitute_type_var(ret, var_id, replacement);
+            Type::Fn(new_params, Box::new(new_ret))
+        }
+        Type::Named(name, args) => {
+            let new_args = args.iter().map(|a| substitute_type_var(a, var_id, replacement)).collect();
+            Type::Named(name.clone(), new_args)
+        }
+        Type::Own(inner) => Type::Own(Box::new(substitute_type_var(inner, var_id, replacement))),
+        Type::Tuple(elems) => {
+            let new_elems = elems.iter().map(|e| substitute_type_var(e, var_id, replacement)).collect();
+            Type::Tuple(new_elems)
+        }
+    }
+}
+
+/// Detect trait method calls on type variables (indicating the function needs a dict param).
+fn detect_trait_constraints(
+    expr: &TypedExpr,
+    trait_method_map: &HashMap<String, String>,
+    subst: &Substitution,
+    constraints: &mut Vec<String>,
+) {
+    match &expr.kind {
+        TypedExprKind::App { func, args } => {
+            if let TypedExprKind::Var(name) = &func.kind {
+                if let Some(trait_name) = trait_method_map.get(name) {
+                    if let Some(first_arg) = args.first() {
+                        let arg_ty = subst.apply(&first_arg.ty);
+                        let concrete_ty = strip_own(&arg_ty);
+                        if matches!(concrete_ty, Type::Var(_)) {
+                            constraints.push(trait_name.clone());
+                        }
+                    }
+                }
+            }
+            detect_trait_constraints(func, trait_method_map, subst, constraints);
+            for arg in args {
+                detect_trait_constraints(arg, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::Lambda { body, .. } => {
+            detect_trait_constraints(body, trait_method_map, subst, constraints);
+        }
+        TypedExprKind::If { cond, then_, else_ } => {
+            detect_trait_constraints(cond, trait_method_map, subst, constraints);
+            detect_trait_constraints(then_, trait_method_map, subst, constraints);
+            detect_trait_constraints(else_, trait_method_map, subst, constraints);
+        }
+        TypedExprKind::Let { value, body, .. } => {
+            detect_trait_constraints(value, trait_method_map, subst, constraints);
+            if let Some(body) = body {
+                detect_trait_constraints(body, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::Do(exprs) => {
+            for e in exprs {
+                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::Match { scrutinee, arms } => {
+            detect_trait_constraints(scrutinee, trait_method_map, subst, constraints);
+            for arm in arms {
+                detect_trait_constraints(&arm.body, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            detect_trait_constraints(lhs, trait_method_map, subst, constraints);
+            detect_trait_constraints(rhs, trait_method_map, subst, constraints);
+        }
+        TypedExprKind::UnaryOp { operand, .. } => {
+            detect_trait_constraints(operand, trait_method_map, subst, constraints);
+        }
+        TypedExprKind::FieldAccess { expr, .. } => {
+            detect_trait_constraints(expr, trait_method_map, subst, constraints);
+        }
+        TypedExprKind::StructLit { fields, .. } => {
+            for (_, e) in fields {
+                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::StructUpdate { base, fields, .. } => {
+            detect_trait_constraints(base, trait_method_map, subst, constraints);
+            for (_, e) in fields {
+                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::LetPattern { value, body, .. } => {
+            detect_trait_constraints(value, trait_method_map, subst, constraints);
+            if let Some(body) = body {
+                detect_trait_constraints(body, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) => {
+            for e in elems {
+                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            }
+        }
+        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+    }
+}
+
 /// Walk a typed AST looking for calls to trait methods. For each call,
 /// resolve the argument type and verify that a matching instance exists.
 fn check_trait_instances(
@@ -1074,7 +1182,10 @@ fn check_trait_instances(
                     if let Some(first_arg) = args.first() {
                         let arg_ty = subst.apply(&first_arg.ty);
                         let concrete_ty = strip_own(&arg_ty);
-                        if trait_registry.find_instance(trait_name, &concrete_ty).is_none() {
+                        // Skip check if type is still a variable (constrained function)
+                        if !matches!(concrete_ty, Type::Var(_))
+                            && trait_registry.find_instance(trait_name, &concrete_ty).is_none()
+                        {
                             return Err(spanned(
                                 TypeError::NoInstance {
                                     trait_name: trait_name.clone(),
@@ -1225,6 +1336,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             trait_registry.register_trait(TraitInfo {
                 name: name.clone(),
                 type_var: type_var.clone(),
+                type_var_id: tv_id,
                 superclasses: superclasses.clone(),
                 methods: trait_methods,
                 span: *span,
@@ -1238,7 +1350,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             let empty_map = HashMap::new();
             let resolved_target = type_registry::resolve_type_expr(target_type, &empty_map, &registry);
 
-            // Orphan check: target must be a user-defined Named type
+            // Orphan check: target must be a user-defined Named type or a built-in type
             let target_name = match &resolved_target {
                 Type::Named(name, _) => {
                     if registry.lookup_type(name).is_none() {
@@ -1249,6 +1361,10 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                     }
                     name.clone()
                 }
+                Type::Int => "Int".to_string(),
+                Type::Float => "Float".to_string(),
+                Type::Bool => "Bool".to_string(),
+                Type::String => "String".to_string(),
                 other => {
                     return Err(spanned(TypeError::OrphanInstance {
                         trait_name: trait_name.clone(),
@@ -1383,6 +1499,79 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         }
     }
 
+    // Type-check impl method bodies and produce TypedFnDecls with qualified names
+    let mut impl_functions: Vec<TypedFnDecl> = Vec::new();
+    let mut impl_fn_types: Vec<(String, TypeScheme)> = Vec::new();
+    let mut instance_defs: Vec<InstanceDefInfo> = Vec::new();
+
+    for decl in &module.decls {
+        if let Decl::DefImpl { trait_name, target_type: _, methods, span, .. } = decl {
+            // Look up the trait and instance
+            let trait_info = trait_registry.lookup_trait(trait_name).unwrap();
+            let tv_id = trait_info.type_var_id;
+
+            // Find the registered instance to get the resolved target type
+            let instance = trait_registry.find_instance_by_trait_and_span(trait_name, *span).unwrap();
+            let resolved_target = instance.target_type.clone();
+            let target_type_name = instance.target_type_name.clone();
+
+            let mut qualified_method_names = Vec::new();
+
+            for method in methods {
+                let qualified_name = format!("{}${}${}", trait_name, target_type_name, method.name);
+
+                // Find the trait method signature
+                let trait_method = trait_info.methods.iter().find(|m| m.name == method.name).unwrap();
+
+                // Substitute trait type var → concrete target type
+                let concrete_param_types: Vec<Type> = trait_method.param_types.iter().map(|t| {
+                    substitute_type_var(t, tv_id, &resolved_target)
+                }).collect();
+                let _concrete_ret_type = substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
+
+                // Type-check the method body
+                env.push_scope();
+                let mut param_types_inferred = Vec::new();
+                for (i, p) in method.params.iter().enumerate() {
+                    let ptv = Type::Var(gen.fresh());
+                    if i < concrete_param_types.len() {
+                        unify(&ptv, &concrete_param_types[i], &mut subst)
+                            .map_err(|e| spanned(e, *span))?;
+                    }
+                    param_types_inferred.push(ptv.clone());
+                    env.bind(p.name.clone(), TypeScheme::mono(ptv));
+                }
+                let body_typed = infer_expr_inner(&method.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&param_types_inferred), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
+                env.pop_scope();
+
+                let mut body_typed = body_typed;
+                typed_ast::apply_subst(&mut body_typed, &subst);
+
+                let final_param_types: Vec<Type> = param_types_inferred.iter().map(|t| subst.apply(t)).collect();
+                let final_ret_type = subst.apply(&body_typed.ty);
+
+                let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));
+                let scheme = TypeScheme { vars: vec![], ty: fn_ty };
+
+                impl_fn_types.push((qualified_name.clone(), scheme));
+                impl_functions.push(TypedFnDecl {
+                    name: qualified_name.clone(),
+                    params: method.params.iter().map(|p| p.name.clone()).collect(),
+                    body: body_typed,
+                });
+
+                qualified_method_names.push((method.name.clone(), qualified_name));
+            }
+
+            instance_defs.push(InstanceDefInfo {
+                trait_name: trait_name.clone(),
+                target_type_name,
+                target_type: resolved_target,
+                qualified_method_names,
+            });
+        }
+    }
+
     // Collect results: constructors first, then functions in declaration order
     let mut results: Vec<(String, TypeScheme)> = constructor_schemes;
     results.extend(
@@ -1391,6 +1580,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             .enumerate()
             .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
     );
+    results.extend(impl_fn_types);
 
     // Apply final substitution to all typed function bodies
     let mut functions = Vec::new();
@@ -1402,6 +1592,33 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             params: decl.params.iter().map(|p| p.name.clone()).collect(),
             body,
         });
+    }
+    functions.extend(impl_functions);
+
+    // Detect constrained functions: functions that call trait methods on type variables
+    let mut fn_constraints: HashMap<String, Vec<String>> = HashMap::new();
+    for func in &functions {
+        let mut constraints = Vec::new();
+        detect_trait_constraints(&func.body, &trait_method_map, &subst, &mut constraints);
+        if !constraints.is_empty() {
+            constraints.sort();
+            constraints.dedup();
+            fn_constraints.insert(func.name.clone(), constraints);
+        }
+    }
+
+    // Build trait_defs for codegen
+    let mut trait_defs = Vec::new();
+    for decl in &module.decls {
+        if let Decl::DefTrait { name, methods, .. } = decl {
+            let method_info: Vec<(String, usize)> = methods.iter().map(|m| {
+                (m.name.clone(), m.params.len())
+            }).collect();
+            trait_defs.push(TraitDefInfo {
+                name: name.clone(),
+                methods: method_info,
+            });
+        }
     }
 
     // Collect struct update info (type name + updated fields) from typed AST
@@ -1416,5 +1633,9 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     Ok(TypedModule {
         fn_types: results,
         functions,
+        trait_defs,
+        instance_defs,
+        fn_constraints,
+        trait_method_map: trait_method_map.clone(),
     })
 }

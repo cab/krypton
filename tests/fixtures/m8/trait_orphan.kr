@@ -2,5 +2,5 @@
 (trait Eq [a]
   (def eq [a a] Bool))
 
-(impl Eq Int
-  (def eq [x y] (== x y)))
+(impl Eq Unknown
+  (def eq [x y] false))

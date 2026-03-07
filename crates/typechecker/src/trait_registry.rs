@@ -8,6 +8,7 @@ use crate::unify::TypeError;
 pub struct TraitInfo {
     pub name: String,
     pub type_var: String,
+    pub type_var_id: u32,
     pub superclasses: Vec<String>,
     pub methods: Vec<TraitMethod>,
     pub span: Span,
@@ -98,6 +99,12 @@ impl TraitRegistry {
             }
         }
         Ok(())
+    }
+
+    pub fn find_instance_by_trait_and_span(&self, trait_name: &str, span: Span) -> Option<&InstanceInfo> {
+        self.instances.iter().find(|inst| {
+            inst.trait_name == trait_name && inst.span == span
+        })
     }
 
     pub fn trait_method_names(&self) -> Vec<(String, String)> {

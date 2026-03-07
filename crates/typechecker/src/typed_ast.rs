@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::types::{Substitution, Type, TypeScheme};
 use krypton_parser::ast::{BinOp, Lit, Pattern, Span, UnaryOp};
 
@@ -78,9 +80,25 @@ pub struct TypedFnDecl {
     pub body: TypedExpr,
 }
 
+pub struct TraitDefInfo {
+    pub name: String,
+    pub methods: Vec<(String, usize)>, // (method_name, param_count)
+}
+
+pub struct InstanceDefInfo {
+    pub trait_name: String,
+    pub target_type_name: String,
+    pub target_type: Type,
+    pub qualified_method_names: Vec<(String, String)>, // (method_name, qualified_name)
+}
+
 pub struct TypedModule {
     pub fn_types: Vec<(String, TypeScheme)>,
     pub functions: Vec<TypedFnDecl>,
+    pub trait_defs: Vec<TraitDefInfo>,
+    pub instance_defs: Vec<InstanceDefInfo>,
+    pub fn_constraints: HashMap<String, Vec<String>>,
+    pub trait_method_map: HashMap<String, String>,
 }
 
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {

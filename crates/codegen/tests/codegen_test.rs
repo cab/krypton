@@ -316,3 +316,38 @@ fn test_match_nested_pattern() {
 "#;
     assert_eq!(run_program(src), "20");
 }
+
+#[test]
+fn test_trait_dictionary_parameter() {
+    let src = r#"
+(type Point (record (x Int) (y Int)))
+(trait Eq [a] (def eq [a a] Bool))
+(impl Eq Point
+  (def eq [x y] (if (== (. x x) (. y x)) (== (. x y) (. y y)) false)))
+(def are_equal (fn [x y] (eq x y)))
+(def main (fn [] (are_equal (Point 1 2) (Point 1 2))))
+"#;
+    // First verify it runs correctly
+    assert_eq!(run_program(src), "true");
+
+    // Now verify that are_equal has an extra dictionary parameter via javap
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let classes = compile_module(&module, "Test").expect("compile");
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let path = dir.path().join(format!("{name}.class"));
+        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+    }
+    let output = Command::new("javap")
+        .arg("-p")
+        .arg(dir.path().join("Test.class"))
+        .output()
+        .expect("javap");
+    let javap_out = String::from_utf8_lossy(&output.stdout);
+    // are_equal should have 3 params: dict (Object) + x (Object) + y (Object)
+    assert!(
+        javap_out.contains("are_equal(java.lang.Object, java.lang.Object, java.lang.Object)"),
+        "are_equal should have 3 Object params (dict + x + y), javap output:\n{javap_out}"
+    );
+}
