@@ -1,0 +1,8 @@
+# expect: output true
+(type Num (record (n Int)))
+(trait Eq [a] (def eq [a a] Bool))
+(impl Eq Num (def eq [a b] (== (. a n) (. b n))))
+(trait Ord [a] : [Eq] (def lt [a a] Bool))
+(impl Ord Num (def lt [a b] (< (. a n) (. b n))))
+(def is_less (fn [x y] (lt x y)))
+(def main (fn [] (is_less (Num 1) (Num 2))))

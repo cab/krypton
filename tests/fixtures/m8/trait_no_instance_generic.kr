@@ -1,0 +1,4 @@
+# expect: error E0301
+(type Foo (record (x Int)))
+(trait MyTrait [a] (def do_thing [a] Int))
+(def main (fn [] (do_thing (Foo 1))))

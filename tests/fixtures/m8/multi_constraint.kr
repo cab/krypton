@@ -1,0 +1,8 @@
+# expect: output true
+(type Box (record (val Int)))
+(trait Eq [a] (def eq [a a] Bool))
+(impl Eq Box (def eq [a b] (== (. a val) (. b val))))
+(trait Show [a] (def show [a] String))
+(impl Show Box (def show [a] "Box"))
+(def eq_and_show (fn [x y] (if (eq x y) (show x) "not equal")))
+(def main (fn [] (== (eq_and_show (Box 1) (Box 1)) "Box")))
