@@ -56,36 +56,33 @@ fn coerce_own_args(func_ty: &Type, arg_types: &[Type], subst: &Substitution) -> 
 
 /// Collect free type variables in a type.
 fn free_vars(ty: &Type) -> HashSet<TypeVarId> {
+    let mut out = HashSet::new();
+    free_vars_into(ty, &mut out);
+    out
+}
+
+/// Recursive accumulator for `free_vars`.
+fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
     match ty {
-        Type::Var(id) => {
-            let mut s = HashSet::new();
-            s.insert(*id);
-            s
-        }
+        Type::Var(id) => { out.insert(*id); }
         Type::Fn(params, ret) => {
-            let mut s = HashSet::new();
             for p in params {
-                s.extend(free_vars(p));
+                free_vars_into(p, out);
             }
-            s.extend(free_vars(ret));
-            s
+            free_vars_into(ret, out);
         }
         Type::Named(_, args) => {
-            let mut s = HashSet::new();
             for a in args {
-                s.extend(free_vars(a));
+                free_vars_into(a, out);
             }
-            s
         }
-        Type::Own(inner) => free_vars(inner),
+        Type::Own(inner) => free_vars_into(inner, out),
         Type::Tuple(elems) => {
-            let mut s = HashSet::new();
             for e in elems {
-                s.extend(free_vars(e));
+                free_vars_into(e, out);
             }
-            s
         }
-        _ => HashSet::new(),
+        _ => {}
     }
 }
 
@@ -198,11 +195,9 @@ fn infer_expr_inner(
             let body_ty = subst.apply(&body_typed.ty);
             let fn_ty = Type::Fn(param_types, Box::new(body_ty));
             let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
-            let ty = if captures_own_value(body, &param_names, env, subst) {
+            let ty = if let Some(cap_name) = first_own_capture(body, &param_names, env, subst) {
                 if let Some(ref mut captures) = lambda_own_captures {
-                    if let Some(cap_name) = first_own_capture(body, &param_names, env, subst) {
-                        captures.insert(*span, cap_name);
-                    }
+                    captures.insert(*span, cap_name);
                 }
                 Type::Own(Box::new(fn_ty))
             } else {
@@ -922,73 +917,6 @@ fn resolve_struct_update(
     }
 }
 
-/// Check if a lambda body references any free variables (not in `params`) whose
-/// type in `env` (after substitution) is `Own(...)`.
-fn captures_own_value(body: &Expr, params: &HashSet<&str>, env: &TypeEnv, subst: &Substitution) -> bool {
-    match body {
-        Expr::Var { name, .. } => {
-            if !params.contains(name.as_str()) {
-                if let Some(scheme) = env.lookup(name) {
-                    let ty = subst.apply(&scheme.ty);
-                    return matches!(ty, Type::Own(_));
-                }
-            }
-            false
-        }
-        Expr::App { func, args, .. } => {
-            captures_own_value(func, params, env, subst)
-                || args.iter().any(|a| captures_own_value(a, params, env, subst))
-        }
-        Expr::Let { name, value, body: let_body, .. } => {
-            if captures_own_value(value, params, env, subst) {
-                return true;
-            }
-            if let Some(b) = let_body {
-                let mut inner = params.clone();
-                inner.insert(name.as_str());
-                return captures_own_value(b, &inner, env, subst);
-            }
-            false
-        }
-        Expr::LetPattern { value, body, .. } => {
-            captures_own_value(value, params, env, subst)
-                || body.as_ref().is_some_and(|b| captures_own_value(b, params, env, subst))
-        }
-        Expr::Do { exprs, .. } => exprs.iter().any(|e| captures_own_value(e, params, env, subst)),
-        Expr::If { cond, then_, else_, .. } => {
-            captures_own_value(cond, params, env, subst)
-                || captures_own_value(then_, params, env, subst)
-                || captures_own_value(else_, params, env, subst)
-        }
-        Expr::Match { scrutinee, arms, .. } => {
-            captures_own_value(scrutinee, params, env, subst)
-                || arms.iter().any(|a| captures_own_value(&a.body, params, env, subst))
-        }
-        Expr::BinaryOp { lhs, rhs, .. } => {
-            captures_own_value(lhs, params, env, subst) || captures_own_value(rhs, params, env, subst)
-        }
-        Expr::UnaryOp { operand, .. } => captures_own_value(operand, params, env, subst),
-        Expr::Lambda { params: inner_params, body, .. } => {
-            let mut inner = params.clone();
-            for p in inner_params {
-                inner.insert(p.name.as_str());
-            }
-            captures_own_value(body, &inner, env, subst)
-        }
-        Expr::FieldAccess { expr, .. } => captures_own_value(expr, params, env, subst),
-        Expr::StructLit { fields, .. } => fields.iter().any(|(_, e)| captures_own_value(e, params, env, subst)),
-        Expr::StructUpdate { base, fields, .. } => {
-            captures_own_value(base, params, env, subst)
-                || fields.iter().any(|(_, e)| captures_own_value(e, params, env, subst))
-        }
-        Expr::Tuple { elements, .. } => elements.iter().any(|e| captures_own_value(e, params, env, subst)),
-        Expr::Recur { args, .. } => args.iter().any(|a| captures_own_value(a, params, env, subst)),
-        Expr::QuestionMark { expr, .. } => captures_own_value(expr, params, env, subst),
-        Expr::List { elements, .. } => elements.iter().any(|e| captures_own_value(e, params, env, subst)),
-        Expr::Lit { .. } => false,
-    }
-}
-
 /// Return the name of the first free variable (not in `params`) whose type in
 /// `env` (after substitution) is `Own(...)`.
 fn first_own_capture(body: &Expr, params: &HashSet<&str>, env: &TypeEnv, subst: &Substitution) -> Option<String> {
@@ -1234,7 +1162,9 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             fn_bodies[idx] = Some(body_typed);
         }
 
-        // Generalize all types in the SCC and update env with polymorphic schemes
+        // Generalize against an empty env: all env bindings are either fully-quantified
+        // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
+        // generalized. This must change if nested let-polymorphism is added.
         let empty_env = TypeEnv::new();
         for &(idx, ref tv) in &pre_bound {
             let final_ty = subst.apply(tv);
