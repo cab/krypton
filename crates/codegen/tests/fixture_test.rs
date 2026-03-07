@@ -1,10 +1,21 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+
+fn build_classpath(class_dir: &Path) -> String {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../runtime/build/libs/krypton-runtime.jar");
+    if jar.exists() {
+        format!("{}{}{}", class_dir.display(), sep, jar.display())
+    } else {
+        class_dir.display().to_string()
+    }
+}
 
 fn run_program(source: &str) -> String {
     let (module, errors) = parse(source);
@@ -19,9 +30,10 @@ fn run_program(source: &str) -> String {
         f.write_all(bytes).unwrap();
     }
 
+    let classpath = build_classpath(dir.path());
     let output = Command::new("java")
         .arg("-cp")
-        .arg(dir.path())
+        .arg(&classpath)
         .arg("Test")
         .output()
         .expect("java command should run");

@@ -1,6 +1,30 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
 use std::process;
 use tempfile::tempdir;
+
+fn find_runtime_jar() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("KRYPTON_RUNTIME") {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../runtime/build/libs/krypton-runtime.jar");
+    if workspace_root.exists() {
+        return Some(workspace_root);
+    }
+    None
+}
+
+fn build_classpath(class_dir: &std::path::Path) -> String {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    match find_runtime_jar() {
+        Some(jar) => format!("{}{}{}", class_dir.display(), sep, jar.display()),
+        None => class_dir.display().to_string(),
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "krypton")]
@@ -155,9 +179,10 @@ fn main() {
                             process::exit(1);
                         });
                     }
+                    let classpath = build_classpath(dir.path());
                     let status = process::Command::new("java")
                         .arg("-cp")
-                        .arg(dir.path())
+                        .arg(&classpath)
                         .arg(&class_name)
                         .status()
                         .unwrap_or_else(|e| {
