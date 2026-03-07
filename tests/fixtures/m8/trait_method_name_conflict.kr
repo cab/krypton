@@ -1,0 +1,5 @@
+# expect: error E0305
+(trait MyTrait [a]
+  (def check [a a] Bool))
+
+(def check (fn [x y] true))

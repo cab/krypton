@@ -1439,6 +1439,33 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     // Collect the mapping of trait method names → trait names for post-inference resolution
     let trait_method_map: HashMap<String, String> = trait_registry.trait_method_names().into_iter().collect();
 
+    // Check for top-level def names conflicting with user-defined trait method names
+    {
+        let mut user_trait_methods: HashMap<String, (String, Span)> = HashMap::new();
+        for decl in &module.decls {
+            if let Decl::DefTrait { name, methods, .. } = decl {
+                for method in methods {
+                    user_trait_methods.insert(method.name.clone(), (name.clone(), method.span));
+                }
+            }
+        }
+        for decl in &module.decls {
+            if let Decl::DefFn(f) = decl {
+                if let Some((trait_name, method_span)) = user_trait_methods.get(&f.name) {
+                    return Err(SpannedTypeError {
+                        error: TypeError::DefinitionConflictsWithTraitMethod {
+                            def_name: f.name.clone(),
+                            trait_name: trait_name.clone(),
+                        },
+                        span: f.span,
+                        note: None,
+                        secondary_span: Some((*method_span, "trait method defined here".into())),
+                    });
+                }
+            }
+        }
+    }
+
     // Collect DefFn declarations (includes impl method bodies for type checking)
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
