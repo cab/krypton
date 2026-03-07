@@ -1,0 +1,6 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+Buf: fn(String, own String) -> Buf
+test: fn(own Buf, own String) -> String

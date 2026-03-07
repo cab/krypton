@@ -261,6 +261,7 @@ pub fn check_ownership(
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
+    struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
 ) -> Result<(), SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
@@ -287,7 +288,7 @@ pub fn check_ownership(
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
             let affine = build_affine_set(fn_decl, registry);
-            check_fn(fn_decl, &fn_param_info, &affine, &fn_qualifiers, let_own_spans, lambda_own_captures)?;
+            check_fn(fn_decl, &fn_param_info, &affine, &fn_qualifiers, let_own_spans, lambda_own_captures, struct_update_info, registry)?;
         }
     }
     Ok(())
@@ -300,6 +301,8 @@ fn check_fn(
     fn_qualifiers: &HashMap<String, Vec<ParamQualifier>>,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
+    struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
+    registry: &TypeRegistry,
 ) -> Result<(), SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
@@ -315,7 +318,7 @@ fn check_fn(
     let mut consumed = HashSet::new();
     let mut partially_consumed = HashSet::new();
     let mut own_fn_notes: HashMap<String, String> = HashMap::new();
-    check_expr(&decl.body, &mut owned, &mut consumed, &mut partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, &mut own_fn_notes)
+    check_expr(&decl.body, &mut owned, &mut consumed, &mut partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, &mut own_fn_notes, struct_update_info, registry)
 }
 
 fn check_expr(
@@ -329,6 +332,8 @@ fn check_expr(
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
     own_fn_notes: &mut HashMap<String, String>,
+    struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
+    registry: &TypeRegistry,
 ) -> Result<(), SpannedTypeError> {
     match expr {
         Expr::Var { name, span, .. } => {
@@ -357,7 +362,7 @@ fn check_expr(
         }
 
         Expr::App { func, args, span, .. } => {
-            check_expr(func, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(func, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             // Determine which params are non-own (for non-consuming borrow)
             let callee_params = if let Expr::Var { name, .. } = func.as_ref() {
                 fn_param_info.get(name)
@@ -413,7 +418,7 @@ fn check_expr(
                         }
                     }
                 } else {
-                    check_expr(arg, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                    check_expr(arg, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
                 }
             }
             let _ = span;
@@ -421,7 +426,7 @@ fn check_expr(
         }
 
         Expr::Let { name, value, body, span } => {
-            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             let is_own_let = let_own_spans.contains(span);
             if is_own_let {
                 owned.insert(name.clone());
@@ -436,7 +441,7 @@ fn check_expr(
                 }
             }
             if let Some(body) = body {
-                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
                 // Restore owned state after body scope
                 if is_own_let {
                     owned.remove(name);
@@ -448,29 +453,29 @@ fn check_expr(
         }
 
         Expr::LetPattern { value, body, .. } => {
-            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             if let Some(body) = body {
-                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(body, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             }
             Ok(())
         }
 
         Expr::Do { exprs, .. } => {
             for e in exprs {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             }
             Ok(())
         }
 
         Expr::If { cond, then_, else_, .. } => {
-            check_expr(cond, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(cond, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             let before = consumed.clone();
             let mut then_consumed = consumed.clone();
             let mut then_partial = partially_consumed.clone();
             let mut else_consumed = consumed.clone();
             let mut else_partial = partially_consumed.clone();
-            check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
-            check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(then_, owned, &mut then_consumed, &mut then_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
+            check_expr(else_, owned, &mut else_consumed, &mut else_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
 
             let newly_in_then: HashSet<String> = then_consumed.difference(&before).cloned().collect();
             let newly_in_else: HashSet<String> = else_consumed.difference(&before).cloned().collect();
@@ -491,7 +496,7 @@ fn check_expr(
         }
 
         Expr::Match { scrutinee, arms, .. } => {
-            check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+            check_expr(scrutinee, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             let before = consumed.clone();
             let n = arms.len();
             let mut per_arm_new: Vec<HashSet<String>> = Vec::new();
@@ -500,7 +505,7 @@ fn check_expr(
             for arm in arms {
                 let mut arm_consumed = consumed.clone();
                 let mut arm_partial = partially_consumed.clone();
-                check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(&arm.body, owned, &mut arm_consumed, &mut arm_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
                 let newly: HashSet<String> = arm_consumed.difference(&before).cloned().collect();
                 per_arm_new.push(newly);
                 for name in &arm_partial {
@@ -523,12 +528,12 @@ fn check_expr(
         }
 
         Expr::BinaryOp { lhs, rhs, .. } => {
-            check_expr(lhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
-            check_expr(rhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
+            check_expr(lhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
+            check_expr(rhs, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)
         }
 
         Expr::UnaryOp { operand, .. } => {
-            check_expr(operand, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
+            check_expr(operand, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)
         }
 
         Expr::Lambda { params, body, span, .. } => {
@@ -546,49 +551,93 @@ fn check_expr(
             }
             let mut body_consumed = HashSet::new();
             let mut body_partial = HashSet::new();
-            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
+            check_expr(body, owned, &mut body_consumed, &mut body_partial, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)
         }
 
         Expr::FieldAccess { expr, .. } => {
-            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
+            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)
         }
 
         Expr::StructLit { fields, .. } => {
             for (_, field_expr) in fields {
-                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             }
             Ok(())
         }
 
-        Expr::StructUpdate { base, fields, .. } => {
-            check_expr(base, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+        Expr::StructUpdate { base, fields, span } => {
+            // Check field value exprs first (these may consume owned vars)
             for (_, field_expr) in fields {
-                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(field_expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
+            }
+
+            // Determine if base is consumed: only consumed if struct has own fields
+            // that are NOT replaced by this update
+            let base_consumed = if let Some((type_name, updated_fields)) = struct_update_info.get(span) {
+                if let Some(info) = registry.lookup_type(type_name) {
+                    if let TypeKind::Record { fields: record_fields } = &info.kind {
+                        record_fields.iter().any(|(fname, fty)| {
+                            type_contains_own(fty) && !updated_fields.contains(fname)
+                        })
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
+
+            if base_consumed {
+                check_expr(base, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
+            } else {
+                // Non-consuming: check base isn't already consumed but don't mark it
+                if let Expr::Var { name, span, .. } = base.as_ref() {
+                    if owned.contains(name) {
+                        if consumed.contains(name) {
+                            return Err(SpannedTypeError {
+                                error: TypeError::AlreadyMoved { name: name.clone() },
+                                span: *span,
+                                note: None,
+                            });
+                        }
+                        if partially_consumed.contains(name) {
+                            return Err(SpannedTypeError {
+                                error: TypeError::MovedInBranch { name: name.clone() },
+                                span: *span,
+                                note: None,
+                            });
+                        }
+                    }
+                } else {
+                    check_expr(base, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
+                }
             }
             Ok(())
         }
 
         Expr::Tuple { elements, .. } => {
             for e in elements {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             }
             Ok(())
         }
 
         Expr::Recur { args, .. } => {
             for a in args {
-                check_expr(a, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(a, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             }
             Ok(())
         }
 
         Expr::QuestionMark { expr, .. } => {
-            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)
+            check_expr(expr, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)
         }
 
         Expr::List { elements, .. } => {
             for e in elements {
-                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes)?;
+                check_expr(e, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             }
             Ok(())
         }

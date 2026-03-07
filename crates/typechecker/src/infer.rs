@@ -462,7 +462,12 @@ fn infer_expr_inner(
         Expr::FieldAccess { expr: target, field, span } => {
             let target_typed = infer_expr_inner(target, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
             let resolved = subst.apply(&target_typed.ty);
-            let ty = resolve_field_access(&resolved, field, *span, registry)?;
+            // Unwrap Own wrapper — field access works on the inner type
+            let inner_resolved = match &resolved {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            let ty = resolve_field_access(inner_resolved, field, *span, registry)?;
             Ok(TypedExpr {
                 kind: TypedExprKind::FieldAccess {
                     expr: Box::new(target_typed),
@@ -476,7 +481,12 @@ fn infer_expr_inner(
         Expr::StructUpdate { base, fields, span } => {
             let base_typed = infer_expr_inner(base, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
             let resolved = subst.apply(&base_typed.ty);
-            let typed_fields = resolve_struct_update(&resolved, fields, *span, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
+            // Unwrap Own wrapper — struct update works on the inner type
+            let inner_resolved = match &resolved {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            let typed_fields = resolve_struct_update(inner_resolved, fields, *span, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
             Ok(TypedExpr {
                 kind: TypedExprKind::StructUpdate {
                     base: Box::new(base_typed),
@@ -1031,6 +1041,68 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
     format!("{}", scheme)
 }
 
+/// Walk a typed expression tree and record struct update info for each
+/// `StructUpdate` node: maps its span to (type_name, set of updated field names).
+fn collect_struct_update_info(expr: &TypedExpr, info: &mut HashMap<Span, (String, HashSet<String>)>) {
+    match &expr.kind {
+        TypedExprKind::StructUpdate { base, fields } => {
+            let inner_ty = match &base.ty {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            if let Type::Named(name, _) = inner_ty {
+                let field_names: HashSet<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                info.insert(expr.span, (name.clone(), field_names));
+            }
+            collect_struct_update_info(base, info);
+            for (_, e) in fields {
+                collect_struct_update_info(e, info);
+            }
+        }
+        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+        TypedExprKind::App { func, args } => {
+            collect_struct_update_info(func, info);
+            for a in args { collect_struct_update_info(a, info); }
+        }
+        TypedExprKind::If { cond, then_, else_ } => {
+            collect_struct_update_info(cond, info);
+            collect_struct_update_info(then_, info);
+            collect_struct_update_info(else_, info);
+        }
+        TypedExprKind::Let { value, body, .. } => {
+            collect_struct_update_info(value, info);
+            if let Some(b) = body { collect_struct_update_info(b, info); }
+        }
+        TypedExprKind::Do(exprs) => {
+            for e in exprs { collect_struct_update_info(e, info); }
+        }
+        TypedExprKind::Match { scrutinee, arms } => {
+            collect_struct_update_info(scrutinee, info);
+            for arm in arms { collect_struct_update_info(&arm.body, info); }
+        }
+        TypedExprKind::Lambda { body, .. } => collect_struct_update_info(body, info),
+        TypedExprKind::FieldAccess { expr, .. } => collect_struct_update_info(expr, info),
+        TypedExprKind::Recur(args) => {
+            for a in args { collect_struct_update_info(a, info); }
+        }
+        TypedExprKind::Tuple(elems) => {
+            for e in elems { collect_struct_update_info(e, info); }
+        }
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            collect_struct_update_info(lhs, info);
+            collect_struct_update_info(rhs, info);
+        }
+        TypedExprKind::UnaryOp { operand, .. } => collect_struct_update_info(operand, info),
+        TypedExprKind::StructLit { fields, .. } => {
+            for (_, e) in fields { collect_struct_update_info(e, info); }
+        }
+        TypedExprKind::LetPattern { value, body, .. } => {
+            collect_struct_update_info(value, info);
+            if let Some(b) = body { collect_struct_update_info(b, info); }
+        }
+    }
+}
+
 /// Infer types for all top-level definitions in a module.
 ///
 /// Uses SCC (strongly connected component) analysis to process definitions
@@ -1145,8 +1217,14 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         });
     }
 
+    // Collect struct update info (type name + updated fields) from typed AST
+    let mut struct_update_info: HashMap<Span, (String, HashSet<String>)> = HashMap::new();
+    for func in &functions {
+        collect_struct_update_info(&func.body, &mut struct_update_info);
+    }
+
     // Run affine ownership verification after successful inference
-    crate::ownership::check_ownership(module, &results, &registry, &let_own_spans, &lambda_own_captures)?;
+    crate::ownership::check_ownership(module, &results, &registry, &let_own_spans, &lambda_own_captures, &struct_update_info)?;
 
     Ok(TypedModule {
         fn_types: results,
