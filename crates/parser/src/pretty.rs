@@ -30,6 +30,24 @@ fn pp_decl(decl: &Decl) -> String {
             let names_str = names.join(" ");
             format!("(import {path} [{names_str}])")
         }
+        Decl::ExternJava {
+            class_name,
+            methods,
+            ..
+        } => {
+            let mut s = format!("(extern \"{class_name}\"");
+            for m in methods {
+                let params: Vec<String> = m.param_types.iter().map(pp_type_expr).collect();
+                s.push_str(&format!(
+                    " (def {} [{}] {})",
+                    m.name,
+                    params.join(" "),
+                    pp_type_expr(&m.return_type)
+                ));
+            }
+            s.push(')');
+            s
+        }
     }
 }
 

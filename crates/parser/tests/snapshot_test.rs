@@ -1,4 +1,5 @@
 use krypton_parser::ast::*;
+use krypton_parser::parser::parse;
 use insta::assert_yaml_snapshot;
 
 #[test]
@@ -238,5 +239,16 @@ fn test_full_module() {
             },
         ],
     };
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_extern_java_parsing() {
+    let source = r#"(extern "java.lang.Math"
+  (def abs [Int] Int)
+  (def max [Int Int] Int)
+)"#;
+    let (module, errors) = parse(source);
+    assert!(errors.is_empty(), "unexpected errors: {errors:?}");
     assert_yaml_snapshot!(module);
 }

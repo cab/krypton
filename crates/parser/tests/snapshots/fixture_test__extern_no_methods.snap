@@ -1,0 +1,11 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - ExternJava:
+      class_name: java.lang.Math
+      methods: []
+      span:
+        - 13
+        - 38

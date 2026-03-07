@@ -1,0 +1,4 @@
+# expect: error P0001
+(extern "java.lang.Math"
+  (def abs [Int])
+)

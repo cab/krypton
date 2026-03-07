@@ -1,0 +1,48 @@
+---
+source: crates/parser/tests/snapshot_test.rs
+expression: module
+---
+decls:
+  - ExternJava:
+      class_name: java.lang.Math
+      methods:
+        - name: abs
+          param_types:
+            - Named:
+                name: Int
+                span:
+                  - 37
+                  - 40
+          return_type:
+            Named:
+              name: Int
+              span:
+                - 42
+                - 45
+          span:
+            - 27
+            - 46
+        - name: max
+          param_types:
+            - Named:
+                name: Int
+                span:
+                  - 59
+                  - 62
+            - Named:
+                name: Int
+                span:
+                  - 63
+                  - 66
+          return_type:
+            Named:
+              name: Int
+              span:
+                - 68
+                - 71
+          span:
+            - 49
+            - 72
+      span:
+        - 0
+        - 74

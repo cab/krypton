@@ -36,6 +36,7 @@ pub enum Token<'src> {
     List,
     Tuple,
     Deriving,
+    Extern,
     // Operators & punctuation
     Plus,
     Minus,
@@ -85,6 +86,7 @@ impl fmt::Display for Token<'_> {
             Token::List => write!(f, "list"),
             Token::Tuple => write!(f, "tuple"),
             Token::Deriving => write!(f, "deriving"),
+            Token::Extern => write!(f, "extern"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
@@ -144,6 +146,7 @@ pub fn lexer<'src>(
         "list" => Token::List,
         "tuple" => Token::Tuple,
         "deriving" => Token::Deriving,
+        "extern" => Token::Extern,
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
         _ => Token::Ident(s),

@@ -1,0 +1,4 @@
+# expect: error P0001
+(extern
+  (def abs [Int] Int)
+)

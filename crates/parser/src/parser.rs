@@ -736,8 +736,38 @@ where
             span: to_span(e.span()),
         });
 
+    // --- extern_parser ---
+    // (extern "java.class.Name" (def method [ParamTypes] RetType) ...)
+    let extern_method_param_types = ty
+        .clone()
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket));
+
+    let extern_method = just(Token::Def)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(extern_method_param_types)
+        .then(ty.clone())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|((name, param_types), return_type), e| ExternMethod {
+            name,
+            param_types,
+            return_type,
+            span: to_span(e.span()),
+        });
+
+    let extern_decl = just(Token::Extern)
+        .ignore_then(select! { Token::String(s) => s.to_string() })
+        .then(extern_method.repeated().collect::<Vec<_>>())
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map_with(|(class_name, methods), e| Decl::ExternJava {
+            class_name,
+            methods,
+            span: to_span(e.span()),
+        });
+
     // --- Combined decl parser with error recovery ---
-    choice((def_fn, type_decl, trait_decl, impl_decl, import_decl)).recover_with(via_parser(
+    choice((def_fn, type_decl, trait_decl, impl_decl, import_decl, extern_decl)).recover_with(via_parser(
         nested_delimiters(
             Token::LParen,
             Token::RParen,

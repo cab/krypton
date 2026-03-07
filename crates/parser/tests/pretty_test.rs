@@ -51,6 +51,23 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             names: names.clone(),
             span: (0, 0),
         },
+        Decl::ExternJava {
+            class_name,
+            methods,
+            ..
+        } => Decl::ExternJava {
+            class_name: class_name.clone(),
+            methods: methods
+                .iter()
+                .map(|m| ExternMethod {
+                    name: m.name.clone(),
+                    param_types: m.param_types.iter().map(zero_spans_type_expr).collect(),
+                    return_type: zero_spans_type_expr(&m.return_type),
+                    span: (0, 0),
+                })
+                .collect(),
+            span: (0, 0),
+        },
     }
 }
 
@@ -427,6 +444,16 @@ fn roundtrip_let_pattern_tuple() {
 #[test]
 fn roundtrip_wildcard_pattern() {
     assert_roundtrip("(def f (fn [x] (match x (_ 0))))");
+}
+
+#[test]
+fn roundtrip_extern_java() {
+    assert_roundtrip("(extern \"java.lang.Math\" (def abs [Int] Int) (def max [Int Int] Int))");
+}
+
+#[test]
+fn roundtrip_extern_no_methods() {
+    assert_roundtrip("(extern \"java.lang.Math\")");
 }
 
 // --- Snapshot test ---

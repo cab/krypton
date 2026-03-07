@@ -1,0 +1,50 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        If:
+          cond:
+            Lit:
+              value:
+                Bool: true
+              span:
+                - 34
+                - 38
+          then_:
+            Lit:
+              value:
+                Int: 42
+              span:
+                - 39
+                - 41
+          else_:
+            App:
+              func:
+                Var:
+                  name: panic
+                  span:
+                    - 43
+                    - 48
+              args:
+                - Lit:
+                    value:
+                      String: oops
+                    span:
+                      - 49
+                      - 55
+              span:
+                - 42
+                - 56
+          span:
+            - 30
+            - 57
+      span:
+        - 13
+        - 59

@@ -31,6 +31,19 @@ pub enum Decl {
         names: Vec<String>,
         span: Span,
     },
+    ExternJava {
+        class_name: String,
+        methods: Vec<ExternMethod>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExternMethod {
+    pub name: String,
+    pub param_types: Vec<TypeExpr>,
+    pub return_type: TypeExpr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
