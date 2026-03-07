@@ -3,11 +3,11 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: output
 ---
 [E0104] Error: cannot pass `buf` to `dup`: `dup` uses its argument multiple times, but `buf` is single-use (`own`)
-   ╭─[ ../../tests/fixtures/m6/qualifier_dup_error.kr:3:48 ]
+   ╭─[ ../../tests/fixtures/m6/qualifier_dup_error.kr:3:75 ]
    │
- 3 │ (def test (fn [buf] [(own String)] String (dup buf)))
-   │                                                ─┬─  
-   │                                                 ╰─── E0104: cannot pass `buf` to `dup`: `dup` uses its argument multiple times, but `buf` is single-use (`own`)
+ 3 │ (def test (fn [buf] [(own String)] (tuple (own String) (own String)) (dup buf)))
+   │                                                                           ─┬─  
+   │                                                                            ╰─── E0104: cannot pass `buf` to `dup`: `dup` uses its argument multiple times, but `buf` is single-use (`own`)
    │ 
    │ Help: `dup` uses parameter `x` more than once, so it cannot accept `own` values. Consider cloning first, or use a function that consumes its argument at most once.
 ───╯
