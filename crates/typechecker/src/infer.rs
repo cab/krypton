@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp};
 
 use crate::scc;
+use crate::trait_registry::{TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{self, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
@@ -1056,6 +1057,108 @@ fn collect_struct_update_info(expr: &TypedExpr, info: &mut HashMap<Span, (String
     }
 }
 
+/// Walk a typed AST looking for calls to trait methods. For each call,
+/// resolve the argument type and verify that a matching instance exists.
+fn check_trait_instances(
+    expr: &TypedExpr,
+    trait_method_map: &HashMap<String, String>,
+    trait_registry: &TraitRegistry,
+    subst: &Substitution,
+) -> Result<(), SpannedTypeError> {
+    match &expr.kind {
+        TypedExprKind::App { func, args } => {
+            // Check if the function being called is a trait method
+            if let TypedExprKind::Var(name) = &func.kind {
+                if let Some(trait_name) = trait_method_map.get(name) {
+                    // Resolve the first argument's type to determine the concrete type
+                    if let Some(first_arg) = args.first() {
+                        let arg_ty = subst.apply(&first_arg.ty);
+                        let concrete_ty = strip_own(&arg_ty);
+                        if trait_registry.find_instance(trait_name, &concrete_ty).is_none() {
+                            return Err(spanned(
+                                TypeError::NoInstance {
+                                    trait_name: trait_name.clone(),
+                                    ty: concrete_ty,
+                                },
+                                expr.span,
+                            ));
+                        }
+                    }
+                }
+            }
+            // Recurse into func and args
+            check_trait_instances(func, trait_method_map, trait_registry, subst)?;
+            for arg in args {
+                check_trait_instances(arg, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::Lambda { body, .. } => {
+            check_trait_instances(body, trait_method_map, trait_registry, subst)?;
+        }
+        TypedExprKind::If { cond, then_, else_ } => {
+            check_trait_instances(cond, trait_method_map, trait_registry, subst)?;
+            check_trait_instances(then_, trait_method_map, trait_registry, subst)?;
+            check_trait_instances(else_, trait_method_map, trait_registry, subst)?;
+        }
+        TypedExprKind::Let { value, body, .. } => {
+            check_trait_instances(value, trait_method_map, trait_registry, subst)?;
+            if let Some(body) = body {
+                check_trait_instances(body, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::Do(exprs) => {
+            for e in exprs {
+                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::Match { scrutinee, arms } => {
+            check_trait_instances(scrutinee, trait_method_map, trait_registry, subst)?;
+            for arm in arms {
+                check_trait_instances(&arm.body, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::FieldAccess { expr: inner, .. } => {
+            check_trait_instances(inner, trait_method_map, trait_registry, subst)?;
+        }
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            check_trait_instances(lhs, trait_method_map, trait_registry, subst)?;
+            check_trait_instances(rhs, trait_method_map, trait_registry, subst)?;
+        }
+        TypedExprKind::UnaryOp { operand, .. } => {
+            check_trait_instances(operand, trait_method_map, trait_registry, subst)?;
+        }
+        TypedExprKind::Tuple(elems) => {
+            for e in elems {
+                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::StructLit { fields, .. } => {
+            for (_, e) in fields {
+                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::StructUpdate { base, fields, .. } => {
+            check_trait_instances(base, trait_method_map, trait_registry, subst)?;
+            for (_, e) in fields {
+                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::LetPattern { value, body, .. } => {
+            check_trait_instances(value, trait_method_map, trait_registry, subst)?;
+            if let Some(body) = body {
+                check_trait_instances(body, trait_method_map, trait_registry, subst)?;
+            }
+        }
+        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+        TypedExprKind::Recur(args) => {
+            for a in args {
+                check_trait_instances(a, trait_method_map, trait_registry, subst)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Infer types for all top-level definitions in a module.
 ///
 /// Uses SCC (strongly connected component) analysis to process definitions
@@ -1083,7 +1186,103 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         }
     }
 
-    // Collect DefFn declarations
+    // Second pass: process DefTrait declarations
+    let mut trait_registry = TraitRegistry::new();
+    for decl in &module.decls {
+        if let Decl::DefTrait { name, type_var, superclasses, methods, span } = decl {
+            let tv_id = gen.fresh();
+            let mut type_param_map = HashMap::new();
+            type_param_map.insert(type_var.clone(), tv_id);
+
+            let mut trait_methods = Vec::new();
+            for method in methods {
+                let param_types: Vec<Type> = method.params.iter().map(|p| {
+                    if let Some(ref ty_expr) = p.ty {
+                        type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
+                    } else {
+                        Type::Var(gen.fresh())
+                    }
+                }).collect();
+                let return_type = if let Some(ref ret_expr) = method.return_type {
+                    type_registry::resolve_type_expr(ret_expr, &type_param_map, &registry)
+                } else {
+                    Type::Var(gen.fresh())
+                };
+
+                // Bind the method as a polymorphic function: forall a. fn(params) -> ret
+                let fn_ty = Type::Fn(param_types.clone(), Box::new(return_type.clone()));
+                let scheme = TypeScheme { vars: vec![tv_id], ty: fn_ty };
+                env.bind(method.name.clone(), scheme);
+
+                trait_methods.push(TraitMethod {
+                    name: method.name.clone(),
+                    param_types,
+                    return_type,
+                });
+            }
+
+            trait_registry.register_trait(TraitInfo {
+                name: name.clone(),
+                type_var: type_var.clone(),
+                superclasses: superclasses.clone(),
+                methods: trait_methods,
+                span: *span,
+            }).map_err(|e| spanned(e, *span))?;
+        }
+    }
+
+    // Third pass: process DefImpl declarations
+    for decl in &module.decls {
+        if let Decl::DefImpl { trait_name, target_type, methods: _, span, .. } = decl {
+            let empty_map = HashMap::new();
+            let resolved_target = type_registry::resolve_type_expr(target_type, &empty_map, &registry);
+
+            // Orphan check: target must be a user-defined Named type
+            let target_name = match &resolved_target {
+                Type::Named(name, _) => {
+                    if registry.lookup_type(name).is_none() {
+                        return Err(spanned(TypeError::OrphanInstance {
+                            trait_name: trait_name.clone(),
+                            ty: name.clone(),
+                        }, *span));
+                    }
+                    name.clone()
+                }
+                other => {
+                    return Err(spanned(TypeError::OrphanInstance {
+                        trait_name: trait_name.clone(),
+                        ty: format!("{}", other),
+                    }, *span));
+                }
+            };
+
+            let method_names: Vec<String> = if let Decl::DefImpl { methods, .. } = decl {
+                methods.iter().map(|m| m.name.clone()).collect()
+            } else {
+                Vec::new()
+            };
+
+            let instance = InstanceInfo {
+                trait_name: trait_name.clone(),
+                target_type: resolved_target,
+                target_type_name: target_name,
+                methods: method_names,
+                span: *span,
+            };
+
+            // Superclass check before registering
+            trait_registry.check_superclasses(&instance)
+                .map_err(|e| spanned(e, *span))?;
+
+            trait_registry.register_instance(instance)
+                .map_err(|e| spanned(e, *span))?;
+        }
+    }
+
+    // Collect the mapping of trait method names → trait names for post-inference resolution
+    let trait_method_map: HashMap<String, String> = trait_registry.trait_method_names().into_iter().collect();
+
+    // Collect DefFn declarations (includes impl method bodies for type checking)
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
         .iter()
@@ -1171,6 +1370,15 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             let scheme = generalize(&final_ty, &empty_env, &subst);
             env.bind(fn_decls[idx].name.clone(), scheme.clone());
             result_schemes[idx] = Some(scheme);
+        }
+    }
+
+    // Post-inference instance resolution: check that all trait method calls have instances
+    if !trait_method_map.is_empty() {
+        for body in fn_bodies.iter() {
+            if let Some(body) = body {
+                check_trait_instances(body, &trait_method_map, &trait_registry, &subst)?;
+            }
         }
     }
 

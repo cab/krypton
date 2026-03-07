@@ -10,7 +10,7 @@ use chumsky::prelude::*;
 
 fn has_module_decls(source: &str) -> bool {
     let (module, _) = parse(source);
-    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_)))
+    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_) | Decl::DefTrait { .. } | Decl::DefImpl { .. }))
 }
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
@@ -123,4 +123,9 @@ fn m3_fixtures() {
 #[test]
 fn m6_fixtures() {
     run_fixtures("m6");
+}
+
+#[test]
+fn m8_fixtures() {
+    run_fixtures("m8");
 }

@@ -1,0 +1,6 @@
+# expect: error E0302
+(trait Eq [a]
+  (def eq [a a] Bool))
+
+(impl Eq Int
+  (def eq [x y] (== x y)))

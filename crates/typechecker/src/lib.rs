@@ -3,6 +3,7 @@ pub mod exhaustiveness;
 pub mod infer;
 pub mod ownership;
 pub mod scc;
+pub mod trait_registry;
 pub mod type_registry;
 pub mod typed_ast;
 pub mod types;

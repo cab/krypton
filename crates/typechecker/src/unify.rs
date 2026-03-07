@@ -20,6 +20,9 @@ pub enum TypeErrorCode {
     E0102, // Value may have been moved in a branch
     E0103, // Capture of moved value
     E0104, // Qualifier mismatch
+    E0301, // No trait instance
+    E0302, // Orphan / duplicate instance
+    E0303, // Missing superclass instance
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -39,6 +42,9 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0102 => write!(f, "E0102"),
             TypeErrorCode::E0103 => write!(f, "E0103"),
             TypeErrorCode::E0104 => write!(f, "E0104"),
+            TypeErrorCode::E0301 => write!(f, "E0301"),
+            TypeErrorCode::E0302 => write!(f, "E0302"),
+            TypeErrorCode::E0303 => write!(f, "E0303"),
         }
     }
 }
@@ -61,6 +67,9 @@ pub enum TypeError {
     CapturedMoved { name: String },
     QualifierMismatch { name: String, callee: String, param: String },
     UnsupportedExpr { description: String },
+    NoInstance { trait_name: String, ty: Type },
+    OrphanInstance { trait_name: String, ty: String },
+    MissingSuperclass { trait_name: String, superclass: String, ty: String },
 }
 
 impl TypeError {
@@ -82,6 +91,9 @@ impl TypeError {
             TypeError::CapturedMoved { .. } => TypeErrorCode::E0103,
             TypeError::QualifierMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
+            TypeError::NoInstance { .. } => TypeErrorCode::E0301,
+            TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
+            TypeError::MissingSuperclass { .. } => TypeErrorCode::E0303,
         }
     }
 
@@ -148,6 +160,15 @@ impl TypeError {
                 Some(format!("`{callee}` uses parameter `{param}` more than once, so it cannot accept `own` values. Consider cloning first, or use a function that consumes its argument at most once."))
             }
             TypeError::UnsupportedExpr { .. } => None,
+            TypeError::NoInstance { trait_name, ty } => {
+                Some(format!("no implementation of trait `{}` for type `{}`", trait_name, ty))
+            }
+            TypeError::OrphanInstance { trait_name, ty } => {
+                Some(format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty))
+            }
+            TypeError::MissingSuperclass { trait_name, superclass, ty } => {
+                Some(format!("trait `{}` requires `{}` to be implemented for `{}` first", trait_name, superclass, ty))
+            }
         }
     }
 }
@@ -203,6 +224,15 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
+            }
+            TypeError::NoInstance { trait_name, ty } => {
+                write!(f, "no instance of trait `{}` for type `{}`", trait_name, ty)
+            }
+            TypeError::OrphanInstance { trait_name, ty } => {
+                write!(f, "orphan instance: cannot implement `{}` for `{}`", trait_name, ty)
+            }
+            TypeError::MissingSuperclass { trait_name, superclass, ty } => {
+                write!(f, "missing superclass: `{}` requires `{}` for `{}`", trait_name, superclass, ty)
             }
         }
     }

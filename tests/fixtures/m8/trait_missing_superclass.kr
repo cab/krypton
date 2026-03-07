@@ -1,0 +1,11 @@
+# expect: error E0303
+(type Point (record (x Int) (y Int)))
+
+(trait Eq [a]
+  (def eq [a a] Bool))
+
+(trait Ord [a] : [Eq]
+  (def compare [a a] Int))
+
+(impl Ord Point
+  (def compare [x y] 0))

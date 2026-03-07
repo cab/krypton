@@ -1,0 +1,8 @@
+# expect: error E0301
+(type Point (record (x Int) (y Int)))
+
+(trait Eq [a]
+  (def eq [a a] Bool))
+
+(def main (fn []
+  (eq (Point 1 2) (Point 1 2))))
