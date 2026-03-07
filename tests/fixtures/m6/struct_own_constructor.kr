@@ -1,0 +1,3 @@
+(type Point (record (x Int) (y Int)))
+(def f (fn [] [] (own Point) (Point (x 1) (y 2))))
+(def main () (. (f) x))

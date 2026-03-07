@@ -1,0 +1,3 @@
+(type Option (sum (Some a) (None)))
+(def f (fn [] [] (own (Option Int)) (Some 42)))
+(def main () (match (f) ((Some x) x) ((None) 0)))

@@ -3,5 +3,5 @@ source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
 len: fn(String) -> Int
-consume: fn(own String) -> own String
-test: fn(own String) -> own String
+consume: fn(own String) -> String
+test: fn(own String) -> String

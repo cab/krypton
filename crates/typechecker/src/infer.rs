@@ -8,6 +8,16 @@ use crate::typed_ast::{self, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchAr
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
+/// Strip `Own` wrapper from non-function types.
+/// Used at consumption sites (binary ops, if conditions, etc.) where
+/// the ownership wrapper is not meaningful.
+fn strip_own(ty: &Type) -> Type {
+    match ty {
+        Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => *inner.clone(),
+        other => other.clone(),
+    }
+}
+
 /// Attempt call-site own→T coercion: if an arg is `Own(inner)` and the
 /// corresponding param is a concrete non-Own, non-Var type, strip the Own wrapper.
 fn coerce_own_args(func_ty: &Type, arg_types: &[Type], subst: &Substitution) -> Vec<Type> {
@@ -152,13 +162,20 @@ fn infer_expr_inner(
                 Lit::String(_) => Type::String,
                 Lit::Unit => Type::Unit,
             };
-            Ok(TypedExpr { kind: TypedExprKind::Lit(value.clone()), ty, span: *span })
+            Ok(TypedExpr { kind: TypedExprKind::Lit(value.clone()), ty: Type::Own(Box::new(ty)), span: *span })
         }
 
         Expr::Var { name, span, .. } => match env.lookup(name) {
             Some(scheme) => {
                 let scheme = scheme.clone();
                 let ty = scheme.instantiate(&mut || gen.fresh());
+                let ty = if !matches!(&ty, Type::Fn(_, _))
+                    && registry.is_some_and(|r| r.is_constructor(name))
+                {
+                    Type::Own(Box::new(ty))
+                } else {
+                    ty
+                };
                 Ok(TypedExpr { kind: TypedExprKind::Var(name.clone()), ty, span: *span })
             }
             None => Err(spanned(
@@ -252,6 +269,7 @@ fn infer_expr_inner(
                     err
                 })?;
             let ty = subst.apply(&ret_var);
+            let ty = if is_constructor { Type::Own(Box::new(ty)) } else { ty };
             Ok(TypedExpr {
                 kind: TypedExprKind::App { func: Box::new(func_typed), args: args_typed },
                 ty,
@@ -364,7 +382,7 @@ fn infer_expr_inner(
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                     unify(&lhs_typed.ty, &rhs_typed.ty, subst)
                         .map_err(|e| spanned(e, *span))?;
-                    let resolved = subst.apply(&lhs_typed.ty);
+                    let resolved = strip_own(&subst.apply(&lhs_typed.ty));
                     match &resolved {
                         Type::Int | Type::Float => resolved,
                         Type::Var(_) => {
@@ -378,7 +396,7 @@ fn infer_expr_inner(
                 BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                     unify(&lhs_typed.ty, &rhs_typed.ty, subst)
                         .map_err(|e| spanned(e, *span))?;
-                    let resolved = subst.apply(&lhs_typed.ty);
+                    let resolved = strip_own(&subst.apply(&lhs_typed.ty));
                     match &resolved {
                         Type::Int | Type::Float => {}
                         Type::Var(_) => {
@@ -407,7 +425,7 @@ fn infer_expr_inner(
             let operand_typed = infer_expr_inner(operand, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
             let ty = match op {
                 UnaryOp::Neg => {
-                    let resolved = subst.apply(&operand_typed.ty);
+                    let resolved = strip_own(&subst.apply(&operand_typed.ty));
                     match &resolved {
                         Type::Int | Type::Float => resolved,
                         Type::Var(_) => {
@@ -632,7 +650,7 @@ fn infer_expr_inner(
                             name: name.clone(),
                             fields: typed_fields,
                         },
-                        ty: struct_ty,
+                        ty: Type::Own(Box::new(struct_ty)),
                         span: *span,
                     })
                 }
@@ -1188,25 +1206,28 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             let body_ty = subst.apply(&body_typed.ty);
 
             // Enforce return type annotation if present
-            if let Some(ref ret_ty_expr) = decl.return_type {
+            let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
                 let empty_map = HashMap::new();
                 let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &empty_map, &registry);
-                // Coerce own T → T: if body returns Own(inner) and annotation is non-Own, strip Own
-                let coerced_body_ty = match (&body_ty, &annotated_ret) {
-                    (Type::Own(inner), t) if !matches!(t, Type::Own(_) | Type::Var(_)) => {
-                        if !matches!(inner.as_ref(), Type::Fn(_, _)) {
-                            *inner.clone()
-                        } else {
-                            body_ty.clone()
-                        }
+                // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
+                // Bare `T` cannot be upgraded to `own T` — ownership must come from a literal,
+                // constructor, or another `own` source.
+                if let Type::Own(ref inner) = annotated_ret {
+                    if !matches!(inner.as_ref(), Type::Fn(_, _)) && !matches!(body_ty, Type::Own(_)) {
+                        return Err(spanned(
+                            TypeError::Mismatch { expected: annotated_ret.clone(), actual: body_ty.clone() },
+                            decl.span,
+                        ));
                     }
-                    _ => body_ty.clone(),
-                };
-                unify(&coerced_body_ty, &annotated_ret, &mut subst)
+                }
+                unify(&body_ty, &annotated_ret, &mut subst)
                     .map_err(|e| spanned(e, decl.span))?;
-            }
+                subst.apply(&annotated_ret)
+            } else {
+                strip_own(&body_ty)
+            };
 
-            let fn_ty = Type::Fn(param_types, Box::new(body_ty));
+            let fn_ty = Type::Fn(param_types, Box::new(ret_ty));
             unify(tv, &fn_ty, &mut subst)
                 .map_err(|e| spanned(e, decl.span))?;
 

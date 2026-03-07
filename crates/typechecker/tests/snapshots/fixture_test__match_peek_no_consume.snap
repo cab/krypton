@@ -5,5 +5,5 @@ expression: snapshot
 A: Choice
 B: Choice
 peek: fn(String) -> Choice
-consume: fn(own String) -> own String
-test: fn(own String) -> own String
+consume: fn(own String) -> String
+test: fn(own String) -> String

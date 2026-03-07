@@ -2,12 +2,12 @@
 source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"(42 1)\")"
 ---
-[E0004] Error: not a function: type Int is not callable
+[E0004] Error: not a function: type own Int is not callable
    ╭─[ test.kr:1:1 ]
    │
  1 │ (42 1)
    │ ───┬──  
-   │    ╰──── E0004: not a function: type Int is not callable
+   │    ╰──── E0004: not a function: type own Int is not callable
    │ 
-   │ Help: the expression has type `Int`, which is not callable
+   │ Help: the expression has type `own Int`, which is not callable
 ───╯

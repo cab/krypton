@@ -2,5 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-is_even: fn(own Int) -> Bool
-is_odd: fn(Int) -> own Bool
+Box: fn(String) -> Box
+bad: fn(own String) -> Box

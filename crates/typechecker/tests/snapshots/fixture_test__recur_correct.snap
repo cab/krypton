@@ -2,4 +2,4 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-countdown: fn(Int) -> Int
+countdown: fn(own Int) -> Int

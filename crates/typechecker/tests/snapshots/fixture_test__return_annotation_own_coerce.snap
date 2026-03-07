@@ -2,4 +2,4 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-f: fn(own String) -> own String
+f: fn(own String) -> String

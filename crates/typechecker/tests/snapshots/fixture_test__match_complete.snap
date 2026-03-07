@@ -4,4 +4,4 @@ expression: snapshot
 ---
 Some: forall a. fn(a) -> Option<a>
 None: forall a. Option<a>
-test: fn(Option<Int>) -> Int
+test: fn(Option<own Int>) -> Int

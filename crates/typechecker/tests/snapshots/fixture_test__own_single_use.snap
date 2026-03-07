@@ -2,5 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-consume: fn(own String) -> own String
-good: fn(own String) -> own String
+consume: fn(own String) -> String
+good: fn(own String) -> String

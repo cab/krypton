@@ -319,6 +319,27 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
 
         // Own types
         (Type::Own(a), Type::Own(b)) => unify(a, b, subst),
+        // own T ↔ T coercion for non-function types.
+        //
+        // Design note: Literals and constructors produce `own T` to indicate
+        // freshly-created, owned values.  Rather than strip `Own` at every
+        // consumption site (binary ops, if-branches, generic args, …) we let
+        // unification treat `own T` and `T` as equivalent for non-function
+        // types.  This mirrors the `linear ≤ unrestricted` subtyping found
+        // in Linear Haskell and Clean's uniqueness types.
+        //
+        // Function types are excluded: `own fn(…)` (affine closure) must NOT
+        // silently coerce to `fn(…)` — that distinction is load-bearing for
+        // the linearity checker.
+        //
+        // Fabrication guard (`T → own T` at return sites) is enforced
+        // separately in `infer.rs` before calling `unify`, so this symmetric
+        // rule does not weaken ownership guarantees.
+        (Type::Own(inner), other) | (other, Type::Own(inner))
+            if !matches!(inner.as_ref(), Type::Fn(_, _)) =>
+        {
+            unify(inner, &other, subst)
+        }
 
         // Tuple types
         (Type::Tuple(e1), Type::Tuple(e2)) => {

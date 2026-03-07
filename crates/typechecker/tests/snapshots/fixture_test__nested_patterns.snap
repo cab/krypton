@@ -6,5 +6,5 @@ Some: forall a. fn(a) -> Option<a>
 None: forall a. Option<a>
 Cons: forall b. fn(b, List<b>) -> List<b>
 Nil: forall b. List<b>
-unwrap_nested: fn(Option<Option<Int>>) -> Int
+unwrap_nested: fn(Option<Option<own Int>>) -> Int
 first_two: fn(List<Int>) -> Int

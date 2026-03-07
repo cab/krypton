@@ -30,17 +30,17 @@ fn infer(src: &str) -> String {
 
 #[test]
 fn infer_int_literal() {
-    insta::assert_snapshot!(infer("42"), @"Int");
+    insta::assert_snapshot!(infer("42"), @"own Int");
 }
 
 #[test]
 fn infer_bool_literal() {
-    insta::assert_snapshot!(infer("true"), @"Bool");
+    insta::assert_snapshot!(infer("true"), @"own Bool");
 }
 
 #[test]
 fn infer_string_literal() {
-    insta::assert_snapshot!(infer("\"hello\""), @"String");
+    insta::assert_snapshot!(infer("\"hello\""), @"own String");
 }
 
 #[test]
@@ -50,17 +50,17 @@ fn infer_identity_lambda() {
 
 #[test]
 fn infer_const_lambda() {
-    insta::assert_snapshot!(infer("(fn [x] 42)"), @"forall a. fn(a) -> Int");
+    insta::assert_snapshot!(infer("(fn [x] 42)"), @"forall a. fn(a) -> own Int");
 }
 
 #[test]
 fn infer_let_id_applied() {
-    insta::assert_snapshot!(infer("(do (let id (fn [x] x)) (id 42))"), @"Int");
+    insta::assert_snapshot!(infer("(do (let id (fn [x] x)) (id 42))"), @"own Int");
 }
 
 #[test]
 fn infer_if_int() {
-    insta::assert_snapshot!(infer("(if true 1 2)"), @"Int");
+    insta::assert_snapshot!(infer("(if true 1 2)"), @"own Int");
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn infer_application() {
 
 #[test]
 fn infer_do_block() {
-    insta::assert_snapshot!(infer("(do 1 2 3)"), @"Int");
+    insta::assert_snapshot!(infer("(do 1 2 3)"), @"own Int");
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn infer_nested_let() {
 
 #[test]
 fn infer_let_polymorphism() {
-    insta::assert_snapshot!(infer("(do (let id (fn [x] x)) (let a (id 1)) (id true))"), @"Bool");
+    insta::assert_snapshot!(infer("(do (let id (fn [x] x)) (let a (id 1)) (id true))"), @"own Bool");
 }
 
 #[test]
@@ -133,17 +133,17 @@ fn infer_undefined_variable() {
 
 #[test]
 fn infer_shadowing() {
-    insta::assert_snapshot!(infer("(do (let x 1) (let x true) x)"), @"Bool");
+    insta::assert_snapshot!(infer("(do (let x 1) (let x true) x)"), @"own Bool");
 }
 
 #[test]
 fn infer_forward_reference() {
     insta::assert_snapshot!(
         infer_module_types("(def f (fn [x] (g x))) (def g (fn [x] (+ x 1)))"),
-        @r#"
-    f: fn(Int) -> Int
-    g: fn(Int) -> Int
-    "#
+        @"
+    f: fn(own Int) -> Int
+    g: fn(own Int) -> Int
+    "
     );
 }
 
@@ -164,10 +164,10 @@ fn infer_module_basic() {
 fn infer_module_forward_ref() {
     insta::assert_snapshot!(
         infer_module_types("(def f (fn [x] (g x))) (def g (fn [x] (+ x 1)))"),
-        @r#"
-    f: fn(Int) -> Int
-    g: fn(Int) -> Int
-    "#
+        @"
+    f: fn(own Int) -> Int
+    g: fn(own Int) -> Int
+    "
     );
 }
 
@@ -178,10 +178,10 @@ fn infer_mutual_recursion() {
             "(def is_even (fn [n] (if (== n 0) true (is_odd (- n 1))))) \
              (def is_odd (fn [n] (if (== n 0) false (is_even (- n 1)))))"
         ),
-        @r#"
-    is_even: fn(Int) -> Bool
-    is_odd: fn(Int) -> Bool
-    "#
+        @"
+    is_even: fn(own Int) -> Bool
+    is_odd: fn(Int) -> own Bool
+    "
     );
 }
 
@@ -398,12 +398,12 @@ fn infer_match_nested_constructor() {
 
 #[test]
 fn infer_tuple_creation() {
-    insta::assert_snapshot!(infer("(tuple 1 \"hi\")"), @"(Int, String)");
+    insta::assert_snapshot!(infer("(tuple 1 \"hi\")"), @"(own Int, own String)");
 }
 
 #[test]
 fn infer_tuple_nested() {
-    insta::assert_snapshot!(infer("(tuple 1 (tuple true \"x\"))"), @"(Int, (Bool, String))");
+    insta::assert_snapshot!(infer("(tuple 1 (tuple true \"x\"))"), @"(own Int, (own Bool, own String))");
 }
 
 #[test]
@@ -418,7 +418,7 @@ fn infer_tuple_in_match() {
 
 #[test]
 fn infer_let_destructure_tuple() {
-    insta::assert_snapshot!(infer("(do (let (tuple a b) (tuple 1 \"hi\")) a)"), @"Int");
+    insta::assert_snapshot!(infer("(do (let (tuple a b) (tuple 1 \"hi\")) a)"), @"own Int");
 }
 
 #[test]
@@ -459,7 +459,7 @@ fn test_exhaustive_complete() {
         @"
     Some: forall a. fn(a) -> Option<a>
     None: forall a. Option<a>
-    unwrap: fn(Option<Int>) -> Int
+    unwrap: fn(Option<own Int>) -> Int
     "
     );
 }
@@ -529,7 +529,11 @@ fn infer_call_site_coercion_no_collection() {
             "(type MyList (| (Cons String MyList) Nil)) \
              (def test (fn [buf] [(own String)] MyList (Cons buf Nil)))"
         ),
-        @"TypeError: type mismatch: expected String, found own String"
+        @"
+    Cons: fn(String, MyList) -> MyList
+    Nil: MyList
+    test: fn(own String) -> MyList
+    "
     );
 }
 

@@ -480,6 +480,7 @@ impl Compiler {
                     Ok(JvmType::StructRef(self.refs.object_class))
                 }
             }
+            Type::Own(inner) => self.type_to_jvm(inner),
             other => type_to_jvm_basic(other),
         }
     }

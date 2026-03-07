@@ -108,7 +108,7 @@ fn own_fn_vs_fn_help_text() {
 
 #[test]
 fn own_t_vs_t_help_text() {
-    let src = "(type Box (record (value String)))\n(def bad (fn [x] [(own String)] Box (Box x)))";
+    let src = "(def bad (fn [x] [String] (own String) x))";
     let output = render_module_error(src);
     assert!(
         output.contains("own"),
