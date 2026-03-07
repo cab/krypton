@@ -1179,6 +1179,26 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
 
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
             let body_ty = subst.apply(&body_typed.ty);
+
+            // Enforce return type annotation if present
+            if let Some(ref ret_ty_expr) = decl.return_type {
+                let empty_map = HashMap::new();
+                let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &empty_map, &registry);
+                // Coerce own T → T: if body returns Own(inner) and annotation is non-Own, strip Own
+                let coerced_body_ty = match (&body_ty, &annotated_ret) {
+                    (Type::Own(inner), t) if !matches!(t, Type::Own(_) | Type::Var(_)) => {
+                        if !matches!(inner.as_ref(), Type::Fn(_, _)) {
+                            *inner.clone()
+                        } else {
+                            body_ty.clone()
+                        }
+                    }
+                    _ => body_ty.clone(),
+                };
+                unify(&coerced_body_ty, &annotated_ret, &mut subst)
+                    .map_err(|e| spanned(e, decl.span))?;
+            }
+
             let fn_ty = Type::Fn(param_types, Box::new(body_ty));
             unify(tv, &fn_ty, &mut subst)
                 .map_err(|e| spanned(e, decl.span))?;
