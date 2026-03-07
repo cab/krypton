@@ -69,7 +69,7 @@ pub enum TypeError {
     UnsupportedExpr { description: String },
     NoInstance { trait_name: String, ty: Type },
     OrphanInstance { trait_name: String, ty: String },
-    MissingSuperclass { trait_name: String, superclass: String, ty: String },
+    TraitNotImplemented { trait_name: String, ty: String, required_by: String },
 }
 
 impl TypeError {
@@ -93,7 +93,7 @@ impl TypeError {
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
             TypeError::NoInstance { .. } => TypeErrorCode::E0301,
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
-            TypeError::MissingSuperclass { .. } => TypeErrorCode::E0303,
+            TypeError::TraitNotImplemented { .. } => TypeErrorCode::E0303,
         }
     }
 
@@ -166,8 +166,8 @@ impl TypeError {
             TypeError::OrphanInstance { trait_name, ty } => {
                 Some(format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty))
             }
-            TypeError::MissingSuperclass { trait_name, superclass, ty } => {
-                Some(format!("trait `{}` requires `{}` to be implemented for `{}` first", trait_name, superclass, ty))
+            TypeError::TraitNotImplemented { required_by, .. } => {
+                Some(format!("required by a bound in `{}`", required_by))
             }
         }
     }
@@ -231,8 +231,8 @@ impl fmt::Display for TypeError {
             TypeError::OrphanInstance { trait_name, ty } => {
                 write!(f, "orphan instance: cannot implement `{}` for `{}`", trait_name, ty)
             }
-            TypeError::MissingSuperclass { trait_name, superclass, ty } => {
-                write!(f, "missing superclass: `{}` requires `{}` for `{}`", trait_name, superclass, ty)
+            TypeError::TraitNotImplemented { trait_name, ty, .. } => {
+                write!(f, "the trait `{}` is not implemented for `{}`", trait_name, ty)
             }
         }
     }

@@ -90,10 +90,10 @@ impl TraitRegistry {
         };
         for superclass in &trait_info.superclasses {
             if self.find_instance(superclass, &instance.target_type).is_none() {
-                return Err(TypeError::MissingSuperclass {
-                    trait_name: instance.trait_name.clone(),
-                    superclass: superclass.clone(),
+                return Err(TypeError::TraitNotImplemented {
+                    trait_name: superclass.clone(),
                     ty: instance.target_type_name.clone(),
+                    required_by: instance.trait_name.clone(),
                 });
             }
         }
