@@ -518,6 +518,7 @@ fn infer_expr_inner(
                     body: body_typed,
                 });
             }
+            let match_ty = subst.apply(&match_ty);
             crate::exhaustiveness::check_exhaustiveness(
                 &match_ty,
                 arms,
