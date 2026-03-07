@@ -1,0 +1,10 @@
+# expect: error E0101
+(type Choice (| A B))
+(def classify (fn [s] [(own String)] Choice A))
+(def consume (fn [s] [(own String)] String s))
+(def test (fn [x] [(own String)] String
+  (do
+    (match (classify x)
+      ((A) "a")
+      ((B) "b"))
+    (consume x))))

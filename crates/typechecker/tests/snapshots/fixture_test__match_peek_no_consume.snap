@@ -1,0 +1,9 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+A: Choice
+B: Choice
+peek: fn(String) -> Choice
+consume: fn(own String) -> own String
+test: fn(own String) -> own String
