@@ -1,0 +1,9 @@
+# expect: error E0101
+(type Option [a] (| (Some a) None))
+(def consume (fn [x] [(own (Option String))] String "done"))
+(def test (fn [x] [(own (Option String))] String
+  (do
+    (match x
+      ((Some s) s)
+      ((None) "none"))
+    (consume x))))

@@ -499,11 +499,17 @@ fn infer_expr_inner(
 
         Expr::Match { scrutinee, arms, span } => {
             let scrutinee_typed = infer_expr_inner(scrutinee, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let scrutinee_ty = subst.apply(&scrutinee_typed.ty);
+            // Unwrap Own wrapper — match works on the inner type
+            let match_ty = match &scrutinee_ty {
+                Type::Own(inner) => inner.as_ref().clone(),
+                other => other.clone(),
+            };
             let result_ty = Type::Var(gen.fresh());
             let mut typed_arms = Vec::new();
             for arm in arms {
                 env.push_scope();
-                check_pattern(&arm.pattern, &subst.apply(&scrutinee_typed.ty), env, subst, gen, registry, *span)?;
+                check_pattern(&arm.pattern, &match_ty, env, subst, gen, registry, *span)?;
                 let body_typed = infer_expr_inner(&arm.body, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
                 unify(&result_ty, &body_typed.ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
@@ -513,7 +519,7 @@ fn infer_expr_inner(
                 });
             }
             crate::exhaustiveness::check_exhaustiveness(
-                &subst.apply(&scrutinee_typed.ty),
+                &match_ty,
                 arms,
                 registry,
                 *span,

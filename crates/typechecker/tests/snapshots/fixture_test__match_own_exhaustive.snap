@@ -1,0 +1,8 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+Red: Color
+Green: Color
+Blue: Color
+test: fn(own Color) -> Int

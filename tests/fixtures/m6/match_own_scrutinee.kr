@@ -1,0 +1,6 @@
+# expect: ok
+(type Option [a] (| (Some a) None))
+(def test (fn [x] [(own (Option String))] String
+  (match x
+    ((Some s) s)
+    ((None) "default"))))
