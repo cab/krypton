@@ -1,15 +1,19 @@
 use crate::types::{Type, TypeEnv, TypeScheme, TypeVarGen};
 
 pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen) {
-    // println: fn(String) -> Unit
-    env.bind("println".to_string(), TypeScheme::mono(
-        Type::Fn(vec![Type::String], Box::new(Type::Unit))
-    ));
+    // println: forall a. fn(a) -> Unit
+    let a_println = gen.fresh();
+    env.bind("println".to_string(), TypeScheme {
+        vars: vec![a_println],
+        ty: Type::Fn(vec![Type::Var(a_println)], Box::new(Type::Unit)),
+    });
 
-    // print: fn(String) -> Unit
-    env.bind("print".to_string(), TypeScheme::mono(
-        Type::Fn(vec![Type::String], Box::new(Type::Unit))
-    ));
+    // print: forall a. fn(a) -> Unit
+    let a_print = gen.fresh();
+    env.bind("print".to_string(), TypeScheme {
+        vars: vec![a_print],
+        ty: Type::Fn(vec![Type::Var(a_print)], Box::new(Type::Unit)),
+    });
 
     // panic: forall a. fn(String) -> a
     let a = gen.fresh();

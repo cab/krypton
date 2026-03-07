@@ -1,0 +1,2 @@
+# expect: output hello
+(def main (fn [] (println "hello")))

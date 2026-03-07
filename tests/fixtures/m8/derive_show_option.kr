@@ -1,3 +1,3 @@
 # expect: output Some(42)
 (type Option [a] (| (Some a) None) deriving [Show])
-(def main (fn [] (show (Some 42))))
+(def main (fn [] (println (show (Some 42)))))

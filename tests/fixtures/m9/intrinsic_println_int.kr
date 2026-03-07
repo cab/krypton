@@ -1,0 +1,2 @@
+# expect: output 42
+(def main (fn [] (println 42)))

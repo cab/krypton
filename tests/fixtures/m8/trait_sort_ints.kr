@@ -2,4 +2,4 @@
 (trait Cmp [a] (def compare [a a] Int))
 (impl Cmp Int
   (def compare [x y] (if (< x y) (- 0 1) (if (> x y) 1 0))))
-(def main (fn [] (compare 1 2)))
+(def main (fn [] (println (compare 1 2))))

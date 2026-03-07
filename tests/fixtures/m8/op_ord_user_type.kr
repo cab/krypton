@@ -6,4 +6,4 @@
 (trait Ord [a] : [Eq] (def lt [a a] Bool))
 (impl Ord Wrapper
   (def lt [a b] (< (. a val) (. b val))))
-(def main (fn [] (lt (Wrapper 1) (Wrapper 2))))
+(def main (fn [] (println (lt (Wrapper 1) (Wrapper 2)))))

@@ -2,4 +2,4 @@
 (type A (record (x Int)) deriving [Eq])
 (type B (record (y Int)) deriving [Eq])
 (def same (fn [x y] (eq x y)))
-(def main (fn [] (if (same (A 1) (A 1)) (same (B 2) (B 2)) false)))
+(def main (fn [] (println (if (same (A 1) (A 1)) (same (B 2) (B 2)) false))))

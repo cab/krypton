@@ -1,2 +1,2 @@
 # expect: output 15
-(def main (fn [] (do (let y 10) (let f (fn [x] (+ x y))) (f 5))))
+(def main (fn [] (do (let y 10) (let f (fn [x] (+ x y))) (println (f 5)))))

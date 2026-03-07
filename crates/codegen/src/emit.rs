@@ -132,6 +132,22 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
     }
 }
 
+/// Check if a function name is a compiler intrinsic.
+fn is_intrinsic(name: &str) -> bool {
+    matches!(
+        name,
+        "println"
+            | "print"
+            | "panic"
+            | "to_float"
+            | "to_int"
+            | "int_to_string"
+            | "float_to_string"
+            | "string_concat"
+            | "string_length"
+    )
+}
+
 /// Well-known constant pool indices, set once in `new()`, read-only after.
 struct CpoolRefs {
     code_utf8: u16,
@@ -144,6 +160,11 @@ struct CpoolRefs {
     println_double: u16,
     println_bool: u16,
     println_object: u16,
+    print_long: u16,
+    print_string: u16,
+    print_double: u16,
+    print_bool: u16,
+    print_object: u16,
     smt_name: u16,
     string_class: u16,
     ps_class: u16,
@@ -159,6 +180,12 @@ struct CpoolRefs {
     object_class: u16,
     string_concat: u16,
     string_equals: u16,
+    // Intrinsic support
+    runtime_exception_class: u16,
+    runtime_exception_init: u16,
+    string_valueof_long: u16,
+    string_valueof_double: u16,
+    string_length_ref: u16,
 }
 
 /// StackMapTable / verification type tracking.
@@ -403,6 +430,15 @@ impl Compiler {
         let println_object =
             cp.add_method_ref(ps_class, "println", "(Ljava/lang/Object;)V")?;
 
+        // PrintStream.print overloads (no newline)
+        let print_long = cp.add_method_ref(ps_class, "print", "(J)V")?;
+        let print_string =
+            cp.add_method_ref(ps_class, "print", "(Ljava/lang/String;)V")?;
+        let print_double = cp.add_method_ref(ps_class, "print", "(D)V")?;
+        let print_bool = cp.add_method_ref(ps_class, "print", "(Z)V")?;
+        let print_object =
+            cp.add_method_ref(ps_class, "print", "(Ljava/lang/Object;)V")?;
+
         // StackMapTable support
         let smt_name = cp.add_utf8("StackMapTable")?;
         let string_class = cp.add_class("java/lang/String")?;
@@ -433,6 +469,17 @@ impl Compiler {
         let string_equals =
             cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
 
+        // Intrinsic support
+        let runtime_exception_class = cp.add_class("java/lang/RuntimeException")?;
+        let runtime_exception_init =
+            cp.add_method_ref(runtime_exception_class, "<init>", "(Ljava/lang/String;)V")?;
+        let string_valueof_long =
+            cp.add_method_ref(string_class, "valueOf", "(J)Ljava/lang/String;")?;
+        let string_valueof_double =
+            cp.add_method_ref(string_class, "valueOf", "(D)Ljava/lang/String;")?;
+        let string_length_ref =
+            cp.add_method_ref(string_class, "length", "()I")?;
+
         let compiler = Compiler {
             cp,
             this_class,
@@ -447,6 +494,11 @@ impl Compiler {
                 println_double,
                 println_bool,
                 println_object,
+                print_long,
+                print_string,
+                print_double,
+                print_bool,
+                print_object,
                 smt_name,
                 string_class,
                 ps_class,
@@ -462,6 +514,11 @@ impl Compiler {
                 object_class,
                 string_concat,
                 string_equals,
+                runtime_exception_class,
+                runtime_exception_init,
+                string_valueof_long,
+                string_valueof_double,
+                string_length_ref,
             },
             frame: FrameState {
                 stack_types: Vec::new(),
@@ -569,7 +626,7 @@ impl Compiler {
             TypedExprKind::Let { name, value, body } => self.compile_let(name, value, body, in_tail),
             TypedExprKind::Var(name) => self.compile_var(name),
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
-            TypedExprKind::App { func, args } => self.compile_app(func, args),
+            TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
             TypedExprKind::Recur(args) => self.compile_recur(args, in_tail),
             TypedExprKind::FieldAccess { expr: target, field } => self.compile_field_access(target, field),
             TypedExprKind::LetPattern { .. } => Err(CodegenError::UnsupportedExpr("let-pattern destructuring".into())),
@@ -1100,7 +1157,126 @@ impl Compiler {
         Ok(ty)
     }
 
-    fn compile_app(&mut self, func: &TypedExpr, args: &[TypedExpr]) -> Result<JvmType, CodegenError> {
+    fn compile_print_intrinsic(&mut self, args: &[TypedExpr], use_println: bool) -> Result<JvmType, CodegenError> {
+        // getstatic System.out
+        self.emit(Instruction::Getstatic(self.refs.system_out));
+        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.ps_class });
+
+        // Compile the single argument
+        let arg_type = self.compile_expr(&args[0], false)?;
+
+        // Select the right print/println overload
+        let method_ref = if use_println {
+            match arg_type {
+                JvmType::Long => self.refs.println_long,
+                JvmType::Double => self.refs.println_double,
+                JvmType::Ref => self.refs.println_string,
+                JvmType::Int => self.refs.println_bool,
+                JvmType::StructRef(_) => self.refs.println_object,
+            }
+        } else {
+            match arg_type {
+                JvmType::Long => self.refs.print_long,
+                JvmType::Double => self.refs.print_double,
+                JvmType::Ref => self.refs.print_string,
+                JvmType::Int => self.refs.print_bool,
+                JvmType::StructRef(_) => self.refs.print_object,
+            }
+        };
+
+        self.emit(Instruction::Invokevirtual(method_ref));
+        self.pop_jvm_type(arg_type); // pop the argument
+        self.frame.pop_type(); // pop PrintStream
+
+        // Unit = iconst_0 (bool false)
+        self.emit(Instruction::Iconst_0);
+        self.frame.push_type(VerificationType::Integer);
+        Ok(JvmType::Int)
+    }
+
+    fn compile_intrinsic(&mut self, name: &str, args: &[TypedExpr], result_ty: &Type) -> Result<JvmType, CodegenError> {
+        match name {
+            "println" => self.compile_print_intrinsic(args, true),
+            "print" => self.compile_print_intrinsic(args, false),
+            "panic" => {
+                let re_class = self.refs.runtime_exception_class;
+                let re_init = self.refs.runtime_exception_init;
+                self.emit(Instruction::New(re_class));
+                self.frame.push_type(VerificationType::UninitializedThis);
+                self.emit(Instruction::Dup);
+                self.frame.push_type(VerificationType::UninitializedThis);
+                // Compile the String argument
+                self.compile_expr(&args[0], false)?;
+                // invokespecial RuntimeException.<init>(String)V
+                self.emit(Instruction::Invokespecial(re_init));
+                self.frame.pop_type(); // string arg
+                self.frame.pop_type(); // dup'd uninit
+                self.frame.pop_type(); // original uninit
+                self.emit(Instruction::Athrow);
+                // Push the expected return type onto the frame for verification
+                let jvm_ret = self.type_to_jvm(result_ty)?;
+                self.push_jvm_type(jvm_ret);
+                Ok(jvm_ret)
+            }
+            "to_float" => {
+                self.compile_expr(&args[0], false)?;
+                self.emit(Instruction::L2d);
+                self.frame.pop_type_n(2); // Long + Top
+                self.frame.push_double_type();
+                Ok(JvmType::Double)
+            }
+            "to_int" => {
+                self.compile_expr(&args[0], false)?;
+                self.emit(Instruction::D2l);
+                self.frame.pop_type_n(2); // Double + Top
+                self.frame.push_long_type();
+                Ok(JvmType::Long)
+            }
+            "int_to_string" => {
+                self.compile_expr(&args[0], false)?;
+                let ref_idx = self.refs.string_valueof_long;
+                self.emit(Instruction::Invokestatic(ref_idx));
+                self.frame.pop_type_n(2); // Long + Top
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                Ok(JvmType::Ref)
+            }
+            "float_to_string" => {
+                self.compile_expr(&args[0], false)?;
+                let ref_idx = self.refs.string_valueof_double;
+                self.emit(Instruction::Invokestatic(ref_idx));
+                self.frame.pop_type_n(2); // Double + Top
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                Ok(JvmType::Ref)
+            }
+            "string_concat" => {
+                // First string (receiver)
+                self.compile_expr(&args[0], false)?;
+                // Second string (argument)
+                self.compile_expr(&args[1], false)?;
+                let concat_ref = self.refs.string_concat;
+                self.emit(Instruction::Invokevirtual(concat_ref));
+                self.frame.pop_type(); // second string
+                self.frame.pop_type(); // first string (receiver)
+                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                Ok(JvmType::Ref)
+            }
+            "string_length" => {
+                self.compile_expr(&args[0], false)?;
+                let len_ref = self.refs.string_length_ref;
+                self.emit(Instruction::Invokevirtual(len_ref));
+                self.frame.pop_type(); // string
+                self.frame.push_type(VerificationType::Integer);
+                // Convert int to long (Krypton Int = JVM long)
+                self.emit(Instruction::I2l);
+                self.frame.pop_type(); // int
+                self.frame.push_long_type();
+                Ok(JvmType::Long)
+            }
+            _ => Err(CodegenError::UnsupportedExpr(format!("unknown intrinsic: {name}"))),
+        }
+    }
+
+    fn compile_app(&mut self, func: &TypedExpr, args: &[TypedExpr], result_ty: &Type) -> Result<JvmType, CodegenError> {
         let name = match &func.kind {
             TypedExprKind::Var(name) => name.as_str(),
             other => {
@@ -1109,6 +1285,11 @@ impl Compiler {
                 )))
             }
         };
+
+        // Check if this is an intrinsic function call
+        if is_intrinsic(name) {
+            return self.compile_intrinsic(name, args, result_ty);
+        }
 
         // Check if this is a struct constructor call
         if let Some(si) = self.types.struct_info.get(name) {
@@ -3627,7 +3808,7 @@ pub fn compile_module(
         extra_methods.push(method);
     }
 
-    // Build JVM main(String[])V — calls krypton_main and prints the result
+    // Build JVM main(String[])V — calls krypton_main and discards the result
     let main_info = compiler.types.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
     let krypton_main_ref = main_info.method_ref;
     let main_return_type = main_info.return_type;
@@ -3639,30 +3820,21 @@ pub fn compile_module(
         cpool_index: string_arr_class,
     }];
 
-    // Emit: getstatic System.out
-    let system_out = compiler.refs.system_out;
-    compiler.emit(Instruction::Getstatic(system_out));
-    compiler.frame.push_type(VerificationType::Object {
-        cpool_index: compiler.refs.ps_class,
-    });
-
     // Call krypton_main
     compiler.emit(Instruction::Invokestatic(krypton_main_ref));
     compiler.push_jvm_type(main_return_type);
 
-    // Emit the appropriate println call
-    let println_ref = match main_return_type {
-        JvmType::Long => compiler.refs.println_long,
-        JvmType::Double => compiler.refs.println_double,
-        JvmType::Ref => compiler.refs.println_string,
-        JvmType::Int => compiler.refs.println_bool,
-        JvmType::StructRef(_) => compiler.refs.println_object,
-    };
-    compiler.emit(Instruction::Invokevirtual(println_ref));
-
-    // Pop println args + PrintStream from stack tracker
-    compiler.pop_jvm_type(main_return_type);
-    compiler.frame.pop_type(); // PrintStream
+    // Discard the return value
+    match main_return_type {
+        JvmType::Long | JvmType::Double => {
+            compiler.emit(Instruction::Pop2);
+            compiler.frame.pop_type_n(2);
+        }
+        JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => {
+            compiler.emit(Instruction::Pop);
+            compiler.frame.pop_type();
+        }
+    }
 
     compiler.emit(Instruction::Return);
 

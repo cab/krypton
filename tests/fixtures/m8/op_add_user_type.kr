@@ -4,4 +4,4 @@
 (impl Add Vec2
   (def add [a b] (Vec2 (+ (. a x) (. b x)) (+ (. a y) (. b y)))))
 (def main (fn []
-  (. (add (Vec2 1 1) (Vec2 3 2)) x)))
+  (println (. (add (Vec2 1 1) (Vec2 3 2)) x))))

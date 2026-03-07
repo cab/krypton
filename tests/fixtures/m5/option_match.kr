@@ -4,4 +4,4 @@
   (match opt
     ((Some x) x)
     ((None) default))))
-(def main (fn [] (unwrap_or (Some 42) 0)))
+(def main (fn [] (println (unwrap_or (Some 42) 0))))

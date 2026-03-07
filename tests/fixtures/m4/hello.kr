@@ -1,2 +1,2 @@
-# expect: output "hello world"
-(def main (fn [] "hello world"))
+# expect: output hello world
+(def main (fn [] (println "hello world")))

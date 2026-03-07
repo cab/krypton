@@ -1,0 +1,2 @@
+# expect: output 3
+(def main (fn [] (println (string_length (string_concat (int_to_string (to_int (to_float 1))) "ab")))))

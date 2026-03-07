@@ -4,4 +4,4 @@
 (impl Eq Point
   (def eq [x y] (if (== (. x x) (. y x)) (== (. x y) (. y y)) false)))
 (def are_equal (fn [x y] (eq x y)))
-(def main (fn [] (are_equal (Point 1 2) (Point 1 2))))
+(def main (fn [] (println (are_equal (Point 1 2) (Point 1 2)))))

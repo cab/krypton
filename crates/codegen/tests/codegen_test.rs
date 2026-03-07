@@ -37,18 +37,18 @@ fn run_program(source: &str) -> String {
 
 #[test]
 fn test_int_addition() {
-    assert_eq!(run_program("(def main (fn [] (+ 1 2)))"), "3");
+    assert_eq!(run_program("(def main (fn [] (println (+ 1 2))))"), "3");
 }
 
 #[test]
 fn test_int_arithmetic() {
-    assert_eq!(run_program("(def main (fn [] (- (* 3 4) 2)))"), "10");
+    assert_eq!(run_program("(def main (fn [] (println (- (* 3 4) 2))))"), "10");
 }
 
 #[test]
 fn test_if_eq_string() {
     assert_eq!(
-        run_program(r#"(def main (fn [] (if (== 1 1) "yes" "no")))"#),
+        run_program(r#"(def main (fn [] (println (if (== 1 1) "yes" "no"))))"#),
         "yes"
     );
 }
@@ -56,7 +56,7 @@ fn test_if_eq_string() {
 #[test]
 fn test_if_neq() {
     assert_eq!(
-        run_program(r#"(def main (fn [] (if (== 1 2) "yes" "no")))"#),
+        run_program(r#"(def main (fn [] (println (if (== 1 2) "yes" "no"))))"#),
         "no"
     );
 }
@@ -64,20 +64,20 @@ fn test_if_neq() {
 #[test]
 fn test_let_binding() {
     assert_eq!(
-        run_program("(def main (fn [] (do (let x 10) (+ x 5))))"),
+        run_program("(def main (fn [] (do (let x 10) (println (+ x 5)))))"),
         "15"
     );
 }
 
 #[test]
 fn test_bool_literal() {
-    assert_eq!(run_program("(def main (fn [] true))"), "true");
+    assert_eq!(run_program("(def main (fn [] (println true)))"), "true");
 }
 
 #[test]
 fn test_string_literal() {
     assert_eq!(
-        run_program(r#"(def main (fn [] "hello"))"#),
+        run_program(r#"(def main (fn [] (println "hello")))"#),
         "hello"
     );
 }
@@ -85,7 +85,7 @@ fn test_string_literal() {
 #[test]
 fn test_comparison_lt() {
     assert_eq!(
-        run_program(r#"(def main (fn [] (if (< 1 2) "yes" "no")))"#),
+        run_program(r#"(def main (fn [] (println (if (< 1 2) "yes" "no"))))"#),
         "yes"
     );
 }
@@ -94,7 +94,7 @@ fn test_comparison_lt() {
 fn test_factorial() {
     let src = r#"
 (def factorial (fn [n] (if (== n 0) 1 (* n (factorial (- n 1))))))
-(def main (fn [] (factorial 10)))
+(def main (fn [] (println (factorial 10))))
 "#;
     assert_eq!(run_program(src), "3628800");
 }
@@ -104,7 +104,7 @@ fn test_mutual_recursion() {
     let src = r#"
 (def is_even (fn [n] (if (== n 0) true (is_odd (- n 1)))))
 (def is_odd (fn [n] (if (== n 0) false (is_even (- n 1)))))
-(def main (fn [] (is_even 10)))
+(def main (fn [] (println (is_even 10))))
 "#;
     assert_eq!(run_program(src), "true");
 }
@@ -113,7 +113,7 @@ fn test_mutual_recursion() {
 fn test_if_gt_positive() {
     let src = r#"
 (def classify (fn [n] (if (> n 0) "positive" "non-positive")))
-(def main (fn [] (classify 5)))
+(def main (fn [] (println (classify 5))))
 "#;
     assert_eq!(run_program(src), "positive");
 }
@@ -122,7 +122,7 @@ fn test_if_gt_positive() {
 fn test_if_gt_non_positive() {
     let src = r#"
 (def classify (fn [n] (if (> n 0) "positive" "non-positive")))
-(def main (fn [] (classify 0)))
+(def main (fn [] (println (classify 0))))
 "#;
     assert_eq!(run_program(src), "non-positive");
 }
@@ -130,7 +130,7 @@ fn test_if_gt_non_positive() {
 #[test]
 fn test_do_block_let_bindings() {
     assert_eq!(
-        run_program("(def main (fn [] (do (let x 10) (let y 20) (+ x y))))"),
+        run_program("(def main (fn [] (do (let x 10) (let y 20) (println (+ x y)))))"),
         "30"
     );
 }
@@ -138,7 +138,7 @@ fn test_do_block_let_bindings() {
 #[test]
 fn test_hello_world() {
     assert_eq!(
-        run_program(r#"(def main (fn [] "hello world"))"#),
+        run_program(r#"(def main (fn [] (println "hello world")))"#),
         "hello world"
     );
 }
@@ -147,7 +147,7 @@ fn test_hello_world() {
 fn test_recur_loop() {
     let src = r#"
 (def loop_fn (fn [n] (if (== n 0) 0 (recur (- n 1)))))
-(def main (fn [] (loop_fn 1000000)))
+(def main (fn [] (println (loop_fn 1000000))))
 "#;
     assert_eq!(run_program(src), "0");
 }
@@ -156,7 +156,7 @@ fn test_recur_loop() {
 fn test_recur_countdown() {
     let src = r#"
 (def sum (fn [n acc] (if (== n 0) acc (recur (- n 1) (+ acc n)))))
-(def main (fn [] (sum 100 0)))
+(def main (fn [] (println (sum 100 0))))
 "#;
     assert_eq!(run_program(src), "5050");
 }
@@ -176,7 +176,7 @@ fn test_java_21_classfile_version() {
 fn test_struct_create_and_field_access() {
     let src = r#"
 (type Point (record (x Int) (y Int)))
-(def main (fn [] (do (let p (Point 1 2)) (. p x))))
+(def main (fn [] (do (let p (Point 1 2)) (println (. p x)))))
 "#;
     assert_eq!(run_program(src), "1");
 }
@@ -185,7 +185,7 @@ fn test_struct_create_and_field_access() {
 fn test_struct_update() {
     let src = r#"
 (type Point (record (x Int) (y Int)))
-(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 3))) (. p2 x))))
+(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 3))) (println (. p2 x)))))
 "#;
     assert_eq!(run_program(src), "3");
 }
@@ -194,7 +194,7 @@ fn test_struct_update() {
 fn test_struct_field_y() {
     let src = r#"
 (type Point (record (x Int) (y Int)))
-(def main (fn [] (do (let p (Point 10 20)) (. p y))))
+(def main (fn [] (do (let p (Point 10 20)) (println (. p y)))))
 "#;
     assert_eq!(run_program(src), "20");
 }
@@ -203,7 +203,7 @@ fn test_struct_field_y() {
 fn test_struct_update_preserves_unchanged() {
     let src = r#"
 (type Point (record (x Int) (y Int)))
-(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 99))) (. p2 y))))
+(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 99))) (println (. p2 y)))))
 "#;
     assert_eq!(run_program(src), "2");
 }
@@ -212,7 +212,7 @@ fn test_struct_update_preserves_unchanged() {
 fn test_sum_type_option() {
     let src = r#"
 (type Option [a] (| (Some a) (None)))
-(def main (fn [] (do (let s (Some 42)) (let n None) s)))
+(def main (fn [] (do (let s (Some 42)) (let n None) (println s))))
 "#;
     assert_eq!(run_program(src), "Some");
 }
@@ -248,7 +248,7 @@ fn test_sum_type_sealed_interface_structure() {
 fn test_sum_type_nullary_variant() {
     let src = r#"
 (type Color (| (Red) (Green) (Blue)))
-(def main (fn [] Green))
+(def main (fn [] (println Green)))
 "#;
     assert_eq!(run_program(src), "Green");
 }
@@ -261,7 +261,7 @@ fn test_match_option_int() {
   (match opt
     ((Some x) x)
     ((None) default))))
-(def main (fn [] (unwrap_or (Some 42) 0)))
+(def main (fn [] (println (unwrap_or (Some 42) 0))))
 "#;
     assert_eq!(run_program(src), "42");
 }
@@ -276,7 +276,7 @@ fn test_match_four_variants() {
     ((South) 2)
     ((East) 3)
     ((West) 4))))
-(def main (fn [] (to_num East)))
+(def main (fn [] (println (to_num East))))
 "#;
     assert_eq!(run_program(src), "3");
 }
@@ -285,13 +285,13 @@ fn test_match_four_variants() {
 
 #[test]
 fn test_lambda_basic() {
-    let src = "(def main (fn [] (do (let f (fn [x] (+ x 1))) (f 5))))";
+    let src = "(def main (fn [] (do (let f (fn [x] (+ x 1))) (println (f 5)))))";
     assert_eq!(run_program(src), "6");
 }
 
 #[test]
 fn test_lambda_capture() {
-    let src = "(def main (fn [] (do (let y 10) (let f (fn [x] (+ x y))) (f 5))))";
+    let src = "(def main (fn [] (do (let y 10) (let f (fn [x] (+ x y))) (println (f 5)))))";
     assert_eq!(run_program(src), "15");
 }
 
@@ -299,7 +299,7 @@ fn test_lambda_capture() {
 fn test_higher_order() {
     let src = r#"
 (def apply_fn (fn [f x] (f x)))
-(def main (fn [] (apply_fn (fn [x] (+ x 1)) 5)))
+(def main (fn [] (println (apply_fn (fn [x] (+ x 1)) 5))))
 "#;
     assert_eq!(run_program(src), "6");
 }
@@ -312,7 +312,7 @@ fn test_match_nested_pattern() {
   (match xs
     ((Cons h (Cons h2 _)) h2)
     (_ 0))))
-(def main (fn [] (second (Cons 10 (Cons 20 Nil)))))
+(def main (fn [] (println (second (Cons 10 (Cons 20 Nil))))))
 "#;
     assert_eq!(run_program(src), "20");
 }
@@ -325,7 +325,7 @@ fn test_trait_dictionary_parameter() {
 (impl Eq Point
   (def eq [x y] (if (== (. x x) (. y x)) (== (. x y) (. y y)) false)))
 (def are_equal (fn [x y] (eq x y)))
-(def main (fn [] (are_equal (Point 1 2) (Point 1 2))))
+(def main (fn [] (println (are_equal (Point 1 2) (Point 1 2)))))
 "#;
     // First verify it runs correctly
     assert_eq!(run_program(src), "true");

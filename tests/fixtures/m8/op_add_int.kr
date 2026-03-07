@@ -1,2 +1,2 @@
 # expect: output 3
-(def main (fn [] (+ 1 2)))
+(def main (fn [] (println (+ 1 2))))

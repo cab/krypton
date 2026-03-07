@@ -1,0 +1,2 @@
+# expect: output 42
+(def main (fn [] (do (let x (if true 42 (panic "oops"))) (println x))))
