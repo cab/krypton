@@ -1,0 +1,3 @@
+# expect: output true
+(type Point (record (x Int) (y Int)) deriving [Eq])
+(def main (fn [] (== (Point 1 2) (Point 1 2))))

@@ -195,6 +195,26 @@ pub fn register_builtin_traits(
         env.bind("neg".to_string(), TypeScheme { vars: vec![tv_id], ty: fn_ty });
     }
 
+    // Show: unary trait (a) -> String
+    {
+        let tv_id = gen.fresh();
+        let type_var = Type::Var(tv_id);
+        let _ = registry.register_trait(TraitInfo {
+            name: "Show".to_string(),
+            type_var: "a".to_string(),
+            type_var_id: tv_id,
+            superclasses: vec![],
+            methods: vec![TraitMethod {
+                name: "show".to_string(),
+                param_types: vec![type_var.clone()],
+                return_type: Type::String,
+            }],
+            span: builtin_span,
+        });
+        let fn_ty = Type::Fn(vec![type_var], Box::new(Type::String));
+        env.bind("show".to_string(), TypeScheme { vars: vec![tv_id], ty: fn_ty });
+    }
+
     // Register built-in instances
     struct BuiltinInstance {
         trait_name: &'static str,
@@ -225,6 +245,11 @@ pub fn register_builtin_traits(
         BuiltinInstance { trait_name: "Eq",  target_type: Type::String, target_name: "String", method: "eq" },
         // Bool: Eq
         BuiltinInstance { trait_name: "Eq",  target_type: Type::Bool, target_name: "Bool", method: "eq" },
+        // Show instances for primitive types
+        BuiltinInstance { trait_name: "Show", target_type: Type::Int,    target_name: "Int",    method: "show" },
+        BuiltinInstance { trait_name: "Show", target_type: Type::Float,  target_name: "Float",  method: "show" },
+        BuiltinInstance { trait_name: "Show", target_type: Type::Bool,   target_name: "Bool",   method: "show" },
+        BuiltinInstance { trait_name: "Show", target_type: Type::String, target_name: "String", method: "show" },
     ];
 
     for inst in instances {
@@ -240,8 +265,11 @@ pub fn register_builtin_traits(
 }
 
 /// Check if two types match for instance lookup (concrete type matching).
+/// Type variables in the instance type (first arg) act as wildcards.
 fn types_match(a: &Type, b: &Type) -> bool {
     match (a, b) {
+        // Type variable in instance type matches anything
+        (Type::Var(_), _) => true,
         (Type::Int, Type::Int)
         | (Type::Float, Type::Float)
         | (Type::Bool, Type::Bool)

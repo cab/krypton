@@ -374,6 +374,7 @@ struct Compiler {
     trait_method_map: HashMap<String, String>,                    // method_name → trait_name
     fn_constraints: HashMap<String, Vec<String>>,                 // fn_name → [trait_names]
     dict_locals: HashMap<String, u16>,                            // trait_name → local slot (per-method)
+    parameterized_instances: HashMap<(String, String), Vec<(String, usize)>>, // (trait, type) → [(subdict_trait, type_param_idx)]
 }
 
 impl Compiler {
@@ -497,6 +498,7 @@ impl Compiler {
             trait_method_map: HashMap::new(),
             fn_constraints: HashMap::new(),
             dict_locals: HashMap::new(),
+            parameterized_instances: HashMap::new(),
         };
 
         Ok((compiler, this_class, object_class))
@@ -1241,12 +1243,54 @@ impl Compiler {
                         ));
                     }
                 } else {
-                    // Concrete type — getstatic Instance.INSTANCE
+                    // Concrete type — getstatic Instance.INSTANCE or construct parameterized
                     let type_name = type_to_name(first_arg_ty);
                     if let Some(singleton) = self.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
                         let field_ref = singleton.instance_field_ref;
                         self.emit(Instruction::Getstatic(field_ref));
                         self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+                    } else if let Some(subdict_traits) = self.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
+                        // Construct parameterized instance on the fly
+                        let instance_class_name = format!("{}${}", trait_name, type_name);
+                        let inst_class = self.cp.add_class(&instance_class_name)?;
+                        // Constructor descriptor: (Object * subdict_count)V
+                        let mut init_desc = String::from("(");
+                        for _ in &subdict_traits {
+                            init_desc.push_str("Ljava/lang/Object;");
+                        }
+                        init_desc.push_str(")V");
+                        let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+                        self.emit(Instruction::New(inst_class));
+                        self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                        self.emit(Instruction::Dup);
+                        self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                        // Push subdictionaries
+                        for (subdict_trait, param_idx) in &subdict_traits {
+                            // Resolve the type arg at param_idx
+                            let type_arg = match first_arg_ty {
+                                Type::Named(_, type_args) => &type_args[*param_idx],
+                                Type::Own(inner) => {
+                                    if let Type::Named(_, type_args) = inner.as_ref() { &type_args[*param_idx] } else { first_arg_ty }
+                                }
+                                _ => first_arg_ty,
+                            };
+                            let sub_type_name = type_to_name(type_arg);
+                            if let Some(singleton) = self.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
+                                let field_ref = singleton.instance_field_ref;
+                                self.emit(Instruction::Getstatic(field_ref));
+                                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                            } else {
+                                return Err(CodegenError::UndefinedVariable(
+                                    format!("no instance of {subdict_trait} for {sub_type_name}"),
+                                ));
+                            }
+                        }
+                        self.emit(Instruction::Invokespecial(init_ref));
+                        // Pop subdict args + dup from stack, leave one instance ref
+                        for _ in &subdict_traits {
+                            self.frame.pop_type();
+                        }
+                        self.frame.pop_type(); // dup
                     } else {
                         return Err(CodegenError::UndefinedVariable(
                             format!("no instance of {trait_name} for {type_name}"),
@@ -3409,7 +3453,33 @@ pub fn compile_module(
         });
     }
 
-    // Process instance definitions: generate singleton classes
+    // Generate built-in Show instance classes for primitive types
+    {
+        let show_primitives = [
+            ("Show$Int", "Int", "(J)Ljava/lang/String;", "java/lang/Long", "toString"),
+            ("Show$Float", "Float", "(D)Ljava/lang/String;", "java/lang/Double", "toString"),
+            ("Show$Bool", "Bool", "(Z)Ljava/lang/String;", "java/lang/Boolean", "toString"),
+            ("Show$String", "String", "(Ljava/lang/String;)Ljava/lang/String;", "", ""),
+        ];
+
+        for (show_class_name, type_name, _static_desc, _box_class, _method_name) in &show_primitives {
+            if compiler.trait_dispatch.contains_key("Show") {
+                let show_bytes = generate_builtin_show_instance_class(show_class_name, type_name)?;
+                result_classes.push((show_class_name.to_string(), show_bytes));
+
+                let inst_class_idx = compiler.cp.add_class(show_class_name)?;
+                let inst_desc = format!("L{show_class_name};");
+                compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
+                let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+                compiler.instance_singletons.insert(
+                    ("Show".to_string(), type_name.to_string()),
+                    InstanceSingletonInfo { instance_field_ref },
+                );
+            }
+        }
+    }
+
+    // Process instance definitions: generate singleton/parameterized classes
     for instance_def in &typed_module.instance_defs {
         let instance_class_name = format!("{}${}", instance_def.trait_name, instance_def.target_type_name);
 
@@ -3427,8 +3497,14 @@ pub fn compile_module(
                         .map(|t| compiler.type_to_jvm(t))
                         .collect::<Result<_, _>>()?;
                     let ret_jvm = compiler.type_to_jvm(ret_ty)?;
-                    // Build the static method descriptor using string descriptors
-                    let static_desc = compiler.types.build_descriptor(&param_jvm, ret_jvm);
+                    // Build the static method descriptor, prepending dict params if constrained
+                    let constraint_traits = typed_module.fn_constraints.get(qualified_name).cloned().unwrap_or_default();
+                    let mut all_param_jvm = Vec::new();
+                    for _ in &constraint_traits {
+                        all_param_jvm.push(JvmType::StructRef(compiler.refs.object_class));
+                    }
+                    all_param_jvm.extend(param_jvm.iter().copied());
+                    let static_desc = compiler.types.build_descriptor(&all_param_jvm, ret_jvm);
                     // Collect class names for checkcast in bridge methods
                     let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
                         match t {
@@ -3444,27 +3520,53 @@ pub fn compile_module(
             }
         }
 
-        let instance_bytes = generate_instance_class(
-            &instance_class_name,
-            &instance_def.trait_name,
-            class_name,
-            &method_info,
-            &param_jvm_types_map,
-            &return_jvm_types_map,
-            &param_class_names_map,
-        )?;
-        result_classes.push((instance_class_name.clone(), instance_bytes));
+        if instance_def.subdict_traits.is_empty() {
+            // Simple singleton instance
+            let instance_bytes = generate_instance_class(
+                &instance_class_name,
+                &instance_def.trait_name,
+                class_name,
+                &method_info,
+                &param_jvm_types_map,
+                &return_jvm_types_map,
+                &param_class_names_map,
+            )?;
+            result_classes.push((instance_class_name.clone(), instance_bytes));
 
-        // Register INSTANCE field ref in main cpool
-        let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
-        let inst_desc = format!("L{instance_class_name};");
-        compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-        let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+            // Register INSTANCE field ref in main cpool
+            let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
+            let inst_desc = format!("L{instance_class_name};");
+            compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
+            let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
 
-        compiler.instance_singletons.insert(
-            (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
-            InstanceSingletonInfo { instance_field_ref },
-        );
+            compiler.instance_singletons.insert(
+                (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
+                InstanceSingletonInfo { instance_field_ref },
+            );
+        } else {
+            // Parameterized instance — needs subdictionaries
+            let instance_bytes = generate_parameterized_instance_class(
+                &instance_class_name,
+                &instance_def.trait_name,
+                class_name,
+                &method_info,
+                &param_jvm_types_map,
+                &return_jvm_types_map,
+                &param_class_names_map,
+                instance_def.subdict_traits.len(),
+            )?;
+            result_classes.push((instance_class_name.clone(), instance_bytes));
+
+            // Register class in main cpool (no INSTANCE field — constructed on demand)
+            let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
+            let inst_desc = format!("L{instance_class_name};");
+            compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
+
+            compiler.parameterized_instances.insert(
+                (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
+                instance_def.subdict_traits.clone(),
+            );
+        }
     }
 
     // Register all functions (including main) in the function registry.
@@ -3855,6 +3957,326 @@ fn generate_instance_class(
         super_class: object_class,
         interfaces: vec![interface_class],
         fields: vec![field],
+        methods: jvm_methods,
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Generate a built-in Show instance class for a primitive type.
+fn generate_builtin_show_instance_class(
+    class_name: &str,
+    type_name: &str,
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(class_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let interface_class = cp.add_class("Show")?;
+    let code_utf8 = cp.add_utf8("Code")?;
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+    let init_name = cp.add_utf8("<init>")?;
+    let init_desc = cp.add_utf8("()V")?;
+
+    let self_desc = format!("L{class_name};");
+    let instance_name = cp.add_utf8("INSTANCE")?;
+    let instance_desc = cp.add_utf8(&self_desc)?;
+    let instance_field_ref = cp.add_field_ref(this_class, "INSTANCE", &self_desc)?;
+    let self_init = cp.add_method_ref(this_class, "<init>", "()V")?;
+
+    let constructor = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: init_name,
+        descriptor_index: init_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 2,
+            max_locals: 1,
+            code: vec![
+                Instruction::Aload_0,
+                Instruction::Invokespecial(object_init),
+                Instruction::Return,
+            ],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let clinit_name = cp.add_utf8("<clinit>")?;
+    let clinit_desc = cp.add_utf8("()V")?;
+    let clinit = Method {
+        access_flags: MethodAccessFlags::STATIC,
+        name_index: clinit_name,
+        descriptor_index: clinit_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 2,
+            max_locals: 0,
+            code: vec![
+                Instruction::New(this_class),
+                Instruction::Dup,
+                Instruction::Invokespecial(self_init),
+                Instruction::Putstatic(instance_field_ref),
+                Instruction::Return,
+            ],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let iface_desc = "(Ljava/lang/Object;)Ljava/lang/Object;";
+    let show_name = cp.add_utf8("show")?;
+    let show_desc_idx = cp.add_utf8(iface_desc)?;
+    let string_class = cp.add_class("java/lang/String")?;
+
+    let mut bridge_code = Vec::new();
+    match type_name {
+        "Int" => {
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
+            let string_valueof = cp.add_method_ref(string_class, "valueOf", "(J)Ljava/lang/String;")?;
+            bridge_code.push(Instruction::Aload(1));
+            bridge_code.push(Instruction::Checkcast(long_class));
+            bridge_code.push(Instruction::Invokevirtual(long_unbox));
+            bridge_code.push(Instruction::Invokestatic(string_valueof));
+        }
+        "Float" => {
+            let double_class = cp.add_class("java/lang/Double")?;
+            let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
+            let string_valueof = cp.add_method_ref(string_class, "valueOf", "(D)Ljava/lang/String;")?;
+            bridge_code.push(Instruction::Aload(1));
+            bridge_code.push(Instruction::Checkcast(double_class));
+            bridge_code.push(Instruction::Invokevirtual(double_unbox));
+            bridge_code.push(Instruction::Invokestatic(string_valueof));
+        }
+        "Bool" => {
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_unbox = cp.add_method_ref(bool_class, "booleanValue", "()Z")?;
+            let string_valueof = cp.add_method_ref(string_class, "valueOf", "(Z)Ljava/lang/String;")?;
+            bridge_code.push(Instruction::Aload(1));
+            bridge_code.push(Instruction::Checkcast(bool_class));
+            bridge_code.push(Instruction::Invokevirtual(bool_unbox));
+            bridge_code.push(Instruction::Invokestatic(string_valueof));
+        }
+        "String" => {
+            bridge_code.push(Instruction::Aload(1));
+            bridge_code.push(Instruction::Checkcast(string_class));
+        }
+        _ => {}
+    }
+    bridge_code.push(Instruction::Areturn);
+
+    let show_method = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: show_name,
+        descriptor_index: show_desc_idx,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 4,
+            max_locals: 2,
+            code: bridge_code,
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let field = Field {
+        access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
+        name_index: instance_name,
+        descriptor_index: instance_desc,
+        field_type: FieldType::Object(class_name.to_string()),
+        attributes: vec![],
+    };
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        interfaces: vec![interface_class],
+        fields: vec![field],
+        methods: vec![constructor, clinit, show_method],
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Generate a parameterized instance class with constructor taking subdictionaries.
+fn generate_parameterized_instance_class(
+    class_name: &str,
+    trait_interface_name: &str,
+    main_class_name: &str,
+    methods: &[(String, String, usize, String)],
+    param_jvm_types: &HashMap<String, Vec<JvmType>>,
+    return_jvm_types: &HashMap<String, JvmType>,
+    param_class_names: &HashMap<String, Vec<Option<String>>>,
+    subdict_count: usize,
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(class_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let interface_class = cp.add_class(trait_interface_name)?;
+    let main_class = cp.add_class(main_class_name)?;
+    let code_utf8 = cp.add_utf8("Code")?;
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+
+    let long_box_class = cp.add_class("java/lang/Long")?;
+    let long_valueof = cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
+    let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
+    let double_box_class = cp.add_class("java/lang/Double")?;
+    let double_valueof = cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
+    let double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
+    let bool_box_class = cp.add_class("java/lang/Boolean")?;
+    let bool_valueof = cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+    let bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
+
+    // Subdict fields
+    let mut subdict_field_refs = Vec::new();
+    let mut field_list = Vec::new();
+    for i in 0..subdict_count {
+        let field_name = format!("dict{}", i);
+        let field_name_idx = cp.add_utf8(&field_name)?;
+        let field_desc_idx = cp.add_utf8("Ljava/lang/Object;")?;
+        let obj_desc = "Ljava/lang/Object;".to_string();
+        let field_ref = cp.add_field_ref(this_class, &field_name, &obj_desc)?;
+        subdict_field_refs.push(field_ref);
+        field_list.push(Field {
+            access_flags: FieldAccessFlags::PRIVATE | FieldAccessFlags::FINAL,
+            name_index: field_name_idx,
+            descriptor_index: field_desc_idx,
+            field_type: FieldType::Object("java/lang/Object".to_string()),
+            attributes: vec![],
+        });
+    }
+
+    // Constructor
+    let mut init_desc_str = String::from("(");
+    for _ in 0..subdict_count {
+        init_desc_str.push_str("Ljava/lang/Object;");
+    }
+    init_desc_str.push_str(")V");
+    let init_name = cp.add_utf8("<init>")?;
+    let init_desc = cp.add_utf8(&init_desc_str)?;
+
+    let mut init_code = vec![
+        Instruction::Aload_0,
+        Instruction::Invokespecial(object_init),
+    ];
+    for i in 0..subdict_count {
+        init_code.push(Instruction::Aload_0);
+        init_code.push(Instruction::Aload((i + 1) as u8));
+        init_code.push(Instruction::Putfield(subdict_field_refs[i]));
+    }
+    init_code.push(Instruction::Return);
+
+    let constructor = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: init_name,
+        descriptor_index: init_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 3,
+            max_locals: (1 + subdict_count) as u16,
+            code: init_code,
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let mut jvm_methods = vec![constructor];
+
+    for (iface_method_name, static_method_name, param_count, static_desc) in methods {
+        let mut iface_desc = String::from("(");
+        for _ in 0..*param_count {
+            iface_desc.push_str("Ljava/lang/Object;");
+        }
+        iface_desc.push_str(")Ljava/lang/Object;");
+
+        let concrete_params = param_jvm_types.get(iface_method_name).cloned().unwrap_or_default();
+        let concrete_ret = return_jvm_types.get(iface_method_name).copied().unwrap_or(JvmType::Int);
+
+        let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
+        let method_name_idx = cp.add_utf8(iface_method_name)?;
+        let method_desc_idx = cp.add_utf8(&iface_desc)?;
+
+        let mut bridge_code: Vec<Instruction> = Vec::new();
+
+        // Load subdicts from fields first (these become the dict params for the static method)
+        for i in 0..subdict_count {
+            bridge_code.push(Instruction::Aload_0);
+            bridge_code.push(Instruction::Getfield(subdict_field_refs[i]));
+        }
+
+        // Load and unbox user params
+        let mut slot: u8 = 1;
+        let class_names_for_method = param_class_names.get(iface_method_name).cloned().unwrap_or_default();
+        for (param_idx, pt) in concrete_params.iter().enumerate() {
+            bridge_code.push(Instruction::Aload(slot));
+            match pt {
+                JvmType::Long => {
+                    bridge_code.push(Instruction::Checkcast(long_box_class));
+                    bridge_code.push(Instruction::Invokevirtual(long_unbox));
+                }
+                JvmType::Double => {
+                    bridge_code.push(Instruction::Checkcast(double_box_class));
+                    bridge_code.push(Instruction::Invokevirtual(double_unbox));
+                }
+                JvmType::Int => {
+                    bridge_code.push(Instruction::Checkcast(bool_box_class));
+                    bridge_code.push(Instruction::Invokevirtual(bool_unbox));
+                }
+                JvmType::StructRef(_) => {
+                    if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
+                        let cast_class = cp.add_class(cn)?;
+                        bridge_code.push(Instruction::Checkcast(cast_class));
+                    }
+                }
+                _ => {}
+            }
+            slot += 1;
+        }
+
+        bridge_code.push(Instruction::Invokestatic(static_ref));
+
+        match concrete_ret {
+            JvmType::Long => bridge_code.push(Instruction::Invokestatic(long_valueof)),
+            JvmType::Double => bridge_code.push(Instruction::Invokestatic(double_valueof)),
+            JvmType::Int => bridge_code.push(Instruction::Invokestatic(bool_valueof)),
+            _ => {}
+        }
+        bridge_code.push(Instruction::Areturn);
+
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: method_name_idx,
+            descriptor_index: method_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 20,
+                max_locals: (1 + *param_count) as u16,
+                code: bridge_code,
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        interfaces: vec![interface_class],
+        fields: field_list,
         methods: jvm_methods,
         ..Default::default()
     };

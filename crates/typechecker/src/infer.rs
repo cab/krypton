@@ -1383,6 +1383,130 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         }
     }
 
+    // Deriving pass: process DefType declarations with `deriving` clauses
+    let mut derived_impl_functions: Vec<TypedFnDecl> = Vec::new();
+    let mut derived_impl_fn_types: Vec<(String, TypeScheme)> = Vec::new();
+    let mut derived_instance_defs: Vec<InstanceDefInfo> = Vec::new();
+
+    for decl in &module.decls {
+        if let Decl::DefType(type_decl) = decl {
+            if type_decl.deriving.is_empty() {
+                continue;
+            }
+            let type_info = registry.lookup_type(&type_decl.name).unwrap();
+
+            for trait_name in &type_decl.deriving {
+                if trait_registry.lookup_trait(trait_name).is_none() {
+                    return Err(spanned(
+                        TypeError::NoInstance {
+                            trait_name: trait_name.clone(),
+                            ty: type_decl.name.clone(),
+                            required_by: None,
+                        },
+                        type_decl.span,
+                    ));
+                }
+
+                // Collect all field types that need the trait
+                let field_types: Vec<&Type> = match &type_info.kind {
+                    crate::type_registry::TypeKind::Record { fields } => {
+                        fields.iter().map(|(_, ty)| ty).collect()
+                    }
+                    crate::type_registry::TypeKind::Sum { variants } => {
+                        variants.iter().flat_map(|v| v.fields.iter()).collect()
+                    }
+                };
+
+                // Track which type params need subdictionaries
+                let mut subdict_traits: Vec<(String, usize)> = Vec::new();
+
+                // Validate that all field types have instances for this trait
+                for ft in &field_types {
+                    match ft {
+                        Type::Var(v) => {
+                            // Type parameter — record constraint
+                            if let Some(idx) = type_info.type_param_vars.iter().position(|&pv| pv == *v) {
+                                if !subdict_traits.iter().any(|(t, i)| t == trait_name && *i == idx) {
+                                    subdict_traits.push((trait_name.clone(), idx));
+                                }
+                            }
+                        }
+                        _ => {
+                            if trait_registry.find_instance(trait_name, ft).is_none() {
+                                return Err(spanned(
+                                    TypeError::CannotDerive {
+                                        trait_name: trait_name.clone(),
+                                        type_name: type_decl.name.clone(),
+                                        field_type: format!("{}", ft),
+                                    },
+                                    type_decl.span,
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // Build the target type
+                let type_args: Vec<Type> = type_info.type_param_vars.iter().map(|&v| Type::Var(v)).collect();
+                let target_type = Type::Named(type_decl.name.clone(), type_args);
+                let target_type_name = type_decl.name.clone();
+
+                // Register the instance
+                let method_name = match trait_name.as_str() {
+                    "Eq" => "eq",
+                    "Show" => "show",
+                    _ => continue,
+                };
+
+                let instance = InstanceInfo {
+                    trait_name: trait_name.clone(),
+                    target_type: target_type.clone(),
+                    target_type_name: target_type_name.clone(),
+                    methods: vec![method_name.to_string()],
+                    span: type_decl.span,
+                    is_builtin: false,
+                };
+                trait_registry.register_instance(instance)
+                    .map_err(|e| spanned(e, type_decl.span))?;
+
+                // Synthesize the method body
+                let syn_span: Span = (0, 0);
+                let qualified_name = format!("{}${}${}", trait_name, target_type_name, method_name);
+
+                let (body, fn_ty) = match trait_name.as_str() {
+                    "Eq" => {
+                        synthesize_eq_body(type_info, &target_type, syn_span)
+                    }
+                    "Show" => {
+                        synthesize_show_body(type_info, &target_type, syn_span)
+                    }
+                    _ => continue,
+                };
+
+                let params = match trait_name.as_str() {
+                    "Eq" => vec!["__a".to_string(), "__b".to_string()],
+                    "Show" => vec!["__a".to_string()],
+                    _ => vec![],
+                };
+
+                derived_impl_fn_types.push((qualified_name.clone(), TypeScheme { vars: vec![], ty: fn_ty }));
+                derived_impl_functions.push(TypedFnDecl {
+                    name: qualified_name.clone(),
+                    params,
+                    body,
+                });
+
+                derived_instance_defs.push(InstanceDefInfo {
+                    trait_name: trait_name.clone(),
+                    target_type_name,
+                    target_type,
+                    qualified_method_names: vec![(method_name.to_string(), qualified_name)],
+                    subdict_traits,
+                });
+            }
+        }
+    }
+
     // Third pass: process DefImpl declarations
     for decl in &module.decls {
         if let Decl::DefImpl { trait_name, target_type, methods: _, span, .. } = decl {
@@ -1635,6 +1759,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                 target_type_name,
                 target_type: resolved_target,
                 qualified_method_names,
+                subdict_traits: vec![],
             });
         }
     }
@@ -1648,6 +1773,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
     );
     results.extend(impl_fn_types);
+    results.extend(derived_impl_fn_types);
 
     // Apply final substitution to all typed function bodies
     let mut functions = Vec::new();
@@ -1661,6 +1787,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         });
     }
     functions.extend(impl_functions);
+    functions.extend(derived_impl_functions);
 
     // Detect constrained functions: functions that call trait methods on type variables
     let mut fn_constraints: HashMap<String, Vec<String>> = HashMap::new();
@@ -1712,6 +1839,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     // Run affine ownership verification after successful inference
     crate::ownership::check_ownership(module, &results, &registry, &let_own_spans, &lambda_own_captures, &struct_update_info)?;
 
+    instance_defs.extend(derived_instance_defs);
+
     Ok(TypedModule {
         fn_types: results,
         functions,
@@ -1720,4 +1849,289 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         fn_constraints,
         trait_method_map: trait_method_map.clone(),
     })
+}
+
+/// Synthesize an `eq` method body for a derived Eq instance.
+fn synthesize_eq_body(
+    type_info: &crate::type_registry::TypeInfo,
+    target_type: &Type,
+    span: Span,
+) -> (TypedExpr, Type) {
+    let param_a = TypedExpr {
+        kind: TypedExprKind::Var("__a".to_string()),
+        ty: target_type.clone(),
+        span,
+    };
+    let param_b = TypedExpr {
+        kind: TypedExprKind::Var("__b".to_string()),
+        ty: target_type.clone(),
+        span,
+    };
+    let true_expr = || TypedExpr {
+        kind: TypedExprKind::Lit(Lit::Bool(true)),
+        ty: Type::Bool,
+        span,
+    };
+    let false_expr = || TypedExpr {
+        kind: TypedExprKind::Lit(Lit::Bool(false)),
+        ty: Type::Bool,
+        span,
+    };
+
+    let body = match &type_info.kind {
+        crate::type_registry::TypeKind::Record { fields } => {
+            if fields.is_empty() {
+                true_expr()
+            } else {
+                // Chain: if (== .a.f1 .b.f1) (if (== .a.f2 .b.f2) ... true) false
+                let mut result = true_expr();
+                for (field_name, field_ty) in fields.iter().rev() {
+                    let lhs = TypedExpr {
+                        kind: TypedExprKind::FieldAccess {
+                            expr: Box::new(param_a.clone()),
+                            field: field_name.clone(),
+                        },
+                        ty: field_ty.clone(),
+                        span,
+                    };
+                    let rhs = TypedExpr {
+                        kind: TypedExprKind::FieldAccess {
+                            expr: Box::new(param_b.clone()),
+                            field: field_name.clone(),
+                        },
+                        ty: field_ty.clone(),
+                        span,
+                    };
+                    let cmp = TypedExpr {
+                        kind: TypedExprKind::BinaryOp {
+                            op: BinOp::Eq,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        ty: Type::Bool,
+                        span,
+                    };
+                    result = TypedExpr {
+                        kind: TypedExprKind::If {
+                            cond: Box::new(cmp),
+                            then_: Box::new(result),
+                            else_: Box::new(false_expr()),
+                        },
+                        ty: Type::Bool,
+                        span,
+                    };
+                }
+                result
+            }
+        }
+        crate::type_registry::TypeKind::Sum { variants } => {
+            // Outer match on __a, inner match on __b
+            let arms: Vec<TypedMatchArm> = variants.iter().map(|variant| {
+                let a_bindings: Vec<String> = (0..variant.fields.len())
+                    .map(|i| format!("__x{}", i))
+                    .collect();
+                let a_pattern = Pattern::Constructor {
+                    name: variant.name.clone(),
+                    args: a_bindings.iter().map(|n| Pattern::Var { name: n.clone(), span }).collect(),
+                    span,
+                };
+
+                // Inner match on __b
+                let inner_arms: Vec<TypedMatchArm> = variants.iter().map(|inner_variant| {
+                    if inner_variant.name == variant.name {
+                        let b_bindings: Vec<String> = (0..inner_variant.fields.len())
+                            .map(|i| format!("__y{}", i))
+                            .collect();
+                        let b_pattern = Pattern::Constructor {
+                            name: inner_variant.name.clone(),
+                            args: b_bindings.iter().map(|n| Pattern::Var { name: n.clone(), span }).collect(),
+                            span,
+                        };
+                        // Compare all payload fields
+                        if inner_variant.fields.is_empty() {
+                            TypedMatchArm { pattern: b_pattern, body: true_expr() }
+                        } else {
+                            let mut result = true_expr();
+                            for (i, ft) in inner_variant.fields.iter().enumerate().rev() {
+                                let x = TypedExpr {
+                                    kind: TypedExprKind::Var(format!("__x{}", i)),
+                                    ty: ft.clone(),
+                                    span,
+                                };
+                                let y = TypedExpr {
+                                    kind: TypedExprKind::Var(format!("__y{}", i)),
+                                    ty: ft.clone(),
+                                    span,
+                                };
+                                let cmp = TypedExpr {
+                                    kind: TypedExprKind::BinaryOp {
+                                        op: BinOp::Eq,
+                                        lhs: Box::new(x),
+                                        rhs: Box::new(y),
+                                    },
+                                    ty: Type::Bool,
+                                    span,
+                                };
+                                result = TypedExpr {
+                                    kind: TypedExprKind::If {
+                                        cond: Box::new(cmp),
+                                        then_: Box::new(result),
+                                        else_: Box::new(false_expr()),
+                                    },
+                                    ty: Type::Bool,
+                                    span,
+                                };
+                            }
+                            TypedMatchArm { pattern: b_pattern, body: result }
+                        }
+                    } else {
+                        // Different variant → false
+                        TypedMatchArm {
+                            pattern: Pattern::Wildcard { span },
+                            body: false_expr(),
+                        }
+                    }
+                }).collect();
+
+                let inner_match = TypedExpr {
+                    kind: TypedExprKind::Match {
+                        scrutinee: Box::new(param_b.clone()),
+                        arms: inner_arms,
+                    },
+                    ty: Type::Bool,
+                    span,
+                };
+
+                TypedMatchArm { pattern: a_pattern, body: inner_match }
+            }).collect();
+
+            TypedExpr {
+                kind: TypedExprKind::Match {
+                    scrutinee: Box::new(param_a.clone()),
+                    arms,
+                },
+                ty: Type::Bool,
+                span,
+            }
+        }
+    };
+
+    let fn_ty = Type::Fn(vec![target_type.clone(), target_type.clone()], Box::new(Type::Bool));
+    (body, fn_ty)
+}
+
+/// Synthesize a `show` method body for a derived Show instance.
+fn synthesize_show_body(
+    type_info: &crate::type_registry::TypeInfo,
+    target_type: &Type,
+    span: Span,
+) -> (TypedExpr, Type) {
+    let param_a = TypedExpr {
+        kind: TypedExprKind::Var("__a".to_string()),
+        ty: target_type.clone(),
+        span,
+    };
+
+    let str_lit = |s: &str| -> TypedExpr {
+        TypedExpr {
+            kind: TypedExprKind::Lit(Lit::String(s.to_string())),
+            ty: Type::String,
+            span,
+        }
+    };
+
+    let str_concat = |lhs: TypedExpr, rhs: TypedExpr| -> TypedExpr {
+        TypedExpr {
+            kind: TypedExprKind::BinaryOp {
+                op: BinOp::Add,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            ty: Type::String,
+            span,
+        }
+    };
+
+    let show_call = |expr: TypedExpr| -> TypedExpr {
+        let arg_ty = expr.ty.clone();
+        TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(TypedExpr {
+                    kind: TypedExprKind::Var("show".to_string()),
+                    ty: Type::Fn(vec![arg_ty], Box::new(Type::String)),
+                    span,
+                }),
+                args: vec![expr],
+            },
+            ty: Type::String,
+            span,
+        }
+    };
+
+    let body = match &type_info.kind {
+        crate::type_registry::TypeKind::Record { fields } => {
+            // "Point(" + show(.a x) + ", " + show(.a y) + ")"
+            let mut result = str_lit(&format!("{}(", type_info.name));
+            for (i, (field_name, field_ty)) in fields.iter().enumerate() {
+                if i > 0 {
+                    result = str_concat(result, str_lit(", "));
+                }
+                let field_access = TypedExpr {
+                    kind: TypedExprKind::FieldAccess {
+                        expr: Box::new(param_a.clone()),
+                        field: field_name.clone(),
+                    },
+                    ty: field_ty.clone(),
+                    span,
+                };
+                result = str_concat(result, show_call(field_access));
+            }
+            str_concat(result, str_lit(")"))
+        }
+        crate::type_registry::TypeKind::Sum { variants } => {
+            let arms: Vec<TypedMatchArm> = variants.iter().map(|variant| {
+                let bindings: Vec<String> = (0..variant.fields.len())
+                    .map(|i| format!("__x{}", i))
+                    .collect();
+                let pattern = Pattern::Constructor {
+                    name: variant.name.clone(),
+                    args: bindings.iter().map(|n| Pattern::Var { name: n.clone(), span }).collect(),
+                    span,
+                };
+
+                let body = if variant.fields.is_empty() {
+                    str_lit(&variant.name)
+                } else {
+                    // "Some(" + show(x0) + ")"
+                    let mut result = str_lit(&format!("{}(", variant.name));
+                    for (i, ft) in variant.fields.iter().enumerate() {
+                        if i > 0 {
+                            result = str_concat(result, str_lit(", "));
+                        }
+                        let var_expr = TypedExpr {
+                            kind: TypedExprKind::Var(format!("__x{}", i)),
+                            ty: ft.clone(),
+                            span,
+                        };
+                        result = str_concat(result, show_call(var_expr));
+                    }
+                    str_concat(result, str_lit(")"))
+                };
+
+                TypedMatchArm { pattern, body }
+            }).collect();
+
+            TypedExpr {
+                kind: TypedExprKind::Match {
+                    scrutinee: Box::new(param_a),
+                    arms,
+                },
+                ty: Type::String,
+                span,
+            }
+        }
+    };
+
+    let fn_ty = Type::Fn(vec![target_type.clone()], Box::new(Type::String));
+    (body, fn_ty)
 }

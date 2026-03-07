@@ -1,0 +1,3 @@
+# expect: error E0304
+(type Wrapper (record (f (fn [] Int))) deriving [Eq])
+(def main (fn [] true))
