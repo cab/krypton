@@ -1,17 +1,15 @@
 use std::collections::{BTreeMap, HashMap};
 
-use krypton_parser::ast::{BinOp, Decl, Lit, Module, Pattern, TypeDeclKind, TypeExpr, UnaryOp};
-use krypton_typechecker::infer::infer_module;
+use krypton_parser::ast::{BinOp, Lit, Pattern, UnaryOp};
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm};
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
-    ClassAccessFlags, ClassFile, ConstantPool, Field, FieldAccessFlags, FieldType, Method,
-    MethodAccessFlags, ReferenceKind, Version,
+    ClassAccessFlags, ClassFile, ConstantPool, Method,
+    MethodAccessFlags, ReferenceKind,
 };
 
-/// Java 21 class file version (major 65).
-const JAVA_21: Version = Version::Java21 { minor: 0 };
+use super::{JAVA_21, type_to_name, type_to_jvm_basic, jvm_type_to_field_descriptor, is_intrinsic};
 
 /// Tracks the JVM type of a value on the operand stack.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,144 +54,82 @@ impl std::fmt::Display for CodegenError {
 }
 
 /// Info about a compiled user-defined function, used for invokestatic calls.
-struct FunctionInfo {
-    method_ref: u16,
-    param_types: Vec<JvmType>,
-    return_type: JvmType,
+pub(super) struct FunctionInfo {
+    pub(super) method_ref: u16,
+    pub(super) param_types: Vec<JvmType>,
+    pub(super) return_type: JvmType,
 }
 
 /// Info about a struct type for codegen.
-struct StructInfo {
-    class_index: u16,
-    class_name: String,
-    fields: Vec<(String, JvmType)>,
-    constructor_ref: u16,
-    accessor_refs: HashMap<String, u16>,
+pub(super) struct StructInfo {
+    pub(super) class_index: u16,
+    pub(super) class_name: String,
+    pub(super) fields: Vec<(String, JvmType)>,
+    pub(super) constructor_ref: u16,
+    pub(super) accessor_refs: HashMap<String, u16>,
 }
 
 /// Info about a single variant of a sum type.
-struct VariantInfo {
-    class_index: u16,
-    class_name: String,
-    fields: Vec<(String, JvmType, bool)>, // (name, jvm_type, is_erased)
-    constructor_ref: u16,
-    field_refs: Vec<u16>, // field ref indices in main cpool
+pub(super) struct VariantInfo {
+    pub(super) class_index: u16,
+    pub(super) class_name: String,
+    pub(super) fields: Vec<(String, JvmType, bool)>, // (name, jvm_type, is_erased)
+    pub(super) constructor_ref: u16,
+    pub(super) field_refs: Vec<u16>, // field ref indices in main cpool
 }
 
 /// Info about a sum type (sealed interface).
-struct SumTypeInfo {
-    interface_class_index: u16,
-    variants: HashMap<String, VariantInfo>,
-}
-
-/// Extract the type name from a Type for instance lookup.
-fn type_to_name(ty: &Type) -> String {
-    match ty {
-        Type::Named(name, _) => name.clone(),
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::String => "String".to_string(),
-        Type::Own(inner) => type_to_name(inner),
-        other => format!("{other:?}"),
-    }
-}
-
-fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
-    match ty {
-        Type::Int => Ok(JvmType::Long),
-        Type::Float => Ok(JvmType::Double),
-        Type::Bool => Ok(JvmType::Int),
-        Type::String => Ok(JvmType::Ref),
-        Type::Unit => Ok(JvmType::Int),
-        other => Err(CodegenError::TypeError(format!(
-            "cannot map type to JVM: {other:?}"
-        ))),
-    }
-}
-
-fn jvm_type_to_field_descriptor(ty: JvmType) -> String {
-    match ty {
-        JvmType::Long => "J".to_string(),
-        JvmType::Double => "D".to_string(),
-        JvmType::Int => "Z".to_string(),
-        JvmType::Ref => "Ljava/lang/String;".to_string(),
-        JvmType::StructRef(_) => unreachable!("StructRef descriptor handled by caller"),
-    }
-}
-
-fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
-    match ty {
-        JvmType::Long => FieldType::Base(ristretto_classfile::BaseType::Long),
-        JvmType::Double => FieldType::Base(ristretto_classfile::BaseType::Double),
-        JvmType::Int => FieldType::Base(ristretto_classfile::BaseType::Boolean),
-        JvmType::Ref => FieldType::Object("java/lang/String".to_string()),
-        JvmType::StructRef(_) => unreachable!("StructRef field type handled by caller"),
-    }
-}
-
-/// Check if a function name is a compiler intrinsic.
-fn is_intrinsic(name: &str) -> bool {
-    matches!(
-        name,
-        "println"
-            | "print"
-            | "panic"
-            | "to_float"
-            | "to_int"
-            | "int_to_string"
-            | "float_to_string"
-            | "string_concat"
-            | "string_length"
-    )
+pub(super) struct SumTypeInfo {
+    pub(super) interface_class_index: u16,
+    pub(super) variants: HashMap<String, VariantInfo>,
 }
 
 /// Well-known constant pool indices, set once in `new()`, read-only after.
-struct CpoolRefs {
-    code_utf8: u16,
-    object_init: u16,
-    init_name: u16,
-    init_desc: u16,
-    system_out: u16,
-    println_long: u16,
-    println_string: u16,
-    println_double: u16,
-    println_bool: u16,
-    println_object: u16,
-    print_long: u16,
-    print_string: u16,
-    print_double: u16,
-    print_bool: u16,
-    print_object: u16,
-    smt_name: u16,
-    string_class: u16,
-    ps_class: u16,
-    long_box_valueof: u16,
-    double_box_valueof: u16,
-    bool_box_valueof: u16,
-    long_box_class: u16,
-    long_unbox: u16,
-    double_box_class: u16,
-    double_unbox: u16,
-    bool_box_class: u16,
-    bool_unbox: u16,
-    object_class: u16,
-    string_concat: u16,
-    string_equals: u16,
+pub(super) struct CpoolRefs {
+    pub(super) code_utf8: u16,
+    pub(super) object_init: u16,
+    pub(super) init_name: u16,
+    pub(super) init_desc: u16,
+    pub(super) system_out: u16,
+    pub(super) println_long: u16,
+    pub(super) println_string: u16,
+    pub(super) println_double: u16,
+    pub(super) println_bool: u16,
+    pub(super) println_object: u16,
+    pub(super) print_long: u16,
+    pub(super) print_string: u16,
+    pub(super) print_double: u16,
+    pub(super) print_bool: u16,
+    pub(super) print_object: u16,
+    pub(super) smt_name: u16,
+    pub(super) string_class: u16,
+    pub(super) ps_class: u16,
+    pub(super) long_box_valueof: u16,
+    pub(super) double_box_valueof: u16,
+    pub(super) bool_box_valueof: u16,
+    pub(super) long_box_class: u16,
+    pub(super) long_unbox: u16,
+    pub(super) double_box_class: u16,
+    pub(super) double_unbox: u16,
+    pub(super) bool_box_class: u16,
+    pub(super) bool_unbox: u16,
+    pub(super) object_class: u16,
+    pub(super) string_concat: u16,
+    pub(super) string_equals: u16,
     // Intrinsic support
-    runtime_exception_class: u16,
-    runtime_exception_init: u16,
-    string_valueof_long: u16,
-    string_valueof_double: u16,
-    string_length_ref: u16,
+    pub(super) runtime_exception_class: u16,
+    pub(super) runtime_exception_init: u16,
+    pub(super) string_valueof_long: u16,
+    pub(super) string_valueof_double: u16,
+    pub(super) string_length_ref: u16,
 }
 
 /// StackMapTable / verification type tracking.
-struct FrameState {
-    stack_types: Vec<VerificationType>,
-    local_types: Vec<VerificationType>,
-    frames: BTreeMap<u16, (Vec<VerificationType>, Vec<VerificationType>)>,
-    max_stack_depth: usize,
+pub(super) struct FrameState {
+    pub(super) stack_types: Vec<VerificationType>,
+    pub(super) local_types: Vec<VerificationType>,
+    pub(super) frames: BTreeMap<u16, (Vec<VerificationType>, Vec<VerificationType>)>,
+    pub(super) max_stack_depth: usize,
 }
 
 impl FrameState {
@@ -222,11 +158,11 @@ impl FrameState {
         self.update_max_depth();
     }
 
-    fn pop_type(&mut self) {
+    pub(super) fn pop_type(&mut self) {
         self.stack_types.pop();
     }
 
-    fn pop_type_n(&mut self, n: usize) {
+    pub(super) fn pop_type_n(&mut self, n: usize) {
         self.stack_types.truncate(self.stack_types.len() - n);
     }
 
@@ -303,17 +239,17 @@ impl FrameState {
 }
 
 /// Lambda/closure compilation state.
-struct LambdaState {
-    lambda_counter: u16,
-    lambda_methods: Vec<Method>,
-    bootstrap_methods: Vec<BootstrapMethod>,
-    metafactory_handle: Option<u16>,
-    fun_classes: HashMap<u8, u16>,
-    fun_apply_refs: HashMap<u8, u16>,
+pub(super) struct LambdaState {
+    pub(super) lambda_counter: u16,
+    pub(super) lambda_methods: Vec<Method>,
+    pub(super) bootstrap_methods: Vec<BootstrapMethod>,
+    pub(super) metafactory_handle: Option<u16>,
+    pub(super) fun_classes: HashMap<u8, u16>,
+    pub(super) fun_apply_refs: HashMap<u8, u16>,
 }
 
 impl LambdaState {
-    fn ensure_fun_interface(
+    pub(super) fn ensure_fun_interface(
         &mut self,
         arity: u8,
         cp: &mut ConstantPool,
@@ -356,24 +292,24 @@ impl LambdaState {
 }
 
 /// Type registry for codegen (structs, sum types, functions).
-struct CodegenTypeInfo {
-    struct_info: HashMap<String, StructInfo>,
-    class_descriptors: HashMap<u16, String>,
-    sum_type_info: HashMap<String, SumTypeInfo>,
-    variant_to_sum: HashMap<String, String>,
-    functions: HashMap<String, FunctionInfo>,
-    fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
+pub(super) struct CodegenTypeInfo {
+    pub(super) struct_info: HashMap<String, StructInfo>,
+    pub(super) class_descriptors: HashMap<u16, String>,
+    pub(super) sum_type_info: HashMap<String, SumTypeInfo>,
+    pub(super) variant_to_sum: HashMap<String, String>,
+    pub(super) functions: HashMap<String, FunctionInfo>,
+    pub(super) fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
 
 impl CodegenTypeInfo {
-    fn jvm_type_descriptor(&self, ty: JvmType) -> String {
+    pub(super) fn jvm_type_descriptor(&self, ty: JvmType) -> String {
         match ty {
             JvmType::StructRef(idx) => self.class_descriptors[&idx].clone(),
             other => jvm_type_to_field_descriptor(other),
         }
     }
 
-    fn build_descriptor(&self, params: &[JvmType], ret: JvmType) -> String {
+    pub(super) fn build_descriptor(&self, params: &[JvmType], ret: JvmType) -> String {
         let mut desc = String::from("(");
         for p in params {
             desc.push_str(&self.jvm_type_descriptor(*p));
@@ -385,41 +321,45 @@ impl CodegenTypeInfo {
 }
 
 /// Info about a trait for dispatch.
-struct TraitDispatchInfo {
-    interface_class: u16,       // class index of the trait interface in main cpool
-    method_refs: HashMap<String, u16>, // method_name → interface method_ref
+pub(super) struct TraitDispatchInfo {
+    pub(super) interface_class: u16,       // class index of the trait interface in main cpool
+    pub(super) method_refs: HashMap<String, u16>, // method_name → interface method_ref
 }
 
 /// Info about a trait instance singleton.
-struct InstanceSingletonInfo {
-    instance_field_ref: u16,    // field_ref for INSTANCE field (for getstatic)
+pub(super) struct InstanceSingletonInfo {
+    pub(super) instance_field_ref: u16,    // field_ref for INSTANCE field (for getstatic)
 }
 
-struct Compiler {
-    cp: ConstantPool,
-    this_class: u16,
-    refs: CpoolRefs,
-    frame: FrameState,
-    lambda: LambdaState,
-    types: CodegenTypeInfo,
-    code: Vec<Instruction>,
-    locals: HashMap<String, (u16, JvmType)>,
-    next_local: u16,
-    fn_params: Vec<(u16, JvmType)>,
-    fn_return_type: Option<JvmType>,
-    nested_ifeq_patches: Vec<usize>,
-    local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
-    // Trait dispatch info
-    trait_dispatch: HashMap<String, TraitDispatchInfo>,           // trait_name → dispatch info
-    instance_singletons: HashMap<(String, String), InstanceSingletonInfo>, // (trait, type) → singleton
-    trait_method_map: HashMap<String, String>,                    // method_name → trait_name
-    fn_constraints: HashMap<String, Vec<String>>,                 // fn_name → [trait_names]
-    dict_locals: HashMap<String, u16>,                            // trait_name → local slot (per-method)
-    parameterized_instances: HashMap<(String, String), Vec<(String, usize)>>, // (trait, type) → [(subdict_trait, type_param_idx)]
+/// Trait dispatch state for codegen.
+pub(super) struct TraitState {
+    pub(super) trait_dispatch: HashMap<String, TraitDispatchInfo>,
+    pub(super) instance_singletons: HashMap<(String, String), InstanceSingletonInfo>,
+    pub(super) trait_method_map: HashMap<String, String>,
+    pub(super) fn_constraints: HashMap<String, Vec<String>>,
+    pub(super) dict_locals: HashMap<String, u16>,
+    pub(super) parameterized_instances: HashMap<(String, String), Vec<(String, usize)>>,
+}
+
+pub(super) struct Compiler {
+    pub(super) cp: ConstantPool,
+    pub(super) this_class: u16,
+    pub(super) refs: CpoolRefs,
+    pub(super) frame: FrameState,
+    pub(super) lambda: LambdaState,
+    pub(super) types: CodegenTypeInfo,
+    pub(super) code: Vec<Instruction>,
+    pub(super) locals: HashMap<String, (u16, JvmType)>,
+    pub(super) next_local: u16,
+    pub(super) fn_params: Vec<(u16, JvmType)>,
+    pub(super) fn_return_type: Option<JvmType>,
+    pub(super) nested_ifeq_patches: Vec<usize>,
+    pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
+    pub(super) traits: TraitState,
 }
 
 impl Compiler {
-    fn new(class_name: &str) -> Result<(Self, u16, u16), CodegenError> {
+    pub(super) fn new(class_name: &str) -> Result<(Self, u16, u16), CodegenError> {
         let mut cp = ConstantPool::default();
 
         let this_class = cp.add_class(class_name)?;
@@ -565,19 +505,21 @@ impl Compiler {
             fn_return_type: None,
             nested_ifeq_patches: Vec::new(),
             local_fn_info: HashMap::new(),
-            trait_dispatch: HashMap::new(),
-            instance_singletons: HashMap::new(),
-            trait_method_map: HashMap::new(),
-            fn_constraints: HashMap::new(),
-            dict_locals: HashMap::new(),
-            parameterized_instances: HashMap::new(),
+            traits: TraitState {
+                trait_dispatch: HashMap::new(),
+                instance_singletons: HashMap::new(),
+                trait_method_map: HashMap::new(),
+                fn_constraints: HashMap::new(),
+                dict_locals: HashMap::new(),
+                parameterized_instances: HashMap::new(),
+            },
         };
 
         Ok((compiler, this_class, object_class))
     }
 
     /// Map a typechecker Type to a JvmType, using struct_info/sum_type_info for Named types.
-    fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
+    pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
                 if let Some(info) = self.types.struct_info.get(name) {
@@ -605,7 +547,7 @@ impl Compiler {
     }
 
     /// Reset per-method compilation state.
-    fn reset_method_state(&mut self) {
+    pub(super) fn reset_method_state(&mut self) {
         self.code.clear();
         self.locals.clear();
         self.next_local = 0;
@@ -613,15 +555,15 @@ impl Compiler {
         self.fn_params.clear();
         self.fn_return_type = None;
         self.local_fn_info.clear();
-        self.dict_locals.clear();
+        self.traits.dict_locals.clear();
     }
 
-    fn emit(&mut self, instr: Instruction) {
+    pub(super) fn emit(&mut self, instr: Instruction) {
         self.code.push(instr);
     }
 
     // Convenience delegators to FrameState (avoid passing string_class everywhere)
-    fn push_jvm_type(&mut self, ty: JvmType) {
+    pub(super) fn push_jvm_type(&mut self, ty: JvmType) {
         self.frame.push_jvm_type(ty, self.refs.string_class);
     }
 
@@ -633,7 +575,7 @@ impl Compiler {
         self.frame.jvm_type_to_vtypes(ty, self.refs.string_class)
     }
 
-    fn compile_expr(&mut self, expr: &TypedExpr, in_tail: bool) -> Result<JvmType, CodegenError> {
+    pub(super) fn compile_expr(&mut self, expr: &TypedExpr, in_tail: bool) -> Result<JvmType, CodegenError> {
         match &expr.kind {
             TypedExprKind::Lit(value) => self.compile_lit(value),
             TypedExprKind::BinaryOp { op, lhs, rhs } => self.compile_binop(op, lhs, rhs),
@@ -785,13 +727,13 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         let type_name = type_to_name(&lhs.ty);
 
-        let dispatch = self.trait_dispatch.get(trait_name)
+        let dispatch = self.traits.trait_dispatch.get(trait_name)
             .ok_or_else(|| CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}")))?;
         let iface_method_ref = *dispatch.method_refs.get(method_name)
             .ok_or_else(|| CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}")))?;
         let iface_class = dispatch.interface_class;
 
-        let singleton = self.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
+        let singleton = self.traits.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
             .ok_or_else(|| CodegenError::UndefinedVariable(format!("no instance of {trait_name} for {type_name}")))?;
         let field_ref = singleton.instance_field_ref;
 
@@ -829,13 +771,13 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         let type_name = type_to_name(&operand.ty);
 
-        let dispatch = self.trait_dispatch.get(trait_name)
+        let dispatch = self.traits.trait_dispatch.get(trait_name)
             .ok_or_else(|| CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}")))?;
         let iface_method_ref = *dispatch.method_refs.get(method_name)
             .ok_or_else(|| CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}")))?;
         let iface_class = dispatch.interface_class;
 
-        let singleton = self.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
+        let singleton = self.traits.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
             .ok_or_else(|| CodegenError::UndefinedVariable(format!("no instance of {trait_name} for {type_name}")))?;
         let field_ref = singleton.instance_field_ref;
 
@@ -1418,8 +1360,8 @@ impl Compiler {
         }
 
         // Check if this is a trait method call
-        if let Some(trait_name) = self.trait_method_map.get(name).cloned() {
-            if let Some(dispatch) = self.trait_dispatch.get(&trait_name) {
+        if let Some(trait_name) = self.traits.trait_method_map.get(name).cloned() {
+            if let Some(dispatch) = self.traits.trait_dispatch.get(&trait_name) {
                 let iface_method_ref = dispatch.method_refs[name];
                 let iface_class = dispatch.interface_class;
 
@@ -1430,7 +1372,7 @@ impl Compiler {
                 // Load the dictionary (trait interface reference)
                 if is_type_var {
                     // Load dict from local variable (constrained function's dict param)
-                    if let Some(&dict_slot) = self.dict_locals.get(&trait_name) {
+                    if let Some(&dict_slot) = self.traits.dict_locals.get(&trait_name) {
                         self.emit(Instruction::Aload(dict_slot as u8));
                         self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
                     } else {
@@ -1441,11 +1383,11 @@ impl Compiler {
                 } else {
                     // Concrete type — getstatic Instance.INSTANCE or construct parameterized
                     let type_name = type_to_name(first_arg_ty);
-                    if let Some(singleton) = self.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
+                    if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
                         let field_ref = singleton.instance_field_ref;
                         self.emit(Instruction::Getstatic(field_ref));
                         self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
-                    } else if let Some(subdict_traits) = self.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
+                    } else if let Some(subdict_traits) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
                         // Construct parameterized instance on the fly
                         let instance_class_name = format!("{}${}", trait_name, type_name);
                         let inst_class = self.cp.add_class(&instance_class_name)?;
@@ -1471,7 +1413,7 @@ impl Compiler {
                                 _ => first_arg_ty,
                             };
                             let sub_type_name = type_to_name(type_arg);
-                            if let Some(singleton) = self.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
+                            if let Some(singleton) = self.traits.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
                                 let field_ref = singleton.instance_field_ref;
                                 self.emit(Instruction::Getstatic(field_ref));
                                 self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
@@ -1546,7 +1488,7 @@ impl Compiler {
         }
 
         // Check if calling a constrained function — need to prepend dict args
-        let constraint_traits = self.fn_constraints.get(name).cloned().unwrap_or_default();
+        let constraint_traits = self.traits.fn_constraints.get(name).cloned().unwrap_or_default();
 
         // Look up function info (need to clone out to avoid borrow conflict)
         let info = self.types
@@ -1567,13 +1509,13 @@ impl Compiler {
                     let is_type_var = matches!(first_arg_ty, Type::Var(_));
                     if is_type_var {
                         // Forward our own dict local
-                        if let Some(&dict_slot) = self.dict_locals.get(trait_name) {
+                        if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
                             self.emit(Instruction::Aload(dict_slot as u8));
                             self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                         }
                     } else {
                         let type_name = type_to_name(first_arg_ty);
-                        if let Some(singleton) = self.instance_singletons.get(&(trait_name.clone(), type_name)) {
+                        if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name)) {
                             let field_ref = singleton.instance_field_ref;
                             self.emit(Instruction::Getstatic(field_ref));
                             self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
@@ -1774,7 +1716,7 @@ impl Compiler {
     }
 
     /// Box a primitive value on the stack if needed for erased type params.
-    fn box_if_needed(&mut self, actual_type: JvmType) -> JvmType {
+    pub(super) fn box_if_needed(&mut self, actual_type: JvmType) -> JvmType {
         match actual_type {
             JvmType::Long => {
                 self.frame.pop_type_n(2); // Long + Top
@@ -2796,7 +2738,7 @@ impl Compiler {
     }
 
     /// Compile a function declaration into a JVM Method.
-    fn compile_function(&mut self, decl: &TypedFnDecl) -> Result<Method, CodegenError> {
+    pub(super) fn compile_function(&mut self, decl: &TypedFnDecl) -> Result<Method, CodegenError> {
         self.reset_method_state();
 
         // Look up the function's type info
@@ -2810,13 +2752,13 @@ impl Compiler {
         let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
 
         // Register dict params for constrained functions (leading params before user params)
-        let constraint_traits = self.fn_constraints.get(&decl.name).cloned().unwrap_or_default();
+        let constraint_traits = self.traits.fn_constraints.get(&decl.name).cloned().unwrap_or_default();
         let num_dict_params = constraint_traits.len();
         let mut fn_params = Vec::new();
         for trait_name in &constraint_traits {
             let slot = self.next_local;
             let jvm_ty = JvmType::StructRef(self.refs.object_class);
-            self.dict_locals.insert(trait_name.clone(), slot);
+            self.traits.dict_locals.insert(trait_name.clone(), slot);
             fn_params.push((slot, jvm_ty));
             self.next_local += 1;
             self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
@@ -2931,7 +2873,7 @@ impl Compiler {
         })
     }
 
-    fn build_class(
+    pub(super) fn build_class(
         mut self,
         this_class: u16,
         object_class: u16,
@@ -3014,1556 +2956,4 @@ impl Compiler {
         class_file.to_bytes(&mut buffer)?;
         Ok(buffer)
     }
-}
-
-/// Map a TypeExpr to a JvmType (for struct field declarations in AST).
-fn type_expr_to_jvm(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
-    match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => match name.as_str() {
-            "Int" => Ok(JvmType::Long),
-            "Float" => Ok(JvmType::Double),
-            "Bool" => Ok(JvmType::Int),
-            "String" => Ok(JvmType::Ref),
-            "Unit" => Ok(JvmType::Int),
-            _ => Err(CodegenError::TypeError(format!(
-                "cannot map type expr to JVM: {name}"
-            ))),
-        },
-        _ => Err(CodegenError::TypeError(format!(
-            "unsupported type expr in struct field: {texpr:?}"
-        ))),
-    }
-}
-
-/// Generate a standalone class file for a struct type.
-fn generate_struct_class(
-    name: &str,
-    fields: &[(String, JvmType)],
-    class_descriptors: &HashMap<u16, String>,
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-    let code_utf8 = cp.add_utf8("Code")?;
-    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
-    let init_name = cp.add_utf8("<init>")?;
-
-    // Build constructor descriptor
-    let mut ctor_desc = String::from("(");
-    for (_, jt) in fields {
-        let desc = match jt {
-            JvmType::StructRef(idx) => class_descriptors[idx].clone(),
-            other => jvm_type_to_field_descriptor(*other),
-        };
-        ctor_desc.push_str(&desc);
-    }
-    ctor_desc.push_str(")V");
-    let init_desc = cp.add_utf8(&ctor_desc)?;
-
-    // Build field refs for putfield/getfield
-    let mut field_refs = Vec::new();
-    let mut jvm_fields = Vec::new();
-    for (fname, jt) in fields {
-        let fdesc = match jt {
-            JvmType::StructRef(idx) => class_descriptors[idx].clone(),
-            other => jvm_type_to_field_descriptor(*other),
-        };
-        let field_ref = cp.add_field_ref(this_class, fname, &fdesc)?;
-        field_refs.push(field_ref);
-
-        let name_idx = cp.add_utf8(fname)?;
-        let desc_idx = cp.add_utf8(&fdesc)?;
-        let field_type = match jt {
-            JvmType::StructRef(_) => {
-                // fdesc is "LClassName;" — extract "ClassName"
-                FieldType::Object(fdesc[1..fdesc.len()-1].to_string())
-            }
-            other => jvm_type_to_base_field_type(*other),
-        };
-        jvm_fields.push(Field {
-            access_flags: FieldAccessFlags::PRIVATE | FieldAccessFlags::FINAL,
-            name_index: name_idx,
-            descriptor_index: desc_idx,
-            field_type,
-            attributes: vec![],
-        });
-    }
-
-    // Constructor code: aload_0, invokespecial Object.<init>, then store each field
-    let mut ctor_code = vec![
-        Instruction::Aload_0,
-        Instruction::Invokespecial(object_init),
-    ];
-
-    let mut param_slot: u16 = 1; // slot 0 = this
-    for (i, (_, jt)) in fields.iter().enumerate() {
-        ctor_code.push(Instruction::Aload_0);
-        let load = match jt {
-            JvmType::Long => Instruction::Lload(param_slot as u8),
-            JvmType::Double => Instruction::Dload(param_slot as u8),
-            JvmType::Int => Instruction::Iload(param_slot as u8),
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
-        };
-        ctor_code.push(load);
-        ctor_code.push(Instruction::Putfield(field_refs[i]));
-        param_slot += match jt {
-            JvmType::Long | JvmType::Double => 2,
-            _ => 1,
-        };
-    }
-    ctor_code.push(Instruction::Return);
-
-    let constructor = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: init_name,
-        descriptor_index: init_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 20,
-            max_locals: param_slot,
-            code: ctor_code,
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    // Accessor methods
-    let mut methods = vec![constructor];
-    for (i, (fname, jt)) in fields.iter().enumerate() {
-        let ret_desc = match jt {
-            JvmType::StructRef(idx) => class_descriptors[idx].clone(),
-            other => jvm_type_to_field_descriptor(*other),
-        };
-        let method_desc = format!("(){ret_desc}");
-        let method_name_idx = cp.add_utf8(fname)?;
-        let method_desc_idx = cp.add_utf8(&method_desc)?;
-
-        let ret_instr = match jt {
-            JvmType::Long => Instruction::Lreturn,
-            JvmType::Double => Instruction::Dreturn,
-            JvmType::Int => Instruction::Ireturn,
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Areturn,
-        };
-
-        methods.push(Method {
-            access_flags: MethodAccessFlags::PUBLIC,
-            name_index: method_name_idx,
-            descriptor_index: method_desc_idx,
-            attributes: vec![Attribute::Code {
-                name_index: code_utf8,
-                max_stack: 4,
-                max_locals: 1,
-                code: vec![
-                    Instruction::Aload_0,
-                    Instruction::Getfield(field_refs[i]),
-                    ret_instr,
-                ],
-                exception_table: vec![],
-                attributes: vec![],
-            }],
-        });
-    }
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        fields: jvm_fields,
-        methods,
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate a sealed interface class file for a sum type.
-fn generate_sealed_interface_class(
-    name: &str,
-    variant_class_names: &[&str],
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-
-    // Add class refs for each variant (for PermittedSubclasses)
-    let mut variant_class_indexes = Vec::new();
-    for vname in variant_class_names {
-        let idx = cp.add_class(vname)?;
-        variant_class_indexes.push(idx);
-    }
-
-    let permitted_name = cp.add_utf8("PermittedSubclasses")?;
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC
-            | ClassAccessFlags::INTERFACE
-            | ClassAccessFlags::ABSTRACT,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        attributes: vec![Attribute::PermittedSubclasses {
-            name_index: permitted_name,
-            class_indexes: variant_class_indexes,
-        }],
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate a variant class file that implements a sealed interface.
-fn generate_variant_class(
-    variant_name: &str,
-    interface_name: &str,
-    display_name: &str,
-    fields: &[(String, JvmType, bool)], // (name, jvm_type, is_erased)
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(variant_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-    let interface_class = cp.add_class(interface_name)?;
-    let code_utf8 = cp.add_utf8("Code")?;
-    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
-    let init_name = cp.add_utf8("<init>")?;
-
-    // Build constructor descriptor — erased fields use Ljava/lang/Object;
-    let mut ctor_desc = String::from("(");
-    for (_, jt, is_erased) in fields {
-        if *is_erased {
-            ctor_desc.push_str("Ljava/lang/Object;");
-        } else {
-            ctor_desc.push_str(&jvm_type_to_field_descriptor(*jt));
-        }
-    }
-    ctor_desc.push_str(")V");
-    let init_desc = cp.add_utf8(&ctor_desc)?;
-
-    // Build fields and field refs
-    let mut field_refs = Vec::new();
-    let mut jvm_fields = Vec::new();
-    for (i, (fname, jt, is_erased)) in fields.iter().enumerate() {
-        let fdesc = if *is_erased {
-            "Ljava/lang/Object;".to_string()
-        } else {
-            jvm_type_to_field_descriptor(*jt)
-        };
-        let field_ref = cp.add_field_ref(this_class, fname, &fdesc)?;
-        field_refs.push(field_ref);
-
-        let name_idx = cp.add_utf8(fname)?;
-        let desc_idx = cp.add_utf8(&fdesc)?;
-        let field_type = if *is_erased {
-            FieldType::Object("java/lang/Object".to_string())
-        } else {
-            jvm_type_to_base_field_type(*jt)
-        };
-        jvm_fields.push(Field {
-            access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::FINAL,
-            name_index: name_idx,
-            descriptor_index: desc_idx,
-            field_type,
-            attributes: vec![],
-        });
-        let _ = i; // suppress unused
-    }
-
-    // Constructor code
-    let mut ctor_code = vec![
-        Instruction::Aload_0,
-        Instruction::Invokespecial(object_init),
-    ];
-
-    let mut param_slot: u16 = 1;
-    for (i, (_, jt, is_erased)) in fields.iter().enumerate() {
-        ctor_code.push(Instruction::Aload_0);
-        if *is_erased {
-            ctor_code.push(Instruction::Aload(param_slot as u8));
-            param_slot += 1;
-        } else {
-            let load = match jt {
-                JvmType::Long => Instruction::Lload(param_slot as u8),
-                JvmType::Double => Instruction::Dload(param_slot as u8),
-                JvmType::Int => Instruction::Iload(param_slot as u8),
-                JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
-            };
-            ctor_code.push(load);
-            param_slot += match jt {
-                JvmType::Long | JvmType::Double => 2,
-                _ => 1,
-            };
-        }
-        ctor_code.push(Instruction::Putfield(field_refs[i]));
-    }
-    ctor_code.push(Instruction::Return);
-
-    let constructor = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: init_name,
-        descriptor_index: init_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 20,
-            max_locals: param_slot,
-            code: ctor_code,
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let mut methods = vec![constructor];
-
-    // toString() method returning the variant name
-    let tostring_name = cp.add_utf8("toString")?;
-    let tostring_desc = cp.add_utf8("()Ljava/lang/String;")?;
-    let variant_str = cp.add_string(display_name)?;
-    let ldc = if variant_str <= 255 {
-        Instruction::Ldc(variant_str as u8)
-    } else {
-        Instruction::Ldc_w(variant_str)
-    };
-    methods.push(Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: tostring_name,
-        descriptor_index: tostring_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 1,
-            max_locals: 1,
-            code: vec![ldc, Instruction::Areturn],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    });
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        interfaces: vec![interface_class],
-        fields: jvm_fields,
-        methods,
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Check if a type expression references any of the given type parameters (directly or in App args).
-fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool {
-    match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
-            type_params.contains(name)
-        }
-        TypeExpr::App { args, .. } => {
-            args.iter().any(|a| type_expr_uses_type_params(a, type_params))
-        }
-        _ => false,
-    }
-}
-
-/// Compile a module to JVM bytecode. Returns a list of (class_name, bytes) pairs.
-pub fn compile_module(
-    module: &Module,
-    class_name: &str,
-) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    // Find the main function
-    let _main_fn = module
-        .decls
-        .iter()
-        .find_map(|decl| match decl {
-            Decl::DefFn(f) if f.name == "main" => Some(f),
-            _ => None,
-        })
-        .ok_or(CodegenError::NoMainFunction)?;
-
-    let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
-
-    // Register java/lang/Object in class_descriptors for erased type variables
-    compiler.types
-        .class_descriptors
-        .insert(object_class, "Ljava/lang/Object;".to_string());
-
-    // Run the typechecker to get typed module with function types and typed bodies
-    let typed_module = infer_module(module).map_err(|e| {
-        CodegenError::TypeError(format!("{e:?}"))
-    })?;
-    let type_info = &typed_module.fn_types;
-
-    // Collect struct declarations from AST
-    let struct_decls: Vec<_> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefType(td) => match &td.kind {
-                TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-
-    // Process struct types: register in compiler, generate class files
-    let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
-    for (struct_name, ast_fields) in &struct_decls {
-        // Resolve field types to JvmTypes
-        let jvm_fields: Vec<(String, JvmType)> = ast_fields
-            .iter()
-            .map(|(fname, texpr)| {
-                // For struct-typed fields, we need to check if it refers to a known struct
-                let jt = match texpr {
-                    TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
-                        if let Some(si) = compiler.types.struct_info.get(name.as_str()) {
-                            JvmType::StructRef(si.class_index)
-                        } else {
-                            type_expr_to_jvm(texpr)?
-                        }
-                    }
-                    _ => type_expr_to_jvm(texpr)?,
-                };
-                Ok((fname.clone(), jt))
-            })
-            .collect::<Result<_, CodegenError>>()?;
-
-        // Register the struct class in main class's constant pool
-        let class_index = compiler.cp.add_class(struct_name)?;
-        let class_desc = format!("L{struct_name};");
-        compiler.types
-            .class_descriptors
-            .insert(class_index, class_desc.clone());
-
-        // Add constructor methodref in main class's cpool
-        let mut ctor_desc = String::from("(");
-        for (_, jt) in &jvm_fields {
-            ctor_desc.push_str(&compiler.types.jvm_type_descriptor(*jt));
-        }
-        ctor_desc.push_str(")V");
-        let constructor_ref =
-            compiler
-                .cp
-                .add_method_ref(class_index, "<init>", &ctor_desc)?;
-
-        // Add accessor methodrefs in main class's cpool
-        let mut accessor_refs = HashMap::new();
-        for (fname, jt) in &jvm_fields {
-            let ret_desc = compiler.types.jvm_type_descriptor(*jt);
-            let method_desc = format!("(){ret_desc}");
-            let accessor_ref =
-                compiler
-                    .cp
-                    .add_method_ref(class_index, fname, &method_desc)?;
-            accessor_refs.insert(fname.clone(), accessor_ref);
-        }
-
-        compiler.types.struct_info.insert(
-            struct_name.clone(),
-            StructInfo {
-                class_index,
-                class_name: struct_name.clone(),
-                fields: jvm_fields.clone(),
-                constructor_ref,
-                accessor_refs,
-            },
-        );
-
-        // Generate the struct class file
-        let struct_bytes =
-            generate_struct_class(struct_name, &jvm_fields, &compiler.types.class_descriptors)?;
-        result_classes.push((struct_name.clone(), struct_bytes));
-    }
-
-    // Collect sum type declarations from AST
-    let mut sum_decls: Vec<_> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefType(td) => match &td.kind {
-                TypeDeclKind::Sum { variants } => {
-                    Some((td.name.clone(), td.type_params.clone(), variants.clone()))
-                }
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-
-    // Inject prelude sum types not shadowed by user declarations
-    {
-        let user_type_names: std::collections::HashSet<String> =
-            sum_decls.iter().map(|(name, _, _)| name.clone()).collect();
-        for &module_path in krypton_typechecker::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
-            if let Some(source) = krypton_typechecker::stdlib_loader::StdlibLoader::get_source(module_path) {
-                let stripped: String = source
-                    .lines()
-                    .filter(|line| !line.trim_start().starts_with(";;"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let (stdlib_module, _) = krypton_parser::parser::parse(&stripped);
-                for decl in stdlib_module.decls {
-                    if let Decl::DefType(td) = decl {
-                        if let TypeDeclKind::Sum { variants } = td.kind {
-                            if !user_type_names.contains(&td.name) {
-                                sum_decls.push((td.name, td.type_params, variants));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Process sum types: generate sealed interface + variant classes
-    for (sum_name, type_params, variants) in &sum_decls {
-        // Register interface class in main cpool
-        let interface_class_index = compiler.cp.add_class(sum_name)?;
-        let interface_desc = format!("L{sum_name};");
-        compiler.types
-            .class_descriptors
-            .insert(interface_class_index, interface_desc);
-
-        let mut variant_infos = HashMap::new();
-        let variant_names: Vec<String> = variants.iter().map(|v| format!("{}${}", sum_name, v.name)).collect();
-
-        for variant in variants {
-            // Resolve fields: type params are erased to Object
-            let fields: Vec<(String, JvmType, bool)> = variant
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(i, texpr)| {
-                    let field_name = format!("field{i}");
-                    let is_erased = type_expr_uses_type_params(texpr, type_params);
-                    let jt = if is_erased {
-                        JvmType::Ref // erased to Object
-                    } else {
-                        type_expr_to_jvm(texpr)?
-                    };
-                    Ok((field_name, jt, is_erased))
-                })
-                .collect::<Result<_, CodegenError>>()?;
-
-            // Register variant class in main cpool
-            let qualified_name = format!("{}${}", sum_name, variant.name);
-            let variant_class_index = compiler.cp.add_class(&qualified_name)?;
-            let variant_desc = format!("L{qualified_name};");
-            compiler.types
-                .class_descriptors
-                .insert(variant_class_index, variant_desc);
-
-            // Build constructor descriptor — erased fields use Ljava/lang/Object;
-            let mut ctor_desc = String::from("(");
-            for (_, jt, is_erased) in &fields {
-                if *is_erased {
-                    ctor_desc.push_str("Ljava/lang/Object;");
-                } else {
-                    ctor_desc.push_str(&jvm_type_to_field_descriptor(*jt));
-                }
-            }
-            ctor_desc.push_str(")V");
-
-            let constructor_ref = compiler.cp.add_method_ref(
-                variant_class_index,
-                "<init>",
-                &ctor_desc,
-            )?;
-
-            // Add field refs to main cpool for pattern matching getfield
-            let mut main_field_refs = Vec::new();
-            for (fname, jt, is_erased) in &fields {
-                let fdesc = if *is_erased {
-                    "Ljava/lang/Object;".to_string()
-                } else {
-                    jvm_type_to_field_descriptor(*jt)
-                };
-                let fr = compiler.cp.add_field_ref(variant_class_index, fname, &fdesc)?;
-                main_field_refs.push(fr);
-            }
-
-            compiler.types
-                .variant_to_sum
-                .insert(variant.name.clone(), sum_name.clone());
-
-            variant_infos.insert(
-                variant.name.clone(),
-                VariantInfo {
-                    class_index: variant_class_index,
-                    class_name: qualified_name.clone(),
-                    fields: fields.clone(),
-                    constructor_ref,
-                    field_refs: main_field_refs,
-                },
-            );
-
-            // Generate variant class file
-            let variant_bytes =
-                generate_variant_class(&qualified_name, sum_name, &variant.name, &fields)?;
-            result_classes.push((qualified_name.clone(), variant_bytes));
-        }
-
-        compiler.types.sum_type_info.insert(
-            sum_name.clone(),
-            SumTypeInfo {
-                interface_class_index,
-                variants: variant_infos,
-            },
-        );
-
-        // Generate sealed interface class file
-        let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
-        let interface_bytes = generate_sealed_interface_class(sum_name, &variant_name_refs)?;
-        result_classes.push((sum_name.clone(), interface_bytes));
-    }
-
-    // Pre-scan for function-typed params so we can register FunN interfaces first
-    for (name, scheme) in type_info.iter() {
-        if let Type::Fn(param_tys, _) = &scheme.ty {
-            if compiler.types.struct_info.contains_key(name)
-                || compiler.types.variant_to_sum.contains_key(name)
-            {
-                continue;
-            }
-            for pt in param_tys {
-                if let Type::Fn(inner_params, _) = pt {
-                    let arity = inner_params.len() as u8;
-                    compiler.lambda.ensure_fun_interface(arity, &mut compiler.cp, &mut compiler.types.class_descriptors)?;
-                }
-            }
-        }
-    }
-
-    // Process trait definitions: generate interface classes
-    compiler.trait_method_map = typed_module.trait_method_map.clone();
-    compiler.fn_constraints = typed_module.fn_constraints.clone();
-
-    for trait_def in &typed_module.trait_defs {
-        let interface_bytes = generate_trait_interface_class(&trait_def.name, &trait_def.methods)?;
-        result_classes.push((trait_def.name.clone(), interface_bytes));
-
-        // Register interface class in main cpool
-        let iface_class = compiler.cp.add_class(&trait_def.name)?;
-        compiler.types.class_descriptors.insert(iface_class, format!("L{};", trait_def.name));
-
-        // Register interface method refs in main cpool
-        let mut method_refs = HashMap::new();
-        for (method_name, param_count) in &trait_def.methods {
-            let mut desc = String::from("(");
-            for _ in 0..*param_count {
-                desc.push_str("Ljava/lang/Object;");
-            }
-            desc.push_str(")Ljava/lang/Object;");
-            let mref = compiler.cp.add_interface_method_ref(iface_class, method_name, &desc)?;
-            method_refs.insert(method_name.clone(), mref);
-        }
-
-        compiler.trait_dispatch.insert(trait_def.name.clone(), TraitDispatchInfo {
-            interface_class: iface_class,
-            method_refs,
-        });
-    }
-
-    // Generate built-in Show instance classes for primitive types
-    {
-        let show_primitives = [
-            ("Show$Int", "Int", "(J)Ljava/lang/String;", "java/lang/Long", "toString"),
-            ("Show$Float", "Float", "(D)Ljava/lang/String;", "java/lang/Double", "toString"),
-            ("Show$Bool", "Bool", "(Z)Ljava/lang/String;", "java/lang/Boolean", "toString"),
-            ("Show$String", "String", "(Ljava/lang/String;)Ljava/lang/String;", "", ""),
-        ];
-
-        for (show_class_name, type_name, _static_desc, _box_class, _method_name) in &show_primitives {
-            if compiler.trait_dispatch.contains_key("Show") {
-                let show_bytes = generate_builtin_show_instance_class(show_class_name, type_name)?;
-                result_classes.push((show_class_name.to_string(), show_bytes));
-
-                let inst_class_idx = compiler.cp.add_class(show_class_name)?;
-                let inst_desc = format!("L{show_class_name};");
-                compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-                let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
-                compiler.instance_singletons.insert(
-                    ("Show".to_string(), type_name.to_string()),
-                    InstanceSingletonInfo { instance_field_ref },
-                );
-            }
-        }
-    }
-
-    // Process instance definitions: generate singleton/parameterized classes
-    for instance_def in &typed_module.instance_defs {
-        let instance_class_name = format!("{}${}", instance_def.trait_name, instance_def.target_type_name);
-
-        // Collect method info for the instance class
-        let mut method_info = Vec::new();
-        let mut param_jvm_types_map: HashMap<String, Vec<JvmType>> = HashMap::new();
-        let mut return_jvm_types_map: HashMap<String, JvmType> = HashMap::new();
-        let mut param_class_names_map: HashMap<String, Vec<Option<String>>> = HashMap::new();
-
-        for (method_name, qualified_name) in &instance_def.qualified_method_names {
-            // Look up the qualified method's type from fn_types
-            if let Some((_, scheme)) = typed_module.fn_types.iter().find(|(n, _)| n == qualified_name) {
-                if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
-                    let param_jvm: Vec<JvmType> = param_tys.iter()
-                        .map(|t| compiler.type_to_jvm(t))
-                        .collect::<Result<_, _>>()?;
-                    let ret_jvm = compiler.type_to_jvm(ret_ty)?;
-                    // Build the static method descriptor, prepending dict params if constrained
-                    let constraint_traits = typed_module.fn_constraints.get(qualified_name).cloned().unwrap_or_default();
-                    let mut all_param_jvm = Vec::new();
-                    for _ in &constraint_traits {
-                        all_param_jvm.push(JvmType::StructRef(compiler.refs.object_class));
-                    }
-                    all_param_jvm.extend(param_jvm.iter().copied());
-                    let static_desc = compiler.types.build_descriptor(&all_param_jvm, ret_jvm);
-                    // Collect class names for checkcast in bridge methods
-                    let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
-                        match t {
-                            Type::Named(name, _) => Some(name.clone()),
-                            _ => None,
-                        }
-                    }).collect();
-                    param_class_names_map.insert(method_name.clone(), class_names);
-                    param_jvm_types_map.insert(method_name.clone(), param_jvm);
-                    return_jvm_types_map.insert(method_name.clone(), ret_jvm);
-                    method_info.push((method_name.clone(), qualified_name.clone(), param_tys.len(), static_desc));
-                }
-            }
-        }
-
-        if instance_def.subdict_traits.is_empty() {
-            // Simple singleton instance
-            let instance_bytes = generate_instance_class(
-                &instance_class_name,
-                &instance_def.trait_name,
-                class_name,
-                &method_info,
-                &param_jvm_types_map,
-                &return_jvm_types_map,
-                &param_class_names_map,
-            )?;
-            result_classes.push((instance_class_name.clone(), instance_bytes));
-
-            // Register INSTANCE field ref in main cpool
-            let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
-            let inst_desc = format!("L{instance_class_name};");
-            compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-            let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
-
-            compiler.instance_singletons.insert(
-                (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
-                InstanceSingletonInfo { instance_field_ref },
-            );
-        } else {
-            // Parameterized instance — needs subdictionaries
-            let instance_bytes = generate_parameterized_instance_class(
-                &instance_class_name,
-                &instance_def.trait_name,
-                class_name,
-                &method_info,
-                &param_jvm_types_map,
-                &return_jvm_types_map,
-                &param_class_names_map,
-                instance_def.subdict_traits.len(),
-            )?;
-            result_classes.push((instance_class_name.clone(), instance_bytes));
-
-            // Register class in main cpool (no INSTANCE field — constructed on demand)
-            let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
-            let inst_desc = format!("L{instance_class_name};");
-            compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-
-            compiler.parameterized_instances.insert(
-                (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
-                instance_def.subdict_traits.clone(),
-            );
-        }
-    }
-
-    // Register all functions (including main) in the function registry.
-    // Skip constructor entries (they're handled as struct/variant constructors).
-    for (name, scheme) in type_info.iter() {
-        if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
-            // Skip if this is a struct constructor or variant constructor
-            if compiler.types.struct_info.contains_key(name)
-                || compiler.types.variant_to_sum.contains_key(name)
-            {
-                continue;
-            }
-            // For constrained functions, prepend dict params (one Object per trait constraint)
-            let constraint_traits = compiler.fn_constraints.get(name).cloned().unwrap_or_default();
-            let mut all_param_types: Vec<JvmType> = Vec::new();
-            for _ in &constraint_traits {
-                all_param_types.push(JvmType::StructRef(compiler.refs.object_class));
-            }
-            let user_param_types: Vec<JvmType> = param_tys
-                .iter()
-                .map(|t| compiler.type_to_jvm(t))
-                .collect::<Result<_, _>>()?;
-            all_param_types.extend(user_param_types);
-            let return_type = compiler.type_to_jvm(ret_ty)?;
-            let jvm_name = if name == "main" {
-                "krypton_main"
-            } else {
-                name.as_str()
-            };
-            let descriptor = compiler.types.build_descriptor(&all_param_types, return_type);
-            let method_ref =
-                compiler.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
-            compiler.types.functions.insert(
-                name.clone(),
-                FunctionInfo {
-                    method_ref,
-                    param_types: all_param_types,
-                    return_type,
-                },
-            );
-            // Store TC types for detecting Fn-typed params in compile_function
-            compiler.types.fn_tc_types.insert(
-                name.clone(),
-                (param_tys.clone(), (**ret_ty).clone()),
-            );
-        }
-    }
-
-    // Compile all functions (including main) as static methods using typed bodies
-    let mut extra_methods = Vec::new();
-    for typed_fn in &typed_module.functions {
-        let mut method = compiler.compile_function(typed_fn)?;
-        // Rename main → krypton_main in the method
-        if typed_fn.name == "main" {
-            let name_idx = compiler.cp.add_utf8("krypton_main")?;
-            method.name_index = name_idx;
-        }
-        extra_methods.push(method);
-    }
-
-    // Build JVM main(String[])V — calls krypton_main and discards the result
-    let main_info = compiler.types.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
-    let krypton_main_ref = main_info.method_ref;
-    let main_return_type = main_info.return_type;
-
-    compiler.reset_method_state();
-    compiler.next_local = 1; // slot 0 = String[] args
-    let string_arr_class = compiler.cp.add_class("[Ljava/lang/String;")?;
-    compiler.frame.local_types = vec![VerificationType::Object {
-        cpool_index: string_arr_class,
-    }];
-
-    // Call krypton_main
-    compiler.emit(Instruction::Invokestatic(krypton_main_ref));
-    compiler.push_jvm_type(main_return_type);
-
-    // Discard the return value
-    match main_return_type {
-        JvmType::Long | JvmType::Double => {
-            compiler.emit(Instruction::Pop2);
-            compiler.frame.pop_type_n(2);
-        }
-        JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => {
-            compiler.emit(Instruction::Pop);
-            compiler.frame.pop_type();
-        }
-    }
-
-    compiler.emit(Instruction::Return);
-
-    // Generate FunN interface class files
-    let fun_arities: Vec<u8> = compiler.lambda.fun_classes.keys().copied().collect();
-    for arity in fun_arities {
-        let fun_bytes = generate_fun_interface(arity)?;
-        result_classes.push((format!("Fun{arity}"), fun_bytes));
-    }
-
-    let main_bytes = compiler.build_class(this_class, object_class, extra_methods)?;
-    result_classes.push((class_name.to_string(), main_bytes));
-
-    Ok(result_classes)
-}
-
-/// Generate a functional interface class file: `public interface FunN { Object apply(Object, ...); }`
-fn generate_fun_interface(arity: u8) -> Result<Vec<u8>, CodegenError> {
-    let class_name = format!("Fun{arity}");
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(&class_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-
-    // Build apply method descriptor: (Object, ..., Object)Object
-    let mut apply_desc = String::from("(");
-    for _ in 0..arity {
-        apply_desc.push_str("Ljava/lang/Object;");
-    }
-    apply_desc.push_str(")Ljava/lang/Object;");
-
-    let apply_name = cp.add_utf8("apply")?;
-    let apply_desc_idx = cp.add_utf8(&apply_desc)?;
-
-    let apply_method = Method {
-        access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
-        name_index: apply_name,
-        descriptor_index: apply_desc_idx,
-        attributes: vec![],
-    };
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC
-            | ClassAccessFlags::INTERFACE
-            | ClassAccessFlags::ABSTRACT,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        methods: vec![apply_method],
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate a trait interface class file (e.g., `Eq.class`).
-/// All methods take and return Object (type erasure).
-fn generate_trait_interface_class(
-    name: &str,
-    methods: &[(String, usize)], // (method_name, param_count)
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-
-    let mut jvm_methods = Vec::new();
-    for (method_name, param_count) in methods {
-        let mut desc = String::from("(");
-        for _ in 0..*param_count {
-            desc.push_str("Ljava/lang/Object;");
-        }
-        desc.push_str(")Ljava/lang/Object;");
-
-        let name_idx = cp.add_utf8(method_name)?;
-        let desc_idx = cp.add_utf8(&desc)?;
-
-        jvm_methods.push(Method {
-            access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
-            name_index: name_idx,
-            descriptor_index: desc_idx,
-            attributes: vec![],
-        });
-    }
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC
-            | ClassAccessFlags::INTERFACE
-            | ClassAccessFlags::ABSTRACT,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        methods: jvm_methods,
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate an instance singleton class (e.g., `Eq$Point.class`).
-/// Implements the trait interface, delegates to static methods on the main class.
-fn generate_instance_class(
-    class_name: &str,
-    trait_interface_name: &str,
-    main_class_name: &str,
-    methods: &[(String, String, usize, String)], // (iface_method_name, static_method_name, param_count, static_descriptor)
-    param_jvm_types: &HashMap<String, Vec<JvmType>>,
-    return_jvm_types: &HashMap<String, JvmType>,
-    param_class_names: &HashMap<String, Vec<Option<String>>>, // method_name → per-param class names for checkcast
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(class_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-    let interface_class = cp.add_class(trait_interface_name)?;
-    let main_class = cp.add_class(main_class_name)?;
-    let code_utf8 = cp.add_utf8("Code")?;
-    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
-    let init_name = cp.add_utf8("<init>")?;
-    let init_desc = cp.add_utf8("()V")?;
-
-    // INSTANCE field
-    let self_desc = format!("L{class_name};");
-    let instance_name = cp.add_utf8("INSTANCE")?;
-    let instance_desc = cp.add_utf8(&self_desc)?;
-    let instance_field_ref = cp.add_field_ref(this_class, "INSTANCE", &self_desc)?;
-    let self_init = cp.add_method_ref(this_class, "<init>", "()V")?;
-
-    // Boxing/unboxing refs
-    let long_box_class = cp.add_class("java/lang/Long")?;
-    let long_valueof = cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
-    let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
-    let double_box_class = cp.add_class("java/lang/Double")?;
-    let double_valueof = cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
-    let _double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
-    let bool_box_class = cp.add_class("java/lang/Boolean")?;
-    let bool_valueof = cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
-    let _bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
-
-    // Constructor
-    let constructor = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: init_name,
-        descriptor_index: init_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 2,
-            max_locals: 1,
-            code: vec![
-                Instruction::Aload_0,
-                Instruction::Invokespecial(object_init),
-                Instruction::Return,
-            ],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    // <clinit> — static initializer
-    let clinit_name = cp.add_utf8("<clinit>")?;
-    let clinit_desc = cp.add_utf8("()V")?;
-    let clinit = Method {
-        access_flags: MethodAccessFlags::STATIC,
-        name_index: clinit_name,
-        descriptor_index: clinit_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 2,
-            max_locals: 0,
-            code: vec![
-                Instruction::New(this_class),
-                Instruction::Dup,
-                Instruction::Invokespecial(self_init),
-                Instruction::Putstatic(instance_field_ref),
-                Instruction::Return,
-            ],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let mut jvm_methods = vec![constructor, clinit];
-
-    // Bridge methods: implement interface methods delegating to static impls
-    for (iface_method_name, static_method_name, param_count, static_desc) in methods {
-        // Interface method descriptor: all Object
-        let mut iface_desc = String::from("(");
-        for _ in 0..*param_count {
-            iface_desc.push_str("Ljava/lang/Object;");
-        }
-        iface_desc.push_str(")Ljava/lang/Object;");
-
-        let concrete_params = param_jvm_types.get(iface_method_name)
-            .cloned()
-            .unwrap_or_default();
-        let concrete_ret = return_jvm_types.get(iface_method_name)
-            .copied()
-            .unwrap_or(JvmType::Int);
-
-        let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
-
-        let method_name_idx = cp.add_utf8(iface_method_name)?;
-        let method_desc_idx = cp.add_utf8(&iface_desc)?;
-
-        // Build bridge code: unbox params → invokestatic → box result
-        let mut bridge_code: Vec<Instruction> = Vec::new();
-        let mut slot: u8 = 1; // slot 0 = this
-
-        let class_names_for_method = param_class_names.get(iface_method_name)
-            .cloned()
-            .unwrap_or_default();
-
-        for (param_idx, pt) in concrete_params.iter().enumerate() {
-            bridge_code.push(Instruction::Aload(slot));
-            match pt {
-                JvmType::Long => {
-                    bridge_code.push(Instruction::Checkcast(long_box_class));
-                    bridge_code.push(Instruction::Invokevirtual(long_unbox));
-                }
-                JvmType::Double => {
-                    bridge_code.push(Instruction::Checkcast(double_box_class));
-                    bridge_code.push(Instruction::Invokevirtual(_double_unbox));
-                }
-                JvmType::Int => {
-                    bridge_code.push(Instruction::Checkcast(bool_box_class));
-                    bridge_code.push(Instruction::Invokevirtual(_bool_unbox));
-                }
-                JvmType::StructRef(_) => {
-                    // Checkcast Object → concrete struct type if we know the class name
-                    if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
-                        let cast_class = cp.add_class(cn)?;
-                        bridge_code.push(Instruction::Checkcast(cast_class));
-                    }
-                }
-                _ => {}
-            }
-            slot += 1;
-        }
-
-        bridge_code.push(Instruction::Invokestatic(static_ref));
-
-        // Box the result back to Object
-        match concrete_ret {
-            JvmType::Long => {
-                bridge_code.push(Instruction::Invokestatic(long_valueof));
-            }
-            JvmType::Double => {
-                bridge_code.push(Instruction::Invokestatic(double_valueof));
-            }
-            JvmType::Int => {
-                bridge_code.push(Instruction::Invokestatic(bool_valueof));
-            }
-            _ => {}
-        }
-        bridge_code.push(Instruction::Areturn);
-
-        jvm_methods.push(Method {
-            access_flags: MethodAccessFlags::PUBLIC,
-            name_index: method_name_idx,
-            descriptor_index: method_desc_idx,
-            attributes: vec![Attribute::Code {
-                name_index: code_utf8,
-                max_stack: 20,
-                max_locals: (1 + *param_count) as u16,
-                code: bridge_code,
-                exception_table: vec![],
-                attributes: vec![],
-            }],
-        });
-    }
-
-    // INSTANCE field declaration
-    let field = Field {
-        access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
-        name_index: instance_name,
-        descriptor_index: instance_desc,
-        field_type: FieldType::Object(class_name.to_string()),
-        attributes: vec![],
-    };
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        interfaces: vec![interface_class],
-        fields: vec![field],
-        methods: jvm_methods,
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate a built-in Show instance class for a primitive type.
-fn generate_builtin_show_instance_class(
-    class_name: &str,
-    type_name: &str,
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(class_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-    let interface_class = cp.add_class("Show")?;
-    let code_utf8 = cp.add_utf8("Code")?;
-    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
-    let init_name = cp.add_utf8("<init>")?;
-    let init_desc = cp.add_utf8("()V")?;
-
-    let self_desc = format!("L{class_name};");
-    let instance_name = cp.add_utf8("INSTANCE")?;
-    let instance_desc = cp.add_utf8(&self_desc)?;
-    let instance_field_ref = cp.add_field_ref(this_class, "INSTANCE", &self_desc)?;
-    let self_init = cp.add_method_ref(this_class, "<init>", "()V")?;
-
-    let constructor = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: init_name,
-        descriptor_index: init_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 2,
-            max_locals: 1,
-            code: vec![
-                Instruction::Aload_0,
-                Instruction::Invokespecial(object_init),
-                Instruction::Return,
-            ],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let clinit_name = cp.add_utf8("<clinit>")?;
-    let clinit_desc = cp.add_utf8("()V")?;
-    let clinit = Method {
-        access_flags: MethodAccessFlags::STATIC,
-        name_index: clinit_name,
-        descriptor_index: clinit_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 2,
-            max_locals: 0,
-            code: vec![
-                Instruction::New(this_class),
-                Instruction::Dup,
-                Instruction::Invokespecial(self_init),
-                Instruction::Putstatic(instance_field_ref),
-                Instruction::Return,
-            ],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let iface_desc = "(Ljava/lang/Object;)Ljava/lang/Object;";
-    let show_name = cp.add_utf8("show")?;
-    let show_desc_idx = cp.add_utf8(iface_desc)?;
-    let string_class = cp.add_class("java/lang/String")?;
-
-    let mut bridge_code = Vec::new();
-    match type_name {
-        "Int" => {
-            let long_class = cp.add_class("java/lang/Long")?;
-            let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
-            let string_valueof = cp.add_method_ref(string_class, "valueOf", "(J)Ljava/lang/String;")?;
-            bridge_code.push(Instruction::Aload(1));
-            bridge_code.push(Instruction::Checkcast(long_class));
-            bridge_code.push(Instruction::Invokevirtual(long_unbox));
-            bridge_code.push(Instruction::Invokestatic(string_valueof));
-        }
-        "Float" => {
-            let double_class = cp.add_class("java/lang/Double")?;
-            let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
-            let string_valueof = cp.add_method_ref(string_class, "valueOf", "(D)Ljava/lang/String;")?;
-            bridge_code.push(Instruction::Aload(1));
-            bridge_code.push(Instruction::Checkcast(double_class));
-            bridge_code.push(Instruction::Invokevirtual(double_unbox));
-            bridge_code.push(Instruction::Invokestatic(string_valueof));
-        }
-        "Bool" => {
-            let bool_class = cp.add_class("java/lang/Boolean")?;
-            let bool_unbox = cp.add_method_ref(bool_class, "booleanValue", "()Z")?;
-            let string_valueof = cp.add_method_ref(string_class, "valueOf", "(Z)Ljava/lang/String;")?;
-            bridge_code.push(Instruction::Aload(1));
-            bridge_code.push(Instruction::Checkcast(bool_class));
-            bridge_code.push(Instruction::Invokevirtual(bool_unbox));
-            bridge_code.push(Instruction::Invokestatic(string_valueof));
-        }
-        "String" => {
-            bridge_code.push(Instruction::Aload(1));
-            bridge_code.push(Instruction::Checkcast(string_class));
-        }
-        _ => {}
-    }
-    bridge_code.push(Instruction::Areturn);
-
-    let show_method = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: show_name,
-        descriptor_index: show_desc_idx,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 4,
-            max_locals: 2,
-            code: bridge_code,
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let field = Field {
-        access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
-        name_index: instance_name,
-        descriptor_index: instance_desc,
-        field_type: FieldType::Object(class_name.to_string()),
-        attributes: vec![],
-    };
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        interfaces: vec![interface_class],
-        fields: vec![field],
-        methods: vec![constructor, clinit, show_method],
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate a parameterized instance class with constructor taking subdictionaries.
-fn generate_parameterized_instance_class(
-    class_name: &str,
-    trait_interface_name: &str,
-    main_class_name: &str,
-    methods: &[(String, String, usize, String)],
-    param_jvm_types: &HashMap<String, Vec<JvmType>>,
-    return_jvm_types: &HashMap<String, JvmType>,
-    param_class_names: &HashMap<String, Vec<Option<String>>>,
-    subdict_count: usize,
-) -> Result<Vec<u8>, CodegenError> {
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(class_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-    let interface_class = cp.add_class(trait_interface_name)?;
-    let main_class = cp.add_class(main_class_name)?;
-    let code_utf8 = cp.add_utf8("Code")?;
-    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
-
-    let long_box_class = cp.add_class("java/lang/Long")?;
-    let long_valueof = cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
-    let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
-    let double_box_class = cp.add_class("java/lang/Double")?;
-    let double_valueof = cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
-    let double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
-    let bool_box_class = cp.add_class("java/lang/Boolean")?;
-    let bool_valueof = cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
-    let bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
-
-    // Subdict fields
-    let mut subdict_field_refs = Vec::new();
-    let mut field_list = Vec::new();
-    for i in 0..subdict_count {
-        let field_name = format!("dict{}", i);
-        let field_name_idx = cp.add_utf8(&field_name)?;
-        let field_desc_idx = cp.add_utf8("Ljava/lang/Object;")?;
-        let obj_desc = "Ljava/lang/Object;".to_string();
-        let field_ref = cp.add_field_ref(this_class, &field_name, &obj_desc)?;
-        subdict_field_refs.push(field_ref);
-        field_list.push(Field {
-            access_flags: FieldAccessFlags::PRIVATE | FieldAccessFlags::FINAL,
-            name_index: field_name_idx,
-            descriptor_index: field_desc_idx,
-            field_type: FieldType::Object("java/lang/Object".to_string()),
-            attributes: vec![],
-        });
-    }
-
-    // Constructor
-    let mut init_desc_str = String::from("(");
-    for _ in 0..subdict_count {
-        init_desc_str.push_str("Ljava/lang/Object;");
-    }
-    init_desc_str.push_str(")V");
-    let init_name = cp.add_utf8("<init>")?;
-    let init_desc = cp.add_utf8(&init_desc_str)?;
-
-    let mut init_code = vec![
-        Instruction::Aload_0,
-        Instruction::Invokespecial(object_init),
-    ];
-    for i in 0..subdict_count {
-        init_code.push(Instruction::Aload_0);
-        init_code.push(Instruction::Aload((i + 1) as u8));
-        init_code.push(Instruction::Putfield(subdict_field_refs[i]));
-    }
-    init_code.push(Instruction::Return);
-
-    let constructor = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: init_name,
-        descriptor_index: init_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 3,
-            max_locals: (1 + subdict_count) as u16,
-            code: init_code,
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let mut jvm_methods = vec![constructor];
-
-    for (iface_method_name, static_method_name, param_count, static_desc) in methods {
-        let mut iface_desc = String::from("(");
-        for _ in 0..*param_count {
-            iface_desc.push_str("Ljava/lang/Object;");
-        }
-        iface_desc.push_str(")Ljava/lang/Object;");
-
-        let concrete_params = param_jvm_types.get(iface_method_name).cloned().unwrap_or_default();
-        let concrete_ret = return_jvm_types.get(iface_method_name).copied().unwrap_or(JvmType::Int);
-
-        let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
-        let method_name_idx = cp.add_utf8(iface_method_name)?;
-        let method_desc_idx = cp.add_utf8(&iface_desc)?;
-
-        let mut bridge_code: Vec<Instruction> = Vec::new();
-
-        // Load subdicts from fields first (these become the dict params for the static method)
-        for i in 0..subdict_count {
-            bridge_code.push(Instruction::Aload_0);
-            bridge_code.push(Instruction::Getfield(subdict_field_refs[i]));
-        }
-
-        // Load and unbox user params
-        let mut slot: u8 = 1;
-        let class_names_for_method = param_class_names.get(iface_method_name).cloned().unwrap_or_default();
-        for (param_idx, pt) in concrete_params.iter().enumerate() {
-            bridge_code.push(Instruction::Aload(slot));
-            match pt {
-                JvmType::Long => {
-                    bridge_code.push(Instruction::Checkcast(long_box_class));
-                    bridge_code.push(Instruction::Invokevirtual(long_unbox));
-                }
-                JvmType::Double => {
-                    bridge_code.push(Instruction::Checkcast(double_box_class));
-                    bridge_code.push(Instruction::Invokevirtual(double_unbox));
-                }
-                JvmType::Int => {
-                    bridge_code.push(Instruction::Checkcast(bool_box_class));
-                    bridge_code.push(Instruction::Invokevirtual(bool_unbox));
-                }
-                JvmType::StructRef(_) => {
-                    if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
-                        let cast_class = cp.add_class(cn)?;
-                        bridge_code.push(Instruction::Checkcast(cast_class));
-                    }
-                }
-                _ => {}
-            }
-            slot += 1;
-        }
-
-        bridge_code.push(Instruction::Invokestatic(static_ref));
-
-        match concrete_ret {
-            JvmType::Long => bridge_code.push(Instruction::Invokestatic(long_valueof)),
-            JvmType::Double => bridge_code.push(Instruction::Invokestatic(double_valueof)),
-            JvmType::Int => bridge_code.push(Instruction::Invokestatic(bool_valueof)),
-            _ => {}
-        }
-        bridge_code.push(Instruction::Areturn);
-
-        jvm_methods.push(Method {
-            access_flags: MethodAccessFlags::PUBLIC,
-            name_index: method_name_idx,
-            descriptor_index: method_desc_idx,
-            attributes: vec![Attribute::Code {
-                name_index: code_utf8,
-                max_stack: 20,
-                max_locals: (1 + *param_count) as u16,
-                code: bridge_code,
-                exception_table: vec![],
-                attributes: vec![],
-            }],
-        });
-    }
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        interfaces: vec![interface_class],
-        fields: field_list,
-        methods: jvm_methods,
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
-/// Generate a minimal valid `.class` file containing a no-op
-/// `public static void main(String[])` method.
-pub fn generate_empty_main(class_name: &str) -> Result<Vec<u8>, ristretto_classfile::Error> {
-    let mut cp = ConstantPool::default();
-
-    // Class refs
-    let this_class = cp.add_class(class_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-
-    // "Code" attribute name must be in the constant pool
-    let code_utf8 = cp.add_utf8("Code")?;
-
-    // Method ref for super constructor call
-    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
-
-    // Method name/descriptor UTF-8 entries
-    let init_name = cp.add_utf8("<init>")?;
-    let init_desc = cp.add_utf8("()V")?;
-    let main_name = cp.add_utf8("main")?;
-    let main_desc = cp.add_utf8("([Ljava/lang/String;)V")?;
-
-    // Default constructor: calls super.<init>()
-    let constructor = Method {
-        access_flags: MethodAccessFlags::PUBLIC,
-        name_index: init_name,
-        descriptor_index: init_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 1,
-            max_locals: 1,
-            code: vec![
-                Instruction::Aload_0,
-                Instruction::Invokespecial(object_init),
-                Instruction::Return,
-            ],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    // main method: just returns
-    let main_method = Method {
-        access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::STATIC,
-        name_index: main_name,
-        descriptor_index: main_desc,
-        attributes: vec![Attribute::Code {
-            name_index: code_utf8,
-            max_stack: 0,
-            max_locals: 1,
-            code: vec![Instruction::Return],
-            exception_table: vec![],
-            attributes: vec![],
-        }],
-    };
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        methods: vec![constructor, main_method],
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
 }
