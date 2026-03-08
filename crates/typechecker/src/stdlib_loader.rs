@@ -6,6 +6,7 @@ impl StdlibLoader {
     const LIST: &str = include_str!("../../../stdlib/core/list.kr");
     const STRING: &str = include_str!("../../../stdlib/core/string.kr");
     const ORDERING: &str = include_str!("../../../stdlib/core/ordering.kr");
+    const IO: &str = include_str!("../../../stdlib/core/io.kr");
 
     /// Module paths for prelude types (auto-seeded without import).
     pub const PRELUDE_MODULES: &[&str] = &[
@@ -22,6 +23,7 @@ impl StdlibLoader {
             "core/list" => Some(Self::LIST),
             "core/string" => Some(Self::STRING),
             "core/ordering" => Some(Self::ORDERING),
+            "core/io" => Some(Self::IO),
             _ => None,
         }
     }

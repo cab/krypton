@@ -1,4 +1,8 @@
 # core/string — String utility functions
 extern "krypton.runtime.KryptonString" {
     fun split(String, String) -> List[String]
+    fun concat(String, String) -> String
+    fun trim(String) -> String
+    fun substring(String, Int, Int) -> String
+    fun length(String) -> Int
 }

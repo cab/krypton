@@ -19,6 +19,10 @@ run file: build-runtime
 check file:
     cargo run -- check {{file}}
 
+# Run Java runtime tests only
+test-runtime:
+    ./gradlew :runtime:test
+
 # Format Rust code
 fmt:
     cargo fmt

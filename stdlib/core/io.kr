@@ -1,0 +1,8 @@
+# core/io — I/O functions
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+    fun print(Object) -> Unit
+    fun readLine() -> String
+    fun read_file(String) -> Result[String, String]
+    fun write_file(String, String) -> Result[String, Unit]
+}

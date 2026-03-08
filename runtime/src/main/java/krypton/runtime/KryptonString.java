@@ -10,7 +10,24 @@ public final class KryptonString {
         return s.substring(startOffset, endOffset);
     }
     public static Object split(String s, String delimiter) {
-        throw new UnsupportedOperationException("split not yet implemented");
+        String[] parts = s.split(delimiter, -1);
+        try {
+            Class<?> consClass = Class.forName("List$Cons");
+            Class<?> nilClass = Class.forName("List$Nil");
+            // Build linked list from right to left: Nil, then Cons(last, Nil), etc.
+            Object list = nilClass.getDeclaredConstructor().newInstance();
+            for (int i = parts.length - 1; i >= 0; i--) {
+                list = consClass.getDeclaredConstructor(Object.class, Object.class)
+                        .newInstance(parts[i], list);
+            }
+            return list;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to construct List: " + e.getMessage(), e);
+        }
+    }
+    public static String trim(String s) { return s.trim(); }
+    public static String substring(String s, long start, long end) {
+        return s.substring((int) start, (int) end);
     }
     private KryptonString() {}
 }

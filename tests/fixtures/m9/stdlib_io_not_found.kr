@@ -1,0 +1,10 @@
+# expect: output "got error"
+import core/io.{read_file}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+
+fun handle(r) = match r {
+    Ok(_) => println("unexpected"),
+    Err(_) => println("got error"),
+}
+
+fun main() = handle(read_file("nonexistent_file_xyz.txt"))
