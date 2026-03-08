@@ -4,7 +4,78 @@ use chumsky::prelude::*;
 
 use crate::ast::*;
 use crate::diagnostics::{ErrorCode, ParseError};
-use crate::lexer::{self, Span as LexSpan, Token};
+use crate::lexer::{self, Span as LexSpan, Spanned, Token};
+
+/// Insert synthetic semicolons at newline boundaries (automatic semicolon insertion).
+///
+/// A semicolon is inserted between two adjacent tokens when:
+/// 1. The previous token can end a statement (ASI-triggering)
+/// 2. There is a newline in the source between the two tokens
+/// 3. The next token is not a continuation token
+fn insert_semicolons<'src>(
+    source: &str,
+    tokens: Vec<Spanned<Token<'src>>>,
+) -> Vec<Spanned<Token<'src>>> {
+    if tokens.is_empty() {
+        return tokens;
+    }
+
+    let mut result: Vec<Spanned<Token<'src>>> = Vec::with_capacity(tokens.len() * 2);
+
+    for i in 0..tokens.len() {
+        result.push(tokens[i].clone());
+
+        // Check if we should insert a semicolon after this token
+        if i + 1 < tokens.len() {
+            let (ref prev_tok, ref prev_span) = tokens[i];
+            let (ref next_tok, _) = tokens[i + 1];
+
+            let prev_triggers_asi = matches!(
+                prev_tok,
+                Token::Ident(_)
+                    | Token::Int(_)
+                    | Token::Float(_)
+                    | Token::String(_)
+                    | Token::Bool(_)
+                    | Token::RParen
+                    | Token::RBracket
+                    | Token::RBrace
+                    | Token::Underscore
+            );
+
+            if !prev_triggers_asi {
+                continue;
+            }
+
+            let next_is_continuation = matches!(
+                next_tok,
+                Token::Else
+                    | Token::FatArrow
+                    | Token::Arrow
+                    | Token::Where
+                    | Token::Dot
+                    | Token::Pipe
+            );
+
+            if next_is_continuation {
+                continue;
+            }
+
+            // Check for newline between the two tokens
+            let between_start = prev_span.end;
+            let between_end = tokens[i + 1].1.start;
+            if between_start < between_end
+                && source[between_start..between_end].contains('\n')
+            {
+                // Insert synthetic semicolon with zero-width span at end of previous token
+                let semi_span: LexSpan = (prev_span.end..prev_span.end).into();
+                result.push((Token::Semicolon, semi_span));
+            }
+        }
+    }
+
+    result
+}
 
 fn to_span(s: LexSpan) -> Span {
     (s.start, s.end)
@@ -1203,6 +1274,7 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
 pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
     let tokens = tokens.unwrap_or_default();
+    let tokens = insert_semicolons(source, tokens);
     tracing::debug!(tokens = tokens.len(), lex_errors = lex_errors.len(), "lexing complete");
 
     let mut errors: Vec<ParseError> = lex_errors

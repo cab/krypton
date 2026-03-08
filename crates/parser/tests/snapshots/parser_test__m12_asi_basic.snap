@@ -1,0 +1,248 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: test_asi
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 73
+            - 76
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: x
+                value:
+                  Lit:
+                    value:
+                      Int: 1
+                    span:
+                      - 91
+                      - 92
+                body: ~
+                span:
+                  - 83
+                  - 92
+            - Let:
+                name: y
+                value:
+                  Lit:
+                    value:
+                      Int: 2
+                    span:
+                      - 105
+                      - 106
+                body: ~
+                span:
+                  - 97
+                  - 106
+            - BinaryOp:
+                op: Add
+                lhs:
+                  Var:
+                    name: x
+                    span:
+                      - 111
+                      - 112
+                rhs:
+                  Var:
+                    name: y
+                    span:
+                      - 115
+                      - 116
+                span:
+                  - 111
+                  - 116
+          span:
+            - 77
+            - 118
+      span:
+        - 55
+        - 118
+  - DefFn:
+      name: test_if_else
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 181
+                - 184
+          span:
+            - 178
+            - 184
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 189
+            - 192
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Gt
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 202
+                    - 203
+              rhs:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 206
+                    - 207
+              span:
+                - 202
+                - 207
+          then_:
+            Lit:
+              value:
+                Int: 1
+              span:
+                - 208
+                - 225
+          else_:
+            Lit:
+              value:
+                Int: 0
+              span:
+                - 231
+                - 248
+          span:
+            - 193
+            - 250
+      span:
+        - 161
+        - 250
+  - DefFn:
+      name: test_explicit_semi
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 313
+            - 316
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: a
+                value:
+                  Lit:
+                    value:
+                      Int: 10
+                    span:
+                      - 331
+                      - 333
+                body: ~
+                span:
+                  - 323
+                  - 333
+            - Let:
+                name: b
+                value:
+                  Lit:
+                    value:
+                      Int: 20
+                    span:
+                      - 347
+                      - 349
+                body: ~
+                span:
+                  - 339
+                  - 349
+            - BinaryOp:
+                op: Add
+                lhs:
+                  Var:
+                    name: a
+                    span:
+                      - 355
+                      - 356
+                rhs:
+                  Var:
+                    name: b
+                    span:
+                      - 359
+                      - 360
+                span:
+                  - 355
+                  - 360
+          span:
+            - 317
+            - 362
+      span:
+        - 285
+        - 362
+  - DefFn:
+      name: test_operator_continuation
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 457
+            - 460
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: x
+                value:
+                  BinaryOp:
+                    op: Add
+                    lhs:
+                      Lit:
+                        value:
+                          Int: 1
+                        span:
+                          - 475
+                          - 476
+                    rhs:
+                      Lit:
+                        value:
+                          Int: 2
+                        span:
+                          - 487
+                          - 488
+                    span:
+                      - 475
+                      - 488
+                body: ~
+                span:
+                  - 467
+                  - 488
+            - Var:
+                name: x
+                span:
+                  - 493
+                  - 494
+          span:
+            - 461
+            - 496
+      span:
+        - 421
+        - 496

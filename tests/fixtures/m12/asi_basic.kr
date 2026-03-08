@@ -1,0 +1,30 @@
+# expect: ok
+# ASI: blocks without explicit semicolons
+fun test_asi() -> Int {
+    let x = 1
+    let y = 2
+    x + y
+}
+
+# ASI: if/else continuation across lines
+fun test_if_else(x: Int) -> Int {
+    if x > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+# ASI: method chain continuation
+fun test_explicit_semi() -> Int {
+    let a = 10;
+    let b = 20;
+    a + b
+}
+
+# ASI: operator continuation across lines (no insertion)
+fun test_operator_continuation() -> Int {
+    let x = 1 +
+        2
+    x
+}
