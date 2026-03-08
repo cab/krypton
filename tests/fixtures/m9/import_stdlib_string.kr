@@ -1,0 +1,4 @@
+# expect: ok
+import core/string.{split}
+
+fun main() -> List[String] = split("hello world", " ")

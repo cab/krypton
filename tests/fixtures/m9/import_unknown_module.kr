@@ -1,0 +1,4 @@
+# expect: error E0501
+import core/nonexistent.{foo}
+
+fun main() = 0

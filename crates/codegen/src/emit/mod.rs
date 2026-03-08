@@ -110,6 +110,7 @@ fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool 
 }
 
 /// Compile a module to JVM bytecode. Returns a list of (class_name, bytes) pairs.
+#[tracing::instrument(skip(module), fields(class = %class_name))]
 pub fn compile_module(
     module: &Module,
     class_name: &str,
@@ -567,7 +568,7 @@ pub fn compile_module(
     }
 
     // Register extern functions so they can be called via invokestatic
-    for ext in &typed_module.extern_fns {
+    for ext in typed_module.extern_fns.iter().chain(typed_module.imported_extern_fns.iter()) {
         let jvm_class_name = ext.java_class.replace('.', "/");
         let extern_class = compiler.cp.add_class(&jvm_class_name)?;
 
@@ -591,7 +592,7 @@ pub fn compile_module(
                     param_jvm_types.push(JvmType::Ref);
                     param_desc.push_str("Ljava/lang/String;");
                 }
-                Type::Named(name, _) if name == "Object" => {
+                Type::Named(_, _) => {
                     param_jvm_types.push(JvmType::StructRef(compiler.refs.object_class));
                     param_desc.push_str("Ljava/lang/Object;");
                 }
@@ -613,7 +614,7 @@ pub fn compile_module(
                 Type::Float => (JvmType::Double, "D".to_string()),
                 Type::Bool => (JvmType::Int, "Z".to_string()),
                 Type::String => (JvmType::Ref, "Ljava/lang/String;".to_string()),
-                Type::Named(name, _) if name == "Object" => {
+                Type::Named(_, _) => {
                     (JvmType::StructRef(compiler.refs.object_class), "Ljava/lang/Object;".to_string())
                 }
                 other => {

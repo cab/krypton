@@ -9,5 +9,8 @@ public final class KryptonString {
         int endOffset = s.offsetByCodePoints(0, end);
         return s.substring(startOffset, endOffset);
     }
+    public static Object split(String s, String delimiter) {
+        throw new UnsupportedOperationException("split not yet implemented");
+    }
     private KryptonString() {}
 }

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp};
+use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern, Span, UnaryOp};
 
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
@@ -130,6 +130,7 @@ fn is_concrete_non_function(ty: &Type, subst: &Substitution) -> bool {
 }
 
 /// Infer the type of an expression using Algorithm J.
+#[tracing::instrument(level = "trace", skip_all)]
 pub fn infer_expr(
     expr: &Expr,
     env: &mut TypeEnv,
@@ -1471,11 +1472,82 @@ fn check_trait_instances(
     Ok(())
 }
 
+/// Process extern methods from an `extern "class" { ... }` block, binding their
+/// types into the environment and returning `ExternFnInfo` entries for codegen.
+fn process_extern_methods(
+    class_name: &str,
+    methods: &[ExternMethod],
+    env: &mut TypeEnv,
+    gen: &mut TypeVarGen,
+    registry: &TypeRegistry,
+    span: Span,
+    name_filter: Option<&HashSet<&str>>,
+    aliases: &HashMap<String, String>,
+) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
+    let empty_map = HashMap::new();
+    let mut extern_fns = Vec::new();
+    for method in methods {
+        let bind_name = aliases.get(&method.name).unwrap_or(&method.name);
+        if let Some(filter) = name_filter {
+            if !filter.contains(method.name.as_str()) && !filter.contains(bind_name.as_str()) {
+                continue;
+            }
+        }
+
+        let mut scheme_vars = Vec::new();
+        let mut param_types = Vec::new();
+        for ty_expr in &method.param_types {
+            let resolved = type_registry::resolve_type_expr(ty_expr, &empty_map, registry)
+                .map_err(|e| spanned(e, span))?;
+            if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
+                let fresh = gen.fresh();
+                scheme_vars.push(fresh);
+                param_types.push(Type::Var(fresh));
+            } else {
+                param_types.push(resolved);
+            }
+        }
+
+        let return_type = type_registry::resolve_type_expr(&method.return_type, &empty_map, registry)
+            .map_err(|e| spanned(e, span))?;
+        let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty()) {
+            let fresh = gen.fresh();
+            scheme_vars.push(fresh);
+            Type::Var(fresh)
+        } else {
+            return_type.clone()
+        };
+
+        let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
+        let scheme = if scheme_vars.is_empty() {
+            TypeScheme::mono(fn_ty)
+        } else {
+            TypeScheme { vars: scheme_vars, ty: fn_ty }
+        };
+        env.bind(bind_name.clone(), scheme);
+
+        // Store concrete types for codegen (Object stays as-is)
+        let mut concrete_params = Vec::new();
+        for ty_expr in &method.param_types {
+            concrete_params.push(type_registry::resolve_type_expr(ty_expr, &empty_map, registry)
+                .map_err(|e| spanned(e, span))?);
+        }
+        extern_fns.push(ExternFnInfo {
+            name: bind_name.clone(),
+            java_class: class_name.to_string(),
+            param_types: concrete_params,
+            return_type,
+        });
+    }
+    Ok(extern_fns)
+}
+
 /// Infer types for all top-level definitions in a module.
 ///
 /// Uses SCC (strongly connected component) analysis to process definitions
 /// in dependency order. Functions within the same SCC are inferred together
 /// as a mutually recursive group, then generalized before later SCCs see them.
+#[tracing::instrument(skip(module), fields(decls = module.decls.len()))]
 pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
@@ -1490,57 +1562,67 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     // Seed prelude types (Option, Result, List, Ordering) from stdlib
     crate::prelude::register_prelude_types(&mut env, &mut registry, &mut gen);
 
+    // Process import declarations — resolve from embedded stdlib
+    let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
+    for decl in &module.decls {
+        if let Decl::Import { path, names, span } = decl {
+            use crate::stdlib_loader::StdlibLoader;
+
+            let source = StdlibLoader::get_source(path)
+                .ok_or_else(|| spanned(TypeError::UnknownModule { path: path.clone() }, *span))?;
+
+            let (stdlib_module, parse_errors) = krypton_parser::parser::parse(source);
+            assert!(parse_errors.is_empty(), "stdlib parse error in {path}");
+
+            let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
+            let import_all = names.is_empty();
+
+            // Build alias map from ImportName
+            let aliases: HashMap<String, String> = names.iter()
+                .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
+                .collect();
+
+            let name_filter = if import_all { None } else { Some(&requested) };
+
+            // Process type declarations from stdlib module
+            for sdecl in &stdlib_module.decls {
+                if let Decl::DefType(td) = sdecl {
+                    if (import_all || requested.contains(td.name.as_str()))
+                        && registry.lookup_type(&td.name).is_none()
+                    {
+                        registry.register_name(&td.name);
+                        let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
+                            .map_err(|e| spanned(e, *span))?;
+                        for (cname, scheme) in constructors {
+                            env.bind(cname, scheme);
+                        }
+                    }
+                }
+            }
+
+            // Process extern declarations from stdlib module
+            for sdecl in &stdlib_module.decls {
+                if let Decl::ExternJava { class_name, methods, span: ext_span } = sdecl {
+                    let mut fns = process_extern_methods(
+                        class_name, methods, &mut env, &mut gen, &registry,
+                        *ext_span, name_filter, &aliases,
+                    )?;
+                    imported_extern_fns.append(&mut fns);
+                }
+            }
+        }
+    }
+
     // Process ExternJava declarations
     let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
     for decl in &module.decls {
         if let Decl::ExternJava { class_name, methods, span } = decl {
-            let empty_map = HashMap::new();
-            for method in methods {
-                let mut scheme_vars = Vec::new();
-                let mut param_types = Vec::new();
-                for ty_expr in &method.param_types {
-                    let resolved = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
-                        .map_err(|e| spanned(e, *span))?;
-                    if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
-                        let fresh = gen.fresh();
-                        scheme_vars.push(fresh);
-                        param_types.push(Type::Var(fresh));
-                    } else {
-                        param_types.push(resolved);
-                    }
-                }
-
-                let return_type = type_registry::resolve_type_expr(&method.return_type, &empty_map, &registry)
-                    .map_err(|e| spanned(e, *span))?;
-                let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty()) {
-                    let fresh = gen.fresh();
-                    scheme_vars.push(fresh);
-                    Type::Var(fresh)
-                } else {
-                    return_type.clone()
-                };
-
-                let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
-                let scheme = if scheme_vars.is_empty() {
-                    TypeScheme::mono(fn_ty)
-                } else {
-                    TypeScheme { vars: scheme_vars, ty: fn_ty }
-                };
-                env.bind(method.name.clone(), scheme);
-
-                // Store concrete types for codegen (Object stays as-is)
-                let mut concrete_params = Vec::new();
-                for ty_expr in &method.param_types {
-                    concrete_params.push(type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
-                        .map_err(|e| spanned(e, *span))?);
-                }
-                extern_fns.push(ExternFnInfo {
-                    name: method.name.clone(),
-                    java_class: class_name.clone(),
-                    param_types: concrete_params,
-                    return_type,
-                });
-            }
+            let no_aliases = HashMap::new();
+            let mut fns = process_extern_methods(
+                class_name, methods, &mut env, &mut gen, &registry,
+                *span, None, &no_aliases,
+            )?;
+            extern_fns.append(&mut fns);
         }
     }
 
@@ -2125,6 +2207,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         fn_constraints,
         trait_method_map: trait_method_map.clone(),
         extern_fns,
+        imported_extern_fns,
     })
 }
 

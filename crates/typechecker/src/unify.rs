@@ -29,6 +29,7 @@ pub enum TypeErrorCode {
     E0401, // ? in function not returning Result or Option
     E0402, // ? on non-Result/Option
     E0403, // ? cross-use (Option in Result context or vice versa)
+    E0501, // Unknown module
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -57,6 +58,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0401 => write!(f, "E0401"),
             TypeErrorCode::E0402 => write!(f, "E0402"),
             TypeErrorCode::E0403 => write!(f, "E0403"),
+            TypeErrorCode::E0501 => write!(f, "E0501"),
         }
     }
 }
@@ -87,6 +89,7 @@ pub enum TypeError {
     QuestionMarkBadReturn { actual: Type },
     QuestionMarkBadOperand { actual: Type },
     QuestionMarkMismatch { expr_kind: String, return_kind: String },
+    UnknownModule { path: String },
 }
 
 impl TypeError {
@@ -117,6 +120,7 @@ impl TypeError {
             TypeError::QuestionMarkBadReturn { .. } => TypeErrorCode::E0401,
             TypeError::QuestionMarkBadOperand { .. } => TypeErrorCode::E0402,
             TypeError::QuestionMarkMismatch { .. } => TypeErrorCode::E0403,
+            TypeError::UnknownModule { .. } => TypeErrorCode::E0501,
         }
     }
 
@@ -208,6 +212,9 @@ impl TypeError {
             TypeError::QuestionMarkMismatch { expr_kind, return_kind } => {
                 Some(format!("cannot use `?` on `{}` in a function returning `{}`", expr_kind, return_kind))
             }
+            TypeError::UnknownModule { path } => {
+                Some(format!("module `{}` does not exist in the stdlib", path))
+            }
         }
     }
 }
@@ -288,6 +295,9 @@ impl fmt::Display for TypeError {
             TypeError::QuestionMarkMismatch { expr_kind, return_kind } => {
                 write!(f, "`?` on `{}` in function returning `{}`", expr_kind, return_kind)
             }
+            TypeError::UnknownModule { path } => {
+                write!(f, "unknown module: {}", path)
+            }
         }
     }
 }
@@ -336,6 +346,7 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
 }
 
 /// Unify two types, mutating the substitution in place.
+#[tracing::instrument(level = "trace", skip(subst))]
 pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
     let t1 = walk(t1, subst);
     let t2 = walk(t2, subst);

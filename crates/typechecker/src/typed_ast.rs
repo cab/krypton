@@ -112,6 +112,7 @@ pub struct TypedModule {
     pub fn_constraints: HashMap<String, Vec<String>>,
     pub trait_method_map: HashMap<String, String>,
     pub extern_fns: Vec<ExternFnInfo>,
+    pub imported_extern_fns: Vec<ExternFnInfo>,
 }
 
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {

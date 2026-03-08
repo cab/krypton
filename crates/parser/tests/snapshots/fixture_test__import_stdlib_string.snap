@@ -1,0 +1,58 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - Import:
+      path: core/string
+      names:
+        - name: split
+          alias: ~
+      span:
+        - 13
+        - 39
+  - DefFn:
+      name: main
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        App:
+          name: List
+          args:
+            - Named:
+                name: String
+                span:
+                  - 60
+                  - 66
+          span:
+            - 55
+            - 67
+      body:
+        App:
+          func:
+            Var:
+              name: split
+              span:
+                - 70
+                - 75
+          args:
+            - Lit:
+                value:
+                  String: hello world
+                span:
+                  - 76
+                  - 89
+            - Lit:
+                value:
+                  String: " "
+                span:
+                  - 91
+                  - 94
+          span:
+            - 70
+            - 95
+      span:
+        - 41
+        - 95
