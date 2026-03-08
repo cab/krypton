@@ -55,6 +55,7 @@ enum Commands {
 enum OutputFormat {
     Debug,
     Sexp,
+    Surface,
 }
 
 fn main() {
@@ -74,6 +75,7 @@ fn main() {
             match format {
                 OutputFormat::Debug => println!("{:#?}", module),
                 OutputFormat::Sexp => println!("{}", krypton_parser::pretty::pretty_print(&module)),
+                OutputFormat::Surface => println!("{}", krypton_parser::surface_pretty::surface_pretty_print(&module)),
             }
         }
         Commands::Fmt { file } => {
@@ -87,7 +89,7 @@ fn main() {
                 eprint!("{}", diag);
                 process::exit(1);
             }
-            println!("{}", krypton_parser::pretty::pretty_print(&module));
+            println!("{}", krypton_parser::surface_pretty::surface_pretty_print(&module));
         }
         Commands::Compile { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
