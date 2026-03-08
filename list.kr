@@ -1,0 +1,8 @@
+import core/list.{map, fold, length, reverse}
+import core/io.{println}
+
+fun main() = {
+  println([1, 2, 3, 4, 5].length());
+  println(fold([1, 2, 3, 4, 5], 0, (acc, x) => acc + x));
+  println(length([10, 20, 30].reverse()))
+}

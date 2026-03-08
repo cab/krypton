@@ -1,4 +1,4 @@
 # expect: output "6"
 import core/list.{fold}
 extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
-fun main() = println(fold((acc, x) => acc + x, 0, [1, 2, 3]))
+fun main() = println(fold([1, 2, 3], 0, (acc, x) => acc + x))

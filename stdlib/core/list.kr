@@ -6,19 +6,19 @@ fun length(xs) = match xs {
     Cons(_, rest) => 1 + length(rest),
 }
 
-fun map(f, xs) = match xs {
+fun map(xs, f) = match xs {
     Nil => Nil,
-    Cons(h, rest) => Cons(f(h), map(f, rest)),
+    Cons(h, rest) => Cons(f(h), map(rest, f)),
 }
 
-fun filter(f, xs) = match xs {
+fun filter(xs, f) = match xs {
     Nil => Nil,
-    Cons(h, rest) => if f(h) { Cons(h, filter(f, rest)) } else { filter(f, rest) },
+    Cons(h, rest) => if f(h) { Cons(h, filter(rest, f)) } else { filter(rest, f) },
 }
 
-fun fold(f, acc, xs) = match xs {
+fun fold(xs, acc, f) = match xs {
     Nil => acc,
-    Cons(h, rest) => fold(f, f(acc, h), rest),
+    Cons(h, rest) => fold(rest, f(acc, h), f),
 }
 
 fun concat(xs, ys) = match xs {
@@ -26,7 +26,7 @@ fun concat(xs, ys) = match xs {
     Cons(h, rest) => Cons(h, concat(rest, ys)),
 }
 
-fun reverse(xs) = fold((acc, x) => Cons(x, acc), Nil, xs)
+fun reverse(xs) = fold(xs, Nil, (acc, x) => Cons(x, acc))
 
 fun head(xs) = match xs {
     Cons(h, _) => Some(h),
