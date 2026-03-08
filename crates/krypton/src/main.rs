@@ -192,7 +192,6 @@ fn main() {
                             eprintln!("Error writing {}: {}", out_path, e);
                             process::exit(1);
                         });
-                        println!("Wrote {}", out_path);
                     }
                     phases.push(("emit", t.elapsed()));
                 }
