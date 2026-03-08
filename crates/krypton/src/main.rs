@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use std::process;
+use std::time::{Duration, Instant};
 use tempfile::tempdir;
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
@@ -31,6 +32,10 @@ fn build_classpath(class_dir: &std::path::Path) -> String {
 #[derive(Parser)]
 #[command(name = "krypton")]
 struct Cli {
+    /// Print wall-clock duration for each compile phase
+    #[arg(long, global = true)]
+    timings: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -71,6 +76,23 @@ fn do_parse(source: &str) -> (krypton_parser::ast::Module, Vec<krypton_parser::d
     krypton_parser::parser::parse(source)
 }
 
+fn format_duration(d: Duration) -> String {
+    let micros = d.as_micros();
+    if micros < 1000 {
+        format!("{}μs", micros)
+    } else {
+        format!("{:.1}ms", d.as_secs_f64() * 1000.0)
+    }
+}
+
+fn print_timings(phases: &[(&str, Duration)]) {
+    let total: Duration = phases.iter().map(|(_, d)| *d).sum();
+    for (name, dur) in phases {
+        eprintln!("{:<12}{}", format!("{}:", name), format_duration(*dur));
+    }
+    eprintln!("{:<12}{}", "total:", format_duration(total));
+}
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -83,6 +105,7 @@ fn main() {
         .init();
 
     let cli = Cli::parse();
+    let timings = cli.timings;
     match cli.command {
         Commands::Parse { file, format } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
@@ -119,21 +142,28 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+            let t = Instant::now();
             let (module, errors) = do_parse(&source);
+            phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
             debug!("parsing complete");
-            // Typecheck for error reporting
+
+            let t = Instant::now();
             if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
                 let diag =
                     krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
                 eprint!("{}", diag);
                 process::exit(1);
             }
+            phases.push(("typecheck", t.elapsed()));
             debug!("type checking complete");
+
             // Derive class name from filename (e.g., hello.kr → Hello)
             let stem = std::path::Path::new(&file)
                 .file_stem()
@@ -148,9 +178,14 @@ fn main() {
                     }
                 }
             };
+
+            let t = Instant::now();
             match krypton_codegen::emit::compile_module(&module, &class_name) {
                 Ok(classes) => {
+                    phases.push(("codegen", t.elapsed()));
                     info!(classes = classes.len(), "codegen complete");
+
+                    let t = Instant::now();
                     for (name, bytes) in &classes {
                         let out_path = format!("{}.class", name);
                         std::fs::write(&out_path, bytes).unwrap_or_else(|e| {
@@ -159,11 +194,16 @@ fn main() {
                         });
                         println!("Wrote {}", out_path);
                     }
+                    phases.push(("emit", t.elapsed()));
                 }
                 Err(e) => {
                     eprintln!("Codegen error: {}", e);
                     process::exit(1);
                 }
+            }
+
+            if timings {
+                print_timings(&phases);
             }
         }
         Commands::Run { file } => {
@@ -172,20 +212,28 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+            let t = Instant::now();
             let (module, errors) = do_parse(&source);
+            phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
             debug!("parsing complete");
+
+            let t = Instant::now();
             if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
                 let diag =
                     krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
                 eprint!("{}", diag);
                 process::exit(1);
             }
+            phases.push(("typecheck", t.elapsed()));
             debug!("type checking complete");
+
             let stem = std::path::Path::new(&file)
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -197,9 +245,14 @@ fn main() {
                     Some(first) => first.to_uppercase().to_string() + c.as_str(),
                 }
             };
+
+            let t = Instant::now();
             match krypton_codegen::emit::compile_module(&module, &class_name) {
                 Ok(classes) => {
+                    phases.push(("codegen", t.elapsed()));
                     info!(classes = classes.len(), "codegen complete");
+
+                    let t = Instant::now();
                     let dir = tempdir().unwrap_or_else(|e| {
                         eprintln!("Error creating temp dir: {}", e);
                         process::exit(1);
@@ -211,8 +264,11 @@ fn main() {
                             process::exit(1);
                         });
                     }
+                    phases.push(("emit", t.elapsed()));
+
                     let classpath = build_classpath(dir.path());
                     info!(class = %class_name, "invoking JVM");
+                    let t = Instant::now();
                     let status = process::Command::new("java")
                         .arg("-cp")
                         .arg(&classpath)
@@ -222,6 +278,11 @@ fn main() {
                             eprintln!("Error running java: {}", e);
                             process::exit(1);
                         });
+                    phases.push(("jvm", t.elapsed()));
+
+                    if timings {
+                        print_timings(&phases);
+                    }
                     process::exit(status.code().unwrap_or(1));
                 }
                 Err(e) => {
@@ -235,14 +296,21 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+            let t = Instant::now();
             let (module, errors) = do_parse(&source);
+            phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
                 process::exit(1);
             }
+
+            let t = Instant::now();
             match krypton_typechecker::infer::infer_module(&module) {
                 Ok(info) => {
+                    phases.push(("typecheck", t.elapsed()));
                     for (name, scheme) in &info.fn_types {
                         println!("{} : {}", name, scheme);
                     }
@@ -253,6 +321,10 @@ fn main() {
                     eprint!("{}", diag);
                     process::exit(1);
                 }
+            }
+
+            if timings {
+                print_timings(&phases);
             }
         }
     }
