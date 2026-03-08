@@ -14,4 +14,6 @@ insta = { version = "1", features = ["yaml"] }
 serde = { version = "1", features = ["derive"] }
 ristretto_classfile = "0.29"
 tempfile = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

@@ -1199,9 +1199,11 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
     ErrorCode::P0001
 }
 
+#[tracing::instrument(skip(source), fields(len = source.len()))]
 pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
     let tokens = tokens.unwrap_or_default();
+    tracing::debug!(tokens = tokens.len(), lex_errors = lex_errors.len(), "lexing complete");
 
     let mut errors: Vec<ParseError> = lex_errors
         .into_iter()
@@ -1233,5 +1235,7 @@ pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
         }
     }));
 
-    (module.unwrap_or(Module { decls: vec![] }), errors)
+    let module = module.unwrap_or(Module { decls: vec![] });
+    tracing::debug!(decls = module.decls.len(), errors = errors.len(), "parsing complete");
+    (module, errors)
 }

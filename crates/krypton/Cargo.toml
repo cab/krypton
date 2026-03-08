@@ -9,3 +9,5 @@ krypton-typechecker = { path = "../typechecker" }
 krypton-codegen = { path = "../codegen" }
 clap = { workspace = true }
 tempfile = { workspace = true }
+tracing.workspace = true
+tracing-subscriber.workspace = true

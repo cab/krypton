@@ -2,6 +2,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use std::process;
 use tempfile::tempdir;
+use tracing::{debug, info};
+use tracing_subscriber::EnvFilter;
 
 fn find_runtime_jar() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("KRYPTON_RUNTIME") {
@@ -70,6 +72,16 @@ fn do_parse(source: &str) -> (krypton_parser::ast::Module, Vec<krypton_parser::d
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_env("KRYPTON_LOG")
+                .or_else(|_| EnvFilter::try_from_env("RUST_LOG"))
+                .unwrap_or_else(|_| EnvFilter::new("warn")),
+        )
+        .with_target(true)
+        .with_writer(std::io::stderr)
+        .init();
+
     let cli = Cli::parse();
     match cli.command {
         Commands::Parse { file, format } => {
@@ -102,6 +114,7 @@ fn main() {
             println!("{}", krypton_parser::pretty::pretty_print(&module));
         }
         Commands::Compile { file } => {
+            info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
@@ -112,6 +125,7 @@ fn main() {
                 eprint!("{}", diag);
                 process::exit(1);
             }
+            debug!("parsing complete");
             // Typecheck for error reporting
             if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
                 let diag =
@@ -119,6 +133,7 @@ fn main() {
                 eprint!("{}", diag);
                 process::exit(1);
             }
+            debug!("type checking complete");
             // Derive class name from filename (e.g., hello.kr → Hello)
             let stem = std::path::Path::new(&file)
                 .file_stem()
@@ -135,6 +150,7 @@ fn main() {
             };
             match krypton_codegen::emit::compile_module(&module, &class_name) {
                 Ok(classes) => {
+                    info!(classes = classes.len(), "codegen complete");
                     for (name, bytes) in &classes {
                         let out_path = format!("{}.class", name);
                         std::fs::write(&out_path, bytes).unwrap_or_else(|e| {
@@ -151,6 +167,7 @@ fn main() {
             }
         }
         Commands::Run { file } => {
+            info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
@@ -161,12 +178,14 @@ fn main() {
                 eprint!("{}", diag);
                 process::exit(1);
             }
+            debug!("parsing complete");
             if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
                 let diag =
                     krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
                 eprint!("{}", diag);
                 process::exit(1);
             }
+            debug!("type checking complete");
             let stem = std::path::Path::new(&file)
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -180,6 +199,7 @@ fn main() {
             };
             match krypton_codegen::emit::compile_module(&module, &class_name) {
                 Ok(classes) => {
+                    info!(classes = classes.len(), "codegen complete");
                     let dir = tempdir().unwrap_or_else(|e| {
                         eprintln!("Error creating temp dir: {}", e);
                         process::exit(1);
@@ -192,6 +212,7 @@ fn main() {
                         });
                     }
                     let classpath = build_classpath(dir.path());
+                    info!(class = %class_name, "invoking JVM");
                     let status = process::Command::new("java")
                         .arg("-cp")
                         .arg(&classpath)
