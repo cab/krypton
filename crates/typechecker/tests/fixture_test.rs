@@ -1,28 +1,11 @@
 use std::path::Path;
 
-use krypton_parser::ast::Decl;
-use krypton_parser::lexer;
-use krypton_parser::parser::{parse, parse_expr};
-use krypton_parser::surface_parser::surface_parse;
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation, Syntax};
+use krypton_parser::parser::parse;
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 use krypton_typechecker::infer;
-use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
-use chumsky::prelude::*;
 
-fn parse_fixture(source: &str, syntax: Syntax) -> (krypton_parser::ast::Module, Vec<krypton_parser::parser::ParseError>) {
-    match syntax {
-        Syntax::Sexp => parse(source),
-        Syntax::Surface => surface_parse(source),
-    }
-}
-
-fn has_module_decls(source: &str, syntax: Syntax) -> bool {
-    let (module, _) = parse_fixture(source, syntax);
-    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_) | Decl::DefTrait { .. } | Decl::DefImpl { .. } | Decl::ExternJava { .. }))
-}
-
-fn infer_module_snapshot(source: &str, syntax: Syntax) -> Result<String, String> {
-    let (module, errors) = parse_fixture(source, syntax);
+fn infer_module_snapshot(source: &str) -> Result<String, String> {
+    let (module, errors) = parse(source);
     if !errors.is_empty() {
         return Err(errors[0].code.to_string());
     }
@@ -34,28 +17,6 @@ fn infer_module_snapshot(source: &str, syntax: Syntax) -> Result<String, String>
                 .collect();
             Ok(lines.join("\n"))
         }
-        Err(e) => Err(e.error.error_code().to_string()),
-    }
-}
-
-fn infer_expr_snapshot(source: &str) -> Result<String, String> {
-    let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
-    if !lex_errors.is_empty() {
-        return Err("P0003".to_string());
-    }
-    let tokens = tokens.unwrap();
-    let (expr, parse_errors) = parse_expr(&tokens);
-    if !parse_errors.is_empty() {
-        return Err("P0001".to_string());
-    }
-    let expr = expr.expect("no expression parsed");
-
-    let mut env = TypeEnv::new();
-    let mut subst = Substitution::new();
-    let mut gen = TypeVarGen::new();
-
-    match infer::infer_expr(&expr, &mut env, &mut subst, &mut gen) {
-        Ok(ty) => Ok(infer::display_type(&ty, &subst, &env)),
         Err(e) => Err(e.error.error_code().to_string()),
     }
 }
@@ -83,27 +44,17 @@ fn run_fixtures(subdir: &str) {
             .to_string_lossy()
             .to_string();
 
-        let use_module = has_module_decls(&fixture.source, fixture.syntax);
-
         for expectation in &fixture.expectations {
             match expectation {
                 Expectation::Ok => {
-                    let result = if use_module {
-                        infer_module_snapshot(&fixture.source, fixture.syntax)
-                    } else {
-                        infer_expr_snapshot(&fixture.source)
-                    };
+                    let result = infer_module_snapshot(&fixture.source);
                     let snapshot = result.unwrap_or_else(|code| {
                         panic!("fixture {name}: expected ok but got error {code}")
                     });
                     insta::assert_snapshot!(name.clone(), snapshot);
                 }
                 Expectation::Error(code) => {
-                    let result = if use_module {
-                        infer_module_snapshot(&fixture.source, fixture.syntax)
-                    } else {
-                        infer_expr_snapshot(&fixture.source)
-                    };
+                    let result = infer_module_snapshot(&fixture.source);
                     match result {
                         Ok(ty) => {
                             panic!("fixture {name}: expected error {code} but inferred: {ty}")

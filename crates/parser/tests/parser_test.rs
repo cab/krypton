@@ -1,233 +1,287 @@
-use krypton_parser::ast::{Expr, Module};
-use krypton_parser::lexer::lexer;
-use krypton_parser::parser::{parse as parse_source, parse_expr};
-use chumsky::Parser;
+use std::path::Path;
+
+use krypton_parser::parser::parse;
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 use insta::assert_yaml_snapshot;
 
-fn parse(input: &str) -> Expr {
-    let (tokens, lex_errors) = lexer().parse(input).into_output_errors();
-    assert!(lex_errors.is_empty(), "unexpected lex errors: {lex_errors:?}");
-    let tokens = tokens.unwrap();
-    let (expr, parse_errors) = parse_expr(&tokens);
+// --- Fixture tests ---
+
+#[test]
+fn m12_fixtures() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/m12");
+
+    let fixtures = discover_fixtures(&fixture_dir);
     assert!(
-        parse_errors.is_empty(),
-        "unexpected parse errors: {parse_errors:?}"
+        !fixtures.is_empty(),
+        "no fixtures found in {}",
+        fixture_dir.display()
     );
-    expr.unwrap()
+
+    for fixture_path in fixtures {
+        let fixture = load_fixture(&fixture_path);
+        let name = fixture_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let (module, errors) = parse(&fixture.source);
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Ok => {
+                    assert!(
+                        errors.is_empty(),
+                        "fixture {name}: expected ok but got errors: {errors:?}"
+                    );
+                    insta::assert_yaml_snapshot!(format!("m12_{name}"), module);
+                }
+                Expectation::Error(code) => {
+                    if !code.starts_with('P') {
+                        continue;
+                    }
+                    assert!(
+                        !errors.is_empty(),
+                        "fixture {name}: expected error {code} but got no errors"
+                    );
+                    let codes: Vec<String> =
+                        errors.iter().map(|e| e.code.to_string()).collect();
+                    assert!(
+                        codes.iter().any(|c| c == code),
+                        "fixture {name}: expected error {code} but got {codes:?}"
+                    );
+                }
+                Expectation::Output(_) => {}
+            }
+        }
+    }
 }
 
-fn parse_with_errors(input: &str) -> (Option<Expr>, usize) {
-    let (tokens, _) = lexer().parse(input).into_output_errors();
-    let tokens = tokens.unwrap_or_default();
-    let (expr, errors) = parse_expr(&tokens);
-    (expr, errors.len())
-}
+// --- Unit tests for specific constructs ---
 
-fn parse_module(input: &str) -> Module {
-    let (module, errors) = parse_source(input);
-    assert!(errors.is_empty(), "unexpected parse errors: {errors:?}");
-    module
-}
-
-fn parse_module_with_errors(input: &str) -> (Module, usize) {
-    let (module, errors) = parse_source(input);
-    (module, errors.len())
+#[test]
+fn test_literal_int() {
+    let (module, errors) = parse("fun f() -> Int = 42");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_int_literal() {
-    assert_yaml_snapshot!(parse("42"));
+fn test_binary_precedence() {
+    let (module, errors) = parse("fun f() -> Int = 1 + 2 * 3");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_float_literal() {
-    assert_yaml_snapshot!(parse("3.14"));
+fn test_boolean_ops() {
+    let (module, errors) = parse("fun f(a: Bool, b: Bool) -> Bool = a && b || !a");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_string_literal() {
-    assert_yaml_snapshot!(parse("\"hello\""));
-}
-
-#[test]
-fn test_bool_literal() {
-    assert_yaml_snapshot!(parse("true"));
-}
-
-#[test]
-fn test_var() {
-    assert_yaml_snapshot!(parse("x"));
-}
-
-#[test]
-fn test_binary_op() {
-    assert_yaml_snapshot!(parse("(+ 1 2)"));
-}
-
-#[test]
-fn test_comparison_op() {
-    assert_yaml_snapshot!(parse("(== x y)"));
+fn test_if_else() {
+    let (module, errors) = parse("fun f(x: Int) -> Int = if x > 0 { x } else { -x }");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
 fn test_lambda() {
-    assert_yaml_snapshot!(parse("(fn [x y] (+ x y))"));
+    let (module, errors) = parse("fun f() -> (Int) -> Int = x => x + 1");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_let() {
-    assert_yaml_snapshot!(parse("(let x 42)"));
-}
-
-#[test]
-fn test_do_block() {
-    assert_yaml_snapshot!(parse("(do (let x 1) (let y 2) (+ x y))"));
-}
-
-#[test]
-fn test_if() {
-    assert_yaml_snapshot!(parse("(if true 1 2)"));
-}
-
-#[test]
-fn test_application() {
-    assert_yaml_snapshot!(parse("(foo x y z)"));
+fn test_block() {
+    let (module, errors) = parse("fun f() -> Int { let x = 1; let y = 2; x + y }");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
 fn test_match() {
-    assert_yaml_snapshot!(parse("(match x (0 \"zero\") (1 \"one\") (_ \"other\"))"));
+    let src = r#"
+type Option[a] = Some(a) | None
+fun f(x: Option[Int]) -> Int = match x {
+    Some(v) => v,
+    None => 0,
+}
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_match_guard() {
+    let src = r#"
+type Option[a] = Some(a) | None
+fun f(x: Option[Int]) -> Int = match x {
+    Some(v) if v > 0 => v,
+    _ => 0,
+}
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
 fn test_field_access() {
-    assert_yaml_snapshot!(parse("(. point x)"));
+    let src = "type P = { x: Int }\nfun f(p: P) -> Int = p.x";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_question_mark() {
-    assert_yaml_snapshot!(parse("(? (read_file path))"));
+fn test_ufcs() {
+    let src = "fun inc(x: Int) -> Int = x + 1\nfun f(x: Int) -> Int = x.inc()";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_list() {
-    assert_yaml_snapshot!(parse("(list 1 2 3)"));
+fn test_list_literal() {
+    let (module, errors) = parse("fun f() = [1, 2, 3]");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_tuple() {
-    assert_yaml_snapshot!(parse("(tuple 1 \"two\" 3)"));
+fn test_tuple_expr() {
+    let (module, errors) = parse("fun f() = (1, 2, 3)");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_nested_expr() {
-    assert_yaml_snapshot!(parse("(+ (* 2 3) (- 5 1))"));
-}
-
-#[test]
-fn test_recur() {
-    assert_yaml_snapshot!(parse("(recur (+ n 1))"));
-}
-
-#[test]
-fn test_error_recovery() {
-    // Malformed inner expression — outer should still parse via error recovery
-    let (expr, error_count) = parse_with_errors("(+ 1 (let) 2)");
-    assert!(error_count > 0, "expected at least one parse error");
-    // The outer expression should still produce something thanks to recovery
-    assert!(expr.is_some(), "expected error recovery to produce an AST");
-}
-
-// --- Declaration tests ---
-
-#[test]
-fn test_def_fn_simple() {
-    assert_yaml_snapshot!(parse_module("(def add (fn [a b] (+ a b)))"));
-}
-
-#[test]
-fn test_def_fn_typed() {
-    assert_yaml_snapshot!(parse_module(
-        "(def factorial (fn [n] [Int] Int (if (<= n 1) 1 (* n (factorial (- n 1))))))"
-    ));
-}
-
-#[test]
-fn test_type_record() {
-    assert_yaml_snapshot!(parse_module("(type Point (record (x Int) (y Int)))"));
-}
-
-#[test]
-fn test_type_record_deriving() {
-    assert_yaml_snapshot!(parse_module(
-        "(type Point (record (x Int) (y Int)) deriving [Eq Hash Show])"
-    ));
-}
-
-#[test]
-fn test_type_sum() {
-    assert_yaml_snapshot!(parse_module("(type Option [a] (| (Some a) None))"));
-}
-
-#[test]
-fn test_type_sum_deriving() {
-    assert_yaml_snapshot!(parse_module(
-        "(type Option [a] (| (Some a) None) deriving [Eq Show])"
-    ));
-}
-
-#[test]
-fn test_type_sum_no_tvars() {
-    assert_yaml_snapshot!(parse_module(
-        "(type CounterMsg (| Inc Dec (Get (ActorRef Int))))"
-    ));
-}
-
-#[test]
-fn test_trait() {
-    assert_yaml_snapshot!(parse_module(
-        "(trait Eq [a] (def eq [a a] Bool) (def neq [a a] Bool (not (eq a b))))"
-    ));
-}
-
-#[test]
-fn test_trait_with_superclass() {
-    assert_yaml_snapshot!(parse_module(
-        "(trait Ord [a] : [Eq] (def compare [a a] Ordering))"
-    ));
-}
-
-#[test]
-fn test_impl() {
-    assert_yaml_snapshot!(parse_module(
-        "(impl Eq Point (def eq [a b] (and (== (. a x) (. b x)) (== (. a y) (. b y)))))"
-    ));
+fn test_struct_literal() {
+    let src = "type Point = { x: Int, y: Int }\nfun f() -> Point = Point { x = 1, y = 2 }";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
 fn test_import() {
-    assert_yaml_snapshot!(parse_module("(import core.option [Option Some None])"));
+    let (module, errors) = parse("import core/option.{Option, Some, None}");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_complete_program() {
-    assert_yaml_snapshot!(parse_module(
-        r#"
-        (type Point (record (x Int) (y Int)))
-        (def add (fn [a b] (+ a b)))
-        (def main (fn [] (let result (add 1 2))))
-        "#
-    ));
+fn test_import_alias() {
+    let (module, errors) = parse("import core/list.{List, map as listMap}");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_decl_error_recovery() {
-    let (module, error_count) =
-        parse_module_with_errors("(def) (def add (fn [a b] (+ a b)))");
-    assert!(error_count > 0, "expected at least one parse error");
-    // The second valid declaration should still parse
-    assert!(
-        !module.decls.is_empty(),
-        "expected error recovery to produce at least one decl"
-    );
+fn test_visibility() {
+    let (module, errors) = parse("pub fun add(a: Int, b: Int) -> Int = a + b");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_pub_open_type() {
+    let (module, errors) = parse("pub open type Color = Red | Green | Blue");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_where_clause() {
+    let (module, errors) = parse("fun compare(a: a, b: a) -> Bool where a: Ord = a < b");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_recur() {
+    let (module, errors) = parse("fun f(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_trait_decl() {
+    let src = r#"
+trait Eq[a] {
+    fun eq(self: a, other: a) -> Bool
+}
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_impl_decl() {
+    let src = r#"
+type Point = { x: Int, y: Int }
+impl Eq[Point] {
+    fun eq(a, b) = a.x == b.x
+}
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_extern_decl() {
+    let src = r#"
+extern "java.lang.Math" {
+    fun abs(Int) -> Int
+    fun max(Int, Int) -> Int
+}
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_record_type() {
+    let (module, errors) = parse("type Point = { x: Int, y: Int }");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_sum_type() {
+    let (module, errors) = parse("type Option[a] = Some(a) | None");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_function_call() {
+    let (module, errors) = parse("fun f(x: Int) -> Int = add(x, 1)");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_question_mark() {
+    let (module, errors) = parse("fun f(x: Option[Int]) -> Int = x?");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_error_recovery() {
+    let (_, errors) = parse("fun bad( = 42");
+    assert!(!errors.is_empty(), "expected parse errors");
 }

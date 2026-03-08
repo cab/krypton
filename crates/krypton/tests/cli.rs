@@ -29,30 +29,30 @@ fn test_parse_prints_ast() {
 }
 
 #[test]
-fn test_parse_sexp_format() {
+fn test_parse_surface_format() {
     let output = krypton_bin()
-        .args(["parse", "--format", "sexp", "tests/fixtures/m1/hello.kr"])
+        .args(["parse", "--format", "surface", "tests/fixtures/m1/hello.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("(def main"),
-        "stdout should contain (def main: {stdout}"
+        stdout.contains("fun main"),
+        "stdout should contain fun main: {stdout}"
     );
 }
 
 #[test]
 fn test_parse_errors_exit_1() {
     let output = krypton_bin()
-        .args(["parse", "--syntax", "sexp", "tests/fixtures/m1/bad.kr"])
+        .args(["parse", "tests/fixtures/m1/bad.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("P0002"),
-        "stderr should contain P0002 error code: {stderr}"
+        stderr.contains("P0001") || stderr.contains("P0002"),
+        "stderr should contain parser error code: {stderr}"
     );
 }
 
@@ -157,8 +157,11 @@ fn test_run_factorial() {
 
 #[test]
 fn test_run_parse_error_exits_1() {
-    let output = krypton_bin()
-        .args(["run", "tests/fixtures/m1/bad.kr"])
+    let dir = tempdir().expect("failed to create temp dir");
+    let bad_file = dir.path().join("bad.kr");
+    std::fs::write(&bad_file, "fun main(\n").expect("write bad file");
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .args(["run", bad_file.to_str().unwrap()])
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");

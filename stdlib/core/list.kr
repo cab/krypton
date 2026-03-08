@@ -1,2 +1,2 @@
-;; core/list — List type (cons-based linked list)
-(type List [a] (| (Cons a (List a)) Nil))
+# core/list — List type (cons-based linked list)
+type List[a] = Cons(a, List[a]) | Nil

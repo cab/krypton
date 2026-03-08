@@ -70,6 +70,6 @@ mod tests {
     fn test_core_paths_never_filesystem() {
         // include_str! embeds at compile time, so this is always embedded content
         let source = StdlibLoader::get_source("core/option").unwrap();
-        assert!(source.contains("(type Option"));
+        assert!(source.contains("type Option"));
     }
 }

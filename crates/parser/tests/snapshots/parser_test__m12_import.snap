@@ -1,0 +1,109 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - Import:
+      path: core/option
+      names:
+        - name: Option
+          alias: ~
+        - name: Some
+          alias: ~
+        - name: None
+          alias: ~
+      span:
+        - 13
+        - 52
+  - Import:
+      path: core/list
+      names:
+        - name: List
+          alias: ~
+        - name: map
+          alias: listMap
+      span:
+        - 53
+        - 92
+  - DefFn:
+      name: test
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            App:
+              name: Option
+              args:
+                - Named:
+                    name: Int
+                    span:
+                      - 113
+                      - 116
+              span:
+                - 106
+                - 117
+          span:
+            - 103
+            - 117
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 122
+            - 125
+      body:
+        Match:
+          scrutinee:
+            Var:
+              name: x
+              span:
+                - 134
+                - 135
+          arms:
+            - pattern:
+                Constructor:
+                  name: Some
+                  args:
+                    - Var:
+                        name: v
+                        span:
+                          - 147
+                          - 148
+                  span:
+                    - 142
+                    - 149
+              guard: ~
+              body:
+                Var:
+                  name: v
+                  span:
+                    - 153
+                    - 154
+              span:
+                - 142
+                - 154
+            - pattern:
+                Constructor:
+                  name: None
+                  args: []
+                  span:
+                    - 160
+                    - 164
+              guard: ~
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 168
+                    - 169
+              span:
+                - 160
+                - 169
+          span:
+            - 128
+            - 172
+      span:
+        - 94
+        - 172

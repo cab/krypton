@@ -1,6 +1,0 @@
----
-source: crates/parser/tests/surface_lexer_test.rs
-expression: "surface_lex(\"3.14 0.5\")"
----
-- Float: 3.14
-- Float: 0.5

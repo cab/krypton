@@ -1,25 +1,46 @@
 ---
 source: crates/parser/tests/parser_test.rs
-expression: "parse(\"(? (read_file path))\")"
+expression: module
 ---
-QuestionMark:
-  expr:
-    App:
-      func:
-        Var:
-          name: read_file
+decls:
+  - DefFn:
+      name: f
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            App:
+              name: Option
+              args:
+                - Named:
+                    name: Int
+                    span:
+                      - 16
+                      - 19
+              span:
+                - 9
+                - 20
           span:
-            - 4
-            - 13
-      args:
-        - Var:
-            name: path
-            span:
-              - 14
-              - 18
+            - 6
+            - 20
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 25
+            - 28
+      body:
+        QuestionMark:
+          expr:
+            Var:
+              name: x
+              span:
+                - 31
+                - 32
+          span:
+            - 31
+            - 33
       span:
-        - 3
-        - 19
-  span:
-    - 0
-    - 20
+        - 0
+        - 33

@@ -1,7 +1,9 @@
 use krypton_parser::ast::*;
 use krypton_parser::parser::parse;
-use krypton_parser::pretty::pretty_print;
+use krypton_parser::pretty::{pretty_print, pretty_print_with, PrettyConfig};
 use insta::assert_snapshot;
+
+// --- Zero-span helpers (copied from pretty_test.rs) ---
 
 fn zero_spans_module(module: &Module) -> Module {
     Module {
@@ -227,7 +229,12 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
                 .collect(),
             span: (0, 0),
         },
-        Expr::LetPattern { pattern, value, body, .. } => Expr::LetPattern {
+        Expr::LetPattern {
+            pattern,
+            value,
+            body,
+            ..
+        } => Expr::LetPattern {
             pattern: zero_spans_pattern(pattern),
             value: Box::new(zero_spans_expr(value)),
             body: body.as_ref().map(|b| Box::new(zero_spans_expr(b))),
@@ -318,162 +325,367 @@ fn zero_spans_type_expr(ty: &TypeExpr) -> TypeExpr {
     }
 }
 
-/// Parse source, pretty-print, re-parse, and assert the ASTs match (with spans zeroed).
-fn assert_roundtrip(input: &str) {
+// --- Round-trip helper ---
+
+fn assert_surface_roundtrip(input: &str) {
     let (module1, errors1) = parse(input);
-    assert!(errors1.is_empty(), "parse errors on input: {errors1:?}");
+    assert!(
+        errors1.is_empty(),
+        "parse errors on input: {errors1:?}\ninput: {input}"
+    );
 
     let printed = pretty_print(&module1);
     let (module2, errors2) = parse(&printed);
     assert!(
         errors2.is_empty(),
-        "parse errors on pretty-printed output: {errors2:?}\nprinted: {printed}"
+        "parse errors on pretty-printed output: {errors2:?}\nprinted:\n{printed}"
     );
 
     let norm1 = zero_spans_module(&module1);
     let norm2 = zero_spans_module(&module2);
-    assert_eq!(norm1, norm2, "round-trip mismatch!\ninput:   {input}\nprinted: {printed}");
+    assert_eq!(
+        norm1, norm2,
+        "round-trip mismatch!\ninput:   {input}\nprinted: {printed}"
+    );
 }
 
 // --- Round-trip tests ---
 
 #[test]
-fn roundtrip_simple_untyped_fn() {
-    assert_roundtrip("(def add (fn [a b] (+ a b)))");
+fn roundtrip_literal_int() {
+    assert_surface_roundtrip("fun f() -> Int = 42");
 }
 
 #[test]
-fn roundtrip_typed_fn() {
-    assert_roundtrip(
-        "(def factorial (fn [n] [Int] Int (if (<= n 1) 1 (* n (factorial (- n 1))))))",
-    );
+fn roundtrip_literal_float() {
+    assert_surface_roundtrip("fun f() -> Float = 3.14");
+}
+
+#[test]
+fn roundtrip_literal_string() {
+    assert_surface_roundtrip("fun f() -> String = \"hello world\"");
+}
+
+#[test]
+fn roundtrip_literal_bool() {
+    assert_surface_roundtrip("fun f() -> Bool = true");
+}
+
+#[test]
+fn roundtrip_literal_unit() {
+    assert_surface_roundtrip("fun f() = ()");
+}
+
+#[test]
+fn roundtrip_variable() {
+    assert_surface_roundtrip("fun f(x: Int) -> Int = x");
+}
+
+#[test]
+fn roundtrip_binary_ops() {
+    assert_surface_roundtrip("fun f(a: Int, b: Int) -> Int = a + b");
+}
+
+#[test]
+fn roundtrip_binary_precedence() {
+    assert_surface_roundtrip("fun f() -> Int = 1 + 2 * 3");
+}
+
+#[test]
+fn roundtrip_binary_all_ops() {
+    assert_surface_roundtrip("fun f(a: Int, b: Int) -> Bool = a + b > a * b");
+}
+
+#[test]
+fn roundtrip_boolean_ops() {
+    assert_surface_roundtrip("fun f(a: Bool, b: Bool) -> Bool = a && b || !a");
+}
+
+#[test]
+fn roundtrip_unary_neg() {
+    assert_surface_roundtrip("fun f(x: Int) -> Int = -x");
+}
+
+#[test]
+fn roundtrip_unary_not() {
+    assert_surface_roundtrip("fun f(x: Bool) -> Bool = !x");
+}
+
+#[test]
+fn roundtrip_fn_expr_body() {
+    assert_surface_roundtrip("fun add(a: Int, b: Int) -> Int = a + b");
+}
+
+#[test]
+fn roundtrip_fn_block_body() {
+    assert_surface_roundtrip("fun f() -> Int { let x = 1; let y = 2; x + y }");
+}
+
+#[test]
+fn roundtrip_fn_untyped_params() {
+    assert_surface_roundtrip("fun f(x) = x");
+}
+
+#[test]
+fn roundtrip_fn_typed_params() {
+    assert_surface_roundtrip("fun f(x: Int, y: Int) -> Int = x + y");
+}
+
+#[test]
+fn roundtrip_pub_fun() {
+    assert_surface_roundtrip("pub fun add(a: Int, b: Int) -> Int = a + b");
 }
 
 #[test]
 fn roundtrip_record_type() {
-    assert_roundtrip("(type Point (record (x Int) (y Int)))");
+    assert_surface_roundtrip("type Point = { x: Int, y: Int }");
 }
 
 #[test]
-fn roundtrip_sum_type_with_deriving() {
-    assert_roundtrip("(type Option [a] (| (Some a) None) deriving [Eq Show])");
+fn roundtrip_sum_type() {
+    assert_surface_roundtrip("type Option[a] = Some(a) | None");
 }
 
 #[test]
-fn roundtrip_match_expr() {
-    assert_roundtrip("(def f (fn [x] (match x ((Some v) v) (None 0))))");
+fn roundtrip_pub_open_type() {
+    assert_surface_roundtrip("pub open type Color = Red | Green | Blue");
 }
 
 #[test]
-fn roundtrip_do_block_with_lets() {
-    assert_roundtrip("(def main (fn [] (do (let x 1) (let y 2) (+ x y))))");
+fn roundtrip_deriving() {
+    assert_surface_roundtrip("type Color = Red | Green | Blue deriving [Eq, Show]");
 }
 
 #[test]
-fn roundtrip_trait_decl() {
-    assert_roundtrip("(trait Eq [a] (def eq [a a] Bool))");
+fn roundtrip_import_with_names() {
+    assert_surface_roundtrip("import core/option.{Option, Some, None}");
+}
+
+#[test]
+fn roundtrip_import_bare() {
+    assert_surface_roundtrip("import core/option");
+}
+
+#[test]
+fn roundtrip_import_alias() {
+    assert_surface_roundtrip("import core/list.{List, map as listMap}");
+}
+
+#[test]
+fn roundtrip_trait() {
+    assert_surface_roundtrip(
+        r#"trait Eq[a] {
+    fun eq(self: a, other: a) -> Bool
+}"#,
+    );
 }
 
 #[test]
 fn roundtrip_trait_with_superclass() {
-    assert_roundtrip("(trait Ord [a] : [Eq] (def compare [a a] Ordering))");
+    assert_surface_roundtrip(
+        r#"trait Ord[a] where a: Eq {
+    fun compare(self: a, other: a) -> Ordering
+}"#,
+    );
 }
 
 #[test]
 fn roundtrip_impl() {
-    assert_roundtrip("(impl Eq Point (def eq [a b] (== a b)))");
+    let src = r#"impl Eq[Point] {
+    fun eq(a, b) = a.x == b.x
+}"#;
+    assert_surface_roundtrip(src);
 }
 
 #[test]
-fn roundtrip_import() {
-    assert_roundtrip("(import core.option [Option Some None])");
+fn roundtrip_extern() {
+    let src = r#"extern "java.lang.Math" {
+    fun abs(Int) -> Int
+    fun max(Int, Int) -> Int
+}"#;
+    assert_surface_roundtrip(src);
 }
 
 #[test]
-fn roundtrip_lambda() {
-    assert_roundtrip("(def f (fn [x] (fn [y] (+ x y))))");
+fn roundtrip_if_else() {
+    assert_surface_roundtrip("fun f(x: Int) -> Int = if x > 0 { x } else { -x }");
 }
 
 #[test]
-fn roundtrip_list() {
-    assert_roundtrip("(def f (fn [] (list 1 2 3)))");
+fn roundtrip_if_no_else() {
+    assert_surface_roundtrip("fun f(x: Int) = if x > 0 { x }");
 }
 
 #[test]
-fn roundtrip_tuple() {
-    assert_roundtrip("(def f (fn [] (tuple 1 2 3)))");
+fn roundtrip_match() {
+    let src = r#"fun f(x: Option[Int]) -> Int = match x {
+    Some(v) => v,
+    None => 0,
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_match_guard() {
+    let src = r#"fun f(x: Option[Int]) -> Int = match x {
+    Some(v) if v > 0 => v,
+    _ => 0,
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_do_block() {
+    assert_surface_roundtrip("fun f() -> Int { let x = 1; let y = 2; x + y }");
+}
+
+#[test]
+fn roundtrip_lambda_single() {
+    assert_surface_roundtrip("fun f() -> (Int) -> Int = x => x + 1");
+}
+
+#[test]
+fn roundtrip_lambda_multi() {
+    assert_surface_roundtrip("fun f() = (x, y) => x + y");
+}
+
+#[test]
+fn roundtrip_lambda_typed() {
+    assert_surface_roundtrip("fun f() = (x: Int) => x + 1");
 }
 
 #[test]
 fn roundtrip_field_access() {
-    assert_roundtrip("(def f (fn [p] (. p x)))");
+    assert_surface_roundtrip("fun f(p: Point) -> Int = p.x");
 }
 
 #[test]
 fn roundtrip_question_mark() {
-    assert_roundtrip("(def f (fn [x] (? x)))");
+    assert_surface_roundtrip("fun f(x: Option[Int]) -> Int = x?");
 }
 
 #[test]
 fn roundtrip_recur() {
-    assert_roundtrip("(def f (fn [n] (recur (- n 1))))");
+    assert_surface_roundtrip(
+        "fun f(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }",
+    );
 }
 
 #[test]
-fn roundtrip_string_literal() {
-    assert_roundtrip("(def f (fn [] \"hello world\"))");
+fn roundtrip_list() {
+    assert_surface_roundtrip("fun f() = [1, 2, 3]");
 }
 
 #[test]
-fn roundtrip_bool_literals() {
-    assert_roundtrip("(def f (fn [] (if true 1 0)))");
+fn roundtrip_tuple() {
+    assert_surface_roundtrip("fun f() = (1, 2, 3)");
 }
 
 #[test]
-fn roundtrip_all_binops() {
-    assert_roundtrip("(def f (fn [a b] (+ (- (* (/ a b) a) b) (== a (< b (!= a (> b (<= a (>= a b)))))))))");
+fn roundtrip_struct_literal() {
+    assert_surface_roundtrip("fun f() -> Point = Point { x = 1, y = 2 }");
 }
 
 #[test]
-fn roundtrip_tuple_pattern() {
-    assert_roundtrip("(def f (fn [x] (match x ((tuple a b) (+ a b)))))");
+fn roundtrip_struct_update() {
+    assert_surface_roundtrip("fun f(p: Point) -> Point = { p | x = 10 }");
 }
 
 #[test]
-fn roundtrip_let_pattern_tuple() {
-    assert_roundtrip("(def f (fn [p] (do (let (tuple a b) p) a)))");
+fn roundtrip_where_clause() {
+    assert_surface_roundtrip("fun compare(a: a, b: a) -> Bool where a: Ord = a < b");
+}
+
+#[test]
+fn roundtrip_function_call() {
+    assert_surface_roundtrip("fun f(x: Int) -> Int = add(x, 1)");
+}
+
+#[test]
+fn roundtrip_let_pattern() {
+    assert_surface_roundtrip("fun f() { let (a, b) = (1, 2); a + b }");
 }
 
 #[test]
 fn roundtrip_wildcard_pattern() {
-    assert_roundtrip("(def f (fn [x] (match x (_ 0))))");
+    let src = r#"fun f(x: Int) -> Int = match x {
+    _ => 0,
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+// --- Operator precedence tests ---
+
+#[test]
+fn roundtrip_precedence_add_mul() {
+    // 1 + 2 * 3 should parse as 1 + (2 * 3) and round-trip correctly
+    let input = "fun f() -> Int = 1 + 2 * 3";
+    let (module1, _) = parse(input);
+    let printed = pretty_print(&module1);
+    assert!(
+        printed.contains("1 + 2 * 3"),
+        "expected no extra parens, got: {printed}"
+    );
+    assert_surface_roundtrip(input);
 }
 
 #[test]
-fn roundtrip_extern_java() {
-    assert_roundtrip("(extern \"java.lang.Math\" (def abs [Int] Int) (def max [Int Int] Int))");
-}
-
-#[test]
-fn roundtrip_extern_no_methods() {
-    assert_roundtrip("(extern \"java.lang.Math\")");
+fn roundtrip_precedence_left_assoc() {
+    // (1 - 2) - 3 should not need parens, 1 - (2 - 3) would
+    assert_surface_roundtrip("fun f() -> Int = 1 - 2 - 3");
 }
 
 // --- Snapshot test ---
 
 #[test]
 fn snapshot_multi_decl_program() {
-    let input = "\
-(import core.option [Option Some None])
-(type Point (record (x Int) (y Int)))
-(type Option [a] (| (Some a) None) deriving [Eq Show])
-(trait Eq [a] (def eq [a a] Bool))
-(impl Eq Point (def eq [a b] (== a b)))
-(def add (fn [a b] [Int Int] Int (+ a b)))
-(def main (fn [] (do (let x 1) (let y 2) (+ x y))))";
+    let input = r#"import core/option.{Option, Some, None}
+
+type Point = { x: Int, y: Int }
+
+type Option[a] = Some(a) | None deriving [Eq, Show]
+
+trait Eq[a] {
+    fun eq(self: a, other: a) -> Bool
+}
+
+impl Eq[Point] {
+    fun eq(a, b) = a.x == b.x && a.y == b.y
+}
+
+pub fun add(a: Int, b: Int) -> Int = a + b
+
+fun main() -> Int {
+    let x = 1;
+    let y = 2;
+    add(x, y)
+}"#;
 
     let (module, errors) = parse(input);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let output = pretty_print(&module);
     assert_snapshot!(output);
+    // Also verify round-trip
+    assert_surface_roundtrip(input);
+}
+
+// --- Config test ---
+
+#[test]
+fn configurable_indent_width() {
+    let input = r#"fun main() -> Int {
+    let x = 1;
+    let y = 2;
+    x + y
+}"#;
+    let (module, errors) = parse(input);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+
+    let config = PrettyConfig { indent_width: 2 };
+    let output = pretty_print_with(&module, &config);
+    // With 2-space indent, the block should use 2 spaces
+    assert!(
+        output.contains("\n  let x = 1;"),
+        "expected 2-space indent, got:\n{output}"
+    );
 }

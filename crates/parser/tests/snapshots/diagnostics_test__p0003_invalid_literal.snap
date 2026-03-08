@@ -2,17 +2,10 @@
 source: crates/parser/tests/diagnostics_test.rs
 expression: plain
 ---
-[P0003] Error: found ')' expected '='
+[P0003] Error: found end of input expected something else, or '"'
    ╭─[ test.kr:1:26 ]
    │
- 1 │ (def foo (fn [] 0xFF_bad!))
-   │                          ┬  
-   │                          ╰── P0003: found ')' expected '='
-───╯
-[P0002] Error: found 'xFF_bad' expected ')'
-   ╭─[ test.kr:1:18 ]
-   │
- 1 │ (def foo (fn [] 0xFF_bad!))
-   │                  ───┬───  
-   │                     ╰───── P0002: found 'xFF_bad' expected ')'
+ 1 │ fun foo() = "unterminated
+   │                          │ 
+   │                          ╰─ P0003: found end of input expected something else, or '"'
 ───╯

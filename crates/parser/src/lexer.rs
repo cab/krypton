@@ -164,29 +164,40 @@ pub fn lexer<'src>(
         .then_ignore(just('"'))
         .map(Token::String);
 
-    // Identifiers and keywords
-    let ident = text::ascii::ident().map(|s: &str| match s {
+    // Identifiers and keywords (including _prefixed like _foo, _0)
+    let ident = just('_')
+        .then(any().filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_').repeated().at_least(1))
+        .to_slice()
+        .map(|s: &str| Token::Ident(s))
+        .or(text::ascii::ident().map(|s: &str| match s {
+        "fun" => Token::Fun,
         "def" => Token::Def,
         "fn" => Token::Fn,
         "let" => Token::Let,
         "if" => Token::If,
+        "else" => Token::Else,
         "match" => Token::Match,
         "type" => Token::Type,
-        "do" => Token::Do,
-        "recur" => Token::Recur,
-        "self" => Token::Self_,
-        "own" => Token::Own,
         "trait" => Token::Trait,
         "impl" => Token::Impl,
         "import" => Token::Import,
-        "list" => Token::List,
-        "tuple" => Token::Tuple,
+        "use" => Token::Use,
+        "pub" => Token::Pub,
+        "open" => Token::Open,
+        "where" => Token::Where,
+        "recur" => Token::Recur,
+        "own" => Token::Own,
         "deriving" => Token::Deriving,
         "extern" => Token::Extern,
+        "as" => Token::As,
+        "do" => Token::Do,
+        "self" => Token::Self_,
+        "list" => Token::List,
+        "tuple" => Token::Tuple,
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
         _ => Token::Ident(s),
-    });
+    }));
 
     // Multi-char operators (must come before single-char)
     let multi_op = choice((
@@ -194,10 +205,14 @@ pub fn lexer<'src>(
         just("!=").to(Token::Neq),
         just("<=").to(Token::Le),
         just(">=").to(Token::Ge),
+        just("=>").to(Token::FatArrow),
+        just("->").to(Token::Arrow),
+        just("&&").to(Token::And),
+        just("||").to(Token::Or),
         just("..").to(Token::DotDot),
     ));
 
-    // Single-char operators
+    // Single-char operators and punctuation
     let single_op = choice((
         just('+').to(Token::Plus),
         just('-').to(Token::Minus),
@@ -205,10 +220,15 @@ pub fn lexer<'src>(
         just('/').to(Token::Slash),
         just('<').to(Token::Lt),
         just('>').to(Token::Gt),
+        just('=').to(Token::Assign),
+        just('!').to(Token::Bang),
         just('?').to(Token::Question),
         just('|').to(Token::Pipe),
         just('.').to(Token::Dot),
         just(':').to(Token::Colon),
+        just(',').to(Token::Comma),
+        just(';').to(Token::Semicolon),
+        just('~').to(Token::Tilde),
         just('_').to(Token::Underscore),
     ));
 
@@ -218,6 +238,8 @@ pub fn lexer<'src>(
         just(')').to(Token::RParen),
         just('[').to(Token::LBracket),
         just(']').to(Token::RBracket),
+        just('{').to(Token::LBrace),
+        just('}').to(Token::RBrace),
     ));
 
     // Comments: # to end of line
@@ -225,7 +247,7 @@ pub fn lexer<'src>(
         .then(any().and_is(just('\n').not()).repeated())
         .padded();
 
-    let token = choice((num, string, multi_op, single_op, delim, ident));
+    let token = choice((num, string, multi_op, ident, single_op, delim));
 
     token
         .map_with(|tok, e| (tok, e.span()))

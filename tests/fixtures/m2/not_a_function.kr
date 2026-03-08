@@ -1,3 +1,2 @@
 # expect: error E0004
-# syntax: sexp
-(42 1)
+fun _() = 42(1)

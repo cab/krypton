@@ -1,0 +1,22 @@
+---
+source: crates/parser/tests/lexer_test.rs
+expression: "surface_lex(\"fun let if else match type trait impl import use pub open where recur own deriving extern as\")"
+---
+- Fun
+- Let
+- If
+- Else
+- Match
+- Type
+- Trait
+- Impl
+- Import
+- Use
+- Pub
+- Open
+- Where
+- Recur
+- Own
+- Deriving
+- Extern
+- As

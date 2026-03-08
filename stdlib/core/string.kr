@@ -1,2 +1,2 @@
-;; core/string — String utility functions
-;; TODO: function signatures will be added as intrinsics or extern declarations
+# core/string — String utility functions
+# TODO: function signatures will be added as intrinsics or extern declarations

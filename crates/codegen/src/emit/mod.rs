@@ -240,12 +240,7 @@ pub fn compile_module(
             sum_decls.iter().map(|(name, _, _)| name.clone()).collect();
         for &module_path in krypton_typechecker::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
             if let Some(source) = krypton_typechecker::stdlib_loader::StdlibLoader::get_source(module_path) {
-                let stripped: String = source
-                    .lines()
-                    .filter(|line| !line.trim_start().starts_with(";;"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let (stdlib_module, _) = krypton_parser::parser::parse(&stripped);
+                let (stdlib_module, _) = krypton_parser::parser::parse(source);
                 for decl in stdlib_module.decls {
                     if let Decl::DefType(td) = decl {
                         if let TypeDeclKind::Sum { variants } = td.kind {

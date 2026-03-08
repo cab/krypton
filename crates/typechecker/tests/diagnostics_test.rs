@@ -1,34 +1,21 @@
-use krypton_parser::lexer;
-use krypton_parser::parser::{parse, parse_expr};
-use krypton_parser::surface_parser::surface_parse;
+use krypton_parser::parser::parse;
 use krypton_typechecker::diagnostics::render_type_errors;
 use krypton_typechecker::infer;
-use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
-use krypton_typechecker::unify::SpannedTypeError;
-use krypton_test_harness::{parse_syntax, Syntax};
-use chumsky::prelude::*;
 
-fn parse_and_infer_error(src: &str) -> SpannedTypeError {
-    let (tokens, lex_errors) = lexer::lexer().parse(src).into_output_errors();
-    assert!(lex_errors.is_empty(), "lex errors: {:?}", lex_errors);
-    let tokens = tokens.unwrap();
-    let (expr, parse_errors) = parse_expr(&tokens);
-    assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
-    let expr = expr.expect("no expression parsed");
-
-    let mut env = TypeEnv::new();
-    let mut subst = Substitution::new();
-    let mut gen = TypeVarGen::new();
-
-    infer::infer_expr(&expr, &mut env, &mut subst, &mut gen)
-        .expect_err("expected a type error")
+fn parse_and_infer_module_error(src: &str) -> String {
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let err = match infer::infer_module(&module) {
+        Ok(_) => panic!("expected a type error"),
+        Err(e) => e,
+    };
+    let rendered = render_type_errors("test.kr", src, &[err]);
+    strip_ansi_escapes(rendered)
 }
 
 fn render_error(src: &str) -> String {
-    let err = parse_and_infer_error(src);
-    let rendered = render_type_errors("test.kr", src, &[err]);
-    // Strip ANSI escape codes for snapshot stability
-    strip_ansi_escapes(rendered)
+    let wrapped = format!("fun _() = {src}");
+    parse_and_infer_module_error(&wrapped)
 }
 
 fn strip_ansi_escapes(s: String) -> String {
@@ -52,35 +39,32 @@ fn strip_ansi_escapes(s: String) -> String {
 
 #[test]
 fn type_mismatch_diagnostic() {
-    insta::assert_snapshot!(render_error("(if true 1 \"hi\")"));
+    insta::assert_snapshot!(render_error("if true { 1 } else { \"hi\" }"));
 }
 
 #[test]
 fn not_a_function_diagnostic() {
-    insta::assert_snapshot!(render_error("(42 1)"));
+    insta::assert_snapshot!(render_error("42(1)"));
 }
 
 #[test]
 fn wrong_arity_diagnostic() {
-    insta::assert_snapshot!(render_error("(do (let f (fn [x] x)) (f 1 2))"));
+    insta::assert_snapshot!(render_error("{ let f = x => x; f(1, 2) }"));
 }
 
 #[test]
 fn infinite_type_diagnostic() {
-    insta::assert_snapshot!(render_error("(fn [x] (x x))"));
+    insta::assert_snapshot!(render_error("x => x(x)"));
 }
 
 #[test]
 fn unknown_var_diagnostic() {
-    insta::assert_snapshot!(render_error("(+ x 1)"));
+    insta::assert_snapshot!(render_error("x + 1"));
 }
 
 fn render_fixture_error(fixture: &str) -> String {
     let src = std::fs::read_to_string(fixture).unwrap();
-    let (module, errors) = match parse_syntax(&src) {
-        Syntax::Sexp => parse(&src),
-        Syntax::Surface => surface_parse(&src),
-    };
+    let (module, errors) = parse(&src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let err = match infer::infer_module(&module) {
         Ok(_) => panic!("expected a type error"),
@@ -103,7 +87,7 @@ fn render_module_error(src: &str) -> String {
 
 #[test]
 fn own_fn_vs_fn_help_text() {
-    let src = "(def call_many (fn [f] [(fn [] String)] String (f)))\n(def bad (fn [x] [(own String)] String\n  (call_many (fn [] x))))";
+    let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() => x)";
     let output = render_module_error(src);
     assert!(
         output.contains("single-use closure"),
@@ -113,7 +97,7 @@ fn own_fn_vs_fn_help_text() {
 
 #[test]
 fn own_t_vs_t_help_text() {
-    let src = "(def bad (fn [x] [String] (own String) x))";
+    let src = "fun bad(x: String) -> ~String = x";
     let output = render_module_error(src);
     assert!(
         output.contains("own"),
@@ -123,7 +107,7 @@ fn own_t_vs_t_help_text() {
 
 #[test]
 fn no_own_mismatch_no_help() {
-    let output = render_error("(if true 1 \"hi\")");
+    let output = render_error("if true { 1 } else { \"hi\" }");
     assert!(
         !output.contains("single-use closure") && !output.contains("own"),
         "expected no ownership help text in:\n{output}"
@@ -132,7 +116,7 @@ fn no_own_mismatch_no_help() {
 
 #[test]
 fn own_fn_capture_note_e0101() {
-    let src = "(def consume (fn [buf] [(own String)] String buf))\n(def bad (fn [x] [(own String)] String\n  (do (let f (fn [] (consume x)))\n      (f)\n      (f))))";
+    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(x: ~String) -> String = { let f = () => consume(x); f(); f() }";
     let output = render_module_error(src);
     assert!(
         output.contains("captures own value `x`"),
@@ -142,7 +126,7 @@ fn own_fn_capture_note_e0101() {
 
 #[test]
 fn own_fn_capture_note_e0001() {
-    let src = "(def call_many (fn [f] [(fn [] String)] String (f)))\n(def bad (fn [x] [(own String)] String\n  (call_many (fn [] x))))";
+    let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() => x)";
     let output = render_module_error(src);
     assert!(
         output.contains("captures own value `x`"),
@@ -152,7 +136,7 @@ fn own_fn_capture_note_e0001() {
 
 #[test]
 fn own_fn_capture_note_correct_name() {
-    let src = "(def consume (fn [buf] [(own String)] String buf))\n(def bad (fn [a b] [String (own String)] String\n  (do (let f (fn [] (consume b)))\n      (f)\n      (f))))";
+    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(a: String, b: ~String) -> String = { let f = () => consume(b); f(); f() }";
     let output = render_module_error(src);
     assert!(
         output.contains("captures own value `b`"),
@@ -208,11 +192,11 @@ fn test_e0103_shows_prior_use() {
 fn error_codes_present() {
     // Verify each error code appears in at least one diagnostic
     let cases = [
-        ("E0001", "(if true 1 \"hi\")"),
-        ("E0003", "(+ x 1)"),
-        ("E0004", "(42 1)"),
-        ("E0005", "(do (let f (fn [x] x)) (f 1 2))"),
-        ("E0007", "(fn [x] (x x))"),
+        ("E0001", "if true { 1 } else { \"hi\" }"),
+        ("E0003", "x + 1"),
+        ("E0004", "42(1)"),
+        ("E0005", "{ let f = x => x; f(1, 2) }"),
+        ("E0007", "x => x(x)"),
     ];
     for (code, src) in cases {
         let output = render_error(src);

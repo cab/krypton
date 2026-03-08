@@ -1,284 +1,774 @@
 use crate::ast::*;
 
+pub struct PrettyConfig {
+    pub indent_width: usize,
+}
+
+impl Default for PrettyConfig {
+    fn default() -> Self {
+        Self { indent_width: 4 }
+    }
+}
+
 pub fn pretty_print(module: &Module) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    for decl in &module.decls {
-        parts.push(pp_decl(decl));
-    }
-    parts.join("\n")
+    pretty_print_with(module, &PrettyConfig::default())
 }
 
-fn pp_decl(decl: &Decl) -> String {
-    match decl {
-        Decl::DefFn(f) => pp_def_fn(f),
-        Decl::DefType(t) => pp_def_type(t),
-        Decl::DefTrait {
-            name,
-            type_var,
-            superclasses,
-            methods,
-            ..
-        } => pp_trait(name, type_var, superclasses, methods),
-        Decl::DefImpl {
-            trait_name,
-            target_type,
-            type_constraints,
-            methods,
-            ..
-        } => pp_impl(trait_name, target_type, type_constraints, methods),
-        Decl::Import { path, names, .. } => {
-            let names_str = names.iter().map(|n| {
-                if let Some(alias) = &n.alias {
-                    format!("{} as {}", n.name, alias)
-                } else {
-                    n.name.clone()
+pub fn pretty_print_with(module: &Module, config: &PrettyConfig) -> String {
+    let mut f = Formatter {
+        config,
+        indent_level: 0,
+        buf: String::new(),
+    };
+    for (i, decl) in module.decls.iter().enumerate() {
+        if i > 0 {
+            f.buf.push('\n');
+        }
+        f.fmt_decl(decl);
+        f.buf.push('\n');
+    }
+    // Remove trailing newline for consistency
+    if f.buf.ends_with('\n') {
+        f.buf.pop();
+    }
+    f.buf
+}
+
+struct Formatter<'a> {
+    config: &'a PrettyConfig,
+    indent_level: usize,
+    buf: String,
+}
+
+impl<'a> Formatter<'a> {
+    fn indent(&mut self) {
+        for _ in 0..self.indent_level * self.config.indent_width {
+            self.buf.push(' ');
+        }
+    }
+
+    fn fmt_decl(&mut self, decl: &Decl) {
+        match decl {
+            Decl::DefFn(f) => self.fmt_fn_decl(f),
+            Decl::DefType(t) => self.fmt_type_decl(t),
+            Decl::DefTrait {
+                name,
+                type_var,
+                superclasses,
+                methods,
+                ..
+            } => self.fmt_trait(name, type_var, superclasses, methods),
+            Decl::DefImpl {
+                trait_name,
+                target_type,
+                type_constraints,
+                methods,
+                ..
+            } => self.fmt_impl(trait_name, target_type, type_constraints, methods),
+            Decl::Import { path, names, .. } => self.fmt_import(path, names),
+            Decl::ExternJava {
+                class_name,
+                methods,
+                ..
+            } => self.fmt_extern(class_name, methods),
+        }
+    }
+
+    fn fmt_visibility(&mut self, vis: &Visibility) {
+        match vis {
+            Visibility::Private => {}
+            Visibility::Pub => self.buf.push_str("pub "),
+            Visibility::PubOpen => self.buf.push_str("pub open "),
+        }
+    }
+
+    fn fmt_fn_decl(&mut self, f: &FnDecl) {
+        self.fmt_visibility(&f.visibility);
+        self.buf.push_str("fun ");
+        self.buf.push_str(&f.name);
+        self.buf.push('(');
+        for (i, p) in f.params.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            self.fmt_param(p);
+        }
+        self.buf.push(')');
+        if let Some(ret) = &f.return_type {
+            self.buf.push_str(" -> ");
+            self.fmt_type_expr(ret);
+        }
+        if !f.constraints.is_empty() {
+            self.buf.push_str(" where ");
+            for (i, c) in f.constraints.iter().enumerate() {
+                if i > 0 {
+                    self.buf.push_str(", ");
                 }
-            }).collect::<Vec<_>>().join(" ");
-            format!("(import {path} [{names_str}])")
-        }
-        Decl::ExternJava {
-            class_name,
-            methods,
-            ..
-        } => {
-            let mut s = format!("(extern \"{class_name}\"");
-            for m in methods {
-                let params: Vec<String> = m.param_types.iter().map(pp_type_expr).collect();
-                s.push_str(&format!(
-                    " (def {} [{}] {})",
-                    m.name,
-                    params.join(" "),
-                    pp_type_expr(&m.return_type)
-                ));
+                self.buf.push_str(&c.type_var);
+                self.buf.push_str(": ");
+                self.buf.push_str(&c.trait_name);
             }
-            s.push(')');
-            s
         }
-    }
-}
-
-fn pp_def_fn(f: &FnDecl) -> String {
-    let params_str = f.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(" ");
-    let has_types = f.params.iter().any(|p| p.ty.is_some());
-
-    if has_types {
-        let type_strs: Vec<String> = f.params.iter().map(|p| {
-            p.ty.as_ref().map(pp_type_expr).unwrap_or_else(|| "_".to_string())
-        }).collect();
-        let types_str = type_strs.join(" ");
-        let ret = f.return_type.as_ref().map(pp_type_expr).unwrap_or_else(|| "Unit".to_string());
-        let body = pp_expr(&f.body);
-        format!("(def {} (fn [{}] [{}] {} {}))", f.name, params_str, types_str, ret, body)
-    } else {
-        let body = pp_expr(&f.body);
-        format!("(def {} (fn [{}] {}))", f.name, params_str, body)
-    }
-}
-
-fn pp_def_type(t: &TypeDecl) -> String {
-    let mut s = String::from("(type ");
-    s.push_str(&t.name);
-    if !t.type_params.is_empty() {
-        s.push_str(" [");
-        s.push_str(&t.type_params.join(" "));
-        s.push(']');
-    }
-    s.push(' ');
-    match &t.kind {
-        TypeDeclKind::Record { fields } => {
-            s.push_str("(record");
-            for (name, ty) in fields {
-                s.push_str(&format!(" ({} {})", name, pp_type_expr(ty)));
+        // Determine body style: block body (Do) vs expression body
+        match &*f.body {
+            Expr::Do { exprs, .. } => {
+                self.buf.push_str(" {");
+                self.fmt_block_body(exprs);
+                self.buf.push('}');
             }
-            s.push(')');
+            body => {
+                self.buf.push_str(" = ");
+                self.fmt_expr(body);
+            }
         }
-        TypeDeclKind::Sum { variants } => {
-            s.push_str("(|");
-            for v in variants {
-                s.push(' ');
-                if v.fields.is_empty() {
-                    s.push_str(&v.name);
-                } else {
-                    s.push('(');
-                    s.push_str(&v.name);
-                    for f in &v.fields {
-                        s.push(' ');
-                        s.push_str(&pp_type_expr(f));
+    }
+
+    fn fmt_param(&mut self, p: &Param) {
+        self.buf.push_str(&p.name);
+        if let Some(ty) = &p.ty {
+            self.buf.push_str(": ");
+            self.fmt_type_expr(ty);
+        }
+    }
+
+    fn fmt_type_expr(&mut self, ty: &TypeExpr) {
+        match ty {
+            TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
+                self.buf.push_str(name);
+            }
+            TypeExpr::App { name, args, .. } => {
+                self.buf.push_str(name);
+                self.buf.push('[');
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
                     }
-                    s.push(')');
+                    self.fmt_type_expr(arg);
+                }
+                self.buf.push(']');
+            }
+            TypeExpr::Fn { params, ret, .. } => {
+                self.buf.push('(');
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_type_expr(p);
+                }
+                self.buf.push_str(") -> ");
+                self.fmt_type_expr(ret);
+            }
+            TypeExpr::Own { inner, .. } => {
+                self.buf.push('~');
+                self.fmt_type_expr(inner);
+            }
+            TypeExpr::Tuple { elements, .. } => {
+                self.buf.push('(');
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_type_expr(e);
+                }
+                self.buf.push(')');
+            }
+        }
+    }
+
+    fn fmt_type_decl(&mut self, t: &TypeDecl) {
+        self.fmt_visibility(&t.visibility);
+        self.buf.push_str("type ");
+        self.buf.push_str(&t.name);
+        if !t.type_params.is_empty() {
+            self.buf.push('[');
+            self.buf.push_str(&t.type_params.join(", "));
+            self.buf.push(']');
+        }
+        self.buf.push_str(" = ");
+        match &t.kind {
+            TypeDeclKind::Record { fields } => {
+                self.buf.push_str("{ ");
+                for (i, (name, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.buf.push_str(name);
+                    self.buf.push_str(": ");
+                    self.fmt_type_expr(ty);
+                }
+                self.buf.push_str(" }");
+            }
+            TypeDeclKind::Sum { variants } => {
+                for (i, v) in variants.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(" | ");
+                    }
+                    self.buf.push_str(&v.name);
+                    if !v.fields.is_empty() {
+                        self.buf.push('(');
+                        for (j, f) in v.fields.iter().enumerate() {
+                            if j > 0 {
+                                self.buf.push_str(", ");
+                            }
+                            self.fmt_type_expr(f);
+                        }
+                        self.buf.push(')');
+                    }
                 }
             }
-            s.push(')');
+        }
+        if !t.deriving.is_empty() {
+            self.buf.push_str(" deriving [");
+            self.buf.push_str(&t.deriving.join(", "));
+            self.buf.push(']');
         }
     }
-    if !t.deriving.is_empty() {
-        s.push_str(" deriving [");
-        s.push_str(&t.deriving.join(" "));
-        s.push(']');
-    }
-    s.push(')');
-    s
-}
 
-fn pp_trait(name: &str, type_var: &str, superclasses: &[String], methods: &[FnDecl]) -> String {
-    let mut s = format!("(trait {} [{}]", name, type_var);
-    if !superclasses.is_empty() {
-        s.push_str(" : [");
-        s.push_str(&superclasses.join(" "));
-        s.push(']');
-    }
-    for m in methods {
-        s.push(' ');
-        s.push_str(&pp_trait_method(m));
-    }
-    s.push(')');
-    s
-}
-
-fn pp_trait_method(m: &FnDecl) -> String {
-    let type_strs: Vec<String> = m.params.iter().map(|p| {
-        p.ty.as_ref().map(pp_type_expr).unwrap_or_else(|| "_".to_string())
-    }).collect();
-    let types_str = type_strs.join(" ");
-
-    let is_unit_body = matches!(&*m.body, Expr::Lit { value: Lit::Unit, .. });
-
-    let mut s = format!("(def {} [{}]", m.name, types_str);
-    if let Some(ret) = &m.return_type {
-        s.push(' ');
-        s.push_str(&pp_type_expr(ret));
-    }
-    if !is_unit_body {
-        s.push(' ');
-        s.push_str(&pp_expr(&m.body));
-    }
-    s.push(')');
-    s
-}
-
-fn pp_impl(
-    trait_name: &str,
-    target_type: &TypeExpr,
-    constraints: &[TypeConstraint],
-    methods: &[FnDecl],
-) -> String {
-    let mut s = format!("(impl {} {}", trait_name, pp_type_expr(target_type));
-    if !constraints.is_empty() {
-        s.push_str(" : [");
-        let cs: Vec<String> = constraints.iter().map(|c| format!("{} {}", c.trait_name, c.type_var)).collect();
-        s.push_str(&cs.join(" "));
-        s.push(']');
-    }
-    for m in methods {
-        s.push(' ');
-        s.push_str(&pp_impl_method(m));
-    }
-    s.push(')');
-    s
-}
-
-fn pp_impl_method(m: &FnDecl) -> String {
-    let params_str = m.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(" ");
-    let body = pp_expr(&m.body);
-    format!("(def {} [{}] {})", m.name, params_str, body)
-}
-
-fn pp_expr(expr: &Expr) -> String {
-    match expr {
-        Expr::Lit { value, .. } => pp_lit(value),
-        Expr::Var { name, .. } => name.clone(),
-        Expr::BinaryOp { op, lhs, rhs, .. } => {
-            format!("({} {} {})", pp_binop(op), pp_expr(lhs), pp_expr(rhs))
+    fn fmt_trait(
+        &mut self,
+        name: &str,
+        type_var: &str,
+        superclasses: &[String],
+        methods: &[FnDecl],
+    ) {
+        self.buf.push_str("trait ");
+        self.buf.push_str(name);
+        self.buf.push('[');
+        self.buf.push_str(type_var);
+        self.buf.push(']');
+        if !superclasses.is_empty() {
+            self.buf.push_str(" where ");
+            self.buf.push_str(type_var);
+            self.buf.push_str(": ");
+            self.buf.push_str(&superclasses.join(", "));
         }
-        Expr::UnaryOp { op, operand, .. } => match op {
-            UnaryOp::Neg => format!("(- {})", pp_expr(operand)),
-            UnaryOp::Not => format!("(! {})", pp_expr(operand)),
-        },
-        Expr::Lambda { params, body, .. } => {
-            let params_str = params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(" ");
-            format!("(fn [{}] {})", params_str, pp_expr(body))
+        self.buf.push_str(" {");
+        self.indent_level += 1;
+        for m in methods {
+            self.buf.push('\n');
+            self.indent();
+            self.fmt_trait_method(m);
         }
-        Expr::Let { name, value, .. } => {
-            format!("(let {} {})", name, pp_expr(value))
+        self.indent_level -= 1;
+        self.buf.push('\n');
+        self.buf.push('}');
+    }
+
+    fn fmt_trait_method(&mut self, m: &FnDecl) {
+        self.buf.push_str("fun ");
+        self.buf.push_str(&m.name);
+        self.buf.push('(');
+        for (i, p) in m.params.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            // Trait methods always have typed params
+            self.fmt_param(p);
         }
-        Expr::Do { exprs, .. } => {
-            let parts: Vec<String> = exprs.iter().map(pp_expr).collect();
-            format!("(do {})", parts.join(" "))
+        self.buf.push(')');
+        if let Some(ret) = &m.return_type {
+            self.buf.push_str(" -> ");
+            self.fmt_type_expr(ret);
         }
-        Expr::If { cond, then_, else_, .. } => {
-            format!("(if {} {} {})", pp_expr(cond), pp_expr(then_), pp_expr(else_))
+        let is_unit_body = matches!(&*m.body, Expr::Lit { value: Lit::Unit, .. });
+        if !is_unit_body {
+            match &*m.body {
+                Expr::Do { exprs, .. } => {
+                    self.buf.push_str(" {");
+                    self.fmt_block_body(exprs);
+                    self.buf.push('}');
+                }
+                body => {
+                    self.buf.push_str(" = ");
+                    self.fmt_expr(body);
+                }
+            }
         }
-        Expr::App { func, args, .. } => {
-            let mut parts = vec![pp_expr(func)];
-            parts.extend(args.iter().map(pp_expr));
-            format!("({})", parts.join(" "))
+    }
+
+    fn fmt_impl(
+        &mut self,
+        trait_name: &str,
+        target_type: &TypeExpr,
+        constraints: &[TypeConstraint],
+        methods: &[FnDecl],
+    ) {
+        self.buf.push_str("impl ");
+        self.buf.push_str(trait_name);
+        self.buf.push('[');
+        self.fmt_type_expr(target_type);
+        self.buf.push(']');
+        if !constraints.is_empty() {
+            self.buf.push_str(" where ");
+            for (i, c) in constraints.iter().enumerate() {
+                if i > 0 {
+                    self.buf.push_str(", ");
+                }
+                self.buf.push_str(&c.type_var);
+                self.buf.push_str(": ");
+                self.buf.push_str(&c.trait_name);
+            }
         }
-        Expr::Match { scrutinee, arms, .. } => {
-            let mut s = format!("(match {}", pp_expr(scrutinee));
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    s.push_str(&format!(" ({} if {} {})", pp_pattern(&arm.pattern), pp_expr(guard), pp_expr(&arm.body)));
+        self.buf.push_str(" {");
+        self.indent_level += 1;
+        for m in methods {
+            self.buf.push('\n');
+            self.indent();
+            self.fmt_impl_method(m);
+        }
+        self.indent_level -= 1;
+        self.buf.push('\n');
+        self.buf.push('}');
+    }
+
+    fn fmt_impl_method(&mut self, m: &FnDecl) {
+        self.buf.push_str("fun ");
+        self.buf.push_str(&m.name);
+        self.buf.push('(');
+        for (i, p) in m.params.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            self.fmt_param(p);
+        }
+        self.buf.push(')');
+        match &*m.body {
+            Expr::Do { exprs, .. } => {
+                self.buf.push_str(" {");
+                self.fmt_block_body(exprs);
+                self.buf.push('}');
+            }
+            body => {
+                self.buf.push_str(" = ");
+                self.fmt_expr(body);
+            }
+        }
+    }
+
+    fn fmt_import(&mut self, path: &str, names: &[ImportName]) {
+        self.buf.push_str("import ");
+        self.buf.push_str(path);
+        if !names.is_empty() {
+            self.buf.push_str(".{");
+            for (i, n) in names.iter().enumerate() {
+                if i > 0 {
+                    self.buf.push_str(", ");
+                }
+                self.buf.push_str(&n.name);
+                if let Some(alias) = &n.alias {
+                    self.buf.push_str(" as ");
+                    self.buf.push_str(alias);
+                }
+            }
+            self.buf.push('}');
+        }
+    }
+
+    fn fmt_extern(&mut self, class_name: &str, methods: &[ExternMethod]) {
+        self.buf.push_str("extern \"");
+        self.buf.push_str(class_name);
+        self.buf.push_str("\" {");
+        self.indent_level += 1;
+        for m in methods {
+            self.buf.push('\n');
+            self.indent();
+            self.buf.push_str("fun ");
+            self.buf.push_str(&m.name);
+            self.buf.push('(');
+            for (i, ty) in m.param_types.iter().enumerate() {
+                if i > 0 {
+                    self.buf.push_str(", ");
+                }
+                self.fmt_type_expr(ty);
+            }
+            self.buf.push_str(") -> ");
+            self.fmt_type_expr(&m.return_type);
+        }
+        self.indent_level -= 1;
+        self.buf.push('\n');
+        self.buf.push('}');
+    }
+
+    fn fmt_block_body(&mut self, exprs: &[Expr]) {
+        self.indent_level += 1;
+        for (i, expr) in exprs.iter().enumerate() {
+            self.buf.push('\n');
+            self.indent();
+            self.fmt_expr(expr);
+            // Add semicolons between statements (not after last)
+            if i < exprs.len() - 1 {
+                self.buf.push(';');
+            }
+        }
+        self.indent_level -= 1;
+        self.buf.push('\n');
+        self.indent();
+    }
+
+    fn fmt_expr(&mut self, expr: &Expr) {
+        self.fmt_expr_prec(expr, 0);
+    }
+
+    fn fmt_expr_prec(&mut self, expr: &Expr, parent_prec: u8) {
+        match expr {
+            Expr::Lit { value, .. } => self.fmt_lit(value),
+            Expr::Var { name, .. } => self.buf.push_str(name),
+            Expr::BinaryOp { op, lhs, rhs, .. } => {
+                let prec = binop_precedence(op);
+                let need_parens = prec < parent_prec;
+                if need_parens {
+                    self.buf.push('(');
+                }
+                // Left child: parens if child prec < this prec
+                self.fmt_expr_prec(lhs, prec);
+                self.buf.push(' ');
+                self.buf.push_str(binop_str(op));
+                self.buf.push(' ');
+                // Right child of left-assoc: parens if child prec <= this prec
+                // Comparison ops are non-assoc, same rule applies
+                let right_prec = if is_left_assoc(op) || is_non_assoc(op) {
+                    prec + 1
                 } else {
-                    s.push_str(&format!(" ({} {})", pp_pattern(&arm.pattern), pp_expr(&arm.body)));
+                    prec
+                };
+                self.fmt_expr_prec(rhs, right_prec);
+                if need_parens {
+                    self.buf.push(')');
                 }
             }
-            s.push(')');
-            s
-        }
-        Expr::FieldAccess { expr, field, .. } => {
-            format!("(. {} {})", pp_expr(expr), field)
-        }
-        Expr::QuestionMark { expr, .. } => {
-            format!("(? {})", pp_expr(expr))
-        }
-        Expr::List { elements, .. } => {
-            let parts: Vec<String> = elements.iter().map(pp_expr).collect();
-            format!("(list {})", parts.join(" "))
-        }
-        Expr::Tuple { elements, .. } => {
-            let parts: Vec<String> = elements.iter().map(pp_expr).collect();
-            format!("(tuple {})", parts.join(" "))
-        }
-        Expr::Recur { args, .. } => {
-            let parts: Vec<String> = args.iter().map(pp_expr).collect();
-            format!("(recur {})", parts.join(" "))
-        }
-        Expr::StructLit { name, fields, .. } => {
-            let mut s = format!("({}", name);
-            for (fname, fval) in fields {
-                s.push_str(&format!(" ({} {})", fname, pp_expr(fval)));
+            Expr::UnaryOp { op, operand, .. } => {
+                let prec = 6;
+                let need_parens = prec < parent_prec;
+                if need_parens {
+                    self.buf.push('(');
+                }
+                match op {
+                    UnaryOp::Neg => self.buf.push('-'),
+                    UnaryOp::Not => self.buf.push('!'),
+                }
+                self.fmt_expr_prec(operand, prec);
+                if need_parens {
+                    self.buf.push(')');
+                }
             }
-            s.push(')');
-            s
-        }
-        Expr::LetPattern { pattern, value, .. } => {
-            format!("(let {} {})", pp_pattern(pattern), pp_expr(value))
-        }
-        Expr::StructUpdate { base, fields, .. } => {
-            let mut s = format!("(.. {}", pp_expr(base));
-            for (fname, fval) in fields {
-                s.push_str(&format!(" ({} {})", fname, pp_expr(fval)));
+            Expr::App { func, args, .. } => {
+                self.fmt_expr_prec(func, 7);
+                self.buf.push('(');
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(arg);
+                }
+                self.buf.push(')');
             }
-            s.push(')');
-            s
+            Expr::If {
+                cond,
+                then_,
+                else_,
+                ..
+            } => {
+                self.buf.push_str("if ");
+                self.fmt_expr(cond);
+                self.buf.push_str(" { ");
+                self.fmt_expr(then_);
+                self.buf.push_str(" }");
+                // Omit else if Unit
+                if !matches!(&**else_, Expr::Lit { value: Lit::Unit, .. }) {
+                    self.buf.push_str(" else { ");
+                    self.fmt_expr(else_);
+                    self.buf.push_str(" }");
+                }
+            }
+            Expr::Let {
+                name, value, body, ..
+            } => {
+                match body {
+                    Some(body_expr) => {
+                        // let with body → wrap in block: { let x = val; body }
+                        self.buf.push_str("{ let ");
+                        self.buf.push_str(name);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                        self.buf.push_str("; ");
+                        self.fmt_expr(body_expr);
+                        self.buf.push_str(" }");
+                    }
+                    None => {
+                        self.buf.push_str("let ");
+                        self.buf.push_str(name);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                    }
+                }
+            }
+            Expr::LetPattern {
+                pattern,
+                value,
+                body,
+                ..
+            } => {
+                match body {
+                    Some(body_expr) => {
+                        self.buf.push_str("{ let ");
+                        self.fmt_pattern(pattern);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                        self.buf.push_str("; ");
+                        self.fmt_expr(body_expr);
+                        self.buf.push_str(" }");
+                    }
+                    None => {
+                        self.buf.push_str("let ");
+                        self.fmt_pattern(pattern);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                    }
+                }
+            }
+            Expr::Do { exprs, .. } => {
+                self.buf.push('{');
+                self.fmt_block_body(exprs);
+                self.buf.push('}');
+            }
+            Expr::Match {
+                scrutinee, arms, ..
+            } => {
+                self.buf.push_str("match ");
+                self.fmt_expr(scrutinee);
+                self.buf.push_str(" {");
+                self.indent_level += 1;
+                for arm in arms.iter() {
+                    self.buf.push('\n');
+                    self.indent();
+                    self.fmt_pattern(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.buf.push_str(" if ");
+                        self.fmt_expr(guard);
+                    }
+                    self.buf.push_str(" => ");
+                    self.fmt_expr(&arm.body);
+                    self.buf.push(',');
+                }
+                self.indent_level -= 1;
+                self.buf.push('\n');
+                self.indent();
+                self.buf.push('}');
+            }
+            Expr::Lambda { params, body, .. } => {
+                if params.is_empty() {
+                    // Zero-arg lambda: () => body
+                    self.buf.push_str("() => ");
+                    self.fmt_expr(body);
+                } else if params.len() == 1 && params[0].ty.is_none() {
+                    // Single untyped param: x => body
+                    self.buf.push_str(&params[0].name);
+                    self.buf.push_str(" => ");
+                    self.fmt_expr(body);
+                } else {
+                    // Multi or typed params: (x, y) => body
+                    self.buf.push('(');
+                    for (i, p) in params.iter().enumerate() {
+                        if i > 0 {
+                            self.buf.push_str(", ");
+                        }
+                        self.fmt_param(p);
+                    }
+                    self.buf.push_str(") => ");
+                    self.fmt_expr(body);
+                }
+            }
+            Expr::FieldAccess { expr, field, .. } => {
+                self.fmt_expr_prec(expr, 7);
+                self.buf.push('.');
+                self.buf.push_str(field);
+            }
+            Expr::QuestionMark { expr, .. } => {
+                self.fmt_expr_prec(expr, 7);
+                self.buf.push('?');
+            }
+            Expr::Recur { args, .. } => {
+                self.buf.push_str("recur(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(arg);
+                }
+                self.buf.push(')');
+            }
+            Expr::List { elements, .. } => {
+                self.buf.push('[');
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(e);
+                }
+                self.buf.push(']');
+            }
+            Expr::Tuple { elements, .. } => {
+                self.buf.push('(');
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(e);
+                }
+                self.buf.push(')');
+            }
+            Expr::StructLit { name, fields, .. } => {
+                self.buf.push_str(name);
+                self.buf.push_str(" { ");
+                for (i, (fname, fval)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    // Detect punning: field name == var name with span (0,0)
+                    if is_punnable(fname, fval) {
+                        self.buf.push_str(fname);
+                    } else {
+                        self.buf.push_str(fname);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(fval);
+                    }
+                }
+                self.buf.push_str(" }");
+            }
+            Expr::StructUpdate { base, fields, .. } => {
+                self.buf.push_str("{ ");
+                self.fmt_expr(base);
+                self.buf.push_str(" | ");
+                for (i, (fname, fval)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    if is_punnable(fname, fval) {
+                        self.buf.push_str(fname);
+                    } else {
+                        self.buf.push_str(fname);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(fval);
+                    }
+                }
+                self.buf.push_str(" }");
+            }
+        }
+    }
+
+    fn fmt_lit(&mut self, lit: &Lit) {
+        match lit {
+            Lit::Int(n) => self.buf.push_str(&n.to_string()),
+            Lit::Float(f) => {
+                let s = f.to_string();
+                if s.contains('.') {
+                    self.buf.push_str(&s);
+                } else {
+                    self.buf.push_str(&format!("{s}.0"));
+                }
+            }
+            Lit::Bool(b) => self.buf.push_str(&b.to_string()),
+            Lit::String(s) => {
+                self.buf.push('"');
+                self.buf
+                    .push_str(&s.replace('\\', "\\\\").replace('"', "\\\""));
+                self.buf.push('"');
+            }
+            Lit::Unit => self.buf.push_str("()"),
+        }
+    }
+
+    fn fmt_pattern(&mut self, pat: &Pattern) {
+        match pat {
+            Pattern::Wildcard { .. } => self.buf.push('_'),
+            Pattern::Var { name, .. } => self.buf.push_str(name),
+            Pattern::Constructor { name, args, .. } => {
+                self.buf.push_str(name);
+                if !args.is_empty() {
+                    self.buf.push('(');
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.buf.push_str(", ");
+                        }
+                        self.fmt_pattern(arg);
+                    }
+                    self.buf.push(')');
+                }
+            }
+            Pattern::Lit { value, .. } => self.fmt_lit(value),
+            Pattern::Tuple { elements, .. } => {
+                self.buf.push('(');
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_pattern(e);
+                }
+                self.buf.push(')');
+            }
+            Pattern::StructPat {
+                name,
+                fields,
+                rest,
+                ..
+            } => {
+                self.buf.push_str(name);
+                self.buf.push_str(" { ");
+                for (i, (fname, fpat)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    // Detect struct pattern punning: field binds to variable of same name
+                    if matches!(fpat, Pattern::Var { name: vname, span: (0, 0) } if vname == fname)
+                    {
+                        self.buf.push_str(fname);
+                    } else {
+                        self.buf.push_str(fname);
+                        self.buf.push_str(": ");
+                        self.fmt_pattern(fpat);
+                    }
+                }
+                if *rest {
+                    if !fields.is_empty() {
+                        self.buf.push_str(", ");
+                    }
+                    self.buf.push_str("..");
+                }
+                self.buf.push_str(" }");
+            }
         }
     }
 }
 
-fn pp_lit(lit: &Lit) -> String {
-    match lit {
-        Lit::Int(n) => n.to_string(),
-        Lit::Float(f) => {
-            let s = f.to_string();
-            if s.contains('.') { s } else { format!("{s}.0") }
-        }
-        Lit::Bool(b) => b.to_string(),
-        Lit::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
-        Lit::Unit => "()".to_string(),
+fn is_punnable(field_name: &str, val: &Expr) -> bool {
+    matches!(val, Expr::Var { name, span: (0, 0) } if name == field_name)
+}
+
+fn binop_precedence(op: &BinOp) -> u8 {
+    match op {
+        BinOp::Or => 1,
+        BinOp::And => 2,
+        BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => 3,
+        BinOp::Add | BinOp::Sub => 4,
+        BinOp::Mul | BinOp::Div => 5,
     }
 }
 
-fn pp_binop(op: &BinOp) -> &'static str {
+fn is_left_assoc(op: &BinOp) -> bool {
+    matches!(
+        op,
+        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Or | BinOp::And
+    )
+}
+
+fn is_non_assoc(op: &BinOp) -> bool {
+    matches!(
+        op,
+        BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge
+    )
+}
+
+fn binop_str(op: &BinOp) -> &'static str {
     match op {
         BinOp::Add => "+",
         BinOp::Sub => "-",
@@ -292,57 +782,5 @@ fn pp_binop(op: &BinOp) -> &'static str {
         BinOp::Ge => ">=",
         BinOp::And => "&&",
         BinOp::Or => "||",
-    }
-}
-
-fn pp_pattern(pat: &Pattern) -> String {
-    match pat {
-        Pattern::Wildcard { .. } => "_".to_string(),
-        Pattern::Var { name, .. } => name.clone(),
-        Pattern::Constructor { name, args, .. } => {
-            if args.is_empty() {
-                name.clone()
-            } else {
-                let mut parts = vec![name.clone()];
-                parts.extend(args.iter().map(pp_pattern));
-                format!("({})", parts.join(" "))
-            }
-        }
-        Pattern::Lit { value, .. } => pp_lit(value),
-        Pattern::Tuple { elements, .. } => {
-            let parts: Vec<String> = elements.iter().map(pp_pattern).collect();
-            format!("(tuple {})", parts.join(" "))
-        }
-        Pattern::StructPat { name, fields, .. } => {
-            let mut s = format!("({}", name);
-            for (fname, fpat) in fields {
-                s.push_str(&format!(" ({} {})", fname, pp_pattern(fpat)));
-            }
-            s.push(')');
-            s
-        }
-    }
-}
-
-fn pp_type_expr(ty: &TypeExpr) -> String {
-    match ty {
-        TypeExpr::Named { name, .. } => name.clone(),
-        TypeExpr::Var { name, .. } => name.clone(),
-        TypeExpr::App { name, args, .. } => {
-            let mut parts = vec![name.clone()];
-            parts.extend(args.iter().map(pp_type_expr));
-            format!("({})", parts.join(" "))
-        }
-        TypeExpr::Fn { params, ret, .. } => {
-            let params_str: Vec<String> = params.iter().map(pp_type_expr).collect();
-            format!("(fn [{}] {})", params_str.join(" "), pp_type_expr(ret))
-        }
-        TypeExpr::Own { inner, .. } => {
-            format!("(own {})", pp_type_expr(inner))
-        }
-        TypeExpr::Tuple { elements, .. } => {
-            let parts: Vec<String> = elements.iter().map(pp_type_expr).collect();
-            format!("(tuple {})", parts.join(" "))
-        }
     }
 }

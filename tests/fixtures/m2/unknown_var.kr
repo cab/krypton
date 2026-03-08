@@ -1,3 +1,2 @@
 # expect: error E0003
-# syntax: sexp
-(+ x 1)
+fun _() = x + 1

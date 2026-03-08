@@ -10,5 +10,4 @@ serde.workspace = true
 
 [dev-dependencies]
 krypton-test-harness = { path = "../test-harness" }
-chumsky.workspace = true
 insta.workspace = true

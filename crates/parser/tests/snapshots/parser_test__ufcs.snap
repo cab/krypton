@@ -1,0 +1,89 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: inc
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 11
+                - 14
+          span:
+            - 8
+            - 14
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 19
+            - 22
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: x
+              span:
+                - 25
+                - 26
+          rhs:
+            Lit:
+              value:
+                Int: 1
+              span:
+                - 29
+                - 30
+          span:
+            - 25
+            - 30
+      span:
+        - 0
+        - 30
+  - DefFn:
+      name: f
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 40
+                - 43
+          span:
+            - 37
+            - 43
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 48
+            - 51
+      body:
+        App:
+          func:
+            Var:
+              name: inc
+              span:
+                - 55
+                - 61
+          args:
+            - Var:
+                name: x
+                span:
+                  - 54
+                  - 55
+          span:
+            - 54
+            - 61
+      span:
+        - 31
+        - 61

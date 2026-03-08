@@ -1,0 +1,9 @@
+---
+source: crates/parser/tests/lexer_test.rs
+expression: "surface_lex(\"foo bar MyType x1 snake_case\")"
+---
+- Ident: foo
+- Ident: bar
+- Ident: MyType
+- Ident: x1
+- Ident: snake_case

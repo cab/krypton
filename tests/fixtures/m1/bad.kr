@@ -1,3 +1,2 @@
-# expect: error
-# syntax: sexp
-(def main (fn []
+# expect: error P0002
+fun main(

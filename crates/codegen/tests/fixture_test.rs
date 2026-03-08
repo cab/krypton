@@ -4,8 +4,7 @@ use std::process::Command;
 
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
-use krypton_parser::surface_parser::surface_parse;
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation, Syntax};
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
 fn build_classpath(class_dir: &Path) -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
@@ -18,15 +17,8 @@ fn build_classpath(class_dir: &Path) -> String {
     }
 }
 
-fn parse_fixture(source: &str, syntax: Syntax) -> (krypton_parser::ast::Module, Vec<krypton_parser::parser::ParseError>) {
-    match syntax {
-        Syntax::Sexp => parse(source),
-        Syntax::Surface => surface_parse(source),
-    }
-}
-
-fn run_program(source: &str, syntax: Syntax) -> String {
-    let (module, errors) = parse_fixture(source, syntax);
+fn run_program(source: &str) -> String {
+    let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let classes = compile_module(&module, "Test").expect("compile_module should succeed");
@@ -83,7 +75,7 @@ fn run_codegen_fixtures(subdir: &str) {
         for expectation in &fixture.expectations {
             match expectation {
                 Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source, fixture.syntax);
+                    let actual = run_program(&fixture.source);
                     assert_eq!(
                         actual, *expected,
                         "fixture {name}: expected output {expected:?} but got {actual:?}"
@@ -91,7 +83,7 @@ fn run_codegen_fixtures(subdir: &str) {
                     ran += 1;
                 }
                 Expectation::Ok => {
-                    let (module, errors) = parse_fixture(&fixture.source, fixture.syntax);
+                    let (module, errors) = parse(&fixture.source);
                     if !errors.is_empty() {
                         continue;
                     }

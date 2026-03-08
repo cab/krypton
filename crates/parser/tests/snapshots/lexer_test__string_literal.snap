@@ -1,5 +1,5 @@
 ---
 source: crates/parser/tests/lexer_test.rs
-expression: "lex(\"\\\"hello world\\\"\")"
+expression: "surface_lex(\"\\\"hello\\\"\")"
 ---
-- String: hello world
+- String: hello

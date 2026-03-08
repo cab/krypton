@@ -13,14 +13,7 @@ pub fn register_prelude_types(
         let source = StdlibLoader::get_source(module_path)
             .unwrap_or_else(|| panic!("missing stdlib source for {module_path}"));
 
-        // Strip ;; comment lines (stdlib uses ;; but parser only supports # comments)
-        let stripped: String = source
-            .lines()
-            .filter(|line| !line.trim_start().starts_with(";;"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let (module, errors) = krypton_parser::parser::parse(&stripped);
+        let (module, errors) = krypton_parser::parser::parse(source);
         assert!(
             errors.is_empty(),
             "parse errors in stdlib {module_path}: {errors:?}"

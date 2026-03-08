@@ -2,10 +2,10 @@
 source: crates/parser/tests/diagnostics_test.rs
 expression: plain
 ---
-[P0002] Error: found end of input expected ')'
-   ╭─[ test.kr:1:27 ]
+[P0002] Error: found end of input expected '=>', '.', '(', '?', '||', '&&', something else, ',', or ')'
+   ╭─[ test.kr:1:23 ]
    │
- 1 │ (def add (fn [a b] (+ a b)
-   │                           │ 
-   │                           ╰─ P0002: found end of input expected ')'
+ 1 │ fun add(a, b) = (a + b
+   │                       │ 
+   │                       ╰─ P0002: found end of input expected '=>', '.', '(', '?', '||', '&&', something else, ',', or ')'
 ───╯

@@ -1,15 +1,7 @@
 use std::path::Path;
 
 use krypton_parser::parser::parse;
-use krypton_parser::surface_parser::surface_parse;
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation, Syntax};
-
-fn parse_fixture(source: &str, syntax: Syntax) -> (krypton_parser::ast::Module, Vec<krypton_parser::parser::ParseError>) {
-    match syntax {
-        Syntax::Sexp => parse(source),
-        Syntax::Surface => surface_parse(source),
-    }
-}
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
 fn run_parser_fixtures(subdir: &str) {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -34,7 +26,7 @@ fn run_parser_fixtures(subdir: &str) {
             .to_string_lossy()
             .to_string();
 
-        let (module, errors) = parse_fixture(&fixture.source, fixture.syntax);
+        let (module, errors) = parse(&fixture.source);
 
         for expectation in &fixture.expectations {
             match expectation {

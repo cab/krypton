@@ -1,13 +1,13 @@
 ---
 source: crates/typechecker/tests/diagnostics_test.rs
-expression: "render_error(\"(+ x 1)\")"
+expression: "render_error(\"x + 1\")"
 ---
 [E0003] Error: unknown variable: x
-   ╭─[ test.kr:1:4 ]
+   ╭─[ test.kr:1:11 ]
    │
- 1 │ (+ x 1)
-   │    ┬  
-   │    ╰── E0003: unknown variable: x
+ 1 │ fun _() = x + 1
+   │           ┬  
+   │           ╰── E0003: unknown variable: x
    │ 
    │ Help: did you mean to define `x` first?
 ───╯

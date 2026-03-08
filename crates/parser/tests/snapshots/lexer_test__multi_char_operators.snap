@@ -1,0 +1,12 @@
+---
+source: crates/parser/tests/lexer_test.rs
+expression: "surface_lex(\"== != <= >= => -> && ||\")"
+---
+- Eq
+- Neq
+- Le
+- Ge
+- FatArrow
+- Arrow
+- And
+- Or

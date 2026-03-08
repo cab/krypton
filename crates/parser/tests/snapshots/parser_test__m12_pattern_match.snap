@@ -1,0 +1,140 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Option
+      visibility: Private
+      type_params:
+        - a
+      kind:
+        Sum:
+          variants:
+            - name: Some
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 35
+                      - 36
+              span:
+                - 30
+                - 37
+            - name: None
+              fields: []
+              span:
+                - 40
+                - 44
+      deriving: []
+      span:
+        - 13
+        - 44
+  - DefFn:
+      name: unwrap_or
+      visibility: Private
+      params:
+        - name: opt
+          ty:
+            App:
+              name: Option
+              args:
+                - Named:
+                    name: Int
+                    span:
+                      - 71
+                      - 74
+              span:
+                - 64
+                - 75
+          span:
+            - 59
+            - 75
+        - name: default
+          ty:
+            Named:
+              name: Int
+              span:
+                - 86
+                - 89
+          span:
+            - 77
+            - 89
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 94
+            - 97
+      body:
+        Match:
+          scrutinee:
+            Var:
+              name: opt
+              span:
+                - 106
+                - 109
+          arms:
+            - pattern:
+                Constructor:
+                  name: Some
+                  args:
+                    - Var:
+                        name: x
+                        span:
+                          - 121
+                          - 122
+                  span:
+                    - 116
+                    - 123
+              guard: ~
+              body:
+                Var:
+                  name: x
+                  span:
+                    - 127
+                    - 128
+              span:
+                - 116
+                - 128
+            - pattern:
+                Constructor:
+                  name: None
+                  args: []
+                  span:
+                    - 134
+                    - 138
+              guard: ~
+              body:
+                Var:
+                  name: default
+                  span:
+                    - 142
+                    - 149
+              span:
+                - 134
+                - 149
+            - pattern:
+                Var:
+                  name: _
+                  span:
+                    - 155
+                    - 156
+              guard: ~
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 160
+                    - 161
+              span:
+                - 155
+                - 161
+          span:
+            - 100
+            - 164
+      span:
+        - 45
+        - 164

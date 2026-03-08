@@ -384,7 +384,6 @@ name = "krypton-typechecker"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "chumsky",
  "insta",
  "krypton-parser",
  "krypton-test-harness",

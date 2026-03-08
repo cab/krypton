@@ -1,5 +1,4 @@
 # expect: error P0001
-# syntax: sexp
-(extern
-  (def abs [Int] Int)
-)
+extern {
+  fun abs(Int) -> Int
+}

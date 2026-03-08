@@ -1,0 +1,63 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Point
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 35
+                    - 38
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 47
+                    - 50
+      deriving: []
+      span:
+        - 13
+        - 53
+  - DefFn:
+      name: origin
+      visibility: Private
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Point
+          span:
+            - 70
+            - 75
+      body:
+        StructLit:
+          name: Point
+          fields:
+            - - x
+              - Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 90
+                    - 91
+            - - y
+              - Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 97
+                    - 98
+          span:
+            - 78
+            - 100
+      span:
+        - 54
+        - 100

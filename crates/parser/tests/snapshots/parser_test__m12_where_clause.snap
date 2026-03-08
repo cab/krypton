@@ -1,0 +1,62 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: compare
+      visibility: Private
+      params:
+        - name: a
+          ty:
+            Var:
+              name: a
+              span:
+                - 28
+                - 29
+          span:
+            - 25
+            - 29
+        - name: b
+          ty:
+            Var:
+              name: a
+              span:
+                - 34
+                - 35
+          span:
+            - 31
+            - 35
+      constraints:
+        - type_var: a
+          trait_name: Ord
+          span:
+            - 51
+            - 57
+      return_type:
+        Named:
+          name: Bool
+          span:
+            - 40
+            - 44
+      body:
+        BinaryOp:
+          op: Lt
+          lhs:
+            Var:
+              name: a
+              span:
+                - 60
+                - 61
+          rhs:
+            Var:
+              name: b
+              span:
+                - 64
+                - 65
+          span:
+            - 60
+            - 65
+      span:
+        - 13
+        - 65

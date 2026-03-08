@@ -1,3 +1,0 @@
-# expect: error P0002
-# syntax: sexp
-(def main (fn [] 42)
