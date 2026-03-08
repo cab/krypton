@@ -4,6 +4,7 @@ pub mod infer;
 pub mod intrinsics;
 pub mod ownership;
 pub mod scc;
+pub mod stdlib_loader;
 pub mod trait_registry;
 pub mod type_registry;
 pub mod typed_ast;
