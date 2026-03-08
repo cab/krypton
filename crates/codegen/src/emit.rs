@@ -193,21 +193,33 @@ struct FrameState {
     stack_types: Vec<VerificationType>,
     local_types: Vec<VerificationType>,
     frames: BTreeMap<u16, (Vec<VerificationType>, Vec<VerificationType>)>,
+    max_stack_depth: usize,
 }
 
 impl FrameState {
+    fn update_max_depth(&mut self) {
+        self.max_stack_depth = self.max_stack_depth.max(self.stack_types.len());
+    }
+
+    fn max_stack(&self) -> u16 {
+        (self.max_stack_depth as u16).max(1)
+    }
+
     fn push_type(&mut self, vt: VerificationType) {
         self.stack_types.push(vt);
+        self.update_max_depth();
     }
 
     fn push_long_type(&mut self) {
         self.stack_types.push(VerificationType::Long);
         self.stack_types.push(VerificationType::Top);
+        self.update_max_depth();
     }
 
     fn push_double_type(&mut self) {
         self.stack_types.push(VerificationType::Double);
         self.stack_types.push(VerificationType::Top);
+        self.update_max_depth();
     }
 
     fn pop_type(&mut self) {
@@ -250,6 +262,7 @@ impl FrameState {
         for vt in self.jvm_type_to_vtypes(ty, string_class) {
             self.stack_types.push(vt);
         }
+        self.update_max_depth();
     }
 
     fn pop_jvm_type(&mut self, ty: JvmType) {
@@ -285,6 +298,7 @@ impl FrameState {
         self.stack_types.clear();
         self.local_types.clear();
         self.frames.clear();
+        self.max_stack_depth = 0;
     }
 }
 
@@ -526,6 +540,7 @@ impl Compiler {
                     cpool_index: string_arr_class,
                 }],
                 frames: BTreeMap::new(),
+                max_stack_depth: 0,
             },
             lambda: LambdaState {
                 lambda_counter: 0,
@@ -1866,6 +1881,7 @@ impl Compiler {
         let saved_next_local = self.next_local;
         let saved_stack_types = std::mem::take(&mut self.frame.stack_types);
         let saved_frames = std::mem::take(&mut self.frame.frames);
+        let saved_max_stack_depth = self.frame.max_stack_depth;
         let saved_fn_params = std::mem::take(&mut self.fn_params);
         let saved_fn_return_type = self.fn_return_type.take();
         let saved_local_fn_info = std::mem::take(&mut self.local_fn_info);
@@ -1877,6 +1893,7 @@ impl Compiler {
         self.next_local = 0;
         self.frame.stack_types.clear();
         self.frame.frames.clear();
+        self.frame.max_stack_depth = 0;
         self.fn_params.clear();
         self.fn_return_type = None;
 
@@ -1998,7 +2015,7 @@ impl Compiler {
             descriptor_index: lambda_desc_idx,
             attributes: vec![Attribute::Code {
                 name_index: self.refs.code_utf8,
-                max_stack: 20,
+                max_stack: self.frame.max_stack(),
                 max_locals: self.next_local,
                 code: std::mem::take(&mut self.code),
                 exception_table: vec![],
@@ -2015,6 +2032,7 @@ impl Compiler {
         self.next_local = saved_next_local;
         self.frame.stack_types = saved_stack_types;
         self.frame.frames = saved_frames;
+        self.frame.max_stack_depth = saved_max_stack_depth;
         self.fn_params = saved_fn_params;
         self.fn_return_type = saved_fn_return_type;
         self.local_fn_info = saved_local_fn_info;
@@ -2902,18 +2920,13 @@ impl Compiler {
             descriptor_index: desc_idx,
             attributes: vec![Attribute::Code {
                 name_index: self.refs.code_utf8,
-                max_stack: 20, // conservative estimate
+                max_stack: self.frame.max_stack(),
                 max_locals: self.next_local,
                 code: std::mem::take(&mut self.code),
                 exception_table: vec![],
                 attributes: code_attributes,
             }],
         })
-    }
-
-    /// Calculate max stack depth needed (conservative estimate).
-    fn estimate_max_stack(&self) -> u16 {
-        20
     }
 
     fn build_class(
@@ -2960,7 +2973,7 @@ impl Compiler {
             descriptor_index: main_desc,
             attributes: vec![Attribute::Code {
                 name_index: self.refs.code_utf8,
-                max_stack: self.estimate_max_stack(),
+                max_stack: self.frame.max_stack(),
                 max_locals: self.next_local,
                 code: std::mem::take(&mut self.code),
                 exception_table: vec![],

@@ -291,3 +291,59 @@ fn m9_fixtures() {
 
     assert!(ran > 0, "no output/ok fixtures were found to run m9");
 }
+
+#[test]
+fn m10_fixtures() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/m10");
+
+    let fixtures = discover_fixtures(&fixture_dir);
+    assert!(
+        !fixtures.is_empty(),
+        "no fixtures found in {}",
+        fixture_dir.display()
+    );
+
+    let mut ran = 0;
+    for fixture_path in fixtures {
+        let fixture = load_fixture(&fixture_path);
+        let name = fixture_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Output(expected) => {
+                    let actual = run_program(&fixture.source);
+                    assert_eq!(
+                        actual, *expected,
+                        "fixture {name}: expected output {expected:?} but got {actual:?}"
+                    );
+                    ran += 1;
+                }
+                Expectation::Ok => {
+                    let (module, errors) = parse(&fixture.source);
+                    if !errors.is_empty() {
+                        continue;
+                    }
+                    match compile_module(&module, "Test") {
+                        Ok(_) => { ran += 1; }
+                        Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
+                        Err(e) => {
+                            panic!("fixture {name}: expected ok but compile failed: {e}")
+                        }
+                    }
+                }
+                Expectation::Error(_) => {}
+            }
+        }
+    }
+
+    assert!(ran > 0, "no output/ok fixtures were found to run m10");
+}
