@@ -1,0 +1,7 @@
+---
+source: crates/parser/tests/surface_lexer_test.rs
+expression: "surface_lex(\"42 0 100\")"
+---
+- Int: 42
+- Int: 0
+- Int: 100

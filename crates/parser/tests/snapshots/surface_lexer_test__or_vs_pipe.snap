@@ -1,0 +1,6 @@
+---
+source: crates/parser/tests/surface_lexer_test.rs
+expression: "surface_lex(\"|| |\")"
+---
+- Or
+- Pipe

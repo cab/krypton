@@ -1,0 +1,20 @@
+---
+source: crates/parser/tests/surface_lexer_test.rs
+expression: "surface_lex(\"+ - * / < > = ! ? | . : , ; ~ _\")"
+---
+- Plus
+- Minus
+- Star
+- Slash
+- Lt
+- Gt
+- Assign
+- Bang
+- Question
+- Pipe
+- Dot
+- Colon
+- Comma
+- Semicolon
+- Tilde
+- Underscore
