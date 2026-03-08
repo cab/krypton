@@ -2305,8 +2305,10 @@ impl Compiler {
             max_next_local = self.next_local;
         }
 
-        // after_match: record frame
+        // after_match: record frame with pre-match locals (arm-local bindings are out of scope
+        // and different arms may have different types in the same slots)
         let after_match = self.code.len() as u16;
+        self.frame.local_types = local_types_at_match.clone();
         self.frame.record_frame(after_match);
 
         // Patch all goto instructions
