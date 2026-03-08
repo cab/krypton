@@ -1,0 +1,8 @@
+# expect: ok
+import core/option.{Option, Some, None}
+import core/list.{List, map as listMap}
+
+fun test(x: Option[Int]) -> Int = match x {
+    Some(v) => v,
+    None => 0,
+}

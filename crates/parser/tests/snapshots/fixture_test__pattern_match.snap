@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: match_wildcard
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -27,6 +28,7 @@ decls:
                   span:
                     - 57
                     - 58
+              guard: ~
               body:
                 Lit:
                   value:
@@ -45,6 +47,7 @@ decls:
         - 64
   - DefFn:
       name: match_literal
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -69,6 +72,7 @@ decls:
                   span:
                     - 109
                     - 110
+              guard: ~
               body:
                 Lit:
                   value:
@@ -86,6 +90,7 @@ decls:
                   span:
                     - 123
                     - 124
+              guard: ~
               body:
                 Lit:
                   value:
@@ -101,6 +106,7 @@ decls:
                   span:
                     - 137
                     - 138
+              guard: ~
               body:
                 Lit:
                   value:
@@ -119,6 +125,7 @@ decls:
         - 150
   - DefFn:
       name: match_constructor
+      visibility: Private
       params:
         - name: opt
           ty: ~
@@ -143,6 +150,7 @@ decls:
                   span:
                     - 203
                     - 209
+              guard: ~
               body:
                 Lit:
                   value:
@@ -165,6 +173,7 @@ decls:
                   span:
                     - 218
                     - 226
+              guard: ~
               body:
                 Var:
                   name: x
@@ -182,6 +191,7 @@ decls:
         - 232
   - DefFn:
       name: match_tuple
+      visibility: Private
       params:
         - name: pair
           ty: ~
@@ -215,6 +225,7 @@ decls:
                   span:
                     - 281
                     - 292
+              guard: ~
               body:
                 BinaryOp:
                   op: Add

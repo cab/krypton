@@ -1,0 +1,352 @@
+---
+source: crates/parser/tests/surface_parser_test.rs
+expression: module
+---
+decls:
+  - Import:
+      path: core/option
+      names:
+        - name: Option
+          alias: ~
+        - name: Some
+          alias: ~
+        - name: None
+          alias: ~
+      span:
+        - 13
+        - 52
+  - DefType:
+      name: Point
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 72
+                    - 75
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 80
+                    - 83
+      deriving: []
+      span:
+        - 54
+        - 85
+  - DefType:
+      name: Color
+      visibility: Private
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Red
+              fields: []
+              span:
+                - 100
+                - 103
+            - name: Green
+              fields: []
+              span:
+                - 106
+                - 111
+            - name: Blue
+              fields: []
+              span:
+                - 114
+                - 118
+      deriving: []
+      span:
+        - 87
+        - 118
+  - DefFn:
+      name: origin
+      visibility: Pub
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Point
+          span:
+            - 140
+            - 145
+      body:
+        StructLit:
+          name: Point
+          fields:
+            - - x
+              - Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 160
+                    - 161
+            - - y
+              - Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 167
+                    - 168
+          span:
+            - 148
+            - 170
+      span:
+        - 120
+        - 170
+  - DefFn:
+      name: distance
+      visibility: Private
+      params:
+        - name: p
+          ty:
+            Named:
+              name: Point
+              span:
+                - 188
+                - 193
+          span:
+            - 185
+            - 193
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 198
+            - 201
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            BinaryOp:
+              op: Mul
+              lhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: p
+                      span:
+                        - 204
+                        - 205
+                  field: x
+                  span:
+                    - 204
+                    - 207
+              rhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: p
+                      span:
+                        - 210
+                        - 211
+                  field: x
+                  span:
+                    - 210
+                    - 213
+              span:
+                - 204
+                - 213
+          rhs:
+            BinaryOp:
+              op: Mul
+              lhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: p
+                      span:
+                        - 216
+                        - 217
+                  field: y
+                  span:
+                    - 216
+                    - 219
+              rhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: p
+                      span:
+                        - 222
+                        - 223
+                  field: y
+                  span:
+                    - 222
+                    - 225
+              span:
+                - 216
+                - 225
+          span:
+            - 204
+            - 225
+      span:
+        - 172
+        - 225
+  - DefFn:
+      name: classify
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 243
+                - 246
+          span:
+            - 240
+            - 246
+      constraints: []
+      return_type:
+        Named:
+          name: String
+          span:
+            - 251
+            - 257
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Gt
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 263
+                    - 264
+              rhs:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 267
+                    - 268
+              span:
+                - 263
+                - 268
+          then_:
+            Lit:
+              value:
+                String: positive
+              span:
+                - 269
+                - 283
+          else_:
+            Lit:
+              value:
+                String: non-positive
+              span:
+                - 289
+                - 307
+          span:
+            - 260
+            - 307
+      span:
+        - 227
+        - 307
+  - DefFn:
+      name: safe_div
+      visibility: Private
+      params:
+        - name: a
+          ty:
+            Named:
+              name: Int
+              span:
+                - 325
+                - 328
+          span:
+            - 322
+            - 328
+        - name: b
+          ty:
+            Named:
+              name: Int
+              span:
+                - 333
+                - 336
+          span:
+            - 330
+            - 336
+      constraints: []
+      return_type:
+        App:
+          name: Option
+          args:
+            - Named:
+                name: Int
+                span:
+                  - 348
+                  - 351
+          span:
+            - 341
+            - 352
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Eq
+              lhs:
+                Var:
+                  name: b
+                  span:
+                    - 358
+                    - 359
+              rhs:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 363
+                    - 364
+              span:
+                - 358
+                - 364
+          then_:
+            Var:
+              name: None
+              span:
+                - 365
+                - 377
+          else_:
+            App:
+              func:
+                Var:
+                  name: Some
+                  span:
+                    - 389
+                    - 393
+              args:
+                - BinaryOp:
+                    op: Div
+                    lhs:
+                      Var:
+                        name: a
+                        span:
+                          - 394
+                          - 395
+                    rhs:
+                      Var:
+                        name: b
+                        span:
+                          - 398
+                          - 399
+                    span:
+                      - 394
+                      - 399
+              span:
+                - 383
+                - 402
+          span:
+            - 355
+            - 402
+      span:
+        - 309
+        - 402

@@ -652,6 +652,44 @@ impl Compiler {
             BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                 self.compile_comparison(op, lhs, rhs)
             }
+            BinOp::And => {
+                // Short-circuit AND: if lhs is false, result is false
+                self.compile_expr(lhs, false)?;
+                let false_label = self.code.len();
+                self.emit(Instruction::Ifeq(0)); // placeholder
+                self.frame.pop_type();
+                self.compile_expr(rhs, false)?;
+                let end_label = self.code.len();
+                self.emit(Instruction::Goto(0)); // placeholder
+                self.frame.pop_type();
+                let false_pos = self.code.len();
+                self.emit(Instruction::Iconst_0);
+                self.frame.push_type(VerificationType::Integer);
+                let end_pos = self.code.len();
+                // Patch jumps
+                self.code[false_label] = Instruction::Ifeq(false_pos as u16);
+                self.code[end_label] = Instruction::Goto(end_pos as u16);
+                Ok(JvmType::Int)
+            }
+            BinOp::Or => {
+                // Short-circuit OR: if lhs is true, result is true
+                self.compile_expr(lhs, false)?;
+                let true_label = self.code.len();
+                self.emit(Instruction::Ifne(0)); // placeholder
+                self.frame.pop_type();
+                self.compile_expr(rhs, false)?;
+                let end_label = self.code.len();
+                self.emit(Instruction::Goto(0)); // placeholder
+                self.frame.pop_type();
+                let true_pos = self.code.len();
+                self.emit(Instruction::Iconst_1);
+                self.frame.push_type(VerificationType::Integer);
+                let end_pos = self.code.len();
+                // Patch jumps
+                self.code[true_label] = Instruction::Ifne(true_pos as u16);
+                self.code[end_label] = Instruction::Goto(end_pos as u16);
+                Ok(JvmType::Int)
+            }
         }
     }
 
@@ -899,6 +937,15 @@ impl Compiler {
                     self.compile_trait_unaryop("Neg", "neg", operand, operand_jvm)
                 }
             },
+            UnaryOp::Not => {
+                // Boolean NOT: XOR with 1
+                self.compile_expr(operand, false)?;
+                self.emit(Instruction::Iconst_1);
+                self.frame.push_type(VerificationType::Integer);
+                self.emit(Instruction::Ixor);
+                self.frame.pop_type();
+                Ok(JvmType::Int)
+            }
         }
     }
 

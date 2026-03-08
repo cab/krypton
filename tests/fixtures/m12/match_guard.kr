@@ -1,0 +1,6 @@
+# expect: ok
+type Option[a] = Some(a) | None
+fun positive_or_zero(opt: Option[Int]) -> Int = match opt {
+    Some(x) if x > 0 => x,
+    _ => 0,
+}

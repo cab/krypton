@@ -9,6 +9,7 @@ decls:
       superclasses: []
       methods:
         - name: eq
+          visibility: Private
           params:
             - name: _0
               ty:
@@ -47,6 +48,7 @@ decls:
             - 14
             - 33
         - name: neq
+          visibility: Private
           params:
             - name: _0
               ty:

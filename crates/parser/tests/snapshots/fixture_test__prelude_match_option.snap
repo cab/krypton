@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: unwrap_or
+      visibility: Private
       params:
         - name: opt
           ty: ~
@@ -39,6 +40,7 @@ decls:
                   span:
                     - 110
                     - 118
+              guard: ~
               body:
                 Var:
                   name: x
@@ -55,6 +57,7 @@ decls:
                   span:
                     - 127
                     - 133
+              guard: ~
               body:
                 Var:
                   name: default
@@ -72,6 +75,7 @@ decls:
         - 145
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

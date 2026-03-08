@@ -1,0 +1,106 @@
+---
+source: crates/parser/tests/surface_parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: add
+      visibility: Pub
+      params:
+        - name: a
+          ty:
+            Named:
+              name: Int
+              span:
+                - 28
+                - 31
+          span:
+            - 25
+            - 31
+        - name: b
+          ty:
+            Named:
+              name: Int
+              span:
+                - 36
+                - 39
+          span:
+            - 33
+            - 39
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 44
+            - 47
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: a
+              span:
+                - 50
+                - 51
+          rhs:
+            Var:
+              name: b
+              span:
+                - 54
+                - 55
+          span:
+            - 50
+            - 55
+      span:
+        - 13
+        - 55
+  - DefType:
+      name: Point
+      visibility: Pub
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 78
+                    - 81
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 86
+                    - 89
+      deriving: []
+      span:
+        - 56
+        - 91
+  - DefType:
+      name: Color
+      visibility: PubOpen
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Red
+              fields: []
+              span:
+                - 114
+                - 117
+            - name: Green
+              fields: []
+              span:
+                - 120
+                - 125
+            - name: Blue
+              fields: []
+              span:
+                - 128
+                - 132
+      deriving: []
+      span:
+        - 92
+        - 132

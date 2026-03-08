@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: add
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -41,6 +42,7 @@ decls:
         - 41
   - DefFn:
       name: sub
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -77,6 +79,7 @@ decls:
         - 70
   - DefFn:
       name: mul
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -113,6 +116,7 @@ decls:
         - 99
   - DefFn:
       name: div
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -149,6 +153,7 @@ decls:
         - 128
   - DefFn:
       name: eq
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -185,6 +190,7 @@ decls:
         - 157
   - DefFn:
       name: neq
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -221,6 +227,7 @@ decls:
         - 187
   - DefFn:
       name: lt
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -257,6 +264,7 @@ decls:
         - 215
   - DefFn:
       name: gt
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -293,6 +301,7 @@ decls:
         - 243
   - DefFn:
       name: le
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -329,6 +338,7 @@ decls:
         - 272
   - DefFn:
       name: ge
+      visibility: Private
       params:
         - name: x
           ty: ~

@@ -1,0 +1,6 @@
+# expect: ok
+fun test_int() -> Int = 42
+fun test_float() -> Float = 3.14
+fun test_bool() -> Bool = true
+fun test_string() -> String = "hello"
+fun test_unit() -> Unit = ()

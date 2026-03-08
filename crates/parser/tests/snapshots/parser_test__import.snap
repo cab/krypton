@@ -6,9 +6,12 @@ decls:
   - Import:
       path: core.option
       names:
-        - Option
-        - Some
-        - None
+        - name: Option
+          alias: ~
+        - name: Some
+          alias: ~
+        - name: None
+          alias: ~
       span:
         - 0
         - 39

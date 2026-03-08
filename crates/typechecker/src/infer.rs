@@ -398,6 +398,13 @@ fn infer_expr_inner(
                     }
                     Type::Bool
                 }
+                BinOp::And | BinOp::Or => {
+                    unify(&lhs_typed.ty, &Type::Bool, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                    unify(&rhs_typed.ty, &Type::Bool, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                    Type::Bool
+                }
             };
             Ok(TypedExpr {
                 kind: TypedExprKind::BinaryOp {
@@ -425,6 +432,11 @@ fn infer_expr_inner(
                         }
                         _ => resolved,
                     }
+                }
+                UnaryOp::Not => {
+                    unify(&operand_typed.ty, &Type::Bool, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                    Type::Bool
                 }
             };
             Ok(TypedExpr {
@@ -1235,6 +1247,12 @@ fn check_trait_instances(
                 BinOp::Div => "Div",
                 BinOp::Eq | BinOp::Neq => "Eq",
                 BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => "Ord",
+                BinOp::And | BinOp::Or => {
+                    // Boolean ops don't require trait instances
+                    check_trait_instances(lhs, trait_method_map, trait_registry, subst)?;
+                    check_trait_instances(rhs, trait_method_map, trait_registry, subst)?;
+                    return Ok(());
+                }
             };
             let operand_ty = strip_own(&subst.apply(&lhs.ty));
             if !matches!(operand_ty, Type::Var(_))
@@ -1255,6 +1273,11 @@ fn check_trait_instances(
         TypedExprKind::UnaryOp { op, operand } => {
             let trait_name = match op {
                 UnaryOp::Neg => "Neg",
+                UnaryOp::Not => {
+                    // Boolean NOT doesn't require trait instances
+                    check_trait_instances(operand, trait_method_map, trait_registry, subst)?;
+                    return Ok(());
+                }
             };
             let operand_ty = strip_own(&subst.apply(&operand.ty));
             if !matches!(operand_ty, Type::Var(_))

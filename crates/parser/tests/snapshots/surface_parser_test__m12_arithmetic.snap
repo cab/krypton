@@ -1,0 +1,239 @@
+---
+source: crates/parser/tests/surface_parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: add
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 24
+                - 27
+          span:
+            - 21
+            - 27
+        - name: y
+          ty:
+            Named:
+              name: Int
+              span:
+                - 32
+                - 35
+          span:
+            - 29
+            - 35
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 40
+            - 43
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: x
+              span:
+                - 46
+                - 47
+          rhs:
+            Var:
+              name: y
+              span:
+                - 50
+                - 51
+          span:
+            - 46
+            - 51
+      span:
+        - 13
+        - 51
+  - DefFn:
+      name: precedence
+      visibility: Private
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 72
+            - 75
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Lit:
+              value:
+                Int: 1
+              span:
+                - 78
+                - 79
+          rhs:
+            BinaryOp:
+              op: Mul
+              lhs:
+                Lit:
+                  value:
+                    Int: 2
+                  span:
+                    - 82
+                    - 83
+              rhs:
+                Lit:
+                  value:
+                    Int: 3
+                  span:
+                    - 86
+                    - 87
+              span:
+                - 82
+                - 87
+          span:
+            - 78
+            - 87
+      span:
+        - 52
+        - 87
+  - DefFn:
+      name: parens
+      visibility: Private
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 104
+            - 107
+      body:
+        BinaryOp:
+          op: Mul
+          lhs:
+            BinaryOp:
+              op: Add
+              lhs:
+                Lit:
+                  value:
+                    Int: 1
+                  span:
+                    - 111
+                    - 112
+              rhs:
+                Lit:
+                  value:
+                    Int: 2
+                  span:
+                    - 115
+                    - 116
+              span:
+                - 111
+                - 116
+          rhs:
+            Lit:
+              value:
+                Int: 3
+              span:
+                - 120
+                - 121
+          span:
+            - 110
+            - 121
+      span:
+        - 88
+        - 121
+  - DefFn:
+      name: all_ops
+      visibility: Private
+      params:
+        - name: a
+          ty:
+            Named:
+              name: Int
+              span:
+                - 137
+                - 140
+          span:
+            - 134
+            - 140
+        - name: b
+          ty:
+            Named:
+              name: Int
+              span:
+                - 145
+                - 148
+          span:
+            - 142
+            - 148
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 153
+            - 156
+      body:
+        BinaryOp:
+          op: Sub
+          lhs:
+            BinaryOp:
+              op: Add
+              lhs:
+                Var:
+                  name: a
+                  span:
+                    - 159
+                    - 160
+              rhs:
+                Var:
+                  name: b
+                  span:
+                    - 163
+                    - 164
+              span:
+                - 159
+                - 164
+          rhs:
+            BinaryOp:
+              op: Div
+              lhs:
+                BinaryOp:
+                  op: Mul
+                  lhs:
+                    Var:
+                      name: a
+                      span:
+                        - 167
+                        - 168
+                  rhs:
+                    Var:
+                      name: b
+                      span:
+                        - 171
+                        - 172
+                  span:
+                    - 167
+                    - 172
+              rhs:
+                Var:
+                  name: a
+                  span:
+                    - 175
+                    - 176
+              span:
+                - 167
+                - 176
+          span:
+            - 159
+            - 176
+      span:
+        - 122
+        - 176

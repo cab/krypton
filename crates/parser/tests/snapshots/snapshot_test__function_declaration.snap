@@ -3,6 +3,7 @@ source: crates/parser/tests/snapshot_test.rs
 expression: decl
 ---
 name: add
+visibility: Private
 params:
   - name: x
     ty:

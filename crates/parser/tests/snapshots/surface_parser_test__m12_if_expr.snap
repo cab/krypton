@@ -1,0 +1,133 @@
+---
+source: crates/parser/tests/surface_parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: abs
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 24
+                - 27
+          span:
+            - 21
+            - 27
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 32
+            - 35
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Gt
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 41
+                    - 42
+              rhs:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 45
+                    - 46
+              span:
+                - 41
+                - 46
+          then_:
+            Var:
+              name: x
+              span:
+                - 47
+                - 52
+          else_:
+            UnaryOp:
+              op: Neg
+              operand:
+                Var:
+                  name: x
+                  span:
+                    - 61
+                    - 62
+              span:
+                - 58
+                - 64
+          span:
+            - 38
+            - 64
+      span:
+        - 13
+        - 64
+  - DefFn:
+      name: positive
+      visibility: Private
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 81
+                - 84
+          span:
+            - 78
+            - 84
+      constraints: []
+      return_type:
+        Named:
+          name: Bool
+          span:
+            - 89
+            - 93
+      body:
+        If:
+          cond:
+            BinaryOp:
+              op: Gt
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 99
+                    - 100
+              rhs:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 103
+                    - 104
+              span:
+                - 99
+                - 104
+          then_:
+            Lit:
+              value:
+                Bool: true
+              span:
+                - 105
+                - 113
+          else_:
+            Lit:
+              value:
+                Bool: false
+              span:
+                - 119
+                - 128
+          span:
+            - 96
+            - 128
+      span:
+        - 65
+        - 128

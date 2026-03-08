@@ -5,6 +5,7 @@ expression: "parse_module(\"(def add (fn [a b] (+ a b)))\")"
 decls:
   - DefFn:
       name: add
+      visibility: Private
       params:
         - name: a
           ty: ~

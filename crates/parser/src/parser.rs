@@ -145,6 +145,7 @@ where
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .map_with(|(pattern, body), e| MatchArm {
                 pattern,
+                guard: None,
                 body,
                 span: to_span(e.span()),
             });
@@ -511,6 +512,7 @@ where
             let return_type = type_info.map(|(_, ret)| ret);
             Decl::DefFn(FnDecl {
                 name,
+                visibility: Visibility::Private,
                 params,
                 constraints: vec![],
                 return_type,
@@ -582,6 +584,7 @@ where
         .map_with(|(((name, type_params), kind), deriving), e| {
             Decl::DefType(TypeDecl {
                 name,
+                visibility: Visibility::Private,
                 type_params,
                 kind,
                 deriving,
@@ -614,6 +617,7 @@ where
                 .collect();
             FnDecl {
                 name,
+                visibility: Visibility::Private,
                 params,
                 constraints: vec![],
                 return_type: ret_type,
@@ -674,6 +678,7 @@ where
         .delimited_by(just(Token::LParen), just(Token::RParen))
         .map_with(|((name, params), body), e| FnDecl {
             name,
+            visibility: Visibility::Private,
             params,
             constraints: vec![],
             return_type: None,
@@ -722,6 +727,7 @@ where
         .map(|parts| parts.join("."));
 
     let import_names = select! { Token::Ident(s) => s.to_string() }
+        .map(|name| ImportName { name, alias: None })
         .repeated()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LBracket), just(Token::RBracket));
@@ -774,7 +780,7 @@ where
             [(Token::LBracket, Token::RBracket)],
             |_span| Decl::Import {
                 path: String::new(),
-                names: vec![],
+                names: Vec::<ImportName>::new(),
                 span: (0, 0),
             },
         ),

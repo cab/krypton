@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefType:
       name: Point
+      visibility: Private
       type_params: []
       kind:
         Record:
@@ -27,6 +28,7 @@ decls:
         - 50
   - DefType:
       name: Shape
+      visibility: Private
       type_params: []
       kind:
         Sum:
@@ -62,6 +64,7 @@ decls:
         - 96
   - DefFn:
       name: area
+      visibility: Private
       params:
         - name: s
           ty: ~
@@ -91,6 +94,7 @@ decls:
                   span:
                     - 132
                     - 142
+              guard: ~
               body:
                 BinaryOp:
                   op: Mul
@@ -129,6 +133,7 @@ decls:
                   span:
                     - 157
                     - 167
+              guard: ~
               body:
                 BinaryOp:
                   op: Mul
@@ -158,6 +163,7 @@ decls:
         - 179
   - DefFn:
       name: origin
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -180,6 +186,7 @@ decls:
         - 211
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

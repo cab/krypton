@@ -1,0 +1,6 @@
+# expect: ok
+fun add(a: Int, b: Int) -> Int = a + b
+fun greet(name: String) -> String {
+    let msg = "hello";
+    msg
+}

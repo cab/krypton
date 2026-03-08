@@ -1,0 +1,5 @@
+# expect: ok
+fun add(x: Int, y: Int) -> Int = x + y
+fun precedence() -> Int = 1 + 2 * 3
+fun parens() -> Int = (1 + 2) * 3
+fun all_ops(a: Int, b: Int) -> Int = a + b - a * b / a

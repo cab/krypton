@@ -5,6 +5,7 @@ expression: "parse_module(\"(type CounterMsg (| Inc Dec (Get (ActorRef Int))))\"
 decls:
   - DefType:
       name: CounterMsg
+      visibility: Private
       type_params: []
       kind:
         Sum:

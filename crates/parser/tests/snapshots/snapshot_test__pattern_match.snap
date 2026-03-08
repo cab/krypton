@@ -22,6 +22,7 @@ Match:
           span:
             - 12
             - 19
+      guard: ~
       body:
         Var:
           name: x
@@ -38,6 +39,7 @@ Match:
           span:
             - 22
             - 26
+      guard: ~
       body:
         Lit:
           value:
@@ -53,6 +55,7 @@ Match:
           span:
             - 0
             - 0
+      guard: ~
       body:
         Lit:
           value:

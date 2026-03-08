@@ -74,6 +74,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
 fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
     FnDecl {
         name: f.name.clone(),
+        visibility: f.visibility.clone(),
         params: f
             .params
             .iter()
@@ -101,6 +102,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
 fn zero_spans_type_decl(t: &TypeDecl) -> TypeDecl {
     TypeDecl {
         name: t.name.clone(),
+        visibility: t.visibility.clone(),
         type_params: t.type_params.clone(),
         kind: match &t.kind {
             TypeDeclKind::Record { fields } => TypeDeclKind::Record {
@@ -245,6 +247,7 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
 fn zero_spans_match_arm(arm: &MatchArm) -> MatchArm {
     MatchArm {
         pattern: zero_spans_pattern(&arm.pattern),
+        guard: arm.guard.as_ref().map(|g| Box::new(zero_spans_expr(g))),
         body: zero_spans_expr(&arm.body),
         span: (0, 0),
     }

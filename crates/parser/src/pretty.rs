@@ -27,7 +27,13 @@ fn pp_decl(decl: &Decl) -> String {
             ..
         } => pp_impl(trait_name, target_type, type_constraints, methods),
         Decl::Import { path, names, .. } => {
-            let names_str = names.join(" ");
+            let names_str = names.iter().map(|n| {
+                if let Some(alias) = &n.alias {
+                    format!("{} as {}", n.name, alias)
+                } else {
+                    n.name.clone()
+                }
+            }).collect::<Vec<_>>().join(" ");
             format!("(import {path} [{names_str}])")
         }
         Decl::ExternJava {
@@ -186,6 +192,7 @@ fn pp_expr(expr: &Expr) -> String {
         }
         Expr::UnaryOp { op, operand, .. } => match op {
             UnaryOp::Neg => format!("(- {})", pp_expr(operand)),
+            UnaryOp::Not => format!("(! {})", pp_expr(operand)),
         },
         Expr::Lambda { params, body, .. } => {
             let params_str = params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(" ");
@@ -209,7 +216,11 @@ fn pp_expr(expr: &Expr) -> String {
         Expr::Match { scrutinee, arms, .. } => {
             let mut s = format!("(match {}", pp_expr(scrutinee));
             for arm in arms {
-                s.push_str(&format!(" ({} {})", pp_pattern(&arm.pattern), pp_expr(&arm.body)));
+                if let Some(guard) = &arm.guard {
+                    s.push_str(&format!(" ({} if {} {})", pp_pattern(&arm.pattern), pp_expr(guard), pp_expr(&arm.body)));
+                } else {
+                    s.push_str(&format!(" ({} {})", pp_pattern(&arm.pattern), pp_expr(&arm.body)));
+                }
             }
             s.push(')');
             s
@@ -279,6 +290,8 @@ fn pp_binop(op: &BinOp) -> &'static str {
         BinOp::Gt => ">",
         BinOp::Le => "<=",
         BinOp::Ge => ">=",
+        BinOp::And => "&&",
+        BinOp::Or => "||",
     }
 }
 

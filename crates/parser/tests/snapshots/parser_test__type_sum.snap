@@ -5,6 +5,7 @@ expression: "parse_module(\"(type Option [a] (| (Some a) None))\")"
 decls:
   - DefType:
       name: Option
+      visibility: Private
       type_params:
         - a
       kind:

@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

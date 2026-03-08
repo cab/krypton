@@ -10,6 +10,7 @@ decls:
         - Eq
       methods:
         - name: compare
+          visibility: Private
           params:
             - name: _0
               ty:

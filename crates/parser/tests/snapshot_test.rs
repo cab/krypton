@@ -19,6 +19,7 @@ fn test_literal_expressions() {
 fn test_function_declaration() {
     let decl = FnDecl {
         name: "add".into(),
+        visibility: Visibility::Private,
         params: vec![
             Param { name: "x".into(), ty: Some(TypeExpr::Named { name: "Int".into(), span: (8, 11) }), span: (6, 11) },
             Param { name: "y".into(), ty: Some(TypeExpr::Named { name: "Int".into(), span: (14, 17) }), span: (12, 17) },
@@ -40,6 +41,7 @@ fn test_function_declaration() {
 fn test_type_declaration_record() {
     let decl = TypeDecl {
         name: "Point".into(),
+        visibility: Visibility::Private,
         type_params: vec![],
         kind: TypeDeclKind::Record {
             fields: vec![
@@ -57,6 +59,7 @@ fn test_type_declaration_record() {
 fn test_sum_type_with_deriving() {
     let decl = TypeDecl {
         name: "Option".into(),
+        visibility: Visibility::Private,
         type_params: vec!["a".into()],
         kind: TypeDeclKind::Sum {
             variants: vec![
@@ -90,6 +93,7 @@ fn test_pattern_match() {
                     args: vec![Pattern::Var { name: "x".into(), span: (17, 18) }],
                     span: (12, 19),
                 },
+                guard: None,
                 body: Expr::Var { name: "x".into(), span: (20, 21) },
                 span: (12, 21),
             },
@@ -99,11 +103,13 @@ fn test_pattern_match() {
                     args: vec![],
                     span: (22, 26),
                 },
+                guard: None,
                 body: Expr::Lit { value: Lit::Int(0), span: (27, 28) },
                 span: (22, 28),
             },
             MatchArm {
                 pattern: Pattern::Wildcard { span: s },
+                guard: None,
                 body: Expr::Lit { value: Lit::Int(-1), span: s },
                 span: s,
             },
@@ -180,6 +186,7 @@ fn test_full_module() {
         decls: vec![
             Decl::DefType(TypeDecl {
                 name: "Point".into(),
+                visibility: Visibility::Private,
                 type_params: vec![],
                 kind: TypeDeclKind::Record {
                     fields: vec![
@@ -192,6 +199,7 @@ fn test_full_module() {
             }),
             Decl::DefFn(FnDecl {
                 name: "origin".into(),
+                visibility: Visibility::Private,
                 params: vec![],
                 constraints: vec![],
                 return_type: Some(TypeExpr::Named { name: "Point".into(), span: s }),
@@ -207,6 +215,7 @@ fn test_full_module() {
             }),
             Decl::DefFn(FnDecl {
                 name: "main".into(),
+                visibility: Visibility::Private,
                 params: vec![],
                 constraints: vec![],
                 return_type: Some(TypeExpr::Named { name: "Unit".into(), span: s }),
@@ -234,7 +243,7 @@ fn test_full_module() {
             }),
             Decl::Import {
                 path: "std.io".into(),
-                names: vec!["println".into()],
+                names: vec![ImportName { name: "println".into(), alias: None }],
                 span: s,
             },
         ],

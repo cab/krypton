@@ -5,6 +5,7 @@ expression: "parse_module(\"(def factorial (fn [n] [Int] Int (if (<= n 1) 1 (* n
 decls:
   - DefFn:
       name: factorial
+      visibility: Private
       params:
         - name: n
           ty:

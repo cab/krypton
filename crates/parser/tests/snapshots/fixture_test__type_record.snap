@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefType:
       name: Point
+      visibility: Private
       type_params: []
       kind:
         Record:
@@ -27,6 +28,7 @@ decls:
         - 50
   - DefType:
       name: Person
+      visibility: Private
       type_params: []
       kind:
         Record:
@@ -51,6 +53,7 @@ decls:
         - 116
   - DefFn:
       name: get_x
+      visibility: Private
       params:
         - name: p
           ty: ~

@@ -5,6 +5,7 @@ expression: "parse_module(r#\"\n        (type Point (record (x Int) (y Int)))\n 
 decls:
   - DefType:
       name: Point
+      visibility: Private
       type_params: []
       kind:
         Record:
@@ -27,6 +28,7 @@ decls:
         - 46
   - DefFn:
       name: add
+      visibility: Private
       params:
         - name: a
           ty: ~
@@ -63,6 +65,7 @@ decls:
         - 83
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

@@ -1,0 +1,18 @@
+# expect: ok
+import core/option.{Option, Some, None}
+
+type Point = { x: Int, y: Int }
+
+type Color = Red | Green | Blue
+
+pub fun origin() -> Point = Point { x = 0, y = 0 }
+
+fun distance(p: Point) -> Int = p.x * p.x + p.y * p.y
+
+fun classify(x: Int) -> String = if x > 0 { "positive" } else { "non-positive" }
+
+fun safe_div(a: Int, b: Int) -> Option[Int] = if b == 0 {
+    None
+} else {
+    Some(a / b)
+}

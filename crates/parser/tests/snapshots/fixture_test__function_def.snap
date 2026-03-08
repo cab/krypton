@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: untyped
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -24,6 +25,7 @@ decls:
         - 37
   - DefFn:
       name: typed
+      visibility: Private
       params:
         - name: x
           ty:
@@ -75,6 +77,7 @@ decls:
         - 82
   - DefFn:
       name: no_args
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

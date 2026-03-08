@@ -1,0 +1,31 @@
+---
+source: crates/parser/tests/surface_parser_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Color
+      visibility: PubOpen
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Red
+              fields: []
+              span:
+                - 22
+                - 25
+            - name: Green
+              fields: []
+              span:
+                - 28
+                - 33
+            - name: Blue
+              fields: []
+              span:
+                - 36
+                - 40
+      deriving: []
+      span:
+        - 0
+        - 40

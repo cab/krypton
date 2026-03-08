@@ -48,6 +48,7 @@ decls:
         - 86
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

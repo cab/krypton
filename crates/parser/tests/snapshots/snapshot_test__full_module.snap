@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefType:
       name: Point
+      visibility: Private
       type_params: []
       kind:
         Record:
@@ -28,6 +29,7 @@ decls:
         - 0
   - DefFn:
       name: origin
+      visibility: Private
       params: []
       constraints: []
       return_type:
@@ -62,6 +64,7 @@ decls:
         - 0
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type:
@@ -111,7 +114,8 @@ decls:
   - Import:
       path: std.io
       names:
-        - println
+        - name: println
+          alias: ~
       span:
         - 0
         - 0

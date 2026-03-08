@@ -1,0 +1,2 @@
+# expect: ok
+fun compare(a: a, b: a) -> Bool where a: Ord = a < b

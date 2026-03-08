@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: identity
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -24,6 +25,7 @@ decls:
         - 38
   - DefFn:
       name: multi_param
+      visibility: Private
       params:
         - name: a
           ty: ~
@@ -77,6 +79,7 @@ decls:
         - 83
   - DefFn:
       name: higher_order
+      visibility: Private
       params:
         - name: f
           ty: ~
@@ -112,6 +115,7 @@ decls:
         - 119
   - DefFn:
       name: closure
+      visibility: Private
       params:
         - name: x
           ty: ~

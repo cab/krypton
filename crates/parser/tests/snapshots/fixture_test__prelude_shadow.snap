@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefType:
       name: Option
+      visibility: Private
       type_params:
         - a
       kind:
@@ -31,6 +32,7 @@ decls:
         - 102
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

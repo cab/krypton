@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: simple_let
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -27,6 +28,7 @@ decls:
         - 48
   - DefFn:
       name: nested_let
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

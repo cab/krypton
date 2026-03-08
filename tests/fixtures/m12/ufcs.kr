@@ -1,0 +1,3 @@
+# expect: ok
+fun inc(x: Int) -> Int = x + 1
+fun test(x: Int) -> Int = x.inc()

@@ -1,0 +1,10 @@
+# expect: ok
+fun simple() -> Int {
+    let x = 5;
+    x
+}
+fun with_type() -> Int {
+    let x = 5;
+    let y = 10;
+    x + y
+}

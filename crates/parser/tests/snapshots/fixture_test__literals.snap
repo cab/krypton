@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: int_lit
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -20,6 +21,7 @@ decls:
         - 37
   - DefFn:
       name: neg_int
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -48,6 +50,7 @@ decls:
         - 67
   - DefFn:
       name: float_lit
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -63,6 +66,7 @@ decls:
         - 96
   - DefFn:
       name: bool_true
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -78,6 +82,7 @@ decls:
         - 125
   - DefFn:
       name: bool_false
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -93,6 +98,7 @@ decls:
         - 156
   - DefFn:
       name: string_lit
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -108,6 +114,7 @@ decls:
         - 195
   - DefFn:
       name: unit_lit
+      visibility: Private
       params: []
       constraints: []
       return_type: ~

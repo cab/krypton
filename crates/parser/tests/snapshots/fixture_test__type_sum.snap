@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefType:
       name: Color
+      visibility: Private
       type_params: []
       kind:
         Sum:
@@ -30,6 +31,7 @@ decls:
         - 44
   - DefType:
       name: Option
+      visibility: Private
       type_params:
         - a
       kind:
@@ -56,6 +58,7 @@ decls:
         - 80
   - DefType:
       name: Result
+      visibility: Private
       type_params:
         - a
         - b

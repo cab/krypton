@@ -1,0 +1,3 @@
+# expect: ok
+fun make_list() -> List[Int] = [1, 2, 3]
+fun make_tuple() -> (Int, String) = (1, "hi")

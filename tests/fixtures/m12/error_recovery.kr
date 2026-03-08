@@ -1,0 +1,2 @@
+# expect: error P0002
+fun bad( = 42

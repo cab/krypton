@@ -28,7 +28,7 @@ pub enum Decl {
     },
     Import {
         path: String,
-        names: Vec<String>,
+        names: Vec<ImportName>,
         span: Span,
     },
     ExternJava {
@@ -36,6 +36,19 @@ pub enum Decl {
         methods: Vec<ExternMethod>,
         span: Span,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ImportName {
+    pub name: String,
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum Visibility {
+    Private,
+    Pub,
+    PubOpen,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -49,6 +62,7 @@ pub struct ExternMethod {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeDecl {
     pub name: String,
+    pub visibility: Visibility,
     pub type_params: Vec<String>,
     pub kind: TypeDeclKind,
     pub deriving: Vec<String>,
@@ -71,6 +85,7 @@ pub struct Variant {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FnDecl {
     pub name: String,
+    pub visibility: Visibility,
     pub params: Vec<Param>,
     pub constraints: Vec<TypeConstraint>,
     pub return_type: Option<TypeExpr>,
@@ -187,6 +202,7 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MatchArm {
     pub pattern: Pattern,
+    pub guard: Option<Box<Expr>>,
     pub body: Expr,
     pub span: Span,
 }
@@ -203,11 +219,14 @@ pub enum BinOp {
     Gt,
     Le,
     Ge,
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum UnaryOp {
     Neg,
+    Not,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

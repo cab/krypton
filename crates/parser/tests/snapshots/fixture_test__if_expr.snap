@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: simple_if
+      visibility: Private
       params:
         - name: x
           ty: ~
@@ -56,6 +57,7 @@ decls:
         - 54
   - DefFn:
       name: nested_if
+      visibility: Private
       params:
         - name: x
           ty: ~

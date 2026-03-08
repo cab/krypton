@@ -85,6 +85,7 @@ pub fn check_exhaustiveness(
                                 .filter_map(|pats| {
                                     pats.get(i).map(|p| MatchArm {
                                         pattern: p.clone(),
+                                        guard: None,
                                         body: arms[0].body.clone(), // body doesn't matter
                                         span,
                                     })

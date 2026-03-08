@@ -5,6 +5,7 @@ expression: module
 decls:
   - DefFn:
       name: ok_val
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -31,6 +32,7 @@ decls:
         - 92
   - DefFn:
       name: err_val
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -57,6 +59,7 @@ decls:
         - 127
   - DefFn:
       name: main
+      visibility: Private
       params: []
       constraints: []
       return_type: ~
@@ -87,6 +90,7 @@ decls:
                   span:
                     - 168
                     - 174
+              guard: ~
               body:
                 Var:
                   name: x
@@ -107,6 +111,7 @@ decls:
                   span:
                     - 183
                     - 190
+              guard: ~
               body:
                 Lit:
                   value:

@@ -1,0 +1,2 @@
+# expect: ok
+fun factorial(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }

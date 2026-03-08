@@ -1,0 +1,5 @@
+# expect: ok
+fun both(a: Bool, b: Bool) -> Bool = a && b
+fun either(a: Bool, b: Bool) -> Bool = a || b
+fun negate(a: Bool) -> Bool = !a
+fun complex(a: Bool, b: Bool, c: Bool) -> Bool = a && b || !c
