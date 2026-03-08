@@ -1,0 +1,5 @@
+# expect: ok
+(extern "java.lang.Math"
+  (def abs [Int] Int)
+  (def max [Int Int] Int))
+(def main (fn [] (max (abs 5) 3)))

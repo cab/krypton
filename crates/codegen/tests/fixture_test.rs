@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen::emit::compile_module;
+use krypton_parser::ast::Decl;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
@@ -89,6 +90,10 @@ fn m4_fixtures() {
                         // Skip files with parse errors (handled by typechecker tests)
                         continue;
                     }
+                    // Skip extern declarations — codegen not yet implemented
+                    if module.decls.iter().any(|d| matches!(d, Decl::ExternJava { .. })) {
+                        continue;
+                    }
                     match compile_module(&module, "Test") {
                         Ok(_) => { ran += 1; }
                         Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
@@ -148,6 +153,10 @@ fn m5_fixtures() {
                     let (module, errors) = parse(&fixture.source);
                     if !errors.is_empty() {
                         // Skip files with parse errors (handled by typechecker tests)
+                        continue;
+                    }
+                    // Skip extern declarations — codegen not yet implemented
+                    if module.decls.iter().any(|d| matches!(d, Decl::ExternJava { .. })) {
                         continue;
                     }
                     match compile_module(&module, "Test") {
@@ -211,6 +220,10 @@ fn m8_fixtures() {
                         // Skip files with parse errors (handled by typechecker tests)
                         continue;
                     }
+                    // Skip extern declarations — codegen not yet implemented
+                    if module.decls.iter().any(|d| matches!(d, Decl::ExternJava { .. })) {
+                        continue;
+                    }
                     match compile_module(&module, "Test") {
                         Ok(_) => { ran += 1; }
                         Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
@@ -270,6 +283,10 @@ fn m9_fixtures() {
                     let (module, errors) = parse(&fixture.source);
                     if !errors.is_empty() {
                         // Skip files with parse errors (handled by typechecker tests)
+                        continue;
+                    }
+                    // Skip extern declarations — codegen not yet implemented
+                    if module.decls.iter().any(|d| matches!(d, Decl::ExternJava { .. })) {
                         continue;
                     }
                     match compile_module(&module, "Test") {

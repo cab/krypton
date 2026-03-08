@@ -1,0 +1,53 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - ExternJava:
+      class_name: java.lang.Math
+      methods:
+        - name: abs
+          param_types:
+            - Named:
+                name: Int
+                span:
+                  - 48
+                  - 51
+          return_type:
+            Named:
+              name: Int
+              span:
+                - 53
+                - 56
+          span:
+            - 38
+            - 57
+      span:
+        - 13
+        - 58
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: abs
+              span:
+                - 77
+                - 80
+          args:
+            - Lit:
+                value:
+                  Int: 42
+                span:
+                  - 81
+                  - 83
+          span:
+            - 76
+            - 84
+      span:
+        - 59
+        - 86

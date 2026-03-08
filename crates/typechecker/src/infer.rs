@@ -5,7 +5,7 @@ use krypton_parser::ast::{BinOp, Decl, Expr, Lit, Module, Pattern, Span, UnaryOp
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
 use crate::type_registry::{self, TypeRegistry};
-use crate::typed_ast::{self, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
+use crate::typed_ast::{self, ExternFnInfo, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -1322,6 +1322,55 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     // Seed prelude types (Option, Result, List, Ordering) from stdlib
     crate::prelude::register_prelude_types(&mut env, &mut registry, &mut gen);
 
+    // Process ExternJava declarations
+    let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
+    for decl in &module.decls {
+        if let Decl::ExternJava { class_name, methods, .. } = decl {
+            let empty_map = HashMap::new();
+            for method in methods {
+                let mut scheme_vars = Vec::new();
+                let param_types: Vec<Type> = method.param_types.iter().map(|ty_expr| {
+                    let resolved = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry);
+                    if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
+                        let fresh = gen.fresh();
+                        scheme_vars.push(fresh);
+                        Type::Var(fresh)
+                    } else {
+                        resolved
+                    }
+                }).collect();
+
+                let return_type = type_registry::resolve_type_expr(&method.return_type, &empty_map, &registry);
+                let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty()) {
+                    let fresh = gen.fresh();
+                    scheme_vars.push(fresh);
+                    Type::Var(fresh)
+                } else {
+                    return_type.clone()
+                };
+
+                let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
+                let scheme = if scheme_vars.is_empty() {
+                    TypeScheme::mono(fn_ty)
+                } else {
+                    TypeScheme { vars: scheme_vars, ty: fn_ty }
+                };
+                env.bind(method.name.clone(), scheme);
+
+                // Store concrete types for codegen (Object stays as-is)
+                let concrete_params: Vec<Type> = method.param_types.iter().map(|ty_expr| {
+                    type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
+                }).collect();
+                extern_fns.push(ExternFnInfo {
+                    name: method.name.clone(),
+                    java_class: class_name.clone(),
+                    param_types: concrete_params,
+                    return_type,
+                });
+            }
+        }
+    }
+
     // First pass: process all DefType declarations
     let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
@@ -1865,6 +1914,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         instance_defs,
         fn_constraints,
         trait_method_map: trait_method_map.clone(),
+        extern_fns,
     })
 }
 
