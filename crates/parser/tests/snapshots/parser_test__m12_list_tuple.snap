@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: make_list
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -50,6 +51,7 @@ decls:
   - DefFn:
       name: make_tuple
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:

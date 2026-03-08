@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: handle
       visibility: Private
+      type_params: []
       params:
         - name: r
           ty: ~
@@ -77,6 +78,7 @@ decls:
   - DefFn:
       name: main
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

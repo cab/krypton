@@ -856,10 +856,11 @@ where
                 .ignore_then(expr.clone())
                 .or(expr.clone()),
         )
-        .map_with(|((((((visibility, name), _type_params), params), return_type), constraints), body), e| {
+        .map_with(|((((((visibility, name), type_params), params), return_type), constraints), body), e| {
             Decl::DefFn(FnDecl {
                 name,
                 visibility,
+                type_params,
                 params,
                 constraints,
                 return_type,
@@ -970,6 +971,7 @@ where
             FnDecl {
                 name,
                 visibility: Visibility::Private,
+                type_params: vec![],
                 params,
                 constraints: vec![],
                 return_type,
@@ -1035,6 +1037,7 @@ where
         .map_with(|((name, params), body), e| FnDecl {
             name,
             visibility: Visibility::Private,
+            type_params: vec![],
             params,
             constraints: vec![],
             return_type: None,

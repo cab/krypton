@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: simple_if
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -58,6 +59,7 @@ decls:
   - DefFn:
       name: nested_if
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~

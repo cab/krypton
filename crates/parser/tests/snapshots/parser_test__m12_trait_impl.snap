@@ -33,6 +33,7 @@ decls:
       methods:
         - name: eq
           visibility: Private
+          type_params: []
           params:
             - name: self
               ty:
@@ -85,6 +86,7 @@ decls:
       methods:
         - name: eq
           visibility: Private
+          type_params: []
           params:
             - name: a
               ty: ~

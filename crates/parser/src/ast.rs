@@ -86,6 +86,7 @@ pub struct Variant {
 pub struct FnDecl {
     pub name: String,
     pub visibility: Visibility,
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub constraints: Vec<TypeConstraint>,
     pub return_type: Option<TypeExpr>,

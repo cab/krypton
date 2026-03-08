@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: add
       visibility: Pub
+      type_params: []
       params:
         - name: a
           ty:

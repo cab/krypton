@@ -29,6 +29,7 @@ decls:
   - DefFn:
       name: make
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -64,6 +65,7 @@ decls:
   - DefFn:
       name: with_punning
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:

@@ -54,6 +54,7 @@ decls:
   - DefFn:
       name: get_x
       visibility: Private
+      type_params: []
       params:
         - name: p
           ty: ~

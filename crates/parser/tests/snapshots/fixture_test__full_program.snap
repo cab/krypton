@@ -65,6 +65,7 @@ decls:
   - DefFn:
       name: area
       visibility: Private
+      type_params: []
       params:
         - name: s
           ty: ~
@@ -164,6 +165,7 @@ decls:
   - DefFn:
       name: origin
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -197,6 +199,7 @@ decls:
   - DefFn:
       name: main
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

@@ -10,6 +10,7 @@ decls:
       methods:
         - name: eq
           visibility: Private
+          type_params: []
           params:
             - name: self
               ty:

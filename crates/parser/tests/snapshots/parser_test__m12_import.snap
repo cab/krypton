@@ -28,6 +28,7 @@ decls:
   - DefFn:
       name: test
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:

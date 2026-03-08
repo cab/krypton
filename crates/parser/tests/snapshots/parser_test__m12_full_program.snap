@@ -67,6 +67,7 @@ decls:
   - DefFn:
       name: origin
       visibility: Pub
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -102,6 +103,7 @@ decls:
   - DefFn:
       name: distance
       visibility: Private
+      type_params: []
       params:
         - name: p
           ty:
@@ -192,6 +194,7 @@ decls:
   - DefFn:
       name: classify
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:
@@ -254,6 +257,7 @@ decls:
   - DefFn:
       name: safe_div
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:

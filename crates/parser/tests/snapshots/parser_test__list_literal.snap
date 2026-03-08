@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: f
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

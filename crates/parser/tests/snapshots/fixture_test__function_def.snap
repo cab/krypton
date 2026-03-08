@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: untyped
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -26,6 +27,7 @@ decls:
   - DefFn:
       name: typed
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:
@@ -78,6 +80,7 @@ decls:
   - DefFn:
       name: no_args
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

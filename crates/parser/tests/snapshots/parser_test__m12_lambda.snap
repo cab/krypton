@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: apply
       visibility: Private
+      type_params: []
       params:
         - name: f
           ty:
@@ -68,6 +69,7 @@ decls:
   - DefFn:
       name: inc
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -124,6 +126,7 @@ decls:
   - DefFn:
       name: add_pair
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:

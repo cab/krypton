@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: simple_let
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -39,6 +40,7 @@ decls:
   - DefFn:
       name: nested_let
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

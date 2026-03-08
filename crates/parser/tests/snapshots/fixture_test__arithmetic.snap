@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: add
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -43,6 +44,7 @@ decls:
   - DefFn:
       name: sub
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -80,6 +82,7 @@ decls:
   - DefFn:
       name: mul
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -117,6 +120,7 @@ decls:
   - DefFn:
       name: div
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -154,6 +158,7 @@ decls:
   - DefFn:
       name: eq
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -191,6 +196,7 @@ decls:
   - DefFn:
       name: neq
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -228,6 +234,7 @@ decls:
   - DefFn:
       name: lt
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -265,6 +272,7 @@ decls:
   - DefFn:
       name: gt
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -302,6 +310,7 @@ decls:
   - DefFn:
       name: le
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -339,6 +348,7 @@ decls:
   - DefFn:
       name: ge
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~

@@ -1711,12 +1711,18 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         for &(idx, ref tv) in &pre_bound {
             let decl = fn_decls[idx];
             env.push_scope();
+
+            // Build type_param_map from explicit type parameters
+            let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
+            for tp in &decl.type_params {
+                type_param_map.insert(tp.clone(), gen.fresh());
+            }
+
             let mut param_types = Vec::new();
             for p in &decl.params {
                 let ptv = Type::Var(gen.fresh());
                 if let Some(ref ty_expr) = p.ty {
-                    let empty_map = HashMap::new();
-                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry);
+                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry);
                     unify(&ptv, &annotated_ty, &mut subst)
                         .map_err(|e| spanned(e, decl.span))?;
                 }
@@ -1731,8 +1737,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
 
             // Enforce return type annotation if present
             let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
-                let empty_map = HashMap::new();
-                let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &empty_map, &registry);
+                let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry);
                 // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
                 // Bare `T` cannot be upgraded to `own T` — ownership must come from a literal,
                 // constructor, or another `own` source.
@@ -1744,7 +1749,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                         ));
                     }
                 }
-                unify(&body_ty, &annotated_ret, &mut subst)
+                let coerced_body_ty = strip_own(&body_ty);
+                unify(&coerced_body_ty, &annotated_ret, &mut subst)
                     .map_err(|e| spanned(e, decl.span))?;
                 subst.apply(&annotated_ret)
             } else {

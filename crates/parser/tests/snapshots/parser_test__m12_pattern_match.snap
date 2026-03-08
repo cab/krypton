@@ -33,6 +33,7 @@ decls:
   - DefFn:
       name: unwrap_or
       visibility: Private
+      type_params: []
       params:
         - name: opt
           ty:

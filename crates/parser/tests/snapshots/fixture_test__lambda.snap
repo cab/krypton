@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: identity
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -26,6 +27,7 @@ decls:
   - DefFn:
       name: multi_param
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty: ~
@@ -80,6 +82,7 @@ decls:
   - DefFn:
       name: higher_order
       visibility: Private
+      type_params: []
       params:
         - name: f
           ty: ~
@@ -116,6 +119,7 @@ decls:
   - DefFn:
       name: closure
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~

@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: test_int
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -27,6 +28,7 @@ decls:
   - DefFn:
       name: test_float
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -48,6 +50,7 @@ decls:
   - DefFn:
       name: test_bool
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -69,6 +72,7 @@ decls:
   - DefFn:
       name: test_string
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:
@@ -90,6 +94,7 @@ decls:
   - DefFn:
       name: test_unit
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type:

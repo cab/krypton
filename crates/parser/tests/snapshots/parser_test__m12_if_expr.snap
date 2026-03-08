@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: abs
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:
@@ -72,6 +73,7 @@ decls:
   - DefFn:
       name: positive
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:

@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: unwrap_or
       visibility: Private
+      type_params: []
       params:
         - name: opt
           ty: ~
@@ -76,6 +77,7 @@ decls:
   - DefFn:
       name: main
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

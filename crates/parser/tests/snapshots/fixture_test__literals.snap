@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: int_lit
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -22,6 +23,7 @@ decls:
   - DefFn:
       name: neg_int
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -51,6 +53,7 @@ decls:
   - DefFn:
       name: float_lit
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -67,6 +70,7 @@ decls:
   - DefFn:
       name: bool_true
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -83,6 +87,7 @@ decls:
   - DefFn:
       name: bool_false
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -99,6 +104,7 @@ decls:
   - DefFn:
       name: string_lit
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -115,6 +121,7 @@ decls:
   - DefFn:
       name: unit_lit
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

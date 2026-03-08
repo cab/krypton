@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: inc
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:
@@ -49,6 +50,7 @@ decls:
   - DefFn:
       name: test
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:

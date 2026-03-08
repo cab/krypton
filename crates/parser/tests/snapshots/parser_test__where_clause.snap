@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: compare
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:

@@ -33,6 +33,7 @@ decls:
   - DefFn:
       name: positive_or_zero
       visibility: Private
+      type_params: []
       params:
         - name: opt
           ty:

@@ -77,6 +77,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
     FnDecl {
         name: f.name.clone(),
         visibility: f.visibility.clone(),
+        type_params: f.type_params.clone(),
         params: f
             .params
             .iter()

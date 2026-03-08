@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: ok_val
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -33,6 +34,7 @@ decls:
   - DefFn:
       name: err_val
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~
@@ -60,6 +62,7 @@ decls:
   - DefFn:
       name: main
       visibility: Private
+      type_params: []
       params: []
       constraints: []
       return_type: ~

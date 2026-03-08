@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: both
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:
@@ -58,6 +59,7 @@ decls:
   - DefFn:
       name: either
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:
@@ -110,6 +112,7 @@ decls:
   - DefFn:
       name: negate
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:
@@ -146,6 +149,7 @@ decls:
   - DefFn:
       name: complex
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:

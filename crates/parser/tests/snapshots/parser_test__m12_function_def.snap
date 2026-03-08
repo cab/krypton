@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: add
       visibility: Private
+      type_params: []
       params:
         - name: a
           ty:
@@ -58,6 +59,7 @@ decls:
   - DefFn:
       name: greet
       visibility: Private
+      type_params: []
       params:
         - name: name
           ty:

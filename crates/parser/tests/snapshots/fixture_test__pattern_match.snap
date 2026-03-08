@@ -6,6 +6,7 @@ decls:
   - DefFn:
       name: match_wildcard
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -49,6 +50,7 @@ decls:
   - DefFn:
       name: match_literal
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty: ~
@@ -128,6 +130,7 @@ decls:
   - DefFn:
       name: match_constructor
       visibility: Private
+      type_params: []
       params:
         - name: opt
           ty: ~
@@ -194,6 +197,7 @@ decls:
   - DefFn:
       name: match_tuple
       visibility: Private
+      type_params: []
       params:
         - name: pair
           ty: ~

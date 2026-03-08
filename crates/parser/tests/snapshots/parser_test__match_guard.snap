@@ -33,6 +33,7 @@ decls:
   - DefFn:
       name: f
       visibility: Private
+      type_params: []
       params:
         - name: x
           ty:

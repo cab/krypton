@@ -14,6 +14,21 @@ fn parse_expr_via_module(src: &str) -> krypton_parser::ast::Expr {
     }
 }
 
+fn infer_module_fn(src: &str, fn_name: &str) -> String {
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    match infer::infer_module(&module) {
+        Ok(info) => {
+            info.fn_types
+                .iter()
+                .find(|(name, _)| name == fn_name)
+                .map(|(_, scheme)| format!("{scheme}"))
+                .unwrap_or_else(|| panic!("function {fn_name} not found in module"))
+        }
+        Err(e) => format!("TypeError: {}", e.error),
+    }
+}
+
 fn infer(src: &str) -> String {
     let expr = parse_expr_via_module(src);
 
@@ -499,4 +514,42 @@ fn float_lt_infers_bool() {
 #[test]
 fn float_neg_infers_float() {
     insta::assert_snapshot!(infer("-3.14"), @"Float");
+}
+
+// ── Explicit type parameters on functions ──
+
+#[test]
+fn explicit_type_param_generalized() {
+    // fun view[t](x: ~t) -> t should produce forall t. fn(own t) -> t
+    insta::assert_snapshot!(
+        infer_module_fn("fun view[t](x: ~t) -> t = x", "view"),
+        @"forall o. fn(own o) -> o"
+    );
+}
+
+#[test]
+fn explicit_type_param_identity() {
+    // fun id[a](x: a) -> a should produce forall a. fn(a) -> a
+    insta::assert_snapshot!(
+        infer_module_fn("fun id[a](x: a) -> a = x", "id"),
+        @"forall o. fn(o) -> o"
+    );
+}
+
+#[test]
+fn explicit_type_param_multiple() {
+    // fun const[a, b](x: a, y: b) -> a should produce forall a b. fn(a, b) -> a
+    insta::assert_snapshot!(
+        infer_module_fn("fun const_[a, b](x: a, y: b) -> a = x", "const_"),
+        @"forall o p. fn(o, p) -> o"
+    );
+}
+
+#[test]
+fn no_type_params_still_generalizes() {
+    // Unannotated identity should still generalize via HM
+    insta::assert_snapshot!(
+        infer_module_fn("fun id(x) = x", "id"),
+        @"forall o. fn(o) -> o"
+    );
 }
