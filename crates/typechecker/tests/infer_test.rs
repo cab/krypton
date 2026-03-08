@@ -248,7 +248,7 @@ fn infer_bare_variant() {
         @"
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
-    none: forall p. fn() -> Option[p]
+    none: forall q. fn() -> Option[q]
     "
     );
 }
@@ -271,8 +271,8 @@ fn infer_scc_generalization_order() {
         ),
         @"
     id: forall o. fn(o) -> o
-    f: forall s. fn(s) -> s
-    g: forall w. fn(w) -> w
+    f: forall u. fn(u) -> u
+    g: forall z. fn(z) -> z
     "
     );
 }
@@ -397,7 +397,7 @@ fn infer_tuple_in_match() {
         infer_module_types(
             "fun first(p) = match p { (a, b) => a }"
         ),
-        @"first: forall q r. fn((q, r)) -> q"
+        @"first: forall r s. fn((r, s)) -> r"
     );
 }
 
@@ -412,7 +412,7 @@ fn infer_tuple_polymorphic() {
         infer_module_types(
             "fun swap(p) = match p { (a, b) => (b, a) }"
         ),
-        @"swap: forall q r. fn((q, r)) -> (r, q)"
+        @"swap: forall r s. fn((r, s)) -> (s, r)"
     );
 }
 
@@ -422,7 +422,7 @@ fn infer_match_wrong_constructor() {
         infer_module_types(
             "type Color = Red | Green | Blue\ntype Option[a] = Some(a) | None\nfun bad(c) = match Red { Some(x) => x, _ => 0 }"
         ),
-        @"TypeError: type mismatch: expected Color, found Option[r]"
+        @"TypeError: type mismatch: expected Color, found Option[s]"
     );
 }
 

@@ -204,6 +204,7 @@ impl Substitution {
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
     scopes: Vec<HashMap<std::string::String, TypeScheme>>,
+    pub fn_return_type: Option<Type>,
 }
 
 impl TypeEnv {
@@ -211,6 +212,7 @@ impl TypeEnv {
     pub fn new() -> Self {
         TypeEnv {
             scopes: vec![HashMap::new()],
+            fn_return_type: None,
         }
     }
 

@@ -531,6 +531,7 @@ impl Compiler {
             TypedExprKind::Match { scrutinee, arms } => self.compile_match(scrutinee, arms, in_tail),
             TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
             TypedExprKind::Lambda { params, body } => self.compile_lambda(params, body, &expr.ty),
+            TypedExprKind::QuestionMark { expr: inner, is_option } => self.compile_question_mark(inner, *is_option, &expr.ty),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -1492,6 +1493,121 @@ impl Compiler {
         Ok(field_type)
     }
 
+    fn compile_question_mark(
+        &mut self,
+        inner: &TypedExpr,
+        is_option: bool,
+        result_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        // Compile inner expression — produces a StructRef for the sum type (Result or Option)
+        let inner_type = self.compile_expr(inner, false)?;
+
+        let sum_name = if is_option { "Option" } else { "Result" };
+        let success_variant = if is_option { "Some" } else { "Ok" };
+
+        let sum_info = self.types.sum_type_info.get(sum_name).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown sum type: {sum_name}"))
+        })?;
+        let interface_class_index = sum_info.interface_class_index;
+        let success_vi = sum_info.variants.get(success_variant).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown variant: {success_variant}"))
+        })?;
+        let success_class_index = success_vi.class_index;
+        let success_field_refs = success_vi.field_refs.clone();
+        let success_fields = success_vi.fields.clone();
+
+        // Store inner expression result in a temp local
+        let temp_slot = self.next_local;
+        self.next_local += 1;
+        self.emit(Instruction::Astore(temp_slot as u8));
+        self.pop_jvm_type(inner_type);
+        self.frame.local_types.push(VerificationType::Object {
+            cpool_index: interface_class_index,
+        });
+
+        // instanceof check: is it the success variant?
+        self.emit(Instruction::Aload(temp_slot as u8));
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: interface_class_index,
+        });
+        self.emit(Instruction::Instanceof(success_class_index));
+        self.frame.pop_type(); // pop ref
+        self.frame.push_type(VerificationType::Integer); // push int result
+
+        // Ifeq → early return branch (not the success variant)
+        let ifeq_idx = self.code.len();
+        self.emit(Instruction::Ifeq(0)); // placeholder
+        self.frame.pop_type(); // consume int from instanceof
+
+        // Save stack state at branch point
+        let stack_at_branch = self.frame.stack_types.clone();
+
+        // Success path: checkcast and extract value0 field
+        self.emit(Instruction::Aload(temp_slot as u8));
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: interface_class_index,
+        });
+        self.emit(Instruction::Checkcast(success_class_index));
+        self.frame.pop_type(); // pop old ref type
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: success_class_index,
+        });
+
+        // Getfield value0
+        let field_ref = success_field_refs[0];
+        let (_fname, field_jvm_type, is_erased) = &success_fields[0];
+        let field_jvm_type = *field_jvm_type;
+        let is_erased = *is_erased;
+        self.emit(Instruction::Getfield(field_ref));
+        self.frame.pop_type(); // pop checkcast ref
+        if is_erased {
+            self.frame.push_type(VerificationType::Object {
+                cpool_index: self.refs.object_class,
+            });
+        } else {
+            self.push_jvm_type(field_jvm_type);
+        }
+
+        // Determine the actual JVM type of the unwrapped value
+        let actual_jvm_type = self.type_to_jvm(result_ty)?;
+        let result_type = if is_erased {
+            // Unbox from Object to the actual type
+            self.unbox_if_needed(actual_jvm_type);
+            actual_jvm_type
+        } else {
+            field_jvm_type
+        };
+
+        let stack_after_success = self.frame.stack_types.clone();
+
+        // Goto after (skip early return)
+        let goto_idx = self.code.len();
+        self.emit(Instruction::Goto(0)); // placeholder
+
+        // Early return branch: load temp and Areturn
+        let early_return_start = self.code.len() as u16;
+        self.frame.stack_types = stack_at_branch;
+        self.frame.record_frame(early_return_start);
+
+        self.emit(Instruction::Aload(temp_slot as u8));
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: interface_class_index,
+        });
+        self.emit(Instruction::Areturn);
+        self.frame.pop_type();
+
+        // After label
+        let after = self.code.len() as u16;
+        self.frame.stack_types = stack_after_success;
+        self.frame.record_frame(after);
+
+        // Patch jumps
+        self.code[ifeq_idx] = Instruction::Ifeq(early_return_start);
+        self.code[goto_idx] = Instruction::Goto(after);
+
+        Ok(result_type)
+    }
+
     fn compile_struct_update(
         &mut self,
         base: &TypedExpr,
@@ -2026,6 +2142,9 @@ impl Compiler {
                 for a in args {
                     self.collect_captures(a, param_names, captures);
                 }
+            }
+            TypedExprKind::QuestionMark { expr, .. } => {
+                self.collect_captures(expr, param_names, captures);
             }
             TypedExprKind::Lit(_) => {}
         }

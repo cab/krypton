@@ -3,4 +3,4 @@ source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
 id: forall o. fn(o) -> o
-always: forall q r. fn(q, r) -> q
+always: forall r s. fn(r, s) -> r

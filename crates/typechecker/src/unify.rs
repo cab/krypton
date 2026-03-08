@@ -26,6 +26,9 @@ pub enum TypeErrorCode {
     E0304, // Cannot derive trait (field missing required instance)
     E0305, // Definition conflicts with trait method
     E0011, // Unknown type
+    E0401, // ? in function not returning Result or Option
+    E0402, // ? on non-Result/Option
+    E0403, // ? cross-use (Option in Result context or vice versa)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -51,6 +54,9 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0304 => write!(f, "E0304"),
             TypeErrorCode::E0305 => write!(f, "E0305"),
             TypeErrorCode::E0011 => write!(f, "E0011"),
+            TypeErrorCode::E0401 => write!(f, "E0401"),
+            TypeErrorCode::E0402 => write!(f, "E0402"),
+            TypeErrorCode::E0403 => write!(f, "E0403"),
         }
     }
 }
@@ -78,6 +84,9 @@ pub enum TypeError {
     CannotDerive { trait_name: String, type_name: String, field_type: String },
     DefinitionConflictsWithTraitMethod { def_name: String, trait_name: String },
     UnknownType { name: String },
+    QuestionMarkBadReturn { actual: Type },
+    QuestionMarkBadOperand { actual: Type },
+    QuestionMarkMismatch { expr_kind: String, return_kind: String },
 }
 
 impl TypeError {
@@ -105,6 +114,9 @@ impl TypeError {
             TypeError::CannotDerive { .. } => TypeErrorCode::E0304,
             TypeError::DefinitionConflictsWithTraitMethod { .. } => TypeErrorCode::E0305,
             TypeError::UnknownType { .. } => TypeErrorCode::E0011,
+            TypeError::QuestionMarkBadReturn { .. } => TypeErrorCode::E0401,
+            TypeError::QuestionMarkBadOperand { .. } => TypeErrorCode::E0402,
+            TypeError::QuestionMarkMismatch { .. } => TypeErrorCode::E0403,
         }
     }
 
@@ -187,6 +199,15 @@ impl TypeError {
             TypeError::UnknownType { name } => {
                 Some(format!("type `{}` is not defined", name))
             }
+            TypeError::QuestionMarkBadReturn { actual } => {
+                Some(format!("function returns `{}`, but `?` requires `Result` or `Option`", actual))
+            }
+            TypeError::QuestionMarkBadOperand { actual } => {
+                Some(format!("`?` can only be applied to `Result` or `Option`, found `{}`", actual))
+            }
+            TypeError::QuestionMarkMismatch { expr_kind, return_kind } => {
+                Some(format!("cannot use `?` on `{}` in a function returning `{}`", expr_kind, return_kind))
+            }
         }
     }
 }
@@ -257,6 +278,15 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownType { name } => {
                 write!(f, "unknown type: {}", name)
+            }
+            TypeError::QuestionMarkBadReturn { actual } => {
+                write!(f, "`?` operator in function returning `{}` (expected Result or Option)", actual)
+            }
+            TypeError::QuestionMarkBadOperand { actual } => {
+                write!(f, "`?` operator on `{}` (expected Result or Option)", actual)
+            }
+            TypeError::QuestionMarkMismatch { expr_kind, return_kind } => {
+                write!(f, "`?` on `{}` in function returning `{}`", expr_kind, return_kind)
             }
         }
     }

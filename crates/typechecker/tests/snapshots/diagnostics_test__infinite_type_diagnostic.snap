@@ -2,12 +2,12 @@
 source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"x => x(x)\")"
 ---
-[E0007] Error: infinite type: variable 14 occurs in fn(o) -> p
+[E0007] Error: infinite type: variable 15 occurs in fn(p) -> r
    ╭─[ test.kr:1:16 ]
    │
  1 │ fun _() = x => x(x)
    │                ──┬─  
-   │                  ╰─── E0007: infinite type: variable 14 occurs in fn(o) -> p
+   │                  ╰─── E0007: infinite type: variable 15 occurs in fn(p) -> r
    │ 
    │ Help: this creates a type that contains itself
 ───╯

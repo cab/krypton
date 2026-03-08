@@ -65,6 +65,10 @@ pub enum TypedExprKind {
         value: Box<TypedExpr>,
         body: Option<Box<TypedExpr>>,
     },
+    QuestionMark {
+        expr: Box<TypedExpr>,
+        is_option: bool, // true=Option, false=Result
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -181,6 +185,9 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
             if let Some(body) = body {
                 apply_subst(body, subst);
             }
+        }
+        TypedExprKind::QuestionMark { expr, .. } => {
+            apply_subst(expr, subst);
         }
     }
 }

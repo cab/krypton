@@ -1,0 +1,11 @@
+# expect: output "failed"
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun failing() -> Result[String, Int] = Err("failed")
+fun caller() -> Result[String, Int] = {
+  let x = failing()?;
+  Ok(x + 1)
+}
+fun main() = match caller() {
+  Ok(v) => println(v),
+  Err(e) => println(e),
+}

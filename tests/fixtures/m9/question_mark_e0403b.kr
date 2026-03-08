@@ -1,0 +1,6 @@
+# expect: error E0403
+fun bad(x: Result[String, Int]) -> Option[Int] = {
+  let v = x?;
+  Some(v)
+}
+fun main() = bad(Ok(1))

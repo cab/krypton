@@ -190,7 +190,10 @@ fn infer_expr_inner(
                 param_types.push(tv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(tv));
             }
+            let prev_fn_return_type = env.fn_return_type.take();
+            env.fn_return_type = Some(Type::Var(gen.fresh()));
             let body_typed = infer_expr_inner(body, env, subst, gen, registry, None, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            env.fn_return_type = prev_fn_return_type;
             env.pop_scope();
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
             let body_ty = subst.apply(&body_typed.ty);
@@ -666,9 +669,142 @@ fn infer_expr_inner(
         Expr::List { span, .. } => Err(spanned(
             TypeError::UnsupportedExpr { description: "list literals".to_string() }, *span,
         )),
-        Expr::QuestionMark { span, .. } => Err(spanned(
-            TypeError::UnsupportedExpr { description: "? operator".to_string() }, *span,
-        )),
+        Expr::QuestionMark { expr, span } => {
+            let inner_typed = infer_expr_inner(expr, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+            let inner_ty = subst.apply(&inner_typed.ty);
+            // Strip Own wrapper for analysis
+            let inner_ty_unwrapped = strip_own(&inner_ty);
+
+            // Determine what kind of type the inner expr is
+            let (is_option, unwrapped_ty) = match &inner_ty_unwrapped {
+                Type::Named(name, args) if name == "Option" && args.len() == 1 => {
+                    (true, args[0].clone())
+                }
+                Type::Named(name, args) if name == "Result" && args.len() == 2 => {
+                    (false, args[1].clone()) // Result[e, a] → unwraps to a
+                }
+                Type::Var(_) => {
+                    // Inner type is unknown — try to constrain it based on return type
+                    let fn_ret = env.fn_return_type.as_ref().map(|t| subst.apply(t));
+                    match fn_ret.as_ref().map(|t| strip_own(t)) {
+                        Some(Type::Named(name, _)) if name == "Option" => {
+                            let a = Type::Var(gen.fresh());
+                            let option_ty = Type::Named("Option".to_string(), vec![a.clone()]);
+                            unify(&inner_ty_unwrapped, &option_ty, subst).map_err(|e| spanned(e, *span))?;
+                            (true, a)
+                        }
+                        Some(Type::Named(name, _)) if name == "Result" => {
+                            let e = Type::Var(gen.fresh());
+                            let a = Type::Var(gen.fresh());
+                            let result_ty = Type::Named("Result".to_string(), vec![e, a.clone()]);
+                            unify(&inner_ty_unwrapped, &result_ty, subst).map_err(|e| spanned(e, *span))?;
+                            (false, a)
+                        }
+                        _ => {
+                            // Return type also unknown — default to Result
+                            let e = Type::Var(gen.fresh());
+                            let a = Type::Var(gen.fresh());
+                            let result_ty = Type::Named("Result".to_string(), vec![e, a.clone()]);
+                            unify(&inner_ty_unwrapped, &result_ty, subst).map_err(|e| spanned(e, *span))?;
+                            (false, a)
+                        }
+                    }
+                }
+                other => {
+                    return Err(spanned(
+                        TypeError::QuestionMarkBadOperand { actual: other.clone() },
+                        *span,
+                    ));
+                }
+            };
+
+            // Now check that the function's return type is compatible
+            let fn_ret = env.fn_return_type.as_ref().map(|t| subst.apply(t));
+            let fn_ret_unwrapped = fn_ret.map(|t| strip_own(&t));
+
+            match &fn_ret_unwrapped {
+                Some(Type::Named(name, args)) if name == "Option" => {
+                    if !is_option {
+                        return Err(spanned(
+                            TypeError::QuestionMarkMismatch {
+                                expr_kind: "Result".to_string(),
+                                return_kind: "Option".to_string(),
+                            },
+                            *span,
+                        ));
+                    }
+                    // Option ? in Option fn — OK. Unify inner type params if needed.
+                    let _ = args; // already compatible
+                }
+                Some(Type::Named(name, args)) if name == "Result" => {
+                    if is_option {
+                        return Err(spanned(
+                            TypeError::QuestionMarkMismatch {
+                                expr_kind: "Option".to_string(),
+                                return_kind: "Result".to_string(),
+                            },
+                            *span,
+                        ));
+                    }
+                    // Result ? in Result fn — unify error types
+                    if args.len() == 2 {
+                        // inner expr is Result[e1, a], fn returns Result[e2, b] → unify e1 = e2
+                        let inner_resolved = subst.apply(&inner_ty_unwrapped);
+                        if let Type::Named(_, inner_args) = &inner_resolved {
+                            if inner_args.len() == 2 {
+                                unify(&inner_args[0], &args[0], subst)
+                                    .map_err(|e| spanned(e, *span))?;
+                            }
+                        }
+                    }
+                }
+                Some(Type::Var(_)) => {
+                    // Return type is still a type var — constrain it
+                    if is_option {
+                        let b = Type::Var(gen.fresh());
+                        let option_ret = Type::Named("Option".to_string(), vec![b]);
+                        if let Some(ref ret) = env.fn_return_type {
+                            unify(&subst.apply(ret), &option_ret, subst)
+                                .map_err(|e| spanned(e, *span))?;
+                        }
+                    } else {
+                        // Result — unify return type as Result[e, b] with same error type
+                        let inner_resolved = subst.apply(&inner_ty_unwrapped);
+                        let err_ty = if let Type::Named(_, ref iargs) = inner_resolved {
+                            if iargs.len() == 2 { iargs[0].clone() } else { Type::Var(gen.fresh()) }
+                        } else { Type::Var(gen.fresh()) };
+                        let b = Type::Var(gen.fresh());
+                        let result_ret = Type::Named("Result".to_string(), vec![err_ty, b]);
+                        if let Some(ref ret) = env.fn_return_type {
+                            unify(&subst.apply(ret), &result_ret, subst)
+                                .map_err(|e| spanned(e, *span))?;
+                        }
+                    }
+                }
+                Some(other) => {
+                    return Err(spanned(
+                        TypeError::QuestionMarkBadReturn { actual: other.clone() },
+                        *span,
+                    ));
+                }
+                None => {
+                    return Err(spanned(
+                        TypeError::QuestionMarkBadReturn { actual: Type::Unit },
+                        *span,
+                    ));
+                }
+            }
+
+            let result_ty = subst.apply(&unwrapped_ty);
+            Ok(TypedExpr {
+                kind: TypedExprKind::QuestionMark {
+                    expr: Box::new(inner_typed),
+                    is_option,
+                },
+                ty: result_ty,
+                span: *span,
+            })
+        },
     }
 }
 
@@ -1060,6 +1196,9 @@ fn collect_struct_update_info(expr: &TypedExpr, info: &mut HashMap<Span, (String
             collect_struct_update_info(value, info);
             if let Some(b) = body { collect_struct_update_info(b, info); }
         }
+        TypedExprKind::QuestionMark { expr, .. } => {
+            collect_struct_update_info(expr, info);
+        }
     }
 }
 
@@ -1166,6 +1305,9 @@ fn detect_trait_constraints(
             for e in elems {
                 detect_trait_constraints(e, trait_method_map, subst, constraints);
             }
+        }
+        TypedExprKind::QuestionMark { expr, .. } => {
+            detect_trait_constraints(expr, trait_method_map, subst, constraints);
         }
         TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
     }
@@ -1321,6 +1463,9 @@ fn check_trait_instances(
             for a in args {
                 check_trait_instances(a, trait_method_map, trait_registry, subst)?;
             }
+        }
+        TypedExprKind::QuestionMark { expr, .. } => {
+            check_trait_instances(expr, trait_method_map, trait_registry, subst)?;
         }
     }
     Ok(())
@@ -1747,7 +1892,18 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                 param_types.push(ptv.clone());
                 env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
+            // Set fn_return_type for ? operator support
+            let prev_fn_return_type = env.fn_return_type.take();
+            if let Some(ref ret_ty_expr) = decl.return_type {
+                let resolved_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
+                    .map_err(|e| spanned(e, decl.span))?;
+                env.fn_return_type = Some(resolved_ret);
+            } else {
+                env.fn_return_type = Some(Type::Var(gen.fresh()));
+            }
+
             let body_typed = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&param_types), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
+            env.fn_return_type = prev_fn_return_type;
             env.pop_scope();
 
             let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
@@ -1846,7 +2002,13 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                     param_types_inferred.push(ptv.clone());
                     env.bind(p.name.clone(), TypeScheme::mono(ptv));
                 }
+                // Set fn_return_type for ? operator support
+                let prev_fn_return_type = env.fn_return_type.take();
+                let concrete_ret_type = substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
+                env.fn_return_type = Some(concrete_ret_type);
+
                 let body_typed = infer_expr_inner(&method.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&param_types_inferred), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
+                env.fn_return_type = prev_fn_return_type;
                 env.pop_scope();
 
                 let mut body_typed = body_typed;

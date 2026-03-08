@@ -1,0 +1,6 @@
+# expect: error E0402
+fun bad(x: Int) -> Result[String, Int] = {
+  let v = x?;
+  Ok(v)
+}
+fun main() = bad(42)

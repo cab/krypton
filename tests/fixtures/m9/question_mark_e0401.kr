@@ -1,0 +1,3 @@
+# expect: error E0401
+fun bad(x) -> Int = x?
+fun main() = bad(Ok(1))
