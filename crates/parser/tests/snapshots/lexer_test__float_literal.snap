@@ -1,7 +1,0 @@
----
-source: crates/parser/tests/lexer_test.rs
-expression: "lex(\"3.14 0.5 42\")"
----
-- Float: 3.14
-- Float: 0.5
-- Int: 42
