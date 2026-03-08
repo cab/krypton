@@ -2,7 +2,7 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-Some: forall d. fn(d) -> Option<d>
-None: forall d. Option<d>
+Some: forall h. fn(h) -> Option<h>
+None: forall h. Option<h>
 unwrap: fn(Option<own Int>) -> Int
 test: fn() -> Int

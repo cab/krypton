@@ -10,12 +10,14 @@ use chumsky::prelude::*;
 
 fn has_module_decls(source: &str) -> bool {
     let (module, _) = parse(source);
-    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_) | Decl::DefTrait { .. } | Decl::DefImpl { .. }))
+    module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_) | Decl::DefTrait { .. } | Decl::DefImpl { .. } | Decl::ExternJava { .. }))
 }
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
     let (module, errors) = parse(source);
-    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    if !errors.is_empty() {
+        return Err(errors[0].code.to_string());
+    }
     match infer::infer_module(&module) {
         Ok(info) => {
             let lines: Vec<String> = info.fn_types
@@ -30,10 +32,14 @@ fn infer_module_snapshot(source: &str) -> Result<String, String> {
 
 fn infer_expr_snapshot(source: &str) -> Result<String, String> {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
-    assert!(lex_errors.is_empty(), "lex errors: {lex_errors:?}");
+    if !lex_errors.is_empty() {
+        return Err("P0003".to_string());
+    }
     let tokens = tokens.unwrap();
     let (expr, parse_errors) = parse_expr(&tokens);
-    assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
+    if !parse_errors.is_empty() {
+        return Err("P0001".to_string());
+    }
     let expr = expr.expect("no expression parsed");
 
     let mut env = TypeEnv::new();

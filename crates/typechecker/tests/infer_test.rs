@@ -221,9 +221,9 @@ fn infer_sum_constructor() {
              (def wrap (fn [x] (Some x)))"
         ),
         @"
-    Some: forall d. fn(d) -> Option<d>
-    None: forall d. Option<d>
-    wrap: forall n. fn(n) -> Option<n>
+    Some: forall h. fn(h) -> Option<h>
+    None: forall h. Option<h>
+    wrap: forall r. fn(r) -> Option<r>
     "
     );
 }
@@ -236,9 +236,9 @@ fn infer_bare_variant() {
              (def none (fn [] None))"
         ),
         @"
-    Some: forall d. fn(d) -> Option<d>
-    None: forall d. Option<d>
-    none: forall n. fn() -> Option<n>
+    Some: forall h. fn(h) -> Option<h>
+    None: forall h. Option<h>
+    none: forall r. fn() -> Option<r>
     "
     );
 }
@@ -266,9 +266,9 @@ fn infer_scc_generalization_order() {
              (def g (fn [s] (id s)))"
         ),
         @"
-    id: forall m. fn(m) -> m
-    f: forall q. fn(q) -> q
-    g: forall u. fn(u) -> u
+    id: forall q. fn(q) -> q
+    f: forall u. fn(u) -> u
+    g: forall y. fn(y) -> y
     "
     );
 }
@@ -345,9 +345,9 @@ fn infer_match_option() {
                  ((None) default))))"
         ),
         @"
-    Some: forall d. fn(d) -> Option<d>
-    None: forall d. Option<d>
-    unwrap_or: forall o. fn(Option<o>, o) -> o
+    Some: forall h. fn(h) -> Option<h>
+    None: forall h. Option<h>
+    unwrap_or: forall s. fn(Option<s>, s) -> s
     "
     );
 }
@@ -374,7 +374,7 @@ fn infer_match_variable() {
                (match x \
                  (y y))))"
         ),
-        @"identity: forall m. fn(m) -> m"
+        @"identity: forall q. fn(q) -> q"
     );
 }
 
@@ -389,8 +389,8 @@ fn infer_match_nested_constructor() {
                  (_ 0))))"
         ),
         @"
-    Cons: forall d. fn(d, List<d>) -> List<d>
-    Nil: forall d. List<d>
+    Cons: forall h. fn(h, List<h>) -> List<h>
+    Nil: forall h. List<h>
     sum2: fn(List<Int>) -> Int
     "
     );
@@ -412,7 +412,7 @@ fn infer_tuple_in_match() {
         infer_module_types(
             "(def first (fn [p] (match p ((tuple a b) a))))"
         ),
-        @"first: forall o p. fn((o, p)) -> o"
+        @"first: forall s t. fn((s, t)) -> s"
     );
 }
 
@@ -427,7 +427,7 @@ fn infer_tuple_polymorphic() {
         infer_module_types(
             "(def swap (fn [p] (match p ((tuple a b) (tuple b a)))))"
         ),
-        @"swap: forall o p. fn((o, p)) -> (p, o)"
+        @"swap: forall s t. fn((s, t)) -> (t, s)"
     );
 }
 
@@ -442,7 +442,7 @@ fn infer_match_wrong_constructor() {
                  ((Some x) x) \
                  (_ 0))))"
         ),
-        @"TypeError: type mismatch: expected Color, found Option<p>"
+        @"TypeError: type mismatch: expected Color, found Option<t>"
     );
 }
 
@@ -457,8 +457,8 @@ fn test_exhaustive_complete() {
                  ((None) 0))))"
         ),
         @"
-    Some: forall d. fn(d) -> Option<d>
-    None: forall d. Option<d>
+    Some: forall h. fn(h) -> Option<h>
+    None: forall h. Option<h>
     unwrap: fn(Option<own Int>) -> Int
     "
     );
@@ -487,9 +487,9 @@ fn test_exhaustive_wildcard_covers_all() {
                  (_ 0))))"
         ),
         @"
-    Some: forall d. fn(d) -> Option<d>
-    None: forall d. Option<d>
-    test: forall n. fn(n) -> Int
+    Some: forall h. fn(h) -> Option<h>
+    None: forall h. Option<h>
+    test: forall r. fn(r) -> Int
     "
     );
 }

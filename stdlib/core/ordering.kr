@@ -1,0 +1,2 @@
+;; core/ordering — Ordering type for comparisons
+(type Ordering (| LT EQ GT))

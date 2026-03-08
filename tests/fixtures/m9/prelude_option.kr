@@ -1,0 +1,3 @@
+# expect: ok
+# Option is available without user type definition
+(def main (fn [] (Some 42)))

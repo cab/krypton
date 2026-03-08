@@ -1319,10 +1319,24 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     // Seed intrinsic function types (user defs can shadow these)
     crate::intrinsics::register_intrinsics(&mut env, &mut gen);
 
+    // Seed prelude types (Option, Result, List, Ordering) from stdlib
+    crate::prelude::register_prelude_types(&mut env, &mut registry, &mut gen);
+
     // First pass: process all DefType declarations
     let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
         if let Decl::DefType(type_decl) = decl {
+            // If shadowing a prelude type, unbind old constructors first
+            if let Some(existing) = registry.lookup_type(&type_decl.name) {
+                if existing.is_prelude {
+                    if let crate::type_registry::TypeKind::Sum { variants } = &existing.kind {
+                        for v in variants {
+                            env.unbind(&v.name);
+                        }
+                    }
+                }
+            }
+
             let constructors =
                 type_registry::process_type_decl(type_decl, &mut registry, &mut gen)
                     .map_err(|e| spanned(e, type_decl.span))?;

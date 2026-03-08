@@ -10,6 +10,7 @@ pub struct TypeInfo {
     pub type_params: Vec<String>,
     pub type_param_vars: Vec<TypeVarId>,
     pub kind: TypeKind,
+    pub is_prelude: bool,
 }
 
 pub enum TypeKind {
@@ -40,13 +41,22 @@ impl TypeRegistry {
     }
 
     pub fn register_type(&mut self, info: TypeInfo) -> Result<(), TypeError> {
-        if self.types.contains_key(&info.name) {
-            return Err(TypeError::DuplicateType {
-                name: info.name.clone(),
-            });
+        if let Some(existing) = self.types.get(&info.name) {
+            if !existing.is_prelude {
+                return Err(TypeError::DuplicateType {
+                    name: info.name.clone(),
+                });
+            }
         }
         self.types.insert(info.name.clone(), info);
         Ok(())
+    }
+
+    /// Mark a registered type as a prelude type (can be shadowed by user definitions).
+    pub fn set_prelude(&mut self, name: &str) {
+        if let Some(info) = self.types.get_mut(name) {
+            info.is_prelude = true;
+        }
     }
 
     pub fn lookup_type(&self, name: &str) -> Option<&TypeInfo> {
@@ -227,6 +237,7 @@ pub fn process_type_decl(
         type_params: decl.type_params.clone(),
         type_param_vars: quantified_vars.clone(),
         kind,
+        is_prelude: false,
     })?;
 
     Ok(constructors)

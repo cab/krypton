@@ -243,6 +243,13 @@ impl TypeEnv {
         None
     }
 
+    /// Remove a name from all scopes (used when shadowing prelude types).
+    pub fn unbind(&mut self, name: &str) {
+        for scope in &mut self.scopes {
+            scope.remove(name);
+        }
+    }
+
     /// Iterate over all type schemes in the environment.
     pub fn for_each_scheme(&self, mut f: impl FnMut(&TypeScheme)) {
         for scope in &self.scopes {

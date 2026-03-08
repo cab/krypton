@@ -2,4 +2,4 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-identity: forall q. fn(q) -> q
+main: fn() -> Option<own Int>

@@ -1,0 +1,7 @@
+# expect: output "42"
+# Codegen: create Option, match to extract, print
+(def unwrap_or (fn [opt default]
+  (match opt
+    ((Some x) x)
+    ((None) default))))
+(def main (fn [] (println (unwrap_or (Some 42) 0))))

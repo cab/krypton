@@ -1,0 +1,125 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: ok_val
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: Ok
+              span:
+                - 84
+                - 86
+          args:
+            - Lit:
+                value:
+                  Int: 42
+                span:
+                  - 87
+                  - 89
+          span:
+            - 83
+            - 90
+      span:
+        - 64
+        - 92
+  - DefFn:
+      name: err_val
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: Err
+              span:
+                - 114
+                - 117
+          args:
+            - Lit:
+                value:
+                  String: oops
+                span:
+                  - 118
+                  - 124
+          span:
+            - 113
+            - 125
+      span:
+        - 93
+        - 127
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Match:
+          scrutinee:
+            App:
+              func:
+                Var:
+                  name: ok_val
+                  span:
+                    - 155
+                    - 161
+              args: []
+              span:
+                - 154
+                - 162
+          arms:
+            - pattern:
+                Constructor:
+                  name: Ok
+                  args:
+                    - Var:
+                        name: x
+                        span:
+                          - 172
+                          - 173
+                  span:
+                    - 168
+                    - 174
+              body:
+                Var:
+                  name: x
+                  span:
+                    - 175
+                    - 176
+              span:
+                - 167
+                - 177
+            - pattern:
+                Constructor:
+                  name: Err
+                  args:
+                    - Wildcard:
+                        span:
+                          - 188
+                          - 189
+                  span:
+                    - 183
+                    - 190
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 191
+                    - 192
+              span:
+                - 182
+                - 193
+          span:
+            - 147
+            - 194
+      span:
+        - 128
+        - 196

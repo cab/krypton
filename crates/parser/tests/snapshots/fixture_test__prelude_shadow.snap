@@ -1,0 +1,57 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Option
+      type_params:
+        - a
+      kind:
+        Sum:
+          variants:
+            - name: MyVariant
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 91
+                      - 92
+              span:
+                - 80
+                - 93
+            - name: MyNone
+              fields: []
+              span:
+                - 94
+                - 100
+      deriving: []
+      span:
+        - 60
+        - 102
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: MyVariant
+              span:
+                - 121
+                - 130
+          args:
+            - Lit:
+                value:
+                  Int: 42
+                span:
+                  - 131
+                  - 133
+          span:
+            - 120
+            - 134
+      span:
+        - 103
+        - 136

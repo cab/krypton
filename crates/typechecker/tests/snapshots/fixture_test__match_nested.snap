@@ -2,6 +2,6 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-Cons: forall d. fn(d, List<d>) -> List<d>
-Nil: forall d. List<d>
+Cons: forall h. fn(h, List<h>) -> List<h>
+Nil: forall h. List<h>
 sum_first_two: fn(List<Int>) -> Int

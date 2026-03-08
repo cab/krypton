@@ -2,5 +2,6 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-id: forall q. fn(q) -> q
+ok_val: forall q. fn() -> Result<q, own Int>
+err_val: forall v. fn() -> Result<own String, v>
 main: fn() -> Int

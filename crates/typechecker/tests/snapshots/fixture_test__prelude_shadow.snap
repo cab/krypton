@@ -1,0 +1,7 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+MyVariant: forall h. fn(h) -> Option<h>
+MyNone: forall h. Option<h>
+main: fn() -> Option<own Int>

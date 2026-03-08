@@ -5,6 +5,15 @@ impl StdlibLoader {
     const RESULT: &str = include_str!("../../../stdlib/core/result.kr");
     const LIST: &str = include_str!("../../../stdlib/core/list.kr");
     const STRING: &str = include_str!("../../../stdlib/core/string.kr");
+    const ORDERING: &str = include_str!("../../../stdlib/core/ordering.kr");
+
+    /// Module paths for prelude types (auto-seeded without import).
+    pub const PRELUDE_MODULES: &[&str] = &[
+        "core/option",
+        "core/result",
+        "core/list",
+        "core/ordering",
+    ];
 
     pub fn get_source(module_path: &str) -> Option<&'static str> {
         match module_path {
@@ -12,6 +21,7 @@ impl StdlibLoader {
             "core/result" => Some(Self::RESULT),
             "core/list" => Some(Self::LIST),
             "core/string" => Some(Self::STRING),
+            "core/ordering" => Some(Self::ORDERING),
             _ => None,
         }
     }

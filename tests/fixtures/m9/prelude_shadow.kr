@@ -1,0 +1,4 @@
+# expect: ok
+# User type declaration shadows prelude Option
+(type Option [a] (| (MyVariant a) MyNone))
+(def main (fn [] (MyVariant 42)))

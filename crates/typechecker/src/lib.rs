@@ -3,6 +3,7 @@ pub mod exhaustiveness;
 pub mod infer;
 pub mod intrinsics;
 pub mod ownership;
+pub mod prelude;
 pub mod scc;
 pub mod stdlib_loader;
 pub mod trait_registry;

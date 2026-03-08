@@ -1,0 +1,109 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: handle
+      params:
+        - name: r
+          ty: ~
+          span:
+            - 76
+            - 77
+      constraints: []
+      return_type: ~
+      body:
+        Match:
+          scrutinee:
+            Var:
+              name: r
+              span:
+                - 88
+                - 89
+          arms:
+            - pattern:
+                Constructor:
+                  name: Ok
+                  args:
+                    - Var:
+                        name: x
+                        span:
+                          - 99
+                          - 100
+                  span:
+                    - 95
+                    - 101
+              body:
+                Var:
+                  name: x
+                  span:
+                    - 102
+                    - 103
+              span:
+                - 94
+                - 104
+            - pattern:
+                Constructor:
+                  name: Err
+                  args:
+                    - Wildcard:
+                        span:
+                          - 115
+                          - 116
+                  span:
+                    - 110
+                    - 117
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 118
+                    - 119
+              span:
+                - 109
+                - 120
+          span:
+            - 81
+            - 121
+      span:
+        - 59
+        - 123
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: handle
+              span:
+                - 142
+                - 148
+          args:
+            - App:
+                func:
+                  Var:
+                    name: Ok
+                    span:
+                      - 150
+                      - 152
+                args:
+                  - Lit:
+                      value:
+                        Int: 10
+                      span:
+                        - 153
+                        - 155
+                span:
+                  - 149
+                  - 156
+          span:
+            - 141
+            - 157
+      span:
+        - 124
+        - 159

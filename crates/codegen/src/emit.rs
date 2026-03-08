@@ -3471,7 +3471,7 @@ pub fn compile_module(
     }
 
     // Collect sum type declarations from AST
-    let sum_decls: Vec<_> = module
+    let mut sum_decls: Vec<_> = module
         .decls
         .iter()
         .filter_map(|decl| match decl {
@@ -3484,6 +3484,31 @@ pub fn compile_module(
             _ => None,
         })
         .collect();
+
+    // Inject prelude sum types not shadowed by user declarations
+    {
+        let user_type_names: std::collections::HashSet<String> =
+            sum_decls.iter().map(|(name, _, _)| name.clone()).collect();
+        for &module_path in krypton_typechecker::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
+            if let Some(source) = krypton_typechecker::stdlib_loader::StdlibLoader::get_source(module_path) {
+                let stripped: String = source
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with(";;"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let (stdlib_module, _) = krypton_parser::parser::parse(&stripped);
+                for decl in stdlib_module.decls {
+                    if let Decl::DefType(td) = decl {
+                        if let TypeDeclKind::Sum { variants } = td.kind {
+                            if !user_type_names.contains(&td.name) {
+                                sum_decls.push((td.name, td.type_params, variants));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Process sum types: generate sealed interface + variant classes
     for (sum_name, type_params, variants) in &sum_decls {
