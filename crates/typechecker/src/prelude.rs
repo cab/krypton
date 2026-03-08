@@ -19,6 +19,13 @@ pub fn register_prelude_types(
             "parse errors in stdlib {module_path}: {errors:?}"
         );
 
+        // Pre-register all type names for self-referential types
+        for decl in &module.decls {
+            if let krypton_parser::ast::Decl::DefType(type_decl) = decl {
+                registry.register_name(&type_decl.name);
+            }
+        }
+
         for decl in &module.decls {
             if let krypton_parser::ast::Decl::DefType(type_decl) = decl {
                 let constructors =

@@ -2,7 +2,7 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-Ok: forall f g. fn(g) -> Result<f, g>
-Err: forall f g. fn(f) -> Result<f, g>
-extract: forall u. fn(Result<u, Int>) -> Int
+Ok: forall f g. fn(g) -> Result[f, g]
+Err: forall f g. fn(f) -> Result[f, g]
+extract: forall u. fn(Result[u, Int]) -> Int
 test: fn() -> Int

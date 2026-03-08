@@ -232,9 +232,9 @@ fn infer_sum_constructor() {
             "type Option[a] = Some(a) | None\nfun wrap(x) = Some(x)"
         ),
         @"
-    Some: forall f. fn(f) -> Option<f>
-    None: forall f. Option<f>
-    wrap: forall p. fn(p) -> Option<p>
+    Some: forall f. fn(f) -> Option[f]
+    None: forall f. Option[f]
+    wrap: forall p. fn(p) -> Option[p]
     "
     );
 }
@@ -246,9 +246,9 @@ fn infer_bare_variant() {
             "type Option[a] = Some(a) | None\nfun none() = None"
         ),
         @"
-    Some: forall f. fn(f) -> Option<f>
-    None: forall f. Option<f>
-    none: forall p. fn() -> Option<p>
+    Some: forall f. fn(f) -> Option[f]
+    None: forall f. Option[f]
+    none: forall p. fn() -> Option[p]
     "
     );
 }
@@ -340,9 +340,9 @@ fn infer_match_option() {
             "type Option[a] = Some(a) | None\nfun unwrap_or(opt, default) = match opt { Some(x) => x, None => default }"
         ),
         @"
-    Some: forall f. fn(f) -> Option<f>
-    None: forall f. Option<f>
-    unwrap_or: forall q. fn(Option<q>, q) -> q
+    Some: forall f. fn(f) -> Option[f]
+    None: forall f. Option[f]
+    unwrap_or: forall q. fn(Option[q], q) -> q
     "
     );
 }
@@ -374,9 +374,9 @@ fn infer_match_nested_constructor() {
             "type List[a] = Cons(a, List[a]) | Nil\nfun sum2(xs) = match xs { Cons(h, Cons(h2, t)) => h + h2, _ => 0 }"
         ),
         @"
-    Cons: forall f. fn(f, List<f>) -> List<f>
-    Nil: forall f. List<f>
-    sum2: fn(List<Int>) -> Int
+    Cons: forall f. fn(f, List[f]) -> List[f]
+    Nil: forall f. List[f]
+    sum2: fn(List[Int]) -> Int
     "
     );
 }
@@ -422,7 +422,7 @@ fn infer_match_wrong_constructor() {
         infer_module_types(
             "type Color = Red | Green | Blue\ntype Option[a] = Some(a) | None\nfun bad(c) = match Red { Some(x) => x, _ => 0 }"
         ),
-        @"TypeError: type mismatch: expected Color, found Option<r>"
+        @"TypeError: type mismatch: expected Color, found Option[r]"
     );
 }
 
@@ -433,9 +433,9 @@ fn test_exhaustive_complete() {
             "type Option[a] = Some(a) | None\nfun unwrap(opt) = match opt { Some(x) => x, None => 0 }"
         ),
         @"
-    Some: forall f. fn(f) -> Option<f>
-    None: forall f. Option<f>
-    unwrap: fn(Option<own Int>) -> Int
+    Some: forall f. fn(f) -> Option[f]
+    None: forall f. Option[f]
+    unwrap: fn(Option[own Int]) -> Int
     "
     );
 }
@@ -457,8 +457,8 @@ fn test_exhaustive_wildcard_covers_all() {
             "type Option[a] = Some(a) | None\nfun test(opt) = match opt { _ => 0 }"
         ),
         @"
-    Some: forall f. fn(f) -> Option<f>
-    None: forall f. Option<f>
+    Some: forall f. fn(f) -> Option[f]
+    None: forall f. Option[f]
     test: forall p. fn(p) -> Int
     "
     );
@@ -551,5 +551,77 @@ fn no_type_params_still_generalizes() {
     insta::assert_snapshot!(
         infer_module_fn("fun id(x) = x", "id"),
         @"forall o. fn(o) -> o"
+    );
+}
+
+// --- Unknown type error tests ---
+
+#[test]
+fn unknown_type_in_param() {
+    insta::assert_snapshot!(
+        infer_module_types("fun f(x: Foo) = x"),
+        @"TypeError: unknown type: Foo"
+    );
+}
+
+#[test]
+fn unknown_type_in_return() {
+    insta::assert_snapshot!(
+        infer_module_types("fun f(x: Int) -> Foo = x"),
+        @"TypeError: unknown type: Foo"
+    );
+}
+
+#[test]
+fn known_types_still_work() {
+    insta::assert_snapshot!(
+        infer_module_fn("fun f(x: Int) -> Bool = true", "f"),
+        @"fn(Int) -> Bool"
+    );
+}
+
+#[test]
+fn typo_in_type_name() {
+    insta::assert_snapshot!(
+        infer_module_types("fun f(x: Stirng) = x"),
+        @"TypeError: unknown type: Stirng"
+    );
+}
+
+#[test]
+fn type_param_not_unknown() {
+    insta::assert_snapshot!(
+        infer_module_fn("fun id[a](x: a) -> a = x", "id"),
+        @"forall o. fn(o) -> o"
+    );
+}
+
+#[test]
+fn self_referential_type_ok() {
+    insta::assert_snapshot!(
+        infer_module_fn(
+            "type List[a] = Cons(a, List[a]) | Nil\nfun f(x: List[Int]) = x",
+            "f"
+        ),
+        @"fn(List[Int]) -> List[Int]"
+    );
+}
+
+#[test]
+fn typo_in_type_field() {
+    insta::assert_snapshot!(
+        infer_module_types("type Foo = Bar(Stirng)"),
+        @"TypeError: unknown type: Stirng"
+    );
+}
+
+#[test]
+fn mutual_type_refs_ok() {
+    insta::assert_snapshot!(
+        infer_module_fn(
+            "type A = MkA(B)\ntype B = MkB(A)\nfun f(x: A) = x",
+            "f"
+        ),
+        @"fn(A) -> A"
     );
 }

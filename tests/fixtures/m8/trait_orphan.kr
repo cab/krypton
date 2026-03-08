@@ -1,8 +1,8 @@
 # expect: error E0302
-trait Eq[a] {
-    fun eq(_0: a, _1: a) -> Bool
+trait MyTrait[a] {
+    fun check(_0: a) -> Bool
 }
 
-impl Eq[Unknown] {
-    fun eq(x, y) = false
+impl MyTrait[Object] {
+    fun check(x) = false
 }

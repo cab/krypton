@@ -26,7 +26,7 @@ fn display_var() {
 #[test]
 fn display_named() {
     let ty = Type::Named("List".into(), vec![Type::Int]);
-    assert_eq!(ty.to_string(), "List<Int>");
+    assert_eq!(ty.to_string(), "List[Int]");
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn display_all_types_snapshot() {
         .map(|(label, ty)| format!("{}: {}", label, ty))
         .collect::<Vec<_>>()
         .join("\n");
-    insta::assert_snapshot!(output, @r"
+    insta::assert_snapshot!(output, @"
     Int: Int
     Float: Float
     Bool: Bool
@@ -77,7 +77,7 @@ fn display_all_types_snapshot() {
     Unit: Unit
     Fn: fn(Int, Int) -> Bool
     Var: a
-    Named: List<Int>
+    Named: List[Int]
     Own: own Int
     Tuple: (Int, Bool)
     ");

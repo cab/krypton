@@ -52,14 +52,14 @@ impl fmt::Display for Type {
             Type::Named(name, args) => {
                 write!(f, "{}", name)?;
                 if !args.is_empty() {
-                    write!(f, "<")?;
+                    write!(f, "[")?;
                     for (i, a) in args.iter().enumerate() {
                         if i > 0 {
                             write!(f, ", ")?;
                         }
                         write!(f, "{}", a)?;
                     }
-                    write!(f, ">")?;
+                    write!(f, "]")?;
                 }
                 Ok(())
             }

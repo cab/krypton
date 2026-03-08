@@ -25,6 +25,7 @@ pub enum TypeErrorCode {
     E0303, // Missing superclass instance
     E0304, // Cannot derive trait (field missing required instance)
     E0305, // Definition conflicts with trait method
+    E0011, // Unknown type
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -49,6 +50,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0303 => write!(f, "E0303"),
             TypeErrorCode::E0304 => write!(f, "E0304"),
             TypeErrorCode::E0305 => write!(f, "E0305"),
+            TypeErrorCode::E0011 => write!(f, "E0011"),
         }
     }
 }
@@ -75,6 +77,7 @@ pub enum TypeError {
     OrphanInstance { trait_name: String, ty: String },
     CannotDerive { trait_name: String, type_name: String, field_type: String },
     DefinitionConflictsWithTraitMethod { def_name: String, trait_name: String },
+    UnknownType { name: String },
 }
 
 impl TypeError {
@@ -101,6 +104,7 @@ impl TypeError {
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
             TypeError::CannotDerive { .. } => TypeErrorCode::E0304,
             TypeError::DefinitionConflictsWithTraitMethod { .. } => TypeErrorCode::E0305,
+            TypeError::UnknownType { .. } => TypeErrorCode::E0011,
         }
     }
 
@@ -180,6 +184,9 @@ impl TypeError {
             TypeError::DefinitionConflictsWithTraitMethod { .. } => {
                 Some("trait methods are bound as module-level names; choose a different name for this definition".to_string())
             }
+            TypeError::UnknownType { name } => {
+                Some(format!("type `{}` is not defined", name))
+            }
         }
     }
 }
@@ -247,6 +254,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::DefinitionConflictsWithTraitMethod { def_name, trait_name } => {
                 write!(f, "definition `{}` conflicts with trait method `{}.{}`", def_name, trait_name, def_name)
+            }
+            TypeError::UnknownType { name } => {
+                write!(f, "unknown type: {}", name)
             }
         }
     }

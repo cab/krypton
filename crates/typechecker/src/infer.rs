@@ -1348,22 +1348,25 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     // Process ExternJava declarations
     let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
     for decl in &module.decls {
-        if let Decl::ExternJava { class_name, methods, .. } = decl {
+        if let Decl::ExternJava { class_name, methods, span } = decl {
             let empty_map = HashMap::new();
             for method in methods {
                 let mut scheme_vars = Vec::new();
-                let param_types: Vec<Type> = method.param_types.iter().map(|ty_expr| {
-                    let resolved = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry);
+                let mut param_types = Vec::new();
+                for ty_expr in &method.param_types {
+                    let resolved = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
+                        .map_err(|e| spanned(e, *span))?;
                     if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                         let fresh = gen.fresh();
                         scheme_vars.push(fresh);
-                        Type::Var(fresh)
+                        param_types.push(Type::Var(fresh));
                     } else {
-                        resolved
+                        param_types.push(resolved);
                     }
-                }).collect();
+                }
 
-                let return_type = type_registry::resolve_type_expr(&method.return_type, &empty_map, &registry);
+                let return_type = type_registry::resolve_type_expr(&method.return_type, &empty_map, &registry)
+                    .map_err(|e| spanned(e, *span))?;
                 let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                     let fresh = gen.fresh();
                     scheme_vars.push(fresh);
@@ -1381,9 +1384,11 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                 env.bind(method.name.clone(), scheme);
 
                 // Store concrete types for codegen (Object stays as-is)
-                let concrete_params: Vec<Type> = method.param_types.iter().map(|ty_expr| {
-                    type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
-                }).collect();
+                let mut concrete_params = Vec::new();
+                for ty_expr in &method.param_types {
+                    concrete_params.push(type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
+                        .map_err(|e| spanned(e, *span))?);
+                }
                 extern_fns.push(ExternFnInfo {
                     name: method.name.clone(),
                     java_class: class_name.clone(),
@@ -1391,6 +1396,14 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                     return_type,
                 });
             }
+        }
+    }
+
+    // Pre-register all type names so self-referential and mutually
+    // recursive type declarations can resolve each other.
+    for decl in &module.decls {
+        if let Decl::DefType(type_decl) = decl {
+            registry.register_name(&type_decl.name);
         }
     }
 
@@ -1436,15 +1449,18 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
 
             let mut trait_methods = Vec::new();
             for method in methods {
-                let param_types: Vec<Type> = method.params.iter().map(|p| {
+                let mut param_types = Vec::new();
+                for p in &method.params {
                     if let Some(ref ty_expr) = p.ty {
-                        type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
+                        param_types.push(type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
+                            .map_err(|e| spanned(e, method.span))?);
                     } else {
-                        Type::Var(gen.fresh())
+                        param_types.push(Type::Var(gen.fresh()));
                     }
-                }).collect();
+                }
                 let return_type = if let Some(ref ret_expr) = method.return_type {
                     type_registry::resolve_type_expr(ret_expr, &type_param_map, &registry)
+                        .map_err(|e| spanned(e, method.span))?
                 } else {
                     Type::Var(gen.fresh())
                 };
@@ -1600,7 +1616,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     for decl in &module.decls {
         if let Decl::DefImpl { trait_name, target_type, methods: _, span, .. } = decl {
             let empty_map = HashMap::new();
-            let resolved_target = type_registry::resolve_type_expr(target_type, &empty_map, &registry);
+            let resolved_target = type_registry::resolve_type_expr(target_type, &empty_map, &registry)
+                .map_err(|e| spanned(e, *span))?;
 
             // Orphan check: target must be a user-defined Named type or a built-in type
             let target_name = match &resolved_target {
@@ -1722,7 +1739,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
             for p in &decl.params {
                 let ptv = Type::Var(gen.fresh());
                 if let Some(ref ty_expr) = p.ty {
-                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry);
+                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
+                        .map_err(|e| spanned(e, decl.span))?;
                     unify(&ptv, &annotated_ty, &mut subst)
                         .map_err(|e| spanned(e, decl.span))?;
                 }
@@ -1737,7 +1755,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
 
             // Enforce return type annotation if present
             let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
-                let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry);
+                let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
+                    .map_err(|e| spanned(e, decl.span))?;
                 // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
                 // Bare `T` cannot be upgraded to `own T` — ownership must come from a literal,
                 // constructor, or another `own` source.
