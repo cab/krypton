@@ -1,0 +1,90 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: main
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Match:
+          scrutinee:
+            List:
+              elements:
+                - Lit:
+                    value:
+                      Int: 1
+                    span:
+                      - 33
+                      - 34
+                - Lit:
+                    value:
+                      Int: 2
+                    span:
+                      - 36
+                      - 37
+                - Lit:
+                    value:
+                      Int: 3
+                    span:
+                      - 39
+                      - 40
+              span:
+                - 32
+                - 41
+          arms:
+            - pattern:
+                Constructor:
+                  name: Cons
+                  args:
+                    - Var:
+                        name: h
+                        span:
+                          - 53
+                          - 54
+                    - Var:
+                        name: _
+                        span:
+                          - 56
+                          - 57
+                  span:
+                    - 48
+                    - 58
+              guard: ~
+              body:
+                Var:
+                  name: h
+                  span:
+                    - 62
+                    - 63
+              span:
+                - 48
+                - 63
+            - pattern:
+                Constructor:
+                  name: Nil
+                  args: []
+                  span:
+                    - 69
+                    - 72
+              guard: ~
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 76
+                    - 77
+              span:
+                - 69
+                - 77
+          span:
+            - 26
+            - 80
+      span:
+        - 13
+        - 80

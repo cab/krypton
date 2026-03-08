@@ -1,0 +1,4 @@
+# expect: output "3"
+import core/list.{length}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = println(length([1, 2, 3]))

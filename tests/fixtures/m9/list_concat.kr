@@ -1,0 +1,4 @@
+# expect: output "6"
+import core/list.{concat, length}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = println(length(concat([1, 2, 3], [4, 5, 6])))

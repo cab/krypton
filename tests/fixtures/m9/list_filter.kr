@@ -1,0 +1,4 @@
+# expect: output "2"
+import core/list.{filter, length}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = println(length(filter(x => x > 1, [1, 2, 3])))

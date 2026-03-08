@@ -1421,13 +1421,24 @@ impl Compiler {
             }
         }
 
-        // Compile each argument, boxing if needed for erased type params
+        // Compile each argument, boxing/casting if needed for erased type params
         let dict_offset = constraint_traits.len();
         for (i, arg) in args.iter().enumerate() {
             let arg_type = self.compile_expr(arg, false)?;
-            if let JvmType::StructRef(idx) = param_types[i + dict_offset] {
+            let expected = param_types[i + dict_offset];
+            if let JvmType::StructRef(idx) = expected {
                 if idx == self.refs.object_class && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref) {
+                    // Primitive → Object: box
                     self.box_if_needed(arg_type);
+                } else if idx != self.refs.object_class {
+                    // Object → specific ref type: checkcast
+                    if let JvmType::StructRef(arg_idx) = arg_type {
+                        if arg_idx == self.refs.object_class && arg_idx != idx {
+                            self.emit(Instruction::Checkcast(idx));
+                            self.frame.pop_type();
+                            self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                        }
+                    }
                 }
             }
         }

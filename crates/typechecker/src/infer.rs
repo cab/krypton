@@ -667,9 +667,19 @@ fn infer_expr_inner(
             }
         }
 
-        Expr::List { span, .. } => Err(spanned(
-            TypeError::UnsupportedExpr { description: "list literals".to_string() }, *span,
-        )),
+        Expr::List { elements, span } => {
+            // Desugar [e1, e2, e3] → Cons(e1, Cons(e2, Cons(e3, Nil)))
+            let mut desugared: Expr = Expr::Var { name: "Nil".to_string(), span: *span };
+            for elem in elements.iter().rev() {
+                desugared = Expr::App {
+                    func: Box::new(Expr::Var { name: "Cons".to_string(), span: *span }),
+                    args: vec![elem.clone(), desugared],
+                    span: *span,
+                };
+            }
+            infer_expr_inner(&desugared, env, subst, gen, registry, recur_params,
+                             let_own_spans, lambda_own_captures)
+        }
         Expr::QuestionMark { expr, span } => {
             let inner_typed = infer_expr_inner(expr, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
             let inner_ty = subst.apply(&inner_typed.ty);
@@ -1564,6 +1574,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
 
     // Process import declarations — resolve from embedded stdlib
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
+    let mut imported_functions: Vec<TypedFnDecl> = Vec::new();
+    let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
             use crate::stdlib_loader::StdlibLoader;
@@ -1608,6 +1620,119 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                         *ext_span, name_filter, &aliases,
                     )?;
                     imported_extern_fns.append(&mut fns);
+                }
+            }
+
+            // Process pure Krypton function definitions from stdlib module
+            // Type-check ALL functions (for internal dependencies like reverse→fold),
+            // but only export the ones the user requested.
+            let stdlib_fn_decls: Vec<&krypton_parser::ast::FnDecl> = stdlib_module.decls.iter()
+                .filter_map(|d| match d {
+                    Decl::DefFn(f) => Some(f),
+                    _ => None,
+                })
+                .collect();
+
+
+            if !stdlib_fn_decls.is_empty() {
+                let adj = scc::build_dependency_graph(&stdlib_fn_decls);
+                let sccs = scc::tarjan_scc(&adj);
+
+                let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; stdlib_fn_decls.len()];
+                let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; stdlib_fn_decls.len()];
+
+                for component in &sccs {
+                    let mut pre_bound: Vec<(usize, Type)> = Vec::new();
+                    for &idx in component {
+                        let tv = Type::Var(gen.fresh());
+                        env.bind(stdlib_fn_decls[idx].name.clone(), TypeScheme::mono(tv.clone()));
+                        pre_bound.push((idx, tv));
+                    }
+
+                    for &(idx, ref tv) in &pre_bound {
+                        let decl = stdlib_fn_decls[idx];
+                        env.push_scope();
+
+                        let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
+                        for tp in &decl.type_params {
+                            type_param_map.insert(tp.clone(), gen.fresh());
+                        }
+
+                        let mut param_types = Vec::new();
+                        for p in &decl.params {
+                            let ptv = Type::Var(gen.fresh());
+                            if let Some(ref ty_expr) = p.ty {
+                                let annotated_ty = type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
+                                    .map_err(|e| spanned(e, decl.span))?;
+                                unify(&ptv, &annotated_ty, &mut subst)
+                                    .map_err(|e| spanned(e, decl.span))?;
+                            }
+                            param_types.push(ptv.clone());
+                            env.bind(p.name.clone(), TypeScheme::mono(ptv));
+                        }
+
+                        let prev_fn_return_type = env.fn_return_type.take();
+                        if let Some(ref ret_ty_expr) = decl.return_type {
+                            let resolved_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
+                                .map_err(|e| spanned(e, decl.span))?;
+                            env.fn_return_type = Some(resolved_ret);
+                        } else {
+                            env.fn_return_type = Some(Type::Var(gen.fresh()));
+                        }
+
+                        let body_typed = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&param_types), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
+                        env.fn_return_type = prev_fn_return_type;
+                        env.pop_scope();
+
+                        let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
+                        let body_ty = subst.apply(&body_typed.ty);
+
+                        let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
+                            let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
+                                .map_err(|e| spanned(e, decl.span))?;
+                            let coerced_body_ty = strip_own(&body_ty);
+                            unify(&coerced_body_ty, &annotated_ret, &mut subst)
+                                .map_err(|e| spanned(e, decl.span))?;
+                            subst.apply(&annotated_ret)
+                        } else {
+                            strip_own(&body_ty)
+                        };
+
+                        let fn_ty = Type::Fn(param_types, Box::new(ret_ty));
+                        unify(tv, &fn_ty, &mut subst)
+                            .map_err(|e| spanned(e, decl.span))?;
+
+                        fn_bodies[idx] = Some(body_typed);
+                    }
+
+                    let empty_env = TypeEnv::new();
+                    for &(idx, ref tv) in &pre_bound {
+                        let final_ty = subst.apply(tv);
+                        let scheme = generalize(&final_ty, &empty_env, &subst);
+                        // Bind all names for internal dependencies during inference
+                        env.bind(stdlib_fn_decls[idx].name.clone(), scheme.clone());
+                        // Also bind under alias if requested
+                        if let Some(alias) = aliases.get(&stdlib_fn_decls[idx].name) {
+                            env.bind(alias.clone(), scheme.clone());
+                        }
+                        result_schemes[idx] = Some(scheme);
+                    }
+                }
+
+                // Export all stdlib functions (needed for internal dependencies
+                // like reverse→fold), but only bind requested ones in user's env
+                for (i, decl) in stdlib_fn_decls.iter().enumerate() {
+                    let mut body = fn_bodies[i].take().unwrap();
+                    typed_ast::apply_subst(&mut body, &subst);
+                    let effective_name = aliases.get(&decl.name)
+                        .cloned()
+                        .unwrap_or_else(|| decl.name.clone());
+                    imported_fn_types.push((effective_name.clone(), result_schemes[i].clone().unwrap()));
+                    imported_functions.push(TypedFnDecl {
+                        name: effective_name,
+                        params: decl.params.iter().map(|p| p.name.clone()).collect(),
+                        body,
+                    });
                 }
             }
         }
@@ -2122,8 +2247,9 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         }
     }
 
-    // Collect results: constructors first, then functions in declaration order
-    let mut results: Vec<(String, TypeScheme)> = constructor_schemes;
+    // Collect results: imported stdlib functions first, then constructors, then user functions
+    let mut results: Vec<(String, TypeScheme)> = imported_fn_types;
+    results.extend(constructor_schemes);
     results.extend(
         fn_decls
             .iter()
@@ -2134,7 +2260,7 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     results.extend(derived_impl_fn_types);
 
     // Apply final substitution to all typed function bodies
-    let mut functions = Vec::new();
+    let mut functions: Vec<TypedFnDecl> = imported_functions;
     for (i, decl) in fn_decls.iter().enumerate() {
         let mut body = fn_bodies[i].take().unwrap();
         typed_ast::apply_subst(&mut body, &subst);

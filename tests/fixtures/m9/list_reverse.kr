@@ -1,0 +1,7 @@
+# expect: output "3"
+import core/list.{reverse}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = match reverse([1, 2, 3]) {
+    Cons(h, _) => println(h),
+    Nil => println(0),
+}

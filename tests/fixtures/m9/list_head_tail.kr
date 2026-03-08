@@ -1,0 +1,7 @@
+# expect: output "1"
+import core/list.{head}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = match head([1, 2, 3]) {
+    Some(h) => println(h),
+    None => println(0),
+}

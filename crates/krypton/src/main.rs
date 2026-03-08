@@ -164,19 +164,21 @@ fn main() {
             phases.push(("typecheck", t.elapsed()));
             debug!("type checking complete");
 
-            // Derive class name from filename (e.g., hello.kr → Hello)
+            // Derive class name from filename, prefixed to avoid collisions
+            // with type names (e.g., hello.kr → Kr$Hello)
             let stem = std::path::Path::new(&file)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("Main");
             let class_name = {
                 let mut c = stem.chars();
-                match c.next() {
+                let base = match c.next() {
                     None => "Main".to_string(),
                     Some(first) => {
                         first.to_uppercase().to_string() + c.as_str()
                     }
-                }
+                };
+                format!("Kr${base}")
             };
 
             let t = Instant::now();
@@ -239,10 +241,11 @@ fn main() {
                 .unwrap_or("Main");
             let class_name = {
                 let mut c = stem.chars();
-                match c.next() {
+                let base = match c.next() {
                     None => "Main".to_string(),
                     Some(first) => first.to_uppercase().to_string() + c.as_str(),
-                }
+                };
+                format!("Kr${base}")
             };
 
             let t = Instant::now();

@@ -1,0 +1,5 @@
+# expect: ok
+fun main() = match [1, 2, 3] {
+    Cons(h, _) => h,
+    Nil => 0,
+}

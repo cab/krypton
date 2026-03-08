@@ -124,7 +124,7 @@ fn test_compile_produces_class_file() {
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(dir.path().join("Hello.class").exists(), "Hello.class should be created");
+    assert!(dir.path().join("Kr$Hello.class").exists(), "Kr$Hello.class should be created");
 }
 
 #[test]

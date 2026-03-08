@@ -1,0 +1,73 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: main
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Match:
+          scrutinee:
+            List:
+              elements: []
+              span:
+                - 32
+                - 34
+          arms:
+            - pattern:
+                Constructor:
+                  name: Cons
+                  args:
+                    - Var:
+                        name: _
+                        span:
+                          - 46
+                          - 47
+                    - Var:
+                        name: _
+                        span:
+                          - 49
+                          - 50
+                  span:
+                    - 41
+                    - 51
+              guard: ~
+              body:
+                Lit:
+                  value:
+                    Int: 1
+                  span:
+                    - 55
+                    - 56
+              span:
+                - 41
+                - 56
+            - pattern:
+                Constructor:
+                  name: Nil
+                  args: []
+                  span:
+                    - 62
+                    - 65
+              guard: ~
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 69
+                    - 70
+              span:
+                - 62
+                - 70
+          span:
+            - 26
+            - 73
+      span:
+        - 13
+        - 73
