@@ -2,6 +2,6 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-Cons: forall h. fn(h, List<h>) -> List<h>
-Nil: forall h. List<h>
-length: forall u. fn(List<u>) -> own Int
+Cons: forall f. fn(f, List<f>) -> List<f>
+Nil: forall f. List<f>
+length: forall s. fn(List<s>) -> own Int

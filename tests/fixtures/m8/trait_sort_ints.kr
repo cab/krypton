@@ -1,4 +1,5 @@
 # expect: output -1
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (trait Cmp [a] (def compare [a a] Int))
 (impl Cmp Int
   (def compare [x y] (if (< x y) (- 0 1) (if (> x y) 1 0))))

@@ -2,9 +2,9 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-Some: forall h. fn(h) -> Option<h>
-None: forall h. Option<h>
-Cons: forall i. fn(i, List<i>) -> List<i>
-Nil: forall i. List<i>
+Some: forall f. fn(f) -> Option<f>
+None: forall f. Option<f>
+Cons: forall g. fn(g, List<g>) -> List<g>
+Nil: forall g. List<g>
 unwrap_nested: fn(Option<Option<own Int>>) -> Int
 first_two: fn(List<Int>) -> Int

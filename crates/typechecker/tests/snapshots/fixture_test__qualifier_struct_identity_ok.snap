@@ -3,5 +3,5 @@ source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
 Buffer: fn(own String) -> Buffer
-identity: forall q. fn(q) -> q
+identity: forall o. fn(o) -> o
 test: fn(Buffer) -> Buffer

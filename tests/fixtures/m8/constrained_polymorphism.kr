@@ -1,4 +1,5 @@
 # expect: output true
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (type A (record (x Int)) deriving [Eq])
 (type B (record (y Int)) deriving [Eq])
 (def same (fn [x y] (eq x y)))

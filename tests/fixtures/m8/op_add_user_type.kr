@@ -1,4 +1,5 @@
 # expect: output 4
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (type Vec2 (record (x Int) (y Int)))
 (trait Add [a] (def add [a a] a))
 (impl Add Vec2

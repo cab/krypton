@@ -1,5 +1,6 @@
 # expect: output "42"
 # Codegen: create Option, match to extract, print
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (def unwrap_or (fn [opt default]
   (match opt
     ((Some x) x)

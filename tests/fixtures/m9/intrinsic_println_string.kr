@@ -1,2 +1,3 @@
 # expect: output hello
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (def main (fn [] (println "hello")))

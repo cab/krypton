@@ -2,5 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-id: forall q. fn(q) -> q
-always: forall s t. fn(s, t) -> s
+id: forall o. fn(o) -> o
+always: forall q r. fn(q, r) -> q

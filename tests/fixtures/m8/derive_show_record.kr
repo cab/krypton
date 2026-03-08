@@ -1,3 +1,4 @@
 # expect: output Point(1, 2)
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (type Point (record (x Int) (y Int)) deriving [Show])
 (def main (fn [] (println (show (Point 1 2)))))

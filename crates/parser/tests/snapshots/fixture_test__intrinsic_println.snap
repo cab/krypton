@@ -3,6 +3,28 @@ source: crates/parser/tests/fixture_test.rs
 expression: module
 ---
 decls:
+  - ExternJava:
+      class_name: krypton.runtime.KryptonIO
+      methods:
+        - name: println
+          param_types:
+            - Named:
+                name: Object
+                span:
+                  - 63
+                  - 69
+          return_type:
+            Named:
+              name: Unit
+              span:
+                - 71
+                - 75
+          span:
+            - 49
+            - 76
+      span:
+        - 13
+        - 77
   - DefFn:
       name: main
       params: []
@@ -14,18 +36,18 @@ decls:
             Var:
               name: println
               span:
-                - 31
-                - 38
+                - 96
+                - 103
           args:
             - Lit:
                 value:
                   String: hello
                 span:
-                  - 39
-                  - 46
+                  - 104
+                  - 111
           span:
-            - 30
-            - 47
+            - 95
+            - 112
       span:
-        - 13
-        - 49
+        - 78
+        - 114

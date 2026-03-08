@@ -1,4 +1,5 @@
 # expect: output true
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (type Box (record (val Int)))
 (trait Eq [a] (def eq [a a] Bool))
 (impl Eq Box (def eq [a b] (== (. a val) (. b val))))

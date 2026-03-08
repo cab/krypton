@@ -2,4 +2,4 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-apply: forall r s. fn(fn(r) -> s, r) -> s
+apply: forall p q. fn(fn(p) -> q, p) -> q

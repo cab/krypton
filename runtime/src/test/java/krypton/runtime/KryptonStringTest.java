@@ -5,46 +5,60 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class KryptonStringTest {
     @Test
+    void concatTwoStrings() {
+        assertEquals("helloworld", KryptonString.concat("hello", "world"));
+    }
+
+    @Test
+    void concatWithEmpty() {
+        assertEquals("hello", KryptonString.concat("hello", ""));
+        assertEquals("world", KryptonString.concat("", "world"));
+    }
+
+    @Test
+    void lengthAscii() {
+        assertEquals(5L, KryptonString.length("hello"));
+    }
+
+    @Test
+    void lengthEmpty() {
+        assertEquals(0L, KryptonString.length(""));
+    }
+
+    @Test
     void codepointLengthAscii() {
-        KryptonString s = new KryptonString("hello");
-        assertEquals(5, s.codepointLength());
+        assertEquals(5, KryptonString.codepointLength("hello"));
     }
 
     @Test
     void codepointLengthWithEmoji() {
-        // "hi\uD83D\uDC4B" is "hi👋" — 3 codepoints, 4 chars
-        KryptonString s = new KryptonString("hi\uD83D\uDC4B");
-        assertEquals(3, s.codepointLength());
+        // "hi👋" — 3 codepoints, 4 chars
+        assertEquals(3, KryptonString.codepointLength("hi\uD83D\uDC4B"));
     }
 
     @Test
     void codepointLengthEmpty() {
-        KryptonString s = new KryptonString("");
-        assertEquals(0, s.codepointLength());
+        assertEquals(0, KryptonString.codepointLength(""));
     }
 
     @Test
     void codepointSliceAscii() {
-        KryptonString s = new KryptonString("hello");
-        assertEquals("ell", s.codepointSlice(1, 4));
+        assertEquals("ell", KryptonString.codepointSlice("hello", 1, 4));
     }
 
     @Test
     void codepointSliceWithEmoji() {
         // "hi👋world" — slice(1, 4) should be "i👋w"
-        KryptonString s = new KryptonString("hi\uD83D\uDC4Bworld");
-        assertEquals("i\uD83D\uDC4Bw", s.codepointSlice(1, 4));
+        assertEquals("i\uD83D\uDC4Bw", KryptonString.codepointSlice("hi\uD83D\uDC4Bworld", 1, 4));
     }
 
     @Test
     void codepointSliceFull() {
-        KryptonString s = new KryptonString("abc");
-        assertEquals("abc", s.codepointSlice(0, 3));
+        assertEquals("abc", KryptonString.codepointSlice("abc", 0, 3));
     }
 
     @Test
     void codepointSliceEmpty() {
-        KryptonString s = new KryptonString("abc");
-        assertEquals("", s.codepointSlice(1, 1));
+        assertEquals("", KryptonString.codepointSlice("abc", 1, 1));
     }
 }

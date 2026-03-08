@@ -1,3 +1,4 @@
 # expect: output 6
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (def apply_fn (fn [f x] (f x)))
 (def main (fn [] (println (apply_fn (fn [x] (+ x 1)) 5))))

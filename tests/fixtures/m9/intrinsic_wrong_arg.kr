@@ -1,2 +1,3 @@
 # expect: error E0001
-(def main (fn [] (to_float "hello")))
+(extern "krypton.runtime.KryptonConvert" (def toFloat [Int] Float))
+(def main (fn [] (toFloat "hello")))

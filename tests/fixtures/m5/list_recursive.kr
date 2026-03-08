@@ -1,4 +1,5 @@
 # expect: output 20
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (type List [a] (| (Cons a (List a)) (Nil)))
 (def second (fn [xs]
   (match xs

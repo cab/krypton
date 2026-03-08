@@ -1,19 +1,13 @@
 package krypton.runtime;
 
-public class KryptonString {
-    private final String value;
-
-    public KryptonString(String value) {
-        this.value = value;
+public final class KryptonString {
+    public static String concat(String a, String b) { return a.concat(b); }
+    public static long length(String s) { return (long) s.length(); }
+    public static int codepointLength(String s) { return s.codePointCount(0, s.length()); }
+    public static String codepointSlice(String s, int start, int end) {
+        int startOffset = s.offsetByCodePoints(0, start);
+        int endOffset = s.offsetByCodePoints(0, end);
+        return s.substring(startOffset, endOffset);
     }
-
-    public int codepointLength() {
-        return value.codePointCount(0, value.length());
-    }
-
-    public String codepointSlice(int start, int end) {
-        int startOffset = value.offsetByCodePoints(0, start);
-        int endOffset = value.offsetByCodePoints(0, end);
-        return value.substring(startOffset, endOffset);
-    }
+    private KryptonString() {}
 }

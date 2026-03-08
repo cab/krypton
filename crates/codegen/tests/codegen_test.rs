@@ -1,12 +1,29 @@
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile;
 
+const PRINTLN_EXTERN: &str = r#"(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))"#;
+
+fn find_runtime_jar() -> Option<PathBuf> {
+    let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../runtime/build/libs/krypton-runtime.jar");
+    if jar.exists() { Some(jar) } else { None }
+}
+
+fn build_classpath(class_dir: &std::path::Path) -> String {
+    match find_runtime_jar() {
+        Some(jar) => format!("{}:{}", class_dir.display(), jar.display()),
+        None => class_dir.display().to_string(),
+    }
+}
+
 /// Parse source, compile to .class files, run java, return trimmed stdout.
 fn run_program(source: &str) -> String {
-    let (module, errors) = parse(source);
+    let full_source = format!("{PRINTLN_EXTERN}\n{source}");
+    let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let classes = compile_module(&module, "Test").expect("compile_module should succeed");
@@ -20,7 +37,7 @@ fn run_program(source: &str) -> String {
 
     let output = Command::new("java")
         .arg("-cp")
-        .arg(dir.path())
+        .arg(build_classpath(dir.path()))
         .arg("Test")
         .output()
         .expect("java command should run");
@@ -331,7 +348,8 @@ fn test_trait_dictionary_parameter() {
     assert_eq!(run_program(src), "true");
 
     // Now verify that are_equal has an extra dictionary parameter via javap
-    let (module, errors) = parse(src);
+    let full_src = format!("{PRINTLN_EXTERN}\n{src}");
+    let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
     let classes = compile_module(&module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();

@@ -75,18 +75,7 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
 
 /// Check if a function name is a compiler intrinsic.
 fn is_intrinsic(name: &str) -> bool {
-    matches!(
-        name,
-        "println"
-            | "print"
-            | "panic"
-            | "to_float"
-            | "to_int"
-            | "int_to_string"
-            | "float_to_string"
-            | "string_concat"
-            | "string_length"
-    )
+    matches!(name, "panic")
 }
 
 /// Map a TypeExpr to a JvmType (for struct field declarations in AST).

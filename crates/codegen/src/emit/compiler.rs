@@ -91,20 +91,8 @@ pub(super) struct CpoolRefs {
     pub(super) object_init: u16,
     pub(super) init_name: u16,
     pub(super) init_desc: u16,
-    pub(super) system_out: u16,
-    pub(super) println_long: u16,
-    pub(super) println_string: u16,
-    pub(super) println_double: u16,
-    pub(super) println_bool: u16,
-    pub(super) println_object: u16,
-    pub(super) print_long: u16,
-    pub(super) print_string: u16,
-    pub(super) print_double: u16,
-    pub(super) print_bool: u16,
-    pub(super) print_object: u16,
     pub(super) smt_name: u16,
     pub(super) string_class: u16,
-    pub(super) ps_class: u16,
     pub(super) long_box_valueof: u16,
     pub(super) double_box_valueof: u16,
     pub(super) bool_box_valueof: u16,
@@ -120,9 +108,6 @@ pub(super) struct CpoolRefs {
     // Intrinsic support
     pub(super) runtime_exception_class: u16,
     pub(super) runtime_exception_init: u16,
-    pub(super) string_valueof_long: u16,
-    pub(super) string_valueof_double: u16,
-    pub(super) string_length_ref: u16,
 }
 
 /// StackMapTable / verification type tracking.
@@ -370,30 +355,6 @@ impl Compiler {
         let init_name = cp.add_utf8("<init>")?;
         let init_desc = cp.add_utf8("()V")?;
 
-        // System.out field ref
-        let system_class = cp.add_class("java/lang/System")?;
-        let system_out =
-            cp.add_field_ref(system_class, "out", "Ljava/io/PrintStream;")?;
-
-        // PrintStream.println overloads
-        let ps_class = cp.add_class("java/io/PrintStream")?;
-        let println_long = cp.add_method_ref(ps_class, "println", "(J)V")?;
-        let println_string =
-            cp.add_method_ref(ps_class, "println", "(Ljava/lang/String;)V")?;
-        let println_double = cp.add_method_ref(ps_class, "println", "(D)V")?;
-        let println_bool = cp.add_method_ref(ps_class, "println", "(Z)V")?;
-        let println_object =
-            cp.add_method_ref(ps_class, "println", "(Ljava/lang/Object;)V")?;
-
-        // PrintStream.print overloads (no newline)
-        let print_long = cp.add_method_ref(ps_class, "print", "(J)V")?;
-        let print_string =
-            cp.add_method_ref(ps_class, "print", "(Ljava/lang/String;)V")?;
-        let print_double = cp.add_method_ref(ps_class, "print", "(D)V")?;
-        let print_bool = cp.add_method_ref(ps_class, "print", "(Z)V")?;
-        let print_object =
-            cp.add_method_ref(ps_class, "print", "(Ljava/lang/Object;)V")?;
-
         // StackMapTable support
         let smt_name = cp.add_utf8("StackMapTable")?;
         let string_class = cp.add_class("java/lang/String")?;
@@ -428,13 +389,6 @@ impl Compiler {
         let runtime_exception_class = cp.add_class("java/lang/RuntimeException")?;
         let runtime_exception_init =
             cp.add_method_ref(runtime_exception_class, "<init>", "(Ljava/lang/String;)V")?;
-        let string_valueof_long =
-            cp.add_method_ref(string_class, "valueOf", "(J)Ljava/lang/String;")?;
-        let string_valueof_double =
-            cp.add_method_ref(string_class, "valueOf", "(D)Ljava/lang/String;")?;
-        let string_length_ref =
-            cp.add_method_ref(string_class, "length", "()I")?;
-
         let compiler = Compiler {
             cp,
             this_class,
@@ -443,20 +397,8 @@ impl Compiler {
                 object_init,
                 init_name,
                 init_desc,
-                system_out,
-                println_long,
-                println_string,
-                println_double,
-                println_bool,
-                println_object,
-                print_long,
-                print_string,
-                print_double,
-                print_bool,
-                print_object,
                 smt_name,
                 string_class,
-                ps_class,
                 long_box_valueof,
                 double_box_valueof,
                 bool_box_valueof,
@@ -471,9 +413,6 @@ impl Compiler {
                 string_equals,
                 runtime_exception_class,
                 runtime_exception_init,
-                string_valueof_long,
-                string_valueof_double,
-                string_length_ref,
             },
             frame: FrameState {
                 stack_types: Vec::new(),
@@ -1115,47 +1054,8 @@ impl Compiler {
         Ok(ty)
     }
 
-    fn compile_print_intrinsic(&mut self, args: &[TypedExpr], use_println: bool) -> Result<JvmType, CodegenError> {
-        // getstatic System.out
-        self.emit(Instruction::Getstatic(self.refs.system_out));
-        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.ps_class });
-
-        // Compile the single argument
-        let arg_type = self.compile_expr(&args[0], false)?;
-
-        // Select the right print/println overload
-        let method_ref = if use_println {
-            match arg_type {
-                JvmType::Long => self.refs.println_long,
-                JvmType::Double => self.refs.println_double,
-                JvmType::Ref => self.refs.println_string,
-                JvmType::Int => self.refs.println_bool,
-                JvmType::StructRef(_) => self.refs.println_object,
-            }
-        } else {
-            match arg_type {
-                JvmType::Long => self.refs.print_long,
-                JvmType::Double => self.refs.print_double,
-                JvmType::Ref => self.refs.print_string,
-                JvmType::Int => self.refs.print_bool,
-                JvmType::StructRef(_) => self.refs.print_object,
-            }
-        };
-
-        self.emit(Instruction::Invokevirtual(method_ref));
-        self.pop_jvm_type(arg_type); // pop the argument
-        self.frame.pop_type(); // pop PrintStream
-
-        // Unit = iconst_0 (bool false)
-        self.emit(Instruction::Iconst_0);
-        self.frame.push_type(VerificationType::Integer);
-        Ok(JvmType::Int)
-    }
-
     fn compile_intrinsic(&mut self, name: &str, args: &[TypedExpr], result_ty: &Type) -> Result<JvmType, CodegenError> {
         match name {
-            "println" => self.compile_print_intrinsic(args, true),
-            "print" => self.compile_print_intrinsic(args, false),
             "panic" => {
                 let re_class = self.refs.runtime_exception_class;
                 let re_init = self.refs.runtime_exception_init;
@@ -1175,60 +1075,6 @@ impl Compiler {
                 let jvm_ret = self.type_to_jvm(result_ty)?;
                 self.push_jvm_type(jvm_ret);
                 Ok(jvm_ret)
-            }
-            "to_float" => {
-                self.compile_expr(&args[0], false)?;
-                self.emit(Instruction::L2d);
-                self.frame.pop_type_n(2); // Long + Top
-                self.frame.push_double_type();
-                Ok(JvmType::Double)
-            }
-            "to_int" => {
-                self.compile_expr(&args[0], false)?;
-                self.emit(Instruction::D2l);
-                self.frame.pop_type_n(2); // Double + Top
-                self.frame.push_long_type();
-                Ok(JvmType::Long)
-            }
-            "int_to_string" => {
-                self.compile_expr(&args[0], false)?;
-                let ref_idx = self.refs.string_valueof_long;
-                self.emit(Instruction::Invokestatic(ref_idx));
-                self.frame.pop_type_n(2); // Long + Top
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
-                Ok(JvmType::Ref)
-            }
-            "float_to_string" => {
-                self.compile_expr(&args[0], false)?;
-                let ref_idx = self.refs.string_valueof_double;
-                self.emit(Instruction::Invokestatic(ref_idx));
-                self.frame.pop_type_n(2); // Double + Top
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
-                Ok(JvmType::Ref)
-            }
-            "string_concat" => {
-                // First string (receiver)
-                self.compile_expr(&args[0], false)?;
-                // Second string (argument)
-                self.compile_expr(&args[1], false)?;
-                let concat_ref = self.refs.string_concat;
-                self.emit(Instruction::Invokevirtual(concat_ref));
-                self.frame.pop_type(); // second string
-                self.frame.pop_type(); // first string (receiver)
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
-                Ok(JvmType::Ref)
-            }
-            "string_length" => {
-                self.compile_expr(&args[0], false)?;
-                let len_ref = self.refs.string_length_ref;
-                self.emit(Instruction::Invokevirtual(len_ref));
-                self.frame.pop_type(); // string
-                self.frame.push_type(VerificationType::Integer);
-                // Convert int to long (Krypton Int = JVM long)
-                self.emit(Instruction::I2l);
-                self.frame.pop_type(); // int
-                self.frame.push_long_type();
-                Ok(JvmType::Long)
             }
             _ => Err(CodegenError::UnsupportedExpr(format!("unknown intrinsic: {name}"))),
         }

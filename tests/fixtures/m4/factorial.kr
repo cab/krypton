@@ -1,4 +1,5 @@
 # expect: output 3628800
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (def factorial (fn [n]
   (if (== n 0)
     1

@@ -1,3 +1,4 @@
 # expect: output Some(42)
+(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
 (type Option [a] (| (Some a) None) deriving [Show])
 (def main (fn [] (println (show (Some 42)))))
