@@ -1,3 +1,4 @@
 # expect: error E0010
-(type Point (record (x Int) (y Int)))
-(def bad (fn [x] (. 42 y)))
+type Point = { x: Int, y: Int }
+
+fun bad(x) = 42.y

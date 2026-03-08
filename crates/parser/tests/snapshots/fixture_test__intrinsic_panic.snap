@@ -16,36 +16,36 @@ decls:
               value:
                 Bool: true
               span:
-                - 34
-                - 38
+                - 29
+                - 33
           then_:
             Lit:
               value:
                 Int: 42
               span:
-                - 39
-                - 41
+                - 34
+                - 40
           else_:
             App:
               func:
                 Var:
                   name: panic
                   span:
-                    - 43
                     - 48
+                    - 53
               args:
                 - Lit:
                     value:
                       String: oops
                     span:
-                      - 49
-                      - 55
+                      - 54
+                      - 60
               span:
-                - 42
-                - 56
+                - 46
+                - 63
           span:
-            - 30
-            - 57
+            - 26
+            - 63
       span:
         - 13
-        - 59
+        - 63

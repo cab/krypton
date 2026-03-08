@@ -1,2 +1,2 @@
 # expect: ok
-(def f (fn [x] [(own String)] String x))
+fun f(x: ~String) -> String = x

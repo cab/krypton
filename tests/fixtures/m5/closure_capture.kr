@@ -1,3 +1,10 @@
 # expect: output 15
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(def main (fn [] (do (let y 10) (let f (fn [x] (+ x y))) (println (f 5)))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun main() {
+    let y = 10;
+    let f = x => x + y;
+    println(f(5))
+}

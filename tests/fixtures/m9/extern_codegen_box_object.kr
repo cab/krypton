@@ -1,3 +1,9 @@
 # expect: output "42"
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(def main (fn [] (do (println 42) 0)))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun main() {
+    println(42);
+    0
+}

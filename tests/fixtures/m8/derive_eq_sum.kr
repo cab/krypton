@@ -1,4 +1,8 @@
 # expect: output false
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Color (| Red Green Blue) deriving [Eq])
-(def main (fn [] (println (== Red Green))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Color = Red | Green | Blue deriving [Eq]
+
+fun main() = println(Red == Green)

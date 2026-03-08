@@ -1,5 +1,17 @@
 # expect: output 3
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(extern "krypton.runtime.KryptonConvert" (def toFloat [Int] Float) (def toInt [Float] Int) (def intToString [Int] String))
-(extern "krypton.runtime.KryptonString" (def concat [String String] String) (def length [String] Int))
-(def main (fn [] (println (length (concat (intToString (toInt (toFloat 1))) "ab")))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+extern "krypton.runtime.KryptonConvert" {
+    fun toFloat(Int) -> Float
+    fun toInt(Float) -> Int
+    fun intToString(Int) -> String
+}
+
+extern "krypton.runtime.KryptonString" {
+    fun concat(String, String) -> String
+    fun length(String) -> Int
+}
+
+fun main() = println(length(concat(intToString(toInt(toFloat(1))), "ab")))

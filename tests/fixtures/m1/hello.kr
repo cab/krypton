@@ -1,2 +1,2 @@
 # expect: ok
-(def main (fn [] 42))
+fun main() = 42

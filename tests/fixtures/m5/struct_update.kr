@@ -1,4 +1,12 @@
 # expect: output 99
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Point (record (x Int) (y Int)))
-(def main (fn [] (do (let p (Point 1 2)) (let p2 (.. p (x 99))) (println (. p2 x)))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Point = { x: Int, y: Int }
+
+fun main() {
+    let p = Point(1, 2);
+    let p2 = { p | x = 99 };
+    println(p2.x)
+}

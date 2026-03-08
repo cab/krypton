@@ -14,11 +14,11 @@ decls:
           value:
             Int: 42
           span:
-            - 33
-            - 35
+            - 29
+            - 31
       span:
         - 13
-        - 37
+        - 31
   - DefFn:
       name: neg_int
       visibility: Private
@@ -33,21 +33,21 @@ decls:
               value:
                 Int: 0
               span:
-                - 61
-                - 62
+                - 49
+                - 50
           rhs:
             Lit:
               value:
                 Int: 1
               span:
-                - 63
-                - 64
+                - 53
+                - 54
           span:
-            - 58
-            - 65
+            - 49
+            - 54
       span:
-        - 38
-        - 67
+        - 33
+        - 54
   - DefFn:
       name: float_lit
       visibility: Private
@@ -59,11 +59,11 @@ decls:
           value:
             Float: 3.14
           span:
-            - 90
-            - 94
+            - 74
+            - 78
       span:
-        - 68
-        - 96
+        - 56
+        - 78
   - DefFn:
       name: bool_true
       visibility: Private
@@ -75,11 +75,11 @@ decls:
           value:
             Bool: true
           span:
-            - 119
-            - 123
+            - 98
+            - 102
       span:
-        - 97
-        - 125
+        - 80
+        - 102
   - DefFn:
       name: bool_false
       visibility: Private
@@ -91,11 +91,11 @@ decls:
           value:
             Bool: false
           span:
-            - 149
-            - 154
+            - 123
+            - 128
       span:
-        - 126
-        - 156
+        - 104
+        - 128
   - DefFn:
       name: string_lit
       visibility: Private
@@ -107,11 +107,11 @@ decls:
           value:
             String: hello world
           span:
-            - 180
-            - 193
+            - 149
+            - 162
       span:
-        - 157
-        - 195
+        - 130
+        - 162
   - DefFn:
       name: unit_lit
       visibility: Private
@@ -119,11 +119,11 @@ decls:
       constraints: []
       return_type: ~
       body:
-        Tuple:
-          elements: []
+        Lit:
+          value: Unit
           span:
-            - 217
-            - 224
+            - 181
+            - 183
       span:
-        - 196
-        - 226
+        - 164
+        - 183

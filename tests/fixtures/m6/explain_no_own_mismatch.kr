@@ -1,2 +1,2 @@
 # expect: error E0001
-(if true 1 "hi")
+fun f() = if true { 1 } else { "hi" }

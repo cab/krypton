@@ -1,6 +1,8 @@
 # expect: error E0103
-(def consume (fn [buf] [(own String)] String buf))
-(def bad (fn [x] [(own String)] String
-  (do (consume x)
-      (let f (fn [] (consume x)))
-      (f))))
+fun consume(buf: ~String) -> String = buf
+
+fun bad(x: ~String) -> String {
+    consume(x);
+    let f = () => consume(x);
+    f()
+}

@@ -10,19 +10,19 @@ decls:
         - name: x
           ty: ~
           span:
-            - 32
-            - 33
+            - 26
+            - 27
       constraints: []
       return_type: ~
       body:
         Var:
           name: x
           span:
-            - 35
-            - 36
+            - 31
+            - 32
       span:
         - 13
-        - 38
+        - 32
   - DefFn:
       name: multi_param
       visibility: Private
@@ -30,18 +30,18 @@ decls:
         - name: a
           ty: ~
           span:
-            - 61
-            - 62
+            - 50
+            - 51
         - name: b
           ty: ~
           span:
-            - 63
-            - 64
+            - 53
+            - 54
         - name: c
           ty: ~
           span:
-            - 65
-            - 66
+            - 56
+            - 57
       constraints: []
       return_type: ~
       body:
@@ -51,8 +51,8 @@ decls:
             Var:
               name: a
               span:
-                - 71
-                - 72
+                - 61
+                - 62
           rhs:
             BinaryOp:
               op: Add
@@ -60,23 +60,23 @@ decls:
                 Var:
                   name: b
                   span:
-                    - 76
-                    - 77
+                    - 66
+                    - 67
               rhs:
                 Var:
                   name: c
                   span:
-                    - 78
-                    - 79
+                    - 70
+                    - 71
               span:
-                - 73
-                - 80
+                - 66
+                - 71
           span:
-            - 68
-            - 81
+            - 61
+            - 72
       span:
-        - 39
-        - 83
+        - 34
+        - 72
   - DefFn:
       name: higher_order
       visibility: Private
@@ -84,13 +84,13 @@ decls:
         - name: f
           ty: ~
           span:
-            - 107
-            - 108
+            - 91
+            - 92
         - name: x
           ty: ~
           span:
-            - 109
-            - 110
+            - 94
+            - 95
       constraints: []
       return_type: ~
       body:
@@ -99,20 +99,20 @@ decls:
             Var:
               name: f
               span:
-                - 113
-                - 114
+                - 99
+                - 100
           args:
             - Var:
                 name: x
                 span:
-                  - 115
-                  - 116
+                  - 101
+                  - 102
           span:
-            - 112
-            - 117
+            - 99
+            - 103
       span:
-        - 84
-        - 119
+        - 74
+        - 103
   - DefFn:
       name: closure
       visibility: Private
@@ -120,8 +120,8 @@ decls:
         - name: x
           ty: ~
           span:
-            - 138
-            - 139
+            - 117
+            - 118
       constraints: []
       return_type: ~
       body:
@@ -130,8 +130,8 @@ decls:
             - name: y
               ty: ~
               span:
-                - 146
-                - 147
+                - 122
+                - 123
           return_type: ~
           body:
             BinaryOp:
@@ -140,20 +140,20 @@ decls:
                 Var:
                   name: x
                   span:
-                    - 152
-                    - 153
+                    - 127
+                    - 128
               rhs:
                 Var:
                   name: y
                   span:
-                    - 154
-                    - 155
+                    - 131
+                    - 132
               span:
-                - 149
-                - 156
+                - 127
+                - 132
           span:
-            - 141
-            - 157
+            - 122
+            - 132
       span:
-        - 120
-        - 159
+        - 105
+        - 132

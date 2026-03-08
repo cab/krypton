@@ -14,18 +14,18 @@ decls:
               - Named:
                   name: Int
                   span:
-                    - 36
-                    - 39
+                    - 31
+                    - 34
             - - y
               - Named:
                   name: Int
                   span:
-                    - 44
-                    - 47
+                    - 39
+                    - 42
       deriving: []
       span:
         - 13
-        - 50
+        - 44
   - DefType:
       name: Shape
       visibility: Private
@@ -38,30 +38,30 @@ decls:
                 - Named:
                     name: Int
                     span:
-                      - 75
-                      - 78
+                      - 66
+                      - 69
               span:
-                - 67
-                - 79
+                - 59
+                - 70
             - name: Rect
               fields:
                 - Named:
                     name: Int
                     span:
-                      - 86
-                      - 89
+                      - 78
+                      - 81
                 - Named:
                     name: Int
                     span:
-                      - 90
-                      - 93
+                      - 83
+                      - 86
               span:
-                - 80
-                - 94
+                - 73
+                - 87
       deriving: []
       span:
-        - 52
-        - 96
+        - 46
+        - 87
   - DefFn:
       name: area
       visibility: Private
@@ -69,8 +69,8 @@ decls:
         - name: s
           ty: ~
           span:
-            - 113
-            - 114
+            - 98
+            - 99
       constraints: []
       return_type: ~
       body:
@@ -79,8 +79,8 @@ decls:
             Var:
               name: s
               span:
-                - 125
-                - 126
+                - 109
+                - 110
           arms:
             - pattern:
                 Constructor:
@@ -89,11 +89,11 @@ decls:
                     - Var:
                         name: r
                         span:
-                          - 140
-                          - 141
+                          - 124
+                          - 125
                   span:
-                    - 132
-                    - 142
+                    - 117
+                    - 126
               guard: ~
               body:
                 BinaryOp:
@@ -102,20 +102,20 @@ decls:
                     Var:
                       name: r
                       span:
-                        - 146
-                        - 147
+                        - 130
+                        - 131
                   rhs:
                     Var:
                       name: r
                       span:
-                        - 148
-                        - 149
+                        - 134
+                        - 135
                   span:
-                    - 143
-                    - 150
+                    - 130
+                    - 135
               span:
-                - 131
-                - 151
+                - 117
+                - 135
             - pattern:
                 Constructor:
                   name: Rect
@@ -123,16 +123,16 @@ decls:
                     - Var:
                         name: w
                         span:
-                          - 163
-                          - 164
+                          - 146
+                          - 147
                     - Var:
                         name: h
                         span:
-                          - 165
-                          - 166
+                          - 149
+                          - 150
                   span:
-                    - 157
-                    - 167
+                    - 141
+                    - 151
               guard: ~
               body:
                 BinaryOp:
@@ -141,26 +141,26 @@ decls:
                     Var:
                       name: w
                       span:
-                        - 171
-                        - 172
+                        - 155
+                        - 156
                   rhs:
                     Var:
                       name: h
                       span:
-                        - 173
-                        - 174
+                        - 159
+                        - 160
                   span:
-                    - 168
-                    - 175
+                    - 155
+                    - 160
               span:
-                - 156
-                - 176
+                - 141
+                - 160
           span:
-            - 118
-            - 177
+            - 103
+            - 163
       span:
-        - 98
-        - 179
+        - 89
+        - 163
   - DefFn:
       name: origin
       visibility: Private
@@ -168,22 +168,32 @@ decls:
       constraints: []
       return_type: ~
       body:
-        Let:
-          name: x
-          value:
-            Lit:
-              value:
-                Int: 0
-              span:
-                - 207
-                - 208
-          body: ~
+        Do:
+          exprs:
+            - Let:
+                name: x
+                value:
+                  Lit:
+                    value:
+                      Int: 0
+                    span:
+                      - 192
+                      - 193
+                body: ~
+                span:
+                  - 184
+                  - 193
+            - Var:
+                name: x
+                span:
+                  - 199
+                  - 200
           span:
-            - 200
-            - 209
+            - 178
+            - 202
       span:
-        - 181
-        - 211
+        - 165
+        - 202
   - DefFn:
       name: main
       visibility: Private
@@ -201,16 +211,16 @@ decls:
                       Var:
                         name: origin
                         span:
-                          - 248
-                          - 254
+                          - 229
+                          - 235
                     args: []
                     span:
-                      - 247
-                      - 255
+                      - 229
+                      - 237
                 body: ~
                 span:
-                  - 240
-                  - 256
+                  - 221
+                  - 237
             - Let:
                 name: s
                 value:
@@ -219,41 +229,41 @@ decls:
                       Var:
                         name: Circle
                         span:
-                          - 269
-                          - 275
+                          - 251
+                          - 257
                     args:
                       - Lit:
                           value:
                             Int: 5
                           span:
-                            - 276
-                            - 277
+                            - 258
+                            - 259
                     span:
-                      - 268
-                      - 278
+                      - 251
+                      - 260
                 body: ~
                 span:
-                  - 261
-                  - 279
+                  - 243
+                  - 260
             - App:
                 func:
                   Var:
                     name: area
                     span:
-                      - 285
-                      - 289
+                      - 266
+                      - 270
                 args:
                   - Var:
                       name: s
                       span:
-                        - 290
-                        - 291
+                        - 271
+                        - 272
                 span:
-                  - 284
-                  - 292
+                  - 266
+                  - 273
           span:
-            - 232
-            - 293
+            - 215
+            - 275
       span:
-        - 213
-        - 295
+        - 204
+        - 275

@@ -1,3 +1,9 @@
 # expect: ok
-(extern "java.lang.System" (def gc [] Unit))
-(def main (fn [] (do (gc) 0)))
+extern "java.lang.System" {
+    fun gc() -> Unit
+}
+
+fun main() {
+    gc();
+    0
+}

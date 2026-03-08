@@ -107,7 +107,8 @@ decls:
                 - 78
                 - 99
             - pattern:
-                Wildcard:
+                Var:
+                  name: _
                   span:
                     - 105
                     - 106

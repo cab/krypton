@@ -22,8 +22,12 @@ pub fn surface_lexer<'src>(
         .then_ignore(just('"'))
         .map(Token::String);
 
-    // Identifiers and keywords
-    let ident = text::ascii::ident().map(|s: &str| match s {
+    // Identifiers and keywords (including _prefixed like _foo, _0)
+    let ident = just('_')
+        .then(any().filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_').repeated().at_least(1))
+        .to_slice()
+        .map(|s: &str| Token::Ident(s))
+        .or(text::ascii::ident().map(|s: &str| match s {
         "fun" => Token::Fun,
         "def" => Token::Def,
         "fn" => Token::Fn,
@@ -51,7 +55,7 @@ pub fn surface_lexer<'src>(
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
         _ => Token::Ident(s),
-    });
+    }));
 
     // Multi-char operators (must come before single-char)
     let multi_op = choice((
@@ -101,7 +105,7 @@ pub fn surface_lexer<'src>(
         .then(any().and_is(just('\n').not()).repeated())
         .padded();
 
-    let token = choice((num, string, multi_op, single_op, delim, ident));
+    let token = choice((num, string, multi_op, ident, single_op, delim));
 
     token
         .map_with(|tok, e| (tok, e.span()))

@@ -1,2 +1,3 @@
 # expect: error P0001
+# syntax: sexp
 (def foo (fn [x]))

@@ -1,5 +1,7 @@
 # expect: ok
-(extern "java.lang.Math"
-  (def abs [Int] Int)
-  (def max [Int Int] Int))
-(def main (fn [] (max (abs 5) 3)))
+extern "java.lang.Math" {
+    fun abs(Int) -> Int
+    fun max(Int, Int) -> Int
+}
+
+fun main() = max(abs(5), 3)

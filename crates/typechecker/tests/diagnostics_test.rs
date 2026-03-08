@@ -1,9 +1,11 @@
 use krypton_parser::lexer;
 use krypton_parser::parser::{parse, parse_expr};
+use krypton_parser::surface_parser::surface_parse;
 use krypton_typechecker::diagnostics::render_type_errors;
 use krypton_typechecker::infer;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 use krypton_typechecker::unify::SpannedTypeError;
+use krypton_test_harness::{parse_syntax, Syntax};
 use chumsky::prelude::*;
 
 fn parse_and_infer_error(src: &str) -> SpannedTypeError {
@@ -75,7 +77,10 @@ fn unknown_var_diagnostic() {
 
 fn render_fixture_error(fixture: &str) -> String {
     let src = std::fs::read_to_string(fixture).unwrap();
-    let (module, errors) = parse(&src);
+    let (module, errors) = match parse_syntax(&src) {
+        Syntax::Sexp => parse(&src),
+        Syntax::Surface => surface_parse(&src),
+    };
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let err = match infer::infer_module(&module) {
         Ok(_) => panic!("expected a type error"),

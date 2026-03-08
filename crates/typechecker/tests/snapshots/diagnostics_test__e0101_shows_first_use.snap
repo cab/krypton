@@ -3,13 +3,14 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: output
 ---
 [E0101] Error: value already moved: `x`
-   ╭─[ ../../tests/fixtures/m6/own_double_use.kr:4:28 ]
+   ╭─[ ../../tests/fixtures/m6/own_double_use.kr:6:13 ]
    │
- 4 │   (do (consume x) (consume x))))
-   │                ┬           ┬  
-   │                ╰────────────── first use here
-   │                            │  
-   │                            ╰── E0101: value already moved: `x`
+ 5 │     consume(x);
+   │             ┬  
+   │             ╰── first use here
+ 6 │     consume(x)
+   │             ┬  
+   │             ╰── E0101: value already moved: `x`
    │ 
    │ Help: `x` was already consumed by a previous use
 ───╯

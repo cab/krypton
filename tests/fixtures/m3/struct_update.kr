@@ -1,3 +1,4 @@
 # expect: ok
-(type Point (record (x Int) (y Int)))
-(def move_x (fn [] (.. (Point 1 2) (x 42))))
+type Point = { x: Int, y: Int }
+
+fun move_x() = { Point(1, 2) | x = 42 }

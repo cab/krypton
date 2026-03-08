@@ -1,3 +1,4 @@
 # expect: ok
-(def id (fn [x] x))
-(def always (fn [x y] x))
+fun id(x) = x
+
+fun always(x, y) = x

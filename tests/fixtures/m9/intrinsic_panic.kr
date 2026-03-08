@@ -1,2 +1,2 @@
 # expect: ok
-(def main (fn [] (if true 42 (panic "oops"))))
+fun main() = if true { 42 } else { panic("oops") }

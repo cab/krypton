@@ -1,7 +1,9 @@
 # expect: error E0001
-(type Color (| Red Green Blue))
-(type Option [a] (| (Some a) None))
-(def bad (fn [c]
-  (match Red
-    ((Some x) x)
-    (_ 0))))
+type Color = Red | Green | Blue
+
+type Option[a] = Some(a) | None
+
+fun bad(c) = match Red {
+    Some(x) => x,
+    _ => 0,
+}

@@ -1,6 +1,7 @@
 # expect: ok
-(type Buf (record (name String) (data (own String))))
-(def test (fn [s d] [(own Buf) (own String)] String
-  (do
-    (let s2 (.. s (data d)))
-    (. s name))))
+type Buf = { name: String, data: ~String }
+
+fun test(s: ~Buf, d: ~String) -> String {
+    let s2 = { s | data = d };
+    s.name
+}

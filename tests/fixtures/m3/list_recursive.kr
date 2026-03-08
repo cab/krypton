@@ -1,6 +1,7 @@
 # expect: ok
-(type List [a] (| (Cons a (List a)) Nil))
-(def length (fn [xs]
-  (match xs
-    ((Nil) 0)
-    ((Cons _ rest) (+ 1 (length rest))))))
+type List[a] = Cons(a, List[a]) | Nil
+
+fun length(xs) = match xs {
+    Nil => 0,
+    Cons(_, rest) => 1 + length(rest),
+}

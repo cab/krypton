@@ -1,4 +1,4 @@
 # expect: error E0001
-(def call_many (fn [f] [(fn [] String)] String (f)))
-(def bad (fn [x] [(own String)] String
-  (call_many (fn [] x))))
+fun call_many(f: () -> String) -> String = f()
+
+fun bad(x: ~String) -> String = call_many(() => x)

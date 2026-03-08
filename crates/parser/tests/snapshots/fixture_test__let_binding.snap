@@ -10,22 +10,32 @@ decls:
       constraints: []
       return_type: ~
       body:
-        Let:
-          name: x
-          value:
-            Lit:
-              value:
-                Int: 42
-              span:
-                - 43
-                - 45
-          body: ~
+        Do:
+          exprs:
+            - Let:
+                name: x
+                value:
+                  Lit:
+                    value:
+                      Int: 42
+                    span:
+                      - 44
+                      - 46
+                body: ~
+                span:
+                  - 36
+                  - 46
+            - Var:
+                name: x
+                span:
+                  - 52
+                  - 53
           span:
-            - 36
-            - 46
+            - 30
+            - 55
       span:
         - 13
-        - 48
+        - 55
   - DefFn:
       name: nested_let
       visibility: Private
@@ -42,12 +52,12 @@ decls:
                     value:
                       Int: 1
                     span:
+                      - 88
                       - 89
-                      - 90
                 body: ~
                 span:
-                  - 82
-                  - 91
+                  - 80
+                  - 89
             - Let:
                 name: y
                 value:
@@ -59,28 +69,28 @@ decls:
                       - 104
                 body: ~
                 span:
-                  - 96
-                  - 105
+                  - 95
+                  - 104
             - BinaryOp:
                 op: Add
                 lhs:
                   Var:
                     name: x
                     span:
-                      - 113
-                      - 114
+                      - 110
+                      - 111
                 rhs:
                   Var:
                     name: y
                     span:
+                      - 114
                       - 115
-                      - 116
                 span:
                   - 110
-                  - 117
+                  - 115
           span:
             - 74
-            - 118
+            - 117
       span:
-        - 49
-        - 120
+        - 57
+        - 117

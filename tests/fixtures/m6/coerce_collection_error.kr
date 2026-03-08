@@ -1,3 +1,4 @@
 # expect: ok
-(type MyList (| (Cons String MyList) Nil))
-(def test (fn [buf] [(own String)] MyList (Cons buf Nil)))
+type MyList = Cons(String, MyList) | Nil
+
+fun test(buf: ~String) -> MyList = Cons(buf, Nil)

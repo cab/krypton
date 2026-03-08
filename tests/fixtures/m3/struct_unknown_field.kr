@@ -1,3 +1,4 @@
 # expect: error E0008
-(type Point (record (x Int) (y Int)))
-(def bad (fn [p] (. (Point 1 2) z)))
+type Point = { x: Int, y: Int }
+
+fun bad(p) = Point(1, 2).z

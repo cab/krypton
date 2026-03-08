@@ -1,11 +1,12 @@
 # expect: ok
-(type Point (record (x Int) (y Int)))
+type Point = { x: Int, y: Int }
 
-(trait Eq [a]
-  (def eq [a a] Bool))
+trait Eq[a] {
+    fun eq(_0: a, _1: a) -> Bool
+}
 
-(impl Eq Point
-  (def eq [x y] (if (== (. x x) (. y x)) (== (. x y) (. y y)) false)))
+impl Eq[Point] {
+    fun eq(x, y) = if x.x == y.x { x.y == y.y } else { false }
+}
 
-(def main (fn []
-  (eq (Point 1 2) (Point 1 2))))
+fun main() = eq(Point(1, 2), Point(1, 2))

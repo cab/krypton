@@ -1,20 +1,28 @@
 use std::path::Path;
 
-use krypton_parser::ast::{Decl};
+use krypton_parser::ast::Decl;
 use krypton_parser::lexer;
 use krypton_parser::parser::{parse, parse_expr};
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_parser::surface_parser::surface_parse;
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation, Syntax};
 use krypton_typechecker::infer;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 use chumsky::prelude::*;
 
-fn has_module_decls(source: &str) -> bool {
-    let (module, _) = parse(source);
+fn parse_fixture(source: &str, syntax: Syntax) -> (krypton_parser::ast::Module, Vec<krypton_parser::parser::ParseError>) {
+    match syntax {
+        Syntax::Sexp => parse(source),
+        Syntax::Surface => surface_parse(source),
+    }
+}
+
+fn has_module_decls(source: &str, syntax: Syntax) -> bool {
+    let (module, _) = parse_fixture(source, syntax);
     module.decls.iter().any(|d| matches!(d, Decl::DefFn(_) | Decl::DefType(_) | Decl::DefTrait { .. } | Decl::DefImpl { .. } | Decl::ExternJava { .. }))
 }
 
-fn infer_module_snapshot(source: &str) -> Result<String, String> {
-    let (module, errors) = parse(source);
+fn infer_module_snapshot(source: &str, syntax: Syntax) -> Result<String, String> {
+    let (module, errors) = parse_fixture(source, syntax);
     if !errors.is_empty() {
         return Err(errors[0].code.to_string());
     }
@@ -75,13 +83,13 @@ fn run_fixtures(subdir: &str) {
             .to_string_lossy()
             .to_string();
 
-        let use_module = has_module_decls(&fixture.source);
+        let use_module = has_module_decls(&fixture.source, fixture.syntax);
 
         for expectation in &fixture.expectations {
             match expectation {
                 Expectation::Ok => {
                     let result = if use_module {
-                        infer_module_snapshot(&fixture.source)
+                        infer_module_snapshot(&fixture.source, fixture.syntax)
                     } else {
                         infer_expr_snapshot(&fixture.source)
                     };
@@ -92,7 +100,7 @@ fn run_fixtures(subdir: &str) {
                 }
                 Expectation::Error(code) => {
                     let result = if use_module {
-                        infer_module_snapshot(&fixture.source)
+                        infer_module_snapshot(&fixture.source, fixture.syntax)
                     } else {
                         infer_expr_snapshot(&fixture.source)
                     };

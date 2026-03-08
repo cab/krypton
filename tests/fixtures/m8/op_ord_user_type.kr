@@ -1,10 +1,24 @@
 # expect: output true
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Wrapper (record (val Int)))
-(trait Eq [a] (def eq [a a] Bool))
-(impl Eq Wrapper
-  (def eq [a b] (== (. a val) (. b val))))
-(trait Ord [a] : [Eq] (def lt [a a] Bool))
-(impl Ord Wrapper
-  (def lt [a b] (< (. a val) (. b val))))
-(def main (fn [] (println (lt (Wrapper 1) (Wrapper 2)))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Wrapper = { val: Int }
+
+trait Eq[a] {
+    fun eq(_0: a, _1: a) -> Bool
+}
+
+impl Eq[Wrapper] {
+    fun eq(a, b) = a.val == b.val
+}
+
+trait Ord[a] where a: Eq {
+    fun lt(_0: a, _1: a) -> Bool
+}
+
+impl Ord[Wrapper] {
+    fun lt(a, b) = a.val < b.val
+}
+
+fun main() = println(lt(Wrapper(1), Wrapper(2)))

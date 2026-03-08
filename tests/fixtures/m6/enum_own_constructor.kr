@@ -1,3 +1,6 @@
-(type Option (sum (Some a) (None)))
-(def f (fn [] [] (own (Option Int)) (Some 42)))
-(def main () (match (f) ((Some x) x) ((None) 0)))
+# expect: ok
+type Option[a] = Some(a) | None
+
+fun f() -> ~Option[Int] = Some(42)
+
+fun main() = match f() { Some(x) => x, None => 0 }

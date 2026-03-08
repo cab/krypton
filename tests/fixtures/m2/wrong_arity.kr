@@ -1,2 +1,3 @@
 # expect: error E0005
+# syntax: sexp
 (do (let f (fn [x] x)) (f 1 2))

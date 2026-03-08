@@ -1,4 +1,13 @@
 # expect: output "42"
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(extern "java.lang.Math" (def abs [Int] Int))
-(def main (fn [] (do (println (abs (- 0 42))) 0)))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+extern "java.lang.Math" {
+    fun abs(Int) -> Int
+}
+
+fun main() {
+    println(abs(0 - 42));
+    0
+}

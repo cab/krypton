@@ -1,7 +1,8 @@
 # expect: error E0006
-(type Direction (| North South East West))
-(def show (fn [d]
-  (match d
-    ((North) 1)
-    ((South) 2)
-    ((East) 3))))
+type Direction = North | South | East | West
+
+fun show(d) = match d {
+    North => 1,
+    South => 2,
+    East => 3,
+}

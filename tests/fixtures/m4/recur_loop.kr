@@ -1,4 +1,8 @@
 # expect: output 5050
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(def sum (fn [n acc] (if (== n 0) acc (recur (- n 1) (+ acc n)))))
-(def main (fn [] (println (sum 100 0))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun sum(n, acc) = if n == 0 { acc } else { recur(n - 1, acc + n) }
+
+fun main() = println(sum(100, 0))

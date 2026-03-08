@@ -1,10 +1,14 @@
 # expect: ok
-(type Choice (| A B))
-(def peek (fn [s] [String] Choice A))
-(def consume (fn [s] [(own String)] String s))
-(def test (fn [val] [(own String)] String
-  (do
-    (match (peek val)
-      ((A) 0)
-      ((B) 0))
-    (consume val))))
+type Choice = A | B
+
+fun peek(s: String) -> Choice = A
+
+fun consume(s: ~String) -> String = s
+
+fun test(val: ~String) -> String {
+    match peek(val) {
+        A => 0,
+        B => 0,
+    };
+    consume(val)
+}

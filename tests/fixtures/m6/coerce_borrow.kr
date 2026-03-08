@@ -1,4 +1,7 @@
 # expect: ok
-(def len (fn [s] [String] Int 42))
-(def test (fn [buf] [(own String)] Int
-  (do (len buf) (len buf))))
+fun len(s: String) -> Int = 42
+
+fun test(buf: ~String) -> Int {
+    len(buf);
+    len(buf)
+}

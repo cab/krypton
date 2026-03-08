@@ -1,3 +1,4 @@
 # expect: ok
-(type Option [a] (| (Some a) None))
-(def wrap (fn [x] (Some x)))
+type Option[a] = Some(a) | None
+
+fun wrap(x) = Some(x)

@@ -1,2 +1,3 @@
 # expect: error E0007
+# syntax: sexp
 (fn [x] (x x))

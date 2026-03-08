@@ -1,11 +1,14 @@
 # expect: error E0303
-(type Point (record (x Int) (y Int)))
+type Point = { x: Int, y: Int }
 
-(trait MyEq [a]
-  (def my_eq [a a] Bool))
+trait MyEq[a] {
+    fun my_eq(_0: a, _1: a) -> Bool
+}
 
-(trait MyOrd [a] : [MyEq]
-  (def my_compare [a a] Int))
+trait MyOrd[a] where a: MyEq {
+    fun my_compare(_0: a, _1: a) -> Int
+}
 
-(impl MyOrd Point
-  (def my_compare [x y] 0))
+impl MyOrd[Point] {
+    fun my_compare(x, y) = 0
+}

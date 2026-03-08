@@ -40,15 +40,33 @@ enum Commands {
         file: String,
         #[arg(long, default_value = "debug")]
         format: OutputFormat,
+        #[arg(long, default_value = "surface")]
+        syntax: SyntaxMode,
     },
     /// Parse and pretty-print a file
-    Fmt { file: String },
+    Fmt {
+        file: String,
+        #[arg(long, default_value = "surface")]
+        syntax: SyntaxMode,
+    },
     /// Type-check a file and print inferred types
-    Check { file: String },
+    Check {
+        file: String,
+        #[arg(long, default_value = "surface")]
+        syntax: SyntaxMode,
+    },
     /// Compile a file to a JVM .class file
-    Compile { file: String },
+    Compile {
+        file: String,
+        #[arg(long, default_value = "surface")]
+        syntax: SyntaxMode,
+    },
     /// Compile and run a file on the JVM
-    Run { file: String },
+    Run {
+        file: String,
+        #[arg(long, default_value = "surface")]
+        syntax: SyntaxMode,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -58,15 +76,28 @@ enum OutputFormat {
     Surface,
 }
 
+#[derive(Clone, ValueEnum)]
+enum SyntaxMode {
+    Sexp,
+    Surface,
+}
+
+fn do_parse(source: &str, syntax: &SyntaxMode) -> (krypton_parser::ast::Module, Vec<krypton_parser::parser::ParseError>) {
+    match syntax {
+        SyntaxMode::Sexp => krypton_parser::parser::parse(source),
+        SyntaxMode::Surface => krypton_parser::surface_parser::surface_parse(source),
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Parse { file, format } => {
+        Commands::Parse { file, format, syntax } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = krypton_parser::parser::parse(&source);
+            let (module, errors) = do_parse(&source, &syntax);
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
@@ -78,12 +109,12 @@ fn main() {
                 OutputFormat::Surface => println!("{}", krypton_parser::surface_pretty::surface_pretty_print(&module)),
             }
         }
-        Commands::Fmt { file } => {
+        Commands::Fmt { file, syntax } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = krypton_parser::parser::parse(&source);
+            let (module, errors) = do_parse(&source, &syntax);
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
@@ -91,12 +122,12 @@ fn main() {
             }
             println!("{}", krypton_parser::surface_pretty::surface_pretty_print(&module));
         }
-        Commands::Compile { file } => {
+        Commands::Compile { file, syntax } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = krypton_parser::parser::parse(&source);
+            let (module, errors) = do_parse(&source, &syntax);
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
@@ -140,12 +171,12 @@ fn main() {
                 }
             }
         }
-        Commands::Run { file } => {
+        Commands::Run { file, syntax } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = krypton_parser::parser::parse(&source);
+            let (module, errors) = do_parse(&source, &syntax);
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);
@@ -199,12 +230,12 @@ fn main() {
                 }
             }
         }
-        Commands::Check { file } => {
+        Commands::Check { file, syntax } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let (module, errors) = krypton_parser::parser::parse(&source);
+            let (module, errors) = do_parse(&source, &syntax);
             if !errors.is_empty() {
                 let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
                 eprint!("{}", diag);

@@ -1,9 +1,26 @@
 # expect: output true
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Box (record (val Int)))
-(trait Eq [a] (def eq [a a] Bool))
-(impl Eq Box (def eq [a b] (== (. a val) (. b val))))
-(trait Show [a] (def show [a] String))
-(impl Show Box (def show [a] "Box"))
-(def eq_and_show (fn [x y] (if (eq x y) (show x) "not equal")))
-(def main (fn [] (println (== (eq_and_show (Box 1) (Box 1)) "Box"))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Box = { val: Int }
+
+trait Eq[a] {
+    fun eq(_0: a, _1: a) -> Bool
+}
+
+impl Eq[Box] {
+    fun eq(a, b) = a.val == b.val
+}
+
+trait Show[a] {
+    fun show(_0: a) -> String
+}
+
+impl Show[Box] {
+    fun show(a) = "Box"
+}
+
+fun eq_and_show(x, y) = if eq(x, y) { show(x) } else { "not equal" }
+
+fun main() = println(eq_and_show(Box(1), Box(1)) == "Box")

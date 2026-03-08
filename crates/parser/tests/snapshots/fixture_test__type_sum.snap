@@ -13,8 +13,8 @@ decls:
             - name: Red
               fields: []
               span:
-                - 28
-                - 31
+                - 26
+                - 29
             - name: Green
               fields: []
               span:
@@ -23,8 +23,8 @@ decls:
             - name: Blue
               fields: []
               span:
-                - 38
-                - 42
+                - 40
+                - 44
       deriving: []
       span:
         - 13
@@ -40,22 +40,22 @@ decls:
             - name: None
               fields: []
               span:
-                - 65
-                - 69
+                - 63
+                - 67
             - name: Some
               fields:
                 - Var:
                     name: a
                     span:
+                      - 75
                       - 76
-                      - 77
               span:
                 - 70
-                - 78
+                - 77
       deriving: []
       span:
-        - 45
-        - 80
+        - 46
+        - 77
   - DefType:
       name: Result
       visibility: Private
@@ -70,24 +70,24 @@ decls:
                 - Var:
                     name: a
                     span:
-                      - 107
-                      - 108
+                      - 102
+                      - 103
               span:
-                - 103
-                - 109
+                - 99
+                - 104
             - name: Err
               fields:
                 - Var:
                     name: b
                     span:
-                      - 115
-                      - 116
+                      - 111
+                      - 112
               span:
-                - 110
-                - 117
+                - 107
+                - 113
       deriving:
         - Eq
         - Show
       span:
-        - 81
-        - 138
+        - 79
+        - 133

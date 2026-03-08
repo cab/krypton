@@ -1,4 +1,8 @@
 # expect: error E0301
-(type Foo (record (x Int)))
-(trait MyTrait [a] (def do_thing [a] Int))
-(def main (fn [] (do_thing (Foo 1))))
+type Foo = { x: Int }
+
+trait MyTrait[a] {
+    fun do_thing(_0: a) -> Int
+}
+
+fun main() = do_thing(Foo(1))

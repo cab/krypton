@@ -1,4 +1,5 @@
 # expect: error P0001
+# syntax: sexp
 (extern "java.lang.Math"
   (def abs [Int])
 )

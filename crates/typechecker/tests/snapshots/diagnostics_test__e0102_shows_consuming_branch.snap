@@ -5,10 +5,10 @@ expression: output
 [E0102] Error: value may have been moved in a prior branch: `x`
    ╭─[ ../../tests/fixtures/m6/branch_if_one.kr:6:5 ]
    │
- 5 │     (if true (consume x) 0)
+ 5 │     if true { consume(x) } else { 0 };
    │                       ┬  
    │                       ╰── consumed here
- 6 │     x)))
+ 6 │     x
    │     ┬  
    │     ╰── E0102: value may have been moved in a prior branch: `x`
    │ 

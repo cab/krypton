@@ -1,5 +1,6 @@
 # expect: error E0305
-(trait MyTrait [a]
-  (def check [a a] Bool))
+trait MyTrait[a] {
+    fun check(_0: a, _1: a) -> Bool
+}
 
-(def check (fn [x y] true))
+fun check(x, y) = true

@@ -15,18 +15,18 @@ decls:
             Var:
               name: Some
               span:
-                - 82
-                - 86
+                - 77
+                - 81
           args:
             - Lit:
                 value:
                   Int: 42
                 span:
-                  - 87
-                  - 89
+                  - 82
+                  - 84
           span:
-            - 81
-            - 90
+            - 77
+            - 85
       span:
         - 64
-        - 92
+        - 85

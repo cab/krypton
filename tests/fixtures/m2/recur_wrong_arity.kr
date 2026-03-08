@@ -1,2 +1,2 @@
 # expect: error E0005
-(def countdown (fn [n] (if (== n 0) 0 (recur n 1))))
+fun countdown(n) = if n == 0 { 0 } else { recur(n, 1) }

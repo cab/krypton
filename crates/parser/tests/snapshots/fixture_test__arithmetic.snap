@@ -10,13 +10,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 27
-            - 28
+            - 21
+            - 22
         - name: y
           ty: ~
           span:
-            - 29
-            - 30
+            - 24
+            - 25
       constraints: []
       return_type: ~
       body:
@@ -26,20 +26,20 @@ decls:
             Var:
               name: x
               span:
-                - 35
-                - 36
+                - 29
+                - 30
           rhs:
             Var:
               name: y
               span:
-                - 37
-                - 38
+                - 33
+                - 34
           span:
-            - 32
-            - 39
+            - 29
+            - 34
       span:
         - 13
-        - 41
+        - 34
   - DefFn:
       name: sub
       visibility: Private
@@ -47,13 +47,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 56
-            - 57
+            - 44
+            - 45
         - name: y
           ty: ~
           span:
-            - 58
-            - 59
+            - 47
+            - 48
       constraints: []
       return_type: ~
       body:
@@ -63,20 +63,20 @@ decls:
             Var:
               name: x
               span:
-                - 64
-                - 65
+                - 52
+                - 53
           rhs:
             Var:
               name: y
               span:
-                - 66
-                - 67
+                - 56
+                - 57
           span:
-            - 61
-            - 68
+            - 52
+            - 57
       span:
-        - 42
-        - 70
+        - 36
+        - 57
   - DefFn:
       name: mul
       visibility: Private
@@ -84,13 +84,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 85
-            - 86
+            - 67
+            - 68
         - name: y
           ty: ~
           span:
-            - 87
-            - 88
+            - 70
+            - 71
       constraints: []
       return_type: ~
       body:
@@ -100,20 +100,20 @@ decls:
             Var:
               name: x
               span:
-                - 93
-                - 94
+                - 75
+                - 76
           rhs:
             Var:
               name: y
               span:
-                - 95
-                - 96
+                - 79
+                - 80
           span:
-            - 90
-            - 97
+            - 75
+            - 80
       span:
-        - 71
-        - 99
+        - 59
+        - 80
   - DefFn:
       name: div
       visibility: Private
@@ -121,13 +121,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 114
-            - 115
+            - 90
+            - 91
         - name: y
           ty: ~
           span:
-            - 116
-            - 117
+            - 93
+            - 94
       constraints: []
       return_type: ~
       body:
@@ -137,20 +137,20 @@ decls:
             Var:
               name: x
               span:
-                - 122
-                - 123
+                - 98
+                - 99
           rhs:
             Var:
               name: y
               span:
-                - 124
-                - 125
+                - 102
+                - 103
           span:
-            - 119
-            - 126
+            - 98
+            - 103
       span:
-        - 100
-        - 128
+        - 82
+        - 103
   - DefFn:
       name: eq
       visibility: Private
@@ -158,13 +158,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 142
-            - 143
+            - 112
+            - 113
         - name: y
           ty: ~
           span:
-            - 144
-            - 145
+            - 115
+            - 116
       constraints: []
       return_type: ~
       body:
@@ -174,20 +174,20 @@ decls:
             Var:
               name: x
               span:
-                - 151
-                - 152
+                - 120
+                - 121
           rhs:
             Var:
               name: y
               span:
-                - 153
-                - 154
+                - 125
+                - 126
           span:
-            - 147
-            - 155
+            - 120
+            - 126
       span:
-        - 129
-        - 157
+        - 105
+        - 126
   - DefFn:
       name: neq
       visibility: Private
@@ -195,13 +195,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 172
-            - 173
+            - 136
+            - 137
         - name: y
           ty: ~
           span:
-            - 174
-            - 175
+            - 139
+            - 140
       constraints: []
       return_type: ~
       body:
@@ -211,20 +211,20 @@ decls:
             Var:
               name: x
               span:
-                - 181
-                - 182
+                - 144
+                - 145
           rhs:
             Var:
               name: y
               span:
-                - 183
-                - 184
+                - 149
+                - 150
           span:
-            - 177
-            - 185
+            - 144
+            - 150
       span:
-        - 158
-        - 187
+        - 128
+        - 150
   - DefFn:
       name: lt
       visibility: Private
@@ -232,13 +232,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 201
-            - 202
+            - 159
+            - 160
         - name: y
           ty: ~
           span:
-            - 203
-            - 204
+            - 162
+            - 163
       constraints: []
       return_type: ~
       body:
@@ -248,20 +248,20 @@ decls:
             Var:
               name: x
               span:
-                - 209
-                - 210
+                - 167
+                - 168
           rhs:
             Var:
               name: y
               span:
-                - 211
-                - 212
+                - 171
+                - 172
           span:
-            - 206
-            - 213
+            - 167
+            - 172
       span:
-        - 188
-        - 215
+        - 152
+        - 172
   - DefFn:
       name: gt
       visibility: Private
@@ -269,13 +269,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 229
-            - 230
+            - 181
+            - 182
         - name: y
           ty: ~
           span:
-            - 231
-            - 232
+            - 184
+            - 185
       constraints: []
       return_type: ~
       body:
@@ -285,20 +285,20 @@ decls:
             Var:
               name: x
               span:
-                - 237
-                - 238
+                - 189
+                - 190
           rhs:
             Var:
               name: y
               span:
-                - 239
-                - 240
+                - 193
+                - 194
           span:
-            - 234
-            - 241
+            - 189
+            - 194
       span:
-        - 216
-        - 243
+        - 174
+        - 194
   - DefFn:
       name: le
       visibility: Private
@@ -306,13 +306,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 257
-            - 258
+            - 203
+            - 204
         - name: y
           ty: ~
           span:
-            - 259
-            - 260
+            - 206
+            - 207
       constraints: []
       return_type: ~
       body:
@@ -322,20 +322,20 @@ decls:
             Var:
               name: x
               span:
-                - 266
-                - 267
+                - 211
+                - 212
           rhs:
             Var:
               name: y
               span:
-                - 268
-                - 269
+                - 216
+                - 217
           span:
-            - 262
-            - 270
+            - 211
+            - 217
       span:
-        - 244
-        - 272
+        - 196
+        - 217
   - DefFn:
       name: ge
       visibility: Private
@@ -343,13 +343,13 @@ decls:
         - name: x
           ty: ~
           span:
-            - 286
-            - 287
+            - 226
+            - 227
         - name: y
           ty: ~
           span:
-            - 288
-            - 289
+            - 229
+            - 230
       constraints: []
       return_type: ~
       body:
@@ -359,17 +359,17 @@ decls:
             Var:
               name: x
               span:
-                - 295
-                - 296
+                - 234
+                - 235
           rhs:
             Var:
               name: y
               span:
-                - 297
-                - 298
+                - 239
+                - 240
           span:
-            - 291
-            - 299
+            - 234
+            - 240
       span:
-        - 273
-        - 301
+        - 219
+        - 240

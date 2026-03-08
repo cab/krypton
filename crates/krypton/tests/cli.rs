@@ -45,7 +45,7 @@ fn test_parse_sexp_format() {
 #[test]
 fn test_parse_errors_exit_1() {
     let output = krypton_bin()
-        .args(["parse", "tests/fixtures/m1/bad.kr"])
+        .args(["parse", "--syntax", "sexp", "tests/fixtures/m1/bad.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
@@ -107,8 +107,8 @@ fn test_fmt_pretty_prints() {
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("(def main"),
-        "stdout should contain (def main: {stdout}"
+        stdout.contains("fun main"),
+        "stdout should contain fun main: {stdout}"
     );
 }
 

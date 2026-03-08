@@ -1,4 +1,7 @@
 # expect: error E0101
-(def consume (fn [s] [(own String)] String s))
-(def test (fn [buf] [(own String)] String
-  (do (consume buf) (consume buf))))
+fun consume(s: ~String) -> String = s
+
+fun test(buf: ~String) -> String {
+    consume(buf);
+    consume(buf)
+}

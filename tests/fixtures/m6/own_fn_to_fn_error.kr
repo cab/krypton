@@ -1,5 +1,6 @@
 # expect: error E0001
-(def call_many (fn [f] [(fn [] String)] String (f)))
-(def consume (fn [buf] [(own String)] String buf))
-(def bad (fn [x] [(own String)] String
-  (call_many (fn [] (consume x)))))
+fun call_many(f: () -> String) -> String = f()
+
+fun consume(buf: ~String) -> String = buf
+
+fun bad(x: ~String) -> String = call_many(() => consume(x))

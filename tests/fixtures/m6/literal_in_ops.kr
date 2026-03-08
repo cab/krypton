@@ -1,1 +1,2 @@
-(def main () (+ (* 2 3) (- 10 4)))
+# expect: ok
+fun main() = 2 * 3 + (10 - 4)

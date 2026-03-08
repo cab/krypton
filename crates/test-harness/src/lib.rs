@@ -1,5 +1,29 @@
 use std::path::{Path, PathBuf};
 
+/// Which parser syntax a fixture uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Syntax {
+    Sexp,
+    Surface,
+}
+
+/// Detect syntax from a `# syntax: sexp` header comment. Defaults to `Surface`.
+pub fn parse_syntax(source: &str) -> Syntax {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("# syntax:") {
+            if rest.trim().eq_ignore_ascii_case("sexp") {
+                return Syntax::Sexp;
+            }
+        }
+        // Stop scanning after non-comment, non-empty lines
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            break;
+        }
+    }
+    Syntax::Surface
+}
+
 /// Expected outcome parsed from a fixture file's header comments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expectation {
@@ -17,6 +41,7 @@ pub struct Fixture {
     pub path: PathBuf,
     pub source: String,
     pub expectations: Vec<Expectation>,
+    pub syntax: Syntax,
 }
 
 /// Parse `# expect:` header comments from source text.
@@ -84,9 +109,11 @@ pub fn load_fixture(path: &Path) -> Fixture {
     let source = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()));
     let expectations = parse_expectations(&source);
+    let syntax = parse_syntax(&source);
     Fixture {
         path: path.to_path_buf(),
         source,
         expectations,
+        syntax,
     }
 }

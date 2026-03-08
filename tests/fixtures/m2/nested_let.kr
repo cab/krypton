@@ -1,2 +1,6 @@
 # expect: ok
-(def main (fn [] (do (let x 1) (let y (+ x 2)) y)))
+fun main() {
+    let x = 1;
+    let y = x + 2;
+    y
+}

@@ -4,7 +4,8 @@ use std::process::Command;
 
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_parser::surface_parser::surface_parse;
+use krypton_test_harness::{discover_fixtures, load_fixture, Expectation, Syntax};
 
 fn build_classpath(class_dir: &Path) -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
@@ -17,8 +18,15 @@ fn build_classpath(class_dir: &Path) -> String {
     }
 }
 
-fn run_program(source: &str) -> String {
-    let (module, errors) = parse(source);
+fn parse_fixture(source: &str, syntax: Syntax) -> (krypton_parser::ast::Module, Vec<krypton_parser::parser::ParseError>) {
+    match syntax {
+        Syntax::Sexp => parse(source),
+        Syntax::Surface => surface_parse(source),
+    }
+}
+
+fn run_program(source: &str, syntax: Syntax) -> String {
+    let (module, errors) = parse_fixture(source, syntax);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let classes = compile_module(&module, "Test").expect("compile_module should succeed");
@@ -48,14 +56,13 @@ fn run_program(source: &str) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
-#[test]
-fn m4_fixtures() {
+fn run_codegen_fixtures(subdir: &str) {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .parent()
         .unwrap()
-        .join("tests/fixtures/m4");
+        .join(format!("tests/fixtures/{}", subdir));
 
     let fixtures = discover_fixtures(&fixture_dir);
     assert!(
@@ -76,7 +83,7 @@ fn m4_fixtures() {
         for expectation in &fixture.expectations {
             match expectation {
                 Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source);
+                    let actual = run_program(&fixture.source, fixture.syntax);
                     assert_eq!(
                         actual, *expected,
                         "fixture {name}: expected output {expected:?} but got {actual:?}"
@@ -84,251 +91,7 @@ fn m4_fixtures() {
                     ran += 1;
                 }
                 Expectation::Ok => {
-                    let (module, errors) = parse(&fixture.source);
-                    if !errors.is_empty() {
-                        // Skip files with parse errors (handled by typechecker tests)
-                        continue;
-                    }
-                    match compile_module(&module, "Test") {
-                        Ok(_) => { ran += 1; }
-                        Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
-                            // No main function — ok for type-check-only fixtures
-                        }
-                        Err(e) => {
-                            panic!("fixture {name}: expected ok but compile failed: {e}")
-                        }
-                    }
-                }
-                Expectation::Error(_) => {
-                    // Skip error expectations in codegen fixtures
-                }
-            }
-        }
-    }
-
-    assert!(ran > 0, "no output/ok fixtures were found to run m4");
-}
-
-#[test]
-fn m5_fixtures() {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/m5");
-
-    let fixtures = discover_fixtures(&fixture_dir);
-    assert!(
-        !fixtures.is_empty(),
-        "no fixtures found in {}",
-        fixture_dir.display()
-    );
-
-    let mut ran = 0;
-    for fixture_path in fixtures {
-        let fixture = load_fixture(&fixture_path);
-        let name = fixture_path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        for expectation in &fixture.expectations {
-            match expectation {
-                Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source);
-                    assert_eq!(
-                        actual, *expected,
-                        "fixture {name}: expected output {expected:?} but got {actual:?}"
-                    );
-                    ran += 1;
-                }
-                Expectation::Ok => {
-                    let (module, errors) = parse(&fixture.source);
-                    if !errors.is_empty() {
-                        // Skip files with parse errors (handled by typechecker tests)
-                        continue;
-                    }
-                    match compile_module(&module, "Test") {
-                        Ok(_) => { ran += 1; }
-                        Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
-                            // No main function — ok for type-check-only fixtures
-                        }
-                        Err(e) => {
-                            panic!("fixture {name}: expected ok but compile failed: {e}")
-                        }
-                    }
-                }
-                Expectation::Error(_) => {
-                    // Skip error expectations in codegen fixtures
-                }
-            }
-        }
-    }
-
-    assert!(ran > 0, "no output/ok fixtures were found to run m5");
-}
-
-#[test]
-fn m8_fixtures() {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/m8");
-
-    let fixtures = discover_fixtures(&fixture_dir);
-    assert!(
-        !fixtures.is_empty(),
-        "no fixtures found in {}",
-        fixture_dir.display()
-    );
-
-    let mut ran = 0;
-    for fixture_path in fixtures {
-        let fixture = load_fixture(&fixture_path);
-        let name = fixture_path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        for expectation in &fixture.expectations {
-            match expectation {
-                Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source);
-                    assert_eq!(
-                        actual, *expected,
-                        "fixture {name}: expected output {expected:?} but got {actual:?}"
-                    );
-                    ran += 1;
-                }
-                Expectation::Ok => {
-                    let (module, errors) = parse(&fixture.source);
-                    if !errors.is_empty() {
-                        // Skip files with parse errors (handled by typechecker tests)
-                        continue;
-                    }
-                    match compile_module(&module, "Test") {
-                        Ok(_) => { ran += 1; }
-                        Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
-                            // No main function — ok for type-check-only fixtures
-                        }
-                        Err(e) => {
-                            panic!("fixture {name}: expected ok but compile failed: {e}")
-                        }
-                    }
-                }
-                Expectation::Error(_) => {
-                    // Skip error expectations in codegen fixtures
-                }
-            }
-        }
-    }
-
-    assert!(ran > 0, "no output/ok fixtures were found to run m8");
-}
-
-#[test]
-fn m9_fixtures() {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/m9");
-
-    let fixtures = discover_fixtures(&fixture_dir);
-    assert!(
-        !fixtures.is_empty(),
-        "no fixtures found in {}",
-        fixture_dir.display()
-    );
-
-    let mut ran = 0;
-    for fixture_path in fixtures {
-        let fixture = load_fixture(&fixture_path);
-        let name = fixture_path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        for expectation in &fixture.expectations {
-            match expectation {
-                Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source);
-                    assert_eq!(
-                        actual, *expected,
-                        "fixture {name}: expected output {expected:?} but got {actual:?}"
-                    );
-                    ran += 1;
-                }
-                Expectation::Ok => {
-                    let (module, errors) = parse(&fixture.source);
-                    if !errors.is_empty() {
-                        // Skip files with parse errors (handled by typechecker tests)
-                        continue;
-                    }
-                    match compile_module(&module, "Test") {
-                        Ok(_) => { ran += 1; }
-                        Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
-                            // No main function — ok for type-check-only fixtures
-                        }
-                        Err(e) => {
-                            panic!("fixture {name}: expected ok but compile failed: {e}")
-                        }
-                    }
-                }
-                Expectation::Error(_) => {
-                    // Skip error expectations in codegen fixtures
-                }
-            }
-        }
-    }
-
-    assert!(ran > 0, "no output/ok fixtures were found to run m9");
-}
-
-#[test]
-fn m10_fixtures() {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("tests/fixtures/m10");
-
-    let fixtures = discover_fixtures(&fixture_dir);
-    assert!(
-        !fixtures.is_empty(),
-        "no fixtures found in {}",
-        fixture_dir.display()
-    );
-
-    let mut ran = 0;
-    for fixture_path in fixtures {
-        let fixture = load_fixture(&fixture_path);
-        let name = fixture_path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        for expectation in &fixture.expectations {
-            match expectation {
-                Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source);
-                    assert_eq!(
-                        actual, *expected,
-                        "fixture {name}: expected output {expected:?} but got {actual:?}"
-                    );
-                    ran += 1;
-                }
-                Expectation::Ok => {
-                    let (module, errors) = parse(&fixture.source);
+                    let (module, errors) = parse_fixture(&fixture.source, fixture.syntax);
                     if !errors.is_empty() {
                         continue;
                     }
@@ -345,5 +108,30 @@ fn m10_fixtures() {
         }
     }
 
-    assert!(ran > 0, "no output/ok fixtures were found to run m10");
+    assert!(ran > 0, "no output/ok fixtures were found to run {subdir}");
+}
+
+#[test]
+fn m4_fixtures() {
+    run_codegen_fixtures("m4");
+}
+
+#[test]
+fn m5_fixtures() {
+    run_codegen_fixtures("m5");
+}
+
+#[test]
+fn m8_fixtures() {
+    run_codegen_fixtures("m8");
+}
+
+#[test]
+fn m9_fixtures() {
+    run_codegen_fixtures("m9");
+}
+
+#[test]
+fn m10_fixtures() {
+    run_codegen_fixtures("m10");
 }

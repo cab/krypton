@@ -1,4 +1,6 @@
 # expect: error E0002
-(type Foo (record (x Int)))
-(type Foo (record (y Int)))
-(def f (fn [x] x))
+type Foo = { x: Int }
+
+type Foo = { y: Int }
+
+fun f(x) = x

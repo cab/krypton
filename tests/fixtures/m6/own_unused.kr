@@ -1,2 +1,2 @@
 # expect: ok
-(def good (fn [x] [(own String)] Int 42))
+fun good(x: ~String) -> Int = 42

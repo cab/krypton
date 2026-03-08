@@ -1,8 +1,13 @@
 # expect: output 20
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type List [a] (| (Cons a (List a)) (Nil)))
-(def second (fn [xs]
-  (match xs
-    ((Cons h (Cons h2 _)) h2)
-    (_ 0))))
-(def main (fn [] (println (second (Cons 10 (Cons 20 Nil))))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type List[a] = Cons(a, List[a]) | Nil
+
+fun second(xs) = match xs {
+    Cons(h, Cons(h2, _)) => h2,
+    _ => 0,
+}
+
+fun main() = println(second(Cons(10, Cons(20, Nil))))

@@ -1,7 +1,8 @@
 # expect: ok
 # Match on prelude Option with exhaustiveness
-(def unwrap_or (fn [opt default]
-  (match opt
-    ((Some x) x)
-    ((None) default))))
-(def main (fn [] (unwrap_or (Some 42) 0)))
+fun unwrap_or(opt, default) = match opt {
+    Some(x) => x,
+    None => default,
+}
+
+fun main() = unwrap_or(Some(42), 0)

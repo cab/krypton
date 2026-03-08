@@ -1,5 +1,6 @@
 # expect: error E0006
-(type Result [a b] (| (Ok a) (Err b)))
-(def test (fn [r]
-  (match r
-    ((Ok x) x))))
+type Result[a, b] = Ok(a) | Err(b)
+
+fun test(r) = match r {
+    Ok(x) => x,
+}

@@ -1,3 +1,4 @@
 # expect: ok
-(def consume (fn [buf] [(own String)] String buf))
-(def good (fn [x] [(own String)] String (consume x)))
+fun consume(buf: ~String) -> String = buf
+
+fun good(x: ~String) -> String = consume(x)

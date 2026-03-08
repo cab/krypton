@@ -1,4 +1,4 @@
 # expect: ok
-(extern "java.lang.Math"
-  (def abs [Int] Int)
-)
+extern "java.lang.Math" {
+    fun abs(Int) -> Int
+}

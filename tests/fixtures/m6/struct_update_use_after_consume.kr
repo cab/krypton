@@ -1,6 +1,7 @@
 # expect: error E0101
-(type Buf (record (name String) (data (own String))))
-(def test (fn [s] [(own Buf)] (own Buf)
-  (do
-    (let s2 (.. s (name "new")))
-    s)))
+type Buf = { name: String, data: ~String }
+
+fun test(s: ~Buf) -> ~Buf {
+    let s2 = { s | name = "new" };
+    s
+}

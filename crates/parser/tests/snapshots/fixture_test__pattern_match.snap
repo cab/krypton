@@ -10,8 +10,8 @@ decls:
         - name: x
           ty: ~
           span:
-            - 38
-            - 39
+            - 32
+            - 33
       constraints: []
       return_type: ~
       body:
@@ -20,31 +20,32 @@ decls:
             Var:
               name: x
               span:
-                - 50
-                - 51
+                - 43
+                - 44
           arms:
             - pattern:
-                Wildcard:
+                Var:
+                  name: _
                   span:
-                    - 57
-                    - 58
+                    - 51
+                    - 52
               guard: ~
               body:
                 Lit:
                   value:
                     Int: 0
                   span:
-                    - 59
-                    - 60
+                    - 56
+                    - 57
               span:
-                - 56
-                - 61
+                - 51
+                - 57
           span:
-            - 43
-            - 62
+            - 37
+            - 60
       span:
         - 13
-        - 64
+        - 60
   - DefFn:
       name: match_literal
       visibility: Private
@@ -52,8 +53,8 @@ decls:
         - name: x
           ty: ~
           span:
-            - 90
-            - 91
+            - 80
+            - 81
       constraints: []
       return_type: ~
       body:
@@ -62,67 +63,68 @@ decls:
             Var:
               name: x
               span:
-                - 102
-                - 103
+                - 91
+                - 92
           arms:
             - pattern:
                 Lit:
                   value:
                     Int: 1
                   span:
-                    - 109
-                    - 110
+                    - 99
+                    - 100
               guard: ~
               body:
                 Lit:
                   value:
                     String: one
                   span:
-                    - 111
-                    - 116
+                    - 104
+                    - 109
               span:
-                - 108
-                - 117
+                - 99
+                - 109
             - pattern:
                 Lit:
                   value:
                     Int: 2
                   span:
-                    - 123
-                    - 124
+                    - 115
+                    - 116
               guard: ~
               body:
                 Lit:
                   value:
                     String: two
                   span:
+                    - 120
                     - 125
-                    - 130
               span:
-                - 122
-                - 131
+                - 115
+                - 125
             - pattern:
-                Wildcard:
+                Var:
+                  name: _
                   span:
-                    - 137
-                    - 138
+                    - 131
+                    - 132
               guard: ~
               body:
                 Lit:
                   value:
                     String: other
                   span:
-                    - 139
-                    - 146
+                    - 136
+                    - 143
               span:
-                - 136
-                - 147
+                - 131
+                - 143
           span:
-            - 95
-            - 148
+            - 85
+            - 146
       span:
-        - 66
-        - 150
+        - 62
+        - 146
   - DefFn:
       name: match_constructor
       visibility: Private
@@ -130,8 +132,8 @@ decls:
         - name: opt
           ty: ~
           span:
-            - 180
-            - 183
+            - 170
+            - 173
       constraints: []
       return_type: ~
       body:
@@ -140,27 +142,27 @@ decls:
             Var:
               name: opt
               span:
-                - 194
-                - 197
+                - 183
+                - 186
           arms:
             - pattern:
                 Constructor:
                   name: None
                   args: []
                   span:
-                    - 203
-                    - 209
+                    - 193
+                    - 197
               guard: ~
               body:
                 Lit:
                   value:
                     Int: 0
                   span:
-                    - 210
-                    - 211
+                    - 201
+                    - 202
               span:
+                - 193
                 - 202
-                - 212
             - pattern:
                 Constructor:
                   name: Some
@@ -168,27 +170,27 @@ decls:
                     - Var:
                         name: x
                         span:
-                          - 224
-                          - 225
+                          - 213
+                          - 214
                   span:
-                    - 218
-                    - 226
+                    - 208
+                    - 215
               guard: ~
               body:
                 Var:
                   name: x
                   span:
-                    - 227
-                    - 228
+                    - 219
+                    - 220
               span:
-                - 217
-                - 229
+                - 208
+                - 220
           span:
-            - 187
-            - 230
+            - 177
+            - 223
       span:
-        - 152
-        - 232
+        - 148
+        - 223
   - DefFn:
       name: match_tuple
       visibility: Private
@@ -196,8 +198,8 @@ decls:
         - name: pair
           ty: ~
           span:
-            - 256
-            - 260
+            - 241
+            - 245
       constraints: []
       return_type: ~
       body:
@@ -206,8 +208,8 @@ decls:
             Var:
               name: pair
               span:
-                - 271
-                - 275
+                - 255
+                - 259
           arms:
             - pattern:
                 Tuple:
@@ -215,16 +217,16 @@ decls:
                     - Var:
                         name: a
                         span:
-                          - 288
-                          - 289
+                          - 267
+                          - 268
                     - Var:
                         name: b
                         span:
-                          - 290
-                          - 291
+                          - 270
+                          - 271
                   span:
-                    - 281
-                    - 292
+                    - 266
+                    - 272
               guard: ~
               body:
                 BinaryOp:
@@ -233,23 +235,23 @@ decls:
                     Var:
                       name: a
                       span:
-                        - 296
-                        - 297
+                        - 276
+                        - 277
                   rhs:
                     Var:
                       name: b
                       span:
-                        - 298
-                        - 299
+                        - 280
+                        - 281
                   span:
-                    - 293
-                    - 300
+                    - 276
+                    - 281
               span:
-                - 280
-                - 301
+                - 266
+                - 281
           span:
-            - 264
-            - 302
+            - 249
+            - 284
       span:
-        - 234
-        - 304
+        - 225
+        - 284

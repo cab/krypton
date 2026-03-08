@@ -1,3 +1,4 @@
 # expect: ok
-(def id (fn [x] x))
-(def main (fn [] (id 42)))
+fun id(x) = x
+
+fun main() = id(42)

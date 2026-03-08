@@ -1,8 +1,13 @@
 # expect: output 42
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Option [a] (| (Some a) (None)))
-(def unwrap_or (fn [opt default]
-  (match opt
-    ((Some x) x)
-    ((None) default))))
-(def main (fn [] (println (unwrap_or (Some 42) 0))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Option[a] = Some(a) | None
+
+fun unwrap_or(opt, default) = match opt {
+    Some(x) => x,
+    None => default,
+}
+
+fun main() = println(unwrap_or(Some(42), 0))

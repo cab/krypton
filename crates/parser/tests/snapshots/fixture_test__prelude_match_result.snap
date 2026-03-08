@@ -10,8 +10,8 @@ decls:
         - name: r
           ty: ~
           span:
-            - 76
-            - 77
+            - 70
+            - 71
       constraints: []
       return_type: ~
       body:
@@ -20,8 +20,8 @@ decls:
             Var:
               name: r
               span:
-                - 88
-                - 89
+                - 81
+                - 82
           arms:
             - pattern:
                 Constructor:
@@ -30,49 +30,50 @@ decls:
                     - Var:
                         name: x
                         span:
-                          - 99
-                          - 100
+                          - 92
+                          - 93
                   span:
-                    - 95
-                    - 101
+                    - 89
+                    - 94
               guard: ~
               body:
                 Var:
                   name: x
                   span:
-                    - 102
-                    - 103
+                    - 98
+                    - 99
               span:
-                - 94
-                - 104
+                - 89
+                - 99
             - pattern:
                 Constructor:
                   name: Err
                   args:
-                    - Wildcard:
+                    - Var:
+                        name: _
                         span:
-                          - 115
-                          - 116
+                          - 109
+                          - 110
                   span:
-                    - 110
-                    - 117
+                    - 105
+                    - 111
               guard: ~
               body:
                 Lit:
                   value:
                     Int: 0
                   span:
-                    - 118
-                    - 119
+                    - 115
+                    - 116
               span:
-                - 109
-                - 120
+                - 105
+                - 116
           span:
-            - 81
-            - 121
+            - 75
+            - 119
       span:
         - 59
-        - 123
+        - 119
   - DefFn:
       name: main
       visibility: Private
@@ -85,29 +86,29 @@ decls:
             Var:
               name: handle
               span:
-                - 142
-                - 148
+                - 134
+                - 140
           args:
             - App:
                 func:
                   Var:
                     name: Ok
                     span:
-                      - 150
-                      - 152
+                      - 141
+                      - 143
                 args:
                   - Lit:
                       value:
                         Int: 10
                       span:
-                        - 153
-                        - 155
+                        - 144
+                        - 146
                 span:
-                  - 149
-                  - 156
+                  - 141
+                  - 147
           span:
-            - 141
-            - 157
+            - 134
+            - 148
       span:
-        - 124
-        - 159
+        - 121
+        - 148

@@ -11,20 +11,20 @@ decls:
             - Named:
                 name: Object
                 span:
-                  - 63
-                  - 69
+                  - 66
+                  - 72
           return_type:
             Named:
               name: Unit
               span:
-                - 71
-                - 75
+                - 77
+                - 81
           span:
-            - 49
-            - 76
+            - 54
+            - 81
       span:
         - 13
-        - 77
+        - 83
   - DefFn:
       name: main
       visibility: Private
@@ -37,18 +37,18 @@ decls:
             Var:
               name: println
               span:
-                - 96
-                - 103
+                - 98
+                - 105
           args:
             - Lit:
                 value:
                   Int: 42
                 span:
-                  - 104
                   - 106
+                  - 108
           span:
-            - 95
-            - 107
+            - 98
+            - 109
       span:
-        - 78
+        - 85
         - 109

@@ -556,7 +556,11 @@ impl<'a> Formatter<'a> {
                 self.buf.push('}');
             }
             Expr::Lambda { params, body, .. } => {
-                if params.len() == 1 && params[0].ty.is_none() {
+                if params.is_empty() {
+                    // Zero-arg lambda: () => body
+                    self.buf.push_str("() => ");
+                    self.fmt_expr(body);
+                } else if params.len() == 1 && params[0].ty.is_none() {
                     // Single untyped param: x => body
                     self.buf.push_str(&params[0].name);
                     self.buf.push_str(" => ");

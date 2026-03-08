@@ -1,8 +1,10 @@
 # expect: ok
 # Result is available without user type definition
-(def ok_val (fn [] (Ok 42)))
-(def err_val (fn [] (Err "oops")))
-(def main (fn []
-  (match (ok_val)
-    ((Ok x) x)
-    ((Err _) 0))))
+fun ok_val() = Ok(42)
+
+fun err_val() = Err("oops")
+
+fun main() = match ok_val() {
+    Ok(x) => x,
+    Err(_) => 0,
+}

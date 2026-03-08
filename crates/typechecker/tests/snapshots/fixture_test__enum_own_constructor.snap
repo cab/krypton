@@ -1,0 +1,8 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+Some: forall f. fn(f) -> Option<f>
+None: forall f. Option<f>
+f: fn() -> own Option<Int>
+main: fn() -> Int

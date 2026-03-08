@@ -1,7 +1,8 @@
 # expect: ok
 # Match on prelude Result with exhaustiveness
-(def handle (fn [r]
-  (match r
-    ((Ok x) x)
-    ((Err _) 0))))
-(def main (fn [] (handle (Ok 10))))
+fun handle(r) = match r {
+    Ok(x) => x,
+    Err(_) => 0,
+}
+
+fun main() = handle(Ok(10))

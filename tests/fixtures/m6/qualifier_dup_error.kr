@@ -1,3 +1,4 @@
 # expect: error E0104
-(def dup (fn [x] (tuple x x)))
-(def test (fn [buf] [(own String)] (tuple (own String) (own String)) (dup buf)))
+fun dup(x) = (x, x)
+
+fun test(buf: ~String) -> (~String, ~String) = dup(buf)

@@ -15,21 +15,21 @@ decls:
             Var:
               name: Ok
               span:
-                - 84
-                - 86
+                - 79
+                - 81
           args:
             - Lit:
                 value:
                   Int: 42
                 span:
-                  - 87
-                  - 89
+                  - 82
+                  - 84
           span:
-            - 83
-            - 90
+            - 79
+            - 85
       span:
         - 64
-        - 92
+        - 85
   - DefFn:
       name: err_val
       visibility: Private
@@ -42,21 +42,21 @@ decls:
             Var:
               name: Err
               span:
-                - 114
-                - 117
+                - 103
+                - 106
           args:
             - Lit:
                 value:
                   String: oops
                 span:
-                  - 118
-                  - 124
+                  - 107
+                  - 113
           span:
-            - 113
-            - 125
+            - 103
+            - 114
       span:
-        - 93
-        - 127
+        - 87
+        - 114
   - DefFn:
       name: main
       visibility: Private
@@ -71,12 +71,12 @@ decls:
                 Var:
                   name: ok_val
                   span:
-                    - 155
-                    - 161
+                    - 135
+                    - 141
               args: []
               span:
-                - 154
-                - 162
+                - 135
+                - 143
           arms:
             - pattern:
                 Constructor:
@@ -85,46 +85,47 @@ decls:
                     - Var:
                         name: x
                         span:
-                          - 172
-                          - 173
+                          - 153
+                          - 154
                   span:
-                    - 168
-                    - 174
+                    - 150
+                    - 155
               guard: ~
               body:
                 Var:
                   name: x
                   span:
-                    - 175
-                    - 176
+                    - 159
+                    - 160
               span:
-                - 167
-                - 177
+                - 150
+                - 160
             - pattern:
                 Constructor:
                   name: Err
                   args:
-                    - Wildcard:
+                    - Var:
+                        name: _
                         span:
-                          - 188
-                          - 189
+                          - 170
+                          - 171
                   span:
-                    - 183
-                    - 190
+                    - 166
+                    - 172
               guard: ~
               body:
                 Lit:
                   value:
                     Int: 0
                   span:
-                    - 191
-                    - 192
+                    - 176
+                    - 177
               span:
-                - 182
-                - 193
+                - 166
+                - 177
           span:
-            - 147
-            - 194
+            - 129
+            - 180
       span:
-        - 128
-        - 196
+        - 116
+        - 180

@@ -1,3 +1,4 @@
 # expect: ok
-(type Box (record (value String)))
-(def bad (fn [x] [(own String)] Box (Box x)))
+type Box = { value: String }
+
+fun bad(x: ~String) -> Box = Box(x)

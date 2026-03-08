@@ -10,13 +10,13 @@ decls:
         - name: opt
           ty: ~
           span:
-            - 79
-            - 82
+            - 73
+            - 76
         - name: default
           ty: ~
           span:
-            - 83
-            - 90
+            - 78
+            - 85
       constraints: []
       return_type: ~
       body:
@@ -25,8 +25,8 @@ decls:
             Var:
               name: opt
               span:
-                - 101
-                - 104
+                - 95
+                - 98
           arms:
             - pattern:
                 Constructor:
@@ -35,44 +35,44 @@ decls:
                     - Var:
                         name: x
                         span:
-                          - 116
-                          - 117
+                          - 110
+                          - 111
                   span:
-                    - 110
-                    - 118
+                    - 105
+                    - 112
               guard: ~
               body:
                 Var:
                   name: x
                   span:
-                    - 119
-                    - 120
+                    - 116
+                    - 117
               span:
-                - 109
-                - 121
+                - 105
+                - 117
             - pattern:
                 Constructor:
                   name: None
                   args: []
                   span:
+                    - 123
                     - 127
-                    - 133
               guard: ~
               body:
                 Var:
                   name: default
                   span:
-                    - 134
-                    - 141
+                    - 131
+                    - 138
               span:
-                - 126
-                - 142
+                - 123
+                - 138
           span:
-            - 94
-            - 143
+            - 89
+            - 141
       span:
         - 59
-        - 145
+        - 141
   - DefFn:
       name: main
       visibility: Private
@@ -85,35 +85,35 @@ decls:
             Var:
               name: unwrap_or
               span:
-                - 164
-                - 173
+                - 156
+                - 165
           args:
             - App:
                 func:
                   Var:
                     name: Some
                     span:
-                      - 175
-                      - 179
+                      - 166
+                      - 170
                 args:
                   - Lit:
                       value:
                         Int: 42
                       span:
-                        - 180
-                        - 182
+                        - 171
+                        - 173
                 span:
+                  - 166
                   - 174
-                  - 183
             - Lit:
                 value:
                   Int: 0
                 span:
-                  - 184
-                  - 185
+                  - 176
+                  - 177
           span:
-            - 163
-            - 186
+            - 156
+            - 178
       span:
-        - 146
-        - 188
+        - 143
+        - 178

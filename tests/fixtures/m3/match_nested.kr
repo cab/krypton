@@ -1,6 +1,7 @@
 # expect: ok
-(type List [a] (| (Cons a (List a)) Nil))
-(def sum_first_two (fn [xs]
-  (match xs
-    ((Cons h (Cons h2 t)) (+ h h2))
-    (_ 0))))
+type List[a] = Cons(a, List[a]) | Nil
+
+fun sum_first_two(xs) = match xs {
+    Cons(h, Cons(h2, t)) => h + h2,
+    _ => 0,
+}

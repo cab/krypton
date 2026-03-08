@@ -1,5 +1,7 @@
 # expect: ok
-(def consume (fn [buf] [(own String)] String buf))
-(def good (fn [x] [(own String)] String
-  (do (let f (fn [] (consume x)))
-      (f))))
+fun consume(buf: ~String) -> String = buf
+
+fun good(x: ~String) -> String {
+    let f = () => consume(x);
+    f()
+}

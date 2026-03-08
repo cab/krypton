@@ -1,4 +1,11 @@
 # expect: output 30
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Point (record (x Int) (y Int)))
-(def main (fn [] (do (let p (Point 10 20)) (println (+ (. p x) (. p y))))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Point = { x: Int, y: Int }
+
+fun main() {
+    let p = Point(10, 20);
+    println(p.x + p.y)
+}

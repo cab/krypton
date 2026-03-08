@@ -1,3 +1,6 @@
 # expect: error E0001
-(extern "java.lang.Math" (def abs [Int] Int))
-(def main (fn [] (abs "hello")))
+extern "java.lang.Math" {
+    fun abs(Int) -> Int
+}
+
+fun main() = abs("hello")

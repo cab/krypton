@@ -1,8 +1,18 @@
 # expect: output true
-(extern "krypton.runtime.KryptonIO" (def println [Object] Unit))
-(type Point (record (x Int) (y Int)))
-(trait Eq [a] (def eq [a a] Bool))
-(impl Eq Point
-  (def eq [x y] (if (== (. x x) (. y x)) (== (. x y) (. y y)) false)))
-(def are_equal (fn [x y] (eq x y)))
-(def main (fn [] (println (are_equal (Point 1 2) (Point 1 2)))))
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Point = { x: Int, y: Int }
+
+trait Eq[a] {
+    fun eq(_0: a, _1: a) -> Bool
+}
+
+impl Eq[Point] {
+    fun eq(x, y) = if x.x == y.x { x.y == y.y } else { false }
+}
+
+fun are_equal(x, y) = eq(x, y)
+
+fun main() = println(are_equal(Point(1, 2), Point(1, 2)))

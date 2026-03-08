@@ -16,20 +16,20 @@ decls:
                 - Var:
                     name: a
                     span:
-                      - 91
-                      - 92
+                      - 87
+                      - 88
               span:
-                - 80
-                - 93
+                - 77
+                - 89
             - name: MyNone
               fields: []
               span:
-                - 94
-                - 100
+                - 92
+                - 98
       deriving: []
       span:
         - 60
-        - 102
+        - 98
   - DefFn:
       name: main
       visibility: Private
@@ -42,18 +42,18 @@ decls:
             Var:
               name: MyVariant
               span:
-                - 121
-                - 130
+                - 113
+                - 122
           args:
             - Lit:
                 value:
                   Int: 42
                 span:
-                  - 131
-                  - 133
+                  - 123
+                  - 125
           span:
-            - 120
-            - 134
+            - 113
+            - 126
       span:
-        - 103
-        - 136
+        - 100
+        - 126

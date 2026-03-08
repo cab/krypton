@@ -472,10 +472,23 @@ where
                 span: to_span(e.span()),
             });
 
+        // Zero-arg lambda: () => body
+        let zero_lambda = just(Token::LParen)
+            .then(just(Token::RParen))
+            .then_ignore(just(Token::FatArrow))
+            .then(expr.clone())
+            .map_with(|(_, body), e| Expr::Lambda {
+                params: vec![],
+                return_type: None,
+                body: Box::new(body),
+                span: to_span(e.span()),
+            });
+
         // Multi-param lambda: (x, y) => body or (x: Int, y: Int) => body
         let multi_lambda = lambda_param
             .clone()
             .separated_by(just(Token::Comma))
+            .at_least(1)
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .then_ignore(just(Token::FatArrow))
@@ -522,6 +535,7 @@ where
             });
 
         let raw_atom = choice((
+            zero_lambda,
             unit_lit,
             lit,
             recur_expr,
