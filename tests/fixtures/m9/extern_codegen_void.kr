@@ -1,0 +1,3 @@
+# expect: ok
+(extern "java.lang.System" (def gc [] Unit))
+(def main (fn [] (do (gc) 0)))

@@ -58,6 +58,7 @@ pub(super) struct FunctionInfo {
     pub(super) method_ref: u16,
     pub(super) param_types: Vec<JvmType>,
     pub(super) return_type: JvmType,
+    pub(super) is_void: bool,
 }
 
 /// Info about a struct type for codegen.
@@ -1498,6 +1499,7 @@ impl Compiler {
         let method_ref = info.method_ref;
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
+        let is_void = info.is_void;
 
         // Push dict args first for constrained functions
         if !constraint_traits.is_empty() {
@@ -1544,10 +1546,16 @@ impl Compiler {
         // Emit invokestatic
         self.emit(Instruction::Invokestatic(method_ref));
 
-        // Push return type
-        self.push_jvm_type(return_type);
-
-        Ok(return_type)
+        if is_void {
+            // Void-returning extern: push dummy Unit value
+            self.emit(Instruction::Iconst_0);
+            self.frame.push_type(VerificationType::Integer);
+            Ok(JvmType::Int)
+        } else {
+            // Push return type
+            self.push_jvm_type(return_type);
+            Ok(return_type)
+        }
     }
 
     fn compile_field_access(

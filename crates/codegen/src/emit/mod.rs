@@ -571,6 +571,7 @@ pub fn compile_module(
                     method_ref,
                     param_types: all_param_types,
                     return_type,
+                    is_void: false,
                 },
             );
             // Store TC types for detecting Fn-typed params in compile_function
@@ -579,6 +580,78 @@ pub fn compile_module(
                 (param_tys.clone(), (**ret_ty).clone()),
             );
         }
+    }
+
+    // Register extern functions so they can be called via invokestatic
+    for ext in &typed_module.extern_fns {
+        let jvm_class_name = ext.java_class.replace('.', "/");
+        let extern_class = compiler.cp.add_class(&jvm_class_name)?;
+
+        let mut param_jvm_types = Vec::new();
+        let mut param_desc = String::from("(");
+        for pt in &ext.param_types {
+            match pt {
+                Type::Int => {
+                    param_jvm_types.push(JvmType::Long);
+                    param_desc.push('J');
+                }
+                Type::Float => {
+                    param_jvm_types.push(JvmType::Double);
+                    param_desc.push('D');
+                }
+                Type::Bool => {
+                    param_jvm_types.push(JvmType::Int);
+                    param_desc.push('Z');
+                }
+                Type::String => {
+                    param_jvm_types.push(JvmType::Ref);
+                    param_desc.push_str("Ljava/lang/String;");
+                }
+                Type::Named(name, _) if name == "Object" => {
+                    param_jvm_types.push(JvmType::StructRef(compiler.refs.object_class));
+                    param_desc.push_str("Ljava/lang/Object;");
+                }
+                other => {
+                    return Err(CodegenError::TypeError(format!(
+                        "unsupported extern param type: {other:?}"
+                    )));
+                }
+            }
+        }
+        param_desc.push(')');
+
+        let is_void = matches!(ext.return_type, Type::Unit);
+        let (return_type, ret_desc) = if is_void {
+            (JvmType::Int, "V".to_string())
+        } else {
+            match &ext.return_type {
+                Type::Int => (JvmType::Long, "J".to_string()),
+                Type::Float => (JvmType::Double, "D".to_string()),
+                Type::Bool => (JvmType::Int, "Z".to_string()),
+                Type::String => (JvmType::Ref, "Ljava/lang/String;".to_string()),
+                Type::Named(name, _) if name == "Object" => {
+                    (JvmType::StructRef(compiler.refs.object_class), "Ljava/lang/Object;".to_string())
+                }
+                other => {
+                    return Err(CodegenError::TypeError(format!(
+                        "unsupported extern return type: {other:?}"
+                    )));
+                }
+            }
+        };
+
+        let descriptor = format!("{param_desc}{ret_desc}");
+        let method_ref = compiler.cp.add_method_ref(extern_class, &ext.name, &descriptor)?;
+
+        compiler.types.functions.insert(
+            ext.name.clone(),
+            FunctionInfo {
+                method_ref,
+                param_types: param_jvm_types,
+                return_type,
+                is_void,
+            },
+        );
     }
 
     // Compile all functions (including main) as static methods using typed bodies

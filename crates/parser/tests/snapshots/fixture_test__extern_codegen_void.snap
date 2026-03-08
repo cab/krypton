@@ -1,0 +1,53 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - ExternJava:
+      class_name: java.lang.System
+      methods:
+        - name: gc
+          param_types: []
+          return_type:
+            Named:
+              name: Unit
+              span:
+                - 51
+                - 55
+          span:
+            - 40
+            - 56
+      span:
+        - 13
+        - 57
+  - DefFn:
+      name: main
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Do:
+          exprs:
+            - App:
+                func:
+                  Var:
+                    name: gc
+                    span:
+                      - 80
+                      - 82
+                args: []
+                span:
+                  - 79
+                  - 83
+            - Lit:
+                value:
+                  Int: 0
+                span:
+                  - 84
+                  - 85
+          span:
+            - 75
+            - 86
+      span:
+        - 58
+        - 88
