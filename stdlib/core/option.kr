@@ -1,2 +1,2 @@
 # core/option — Option type for nullable values
-type Option[a] = Some(a) | None
+pub open type Option[a] = Some(a) | None

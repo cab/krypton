@@ -1,0 +1,4 @@
+# expect: output "Red"
+import vis_lib.{Color}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = match Red { Red => println("Red"), Blue => println("Blue") }

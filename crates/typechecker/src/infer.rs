@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern, Span, TypeDeclKind, UnaryOp, Variant};
+use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern, Span, TypeDeclKind, UnaryOp, Variant, Visibility};
 
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
@@ -1613,13 +1613,65 @@ fn infer_module_inner(
                 .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
                 .collect();
 
+            // Build fn visibility map from parsed imported module
+            let fn_vis: HashMap<&str, &Visibility> = imported_module.decls.iter()
+                .filter_map(|d| {
+                    if let Decl::DefFn(f) = d { Some((f.name.as_str(), &f.visibility)) } else { None }
+                })
+                .collect();
+
+            // Build set of constructor names belonging to non-PubOpen types.
+            // These should not be bound from fn_types (they are handled by
+            // the type declaration processing below with visibility control).
+            let mut opaque_constructors: HashSet<String> = HashSet::new();
+            for sdecl in &imported_module.decls {
+                if let Decl::DefType(td) = sdecl {
+                    if !matches!(td.visibility, Visibility::PubOpen) {
+                        // Record type: constructor has same name as type
+                        match &td.kind {
+                            TypeDeclKind::Record { .. } => {
+                                opaque_constructors.insert(td.name.clone());
+                            }
+                            TypeDeclKind::Sum { variants } => {
+                                for v in variants {
+                                    opaque_constructors.insert(v.name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Extract type signatures from cached module and bind with provenance.
-            // Bind REQUESTED names in env (with provenance), but export ALL
-            // fn_types/functions for codegen compatibility (internal dependencies
-            // like reverse→fold need all functions present).
+            // Enforce visibility: private names cannot be imported explicitly.
             let cached = cache.get(path).unwrap();
             for (name, scheme) in &cached.fn_types {
-                if import_all || requested.contains(name.as_str()) {
+                // Skip constructors of non-PubOpen types — these are not
+                // accessible from the importing module.
+                if opaque_constructors.contains(name) {
+                    continue;
+                }
+                let vis = fn_vis.get(name.as_str()).copied().unwrap_or(&Visibility::Pub);
+                if requested.contains(name.as_str()) {
+                    // Explicitly requested — check visibility
+                    if matches!(vis, Visibility::Private) {
+                        return Err(spanned(TypeError::PrivateName {
+                            name: name.clone(), module_path: path.clone(),
+                        }, *span));
+                    }
+                    let effective_name = aliases.get(name)
+                        .cloned()
+                        .unwrap_or_else(|| name.clone());
+                    env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
+                    imported_fn_types.push((effective_name.clone(), scheme.clone()));
+                    fn_provenance_map.insert(effective_name, (path.clone(), name.clone()));
+                } else if import_all {
+                    // Wildcard import — skip private names silently
+                    if matches!(vis, Visibility::Private) {
+                        // Still bind for internal dependency resolution
+                        env.bind(name.clone(), scheme.clone());
+                        continue;
+                    }
                     let effective_name = aliases.get(name)
                         .cloned()
                         .unwrap_or_else(|| name.clone());
@@ -1632,12 +1684,44 @@ fn infer_module_inner(
                 }
             }
 
-            // Process type declarations from imported module source
+            // Process type declarations from imported module source with visibility enforcement
             for sdecl in &imported_module.decls {
                 if let Decl::DefType(td) = sdecl {
-                    if (import_all || requested.contains(td.name.as_str()))
-                        && registry.lookup_type(&td.name).is_none()
-                    {
+                    if requested.contains(td.name.as_str()) {
+                        // Explicitly requested — check visibility
+                        if matches!(td.visibility, Visibility::Private) {
+                            return Err(spanned(TypeError::PrivateName {
+                                name: td.name.clone(), module_path: path.clone(),
+                            }, *span));
+                        }
+                        if registry.lookup_type(&td.name).is_none() {
+                            registry.register_name(&td.name);
+                            let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
+                                .map_err(|e| spanned(e, *span))?;
+                            // Only bind constructors if pub open
+                            if matches!(td.visibility, Visibility::PubOpen) {
+                                for (cname, scheme) in constructors {
+                                    env.bind(cname, scheme);
+                                }
+                            }
+                        }
+                    } else if import_all {
+                        // Wildcard import — skip private types silently
+                        if matches!(td.visibility, Visibility::Private) {
+                            continue;
+                        }
+                        if registry.lookup_type(&td.name).is_none() {
+                            registry.register_name(&td.name);
+                            let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
+                                .map_err(|e| spanned(e, *span))?;
+                            if matches!(td.visibility, Visibility::PubOpen) {
+                                for (cname, scheme) in constructors {
+                                    env.bind(cname, scheme);
+                                }
+                            }
+                        }
+                    } else if registry.lookup_type(&td.name).is_none() {
+                        // Non-requested, non-wildcard: register for internal deps
                         registry.register_name(&td.name);
                         let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
                             .map_err(|e| spanned(e, *span))?;
@@ -1881,6 +1965,7 @@ fn infer_module_inner(
                 derived_impl_fn_types.push((qualified_name.clone(), TypeScheme { vars: vec![], ty: fn_ty }));
                 derived_impl_functions.push(TypedFnDecl {
                     name: qualified_name.clone(),
+                    visibility: Visibility::Pub,
                     params,
                     body,
                 });
@@ -2205,6 +2290,7 @@ fn infer_module_inner(
                 impl_fn_types.push((qualified_name.clone(), scheme));
                 impl_functions.push(TypedFnDecl {
                     name: qualified_name.clone(),
+                    visibility: Visibility::Pub,
                     params: method.params.iter().map(|p| p.name.clone()).collect(),
                     body: body_typed,
                 });
@@ -2241,6 +2327,7 @@ fn infer_module_inner(
         typed_ast::apply_subst(&mut body, &subst);
         functions.push(TypedFnDecl {
             name: decl.name.clone(),
+            visibility: decl.visibility.clone(),
             params: decl.params.iter().map(|p| p.name.clone()).collect(),
             body,
         });
@@ -2345,6 +2432,14 @@ fn infer_module_inner(
         }
     }
 
+    // Build type_visibility map from parsed type declarations
+    let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
+    for decl in &module.decls {
+        if let Decl::DefType(td) = decl {
+            type_visibility.insert(td.name.clone(), td.visibility.clone());
+        }
+    }
+
     Ok(TypedModule {
         module_path,
         fn_types: results,
@@ -2359,6 +2454,7 @@ fn infer_module_inner(
         sum_decls,
         fn_provenance: fn_provenance_map,
         type_provenance,
+        type_visibility,
     })
 }
 

@@ -1,0 +1,6 @@
+pub open type Color = Red | Blue
+pub type Opaque = { inner: Int }
+type Secret = { value: Int }
+
+pub fun public_fn(x: Int) -> Int = x + 1
+fun private_fn(x: Int) -> Int = x * 2

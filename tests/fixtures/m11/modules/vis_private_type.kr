@@ -1,0 +1,3 @@
+# expect: error E0503
+import vis_lib.{Secret}
+fun main() = Secret(42)

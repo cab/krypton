@@ -31,6 +31,7 @@ pub enum TypeErrorCode {
     E0403, // ? cross-use (Option in Result context or vice versa)
     E0501, // Unknown module
     E0502, // Circular import
+    E0503, // Private name in import
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -61,6 +62,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0403 => write!(f, "E0403"),
             TypeErrorCode::E0501 => write!(f, "E0501"),
             TypeErrorCode::E0502 => write!(f, "E0502"),
+            TypeErrorCode::E0503 => write!(f, "E0503"),
         }
     }
 }
@@ -93,6 +95,7 @@ pub enum TypeError {
     QuestionMarkMismatch { expr_kind: String, return_kind: String },
     UnknownModule { path: String },
     CircularImport { cycle: Vec<String> },
+    PrivateName { name: String, module_path: String },
 }
 
 impl TypeError {
@@ -125,6 +128,7 @@ impl TypeError {
             TypeError::QuestionMarkMismatch { .. } => TypeErrorCode::E0403,
             TypeError::UnknownModule { .. } => TypeErrorCode::E0501,
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
+            TypeError::PrivateName { .. } => TypeErrorCode::E0503,
         }
     }
 
@@ -226,6 +230,9 @@ impl TypeError {
             TypeError::CircularImport { cycle } => {
                 Some(format!("import cycle: {}", cycle.join(" → ")))
             }
+            TypeError::PrivateName { name, module_path } => {
+                Some(format!("`{}` is private in module `{}`; add `pub` to export it", name, module_path))
+            }
         }
     }
 }
@@ -311,6 +318,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::CircularImport { cycle } => {
                 write!(f, "circular import detected: {}", cycle.join(" → "))
+            }
+            TypeError::PrivateName { name, module_path } => {
+                write!(f, "name `{}` is private in module `{}`", name, module_path)
             }
         }
     }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::types::{Substitution, Type, TypeScheme};
-use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant};
+use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant, Visibility};
 
 #[derive(Debug, Clone)]
 pub enum TypedPattern {
@@ -91,6 +91,7 @@ pub struct TypedMatchArm {
 #[derive(Debug, Clone)]
 pub struct TypedFnDecl {
     pub name: String,
+    pub visibility: Visibility,
     pub params: Vec<String>,
     pub body: TypedExpr,
 }
@@ -134,6 +135,8 @@ pub struct TypedModule {
     /// Maps type_name → source_module_path for types originating from other modules.
     /// Used by codegen to qualify type class names (e.g., `core/list/List`).
     pub type_provenance: HashMap<String, String>,
+    /// Maps type_name → visibility for types declared in this module.
+    pub type_visibility: HashMap<String, Visibility>,
 }
 
 pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {

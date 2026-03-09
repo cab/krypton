@@ -1,2 +1,2 @@
 # core/result — Result type for fallible operations
-type Result[e, a] = Ok(a) | Err(e)
+pub open type Result[e, a] = Ok(a) | Err(e)

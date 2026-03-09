@@ -1,39 +1,39 @@
 # core/list — List type (cons-based linked list)
-type List[a] = Cons(a, List[a]) | Nil
+pub open type List[a] = Cons(a, List[a]) | Nil
 
-fun length(xs) = match xs {
+pub fun length(xs) = match xs {
     Nil => 0,
     Cons(_, rest) => 1 + length(rest),
 }
 
-fun map(xs, f) = match xs {
+pub fun map(xs, f) = match xs {
     Nil => Nil,
     Cons(h, rest) => Cons(f(h), map(rest, f)),
 }
 
-fun filter(xs, f) = match xs {
+pub fun filter(xs, f) = match xs {
     Nil => Nil,
     Cons(h, rest) => if f(h) { Cons(h, filter(rest, f)) } else { filter(rest, f) },
 }
 
-fun fold(xs, acc, f) = match xs {
+pub fun fold(xs, acc, f) = match xs {
     Nil => acc,
     Cons(h, rest) => fold(rest, f(acc, h), f),
 }
 
-fun concat(xs, ys) = match xs {
+pub fun concat(xs, ys) = match xs {
     Nil => ys,
     Cons(h, rest) => Cons(h, concat(rest, ys)),
 }
 
-fun reverse(xs) = fold(xs, Nil, (acc, x) => Cons(x, acc))
+pub fun reverse(xs) = fold(xs, Nil, (acc, x) => Cons(x, acc))
 
-fun head(xs) = match xs {
+pub fun head(xs) = match xs {
     Cons(h, _) => Some(h),
     Nil => None,
 }
 
-fun tail(xs) = match xs {
+pub fun tail(xs) = match xs {
     Cons(_, rest) => Some(rest),
     Nil => None,
 }

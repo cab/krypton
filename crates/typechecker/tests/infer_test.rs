@@ -147,7 +147,7 @@ fn infer_module_with_custom_resolver() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("fun add(x: Int, y: Int) -> Int = x + y".to_string())
+                Some("pub fun add(x: Int, y: Int) -> Int = x + y".to_string())
             } else {
                 None
             }
@@ -662,7 +662,7 @@ fn infer_module_returns_all_modules() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("fun add(x: Int, y: Int) -> Int = x + y".to_string())
+                Some("pub fun add(x: Int, y: Int) -> Int = x + y".to_string())
             } else {
                 None
             }
@@ -689,7 +689,7 @@ fn infer_module_provenance_on_bindings() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("fun add(x: Int, y: Int) -> Int = x + y".to_string())
+                Some("pub fun add(x: Int, y: Int) -> Int = x + y".to_string())
             } else {
                 None
             }
@@ -720,7 +720,7 @@ fn infer_module_cache_prevents_recheck() {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
                 RESOLVE_COUNT.fetch_add(1, Ordering::SeqCst);
-                Some("fun helper() -> Int = 42".to_string())
+                Some("pub fun helper() -> Int = 42".to_string())
             } else {
                 None
             }
@@ -785,7 +785,7 @@ fn infer_module_cross_module_typecheck() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "math" {
-                Some("fun double(x: Int) -> Int = x + x".to_string())
+                Some("pub fun double(x: Int) -> Int = x + x".to_string())
             } else {
                 None
             }
@@ -805,18 +805,19 @@ fn infer_module_cross_module_typecheck() {
 }
 
 #[test]
-fn infer_module_public_by_default() {
+fn infer_module_private_by_default() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("fun internal_helper() -> Int = 1\nfun public_fn() -> Int = internal_helper()".to_string())
+                Some("fun internal_helper() -> Int = 1\npub fun public_fn() -> Int = internal_helper()".to_string())
             } else {
                 None
             }
         }
     }
 
+    // Importing a private function should fail with E0503
     let src = r#"
         import mylib.{public_fn, internal_helper}
         fun main() -> Int = public_fn() + internal_helper()
@@ -824,5 +825,17 @@ fn infer_module_public_by_default() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_ok(), "all top-level defs should be importable: {:?}", result.err());
+    assert!(result.is_err(), "importing private fn should fail");
+    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    assert_eq!(err.error.error_code().to_string(), "E0503");
+
+    // Importing only the public function should succeed
+    let src2 = r#"
+        import mylib.{public_fn}
+        fun main() -> Int = public_fn()
+    "#;
+    let (module2, errors2) = parse(src2);
+    assert!(errors2.is_empty());
+    let result2 = infer::infer_module(&module2, &FakeResolver);
+    assert!(result2.is_ok(), "importing pub fn should work: {:?}", result2.err());
 }

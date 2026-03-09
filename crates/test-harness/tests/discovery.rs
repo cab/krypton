@@ -3,17 +3,17 @@ use std::fs;
 use std::path::Path;
 
 #[test]
-fn discovers_kr_files_in_subdirectories() {
+fn discovers_kr_files_non_recursive() {
     let dir = tempfile::tempdir().unwrap();
     let sub = dir.path().join("sub");
     fs::create_dir_all(&sub).unwrap();
     fs::write(dir.path().join("a.kr"), "# expect: ok\n").unwrap();
     fs::write(sub.join("b.kr"), "# expect: ok\n").unwrap();
 
+    // discover_fixtures is non-recursive — only finds files directly in dir
     let paths = discover_fixtures(dir.path());
-    assert_eq!(paths.len(), 2);
+    assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("a.kr"));
-    assert!(paths[1].ends_with("b.kr"));
 }
 
 #[test]

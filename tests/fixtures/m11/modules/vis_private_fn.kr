@@ -1,0 +1,3 @@
+# expect: error E0503
+import vis_lib.{private_fn}
+fun main() = private_fn(1)

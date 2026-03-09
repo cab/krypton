@@ -1,1 +1,1 @@
-fun compute(x: Int) -> Int = x * 10
+pub fun compute(x: Int) -> Int = x * 10

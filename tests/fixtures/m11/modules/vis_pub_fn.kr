@@ -1,0 +1,4 @@
+# expect: output "6"
+import vis_lib.{public_fn}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = println(public_fn(5))
