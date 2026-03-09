@@ -1,5 +1,6 @@
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
+use krypton_typechecker::infer::infer_module;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
@@ -26,7 +27,8 @@ fn run_program(source: &str) -> String {
     let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let classes = compile_module(&module, "Test").expect("compile_module should succeed");
+    let typed_module = infer_module(&module).expect("type check should succeed");
+    let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -182,7 +184,8 @@ fun main() = println(sum(100, 0))
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("fun main() = 42");
     assert!(errors.is_empty());
-    let classes = compile_module(&module, "Test").expect("compile_module should succeed");
+    let typed_module = infer_module(&module).expect("type check");
+    let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
@@ -242,7 +245,8 @@ fun main() = None
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let classes = compile_module(&module, "Test").expect("compile");
+    let typed_module = infer_module(&module).expect("type check");
+    let classes = compile_module(&typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -339,7 +343,8 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let classes = compile_module(&module, "Test").expect("compile");
+    let typed_module = infer_module(&module).expect("type check");
+    let classes = compile_module(&typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -356,4 +361,30 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
         javap_out.contains("are_equal(java.lang.Object, java.lang.Object, java.lang.Object)"),
         "are_equal should have 3 Object params (dict + x + y), javap output:\n{javap_out}"
     );
+}
+
+#[test]
+fn test_typed_module_direct() {
+    // Demonstrates that codegen tests can supply TypedModule directly
+    let source = format!("{PRINTLN_EXTERN}\nfun main() = println(42)");
+    let (module, errors) = parse(&source);
+    assert!(errors.is_empty());
+    let typed_module = infer_module(&module).expect("type check");
+    let classes = compile_module(&typed_module, "Test").expect("codegen");
+
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let class_path = dir.path().join(format!("{name}.class"));
+        std::fs::File::create(&class_path).unwrap().write_all(bytes).unwrap();
+    }
+
+    let output = Command::new("java")
+        .arg("-cp")
+        .arg(build_classpath(dir.path()))
+        .arg("Test")
+        .output()
+        .expect("java command should run");
+
+    assert!(output.status.success(), "java exited with {}", output.status);
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "42");
 }

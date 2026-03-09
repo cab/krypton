@@ -3,8 +3,8 @@ mod class_gen;
 
 use std::collections::HashMap;
 
-use krypton_parser::ast::{Decl, Module, TypeDeclKind, TypeExpr};
-use krypton_typechecker::infer::infer_module;
+use krypton_parser::ast::TypeExpr;
+use krypton_typechecker::typed_ast::TypedModule;
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{
@@ -201,20 +201,15 @@ fn collect_tuple_arities_expr(expr: &krypton_typechecker::typed_ast::TypedExpr, 
 }
 
 /// Compile a module to JVM bytecode. Returns a list of (class_name, bytes) pairs.
-#[tracing::instrument(skip(module), fields(class = %class_name))]
+#[tracing::instrument(skip(typed_module), fields(class = %class_name))]
 pub fn compile_module(
-    module: &Module,
+    typed_module: &TypedModule,
     class_name: &str,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    // Find the main function
-    let _main_fn = module
-        .decls
-        .iter()
-        .find_map(|decl| match decl {
-            Decl::DefFn(f) if f.name == "main" => Some(f),
-            _ => None,
-        })
-        .ok_or(CodegenError::NoMainFunction)?;
+    // Check for main function
+    if !typed_module.functions.iter().any(|f| f.name == "main") {
+        return Err(CodegenError::NoMainFunction);
+    }
 
     let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
 
@@ -223,28 +218,13 @@ pub fn compile_module(
         .class_descriptors
         .insert(object_class, "Ljava/lang/Object;".to_string());
 
-    // Run the typechecker to get typed module with function types and typed bodies
-    let typed_module = infer_module(module).map_err(|e| {
-        CodegenError::TypeError(format!("{e:?}"))
-    })?;
     let type_info = &typed_module.fn_types;
 
-    // Collect struct declarations from AST
-    let struct_decls: Vec<_> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefType(td) => match &td.kind {
-                TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
+    let struct_decls = &typed_module.struct_decls;
 
     // Process struct types: register in compiler, generate class files
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
-    for (struct_name, ast_fields) in &struct_decls {
+    for (struct_name, ast_fields) in struct_decls {
         // Resolve field types to JvmTypes
         let jvm_fields: Vec<(String, JvmType)> = ast_fields
             .iter()
@@ -311,43 +291,10 @@ pub fn compile_module(
         result_classes.push((struct_name.clone(), struct_bytes));
     }
 
-    // Collect sum type declarations from AST
-    let mut sum_decls: Vec<_> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefType(td) => match &td.kind {
-                TypeDeclKind::Sum { variants } => {
-                    Some((td.name.clone(), td.type_params.clone(), variants.clone()))
-                }
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-
-    // Inject prelude sum types not shadowed by user declarations
-    {
-        let user_type_names: std::collections::HashSet<String> =
-            sum_decls.iter().map(|(name, _, _)| name.clone()).collect();
-        for &module_path in krypton_typechecker::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
-            if let Some(source) = krypton_typechecker::stdlib_loader::StdlibLoader::get_source(module_path) {
-                let (stdlib_module, _) = krypton_parser::parser::parse(source);
-                for decl in stdlib_module.decls {
-                    if let Decl::DefType(td) = decl {
-                        if let TypeDeclKind::Sum { variants } = td.kind {
-                            if !user_type_names.contains(&td.name) {
-                                sum_decls.push((td.name, td.type_params, variants));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let sum_decls = &typed_module.sum_decls;
 
     // Process sum types: generate sealed interface + variant classes
-    for (sum_name, type_params, variants) in &sum_decls {
+    for (sum_name, type_params, variants) in sum_decls {
         // Register interface class in main cpool
         let interface_class_index = compiler.cp.add_class(sum_name)?;
         let interface_desc = format!("L{sum_name};");

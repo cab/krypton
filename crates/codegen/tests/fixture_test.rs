@@ -4,6 +4,7 @@ use std::process::Command;
 
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
+use krypton_typechecker::infer::infer_module;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
 fn build_classpath(class_dir: &Path) -> String {
@@ -21,7 +22,8 @@ fn run_program(source: &str) -> String {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let classes = compile_module(&module, "Test").expect("compile_module should succeed");
+    let typed_module = infer_module(&module).expect("type check should succeed");
+    let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -87,7 +89,11 @@ fn run_codegen_fixtures(subdir: &str) {
                     if !errors.is_empty() {
                         continue;
                     }
-                    match compile_module(&module, "Test") {
+                    let typed_module = match infer_module(&module) {
+                        Ok(tm) => tm,
+                        Err(_) => continue,
+                    };
+                    match compile_module(&typed_module, "Test") {
                         Ok(_) => { ran += 1; }
                         Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
                         Err(e) => {

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern, Span, UnaryOp};
+use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern, Span, TypeDeclKind, UnaryOp, Variant};
 
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
@@ -2337,6 +2337,43 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
 
     instance_defs.extend(derived_instance_defs);
 
+    // Collect struct declarations from AST for codegen
+    let struct_decls: Vec<_> = module.decls.iter().filter_map(|decl| match decl {
+        Decl::DefType(td) => match &td.kind {
+            TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
+            _ => None,
+        },
+        _ => None,
+    }).collect();
+
+    // Collect sum type declarations from AST for codegen
+    let mut sum_decls: Vec<(String, Vec<String>, Vec<Variant>)> = module.decls.iter().filter_map(|decl| match decl {
+        Decl::DefType(td) => match &td.kind {
+            TypeDeclKind::Sum { variants } => Some((td.name.clone(), td.type_params.clone(), variants.clone())),
+            _ => None,
+        },
+        _ => None,
+    }).collect();
+
+    // Inject prelude sum types not shadowed by user declarations
+    {
+        let user_type_names: HashSet<String> = sum_decls.iter().map(|(n, _, _): &(String, Vec<String>, Vec<Variant>)| n.clone()).collect();
+        for &module_path in crate::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
+            if let Some(source) = crate::stdlib_loader::StdlibLoader::get_source(module_path) {
+                let (stdlib_module, _) = krypton_parser::parser::parse(source);
+                for decl in stdlib_module.decls {
+                    if let Decl::DefType(td) = decl {
+                        if let TypeDeclKind::Sum { variants } = td.kind {
+                            if !user_type_names.contains(&td.name) {
+                                sum_decls.push((td.name, td.type_params, variants));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(TypedModule {
         fn_types: results,
         functions,
@@ -2346,6 +2383,8 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
         trait_method_map: trait_method_map.clone(),
         extern_fns,
         imported_extern_fns,
+        struct_decls,
+        sum_decls,
     })
 }
 

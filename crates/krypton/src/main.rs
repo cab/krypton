@@ -155,12 +155,15 @@ fn main() {
             debug!("parsing complete");
 
             let t = Instant::now();
-            if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
-                let diag =
-                    krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
-                eprint!("{}", diag);
-                process::exit(1);
-            }
+            let typed_module = match krypton_typechecker::infer::infer_module(&module) {
+                Ok(tm) => tm,
+                Err(e) => {
+                    let diag =
+                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                    eprint!("{}", diag);
+                    process::exit(1);
+                }
+            };
             phases.push(("typecheck", t.elapsed()));
             debug!("type checking complete");
 
@@ -182,7 +185,7 @@ fn main() {
             };
 
             let t = Instant::now();
-            match krypton_codegen::emit::compile_module(&module, &class_name) {
+            match krypton_codegen::emit::compile_module(&typed_module, &class_name) {
                 Ok(classes) => {
                     phases.push(("codegen", t.elapsed()));
                     info!(classes = classes.len(), "codegen complete");
@@ -226,12 +229,15 @@ fn main() {
             debug!("parsing complete");
 
             let t = Instant::now();
-            if let Err(e) = krypton_typechecker::infer::infer_module(&module) {
-                let diag =
-                    krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
-                eprint!("{}", diag);
-                process::exit(1);
-            }
+            let typed_module = match krypton_typechecker::infer::infer_module(&module) {
+                Ok(tm) => tm,
+                Err(e) => {
+                    let diag =
+                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                    eprint!("{}", diag);
+                    process::exit(1);
+                }
+            };
             phases.push(("typecheck", t.elapsed()));
             debug!("type checking complete");
 
@@ -249,7 +255,7 @@ fn main() {
             };
 
             let t = Instant::now();
-            match krypton_codegen::emit::compile_module(&module, &class_name) {
+            match krypton_codegen::emit::compile_module(&typed_module, &class_name) {
                 Ok(classes) => {
                     phases.push(("codegen", t.elapsed()));
                     info!(classes = classes.len(), "codegen complete");

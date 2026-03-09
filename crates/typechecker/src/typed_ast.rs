@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::types::{Substitution, Type, TypeScheme};
-use krypton_parser::ast::{BinOp, Lit, Pattern, Span, UnaryOp};
+use krypton_parser::ast::{BinOp, Lit, Pattern, Span, TypeExpr, UnaryOp, Variant};
 
 #[derive(Debug, Clone)]
 pub struct TypedExpr {
@@ -114,6 +114,8 @@ pub struct TypedModule {
     pub trait_method_map: HashMap<String, String>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
+    pub struct_decls: Vec<(String, Vec<(String, TypeExpr)>)>,
+    pub sum_decls: Vec<(String, Vec<String>, Vec<Variant>)>,
 }
 
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
