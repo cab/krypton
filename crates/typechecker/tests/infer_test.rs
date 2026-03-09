@@ -1,6 +1,7 @@
 use krypton_parser::ast::Module;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer;
+use krypton_typechecker::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_typechecker::scc;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 
@@ -17,7 +18,7 @@ fn parse_expr_via_module(src: &str) -> krypton_parser::ast::Expr {
 fn infer_module_fn(src: &str, fn_name: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    match infer::infer_module(&module) {
+    match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
         Ok(info) => {
             info.fn_types
                 .iter()
@@ -130,7 +131,7 @@ fn parse_module(src: &str) -> Module {
 
 fn infer_module_types(src: &str) -> String {
     let module = parse_module(src);
-    match infer::infer_module(&module) {
+    match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
         Ok(info) => info.fn_types
             .iter()
             .map(|(name, scheme)| format!("{}: {}", name, scheme))
@@ -138,6 +139,32 @@ fn infer_module_types(src: &str) -> String {
             .join("\n"),
         Err(e) => format!("TypeError: {}", e.error),
     }
+}
+
+#[test]
+fn infer_module_with_custom_resolver() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("fun add(x: Int, y: Int) -> Int = x + y".to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    let src = r#"
+        import mylib.{add}
+        fun main() -> Int = add(1, 2)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
+    let info = result.unwrap();
+    let main_type = info.fn_types.iter().find(|(n, _)| n == "main").unwrap();
+    assert_eq!(format!("{}", main_type.1), "fn() -> Int");
 }
 
 #[test]

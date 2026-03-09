@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use krypton_typechecker::module_resolver::CompositeResolver;
 use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, Instant};
@@ -155,7 +156,7 @@ fn main() {
             debug!("parsing complete");
 
             let t = Instant::now();
-            let typed_module = match krypton_typechecker::infer::infer_module(&module) {
+            let typed_module = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
                 Ok(tm) => tm,
                 Err(e) => {
                     let diag =
@@ -229,7 +230,7 @@ fn main() {
             debug!("parsing complete");
 
             let t = Instant::now();
-            let typed_module = match krypton_typechecker::infer::infer_module(&module) {
+            let typed_module = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
                 Ok(tm) => tm,
                 Err(e) => {
                     let diag =
@@ -316,7 +317,7 @@ fn main() {
             }
 
             let t = Instant::now();
-            match krypton_typechecker::infer::infer_module(&module) {
+            match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
                 Ok(info) => {
                     phases.push(("typecheck", t.elapsed()));
                     for (name, scheme) in &info.fn_types {

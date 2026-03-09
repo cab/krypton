@@ -1570,8 +1570,8 @@ fn process_extern_methods(
 /// Uses SCC (strongly connected component) analysis to process definitions
 /// in dependency order. Functions within the same SCC are inferred together
 /// as a mutually recursive group, then generalized before later SCCs see them.
-#[tracing::instrument(skip(module), fields(decls = module.decls.len()))]
-pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
+#[tracing::instrument(skip(module, resolver), fields(decls = module.decls.len()))]
+pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::ModuleResolver) -> Result<TypedModule, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
@@ -1591,12 +1591,10 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
-            use crate::stdlib_loader::StdlibLoader;
-
-            let source = StdlibLoader::get_source(path)
+            let source = resolver.resolve(path)
                 .ok_or_else(|| spanned(TypeError::UnknownModule { path: path.clone() }, *span))?;
 
-            let (stdlib_module, parse_errors) = krypton_parser::parser::parse(source);
+            let (stdlib_module, parse_errors) = krypton_parser::parser::parse(&source);
             assert!(parse_errors.is_empty(), "stdlib parse error in {path}");
 
             let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();

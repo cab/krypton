@@ -2,6 +2,7 @@ pub mod diagnostics;
 pub mod exhaustiveness;
 pub mod infer;
 pub mod intrinsics;
+pub mod module_resolver;
 pub mod ownership;
 pub mod prelude;
 pub mod scc;

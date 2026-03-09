@@ -1,11 +1,12 @@
 use krypton_parser::parser::parse;
 use krypton_typechecker::diagnostics::render_type_errors;
 use krypton_typechecker::infer;
+use krypton_typechecker::module_resolver::CompositeResolver;
 
 fn parse_and_infer_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let err = match infer::infer_module(&module) {
+    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
@@ -66,7 +67,7 @@ fn render_fixture_error(fixture: &str) -> String {
     let src = std::fs::read_to_string(fixture).unwrap();
     let (module, errors) = parse(&src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module) {
+    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
@@ -77,7 +78,7 @@ fn render_fixture_error(fixture: &str) -> String {
 fn render_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module) {
+    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };

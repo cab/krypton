@@ -3,13 +3,14 @@ use std::path::Path;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 use krypton_typechecker::infer;
+use krypton_typechecker::module_resolver::CompositeResolver;
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
     let (module, errors) = parse(source);
     if !errors.is_empty() {
         return Err(errors[0].code.to_string());
     }
-    match infer::infer_module(&module) {
+    match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
         Ok(info) => {
             let lines: Vec<String> = info.fn_types
                 .iter()

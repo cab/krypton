@@ -5,6 +5,7 @@ use std::process::Command;
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
+use krypton_typechecker::module_resolver::CompositeResolver;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
 fn build_classpath(class_dir: &Path) -> String {
@@ -19,10 +20,14 @@ fn build_classpath(class_dir: &Path) -> String {
 }
 
 fn run_program(source: &str) -> String {
+    run_program_with_resolver(source, &CompositeResolver::stdlib_only())
+}
+
+fn run_program_with_resolver(source: &str, resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver) -> String {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let typed_module = infer_module(&module).expect("type check should succeed");
+    let typed_module = infer_module(&module, resolver).expect("type check should succeed");
     let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
 
     let dir = tempfile::tempdir().unwrap();
@@ -74,10 +79,14 @@ fn run_codegen_fixtures(subdir: &str) {
             .to_string_lossy()
             .to_string();
 
+        let resolver = CompositeResolver::with_source_root(
+            fixture_path.parent().unwrap().to_path_buf(),
+        );
+
         for expectation in &fixture.expectations {
             match expectation {
                 Expectation::Output(expected) => {
-                    let actual = run_program(&fixture.source);
+                    let actual = run_program_with_resolver(&fixture.source, &resolver);
                     assert_eq!(
                         actual, *expected,
                         "fixture {name}: expected output {expected:?} but got {actual:?}"
@@ -89,7 +98,7 @@ fn run_codegen_fixtures(subdir: &str) {
                     if !errors.is_empty() {
                         continue;
                     }
-                    let typed_module = match infer_module(&module) {
+                    let typed_module = match infer_module(&module, &resolver) {
                         Ok(tm) => tm,
                         Err(_) => continue,
                     };
