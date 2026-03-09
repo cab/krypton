@@ -405,6 +405,13 @@ fn compile_module_inner(
                 .variant_to_sum
                 .insert(variant.name.clone(), sum_name.clone());
 
+            let singleton_field_ref = if fields.is_empty() {
+                let variant_desc = format!("L{qualified_variant};");
+                Some(compiler.cp.add_field_ref(variant_class_index, "INSTANCE", &variant_desc)?)
+            } else {
+                None
+            };
+
             variant_infos.insert(
                 variant.name.clone(),
                 VariantInfo {
@@ -413,6 +420,7 @@ fn compile_module_inner(
                     fields: fields.clone(),
                     constructor_ref,
                     field_refs: main_field_refs,
+                    singleton_field_ref,
                 },
             );
 

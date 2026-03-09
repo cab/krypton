@@ -297,6 +297,47 @@ pub(super) fn generate_variant_class(
 
     let mut methods = vec![constructor];
 
+    // For nullary variants, add INSTANCE singleton field + <clinit>
+    let mut singleton_field = None;
+    if fields.is_empty() {
+        let self_desc = format!("L{variant_name};");
+        let instance_name = cp.add_utf8("INSTANCE")?;
+        let instance_desc_idx = cp.add_utf8(&self_desc)?;
+        let instance_field_ref = cp.add_field_ref(this_class, "INSTANCE", &self_desc)?;
+        let self_init = cp.add_method_ref(this_class, "<init>", "()V")?;
+
+        let clinit_name = cp.add_utf8("<clinit>")?;
+        let clinit_desc = cp.add_utf8("()V")?;
+        let clinit = Method {
+            access_flags: MethodAccessFlags::STATIC,
+            name_index: clinit_name,
+            descriptor_index: clinit_desc,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 2,
+                max_locals: 0,
+                code: vec![
+                    Instruction::New(this_class),
+                    Instruction::Dup,
+                    Instruction::Invokespecial(self_init),
+                    Instruction::Putstatic(instance_field_ref),
+                    Instruction::Return,
+                ],
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        };
+        methods.push(clinit);
+
+        singleton_field = Some(Field {
+            access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
+            name_index: instance_name,
+            descriptor_index: instance_desc_idx,
+            field_type: FieldType::Object(variant_name.to_string()),
+            attributes: vec![],
+        });
+    }
+
     // toString() method returning the variant name
     let tostring_name = cp.add_utf8("toString")?;
     let tostring_desc = cp.add_utf8("()Ljava/lang/String;")?;
@@ -319,6 +360,10 @@ pub(super) fn generate_variant_class(
             attributes: vec![],
         }],
     });
+
+    if let Some(sf) = singleton_field {
+        jvm_fields.push(sf);
+    }
 
     let class_file = ClassFile {
         version: JAVA_21,

@@ -1,0 +1,20 @@
+# expect: output 42
+
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Option[a] = None | Some(a)
+
+fun unwrap_or(opt, default) = match opt {
+    None => default,
+    Some(x) => x,
+}
+
+fun main() {
+    let n = None;
+    let s = Some(42);
+    let v = unwrap_or(s, 0);
+    let check = unwrap_or(n, v);
+    println(check);
+}

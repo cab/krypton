@@ -77,6 +77,7 @@ pub(super) struct VariantInfo {
     pub(super) fields: Vec<(String, JvmType, bool)>, // (name, jvm_type, is_erased)
     pub(super) constructor_ref: u16,
     pub(super) field_refs: Vec<u16>, // field ref indices in main cpool
+    pub(super) singleton_field_ref: Option<u16>, // Some(field_ref) for nullary variants
 }
 
 /// Info about a sum type (sealed interface).
@@ -1387,16 +1388,9 @@ impl Compiler {
             let sum_info = &self.types.sum_type_info[&sum_name];
             let vi = &sum_info.variants[name];
             if vi.fields.is_empty() {
-                let class_index = vi.class_index;
-                let constructor_ref = vi.constructor_ref;
+                let singleton_field_ref = vi.singleton_field_ref.unwrap();
                 let interface_class_index = sum_info.interface_class_index;
-                self.emit(Instruction::New(class_index));
-                self.frame.push_type(VerificationType::UninitializedThis);
-                self.emit(Instruction::Dup);
-                self.frame.push_type(VerificationType::UninitializedThis);
-                self.emit(Instruction::Invokespecial(constructor_ref));
-                self.frame.pop_type(); // dup'd uninit
-                self.frame.pop_type(); // original uninit
+                self.emit(Instruction::Getstatic(singleton_field_ref));
                 let result_type = JvmType::StructRef(interface_class_index);
                 self.push_jvm_type(result_type);
                 return Ok(result_type);
