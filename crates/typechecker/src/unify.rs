@@ -32,6 +32,7 @@ pub enum TypeErrorCode {
     E0501, // Unknown module
     E0502, // Circular import
     E0503, // Private name in import
+    E0504, // Bare import (no selective names)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -63,6 +64,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0501 => write!(f, "E0501"),
             TypeErrorCode::E0502 => write!(f, "E0502"),
             TypeErrorCode::E0503 => write!(f, "E0503"),
+            TypeErrorCode::E0504 => write!(f, "E0504"),
         }
     }
 }
@@ -96,6 +98,7 @@ pub enum TypeError {
     UnknownModule { path: String },
     CircularImport { cycle: Vec<String> },
     PrivateName { name: String, module_path: String },
+    BareImport { path: String },
 }
 
 impl TypeError {
@@ -129,6 +132,7 @@ impl TypeError {
             TypeError::UnknownModule { .. } => TypeErrorCode::E0501,
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
+            TypeError::BareImport { .. } => TypeErrorCode::E0504,
         }
     }
 
@@ -233,6 +237,10 @@ impl TypeError {
             TypeError::PrivateName { name, module_path } => {
                 Some(format!("`{}` is private in module `{}`; add `pub` to export it", name, module_path))
             }
+            TypeError::BareImport { path } => {
+                let last = path.rsplit('/').next().unwrap_or(path);
+                Some(format!("use `import {path}.{{name1, name2}}` to import specific names — qualified imports (`{last}.foo()`) are not yet supported"))
+            }
         }
     }
 }
@@ -321,6 +329,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::PrivateName { name, module_path } => {
                 write!(f, "name `{}` is private in module `{}`", name, module_path)
+            }
+            TypeError::BareImport { path } => {
+                write!(f, "bare import of module `{}` is not supported", path)
             }
         }
     }

@@ -839,3 +839,27 @@ fn infer_module_private_by_default() {
     let result2 = infer::infer_module(&module2, &FakeResolver);
     assert!(result2.is_ok(), "importing pub fn should work: {:?}", result2.err());
 }
+
+#[test]
+fn infer_module_bare_import_error() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub fun add(x: Int, y: Int) -> Int = x + y".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import mylib
+        fun main() -> Int = 1
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_err(), "bare import should fail");
+    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    assert_eq!(err.error.error_code().to_string(), "E0504");
+}

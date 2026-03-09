@@ -1,0 +1,3 @@
+# expect: error E0504
+import helpers_a
+fun main() = 1

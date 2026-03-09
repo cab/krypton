@@ -1589,6 +1589,11 @@ fn infer_module_inner(
                 return Err(spanned(TypeError::CircularImport { cycle }, *span));
             }
 
+            // Bare imports (no selective names) are not yet supported
+            if names.is_empty() {
+                return Err(spanned(TypeError::BareImport { path: path.clone() }, *span));
+            }
+
             let source = resolver.resolve(path)
                 .ok_or_else(|| spanned(TypeError::UnknownModule { path: path.clone() }, *span))?;
 
