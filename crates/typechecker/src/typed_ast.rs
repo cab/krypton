@@ -121,6 +121,9 @@ pub struct TypedModule {
     /// Maps local_name → (module_path, original_name) for imported functions.
     /// Used by codegen to emit cross-module `invokestatic` calls.
     pub fn_provenance: HashMap<String, (String, String)>,
+    /// Maps type_name → source_module_path for types originating from other modules.
+    /// Used by codegen to qualify type class names (e.g., `core/list/List`).
+    pub type_provenance: HashMap<String, String>,
 }
 
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {

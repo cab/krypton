@@ -1,0 +1,13 @@
+# expect: output "3"
+import core/list.{length}
+
+type Point = { x: Int, y: Int }
+
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+fun main() = {
+  let p = Point(1, 2)
+  println(length(Cons(1, Cons(2, Cons(3, Nil)))))
+}

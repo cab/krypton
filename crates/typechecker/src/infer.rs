@@ -2191,6 +2191,26 @@ fn infer_module_inner(
                 }).collect();
                 let _concrete_ret_type = substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
 
+                // Validate user-provided type annotations against the trait signature
+                let empty_map = HashMap::new();
+                for (i, p) in method.params.iter().enumerate() {
+                    if let Some(ref ty_expr) = p.ty {
+                        if i < concrete_param_types.len() {
+                            let annotated_ty = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
+                                .map_err(|e| spanned(e, p.span))?;
+                            unify(&annotated_ty, &concrete_param_types[i], &mut subst)
+                                .map_err(|e| spanned(e, p.span))?;
+                        }
+                    }
+                }
+                if let Some(ref ret_ty_expr) = method.return_type {
+                    let concrete_ret = substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
+                    let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &empty_map, &registry)
+                        .map_err(|e| spanned(e, method.span))?;
+                    unify(&annotated_ret, &concrete_ret, &mut subst)
+                        .map_err(|e| spanned(e, method.span))?;
+                }
+
                 // Type-check the method body
                 env.push_scope();
                 let mut param_types_inferred = Vec::new();
@@ -2282,6 +2302,9 @@ fn infer_module_inner(
     // Build trait_defs for codegen (include built-in traits that have user instances)
     let mut trait_defs = Vec::new();
     let mut seen_traits = std::collections::HashSet::new();
+    // Track type provenance: type_name → source_module_path
+    let mut type_provenance: HashMap<String, String> = HashMap::new();
+
     // First add built-in traits (needed if user code has `impl Add Vec2` etc.)
     for (trait_name, info) in trait_registry.traits() {
         let method_info: Vec<(String, usize)> = info.methods.iter().map(|m| {
@@ -2292,6 +2315,7 @@ fn infer_module_inner(
             methods: method_info,
         });
         seen_traits.insert(trait_name.clone());
+        type_provenance.insert(trait_name.clone(), "core".to_string());
     }
     // Then add user-defined traits (skip if already registered as built-in)
     for decl in &module.decls {
@@ -2347,6 +2371,10 @@ fn infer_module_inner(
                     if let Decl::DefType(td) = decl {
                         if let TypeDeclKind::Sum { variants } = td.kind {
                             if !user_type_names.contains(&td.name) {
+                                type_provenance.insert(td.name.clone(), module_path.to_string());
+                                for v in &variants {
+                                    type_provenance.insert(v.name.clone(), module_path.to_string());
+                                }
                                 sum_decls.push((td.name, td.type_params, variants));
                             }
                         }
@@ -2369,6 +2397,7 @@ fn infer_module_inner(
         struct_decls,
         sum_decls,
         fn_provenance: fn_provenance_map,
+        type_provenance,
     })
 }
 

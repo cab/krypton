@@ -37,7 +37,7 @@ public final class KryptonIO {
 
     private static Object wrapOk(Object value) {
         try {
-            Class<?> okClass = Class.forName("Result$Ok");
+            Class<?> okClass = Class.forName("core.result.Result$Ok");
             return okClass.getDeclaredConstructor(Object.class).newInstance(value);
         } catch (Exception e) {
             throw new RuntimeException("Failed to construct Ok: " + e.getMessage(), e);
@@ -46,7 +46,7 @@ public final class KryptonIO {
 
     private static Object wrapErr(Object value) {
         try {
-            Class<?> errClass = Class.forName("Result$Err");
+            Class<?> errClass = Class.forName("core.result.Result$Err");
             return errClass.getDeclaredConstructor(Object.class).newInstance(value);
         } catch (Exception e) {
             throw new RuntimeException("Failed to construct Err: " + e.getMessage(), e);

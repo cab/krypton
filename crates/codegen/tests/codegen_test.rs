@@ -34,6 +34,9 @@ fn run_program(source: &str) -> String {
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let class_path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = class_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         let mut f = std::fs::File::create(&class_path).unwrap();
         f.write_all(bytes).unwrap();
     }
@@ -251,6 +254,9 @@ fun main() = None
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
     }
     let output = Command::new("javap")
@@ -349,6 +355,9 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
     }
     let output = Command::new("javap")
@@ -376,6 +385,9 @@ fn test_typed_module_direct() {
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let class_path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = class_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         std::fs::File::create(&class_path).unwrap().write_all(bytes).unwrap();
     }
 

@@ -1,8 +1,8 @@
 # expect: output "8"
-import math/vec.{add}
+import math/vec.{sum}
 
 extern "krypton.runtime.KryptonIO" {
   fun println(Object) -> Unit
 }
 
-fun main() = println(add(3, 5))
+fun main() = println(sum(3, 5))

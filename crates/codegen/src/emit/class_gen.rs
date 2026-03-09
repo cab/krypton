@@ -629,12 +629,13 @@ pub(super) fn generate_instance_class(
 pub(super) fn generate_builtin_show_instance_class(
     class_name: &str,
     type_name: &str,
+    trait_interface_name: &str,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
 
     let this_class = cp.add_class(class_name)?;
     let object_class = cp.add_class("java/lang/Object")?;
-    let interface_class = cp.add_class("Show")?;
+    let interface_class = cp.add_class(trait_interface_name)?;
     let code_utf8 = cp.add_utf8("Code")?;
     let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
     let init_name = cp.add_utf8("<init>")?;
@@ -773,7 +774,8 @@ pub(super) fn generate_builtin_show_instance_class(
 /// unboxes arguments, performs the operation, and boxes the result.
 pub(super) fn generate_builtin_trait_instance_class(
     class_name: &str,
-    trait_name: &str,
+    trait_interface_name: &str,
+    bare_trait_name: &str,
     method_name: &str,
     type_name: &str,
 ) -> Result<Vec<u8>, CodegenError> {
@@ -781,7 +783,7 @@ pub(super) fn generate_builtin_trait_instance_class(
 
     let this_class = cp.add_class(class_name)?;
     let object_class = cp.add_class("java/lang/Object")?;
-    let interface_class = cp.add_class(trait_name)?;
+    let interface_class = cp.add_class(trait_interface_name)?;
     let code_utf8 = cp.add_utf8("Code")?;
     let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
     let init_name = cp.add_utf8("<init>")?;
@@ -836,7 +838,7 @@ pub(super) fn generate_builtin_trait_instance_class(
     };
 
     // Determine if unary (Neg) or binary
-    let is_unary = trait_name == "Neg";
+    let is_unary = bare_trait_name == "Neg";
     let iface_desc = if is_unary {
         "(Ljava/lang/Object;)Ljava/lang/Object;"
     } else {
@@ -848,7 +850,7 @@ pub(super) fn generate_builtin_trait_instance_class(
 
     // Build bridge method bytecode
     let (bridge_code, max_stack, max_locals) = build_bridge_bytecode(
-        &mut cp, trait_name, type_name, is_unary,
+        &mut cp, bare_trait_name, type_name, is_unary,
     )?;
 
     let bridge_method = Method {
