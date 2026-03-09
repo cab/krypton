@@ -1193,67 +1193,57 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 /// Walk a typed expression tree and record struct update info for each
 /// `StructUpdate` node: maps its span to (type_name, set of updated field names).
 fn collect_struct_update_info(expr: &TypedExpr, info: &mut HashMap<Span, (String, HashSet<String>)>) {
-    match &expr.kind {
-        TypedExprKind::StructUpdate { base, fields } => {
-            let inner_ty = match &base.ty {
-                Type::Own(inner) => inner.as_ref(),
-                other => other,
-            };
-            if let Type::Named(name, _) = inner_ty {
-                let field_names: HashSet<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-                info.insert(expr.span, (name.clone(), field_names));
+    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
+    work.push(expr);
+    while let Some(expr) = work.pop() {
+        match &expr.kind {
+            TypedExprKind::StructUpdate { base, fields } => {
+                let inner_ty = match &base.ty {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                if let Type::Named(name, _) = inner_ty {
+                    let field_names: HashSet<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                    info.insert(expr.span, (name.clone(), field_names));
+                }
+                work.push(base);
+                for (_, e) in fields { work.push(e); }
             }
-            collect_struct_update_info(base, info);
-            for (_, e) in fields {
-                collect_struct_update_info(e, info);
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+            TypedExprKind::App { func, args } => {
+                work.push(func);
+                for a in args { work.push(a); }
             }
-        }
-        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
-        TypedExprKind::App { func, args } => {
-            collect_struct_update_info(func, info);
-            for a in args { collect_struct_update_info(a, info); }
-        }
-        TypedExprKind::If { cond, then_, else_ } => {
-            collect_struct_update_info(cond, info);
-            collect_struct_update_info(then_, info);
-            collect_struct_update_info(else_, info);
-        }
-        TypedExprKind::Let { value, body, .. } => {
-            collect_struct_update_info(value, info);
-            if let Some(b) = body { collect_struct_update_info(b, info); }
-        }
-        TypedExprKind::Do(exprs) => {
-            for e in exprs { collect_struct_update_info(e, info); }
-        }
-        TypedExprKind::Match { scrutinee, arms } => {
-            collect_struct_update_info(scrutinee, info);
-            for arm in arms { collect_struct_update_info(&arm.body, info); }
-        }
-        TypedExprKind::Lambda { body, .. } => collect_struct_update_info(body, info),
-        TypedExprKind::FieldAccess { expr, .. } => collect_struct_update_info(expr, info),
-        TypedExprKind::Recur(args) => {
-            for a in args { collect_struct_update_info(a, info); }
-        }
-        TypedExprKind::Tuple(elems) => {
-            for e in elems { collect_struct_update_info(e, info); }
-        }
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            collect_struct_update_info(lhs, info);
-            collect_struct_update_info(rhs, info);
-        }
-        TypedExprKind::UnaryOp { operand, .. } => collect_struct_update_info(operand, info),
-        TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields { collect_struct_update_info(e, info); }
-        }
-        TypedExprKind::LetPattern { value, body, .. } => {
-            collect_struct_update_info(value, info);
-            if let Some(b) = body { collect_struct_update_info(b, info); }
-        }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            collect_struct_update_info(expr, info);
-        }
-        TypedExprKind::VecLit(elems) => {
-            for e in elems { collect_struct_update_info(e, info); }
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
+            }
+            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                work.push(value);
+                if let Some(b) = body { work.push(b); }
+            }
+            TypedExprKind::Do(exprs) => {
+                for e in exprs { work.push(e); }
+            }
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms { work.push(&arm.body); }
+            }
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
+            TypedExprKind::Recur(args) | TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
+                for a in args { work.push(a); }
+            }
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                work.push(lhs);
+                work.push(rhs);
+            }
+            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields { work.push(e); }
+            }
+            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
         }
     }
 }
@@ -1287,85 +1277,61 @@ fn detect_trait_constraints(
     subst: &Substitution,
     constraints: &mut Vec<String>,
 ) {
-    match &expr.kind {
-        TypedExprKind::App { func, args } => {
-            if let TypedExprKind::Var(name) = &func.kind {
-                if let Some(trait_name) = trait_method_map.get(name) {
-                    if let Some(first_arg) = args.first() {
-                        let arg_ty = subst.apply(&first_arg.ty);
-                        let concrete_ty = strip_own(&arg_ty);
-                        if matches!(concrete_ty, Type::Var(_)) {
-                            constraints.push(trait_name.clone());
+    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
+    work.push(expr);
+    while let Some(expr) = work.pop() {
+        match &expr.kind {
+            TypedExprKind::App { func, args } => {
+                if let TypedExprKind::Var(name) = &func.kind {
+                    if let Some(trait_name) = trait_method_map.get(name) {
+                        if let Some(first_arg) = args.first() {
+                            let arg_ty = subst.apply(&first_arg.ty);
+                            let concrete_ty = strip_own(&arg_ty);
+                            if matches!(concrete_ty, Type::Var(_)) {
+                                constraints.push(trait_name.clone());
+                            }
                         }
                     }
                 }
+                work.push(func);
+                for a in args { work.push(a); }
             }
-            detect_trait_constraints(func, trait_method_map, subst, constraints);
-            for arg in args {
-                detect_trait_constraints(arg, trait_method_map, subst, constraints);
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
             }
-        }
-        TypedExprKind::Lambda { body, .. } => {
-            detect_trait_constraints(body, trait_method_map, subst, constraints);
-        }
-        TypedExprKind::If { cond, then_, else_ } => {
-            detect_trait_constraints(cond, trait_method_map, subst, constraints);
-            detect_trait_constraints(then_, trait_method_map, subst, constraints);
-            detect_trait_constraints(else_, trait_method_map, subst, constraints);
-        }
-        TypedExprKind::Let { value, body, .. } => {
-            detect_trait_constraints(value, trait_method_map, subst, constraints);
-            if let Some(body) = body {
-                detect_trait_constraints(body, trait_method_map, subst, constraints);
+            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                work.push(value);
+                if let Some(body) = body { work.push(body); }
             }
-        }
-        TypedExprKind::Do(exprs) => {
-            for e in exprs {
-                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            TypedExprKind::Do(exprs) => {
+                for e in exprs { work.push(e); }
             }
-        }
-        TypedExprKind::Match { scrutinee, arms } => {
-            detect_trait_constraints(scrutinee, trait_method_map, subst, constraints);
-            for arm in arms {
-                detect_trait_constraints(&arm.body, trait_method_map, subst, constraints);
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms { work.push(&arm.body); }
             }
-        }
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            detect_trait_constraints(lhs, trait_method_map, subst, constraints);
-            detect_trait_constraints(rhs, trait_method_map, subst, constraints);
-        }
-        TypedExprKind::UnaryOp { operand, .. } => {
-            detect_trait_constraints(operand, trait_method_map, subst, constraints);
-        }
-        TypedExprKind::FieldAccess { expr, .. } => {
-            detect_trait_constraints(expr, trait_method_map, subst, constraints);
-        }
-        TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields {
-                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                work.push(lhs);
+                work.push(rhs);
             }
-        }
-        TypedExprKind::StructUpdate { base, fields, .. } => {
-            detect_trait_constraints(base, trait_method_map, subst, constraints);
-            for (_, e) in fields {
-                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields { work.push(e); }
             }
-        }
-        TypedExprKind::LetPattern { value, body, .. } => {
-            detect_trait_constraints(value, trait_method_map, subst, constraints);
-            if let Some(body) = body {
-                detect_trait_constraints(body, trait_method_map, subst, constraints);
+            TypedExprKind::StructUpdate { base, fields, .. } => {
+                work.push(base);
+                for (_, e) in fields { work.push(e); }
             }
-        }
-        TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) | TypedExprKind::VecLit(elems) => {
-            for e in elems {
-                detect_trait_constraints(e, trait_method_map, subst, constraints);
+            TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) | TypedExprKind::VecLit(elems) => {
+                for e in elems { work.push(e); }
             }
+            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            detect_trait_constraints(expr, trait_method_map, subst, constraints);
-        }
-        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
     }
 }
 
@@ -1377,156 +1343,114 @@ fn check_trait_instances(
     trait_registry: &TraitRegistry,
     subst: &Substitution,
 ) -> Result<(), SpannedTypeError> {
-    match &expr.kind {
-        TypedExprKind::App { func, args } => {
-            // Check if the function being called is a trait method
-            if let TypedExprKind::Var(name) = &func.kind {
-                if let Some(trait_name) = trait_method_map.get(name) {
-                    // Resolve the first argument's type to determine the concrete type
-                    if let Some(first_arg) = args.first() {
-                        let arg_ty = subst.apply(&first_arg.ty);
-                        let concrete_ty = strip_own(&arg_ty);
-                        // Skip check if type is still a variable (constrained function)
-                        if !matches!(concrete_ty, Type::Var(_))
-                            && trait_registry.find_instance(trait_name, &concrete_ty).is_none()
-                        {
-                            return Err(spanned(
-                                TypeError::NoInstance {
-                                    trait_name: trait_name.clone(),
-                                    ty: format!("{}", concrete_ty),
-                                    required_by: None,
-                                },
-                                expr.span,
-                            ));
+    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
+    work.push(expr);
+    while let Some(expr) = work.pop() {
+        match &expr.kind {
+            TypedExprKind::App { func, args } => {
+                if let TypedExprKind::Var(name) = &func.kind {
+                    if let Some(trait_name) = trait_method_map.get(name) {
+                        if let Some(first_arg) = args.first() {
+                            let arg_ty = subst.apply(&first_arg.ty);
+                            let concrete_ty = strip_own(&arg_ty);
+                            if !matches!(concrete_ty, Type::Var(_))
+                                && trait_registry.find_instance(trait_name, &concrete_ty).is_none()
+                            {
+                                return Err(spanned(
+                                    TypeError::NoInstance {
+                                        trait_name: trait_name.clone(),
+                                        ty: format!("{}", concrete_ty),
+                                        required_by: None,
+                                    },
+                                    expr.span,
+                                ));
+                            }
                         }
                     }
                 }
+                work.push(func);
+                for a in args { work.push(a); }
             }
-            // Recurse into func and args
-            check_trait_instances(func, trait_method_map, trait_registry, subst)?;
-            for arg in args {
-                check_trait_instances(arg, trait_method_map, trait_registry, subst)?;
-            }
-        }
-        TypedExprKind::Lambda { body, .. } => {
-            check_trait_instances(body, trait_method_map, trait_registry, subst)?;
-        }
-        TypedExprKind::If { cond, then_, else_ } => {
-            check_trait_instances(cond, trait_method_map, trait_registry, subst)?;
-            check_trait_instances(then_, trait_method_map, trait_registry, subst)?;
-            check_trait_instances(else_, trait_method_map, trait_registry, subst)?;
-        }
-        TypedExprKind::Let { value, body, .. } => {
-            check_trait_instances(value, trait_method_map, trait_registry, subst)?;
-            if let Some(body) = body {
-                check_trait_instances(body, trait_method_map, trait_registry, subst)?;
-            }
-        }
-        TypedExprKind::Do(exprs) => {
-            for e in exprs {
-                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
-            }
-        }
-        TypedExprKind::Match { scrutinee, arms } => {
-            check_trait_instances(scrutinee, trait_method_map, trait_registry, subst)?;
-            for arm in arms {
-                check_trait_instances(&arm.body, trait_method_map, trait_registry, subst)?;
-            }
-        }
-        TypedExprKind::FieldAccess { expr: inner, .. } => {
-            check_trait_instances(inner, trait_method_map, trait_registry, subst)?;
-        }
-        TypedExprKind::BinaryOp { op, lhs, rhs } => {
-            // Check that the operand type has the required trait instance
-            let trait_name = match op {
-                BinOp::Add => "Add",
-                BinOp::Sub => "Sub",
-                BinOp::Mul => "Mul",
-                BinOp::Div => "Div",
-                BinOp::Eq | BinOp::Neq => "Eq",
-                BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => "Ord",
-                BinOp::And | BinOp::Or => {
-                    // Boolean ops don't require trait instances
-                    check_trait_instances(lhs, trait_method_map, trait_registry, subst)?;
-                    check_trait_instances(rhs, trait_method_map, trait_registry, subst)?;
-                    return Ok(());
+            TypedExprKind::BinaryOp { op, lhs, rhs } => {
+                let trait_name = match op {
+                    BinOp::Add => Some("Add"),
+                    BinOp::Sub => Some("Sub"),
+                    BinOp::Mul => Some("Mul"),
+                    BinOp::Div => Some("Div"),
+                    BinOp::Eq | BinOp::Neq => Some("Eq"),
+                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some("Ord"),
+                    BinOp::And | BinOp::Or => None,
+                };
+                if let Some(trait_name) = trait_name {
+                    let operand_ty = strip_own(&subst.apply(&lhs.ty));
+                    if !matches!(operand_ty, Type::Var(_))
+                        && trait_registry.find_instance(trait_name, &operand_ty).is_none()
+                    {
+                        return Err(spanned(
+                            TypeError::NoInstance {
+                                trait_name: trait_name.to_string(),
+                                ty: format!("{}", operand_ty),
+                                required_by: None,
+                            },
+                            expr.span,
+                        ));
+                    }
                 }
-            };
-            let operand_ty = strip_own(&subst.apply(&lhs.ty));
-            if !matches!(operand_ty, Type::Var(_))
-                && trait_registry.find_instance(trait_name, &operand_ty).is_none()
-            {
-                return Err(spanned(
-                    TypeError::NoInstance {
-                        trait_name: trait_name.to_string(),
-                        ty: format!("{}", operand_ty),
-                        required_by: None,
-                    },
-                    expr.span,
-                ));
+                work.push(lhs);
+                work.push(rhs);
             }
-            check_trait_instances(lhs, trait_method_map, trait_registry, subst)?;
-            check_trait_instances(rhs, trait_method_map, trait_registry, subst)?;
-        }
-        TypedExprKind::UnaryOp { op, operand } => {
-            let trait_name = match op {
-                UnaryOp::Neg => "Neg",
-                UnaryOp::Not => {
-                    // Boolean NOT doesn't require trait instances
-                    check_trait_instances(operand, trait_method_map, trait_registry, subst)?;
-                    return Ok(());
+            TypedExprKind::UnaryOp { op, operand } => {
+                let trait_name = match op {
+                    UnaryOp::Neg => Some("Neg"),
+                    UnaryOp::Not => None,
+                };
+                if let Some(trait_name) = trait_name {
+                    let operand_ty = strip_own(&subst.apply(&operand.ty));
+                    if !matches!(operand_ty, Type::Var(_))
+                        && trait_registry.find_instance(trait_name, &operand_ty).is_none()
+                    {
+                        return Err(spanned(
+                            TypeError::NoInstance {
+                                trait_name: trait_name.to_string(),
+                                ty: format!("{}", operand_ty),
+                                required_by: None,
+                            },
+                            expr.span,
+                        ));
+                    }
                 }
-            };
-            let operand_ty = strip_own(&subst.apply(&operand.ty));
-            if !matches!(operand_ty, Type::Var(_))
-                && trait_registry.find_instance(trait_name, &operand_ty).is_none()
-            {
-                return Err(spanned(
-                    TypeError::NoInstance {
-                        trait_name: trait_name.to_string(),
-                        ty: format!("{}", operand_ty),
-                        required_by: None,
-                    },
-                    expr.span,
-                ));
+                work.push(operand);
             }
-            check_trait_instances(operand, trait_method_map, trait_registry, subst)?;
-        }
-        TypedExprKind::Tuple(elems) => {
-            for e in elems {
-                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
             }
-        }
-        TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields {
-                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                work.push(value);
+                if let Some(body) = body { work.push(body); }
             }
-        }
-        TypedExprKind::StructUpdate { base, fields, .. } => {
-            check_trait_instances(base, trait_method_map, trait_registry, subst)?;
-            for (_, e) in fields {
-                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            TypedExprKind::Do(exprs) => {
+                for e in exprs { work.push(e); }
             }
-        }
-        TypedExprKind::LetPattern { value, body, .. } => {
-            check_trait_instances(value, trait_method_map, trait_registry, subst)?;
-            if let Some(body) = body {
-                check_trait_instances(body, trait_method_map, trait_registry, subst)?;
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms { work.push(&arm.body); }
             }
-        }
-        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
-        TypedExprKind::Recur(args) => {
-            for a in args {
-                check_trait_instances(a, trait_method_map, trait_registry, subst)?;
+            TypedExprKind::FieldAccess { expr: inner, .. } => work.push(inner),
+            TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) | TypedExprKind::VecLit(elems) => {
+                for e in elems { work.push(e); }
             }
-        }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            check_trait_instances(expr, trait_method_map, trait_registry, subst)?;
-        }
-        TypedExprKind::VecLit(elems) => {
-            for e in elems {
-                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields { work.push(e); }
             }
+            TypedExprKind::StructUpdate { base, fields, .. } => {
+                work.push(base);
+                for (_, e) in fields { work.push(e); }
+            }
+            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
     }
     Ok(())

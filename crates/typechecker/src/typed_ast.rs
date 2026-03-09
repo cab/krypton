@@ -163,86 +163,56 @@ pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {
 }
 
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
-    expr.ty = subst.apply(&expr.ty);
-    match &mut expr.kind {
-        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
-        TypedExprKind::App { func, args } => {
-            apply_subst(func, subst);
-            for arg in args {
-                apply_subst(arg, subst);
+    let mut work: Vec<&mut TypedExpr> = Vec::with_capacity(16);
+    work.push(expr);
+    while let Some(expr) = work.pop() {
+        expr.ty = subst.apply(&expr.ty);
+        match &mut expr.kind {
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+            TypedExprKind::App { func, args } => {
+                work.push(func);
+                work.extend(args.iter_mut());
             }
-        }
-        TypedExprKind::If { cond, then_, else_ } => {
-            apply_subst(cond, subst);
-            apply_subst(then_, subst);
-            apply_subst(else_, subst);
-        }
-        TypedExprKind::Let { value, body, .. } => {
-            apply_subst(value, subst);
-            if let Some(body) = body {
-                apply_subst(body, subst);
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
             }
-        }
-        TypedExprKind::Do(exprs) => {
-            for e in exprs {
-                apply_subst(e, subst);
+            TypedExprKind::Let { value, body, .. } => {
+                work.push(value);
+                if let Some(body) = body { work.push(body); }
             }
-        }
-        TypedExprKind::Match { scrutinee, arms } => {
-            apply_subst(scrutinee, subst);
-            for arm in arms {
-                apply_subst_pattern(&mut arm.pattern, subst);
-                apply_subst(&mut arm.body, subst);
+            TypedExprKind::Do(exprs) => work.extend(exprs.iter_mut()),
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms {
+                    apply_subst_pattern(&mut arm.pattern, subst);
+                    work.push(&mut arm.body);
+                }
             }
-        }
-        TypedExprKind::Lambda { body, .. } => {
-            apply_subst(body, subst);
-        }
-        TypedExprKind::FieldAccess { expr, .. } => {
-            apply_subst(expr, subst);
-        }
-        TypedExprKind::Recur(args) => {
-            for arg in args {
-                apply_subst(arg, subst);
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
+            TypedExprKind::Recur(args) | TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
+                work.extend(args.iter_mut());
             }
-        }
-        TypedExprKind::Tuple(elems) => {
-            for e in elems {
-                apply_subst(e, subst);
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                work.push(lhs);
+                work.push(rhs);
             }
-        }
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            apply_subst(lhs, subst);
-            apply_subst(rhs, subst);
-        }
-        TypedExprKind::UnaryOp { operand, .. } => {
-            apply_subst(operand, subst);
-        }
-        TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields {
-                apply_subst(e, subst);
+            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields { work.push(e); }
             }
-        }
-        TypedExprKind::StructUpdate { base, fields } => {
-            apply_subst(base, subst);
-            for (_, e) in fields {
-                apply_subst(e, subst);
+            TypedExprKind::StructUpdate { base, fields } => {
+                work.push(base);
+                for (_, e) in fields { work.push(e); }
             }
-        }
-        TypedExprKind::LetPattern { pattern, value, body } => {
-            apply_subst_pattern(pattern, subst);
-            apply_subst(value, subst);
-            if let Some(body) = body {
-                apply_subst(body, subst);
+            TypedExprKind::LetPattern { pattern, value, body } => {
+                apply_subst_pattern(pattern, subst);
+                work.push(value);
+                if let Some(body) = body { work.push(body); }
             }
-        }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            apply_subst(expr, subst);
-        }
-        TypedExprKind::VecLit(elems) => {
-            for e in elems {
-                apply_subst(e, subst);
-            }
+            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
         }
     }
 }

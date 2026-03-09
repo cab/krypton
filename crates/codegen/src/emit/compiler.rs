@@ -2399,89 +2399,82 @@ impl Compiler {
         param_names: &std::collections::HashSet<&str>,
         captures: &mut Vec<(String, u16, JvmType)>,
     ) {
-        match &expr.kind {
-            TypedExprKind::Var(name) => {
-                if !param_names.contains(name.as_str()) {
-                    if let Some(&(slot, ty)) = self.locals.get(name) {
-                        captures.push((name.clone(), slot, ty));
+        use std::rc::Rc;
+        let initial: Rc<std::collections::HashSet<&str>> = Rc::new(param_names.clone());
+        let mut work: Vec<(&TypedExpr, Rc<std::collections::HashSet<&str>>)> = Vec::with_capacity(16);
+        work.push((expr, initial));
+        while let Some((expr, param_names)) = work.pop() {
+            match &expr.kind {
+                TypedExprKind::Var(name) => {
+                    if !param_names.contains(name.as_str()) {
+                        if let Some(&(slot, ty)) = self.locals.get(name) {
+                            captures.push((name.clone(), slot, ty));
+                        }
                     }
                 }
-            }
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                self.collect_captures(lhs, param_names, captures);
-                self.collect_captures(rhs, param_names, captures);
-            }
-            TypedExprKind::UnaryOp { operand, .. } => {
-                self.collect_captures(operand, param_names, captures);
-            }
-            TypedExprKind::If { cond, then_, else_ } => {
-                self.collect_captures(cond, param_names, captures);
-                self.collect_captures(then_, param_names, captures);
-                self.collect_captures(else_, param_names, captures);
-            }
-            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
-                self.collect_captures(value, param_names, captures);
-                if let Some(body) = body {
-                    self.collect_captures(body, param_names, captures);
+                TypedExprKind::Lambda { body, params } => {
+                    let mut inner_params = (*param_names).clone();
+                    for p in params {
+                        inner_params.insert(p.as_str());
+                    }
+                    work.push((body, Rc::new(inner_params)));
                 }
-            }
-            TypedExprKind::Do(exprs) => {
-                for e in exprs {
-                    self.collect_captures(e, param_names, captures);
+                TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                    work.push((lhs, Rc::clone(&param_names)));
+                    work.push((rhs, param_names));
                 }
-            }
-            TypedExprKind::App { func, args } => {
-                self.collect_captures(func, param_names, captures);
-                for a in args {
-                    self.collect_captures(a, param_names, captures);
+                TypedExprKind::UnaryOp { operand, .. } => {
+                    work.push((operand, param_names));
                 }
-            }
-            TypedExprKind::Lambda { body, params } => {
-                let mut inner_params = param_names.clone();
-                for p in params {
-                    inner_params.insert(p.as_str());
+                TypedExprKind::If { cond, then_, else_ } => {
+                    work.push((cond, Rc::clone(&param_names)));
+                    work.push((then_, Rc::clone(&param_names)));
+                    work.push((else_, param_names));
                 }
-                self.collect_captures(body, &inner_params, captures);
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                self.collect_captures(scrutinee, param_names, captures);
-                for arm in arms {
-                    self.collect_captures(&arm.body, param_names, captures);
+                TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                    if let Some(body) = body {
+                        work.push((body, Rc::clone(&param_names)));
+                    }
+                    work.push((value, param_names));
                 }
-            }
-            TypedExprKind::FieldAccess { expr, .. } => {
-                self.collect_captures(expr, param_names, captures);
-            }
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields {
-                    self.collect_captures(e, param_names, captures);
+                TypedExprKind::Do(exprs) => {
+                    for e in exprs {
+                        work.push((e, Rc::clone(&param_names)));
+                    }
                 }
-            }
-            TypedExprKind::StructUpdate { base, fields } => {
-                self.collect_captures(base, param_names, captures);
-                for (_, e) in fields {
-                    self.collect_captures(e, param_names, captures);
+                TypedExprKind::App { func, args } => {
+                    work.push((func, Rc::clone(&param_names)));
+                    for a in args {
+                        work.push((a, Rc::clone(&param_names)));
+                    }
                 }
-            }
-            TypedExprKind::Tuple(elems) => {
-                for e in elems {
-                    self.collect_captures(e, param_names, captures);
+                TypedExprKind::Match { scrutinee, arms } => {
+                    work.push((scrutinee, Rc::clone(&param_names)));
+                    for arm in arms {
+                        work.push((&arm.body, Rc::clone(&param_names)));
+                    }
                 }
-            }
-            TypedExprKind::Recur(args) => {
-                for a in args {
-                    self.collect_captures(a, param_names, captures);
+                TypedExprKind::FieldAccess { expr, .. } | TypedExprKind::QuestionMark { expr, .. } => {
+                    work.push((expr, param_names));
                 }
-            }
-            TypedExprKind::QuestionMark { expr, .. } => {
-                self.collect_captures(expr, param_names, captures);
-            }
-            TypedExprKind::VecLit(elems) => {
-                for e in elems {
-                    self.collect_captures(e, param_names, captures);
+                TypedExprKind::StructLit { fields, .. } => {
+                    for (_, e) in fields {
+                        work.push((e, Rc::clone(&param_names)));
+                    }
                 }
+                TypedExprKind::StructUpdate { base, fields } => {
+                    work.push((base, Rc::clone(&param_names)));
+                    for (_, e) in fields {
+                        work.push((e, Rc::clone(&param_names)));
+                    }
+                }
+                TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) | TypedExprKind::VecLit(elems) => {
+                    for e in elems {
+                        work.push((e, Rc::clone(&param_names)));
+                    }
+                }
+                TypedExprKind::Lit(_) => {}
             }
-            TypedExprKind::Lit(_) => {}
         }
     }
 

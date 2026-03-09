@@ -135,69 +135,59 @@ fn collect_tuple_arities(ty: &Type, arities: &mut std::collections::HashSet<usiz
     }
 }
 
-/// Recursively collect all tuple arities from a TypedExpr tree.
+/// Iteratively collect all tuple arities from a TypedExpr tree.
 fn collect_tuple_arities_expr(expr: &krypton_typechecker::typed_ast::TypedExpr, arities: &mut std::collections::HashSet<usize>) {
     use krypton_typechecker::typed_ast::TypedExprKind;
-    collect_tuple_arities(&expr.ty, arities);
-    match &expr.kind {
-        TypedExprKind::Tuple(elems) => {
-            arities.insert(elems.len());
-            for e in elems {
-                collect_tuple_arities_expr(e, arities);
+    let mut work: Vec<&krypton_typechecker::typed_ast::TypedExpr> = Vec::with_capacity(16);
+    work.push(expr);
+    while let Some(expr) = work.pop() {
+        collect_tuple_arities(&expr.ty, arities);
+        match &expr.kind {
+            TypedExprKind::Tuple(elems) => {
+                arities.insert(elems.len());
+                for e in elems { work.push(e); }
             }
-        }
-        TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
-            collect_tuple_arities_expr(value, arities);
-            if let Some(b) = body {
-                collect_tuple_arities_expr(b, arities);
+            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                work.push(value);
+                if let Some(b) = body { work.push(b); }
             }
+            TypedExprKind::App { func, args } => {
+                work.push(func);
+                for a in args { work.push(a); }
+            }
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
+            }
+            TypedExprKind::Do(exprs) => {
+                for e in exprs { work.push(e); }
+            }
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms { work.push(&arm.body); }
+            }
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                work.push(lhs);
+                work.push(rhs);
+            }
+            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::FieldAccess { expr, .. } | TypedExprKind::QuestionMark { expr, .. } => {
+                work.push(expr);
+            }
+            TypedExprKind::StructUpdate { base, fields } => {
+                work.push(base);
+                for (_, e) in fields { work.push(e); }
+            }
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields { work.push(e); }
+            }
+            TypedExprKind::Recur(args) | TypedExprKind::VecLit(args) => {
+                for a in args { work.push(a); }
+            }
+            _ => {}
         }
-        TypedExprKind::App { func, args } => {
-            collect_tuple_arities_expr(func, arities);
-            for a in args { collect_tuple_arities_expr(a, arities); }
-        }
-        TypedExprKind::If { cond, then_, else_ } => {
-            collect_tuple_arities_expr(cond, arities);
-            collect_tuple_arities_expr(then_, arities);
-            collect_tuple_arities_expr(else_, arities);
-        }
-        TypedExprKind::Do(exprs) => {
-            for e in exprs { collect_tuple_arities_expr(e, arities); }
-        }
-        TypedExprKind::Match { scrutinee, arms } => {
-            collect_tuple_arities_expr(scrutinee, arities);
-            for arm in arms { collect_tuple_arities_expr(&arm.body, arities); }
-        }
-        TypedExprKind::Lambda { body, .. } => {
-            collect_tuple_arities_expr(body, arities);
-        }
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            collect_tuple_arities_expr(lhs, arities);
-            collect_tuple_arities_expr(rhs, arities);
-        }
-        TypedExprKind::UnaryOp { operand, .. } => {
-            collect_tuple_arities_expr(operand, arities);
-        }
-        TypedExprKind::FieldAccess { expr, .. } => {
-            collect_tuple_arities_expr(expr, arities);
-        }
-        TypedExprKind::StructUpdate { base, fields } => {
-            collect_tuple_arities_expr(base, arities);
-            for (_, e) in fields { collect_tuple_arities_expr(e, arities); }
-        }
-        TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields { collect_tuple_arities_expr(e, arities); }
-        }
-        TypedExprKind::Recur(args) => {
-            for a in args { collect_tuple_arities_expr(a, arities); }
-        }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            collect_tuple_arities_expr(expr, arities);
-        }
-        TypedExprKind::VecLit(elems) => {
-            for e in elems { collect_tuple_arities_expr(e, arities); }
-        }
-        _ => {}
     }
 }
 
