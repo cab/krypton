@@ -69,6 +69,7 @@ pub enum TypedExprKind {
         expr: Box<TypedExpr>,
         is_option: bool, // true=Option, false=Result
     },
+    VecLit(Vec<TypedExpr>),
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +190,11 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
         }
         TypedExprKind::QuestionMark { expr, .. } => {
             apply_subst(expr, subst);
+        }
+        TypedExprKind::VecLit(elems) => {
+            for e in elems {
+                apply_subst(e, subst);
+            }
         }
     }
 }

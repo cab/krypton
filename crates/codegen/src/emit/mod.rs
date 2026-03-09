@@ -16,7 +16,7 @@ pub use compiler::{CodegenError, JvmType};
 
 use compiler::{
     Compiler, FunctionInfo, StructInfo, VariantInfo, SumTypeInfo, TupleInfo, TraitDispatchInfo,
-    InstanceSingletonInfo,
+    InstanceSingletonInfo, VecInfo,
 };
 use class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
@@ -192,6 +192,9 @@ fn collect_tuple_arities_expr(expr: &krypton_typechecker::typed_ast::TypedExpr, 
         }
         TypedExprKind::QuestionMark { expr, .. } => {
             collect_tuple_arities_expr(expr, arities);
+        }
+        TypedExprKind::VecLit(elems) => {
+            for e in elems { collect_tuple_arities_expr(e, arities); }
         }
         _ => {}
     }
@@ -646,6 +649,16 @@ pub fn compile_module(
                 field_refs,
             });
         }
+    }
+
+    // Register KryptonArray (Vec backing class)
+    {
+        let ka_class = compiler.cp.add_class("krypton/runtime/KryptonArray")?;
+        let ka_init = compiler.cp.add_method_ref(ka_class, "<init>", "(I)V")?;
+        let ka_set = compiler.cp.add_method_ref(ka_class, "set", "(ILjava/lang/Object;)V")?;
+        let ka_freeze = compiler.cp.add_method_ref(ka_class, "freeze", "()V")?;
+        compiler.types.class_descriptors.insert(ka_class, "Lkrypton/runtime/KryptonArray;".to_string());
+        compiler.vec_info = Some(VecInfo { class_index: ka_class, init_ref: ka_init, set_ref: ka_set, freeze_ref: ka_freeze });
     }
 
     // Register all functions (including main) in the function registry.

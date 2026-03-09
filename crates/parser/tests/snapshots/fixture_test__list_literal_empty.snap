@@ -13,11 +13,11 @@ decls:
       body:
         Match:
           scrutinee:
-            List:
-              elements: []
+            Var:
+              name: Nil
               span:
                 - 32
-                - 34
+                - 35
           arms:
             - pattern:
                 Constructor:
@@ -26,48 +26,48 @@ decls:
                     - Var:
                         name: _
                         span:
-                          - 46
                           - 47
+                          - 48
                     - Var:
                         name: _
                         span:
-                          - 49
                           - 50
+                          - 51
                   span:
-                    - 41
-                    - 51
+                    - 42
+                    - 52
               guard: ~
               body:
                 Lit:
                   value:
                     Int: 1
                   span:
-                    - 55
                     - 56
+                    - 57
               span:
-                - 41
-                - 56
+                - 42
+                - 57
             - pattern:
                 Constructor:
                   name: Nil
                   args: []
                   span:
-                    - 62
-                    - 65
+                    - 63
+                    - 66
               guard: ~
               body:
                 Lit:
                   value:
                     Int: 0
                   span:
-                    - 69
                     - 70
+                    - 71
               span:
-                - 62
-                - 70
+                - 63
+                - 71
           span:
             - 26
-            - 73
+            - 74
       span:
         - 13
-        - 73
+        - 74

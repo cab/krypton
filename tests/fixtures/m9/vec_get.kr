@@ -1,7 +1,7 @@
 # expect: output "1"
-import core/list.{head}
+import core/vec.{vec_get}
 extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
-fun main() = match head(Cons(1, Cons(2, Cons(3, Nil)))) {
-    Some(h) => println(h),
+fun main() = match vec_get([1, 2, 3], 0) {
+    Some(x) => println(x),
     None => println(0),
 }

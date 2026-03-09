@@ -1,4 +1,5 @@
 # expect: output "3"
+import core/vec.{to_list}
 import core/list.{length}
 extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
-fun main() = println(length(Cons(1, Cons(2, Cons(3, Nil)))))
+fun main() = println(length(to_list([1, 2, 3])))

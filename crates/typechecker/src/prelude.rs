@@ -41,4 +41,7 @@ pub fn register_prelude_types(
             }
         }
     }
+
+    // Register Vec as a known type name (no constructors — backed by KryptonArray)
+    registry.register_name("Vec");
 }

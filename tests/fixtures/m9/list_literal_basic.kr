@@ -1,5 +1,5 @@
 # expect: ok
-fun main() = match [1, 2, 3] {
+fun main() = match Cons(1, Cons(2, Cons(3, Nil))) {
     Cons(h, _) => h,
     Nil => 0,
 }

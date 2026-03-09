@@ -50,4 +50,13 @@ public class KryptonArray {
     public void freeze() {
         this.frozen = true;
     }
+
+    // Static wrappers for extern descriptor convention
+    public static long staticLength(Object arr) {
+        return ((KryptonArray) arr).length();
+    }
+
+    public static Object staticGet(Object arr, long index) {
+        return ((KryptonArray) arr).get((int) index);
+    }
 }

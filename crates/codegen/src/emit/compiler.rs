@@ -335,6 +335,15 @@ pub(super) struct TraitState {
     pub(super) parameterized_instances: HashMap<(String, String), Vec<(String, usize)>>,
 }
 
+/// Info about the Vec backing class (KryptonArray).
+#[derive(Clone)]
+pub(super) struct VecInfo {
+    pub(super) class_index: u16,
+    pub(super) init_ref: u16,
+    pub(super) set_ref: u16,
+    pub(super) freeze_ref: u16,
+}
+
 pub(super) struct Compiler {
     pub(super) cp: ConstantPool,
     pub(super) this_class: u16,
@@ -350,6 +359,7 @@ pub(super) struct Compiler {
     pub(super) nested_ifeq_patches: Vec<usize>,
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
     pub(super) traits: TraitState,
+    pub(super) vec_info: Option<VecInfo>,
 }
 
 impl Compiler {
@@ -462,6 +472,7 @@ impl Compiler {
                 dict_locals: HashMap::new(),
                 parameterized_instances: HashMap::new(),
             },
+            vec_info: None,
         };
 
         Ok((compiler, this_class, object_class))
@@ -471,6 +482,11 @@ impl Compiler {
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
+                if name == "Vec" {
+                    if let Some(info) = &self.vec_info {
+                        return Ok(JvmType::StructRef(info.class_index));
+                    }
+                }
                 if let Some(info) = self.types.struct_info.get(name) {
                     Ok(JvmType::StructRef(info.class_index))
                 } else if let Some(info) = self.types.sum_type_info.get(name) {
@@ -550,6 +566,7 @@ impl Compiler {
             TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
             TypedExprKind::Lambda { params, body } => self.compile_lambda(params, body, &expr.ty),
             TypedExprKind::QuestionMark { expr: inner, is_option } => self.compile_question_mark(inner, *is_option, &expr.ty),
+            TypedExprKind::VecLit(elems) => self.compile_vec_lit(elems),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
     }
@@ -1111,6 +1128,72 @@ impl Compiler {
         self.push_jvm_type(result_type);
 
         Ok(result_type)
+    }
+
+    fn emit_int_const(&mut self, n: i32) {
+        match n {
+            0 => self.emit(Instruction::Iconst_0),
+            1 => self.emit(Instruction::Iconst_1),
+            2 => self.emit(Instruction::Iconst_2),
+            3 => self.emit(Instruction::Iconst_3),
+            4 => self.emit(Instruction::Iconst_4),
+            5 => self.emit(Instruction::Iconst_5),
+            _ => {
+                let idx = self.cp.add_integer(n).expect("failed to add integer constant");
+                if idx <= 255 {
+                    self.emit(Instruction::Ldc(idx as u8));
+                } else {
+                    self.emit(Instruction::Ldc_w(idx));
+                }
+            }
+        }
+    }
+
+    fn compile_vec_lit(&mut self, elems: &[TypedExpr]) -> Result<JvmType, CodegenError> {
+        let info = self.vec_info.as_ref().ok_or_else(|| {
+            CodegenError::TypeError("Vec info not registered".to_string())
+        })?.clone();
+
+        let arr_vtype = VerificationType::Object { cpool_index: info.class_index };
+
+        // new KryptonArray(capacity)
+        self.emit(Instruction::New(info.class_index));
+        self.frame.push_type(VerificationType::UninitializedThis);
+        self.emit(Instruction::Dup);
+        self.frame.push_type(VerificationType::UninitializedThis);
+        self.emit_int_const(elems.len() as i32);
+        self.frame.push_type(VerificationType::Integer);
+        self.emit(Instruction::Invokespecial(info.init_ref));
+        self.frame.pop_type(); // int
+        self.frame.pop_type(); // uninit dup
+        self.frame.pop_type(); // uninit orig
+        self.frame.push_type(arr_vtype.clone());
+        // stack: [arr]
+
+        for (i, elem) in elems.iter().enumerate() {
+            self.emit(Instruction::Dup);
+            self.frame.push_type(arr_vtype.clone());
+            // stack: [arr, arr]
+            self.emit_int_const(i as i32);
+            self.frame.push_type(VerificationType::Integer);
+            let elem_type = self.compile_expr(elem, false)?;
+            self.box_if_needed(elem_type);
+            // stack: [arr, arr, index, boxed_elem]
+            self.emit(Instruction::Invokevirtual(info.set_ref));
+            self.frame.pop_type(); // boxed_elem
+            self.frame.pop_type(); // index
+            self.frame.pop_type(); // arr (dup'd)
+            // stack: [arr]
+        }
+
+        // freeze
+        self.emit(Instruction::Dup);
+        self.frame.push_type(arr_vtype.clone());
+        self.emit(Instruction::Invokevirtual(info.freeze_ref));
+        self.frame.pop_type(); // arr (dup'd, consumed by freeze)
+        // stack: [arr]
+
+        Ok(JvmType::StructRef(info.class_index))
     }
 
     fn compile_let_pattern(
@@ -2380,6 +2463,11 @@ impl Compiler {
             }
             TypedExprKind::QuestionMark { expr, .. } => {
                 self.collect_captures(expr, param_names, captures);
+            }
+            TypedExprKind::VecLit(elems) => {
+                for e in elems {
+                    self.collect_captures(e, param_names, captures);
+                }
             }
             TypedExprKind::Lit(_) => {}
         }

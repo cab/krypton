@@ -1,0 +1,4 @@
+# expect: output "0"
+import core/vec.{vec_length}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = println(vec_length([]))

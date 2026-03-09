@@ -668,17 +668,22 @@ fn infer_expr_inner(
         }
 
         Expr::List { elements, span } => {
-            // Desugar [e1, e2, e3] → Cons(e1, Cons(e2, Cons(e3, Nil)))
-            let mut desugared: Expr = Expr::Var { name: "Nil".to_string(), span: *span };
-            for elem in elements.iter().rev() {
-                desugared = Expr::App {
-                    func: Box::new(Expr::Var { name: "Cons".to_string(), span: *span }),
-                    args: vec![elem.clone(), desugared],
-                    span: *span,
-                };
+            // Infer as Vec[a] — [e1, e2, e3] produces Vec[elem_type]
+            let elem_var = Type::Var(gen.fresh());
+            let mut typed_elems = Vec::new();
+            for elem in elements {
+                let typed = infer_expr_inner(elem, env, subst, gen, registry, recur_params,
+                                             let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+                unify(&subst.apply(&typed.ty), &subst.apply(&elem_var), subst)
+                    .map_err(|e| spanned(e, *span))?;
+                typed_elems.push(typed);
             }
-            infer_expr_inner(&desugared, env, subst, gen, registry, recur_params,
-                             let_own_spans, lambda_own_captures)
+            let resolved_elem = subst.apply(&elem_var);
+            Ok(TypedExpr {
+                kind: TypedExprKind::VecLit(typed_elems),
+                ty: Type::Named("Vec".to_string(), vec![resolved_elem]),
+                span: *span,
+            })
         }
         Expr::QuestionMark { expr, span } => {
             let inner_typed = infer_expr_inner(expr, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
@@ -1210,6 +1215,9 @@ fn collect_struct_update_info(expr: &TypedExpr, info: &mut HashMap<Span, (String
         TypedExprKind::QuestionMark { expr, .. } => {
             collect_struct_update_info(expr, info);
         }
+        TypedExprKind::VecLit(elems) => {
+            for e in elems { collect_struct_update_info(e, info); }
+        }
     }
 }
 
@@ -1312,7 +1320,7 @@ fn detect_trait_constraints(
                 detect_trait_constraints(body, trait_method_map, subst, constraints);
             }
         }
-        TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) => {
+        TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) | TypedExprKind::VecLit(elems) => {
             for e in elems {
                 detect_trait_constraints(e, trait_method_map, subst, constraints);
             }
@@ -1478,6 +1486,11 @@ fn check_trait_instances(
         TypedExprKind::QuestionMark { expr, .. } => {
             check_trait_instances(expr, trait_method_map, trait_registry, subst)?;
         }
+        TypedExprKind::VecLit(elems) => {
+            for e in elems {
+                check_trait_instances(e, trait_method_map, trait_registry, subst)?;
+            }
+        }
     }
     Ok(())
 }
@@ -1594,8 +1607,6 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                 .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
                 .collect();
 
-            let name_filter = if import_all { None } else { Some(&requested) };
-
             // Process type declarations from stdlib module
             for sdecl in &stdlib_module.decls {
                 if let Decl::DefType(td) = sdecl {
@@ -1612,12 +1623,13 @@ pub fn infer_module(module: &Module) -> Result<TypedModule, SpannedTypeError> {
                 }
             }
 
-            // Process extern declarations from stdlib module
+            // Process extern declarations from stdlib module (no name filter —
+            // extern methods are internal dependencies for DefFn functions)
             for sdecl in &stdlib_module.decls {
                 if let Decl::ExternJava { class_name, methods, span: ext_span } = sdecl {
                     let mut fns = process_extern_methods(
                         class_name, methods, &mut env, &mut gen, &registry,
-                        *ext_span, name_filter, &aliases,
+                        *ext_span, None, &aliases,
                     )?;
                     imported_extern_fns.append(&mut fns);
                 }

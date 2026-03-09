@@ -1,6 +1,6 @@
-# expect: output 26
+# expect: output 20
 extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-fun main() = println(1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + 1)))))))))))))))))))))))))
+fun main() = println(1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + 1)))))))))))))))))))
