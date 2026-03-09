@@ -165,7 +165,28 @@ fn resolve_named(
             if registry.is_known(name) {
                 Ok(Type::Named(name.to_string(), Vec::new()))
             } else {
-                Err(TypeError::UnknownType { name: name.to_string() })
+                // Compute suggestion: if lowercase, try capitalizing first letter
+                let suggestion = if name.starts_with(|c: char| c.is_ascii_lowercase()) {
+                    let capitalized = {
+                        let mut chars = name.chars();
+                        match chars.next() {
+                            Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
+                            None => String::new(),
+                        }
+                    };
+                    let is_builtin = matches!(
+                        capitalized.as_str(),
+                        "Int" | "Float" | "Bool" | "String" | "Unit"
+                    );
+                    if is_builtin || registry.is_known(&capitalized) {
+                        Some(capitalized)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                Err(TypeError::UnknownType { name: name.to_string(), suggestion })
             }
         }
     }

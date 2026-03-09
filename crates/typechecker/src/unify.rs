@@ -87,7 +87,7 @@ pub enum TypeError {
     OrphanInstance { trait_name: String, ty: String },
     CannotDerive { trait_name: String, type_name: String, field_type: String },
     DefinitionConflictsWithTraitMethod { def_name: String, trait_name: String },
-    UnknownType { name: String },
+    UnknownType { name: String, suggestion: Option<String> },
     QuestionMarkBadReturn { actual: Type },
     QuestionMarkBadOperand { actual: Type },
     QuestionMarkMismatch { expr_kind: String, return_kind: String },
@@ -204,8 +204,12 @@ impl TypeError {
             TypeError::DefinitionConflictsWithTraitMethod { .. } => {
                 Some("trait methods are bound as module-level names; choose a different name for this definition".to_string())
             }
-            TypeError::UnknownType { name } => {
-                Some(format!("type `{}` is not defined", name))
+            TypeError::UnknownType { name, suggestion } => {
+                if let Some(s) = suggestion {
+                    Some(format!("did you mean `{s}`?"))
+                } else {
+                    Some(format!("type `{}` is not defined", name))
+                }
             }
             TypeError::QuestionMarkBadReturn { actual } => {
                 Some(format!("function returns `{}`, but `?` requires `Result` or `Option`", actual))
@@ -290,7 +294,7 @@ impl fmt::Display for TypeError {
             TypeError::DefinitionConflictsWithTraitMethod { def_name, trait_name } => {
                 write!(f, "definition `{}` conflicts with trait method `{}.{}`", def_name, trait_name, def_name)
             }
-            TypeError::UnknownType { name } => {
+            TypeError::UnknownType { name, .. } => {
                 write!(f, "unknown type: {}", name)
             }
             TypeError::QuestionMarkBadReturn { actual } => {

@@ -215,6 +215,16 @@ fn error_codes_present() {
 }
 
 #[test]
+fn undeclared_typevar_suggestion() {
+    let output = render_fixture_error("../../tests/fixtures/m11/undeclared_typevar.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("did you mean `String`?"),
+        "expected 'did you mean `String`?' in:\n{output}"
+    );
+}
+
+#[test]
 fn circular_import_error() {
     use krypton_typechecker::module_resolver::ModuleResolver;
 

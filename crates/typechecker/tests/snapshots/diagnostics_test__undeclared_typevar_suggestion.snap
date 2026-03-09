@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: output
+---
+[E0011] Error: unknown type: string
+   ╭─[ ../../tests/fixtures/m11/undeclared_typevar.kr:2:1 ]
+   │
+ 2 │ fun r(x: string) = x
+   │ ──────────┬─────────  
+   │           ╰─────────── E0011: unknown type: string
+   │ 
+   │ Help: did you mean `String`?
+───╯

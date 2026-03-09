@@ -1,0 +1,2 @@
+# expect: ok
+fun id(x) = x

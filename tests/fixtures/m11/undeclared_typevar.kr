@@ -1,0 +1,2 @@
+# expect: error E0011
+fun r(x: string) = x

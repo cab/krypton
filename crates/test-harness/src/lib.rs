@@ -58,7 +58,7 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
     expectations
 }
 
-/// Recursively discover `.kr` fixture files under `dir`.
+/// Discover `.kr` fixture files directly in `dir` (non-recursive).
 ///
 /// Returns paths sorted for determinism.
 pub fn discover_fixtures(dir: &Path) -> Vec<PathBuf> {
@@ -66,16 +66,16 @@ pub fn discover_fixtures(dir: &Path) -> Vec<PathBuf> {
     if !dir.exists() {
         return paths;
     }
-    for entry in walkdir::WalkDir::new(dir)
-        .sort_by_file_name()
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    let entries = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read directory {}: {e}", dir.display()));
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
         if path.is_file() && path.extension().is_some_and(|ext| ext == "kr") {
-            paths.push(path.to_path_buf());
+            paths.push(path);
         }
     }
+    paths.sort();
     paths
 }
 

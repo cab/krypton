@@ -109,6 +109,11 @@ fn m9_fixtures() {
 }
 
 #[test]
+fn m11_fixtures() {
+    run_fixtures("m11");
+}
+
+#[test]
 fn m11_module_fixtures() {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
