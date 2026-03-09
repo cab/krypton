@@ -5,7 +5,7 @@ use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern,
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
 use crate::type_registry::{self, TypeRegistry};
-use crate::typed_ast::{self, ExternFnInfo, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule};
+use crate::typed_ast::{self, ExternFnInfo, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -533,19 +533,19 @@ fn infer_expr_inner(
             let mut typed_arms = Vec::new();
             for arm in arms {
                 env.push_scope();
-                check_pattern(&arm.pattern, &match_ty, env, subst, gen, registry, *span)?;
+                let typed_pattern = check_pattern(&arm.pattern, &match_ty, env, subst, gen, registry, *span)?;
                 let body_typed = infer_expr_inner(&arm.body, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
                 unify(&result_ty, &body_typed.ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
                 typed_arms.push(TypedMatchArm {
-                    pattern: arm.pattern.clone(),
+                    pattern: typed_pattern,
                     body: body_typed,
                 });
             }
             let match_ty = subst.apply(&match_ty);
             crate::exhaustiveness::check_exhaustiveness(
                 &match_ty,
-                arms,
+                &typed_arms,
                 registry,
                 *span,
             )?;
@@ -578,13 +578,13 @@ fn infer_expr_inner(
             match body {
                 Some(body) => {
                     env.push_scope();
-                    check_pattern(pattern, &subst.apply(&val_typed.ty), env, subst, gen, registry, *span)?;
+                    let typed_pattern = check_pattern(pattern, &subst.apply(&val_typed.ty), env, subst, gen, registry, *span)?;
                     let body_typed = infer_expr_inner(body, env, subst, gen, registry, recur_params, let_own_spans, lambda_own_captures)?;
                     env.pop_scope();
                     let ty = body_typed.ty.clone();
                     Ok(TypedExpr {
                         kind: TypedExprKind::LetPattern {
-                            pattern: pattern.clone(),
+                            pattern: typed_pattern,
                             value: Box::new(val_typed),
                             body: Some(Box::new(body_typed)),
                         },
@@ -593,10 +593,10 @@ fn infer_expr_inner(
                     })
                 }
                 None => {
-                    check_pattern(pattern, &subst.apply(&val_typed.ty), env, subst, gen, registry, *span)?;
+                    let typed_pattern = check_pattern(pattern, &subst.apply(&val_typed.ty), env, subst, gen, registry, *span)?;
                     Ok(TypedExpr {
                         kind: TypedExprKind::LetPattern {
-                            pattern: pattern.clone(),
+                            pattern: typed_pattern,
                             value: Box::new(val_typed),
                             body: None,
                         },
@@ -825,6 +825,7 @@ fn infer_expr_inner(
 }
 
 /// Check a pattern against an expected type, binding variables in the environment.
+/// Returns a TypedPattern carrying resolved type information.
 fn check_pattern(
     pattern: &Pattern,
     expected: &Type,
@@ -833,16 +834,23 @@ fn check_pattern(
     gen: &mut TypeVarGen,
     registry: Option<&TypeRegistry>,
     span: krypton_parser::ast::Span,
-) -> Result<(), SpannedTypeError> {
+) -> Result<TypedPattern, SpannedTypeError> {
     match pattern {
-        Pattern::Wildcard { .. } => Ok(()),
+        Pattern::Wildcard { span: pat_span } => Ok(TypedPattern::Wildcard {
+            ty: expected.clone(),
+            span: *pat_span,
+        }),
 
-        Pattern::Var { name, .. } => {
+        Pattern::Var { name, span: pat_span } => {
             env.bind(name.clone(), TypeScheme::mono(expected.clone()));
-            Ok(())
+            Ok(TypedPattern::Var {
+                name: name.clone(),
+                ty: expected.clone(),
+                span: *pat_span,
+            })
         }
 
-        Pattern::Lit { value, .. } => {
+        Pattern::Lit { value, span: pat_span } => {
             let lit_ty = match value {
                 Lit::Int(_) => Type::Int,
                 Lit::Float(_) => Type::Float,
@@ -850,10 +858,15 @@ fn check_pattern(
                 Lit::String(_) => Type::String,
                 Lit::Unit => Type::Unit,
             };
-            unify(expected, &lit_ty, subst).map_err(|e| spanned(e, span))
+            unify(expected, &lit_ty, subst).map_err(|e| spanned(e, span))?;
+            Ok(TypedPattern::Lit {
+                value: value.clone(),
+                ty: lit_ty,
+                span: *pat_span,
+            })
         }
 
-        Pattern::Constructor { name, args, .. } => {
+        Pattern::Constructor { name, args, span: pat_span } => {
             match env.lookup(name) {
                 Some(scheme) => {
                     let scheme = scheme.clone();
@@ -870,11 +883,17 @@ fn check_pattern(
                                     span,
                                 ));
                             }
+                            let mut typed_args = Vec::new();
                             for (arg_pat, param_ty) in args.iter().zip(param_types.iter()) {
                                 let resolved_param = subst.apply(param_ty);
-                                check_pattern(arg_pat, &resolved_param, env, subst, gen, registry, span)?;
+                                typed_args.push(check_pattern(arg_pat, &resolved_param, env, subst, gen, registry, span)?);
                             }
-                            Ok(())
+                            Ok(TypedPattern::Constructor {
+                                name: name.clone(),
+                                args: typed_args,
+                                ty: expected.clone(),
+                                span: *pat_span,
+                            })
                         }
                         _ => {
                             // Nullary variant
@@ -888,7 +907,12 @@ fn check_pattern(
                                     span,
                                 ));
                             }
-                            Ok(())
+                            Ok(TypedPattern::Constructor {
+                                name: name.clone(),
+                                args: vec![],
+                                ty: expected.clone(),
+                                span: *pat_span,
+                            })
                         }
                     }
                 }
@@ -899,17 +923,22 @@ fn check_pattern(
             }
         }
 
-        Pattern::Tuple { elements, .. } => {
+        Pattern::Tuple { elements, span: pat_span } => {
             let fresh_vars: Vec<Type> = elements.iter().map(|_| Type::Var(gen.fresh())).collect();
             unify(expected, &Type::Tuple(fresh_vars.clone()), subst).map_err(|e| spanned(e, span))?;
+            let mut typed_elems = Vec::new();
             for (elem_pat, fresh_var) in elements.iter().zip(fresh_vars.iter()) {
                 let resolved = subst.apply(fresh_var);
-                check_pattern(elem_pat, &resolved, env, subst, gen, registry, span)?;
+                typed_elems.push(check_pattern(elem_pat, &resolved, env, subst, gen, registry, span)?);
             }
-            Ok(())
+            Ok(TypedPattern::Tuple {
+                elements: typed_elems,
+                ty: expected.clone(),
+                span: *pat_span,
+            })
         }
 
-        Pattern::StructPat { name, fields, .. } => {
+        Pattern::StructPat { name, fields, rest, span: pat_span } => {
             let reg = registry.ok_or_else(|| {
                 spanned(TypeError::NotAStruct { actual: expected.clone() }, span)
             })?;
@@ -922,13 +951,15 @@ fn check_pattern(
             unify(expected, &struct_ty, subst).map_err(|e| spanned(e, span))?;
             match &info.kind {
                 type_registry::TypeKind::Record { fields: record_fields } => {
+                    let mut typed_fields = Vec::new();
                     for (field_name, field_pat) in fields {
                         let record_field = record_fields.iter().find(|(n, _)| n == field_name);
                         match record_field {
                             Some((_, field_ty)) => {
                                 let instantiated = instantiate_field_type(field_ty, info, &fresh_args);
                                 let resolved = subst.apply(&instantiated);
-                                check_pattern(field_pat, &resolved, env, subst, gen, registry, span)?;
+                                let typed_field_pat = check_pattern(field_pat, &resolved, env, subst, gen, registry, span)?;
+                                typed_fields.push((field_name.clone(), typed_field_pat));
                             }
                             None => {
                                 return Err(spanned(
@@ -941,7 +972,13 @@ fn check_pattern(
                             }
                         }
                     }
-                    Ok(())
+                    Ok(TypedPattern::StructPat {
+                        name: name.clone(),
+                        fields: typed_fields,
+                        rest: *rest,
+                        ty: expected.clone(),
+                        span: *pat_span,
+                    })
                 }
                 _ => Err(spanned(
                     TypeError::NotAStruct { actual: expected.clone() },
@@ -2480,9 +2517,10 @@ fn synthesize_eq_body(
                 let a_bindings: Vec<String> = (0..variant.fields.len())
                     .map(|i| format!("__x{}", i))
                     .collect();
-                let a_pattern = Pattern::Constructor {
+                let a_pattern = TypedPattern::Constructor {
                     name: variant.name.clone(),
-                    args: a_bindings.iter().map(|n| Pattern::Var { name: n.clone(), span }).collect(),
+                    args: a_bindings.iter().zip(variant.fields.iter()).map(|(n, ft)| TypedPattern::Var { name: n.clone(), ty: ft.clone(), span }).collect(),
+                    ty: target_type.clone(),
                     span,
                 };
 
@@ -2492,9 +2530,10 @@ fn synthesize_eq_body(
                         let b_bindings: Vec<String> = (0..inner_variant.fields.len())
                             .map(|i| format!("__y{}", i))
                             .collect();
-                        let b_pattern = Pattern::Constructor {
+                        let b_pattern = TypedPattern::Constructor {
                             name: inner_variant.name.clone(),
-                            args: b_bindings.iter().map(|n| Pattern::Var { name: n.clone(), span }).collect(),
+                            args: b_bindings.iter().zip(inner_variant.fields.iter()).map(|(n, ft)| TypedPattern::Var { name: n.clone(), ty: ft.clone(), span }).collect(),
+                            ty: target_type.clone(),
                             span,
                         };
                         // Compare all payload fields
@@ -2537,7 +2576,7 @@ fn synthesize_eq_body(
                     } else {
                         // Different variant → false
                         TypedMatchArm {
-                            pattern: Pattern::Wildcard { span },
+                            pattern: TypedPattern::Wildcard { ty: target_type.clone(), span },
                             body: false_expr(),
                         }
                     }
@@ -2643,9 +2682,10 @@ fn synthesize_show_body(
                 let bindings: Vec<String> = (0..variant.fields.len())
                     .map(|i| format!("__x{}", i))
                     .collect();
-                let pattern = Pattern::Constructor {
+                let pattern = TypedPattern::Constructor {
                     name: variant.name.clone(),
-                    args: bindings.iter().map(|n| Pattern::Var { name: n.clone(), span }).collect(),
+                    args: bindings.iter().zip(variant.fields.iter()).map(|(n, ft)| TypedPattern::Var { name: n.clone(), ty: ft.clone(), span }).collect(),
+                    ty: target_type.clone(),
                     span,
                 };
 

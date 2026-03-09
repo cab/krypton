@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
-use krypton_parser::ast::{BinOp, Lit, Pattern, UnaryOp};
-use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm};
+use krypton_parser::ast::{BinOp, Lit, UnaryOp};
+use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedPattern};
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
@@ -1212,13 +1212,13 @@ impl Compiler {
 
     fn compile_let_pattern(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         value: &TypedExpr,
         body: &Option<Box<TypedExpr>>,
         in_tail: bool,
     ) -> Result<JvmType, CodegenError> {
         // Only support irrefutable patterns (Tuple, Var, Wildcard)
-        if let Pattern::Constructor { .. } = pattern {
+        if let TypedPattern::Constructor { .. } = pattern {
             return Err(CodegenError::UnsupportedExpr(
                 "refutable let-pattern (constructor) not yet supported".into(),
             ));
@@ -1249,14 +1249,14 @@ impl Compiler {
     /// Bind an irrefutable pattern (Tuple, Var, Wildcard) — used by let-pattern destructuring.
     fn bind_irrefutable_pattern(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
         value_ty: &Type,
     ) -> Result<(), CodegenError> {
         match pattern {
-            Pattern::Wildcard { .. } => Ok(()),
-            Pattern::Var { name, .. } => {
+            TypedPattern::Wildcard { .. } => Ok(()),
+            TypedPattern::Var { name, .. } => {
                 // Load scrutinee and store in a named local
                 let load = match scrutinee_type {
                     JvmType::Long => Instruction::Lload(scrutinee_slot as u8),
@@ -1286,7 +1286,7 @@ impl Compiler {
                 self.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(())
             }
-            Pattern::Tuple { elements, .. } => {
+            TypedPattern::Tuple { elements, .. } => {
                 let elem_types = match value_ty {
                     Type::Tuple(elems) => elems,
                     _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
@@ -1299,7 +1299,7 @@ impl Compiler {
                 let field_refs: Vec<u16> = tuple_info.field_refs.clone();
 
                 for (i, sub_pat) in elements.iter().enumerate() {
-                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                    if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                         continue;
                     }
                     let field_ref = field_refs[i];
@@ -1330,7 +1330,7 @@ impl Compiler {
 
                     // For nested tuple or var, store and recurse
                     match sub_pat {
-                        Pattern::Var { name: var_name, .. } => {
+                        TypedPattern::Var { name: var_name, .. } => {
                             let var_slot = self.next_local;
                             let slot_size: u16 = match elem_jvm_type {
                                 JvmType::Long | JvmType::Double => 2,
@@ -1349,7 +1349,7 @@ impl Compiler {
                             self.frame.local_types.extend(vtypes);
                             self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
                         }
-                        Pattern::Tuple { .. } => {
+                        TypedPattern::Tuple { .. } => {
                             // Store in temp local and recurse
                             let nested_slot = self.next_local;
                             self.next_local += 1;
@@ -1361,7 +1361,7 @@ impl Compiler {
                             }});
                             self.bind_irrefutable_pattern(sub_pat, nested_slot, elem_jvm_type, elem_ty)?;
                         }
-                        Pattern::Wildcard { .. } => {
+                        TypedPattern::Wildcard { .. } => {
                             // Already filtered above, but handle gracefully
                             self.frame.pop_type();
                             self.emit(Instruction::Pop);
@@ -2624,13 +2624,13 @@ impl Compiler {
     /// binds variables, and returns the index of the ifeq to patch (if any).
     fn compile_pattern_check(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
         scrutinee_tc_type: &Type,
     ) -> Result<Option<usize>, CodegenError> {
         match pattern {
-            Pattern::Constructor { name, args, .. } => {
+            TypedPattern::Constructor { name, args, .. } => {
                 // Look up variant info
                 let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown variant: {name}"))
@@ -2673,7 +2673,7 @@ impl Compiler {
                     });
 
                     for (j, sub_pat) in args.iter().enumerate() {
-                        if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                        if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                             continue;
                         }
                         let (_fname, field_jvm_type, is_erased) = &fields[j];
@@ -2695,7 +2695,7 @@ impl Compiler {
                         }
 
                         match sub_pat {
-                            Pattern::Var { name: var_name, .. } => {
+                            TypedPattern::Var { name: var_name, .. } => {
                                 // Erased fields stay as Object refs — no unboxing here.
                                 // Unboxing happens at monomorphic call sites.
                                 let actual_type = if *is_erased {
@@ -2724,7 +2724,7 @@ impl Compiler {
                                 self.locals
                                     .insert(var_name.clone(), (var_slot, actual_type));
                             }
-                            Pattern::Constructor { .. } => {
+                            TypedPattern::Constructor { .. } => {
                                 // Nested constructor pattern: store field value in local,
                                 // then recursively check
                                 let nested_type = if *is_erased {
@@ -2752,7 +2752,7 @@ impl Compiler {
                                     ifeq_idx,
                                 )?;
                             }
-                            Pattern::Wildcard { .. } => {
+                            TypedPattern::Wildcard { .. } => {
                                 // Already handled above, but just in case
                                 self.frame.pop_type();
                                 self.emit(Instruction::Pop);
@@ -2764,11 +2764,11 @@ impl Compiler {
 
                 Ok(Some(ifeq_idx))
             }
-            Pattern::Wildcard { .. } => {
+            TypedPattern::Wildcard { .. } => {
                 // Always matches, no check needed
                 Ok(None)
             }
-            Pattern::Var { name, .. } => {
+            TypedPattern::Var { name, .. } => {
                 // Always matches, bind the scrutinee
                 self.emit(Instruction::Aload(scrutinee_slot as u8));
                 self.push_jvm_type(scrutinee_type);
@@ -2781,7 +2781,7 @@ impl Compiler {
                 self.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(None)
             }
-            Pattern::Tuple { elements, .. } => {
+            TypedPattern::Tuple { elements, .. } => {
                 // Tuples are irrefutable — instanceof check then bind fields
                 let elem_types = match scrutinee_tc_type {
                     Type::Tuple(elems) => elems,
@@ -2807,7 +2807,7 @@ impl Compiler {
 
                 // Extract and bind fields
                 for (i, sub_pat) in elements.iter().enumerate() {
-                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                    if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                         continue;
                     }
                     let field_ref = field_refs[i];
@@ -2821,7 +2821,7 @@ impl Compiler {
                     self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                     self.unbox_if_needed(elem_jvm_type);
 
-                    if let Pattern::Var { name: var_name, .. } = sub_pat {
+                    if let TypedPattern::Var { name: var_name, .. } = sub_pat {
                         let var_slot = self.next_local;
                         let slot_size: u16 = match elem_jvm_type {
                             JvmType::Long | JvmType::Double => 2,
@@ -2853,14 +2853,14 @@ impl Compiler {
     /// Bind pattern variables without emitting checks (for last arm / wildcard).
     fn compile_pattern_bind(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
         scrutinee_tc_type: &Type,
     ) -> Result<(), CodegenError> {
         match pattern {
-            Pattern::Wildcard { .. } => Ok(()),
-            Pattern::Var { name, .. } => {
+            TypedPattern::Wildcard { .. } => Ok(()),
+            TypedPattern::Var { name, .. } => {
                 self.emit(Instruction::Aload(scrutinee_slot as u8));
                 self.push_jvm_type(scrutinee_type);
                 let var_slot = self.next_local;
@@ -2872,7 +2872,7 @@ impl Compiler {
                 self.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(())
             }
-            Pattern::Constructor { name, args, .. } => {
+            TypedPattern::Constructor { name, args, .. } => {
                 // Last arm constructor — still need to extract fields
                 let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown variant: {name}"))
@@ -2901,7 +2901,7 @@ impl Compiler {
                     });
 
                     for (j, sub_pat) in args.iter().enumerate() {
-                        if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                        if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                             continue;
                         }
                         let (_fname, field_jvm_type, is_erased) = &fields[j];
@@ -2921,7 +2921,7 @@ impl Compiler {
                             self.push_jvm_type(*field_jvm_type);
                         }
 
-                        if let Pattern::Var { name: var_name, .. } = sub_pat {
+                        if let TypedPattern::Var { name: var_name, .. } = sub_pat {
                             let actual_type = if *is_erased {
                                 JvmType::StructRef(self.refs.object_class)
                             } else {
@@ -2951,7 +2951,7 @@ impl Compiler {
                 }
                 Ok(())
             }
-            Pattern::Tuple { elements, .. } => {
+            TypedPattern::Tuple { elements, .. } => {
                 let elem_types = match scrutinee_tc_type {
                     Type::Tuple(elems) => elems,
                     _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
@@ -2964,7 +2964,7 @@ impl Compiler {
                 let field_refs: Vec<u16> = tuple_info.field_refs.clone();
 
                 for (i, sub_pat) in elements.iter().enumerate() {
-                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                    if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                         continue;
                     }
                     let field_ref = field_refs[i];
@@ -2978,7 +2978,7 @@ impl Compiler {
                     self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                     self.unbox_if_needed(elem_jvm_type);
 
-                    if let Pattern::Var { name: var_name, .. } = sub_pat {
+                    if let TypedPattern::Var { name: var_name, .. } = sub_pat {
                         let var_slot = self.next_local;
                         let slot_size: u16 = match elem_jvm_type {
                             JvmType::Long | JvmType::Double => 2,
@@ -3007,9 +3007,9 @@ impl Compiler {
     }
 
     /// Get the class index for a constructor pattern's variant type's parent interface.
-    fn get_pattern_class_index(&self, pattern: &Pattern) -> Result<u16, CodegenError> {
+    fn get_pattern_class_index(&self, pattern: &TypedPattern) -> Result<u16, CodegenError> {
         match pattern {
-            Pattern::Constructor { name, .. } => {
+            TypedPattern::Constructor { name, .. } => {
                 let sum_name = self.types.variant_to_sum.get(name).ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown variant: {name}"))
                 })?;
@@ -3025,12 +3025,12 @@ impl Compiler {
     /// Compile a nested constructor pattern within an already-matched outer pattern.
     fn compile_nested_pattern(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
         _outer_ifeq_idx: usize,
     ) -> Result<(), CodegenError> {
-        if let Pattern::Constructor { name, args, .. } = pattern {
+        if let TypedPattern::Constructor { name, args, .. } = pattern {
             let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
                 CodegenError::TypeError(format!("unknown variant: {name}"))
             })?;
@@ -3081,7 +3081,7 @@ impl Compiler {
                 });
 
                 for (j, sub_pat) in args.iter().enumerate() {
-                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                    if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                         continue;
                     }
                     let (_fname, field_jvm_type, is_erased) = &fields[j];
@@ -3102,7 +3102,7 @@ impl Compiler {
                     }
 
                     match sub_pat {
-                        Pattern::Var { name: var_name, .. } => {
+                        TypedPattern::Var { name: var_name, .. } => {
                             let actual_type = if *is_erased {
                                 JvmType::StructRef(self.refs.object_class)
                             } else {
@@ -3128,7 +3128,7 @@ impl Compiler {
                             self.frame.local_types.extend(vtypes);
                             self.locals.insert(var_name.clone(), (var_slot, actual_type));
                         }
-                        Pattern::Constructor { .. } => {
+                        TypedPattern::Constructor { .. } => {
                             // Deeper nesting
                             let nested_type = if *is_erased {
                                 JvmType::StructRef(self.get_pattern_class_index(sub_pat)?)

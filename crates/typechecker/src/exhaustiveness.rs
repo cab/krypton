@@ -1,20 +1,31 @@
 use std::collections::HashSet;
 
-use krypton_parser::ast::{MatchArm, Pattern, Span};
+use krypton_parser::ast::Span;
 
+use crate::typed_ast::{TypedMatchArm, TypedPattern};
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::types::Type;
 use crate::unify::{SpannedTypeError, TypeError};
 
 pub fn check_exhaustiveness(
     scrutinee_ty: &Type,
-    arms: &[MatchArm],
+    arms: &[TypedMatchArm],
     registry: Option<&TypeRegistry>,
     span: Span,
 ) -> Result<(), SpannedTypeError> {
-    // If any arm has a wildcard/var pattern at top level, it's exhaustive
-    for arm in arms {
-        if is_catch_all(&arm.pattern) {
+    let patterns: Vec<&TypedPattern> = arms.iter().map(|a| &a.pattern).collect();
+    check_patterns_exhaustive(scrutinee_ty, &patterns, registry, span)
+}
+
+fn check_patterns_exhaustive(
+    scrutinee_ty: &Type,
+    patterns: &[&TypedPattern],
+    registry: Option<&TypeRegistry>,
+    span: Span,
+) -> Result<(), SpannedTypeError> {
+    // If any pattern is a wildcard/var at top level, it's exhaustive
+    for pat in patterns {
+        if is_catch_all(pat) {
             return Ok(());
         }
     }
@@ -36,9 +47,9 @@ pub fn check_exhaustiveness(
                         variants.iter().map(|v| v.name.as_str()).collect();
 
                     // Collect which variants are matched
-                    let matched: HashSet<&str> = arms
+                    let matched: HashSet<&str> = patterns
                         .iter()
-                        .filter_map(|arm| constructor_name(&arm.pattern))
+                        .filter_map(|pat| constructor_name(pat))
                         .collect();
 
                     let missing: Vec<String> = all_variants
@@ -62,10 +73,10 @@ pub fn check_exhaustiveness(
                             continue;
                         }
                         // Collect sub-patterns for this variant
-                        let sub_patterns: Vec<&[Pattern]> = arms
+                        let sub_patterns: Vec<&[TypedPattern]> = patterns
                             .iter()
-                            .filter_map(|arm| match &arm.pattern {
-                                Pattern::Constructor { name, args, .. }
+                            .filter_map(|pat| match pat {
+                                TypedPattern::Constructor { name, args, .. }
                                     if name == &variant_info.name =>
                                 {
                                     Some(args.as_slice())
@@ -80,19 +91,12 @@ pub fn check_exhaustiveness(
 
                         // Check each field position for exhaustiveness
                         for (i, field_ty) in variant_info.fields.iter().enumerate() {
-                            let field_arms: Vec<MatchArm> = sub_patterns
+                            let field_pats: Vec<&TypedPattern> = sub_patterns
                                 .iter()
-                                .filter_map(|pats| {
-                                    pats.get(i).map(|p| MatchArm {
-                                        pattern: p.clone(),
-                                        guard: None,
-                                        body: arms[0].body.clone(), // body doesn't matter
-                                        span,
-                                    })
-                                })
+                                .filter_map(|pats| pats.get(i))
                                 .collect();
 
-                            check_exhaustiveness(field_ty, &field_arms, Some(registry), span)?;
+                            check_patterns_exhaustive(field_ty, &field_pats, Some(registry), span)?;
                         }
                     }
 
@@ -100,7 +104,7 @@ pub fn check_exhaustiveness(
                 }
                 TypeKind::Record { .. } => {
                     // Single constructor — any arm matches
-                    if arms.is_empty() {
+                    if patterns.is_empty() {
                         Err(SpannedTypeError {
                             error: TypeError::NonExhaustive {
                                 missing: vec![name.clone()],
@@ -132,13 +136,13 @@ pub fn check_exhaustiveness(
     }
 }
 
-fn is_catch_all(pattern: &Pattern) -> bool {
-    matches!(pattern, Pattern::Wildcard { .. } | Pattern::Var { .. })
+fn is_catch_all(pattern: &TypedPattern) -> bool {
+    matches!(pattern, TypedPattern::Wildcard { .. } | TypedPattern::Var { .. })
 }
 
-fn constructor_name(pattern: &Pattern) -> Option<&str> {
+fn constructor_name(pattern: &TypedPattern) -> Option<&str> {
     match pattern {
-        Pattern::Constructor { name, .. } => Some(name.as_str()),
+        TypedPattern::Constructor { name, .. } => Some(name.as_str()),
         _ => None,
     }
 }

@@ -1,7 +1,17 @@
 use std::collections::HashMap;
 
 use crate::types::{Substitution, Type, TypeScheme};
-use krypton_parser::ast::{BinOp, Lit, Pattern, Span, TypeExpr, UnaryOp, Variant};
+use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant};
+
+#[derive(Debug, Clone)]
+pub enum TypedPattern {
+    Wildcard { ty: Type, span: Span },
+    Var { name: String, ty: Type, span: Span },
+    Constructor { name: String, args: Vec<TypedPattern>, ty: Type, span: Span },
+    Lit { value: Lit, ty: Type, span: Span },
+    Tuple { elements: Vec<TypedPattern>, ty: Type, span: Span },
+    StructPat { name: String, fields: Vec<(String, TypedPattern)>, rest: bool, ty: Type, span: Span },
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedExpr {
@@ -61,7 +71,7 @@ pub enum TypedExprKind {
         fields: Vec<(String, TypedExpr)>,
     },
     LetPattern {
-        pattern: Pattern,
+        pattern: TypedPattern,
         value: Box<TypedExpr>,
         body: Option<Box<TypedExpr>>,
     },
@@ -74,7 +84,7 @@ pub enum TypedExprKind {
 
 #[derive(Debug, Clone)]
 pub struct TypedMatchArm {
-    pub pattern: Pattern,
+    pub pattern: TypedPattern,
     pub body: TypedExpr,
 }
 
@@ -126,6 +136,32 @@ pub struct TypedModule {
     pub type_provenance: HashMap<String, String>,
 }
 
+pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {
+    match pat {
+        TypedPattern::Wildcard { ty, .. } => *ty = subst.apply(ty),
+        TypedPattern::Var { ty, .. } => *ty = subst.apply(ty),
+        TypedPattern::Lit { ty, .. } => *ty = subst.apply(ty),
+        TypedPattern::Constructor { args, ty, .. } => {
+            *ty = subst.apply(ty);
+            for arg in args {
+                apply_subst_pattern(arg, subst);
+            }
+        }
+        TypedPattern::Tuple { elements, ty, .. } => {
+            *ty = subst.apply(ty);
+            for elem in elements {
+                apply_subst_pattern(elem, subst);
+            }
+        }
+        TypedPattern::StructPat { fields, ty, .. } => {
+            *ty = subst.apply(ty);
+            for (_, field_pat) in fields {
+                apply_subst_pattern(field_pat, subst);
+            }
+        }
+    }
+}
+
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
     expr.ty = subst.apply(&expr.ty);
     match &mut expr.kind {
@@ -155,6 +191,7 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
         TypedExprKind::Match { scrutinee, arms } => {
             apply_subst(scrutinee, subst);
             for arm in arms {
+                apply_subst_pattern(&mut arm.pattern, subst);
                 apply_subst(&mut arm.body, subst);
             }
         }
@@ -192,7 +229,8 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
                 apply_subst(e, subst);
             }
         }
-        TypedExprKind::LetPattern { value, body, .. } => {
+        TypedExprKind::LetPattern { pattern, value, body } => {
+            apply_subst_pattern(pattern, subst);
             apply_subst(value, subst);
             if let Some(body) = body {
                 apply_subst(body, subst);
