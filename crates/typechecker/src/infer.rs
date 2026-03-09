@@ -1617,8 +1617,8 @@ fn infer_module_inner(
 
     // Process import declarations with per-module inference, caching, and circular detection
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
-    let mut imported_functions: Vec<TypedFnDecl> = Vec::new();
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
+    let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
             // Check for circular imports
@@ -1663,14 +1663,12 @@ fn infer_module_inner(
                         .cloned()
                         .unwrap_or_else(|| name.clone());
                     env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
+                    imported_fn_types.push((effective_name.clone(), scheme.clone()));
+                    fn_provenance_map.insert(effective_name, (path.clone(), name.clone()));
                 } else {
-                    // Bind non-requested names too (for internal deps), but without provenance
+                    // Bind non-requested names in env for typechecking only
                     env.bind(name.clone(), scheme.clone());
                 }
-                let effective_name = aliases.get(name)
-                    .cloned()
-                    .unwrap_or_else(|| name.clone());
-                imported_fn_types.push((effective_name, scheme.clone()));
             }
 
             // Process type declarations from imported module source
@@ -1699,19 +1697,6 @@ fn infer_module_inner(
                     )?;
                     imported_extern_fns.append(&mut fns);
                 }
-            }
-
-            // Copy ALL imported function bodies into the main module for codegen compatibility.
-            // (Per-module class emission will remove this in M11-T2c.)
-            for func in &cached.functions {
-                let effective_name = aliases.get(&func.name)
-                    .cloned()
-                    .unwrap_or_else(|| func.name.clone());
-                imported_functions.push(TypedFnDecl {
-                    name: effective_name,
-                    params: func.params.clone(),
-                    body: func.body.clone(),
-                });
             }
 
             // Copy imported extern fns for codegen
@@ -2246,7 +2231,7 @@ fn infer_module_inner(
     results.extend(derived_impl_fn_types);
 
     // Apply final substitution to all typed function bodies
-    let mut functions: Vec<TypedFnDecl> = imported_functions;
+    let mut functions: Vec<TypedFnDecl> = Vec::new();
     for (i, decl) in fn_decls.iter().enumerate() {
         let mut body = fn_bodies[i].take().unwrap();
         typed_ast::apply_subst(&mut body, &subst);
@@ -2360,6 +2345,7 @@ fn infer_module_inner(
         imported_extern_fns,
         struct_decls,
         sum_decls,
+        fn_provenance: fn_provenance_map,
     })
 }
 

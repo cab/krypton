@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use krypton_codegen::emit::compile_module;
+use krypton_codegen::emit::compile_modules;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::module_resolver::CompositeResolver;
@@ -19,21 +19,19 @@ fn build_classpath(class_dir: &Path) -> String {
     }
 }
 
-fn run_program(source: &str) -> String {
-    run_program_with_resolver(source, &CompositeResolver::stdlib_only())
-}
-
 fn run_program_with_resolver(source: &str, resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver) -> String {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let typed_modules = infer_module(&module, resolver).expect("type check should succeed");
-    let typed_module = &typed_modules[0]; // main module
-    let classes = compile_module(typed_module, "Test").expect("compile_module should succeed");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile_modules should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let class_path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = class_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         let mut f = std::fs::File::create(&class_path).unwrap();
         f.write_all(bytes).unwrap();
     }
@@ -103,7 +101,7 @@ fn run_codegen_fixtures(subdir: &str) {
                         Ok(tm) => tm,
                         Err(_) => continue,
                     };
-                    match compile_module(&typed_modules[0], "Test") {
+                    match compile_modules(&typed_modules, "Test") {
                         Ok(_) => { ran += 1; }
                         Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
                         Err(e) => {

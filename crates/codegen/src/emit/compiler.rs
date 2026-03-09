@@ -1561,7 +1561,9 @@ impl Compiler {
             }
         }
 
-        // Check if this is a trait method call
+        // Check if this is a trait method call (but not if it's a registered function —
+        // user functions like `add` take priority over trait method names like Add.add)
+        if !self.types.functions.contains_key(name) {
         if let Some(trait_name) = self.traits.trait_method_map.get(name).cloned() {
             if let Some(dispatch) = self.traits.trait_dispatch.get(&trait_name) {
                 let iface_method_ref = dispatch.method_refs[name];
@@ -1687,6 +1689,7 @@ impl Compiler {
 
                 return Ok(expected_ret);
             }
+        }
         }
 
         // Check if calling a constrained function — need to prepend dict args
@@ -3335,10 +3338,8 @@ impl Compiler {
         this_class: u16,
         object_class: u16,
         extra_methods: Vec<Method>,
+        is_main: bool,
     ) -> Result<Vec<u8>, CodegenError> {
-        let main_name = self.cp.add_utf8("main")?;
-        let main_desc = self.cp.add_utf8("([Ljava/lang/String;)V")?;
-
         let constructor = Method {
             access_flags: MethodAccessFlags::PUBLIC,
             name_index: self.refs.init_name,
@@ -3357,36 +3358,41 @@ impl Compiler {
             }],
         };
 
-        // Build StackMapTable if we have frames
-        let stack_map_frames = self.frame.build_stack_map_frames();
-        let code_attributes = if stack_map_frames.is_empty() {
-            vec![]
-        } else {
-            vec![Attribute::StackMapTable {
-                name_index: self.refs.smt_name,
-                frames: stack_map_frames,
-            }]
-        };
-
-        let main_method = Method {
-            access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::STATIC,
-            name_index: main_name,
-            descriptor_index: main_desc,
-            attributes: vec![Attribute::Code {
-                name_index: self.refs.code_utf8,
-                max_stack: self.frame.max_stack(),
-                max_locals: self.next_local,
-                code: std::mem::take(&mut self.code),
-                exception_table: vec![],
-                attributes: code_attributes,
-            }],
-        };
-
         let mut methods = vec![constructor];
         methods.extend(extra_methods);
         // Add lambda methods
         methods.extend(std::mem::take(&mut self.lambda.lambda_methods));
-        methods.push(main_method);
+
+        if is_main {
+            let main_name = self.cp.add_utf8("main")?;
+            let main_desc = self.cp.add_utf8("([Ljava/lang/String;)V")?;
+
+            // Build StackMapTable if we have frames
+            let stack_map_frames = self.frame.build_stack_map_frames();
+            let code_attributes = if stack_map_frames.is_empty() {
+                vec![]
+            } else {
+                vec![Attribute::StackMapTable {
+                    name_index: self.refs.smt_name,
+                    frames: stack_map_frames,
+                }]
+            };
+
+            let main_method = Method {
+                access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::STATIC,
+                name_index: main_name,
+                descriptor_index: main_desc,
+                attributes: vec![Attribute::Code {
+                    name_index: self.refs.code_utf8,
+                    max_stack: self.frame.max_stack(),
+                    max_locals: self.next_local,
+                    code: std::mem::take(&mut self.code),
+                    exception_table: vec![],
+                    attributes: code_attributes,
+                }],
+            };
+            methods.push(main_method);
+        }
 
         // Build class attributes (BootstrapMethods if any)
         let mut class_attributes = Vec::new();

@@ -156,8 +156,8 @@ fn main() {
             debug!("parsing complete");
 
             let t = Instant::now();
-            let typed_module = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-                Ok(mut modules) => modules.remove(0),
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+                Ok(modules) => modules,
                 Err(e) => {
                     let diag =
                         krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
@@ -186,7 +186,7 @@ fn main() {
             };
 
             let t = Instant::now();
-            match krypton_codegen::emit::compile_module(&typed_module, &class_name) {
+            match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
                 Ok(classes) => {
                     phases.push(("codegen", t.elapsed()));
                     info!(classes = classes.len(), "codegen complete");
@@ -194,6 +194,14 @@ fn main() {
                     let t = Instant::now();
                     for (name, bytes) in &classes {
                         let out_path = format!("{}.class", name);
+                        if let Some(parent) = std::path::Path::new(&out_path).parent() {
+                            if !parent.as_os_str().is_empty() {
+                                std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                                    eprintln!("Error creating directory {}: {}", parent.display(), e);
+                                    process::exit(1);
+                                });
+                            }
+                        }
                         std::fs::write(&out_path, bytes).unwrap_or_else(|e| {
                             eprintln!("Error writing {}: {}", out_path, e);
                             process::exit(1);
@@ -230,8 +238,8 @@ fn main() {
             debug!("parsing complete");
 
             let t = Instant::now();
-            let typed_module = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-                Ok(mut modules) => modules.remove(0),
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+                Ok(modules) => modules,
                 Err(e) => {
                     let diag =
                         krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
@@ -256,7 +264,7 @@ fn main() {
             };
 
             let t = Instant::now();
-            match krypton_codegen::emit::compile_module(&typed_module, &class_name) {
+            match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
                 Ok(classes) => {
                     phases.push(("codegen", t.elapsed()));
                     info!(classes = classes.len(), "codegen complete");
@@ -268,6 +276,9 @@ fn main() {
                     });
                     for (name, bytes) in &classes {
                         let class_path = dir.path().join(format!("{name}.class"));
+                        if let Some(parent) = class_path.parent() {
+                            std::fs::create_dir_all(parent).unwrap();
+                        }
                         std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
                             eprintln!("Error writing class file: {}", e);
                             process::exit(1);

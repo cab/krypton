@@ -206,8 +206,41 @@ pub fn compile_module(
     typed_module: &TypedModule,
     class_name: &str,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    // Check for main function
-    if !typed_module.functions.iter().any(|f| f.name == "main") {
+    compile_module_inner(typed_module, class_name, true)
+}
+
+/// Compile a library module (no main function required).
+pub fn compile_library_module(
+    typed_module: &TypedModule,
+    class_name: &str,
+) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
+    compile_module_inner(typed_module, class_name, false)
+}
+
+/// Compile all modules returned by the typechecker. The first module is the main module;
+/// the rest are library modules that each get their own class.
+pub fn compile_modules(
+    typed_modules: &[TypedModule],
+    main_class_name: &str,
+) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
+    let mut all_classes = Vec::new();
+    for module in typed_modules {
+        let classes = if let Some(path) = &module.module_path {
+            compile_library_module(module, path)?
+        } else {
+            compile_module(module, main_class_name)?
+        };
+        all_classes.extend(classes);
+    }
+    Ok(all_classes)
+}
+
+fn compile_module_inner(
+    typed_module: &TypedModule,
+    class_name: &str,
+    is_main: bool,
+) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
+    if is_main && !typed_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction);
     }
 
@@ -608,7 +641,7 @@ pub fn compile_module(
         compiler.vec_info = Some(VecInfo { class_index: ka_class, init_ref: ka_init, set_ref: ka_set, freeze_ref: ka_freeze });
     }
 
-    // Register all functions (including main) in the function registry.
+    // Register all functions in the function registry.
     // Skip constructor entries (they're handled as struct/variant constructors).
     for (name, scheme) in type_info.iter() {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
@@ -636,8 +669,14 @@ pub fn compile_module(
                 name.as_str()
             };
             let descriptor = compiler.types.build_descriptor(&all_param_types, return_type);
+            // For imported functions, target the foreign class
+            let (target_class, target_name) = if let Some((source_module, orig_name)) = typed_module.fn_provenance.get(name) {
+                (compiler.cp.add_class(source_module)?, orig_name.as_str())
+            } else {
+                (this_class, jvm_name)
+            };
             let method_ref =
-                compiler.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
+                compiler.cp.add_method_ref(target_class, target_name, &descriptor)?;
             compiler.types.functions.insert(
                 name.clone(),
                 FunctionInfo {
@@ -727,7 +766,7 @@ pub fn compile_module(
         );
     }
 
-    // Compile all functions (including main) as static methods using typed bodies
+    // Compile all functions as static methods using typed bodies
     let mut extra_methods = Vec::new();
     for typed_fn in &typed_module.functions {
         let mut method = compiler.compile_function(typed_fn)?;
@@ -739,35 +778,37 @@ pub fn compile_module(
         extra_methods.push(method);
     }
 
-    // Build JVM main(String[])V — calls krypton_main and discards the result
-    let main_info = compiler.types.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
-    let krypton_main_ref = main_info.method_ref;
-    let main_return_type = main_info.return_type;
+    // Build JVM main(String[])V wrapper (main module only)
+    if is_main {
+        let main_info = compiler.types.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
+        let krypton_main_ref = main_info.method_ref;
+        let main_return_type = main_info.return_type;
 
-    compiler.reset_method_state();
-    compiler.next_local = 1; // slot 0 = String[] args
-    let string_arr_class = compiler.cp.add_class("[Ljava/lang/String;")?;
-    compiler.frame.local_types = vec![VerificationType::Object {
-        cpool_index: string_arr_class,
-    }];
+        compiler.reset_method_state();
+        compiler.next_local = 1; // slot 0 = String[] args
+        let string_arr_class = compiler.cp.add_class("[Ljava/lang/String;")?;
+        compiler.frame.local_types = vec![VerificationType::Object {
+            cpool_index: string_arr_class,
+        }];
 
-    // Call krypton_main
-    compiler.emit(Instruction::Invokestatic(krypton_main_ref));
-    compiler.push_jvm_type(main_return_type);
+        // Call krypton_main
+        compiler.emit(Instruction::Invokestatic(krypton_main_ref));
+        compiler.push_jvm_type(main_return_type);
 
-    // Discard the return value
-    match main_return_type {
-        JvmType::Long | JvmType::Double => {
-            compiler.emit(Instruction::Pop2);
-            compiler.frame.pop_type_n(2);
+        // Discard the return value
+        match main_return_type {
+            JvmType::Long | JvmType::Double => {
+                compiler.emit(Instruction::Pop2);
+                compiler.frame.pop_type_n(2);
+            }
+            JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => {
+                compiler.emit(Instruction::Pop);
+                compiler.frame.pop_type();
+            }
         }
-        JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => {
-            compiler.emit(Instruction::Pop);
-            compiler.frame.pop_type();
-        }
+
+        compiler.emit(Instruction::Return);
     }
-
-    compiler.emit(Instruction::Return);
 
     // Generate FunN interface class files
     let fun_arities: Vec<u8> = compiler.lambda.fun_classes.keys().copied().collect();
@@ -776,8 +817,8 @@ pub fn compile_module(
         result_classes.push((format!("Fun{arity}"), fun_bytes));
     }
 
-    let main_bytes = compiler.build_class(this_class, object_class, extra_methods)?;
-    result_classes.push((class_name.to_string(), main_bytes));
+    let class_bytes = compiler.build_class(this_class, object_class, extra_methods, is_main)?;
+    result_classes.push((class_name.to_string(), class_bytes));
 
     Ok(result_classes)
 }

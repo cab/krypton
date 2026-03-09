@@ -118,6 +118,9 @@ pub struct TypedModule {
     pub imported_extern_fns: Vec<ExternFnInfo>,
     pub struct_decls: Vec<(String, Vec<(String, TypeExpr)>)>,
     pub sum_decls: Vec<(String, Vec<String>, Vec<Variant>)>,
+    /// Maps local_name → (module_path, original_name) for imported functions.
+    /// Used by codegen to emit cross-module `invokestatic` calls.
+    pub fn_provenance: HashMap<String, (String, String)>,
 }
 
 pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
