@@ -767,6 +767,372 @@ pub(super) fn generate_builtin_show_instance_class(
     Ok(buffer)
 }
 
+/// Generate a built-in trait instance class (Add$Int, Eq$String, etc.).
+///
+/// Each class implements its trait interface with a bridge method that
+/// unboxes arguments, performs the operation, and boxes the result.
+pub(super) fn generate_builtin_trait_instance_class(
+    class_name: &str,
+    trait_name: &str,
+    method_name: &str,
+    type_name: &str,
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(class_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let interface_class = cp.add_class(trait_name)?;
+    let code_utf8 = cp.add_utf8("Code")?;
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+    let init_name = cp.add_utf8("<init>")?;
+    let init_desc = cp.add_utf8("()V")?;
+
+    let self_desc = format!("L{class_name};");
+    let instance_name = cp.add_utf8("INSTANCE")?;
+    let instance_desc = cp.add_utf8(&self_desc)?;
+    let instance_field_ref = cp.add_field_ref(this_class, "INSTANCE", &self_desc)?;
+    let self_init = cp.add_method_ref(this_class, "<init>", "()V")?;
+
+    // Constructor
+    let constructor = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: init_name,
+        descriptor_index: init_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 2,
+            max_locals: 1,
+            code: vec![
+                Instruction::Aload_0,
+                Instruction::Invokespecial(object_init),
+                Instruction::Return,
+            ],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    // Static initializer
+    let clinit_name = cp.add_utf8("<clinit>")?;
+    let clinit_desc = cp.add_utf8("()V")?;
+    let clinit = Method {
+        access_flags: MethodAccessFlags::STATIC,
+        name_index: clinit_name,
+        descriptor_index: clinit_desc,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack: 2,
+            max_locals: 0,
+            code: vec![
+                Instruction::New(this_class),
+                Instruction::Dup,
+                Instruction::Invokespecial(self_init),
+                Instruction::Putstatic(instance_field_ref),
+                Instruction::Return,
+            ],
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    // Determine if unary (Neg) or binary
+    let is_unary = trait_name == "Neg";
+    let iface_desc = if is_unary {
+        "(Ljava/lang/Object;)Ljava/lang/Object;"
+    } else {
+        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
+    };
+
+    let method_name_idx = cp.add_utf8(method_name)?;
+    let method_desc_idx = cp.add_utf8(iface_desc)?;
+
+    // Build bridge method bytecode
+    let (bridge_code, max_stack, max_locals) = build_bridge_bytecode(
+        &mut cp, trait_name, type_name, is_unary,
+    )?;
+
+    let bridge_method = Method {
+        access_flags: MethodAccessFlags::PUBLIC,
+        name_index: method_name_idx,
+        descriptor_index: method_desc_idx,
+        attributes: vec![Attribute::Code {
+            name_index: code_utf8,
+            max_stack,
+            max_locals,
+            code: bridge_code,
+            exception_table: vec![],
+            attributes: vec![],
+        }],
+    };
+
+    let field = Field {
+        access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
+        name_index: instance_name,
+        descriptor_index: instance_desc,
+        field_type: FieldType::Object(class_name.to_string()),
+        attributes: vec![],
+    };
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        interfaces: vec![interface_class],
+        fields: vec![field],
+        methods: vec![constructor, clinit, bridge_method],
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
+/// Build the bridge method bytecode for a built-in trait instance.
+fn build_bridge_bytecode(
+    cp: &mut ConstantPool,
+    trait_name: &str,
+    type_name: &str,
+    _is_unary: bool,
+) -> Result<(Vec<Instruction>, u16, u16), CodegenError> {
+    let mut code = Vec::new();
+
+    match (trait_name, type_name) {
+        // Binary arithmetic: Int (Long)
+        ("Add", "Int") | ("Sub", "Int") | ("Mul", "Int") | ("Div", "Int") => {
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
+            let long_box = cp.add_method_ref(long_class, "valueOf", "(J)Ljava/lang/Long;")?;
+            // Unbox first arg
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            // Unbox second arg
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            // Operation
+            let op = match trait_name {
+                "Add" => Instruction::Ladd,
+                "Sub" => Instruction::Lsub,
+                "Mul" => Instruction::Lmul,
+                "Div" => Instruction::Ldiv,
+                _ => unreachable!(),
+            };
+            code.push(op);
+            // Box result
+            code.push(Instruction::Invokestatic(long_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 4, 3))
+        }
+
+        // Binary arithmetic: Float (Double)
+        ("Add", "Float") | ("Sub", "Float") | ("Mul", "Float") | ("Div", "Float") => {
+            let double_class = cp.add_class("java/lang/Double")?;
+            let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
+            let double_box = cp.add_method_ref(double_class, "valueOf", "(D)Ljava/lang/Double;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            let op = match trait_name {
+                "Add" => Instruction::Dadd,
+                "Sub" => Instruction::Dsub,
+                "Mul" => Instruction::Dmul,
+                "Div" => Instruction::Ddiv,
+                _ => unreachable!(),
+            };
+            code.push(op);
+            code.push(Instruction::Invokestatic(double_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 4, 3))
+        }
+
+        // Unary Neg: Int
+        ("Neg", "Int") => {
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
+            let long_box = cp.add_method_ref(long_class, "valueOf", "(J)Ljava/lang/Long;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            code.push(Instruction::Lneg);
+            code.push(Instruction::Invokestatic(long_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 2))
+        }
+
+        // Unary Neg: Float
+        ("Neg", "Float") => {
+            let double_class = cp.add_class("java/lang/Double")?;
+            let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
+            let double_box = cp.add_method_ref(double_class, "valueOf", "(D)Ljava/lang/Double;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            code.push(Instruction::Dneg);
+            code.push(Instruction::Invokestatic(double_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 2))
+        }
+
+        // Eq: Int — Lcmp + branch
+        ("Eq", "Int") => {
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            code.push(Instruction::Lcmp);
+            // Ifne: branch if TOS != 0 (not equal) → false path
+            let branch_idx = code.len() as u16;
+            code.push(Instruction::Ifne(branch_idx + 3)); // if not equal → false
+            code.push(Instruction::Iconst_1);              // true
+            code.push(Instruction::Goto(branch_idx + 4));  // skip false
+            code.push(Instruction::Iconst_0);              // false
+            code.push(Instruction::Invokestatic(bool_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 4, 3))
+        }
+
+        // Eq: Float — Dcmpl + branch
+        ("Eq", "Float") => {
+            let double_class = cp.add_class("java/lang/Double")?;
+            let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            code.push(Instruction::Dcmpl);
+            let branch_idx = code.len() as u16;
+            code.push(Instruction::Ifne(branch_idx + 3));
+            code.push(Instruction::Iconst_1);
+            code.push(Instruction::Goto(branch_idx + 4));
+            code.push(Instruction::Iconst_0);
+            code.push(Instruction::Invokestatic(bool_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 4, 3))
+        }
+
+        // Eq: String — String.equals
+        ("Eq", "String") => {
+            let string_class = cp.add_class("java/lang/String")?;
+            let string_equals = cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(string_class));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Invokevirtual(string_equals));
+            code.push(Instruction::Invokestatic(bool_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 3))
+        }
+
+        // Eq: Bool — unbox + compare
+        ("Eq", "Bool") => {
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_unbox = cp.add_method_ref(bool_class, "booleanValue", "()Z")?;
+            let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(bool_class));
+            code.push(Instruction::Invokevirtual(bool_unbox));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(bool_class));
+            code.push(Instruction::Invokevirtual(bool_unbox));
+            // Isub: if equal, result is 0; Ifeq branches if 0
+            code.push(Instruction::Isub);
+            let branch_idx = code.len() as u16;
+            code.push(Instruction::Ifeq(branch_idx + 3)); // equal → true
+            code.push(Instruction::Iconst_0);
+            code.push(Instruction::Goto(branch_idx + 4));
+            code.push(Instruction::Iconst_1);
+            code.push(Instruction::Invokestatic(bool_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 3))
+        }
+
+        // Ord: Int — Lcmp + Iflt
+        ("Ord", "Int") => {
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(long_class));
+            code.push(Instruction::Invokevirtual(long_unbox));
+            code.push(Instruction::Lcmp);
+            // Iflt: branch if TOS < 0 (first < second) → true
+            let branch_idx = code.len() as u16;
+            code.push(Instruction::Ifge(branch_idx + 3)); // if >= → false
+            code.push(Instruction::Iconst_1);
+            code.push(Instruction::Goto(branch_idx + 4));
+            code.push(Instruction::Iconst_0);
+            code.push(Instruction::Invokestatic(bool_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 4, 3))
+        }
+
+        // Ord: Float — Dcmpl + Iflt
+        ("Ord", "Float") => {
+            let double_class = cp.add_class("java/lang/Double")?;
+            let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
+            let bool_class = cp.add_class("java/lang/Boolean")?;
+            let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(double_class));
+            code.push(Instruction::Invokevirtual(double_unbox));
+            code.push(Instruction::Dcmpl);
+            let branch_idx = code.len() as u16;
+            code.push(Instruction::Ifge(branch_idx + 3));
+            code.push(Instruction::Iconst_1);
+            code.push(Instruction::Goto(branch_idx + 4));
+            code.push(Instruction::Iconst_0);
+            code.push(Instruction::Invokestatic(bool_box));
+            code.push(Instruction::Areturn);
+            Ok((code, 4, 3))
+        }
+
+        // Add: String — String.concat
+        ("Add", "String") => {
+            let string_class = cp.add_class("java/lang/String")?;
+            let string_concat = cp.add_method_ref(
+                string_class, "concat", "(Ljava/lang/String;)Ljava/lang/String;",
+            )?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(string_class));
+            code.push(Instruction::Aload(2));
+            code.push(Instruction::Checkcast(string_class));
+            code.push(Instruction::Invokevirtual(string_concat));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 3))
+        }
+
+        _ => Err(CodegenError::UnsupportedExpr(format!(
+            "Unknown built-in trait instance: {trait_name}${type_name}"
+        ))),
+    }
+}
+
 /// Generate a parameterized instance class with constructor taking subdictionaries.
 pub(super) fn generate_parameterized_instance_class(
     class_name: &str,

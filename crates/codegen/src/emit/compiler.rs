@@ -1561,9 +1561,6 @@ impl Compiler {
             }
         }
 
-        // Check if this is a trait method call (but not if it's a registered function —
-        // user functions like `add` take priority over trait method names like Add.add)
-        if !self.types.functions.contains_key(name) {
         if let Some(trait_name) = self.traits.trait_method_map.get(name).cloned() {
             if let Some(dispatch) = self.traits.trait_dispatch.get(&trait_name) {
                 let iface_method_ref = dispatch.method_refs[name];
@@ -1689,7 +1686,6 @@ impl Compiler {
 
                 return Ok(expected_ret);
             }
-        }
         }
 
         // Check if calling a constrained function — need to prepend dict args

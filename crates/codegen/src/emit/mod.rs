@@ -21,7 +21,8 @@ use compiler::{
 use class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
     generate_fun_interface, generate_trait_interface_class, generate_instance_class,
-    generate_builtin_show_instance_class, generate_parameterized_instance_class,
+    generate_builtin_show_instance_class, generate_builtin_trait_instance_class,
+    generate_parameterized_instance_class,
 };
 
 /// Java 21 class file version (major 65).
@@ -495,6 +496,48 @@ fn compile_module_inner(
                 let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
                 compiler.traits.instance_singletons.insert(
                     ("Show".to_string(), type_name.to_string()),
+                    InstanceSingletonInfo { instance_field_ref },
+                );
+            }
+        }
+    }
+
+    // Generate built-in trait instance classes (Add$Int, Sub$Int, Eq$String, etc.)
+    {
+        let builtin_instances: &[(&str, &str, &str)] = &[
+            ("Add", "Int", "add"),
+            ("Sub", "Int", "sub"),
+            ("Mul", "Int", "mul"),
+            ("Div", "Int", "div"),
+            ("Neg", "Int", "neg"),
+            ("Eq",  "Int", "eq"),
+            ("Ord", "Int", "lt"),
+            ("Add", "Float", "add"),
+            ("Sub", "Float", "sub"),
+            ("Mul", "Float", "mul"),
+            ("Div", "Float", "div"),
+            ("Neg", "Float", "neg"),
+            ("Eq",  "Float", "eq"),
+            ("Ord", "Float", "lt"),
+            ("Add", "String", "add"),
+            ("Eq",  "String", "eq"),
+            ("Eq",  "Bool", "eq"),
+        ];
+
+        for (trait_name, type_name, method_name) in builtin_instances {
+            if compiler.traits.trait_dispatch.contains_key(*trait_name) {
+                let class_name = format!("{trait_name}${type_name}");
+                let bytes = generate_builtin_trait_instance_class(
+                    &class_name, trait_name, method_name, type_name,
+                )?;
+                result_classes.push((class_name.clone(), bytes));
+
+                let inst_class_idx = compiler.cp.add_class(&class_name)?;
+                let inst_desc = format!("L{class_name};");
+                compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
+                let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+                compiler.traits.instance_singletons.insert(
+                    (trait_name.to_string(), type_name.to_string()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             }

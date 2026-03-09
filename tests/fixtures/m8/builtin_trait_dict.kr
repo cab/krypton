@@ -1,0 +1,8 @@
+# expect: output 8
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun apply_add(x, y) = add(x, y)
+
+fun main() = println(apply_add(3, 5))

@@ -1992,8 +1992,16 @@ fn infer_module_inner(
     // Collect the mapping of trait method names → trait names for post-inference resolution
     let trait_method_map: HashMap<String, String> = trait_registry.trait_method_names().into_iter().collect();
 
-    // Check for top-level def names conflicting with user-defined trait method names
+    // Check for top-level def names conflicting with ANY trait method names (including built-ins)
     {
+        // Determine if the module uses traits (has DefTrait, DefImpl, or deriving)
+        let has_trait_usage = module.decls.iter().any(|d| matches!(d,
+            Decl::DefTrait { .. } | Decl::DefImpl { .. }
+        )) || module.decls.iter().any(|d| {
+            if let Decl::DefType(td) = d { !td.deriving.is_empty() } else { false }
+        });
+
+        // First pass: check user-defined traits (with secondary span)
         let mut user_trait_methods: HashMap<String, (String, Span)> = HashMap::new();
         for decl in &module.decls {
             if let Decl::DefTrait { name, methods, .. } = decl {
@@ -2014,6 +2022,21 @@ fn infer_module_inner(
                         note: None,
                         secondary_span: Some((*method_span, "trait method defined here".into())),
                     });
+                }
+                // Second pass: check built-in traits (no secondary span)
+                // Only check when module uses traits (has instances, trait defs, or deriving)
+                if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
+                    if let Some(trait_name) = trait_method_map.get(&f.name) {
+                        return Err(SpannedTypeError {
+                            error: TypeError::DefinitionConflictsWithTraitMethod {
+                                def_name: f.name.clone(),
+                                trait_name: trait_name.clone(),
+                            },
+                            span: f.span,
+                            note: None,
+                            secondary_span: None,
+                        });
+                    }
                 }
             }
         }
