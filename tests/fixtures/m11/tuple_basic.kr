@@ -1,0 +1,10 @@
+# expect: output 1
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun main() -> Unit = {
+  let pair = (1, "hi")
+  let (a, _) = pair
+  println(a)
+}

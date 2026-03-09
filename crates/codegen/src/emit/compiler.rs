@@ -85,6 +85,13 @@ pub(super) struct SumTypeInfo {
     pub(super) variants: HashMap<String, VariantInfo>,
 }
 
+/// Info about a tuple type (backed by krypton/runtime/TupleN).
+pub(super) struct TupleInfo {
+    pub(super) class_index: u16,
+    pub(super) constructor_ref: u16,
+    pub(super) field_refs: Vec<u16>,
+}
+
 /// Well-known constant pool indices, set once in `new()`, read-only after.
 pub(super) struct CpoolRefs {
     pub(super) code_utf8: u16,
@@ -277,12 +284,13 @@ impl LambdaState {
     }
 }
 
-/// Type registry for codegen (structs, sum types, functions).
+/// Type registry for codegen (structs, sum types, tuples, functions).
 pub(super) struct CodegenTypeInfo {
     pub(super) struct_info: HashMap<String, StructInfo>,
     pub(super) class_descriptors: HashMap<u16, String>,
     pub(super) sum_type_info: HashMap<String, SumTypeInfo>,
     pub(super) variant_to_sum: HashMap<String, String>,
+    pub(super) tuple_info: HashMap<usize, TupleInfo>,
     pub(super) functions: HashMap<String, FunctionInfo>,
     pub(super) fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
@@ -435,6 +443,7 @@ impl Compiler {
                 class_descriptors: HashMap::new(),
                 sum_type_info: HashMap::new(),
                 variant_to_sum: HashMap::new(),
+                tuple_info: HashMap::new(),
                 functions: HashMap::new(),
                 fn_tc_types: HashMap::new(),
             },
@@ -479,6 +488,14 @@ impl Compiler {
                     Ok(JvmType::StructRef(class_idx))
                 } else {
                     Ok(JvmType::StructRef(self.refs.object_class))
+                }
+            }
+            Type::Tuple(elems) => {
+                let arity = elems.len();
+                if let Some(info) = self.types.tuple_info.get(&arity) {
+                    Ok(JvmType::StructRef(info.class_index))
+                } else {
+                    Err(CodegenError::TypeError(format!("unknown tuple arity: {arity}")))
                 }
             }
             Type::Own(inner) => self.type_to_jvm(inner),
@@ -526,7 +543,8 @@ impl Compiler {
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
             TypedExprKind::Recur(args) => self.compile_recur(args, in_tail),
             TypedExprKind::FieldAccess { expr: target, field } => self.compile_field_access(target, field),
-            TypedExprKind::LetPattern { .. } => Err(CodegenError::UnsupportedExpr("let-pattern destructuring".into())),
+            TypedExprKind::Tuple(elems) => self.compile_tuple(elems, &expr.ty),
+            TypedExprKind::LetPattern { pattern, value, body } => self.compile_let_pattern(pattern, value, body, in_tail),
             TypedExprKind::StructUpdate { base, fields } => self.compile_struct_update(base, fields),
             TypedExprKind::Match { scrutinee, arms } => self.compile_match(scrutinee, arms, in_tail),
             TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
@@ -1057,6 +1075,212 @@ impl Compiler {
             self.compile_expr(body, in_tail)
         } else {
             Ok(JvmType::Int)
+        }
+    }
+
+    fn compile_tuple(&mut self, elems: &[TypedExpr], _ty: &Type) -> Result<JvmType, CodegenError> {
+        let arity = elems.len();
+        let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown tuple arity: {arity}"))
+        })?;
+        let class_index = info.class_index;
+        let constructor_ref = info.constructor_ref;
+
+        // new TupleN + dup
+        self.emit(Instruction::New(class_index));
+        self.frame.push_type(VerificationType::UninitializedThis);
+        self.emit(Instruction::Dup);
+        self.frame.push_type(VerificationType::UninitializedThis);
+
+        // Compile each element and box if primitive
+        for elem in elems {
+            let elem_type = self.compile_expr(elem, false)?;
+            self.box_if_needed(elem_type);
+        }
+
+        // Pop args (all Object after boxing) + 2 uninit refs
+        for _ in 0..arity {
+            self.frame.pop_type(); // each boxed Object
+        }
+        self.frame.pop_type(); // dup'd uninit
+        self.frame.pop_type(); // original uninit
+
+        // invokespecial TupleN.<init>
+        self.emit(Instruction::Invokespecial(constructor_ref));
+        let result_type = JvmType::StructRef(class_index);
+        self.push_jvm_type(result_type);
+
+        Ok(result_type)
+    }
+
+    fn compile_let_pattern(
+        &mut self,
+        pattern: &Pattern,
+        value: &TypedExpr,
+        body: &Option<Box<TypedExpr>>,
+        in_tail: bool,
+    ) -> Result<JvmType, CodegenError> {
+        // Only support irrefutable patterns (Tuple, Var, Wildcard)
+        if let Pattern::Constructor { .. } = pattern {
+            return Err(CodegenError::UnsupportedExpr(
+                "refutable let-pattern (constructor) not yet supported".into(),
+            ));
+        }
+
+        // Compile the value expression
+        let val_type = self.compile_expr(value, false)?;
+
+        // Store in a temp local (the scrutinee)
+        let scrutinee_slot = self.next_local;
+        self.next_local += 1;
+        self.emit(Instruction::Astore(scrutinee_slot as u8));
+        self.pop_jvm_type(val_type);
+        let vtypes = self.jvm_type_to_vtypes(val_type);
+        self.frame.local_types.extend(vtypes);
+
+        // Bind the pattern
+        self.bind_irrefutable_pattern(pattern, scrutinee_slot, val_type, &value.ty)?;
+
+        // Compile the body if present
+        if let Some(body) = body {
+            self.compile_expr(body, in_tail)
+        } else {
+            Ok(JvmType::Int)
+        }
+    }
+
+    /// Bind an irrefutable pattern (Tuple, Var, Wildcard) — used by let-pattern destructuring.
+    fn bind_irrefutable_pattern(
+        &mut self,
+        pattern: &Pattern,
+        scrutinee_slot: u16,
+        scrutinee_type: JvmType,
+        value_ty: &Type,
+    ) -> Result<(), CodegenError> {
+        match pattern {
+            Pattern::Wildcard { .. } => Ok(()),
+            Pattern::Var { name, .. } => {
+                // Load scrutinee and store in a named local
+                let load = match scrutinee_type {
+                    JvmType::Long => Instruction::Lload(scrutinee_slot as u8),
+                    JvmType::Double => Instruction::Dload(scrutinee_slot as u8),
+                    JvmType::Int => Instruction::Iload(scrutinee_slot as u8),
+                    JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(scrutinee_slot as u8),
+                };
+                self.emit(load);
+                self.push_jvm_type(scrutinee_type);
+
+                let var_slot = self.next_local;
+                let slot_size: u16 = match scrutinee_type {
+                    JvmType::Long | JvmType::Double => 2,
+                    _ => 1,
+                };
+                self.next_local += slot_size;
+                let store = match scrutinee_type {
+                    JvmType::Long => Instruction::Lstore(var_slot as u8),
+                    JvmType::Double => Instruction::Dstore(var_slot as u8),
+                    JvmType::Int => Instruction::Istore(var_slot as u8),
+                    JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                };
+                self.emit(store);
+                self.pop_jvm_type(scrutinee_type);
+                let vtypes = self.jvm_type_to_vtypes(scrutinee_type);
+                self.frame.local_types.extend(vtypes);
+                self.locals.insert(name.clone(), (var_slot, scrutinee_type));
+                Ok(())
+            }
+            Pattern::Tuple { elements, .. } => {
+                let elem_types = match value_ty {
+                    Type::Tuple(elems) => elems,
+                    _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
+                };
+                let arity = elements.len();
+                let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
+                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"))
+                })?;
+                let tuple_class = tuple_info.class_index;
+                let field_refs: Vec<u16> = tuple_info.field_refs.clone();
+
+                for (i, sub_pat) in elements.iter().enumerate() {
+                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                        continue;
+                    }
+                    let field_ref = field_refs[i];
+                    let elem_ty = &elem_types[i];
+                    let elem_jvm_type = self.type_to_jvm(elem_ty)?;
+
+                    // Load tuple, invoke accessor _i() -> Object
+                    self.emit(Instruction::Aload(scrutinee_slot as u8));
+                    self.frame.push_type(VerificationType::Object { cpool_index: tuple_class });
+                    self.emit(Instruction::Invokevirtual(field_ref));
+                    self.frame.pop_type(); // pop tuple ref
+                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+
+                    // Unbox if primitive, checkcast if struct/string ref
+                    match elem_jvm_type {
+                        JvmType::StructRef(idx) => {
+                            self.emit(Instruction::Checkcast(idx));
+                            self.frame.pop_type();
+                            self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                        }
+                        JvmType::Ref => {
+                            self.emit(Instruction::Checkcast(self.refs.string_class));
+                            self.frame.pop_type();
+                            self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                        }
+                        _ => self.unbox_if_needed(elem_jvm_type),
+                    }
+
+                    // For nested tuple or var, store and recurse
+                    match sub_pat {
+                        Pattern::Var { name: var_name, .. } => {
+                            let var_slot = self.next_local;
+                            let slot_size: u16 = match elem_jvm_type {
+                                JvmType::Long | JvmType::Double => 2,
+                                _ => 1,
+                            };
+                            self.next_local += slot_size;
+                            let store = match elem_jvm_type {
+                                JvmType::Long => Instruction::Lstore(var_slot as u8),
+                                JvmType::Double => Instruction::Dstore(var_slot as u8),
+                                JvmType::Int => Instruction::Istore(var_slot as u8),
+                                JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                            };
+                            self.emit(store);
+                            self.pop_jvm_type(elem_jvm_type);
+                            let vtypes = self.jvm_type_to_vtypes(elem_jvm_type);
+                            self.frame.local_types.extend(vtypes);
+                            self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
+                        }
+                        Pattern::Tuple { .. } => {
+                            // Store in temp local and recurse
+                            let nested_slot = self.next_local;
+                            self.next_local += 1;
+                            self.emit(Instruction::Astore(nested_slot as u8));
+                            self.frame.pop_type();
+                            self.frame.local_types.push(VerificationType::Object { cpool_index: match elem_jvm_type {
+                                JvmType::StructRef(idx) => idx,
+                                _ => self.refs.object_class,
+                            }});
+                            self.bind_irrefutable_pattern(sub_pat, nested_slot, elem_jvm_type, elem_ty)?;
+                        }
+                        Pattern::Wildcard { .. } => {
+                            // Already filtered above, but handle gracefully
+                            self.frame.pop_type();
+                            self.emit(Instruction::Pop);
+                        }
+                        _ => {
+                            return Err(CodegenError::UnsupportedExpr(
+                                "unsupported sub-pattern in tuple destructuring".into(),
+                            ));
+                        }
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(CodegenError::UnsupportedExpr(format!(
+                "unsupported pattern in let: {pattern:?}"
+            ))),
         }
     }
 
@@ -2208,10 +2432,10 @@ impl Compiler {
             // Compile pattern check (if not wildcard/var on last arm)
             self.nested_ifeq_patches.clear();
             let next_arm_patch = if !is_last {
-                self.compile_pattern_check(&arm.pattern, scrutinee_slot, scrutinee_type)?
+                self.compile_pattern_check(&arm.pattern, scrutinee_slot, scrutinee_type, &scrutinee.ty)?
             } else {
                 // Last arm: bind pattern variables but no branch check
-                self.compile_pattern_bind(&arm.pattern, scrutinee_slot, scrutinee_type)?;
+                self.compile_pattern_bind(&arm.pattern, scrutinee_slot, scrutinee_type, &scrutinee.ty)?;
                 None
             };
             let nested_patches = std::mem::take(&mut self.nested_ifeq_patches);
@@ -2303,6 +2527,7 @@ impl Compiler {
         pattern: &Pattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
+        scrutinee_tc_type: &Type,
     ) -> Result<Option<usize>, CodegenError> {
         match pattern {
             Pattern::Constructor { name, args, .. } => {
@@ -2456,6 +2681,69 @@ impl Compiler {
                 self.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(None)
             }
+            Pattern::Tuple { elements, .. } => {
+                // Tuples are irrefutable — instanceof check then bind fields
+                let elem_types = match scrutinee_tc_type {
+                    Type::Tuple(elems) => elems,
+                    _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
+                };
+                let arity = elements.len();
+                let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
+                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"))
+                })?;
+                let tuple_class = tuple_info.class_index;
+                let field_refs: Vec<u16> = tuple_info.field_refs.clone();
+
+                // instanceof check
+                self.emit(Instruction::Aload(scrutinee_slot as u8));
+                self.push_jvm_type(scrutinee_type);
+                self.emit(Instruction::Instanceof(tuple_class));
+                self.pop_jvm_type(scrutinee_type);
+                self.frame.push_type(VerificationType::Integer);
+
+                let ifeq_idx = self.code.len();
+                self.emit(Instruction::Ifeq(0));
+                self.frame.pop_type();
+
+                // Extract and bind fields
+                for (i, sub_pat) in elements.iter().enumerate() {
+                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                        continue;
+                    }
+                    let field_ref = field_refs[i];
+                    let elem_ty = &elem_types[i];
+                    let elem_jvm_type = self.type_to_jvm(elem_ty)?;
+
+                    self.emit(Instruction::Aload(scrutinee_slot as u8));
+                    self.frame.push_type(VerificationType::Object { cpool_index: tuple_class });
+                    self.emit(Instruction::Getfield(field_ref));
+                    self.frame.pop_type();
+                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                    self.unbox_if_needed(elem_jvm_type);
+
+                    if let Pattern::Var { name: var_name, .. } = sub_pat {
+                        let var_slot = self.next_local;
+                        let slot_size: u16 = match elem_jvm_type {
+                            JvmType::Long | JvmType::Double => 2,
+                            _ => 1,
+                        };
+                        self.next_local += slot_size;
+                        let store = match elem_jvm_type {
+                            JvmType::Long => Instruction::Lstore(var_slot as u8),
+                            JvmType::Double => Instruction::Dstore(var_slot as u8),
+                            JvmType::Int => Instruction::Istore(var_slot as u8),
+                            JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                        };
+                        self.emit(store);
+                        self.pop_jvm_type(elem_jvm_type);
+                        let vtypes = self.jvm_type_to_vtypes(elem_jvm_type);
+                        self.frame.local_types.extend(vtypes);
+                        self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
+                    }
+                }
+
+                Ok(Some(ifeq_idx))
+            }
             _ => Err(CodegenError::UnsupportedExpr(format!(
                 "unsupported pattern in check: {pattern:?}"
             ))),
@@ -2468,6 +2756,7 @@ impl Compiler {
         pattern: &Pattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
+        scrutinee_tc_type: &Type,
     ) -> Result<(), CodegenError> {
         match pattern {
             Pattern::Wildcard { .. } => Ok(()),
@@ -2558,6 +2847,55 @@ impl Compiler {
                             self.frame.local_types.extend(vtypes);
                             self.locals.insert(var_name.clone(), (var_slot, actual_type));
                         }
+                    }
+                }
+                Ok(())
+            }
+            Pattern::Tuple { elements, .. } => {
+                let elem_types = match scrutinee_tc_type {
+                    Type::Tuple(elems) => elems,
+                    _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
+                };
+                let arity = elements.len();
+                let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
+                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"))
+                })?;
+                let tuple_class = tuple_info.class_index;
+                let field_refs: Vec<u16> = tuple_info.field_refs.clone();
+
+                for (i, sub_pat) in elements.iter().enumerate() {
+                    if matches!(sub_pat, Pattern::Wildcard { .. }) {
+                        continue;
+                    }
+                    let field_ref = field_refs[i];
+                    let elem_ty = &elem_types[i];
+                    let elem_jvm_type = self.type_to_jvm(elem_ty)?;
+
+                    self.emit(Instruction::Aload(scrutinee_slot as u8));
+                    self.frame.push_type(VerificationType::Object { cpool_index: tuple_class });
+                    self.emit(Instruction::Getfield(field_ref));
+                    self.frame.pop_type();
+                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                    self.unbox_if_needed(elem_jvm_type);
+
+                    if let Pattern::Var { name: var_name, .. } = sub_pat {
+                        let var_slot = self.next_local;
+                        let slot_size: u16 = match elem_jvm_type {
+                            JvmType::Long | JvmType::Double => 2,
+                            _ => 1,
+                        };
+                        self.next_local += slot_size;
+                        let store = match elem_jvm_type {
+                            JvmType::Long => Instruction::Lstore(var_slot as u8),
+                            JvmType::Double => Instruction::Dstore(var_slot as u8),
+                            JvmType::Int => Instruction::Istore(var_slot as u8),
+                            JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                        };
+                        self.emit(store);
+                        self.pop_jvm_type(elem_jvm_type);
+                        let vtypes = self.jvm_type_to_vtypes(elem_jvm_type);
+                        self.frame.local_types.extend(vtypes);
+                        self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
                     }
                 }
                 Ok(())

@@ -1,0 +1,10 @@
+# expect: output 3
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun main() -> Unit = {
+  let nested = ((1, 2), 3)
+  let ((_, _), c) = nested
+  println(c)
+}

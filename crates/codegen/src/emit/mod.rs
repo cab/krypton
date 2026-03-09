@@ -15,7 +15,7 @@ use ristretto_classfile::{
 pub use compiler::{CodegenError, JvmType};
 
 use compiler::{
-    Compiler, FunctionInfo, StructInfo, VariantInfo, SumTypeInfo, TraitDispatchInfo,
+    Compiler, FunctionInfo, StructInfo, VariantInfo, SumTypeInfo, TupleInfo, TraitDispatchInfo,
     InstanceSingletonInfo,
 };
 use class_gen::{
@@ -106,6 +106,94 @@ fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool 
             args.iter().any(|a| type_expr_uses_type_params(a, type_params))
         }
         _ => false,
+    }
+}
+
+/// Recursively collect all tuple arities from a Type.
+fn collect_tuple_arities(ty: &Type, arities: &mut std::collections::HashSet<usize>) {
+    match ty {
+        Type::Tuple(elems) => {
+            arities.insert(elems.len());
+            for e in elems {
+                collect_tuple_arities(e, arities);
+            }
+        }
+        Type::Fn(params, ret) => {
+            for p in params {
+                collect_tuple_arities(p, arities);
+            }
+            collect_tuple_arities(ret, arities);
+        }
+        Type::Named(_, args) => {
+            for a in args {
+                collect_tuple_arities(a, arities);
+            }
+        }
+        Type::Own(inner) => collect_tuple_arities(inner, arities),
+        _ => {}
+    }
+}
+
+/// Recursively collect all tuple arities from a TypedExpr tree.
+fn collect_tuple_arities_expr(expr: &krypton_typechecker::typed_ast::TypedExpr, arities: &mut std::collections::HashSet<usize>) {
+    use krypton_typechecker::typed_ast::TypedExprKind;
+    collect_tuple_arities(&expr.ty, arities);
+    match &expr.kind {
+        TypedExprKind::Tuple(elems) => {
+            arities.insert(elems.len());
+            for e in elems {
+                collect_tuple_arities_expr(e, arities);
+            }
+        }
+        TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+            collect_tuple_arities_expr(value, arities);
+            if let Some(b) = body {
+                collect_tuple_arities_expr(b, arities);
+            }
+        }
+        TypedExprKind::App { func, args } => {
+            collect_tuple_arities_expr(func, arities);
+            for a in args { collect_tuple_arities_expr(a, arities); }
+        }
+        TypedExprKind::If { cond, then_, else_ } => {
+            collect_tuple_arities_expr(cond, arities);
+            collect_tuple_arities_expr(then_, arities);
+            collect_tuple_arities_expr(else_, arities);
+        }
+        TypedExprKind::Do(exprs) => {
+            for e in exprs { collect_tuple_arities_expr(e, arities); }
+        }
+        TypedExprKind::Match { scrutinee, arms } => {
+            collect_tuple_arities_expr(scrutinee, arities);
+            for arm in arms { collect_tuple_arities_expr(&arm.body, arities); }
+        }
+        TypedExprKind::Lambda { body, .. } => {
+            collect_tuple_arities_expr(body, arities);
+        }
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            collect_tuple_arities_expr(lhs, arities);
+            collect_tuple_arities_expr(rhs, arities);
+        }
+        TypedExprKind::UnaryOp { operand, .. } => {
+            collect_tuple_arities_expr(operand, arities);
+        }
+        TypedExprKind::FieldAccess { expr, .. } => {
+            collect_tuple_arities_expr(expr, arities);
+        }
+        TypedExprKind::StructUpdate { base, fields } => {
+            collect_tuple_arities_expr(base, arities);
+            for (_, e) in fields { collect_tuple_arities_expr(e, arities); }
+        }
+        TypedExprKind::StructLit { fields, .. } => {
+            for (_, e) in fields { collect_tuple_arities_expr(e, arities); }
+        }
+        TypedExprKind::Recur(args) => {
+            for a in args { collect_tuple_arities_expr(a, arities); }
+        }
+        TypedExprKind::QuestionMark { expr, .. } => {
+            collect_tuple_arities_expr(expr, arities);
+        }
+        _ => {}
     }
 }
 
@@ -517,6 +605,46 @@ pub fn compile_module(
                 (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
                 instance_def.subdict_traits.clone(),
             );
+        }
+    }
+
+    // Scan for tuple arities used in the typed module and register TupleN classes
+    {
+        let mut tuple_arities = std::collections::HashSet::new();
+        for (_, scheme) in type_info.iter() {
+            collect_tuple_arities(&scheme.ty, &mut tuple_arities);
+        }
+        for typed_fn in &typed_module.functions {
+            collect_tuple_arities_expr(&typed_fn.body, &mut tuple_arities);
+        }
+        for arity in tuple_arities {
+            let class_name = format!("krypton/runtime/Tuple{arity}");
+            let class_index = compiler.cp.add_class(&class_name)?;
+            let class_desc = format!("Lkrypton/runtime/Tuple{arity};");
+            compiler.types.class_descriptors.insert(class_index, class_desc);
+
+            // Constructor: (Object, Object, ...)V
+            let mut ctor_desc = String::from("(");
+            for _ in 0..arity {
+                ctor_desc.push_str("Ljava/lang/Object;");
+            }
+            ctor_desc.push_str(")V");
+            let constructor_ref = compiler.cp.add_method_ref(class_index, "<init>", &ctor_desc)?;
+
+            // Accessor method refs for _0(), _1(), etc. (all return Ljava/lang/Object;)
+            let mut field_refs = Vec::new();
+            for i in 0..arity {
+                let accessor_name = format!("_{i}");
+                let accessor_desc = "()Ljava/lang/Object;".to_string();
+                let mr = compiler.cp.add_method_ref(class_index, &accessor_name, &accessor_desc)?;
+                field_refs.push(mr);
+            }
+
+            compiler.types.tuple_info.insert(arity, TupleInfo {
+                class_index,
+                constructor_ref,
+                field_refs,
+            });
         }
     }
 
