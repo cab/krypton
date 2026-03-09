@@ -4,9 +4,9 @@ extern "krypton.runtime.KryptonArray" {
     fun staticGet(Object, Int) -> Object
 }
 
-fun vec_length(xs) = staticLength(xs)
+fun len(xs) = staticLength(xs)
 
-fun vec_get(xs, index) = if index < 0 {
+fun nth(xs, index) = if index < 0 {
     None
 } else {
     if index < staticLength(xs) {
