@@ -157,7 +157,7 @@ fn main() {
 
             let t = Instant::now();
             let typed_module = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-                Ok(tm) => tm,
+                Ok(mut modules) => modules.remove(0),
                 Err(e) => {
                     let diag =
                         krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
@@ -231,7 +231,7 @@ fn main() {
 
             let t = Instant::now();
             let typed_module = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-                Ok(tm) => tm,
+                Ok(mut modules) => modules.remove(0),
                 Err(e) => {
                     let diag =
                         krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
@@ -318,8 +318,9 @@ fn main() {
 
             let t = Instant::now();
             match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-                Ok(info) => {
+                Ok(modules) => {
                     phases.push(("typecheck", t.elapsed()));
+                    let info = &modules[0];
                     for (name, scheme) in &info.fn_types {
                         println!("{} : {}", name, scheme);
                     }

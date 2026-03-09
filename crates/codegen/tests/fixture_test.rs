@@ -27,8 +27,9 @@ fn run_program_with_resolver(source: &str, resolver: &dyn krypton_typechecker::m
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let typed_module = infer_module(&module, resolver).expect("type check should succeed");
-    let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
+    let typed_modules = infer_module(&module, resolver).expect("type check should succeed");
+    let typed_module = &typed_modules[0]; // main module
+    let classes = compile_module(typed_module, "Test").expect("compile_module should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -98,11 +99,11 @@ fn run_codegen_fixtures(subdir: &str) {
                     if !errors.is_empty() {
                         continue;
                     }
-                    let typed_module = match infer_module(&module, &resolver) {
+                    let typed_modules = match infer_module(&module, &resolver) {
                         Ok(tm) => tm,
                         Err(_) => continue,
                     };
-                    match compile_module(&typed_module, "Test") {
+                    match compile_module(&typed_modules[0], "Test") {
                         Ok(_) => { ran += 1; }
                         Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
                         Err(e) => {

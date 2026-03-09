@@ -1567,11 +1567,41 @@ fn process_extern_methods(
 
 /// Infer types for all top-level definitions in a module.
 ///
+/// Returns a `Vec<TypedModule>` containing the main module (first, `module_path: None`)
+/// followed by any imported modules discovered during inference.
+///
 /// Uses SCC (strongly connected component) analysis to process definitions
 /// in dependency order. Functions within the same SCC are inferred together
 /// as a mutually recursive group, then generalized before later SCCs see them.
 #[tracing::instrument(skip(module, resolver), fields(decls = module.decls.len()))]
-pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::ModuleResolver) -> Result<TypedModule, SpannedTypeError> {
+pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::ModuleResolver) -> Result<Vec<TypedModule>, SpannedTypeError> {
+    let mut cache: HashMap<String, TypedModule> = HashMap::new();
+    let mut import_stack: Vec<String> = Vec::new();
+    let main = infer_module_inner(module, resolver, &mut cache, &mut import_stack, None)?;
+    let mut result = vec![main];
+    // Collect cached imported modules (stable ordering by path)
+    let mut paths: Vec<String> = cache.keys().cloned().collect();
+    paths.sort();
+    for path in paths {
+        result.push(cache.remove(&path).unwrap());
+    }
+    Ok(result)
+}
+
+/// Return the main `TypedModule` from `infer_module` result (for backward compatibility).
+pub fn infer_module_single(module: &Module, resolver: &dyn crate::module_resolver::ModuleResolver) -> Result<TypedModule, SpannedTypeError> {
+    let mut modules = infer_module(module, resolver)?;
+    Ok(modules.remove(0))
+}
+
+/// Internal per-module inference with cache and circular import detection.
+fn infer_module_inner(
+    module: &Module,
+    resolver: &dyn crate::module_resolver::ModuleResolver,
+    cache: &mut HashMap<String, TypedModule>,
+    import_stack: &mut Vec<String>,
+    module_path: Option<String>,
+) -> Result<TypedModule, SpannedTypeError> {
     let mut env = TypeEnv::new();
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
@@ -1585,17 +1615,34 @@ pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::Modu
     // Seed prelude types (Option, Result, List, Ordering) from stdlib
     crate::prelude::register_prelude_types(&mut env, &mut registry, &mut gen);
 
-    // Process import declarations — resolve from embedded stdlib
+    // Process import declarations with per-module inference, caching, and circular detection
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
     let mut imported_functions: Vec<TypedFnDecl> = Vec::new();
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
+            // Check for circular imports
+            if import_stack.contains(path) {
+                let mut cycle = import_stack.clone();
+                cycle.push(path.clone());
+                return Err(spanned(TypeError::CircularImport { cycle }, *span));
+            }
+
             let source = resolver.resolve(path)
                 .ok_or_else(|| spanned(TypeError::UnknownModule { path: path.clone() }, *span))?;
 
-            let (stdlib_module, parse_errors) = krypton_parser::parser::parse(&source);
-            assert!(parse_errors.is_empty(), "stdlib parse error in {path}");
+            let (imported_module, parse_errors) = krypton_parser::parser::parse(&source);
+            assert!(parse_errors.is_empty(), "parse error in {path}");
+
+            // Recursively infer the imported module if not already cached
+            if !cache.contains_key(path) {
+                import_stack.push(path.clone());
+                let imported_typed = infer_module_inner(
+                    &imported_module, resolver, cache, import_stack, Some(path.clone()),
+                )?;
+                import_stack.pop();
+                cache.insert(path.clone(), imported_typed);
+            }
 
             let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
             let import_all = names.is_empty();
@@ -1605,8 +1652,29 @@ pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::Modu
                 .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
                 .collect();
 
-            // Process type declarations from stdlib module
-            for sdecl in &stdlib_module.decls {
+            // Extract type signatures from cached module and bind with provenance.
+            // Bind REQUESTED names in env (with provenance), but export ALL
+            // fn_types/functions for codegen compatibility (internal dependencies
+            // like reverse→fold need all functions present).
+            let cached = cache.get(path).unwrap();
+            for (name, scheme) in &cached.fn_types {
+                if import_all || requested.contains(name.as_str()) {
+                    let effective_name = aliases.get(name)
+                        .cloned()
+                        .unwrap_or_else(|| name.clone());
+                    env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
+                } else {
+                    // Bind non-requested names too (for internal deps), but without provenance
+                    env.bind(name.clone(), scheme.clone());
+                }
+                let effective_name = aliases.get(name)
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
+                imported_fn_types.push((effective_name, scheme.clone()));
+            }
+
+            // Process type declarations from imported module source
+            for sdecl in &imported_module.decls {
                 if let Decl::DefType(td) = sdecl {
                     if (import_all || requested.contains(td.name.as_str()))
                         && registry.lookup_type(&td.name).is_none()
@@ -1621,9 +1689,9 @@ pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::Modu
                 }
             }
 
-            // Process extern declarations from stdlib module (no name filter —
+            // Process extern declarations from imported module (no name filter —
             // extern methods are internal dependencies for DefFn functions)
-            for sdecl in &stdlib_module.decls {
+            for sdecl in &imported_module.decls {
                 if let Decl::ExternJava { class_name, methods, span: ext_span } = sdecl {
                     let mut fns = process_extern_methods(
                         class_name, methods, &mut env, &mut gen, &registry,
@@ -1633,117 +1701,25 @@ pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::Modu
                 }
             }
 
-            // Process pure Krypton function definitions from stdlib module
-            // Type-check ALL functions (for internal dependencies like reverse→fold),
-            // but only export the ones the user requested.
-            let stdlib_fn_decls: Vec<&krypton_parser::ast::FnDecl> = stdlib_module.decls.iter()
-                .filter_map(|d| match d {
-                    Decl::DefFn(f) => Some(f),
-                    _ => None,
-                })
-                .collect();
+            // Copy ALL imported function bodies into the main module for codegen compatibility.
+            // (Per-module class emission will remove this in M11-T2c.)
+            for func in &cached.functions {
+                let effective_name = aliases.get(&func.name)
+                    .cloned()
+                    .unwrap_or_else(|| func.name.clone());
+                imported_functions.push(TypedFnDecl {
+                    name: effective_name,
+                    params: func.params.clone(),
+                    body: func.body.clone(),
+                });
+            }
 
-
-            if !stdlib_fn_decls.is_empty() {
-                let adj = scc::build_dependency_graph(&stdlib_fn_decls);
-                let sccs = scc::tarjan_scc(&adj);
-
-                let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; stdlib_fn_decls.len()];
-                let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; stdlib_fn_decls.len()];
-
-                for component in &sccs {
-                    let mut pre_bound: Vec<(usize, Type)> = Vec::new();
-                    for &idx in component {
-                        let tv = Type::Var(gen.fresh());
-                        env.bind(stdlib_fn_decls[idx].name.clone(), TypeScheme::mono(tv.clone()));
-                        pre_bound.push((idx, tv));
-                    }
-
-                    for &(idx, ref tv) in &pre_bound {
-                        let decl = stdlib_fn_decls[idx];
-                        env.push_scope();
-
-                        let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
-                        for tp in &decl.type_params {
-                            type_param_map.insert(tp.clone(), gen.fresh());
-                        }
-
-                        let mut param_types = Vec::new();
-                        for p in &decl.params {
-                            let ptv = Type::Var(gen.fresh());
-                            if let Some(ref ty_expr) = p.ty {
-                                let annotated_ty = type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
-                                    .map_err(|e| spanned(e, decl.span))?;
-                                unify(&ptv, &annotated_ty, &mut subst)
-                                    .map_err(|e| spanned(e, decl.span))?;
-                            }
-                            param_types.push(ptv.clone());
-                            env.bind(p.name.clone(), TypeScheme::mono(ptv));
-                        }
-
-                        let prev_fn_return_type = env.fn_return_type.take();
-                        if let Some(ref ret_ty_expr) = decl.return_type {
-                            let resolved_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
-                                .map_err(|e| spanned(e, decl.span))?;
-                            env.fn_return_type = Some(resolved_ret);
-                        } else {
-                            env.fn_return_type = Some(Type::Var(gen.fresh()));
-                        }
-
-                        let body_typed = infer_expr_inner(&decl.body, &mut env, &mut subst, &mut gen, Some(&registry), Some(&param_types), Some(&mut let_own_spans), Some(&mut lambda_own_captures))?;
-                        env.fn_return_type = prev_fn_return_type;
-                        env.pop_scope();
-
-                        let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
-                        let body_ty = subst.apply(&body_typed.ty);
-
-                        let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
-                            let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
-                                .map_err(|e| spanned(e, decl.span))?;
-                            let coerced_body_ty = strip_own(&body_ty);
-                            unify(&coerced_body_ty, &annotated_ret, &mut subst)
-                                .map_err(|e| spanned(e, decl.span))?;
-                            subst.apply(&annotated_ret)
-                        } else {
-                            strip_own(&body_ty)
-                        };
-
-                        let fn_ty = Type::Fn(param_types, Box::new(ret_ty));
-                        unify(tv, &fn_ty, &mut subst)
-                            .map_err(|e| spanned(e, decl.span))?;
-
-                        fn_bodies[idx] = Some(body_typed);
-                    }
-
-                    let empty_env = TypeEnv::new();
-                    for &(idx, ref tv) in &pre_bound {
-                        let final_ty = subst.apply(tv);
-                        let scheme = generalize(&final_ty, &empty_env, &subst);
-                        // Bind all names for internal dependencies during inference
-                        env.bind(stdlib_fn_decls[idx].name.clone(), scheme.clone());
-                        // Also bind under alias if requested
-                        if let Some(alias) = aliases.get(&stdlib_fn_decls[idx].name) {
-                            env.bind(alias.clone(), scheme.clone());
-                        }
-                        result_schemes[idx] = Some(scheme);
-                    }
-                }
-
-                // Export all stdlib functions (needed for internal dependencies
-                // like reverse→fold), but only bind requested ones in user's env
-                for (i, decl) in stdlib_fn_decls.iter().enumerate() {
-                    let mut body = fn_bodies[i].take().unwrap();
-                    typed_ast::apply_subst(&mut body, &subst);
-                    let effective_name = aliases.get(&decl.name)
-                        .cloned()
-                        .unwrap_or_else(|| decl.name.clone());
-                    imported_fn_types.push((effective_name.clone(), result_schemes[i].clone().unwrap()));
-                    imported_functions.push(TypedFnDecl {
-                        name: effective_name,
-                        params: decl.params.iter().map(|p| p.name.clone()).collect(),
-                        body,
-                    });
-                }
+            // Copy imported extern fns for codegen
+            for ext in &cached.extern_fns {
+                imported_extern_fns.push(ext.clone());
+            }
+            for ext in &cached.imported_extern_fns {
+                imported_extern_fns.push(ext.clone());
             }
         }
     }
@@ -2373,6 +2349,7 @@ pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::Modu
     }
 
     Ok(TypedModule {
+        module_path,
         fn_types: results,
         functions,
         trait_defs,

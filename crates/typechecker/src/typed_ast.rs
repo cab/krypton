@@ -98,6 +98,7 @@ pub struct InstanceDefInfo {
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
 }
 
+#[derive(Clone)]
 pub struct ExternFnInfo {
     pub name: String,
     pub java_class: String,
@@ -106,6 +107,7 @@ pub struct ExternFnInfo {
 }
 
 pub struct TypedModule {
+    pub module_path: Option<String>,
     pub fn_types: Vec<(String, TypeScheme)>,
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,

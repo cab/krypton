@@ -28,8 +28,8 @@ fn run_program(source: &str) -> String {
     let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let typed_module = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check should succeed");
-    let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check should succeed");
+    let classes = compile_module(&typed_modules[0], "Test").expect("compile_module should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -185,8 +185,8 @@ fun main() = println(sum(100, 0))
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("fun main() = 42");
     assert!(errors.is_empty());
-    let typed_module = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
-    let classes = compile_module(&typed_module, "Test").expect("compile_module should succeed");
+    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
+    let classes = compile_module(typed_module, "Test").expect("compile_module should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
@@ -246,8 +246,8 @@ fun main() = None
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let typed_module = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
-    let classes = compile_module(&typed_module, "Test").expect("compile");
+    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
+    let classes = compile_module(typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -344,8 +344,8 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_module = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
-    let classes = compile_module(&typed_module, "Test").expect("compile");
+    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
+    let classes = compile_module(typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -370,8 +370,8 @@ fn test_typed_module_direct() {
     let source = format!("{PRINTLN_EXTERN}\nfun main() = println(42)");
     let (module, errors) = parse(&source);
     assert!(errors.is_empty());
-    let typed_module = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
-    let classes = compile_module(&typed_module, "Test").expect("codegen");
+    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
+    let classes = compile_module(typed_module, "Test").expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {

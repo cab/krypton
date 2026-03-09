@@ -19,8 +19,8 @@ fn infer_module_fn(src: &str, fn_name: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-        Ok(info) => {
-            info.fn_types
+        Ok(modules) => {
+            modules[0].fn_types
                 .iter()
                 .find(|(name, _)| name == fn_name)
                 .map(|(_, scheme)| format!("{scheme}"))
@@ -132,7 +132,7 @@ fn parse_module(src: &str) -> Module {
 fn infer_module_types(src: &str) -> String {
     let module = parse_module(src);
     match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-        Ok(info) => info.fn_types
+        Ok(modules) => modules[0].fn_types
             .iter()
             .map(|(name, scheme)| format!("{}: {}", name, scheme))
             .collect::<Vec<_>>()
@@ -162,7 +162,8 @@ fn infer_module_with_custom_resolver() {
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
     assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
-    let info = result.unwrap();
+    let modules = result.unwrap();
+    let info = &modules[0];
     let main_type = info.fn_types.iter().find(|(n, _)| n == "main").unwrap();
     assert_eq!(format!("{}", main_type.1), "fn() -> Int");
 }
@@ -651,4 +652,177 @@ fn mutual_type_refs_ok() {
         ),
         @"fn(A) -> A"
     );
+}
+
+// ── Multi-module typechecking (M11-T2b) ──
+
+#[test]
+fn infer_module_returns_all_modules() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("fun add(x: Int, y: Int) -> Int = x + y".to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    let src = r#"
+        import mylib.{add}
+        fun main() -> Int = add(1, 2)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let modules = infer::infer_module(&module, &FakeResolver).unwrap();
+    // Main module + mylib
+    assert!(modules.len() >= 2, "expected at least 2 modules, got {}", modules.len());
+    assert!(modules[0].module_path.is_none(), "first module should be main (no path)");
+    assert!(modules.iter().any(|m| m.module_path.as_deref() == Some("mylib")),
+        "should have a TypedModule for mylib");
+}
+
+#[test]
+fn infer_module_provenance_on_bindings() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("fun add(x: Int, y: Int) -> Int = x + y".to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    let src = r#"
+        import mylib.{add}
+        fun main() -> Int = add(1, 2)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let modules = infer::infer_module(&module, &FakeResolver).unwrap();
+    // The main module should have `add` in fn_types with provenance
+    let main = &modules[0];
+    assert!(main.fn_types.iter().any(|(n, _)| n == "add"),
+        "main module should have add in fn_types");
+}
+
+#[test]
+fn infer_module_cache_prevents_recheck() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static RESOLVE_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    struct CountingResolver;
+    impl ModuleResolver for CountingResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                RESOLVE_COUNT.fetch_add(1, Ordering::SeqCst);
+                Some("fun helper() -> Int = 42".to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    RESOLVE_COUNT.store(0, Ordering::SeqCst);
+    let src = r#"
+        import mylib.{helper}
+        fun main() -> Int = helper()
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let modules = infer::infer_module(&module, &CountingResolver).unwrap();
+    // Only one TypedModule for mylib despite resolver being called
+    let mylib_count = modules.iter().filter(|m| m.module_path.as_deref() == Some("mylib")).count();
+    assert_eq!(mylib_count, 1, "should have exactly one TypedModule for mylib");
+}
+
+#[test]
+fn infer_module_circular_import_detected() {
+    struct CircularResolver;
+    impl ModuleResolver for CircularResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "a" => Some("import b.{bar}\nfun foo(x: Int) -> Int = bar(x)".to_string()),
+                "b" => Some("import a.{foo}\nfun bar(x: Int) -> Int = foo(x)".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import a.{foo}\nfun main() -> Int = foo(1)";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let result = infer::infer_module(&module, &CircularResolver);
+    assert!(result.is_err(), "should detect circular import");
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("expected circular import error"),
+    };
+    assert_eq!(err.error.error_code().to_string(), "E0502");
+}
+
+#[test]
+fn infer_module_stdlib_own_typed_module() {
+    let src = r#"
+        import core/option.{Some, None}
+        fun wrap(x: Int) -> Option[Int] = Some(x)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only()).unwrap();
+    // Should have a TypedModule for core/option
+    assert!(modules.iter().any(|m| m.module_path.as_deref() == Some("core/option")),
+        "should have a TypedModule for core/option");
+}
+
+#[test]
+fn infer_module_cross_module_typecheck() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "math" {
+                Some("fun double(x: Int) -> Int = x + x".to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    let src = r#"
+        import math.{double}
+        fun quadruple(x: Int) -> Int = double(double(x))
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let modules = infer::infer_module(&module, &FakeResolver).unwrap();
+    let main = &modules[0];
+    let quad_type = main.fn_types.iter().find(|(n, _)| n == "quadruple").unwrap();
+    assert_eq!(format!("{}", quad_type.1), "fn(Int) -> Int");
+}
+
+#[test]
+fn infer_module_public_by_default() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("fun internal_helper() -> Int = 1\nfun public_fn() -> Int = internal_helper()".to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    let src = r#"
+        import mylib.{public_fn, internal_helper}
+        fun main() -> Int = public_fn() + internal_helper()
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_ok(), "all top-level defs should be importable: {:?}", result.err());
 }

@@ -6,13 +6,20 @@ use krypton_typechecker::infer;
 use krypton_typechecker::module_resolver::CompositeResolver;
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
+    infer_module_snapshot_with_resolver(source, &CompositeResolver::stdlib_only())
+}
+
+fn infer_module_snapshot_with_resolver(
+    source: &str,
+    resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver,
+) -> Result<String, String> {
     let (module, errors) = parse(source);
     if !errors.is_empty() {
         return Err(errors[0].code.to_string());
     }
-    match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-        Ok(info) => {
-            let lines: Vec<String> = info.fn_types
+    match infer::infer_module(&module, resolver) {
+        Ok(modules) => {
+            let lines: Vec<String> = modules[0].fn_types
                 .iter()
                 .map(|(name, scheme)| format!("{name}: {scheme}"))
                 .collect();
@@ -99,4 +106,58 @@ fn m8_fixtures() {
 #[test]
 fn m9_fixtures() {
     run_fixtures("m9");
+}
+
+#[test]
+fn m11_module_fixtures() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/m11/modules");
+
+    let fixtures = discover_fixtures(&fixture_dir);
+    assert!(!fixtures.is_empty(), "no fixtures found in {}", fixture_dir.display());
+
+    for fixture_path in fixtures {
+        let fixture = load_fixture(&fixture_path);
+        let name = fixture_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let resolver = CompositeResolver::with_source_root(
+            fixture_path.parent().unwrap().to_path_buf(),
+        );
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Error(code) => {
+                    let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
+                    match result {
+                        Ok(ty) => {
+                            panic!("fixture {name}: expected error {code} but inferred: {ty}")
+                        }
+                        Err(actual_code) => {
+                            assert_eq!(
+                                &actual_code, code,
+                                "fixture {name}: expected error {code} but got {actual_code}"
+                            );
+                        }
+                    }
+                }
+                Expectation::Output(_) => {
+                    // Verify type-checking succeeds (runtime test handled by codegen)
+                    let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
+                    assert!(result.is_ok(), "fixture {name}: expected ok but got error {:?}", result.err());
+                }
+                Expectation::Ok => {
+                    let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
+                    assert!(result.is_ok(), "fixture {name}: expected ok but got error {:?}", result.err());
+                }
+            }
+        }
+    }
 }

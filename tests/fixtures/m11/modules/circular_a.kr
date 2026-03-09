@@ -1,0 +1,5 @@
+# expect: error E0502
+import circular_b.{bar}
+
+fun foo(x: Int) -> Int = bar(x) + 1
+fun main() -> Int = foo(1)

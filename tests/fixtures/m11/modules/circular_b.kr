@@ -1,0 +1,3 @@
+import circular_a.{foo}
+
+fun bar(x: Int) -> Int = foo(x) + 1

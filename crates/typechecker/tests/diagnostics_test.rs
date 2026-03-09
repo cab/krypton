@@ -6,7 +6,7 @@ use krypton_typechecker::module_resolver::CompositeResolver;
 fn parse_and_infer_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+    let err = match infer::infer_module_single(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
@@ -67,7 +67,7 @@ fn render_fixture_error(fixture: &str) -> String {
     let src = std::fs::read_to_string(fixture).unwrap();
     let (module, errors) = parse(&src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+    let err = match infer::infer_module_single(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
@@ -75,15 +75,19 @@ fn render_fixture_error(fixture: &str) -> String {
     strip_ansi_escapes(rendered)
 }
 
-fn render_module_error(src: &str) -> String {
+fn render_module_error_with_resolver(src: &str, resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+    let err = match infer::infer_module(&module, resolver) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
     let rendered = render_type_errors("test.kr", src, &[err]);
     strip_ansi_escapes(rendered)
+}
+
+fn render_module_error(src: &str) -> String {
+    render_module_error_with_resolver(src, &CompositeResolver::stdlib_only())
 }
 
 #[test]
@@ -208,4 +212,25 @@ fn error_codes_present() {
             output
         );
     }
+}
+
+#[test]
+fn circular_import_error() {
+    use krypton_typechecker::module_resolver::ModuleResolver;
+
+    struct CircularResolver;
+    impl ModuleResolver for CircularResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "a" => Some("import b.{bar}\nfun foo(x: Int) -> Int = bar(x)".to_string()),
+                "b" => Some("import a.{foo}\nfun bar(x: Int) -> Int = foo(x)".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import a.{foo}\nfun main() -> Int = foo(1)";
+    let output = render_module_error_with_resolver(src, &CircularResolver);
+    assert!(output.contains("E0502"), "expected E0502 in:\n{output}");
+    assert!(output.contains("circular import"), "expected 'circular import' in:\n{output}");
 }

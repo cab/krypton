@@ -30,6 +30,7 @@ pub enum TypeErrorCode {
     E0402, // ? on non-Result/Option
     E0403, // ? cross-use (Option in Result context or vice versa)
     E0501, // Unknown module
+    E0502, // Circular import
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -59,6 +60,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0402 => write!(f, "E0402"),
             TypeErrorCode::E0403 => write!(f, "E0403"),
             TypeErrorCode::E0501 => write!(f, "E0501"),
+            TypeErrorCode::E0502 => write!(f, "E0502"),
         }
     }
 }
@@ -90,6 +92,7 @@ pub enum TypeError {
     QuestionMarkBadOperand { actual: Type },
     QuestionMarkMismatch { expr_kind: String, return_kind: String },
     UnknownModule { path: String },
+    CircularImport { cycle: Vec<String> },
 }
 
 impl TypeError {
@@ -121,6 +124,7 @@ impl TypeError {
             TypeError::QuestionMarkBadOperand { .. } => TypeErrorCode::E0402,
             TypeError::QuestionMarkMismatch { .. } => TypeErrorCode::E0403,
             TypeError::UnknownModule { .. } => TypeErrorCode::E0501,
+            TypeError::CircularImport { .. } => TypeErrorCode::E0502,
         }
     }
 
@@ -215,6 +219,9 @@ impl TypeError {
             TypeError::UnknownModule { path } => {
                 Some(format!("module `{}` does not exist in the stdlib", path))
             }
+            TypeError::CircularImport { cycle } => {
+                Some(format!("import cycle: {}", cycle.join(" → ")))
+            }
         }
     }
 }
@@ -297,6 +304,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownModule { path } => {
                 write!(f, "unknown module: {}", path)
+            }
+            TypeError::CircularImport { cycle } => {
+                write!(f, "circular import detected: {}", cycle.join(" → "))
             }
         }
     }
