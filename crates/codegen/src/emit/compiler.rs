@@ -332,7 +332,14 @@ pub(super) struct TraitState {
     pub(super) trait_method_map: HashMap<String, String>,
     pub(super) fn_constraints: HashMap<String, Vec<String>>,
     pub(super) dict_locals: HashMap<String, u16>,
-    pub(super) parameterized_instances: HashMap<(String, String), Vec<(String, usize)>>,
+    pub(super) parameterized_instances: HashMap<(String, String), ParameterizedInstanceInfo>,
+}
+
+#[derive(Clone)]
+pub(super) struct ParameterizedInstanceInfo {
+    pub(super) class_index: u16,
+    pub(super) init_ref: u16,
+    pub(super) subdict_traits: Vec<(String, usize)>,
 }
 
 /// Info about the Vec backing class (KryptonArray).
@@ -1588,23 +1595,16 @@ impl Compiler {
                         let field_ref = singleton.instance_field_ref;
                         self.emit(Instruction::Getstatic(field_ref));
                         self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
-                    } else if let Some(subdict_traits) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
+                    } else if let Some(param_info) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
                         // Construct parameterized instance on the fly
-                        let instance_class_name = format!("{}${}", trait_name, type_name);
-                        let inst_class = self.cp.add_class(&instance_class_name)?;
-                        // Constructor descriptor: (Object * subdict_count)V
-                        let mut init_desc = String::from("(");
-                        for _ in &subdict_traits {
-                            init_desc.push_str("Ljava/lang/Object;");
-                        }
-                        init_desc.push_str(")V");
-                        let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+                        let inst_class = param_info.class_index;
+                        let init_ref = param_info.init_ref;
                         self.emit(Instruction::New(inst_class));
                         self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
                         self.emit(Instruction::Dup);
                         self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
                         // Push subdictionaries
-                        for (subdict_trait, param_idx) in &subdict_traits {
+                        for (subdict_trait, param_idx) in &param_info.subdict_traits {
                             // Resolve the type arg at param_idx
                             let type_arg = match first_arg_ty {
                                 Type::Named(_, type_args) => &type_args[*param_idx],
@@ -1626,7 +1626,7 @@ impl Compiler {
                         }
                         self.emit(Instruction::Invokespecial(init_ref));
                         // Pop subdict args + dup from stack, leave one instance ref
-                        for _ in &subdict_traits {
+                        for _ in &param_info.subdict_traits {
                             self.frame.pop_type();
                         }
                         self.frame.pop_type(); // dup

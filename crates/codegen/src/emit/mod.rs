@@ -16,7 +16,7 @@ pub use compiler::{CodegenError, JvmType};
 
 use compiler::{
     Compiler, FunctionInfo, StructInfo, VariantInfo, SumTypeInfo, TupleInfo, TraitDispatchInfo,
-    InstanceSingletonInfo, VecInfo,
+    InstanceSingletonInfo, ParameterizedInstanceInfo, VecInfo,
 };
 use class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
@@ -252,6 +252,19 @@ fn compile_module_inner(
         .class_descriptors
         .insert(object_class, "Ljava/lang/Object;".to_string());
 
+    // Qualify type class names by source module path.
+    // type_provenance has precedence (covers imports from other modules),
+    // then module_path (covers types defined in this library module),
+    // otherwise bare name (main module's own types).
+    let qualify_type = |bare_name: &str| -> String {
+        let source = typed_module.type_provenance.get(bare_name).map(String::as_str)
+            .or_else(|| typed_module.module_path.as_deref());
+        match source {
+            Some(mod_path) => format!("{mod_path}/{bare_name}"),
+            None => bare_name.to_string(),
+        }
+    };
+
     let type_info = &typed_module.fn_types;
 
     let struct_decls = &typed_module.struct_decls;
@@ -259,6 +272,8 @@ fn compile_module_inner(
     // Process struct types: register in compiler, generate class files
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     for (struct_name, ast_fields) in struct_decls {
+        let qualified = qualify_type(struct_name);
+
         // Resolve field types to JvmTypes
         let jvm_fields: Vec<(String, JvmType)> = ast_fields
             .iter()
@@ -279,8 +294,8 @@ fn compile_module_inner(
             .collect::<Result<_, CodegenError>>()?;
 
         // Register the struct class in main class's constant pool
-        let class_index = compiler.cp.add_class(struct_name)?;
-        let class_desc = format!("L{struct_name};");
+        let class_index = compiler.cp.add_class(&qualified)?;
+        let class_desc = format!("L{qualified};");
         compiler.types
             .class_descriptors
             .insert(class_index, class_desc.clone());
@@ -312,7 +327,7 @@ fn compile_module_inner(
             struct_name.clone(),
             StructInfo {
                 class_index,
-                class_name: struct_name.clone(),
+                class_name: qualified.clone(),
                 fields: jvm_fields.clone(),
                 constructor_ref,
                 accessor_refs,
@@ -321,23 +336,25 @@ fn compile_module_inner(
 
         // Generate the struct class file
         let struct_bytes =
-            generate_struct_class(struct_name, &jvm_fields, &compiler.types.class_descriptors)?;
-        result_classes.push((struct_name.clone(), struct_bytes));
+            generate_struct_class(&qualified, &jvm_fields, &compiler.types.class_descriptors)?;
+        result_classes.push((qualified.clone(), struct_bytes));
     }
 
     let sum_decls = &typed_module.sum_decls;
 
     // Process sum types: generate sealed interface + variant classes
     for (sum_name, type_params, variants) in sum_decls {
+        let qualified_sum = qualify_type(sum_name);
+
         // Register interface class in main cpool
-        let interface_class_index = compiler.cp.add_class(sum_name)?;
-        let interface_desc = format!("L{sum_name};");
+        let interface_class_index = compiler.cp.add_class(&qualified_sum)?;
+        let interface_desc = format!("L{qualified_sum};");
         compiler.types
             .class_descriptors
             .insert(interface_class_index, interface_desc);
 
         let mut variant_infos = HashMap::new();
-        let variant_names: Vec<String> = variants.iter().map(|v| format!("{}${}", sum_name, v.name)).collect();
+        let variant_names: Vec<String> = variants.iter().map(|v| format!("{}${}", qualified_sum, v.name)).collect();
 
         for variant in variants {
             // Resolve fields: type params are erased to Object
@@ -358,9 +375,9 @@ fn compile_module_inner(
                 .collect::<Result<_, CodegenError>>()?;
 
             // Register variant class in main cpool
-            let qualified_name = format!("{}${}", sum_name, variant.name);
-            let variant_class_index = compiler.cp.add_class(&qualified_name)?;
-            let variant_desc = format!("L{qualified_name};");
+            let qualified_variant = format!("{}${}", qualified_sum, variant.name);
+            let variant_class_index = compiler.cp.add_class(&qualified_variant)?;
+            let variant_desc = format!("L{qualified_variant};");
             compiler.types
                 .class_descriptors
                 .insert(variant_class_index, variant_desc);
@@ -402,7 +419,7 @@ fn compile_module_inner(
                 variant.name.clone(),
                 VariantInfo {
                     class_index: variant_class_index,
-                    class_name: qualified_name.clone(),
+                    class_name: qualified_variant.clone(),
                     fields: fields.clone(),
                     constructor_ref,
                     field_refs: main_field_refs,
@@ -411,8 +428,8 @@ fn compile_module_inner(
 
             // Generate variant class file
             let variant_bytes =
-                generate_variant_class(&qualified_name, sum_name, &variant.name, &fields)?;
-            result_classes.push((qualified_name.clone(), variant_bytes));
+                generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields)?;
+            result_classes.push((qualified_variant.clone(), variant_bytes));
         }
 
         compiler.types.sum_type_info.insert(
@@ -425,8 +442,8 @@ fn compile_module_inner(
 
         // Generate sealed interface class file
         let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
-        let interface_bytes = generate_sealed_interface_class(sum_name, &variant_name_refs)?;
-        result_classes.push((sum_name.clone(), interface_bytes));
+        let interface_bytes = generate_sealed_interface_class(&qualified_sum, &variant_name_refs)?;
+        result_classes.push((qualified_sum.clone(), interface_bytes));
     }
 
     // Pre-scan for function-typed params so we can register FunN interfaces first
@@ -451,12 +468,13 @@ fn compile_module_inner(
     compiler.traits.fn_constraints = typed_module.fn_constraints.clone();
 
     for trait_def in &typed_module.trait_defs {
-        let interface_bytes = generate_trait_interface_class(&trait_def.name, &trait_def.methods)?;
-        result_classes.push((trait_def.name.clone(), interface_bytes));
+        let qualified_trait = qualify_type(&trait_def.name);
+        let interface_bytes = generate_trait_interface_class(&qualified_trait, &trait_def.methods)?;
+        result_classes.push((qualified_trait.clone(), interface_bytes));
 
         // Register interface class in main cpool
-        let iface_class = compiler.cp.add_class(&trait_def.name)?;
-        compiler.types.class_descriptors.insert(iface_class, format!("L{};", trait_def.name));
+        let iface_class = compiler.cp.add_class(&qualified_trait)?;
+        compiler.types.class_descriptors.insert(iface_class, format!("L{qualified_trait};"));
 
         // Register interface method refs in main cpool
         let mut method_refs = HashMap::new();
@@ -478,19 +496,21 @@ fn compile_module_inner(
 
     // Generate built-in Show instance classes for primitive types
     {
+        let q_show = qualify_type("Show");
         let show_primitives = [
-            ("Show$Int", "Int", "(J)Ljava/lang/String;", "java/lang/Long", "toString"),
-            ("Show$Float", "Float", "(D)Ljava/lang/String;", "java/lang/Double", "toString"),
-            ("Show$Bool", "Bool", "(Z)Ljava/lang/String;", "java/lang/Boolean", "toString"),
-            ("Show$String", "String", "(Ljava/lang/String;)Ljava/lang/String;", "", ""),
+            ("Int", "(J)Ljava/lang/String;", "java/lang/Long", "toString"),
+            ("Float", "(D)Ljava/lang/String;", "java/lang/Double", "toString"),
+            ("Bool", "(Z)Ljava/lang/String;", "java/lang/Boolean", "toString"),
+            ("String", "(Ljava/lang/String;)Ljava/lang/String;", "", ""),
         ];
 
-        for (show_class_name, type_name, _static_desc, _box_class, _method_name) in &show_primitives {
+        for (type_name, _static_desc, _box_class, _method_name) in &show_primitives {
             if compiler.traits.trait_dispatch.contains_key("Show") {
-                let show_bytes = generate_builtin_show_instance_class(show_class_name, type_name)?;
-                result_classes.push((show_class_name.to_string(), show_bytes));
+                let show_class_name = format!("{q_show}${type_name}");
+                let show_bytes = generate_builtin_show_instance_class(&show_class_name, type_name, &q_show)?;
+                result_classes.push((show_class_name.clone(), show_bytes));
 
-                let inst_class_idx = compiler.cp.add_class(show_class_name)?;
+                let inst_class_idx = compiler.cp.add_class(&show_class_name)?;
                 let inst_desc = format!("L{show_class_name};");
                 compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
                 let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
@@ -526,9 +546,10 @@ fn compile_module_inner(
 
         for (trait_name, type_name, method_name) in builtin_instances {
             if compiler.traits.trait_dispatch.contains_key(*trait_name) {
-                let class_name = format!("{trait_name}${type_name}");
+                let q_trait = qualify_type(trait_name);
+                let class_name = format!("{q_trait}${type_name}");
                 let bytes = generate_builtin_trait_instance_class(
-                    &class_name, trait_name, method_name, type_name,
+                    &class_name, &q_trait, trait_name, method_name, type_name,
                 )?;
                 result_classes.push((class_name.clone(), bytes));
 
@@ -546,7 +567,8 @@ fn compile_module_inner(
 
     // Process instance definitions: generate singleton/parameterized classes
     for instance_def in &typed_module.instance_defs {
-        let instance_class_name = format!("{}${}", instance_def.trait_name, instance_def.target_type_name);
+        let q_trait = qualify_type(&instance_def.trait_name);
+        let instance_class_name = format!("{}${}", q_trait, instance_def.target_type_name);
 
         // Collect method info for the instance class
         let mut method_info = Vec::new();
@@ -573,7 +595,7 @@ fn compile_module_inner(
                     // Collect class names for checkcast in bridge methods
                     let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
                         match t {
-                            Type::Named(name, _) => Some(name.clone()),
+                            Type::Named(name, _) => Some(qualify_type(name)),
                             _ => None,
                         }
                     }).collect();
@@ -589,7 +611,7 @@ fn compile_module_inner(
             // Simple singleton instance
             let instance_bytes = generate_instance_class(
                 &instance_class_name,
-                &instance_def.trait_name,
+                &q_trait,
                 class_name,
                 &method_info,
                 &param_jvm_types_map,
@@ -612,7 +634,7 @@ fn compile_module_inner(
             // Parameterized instance — needs subdictionaries
             let instance_bytes = generate_parameterized_instance_class(
                 &instance_class_name,
-                &instance_def.trait_name,
+                &q_trait,
                 class_name,
                 &method_info,
                 &param_jvm_types_map,
@@ -627,9 +649,20 @@ fn compile_module_inner(
             let inst_desc = format!("L{instance_class_name};");
             compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
 
+            let mut init_desc = String::from("(");
+            for _ in &instance_def.subdict_traits {
+                init_desc.push_str("Ljava/lang/Object;");
+            }
+            init_desc.push_str(")V");
+            let init_ref = compiler.cp.add_method_ref(inst_class_idx, "<init>", &init_desc)?;
+
             compiler.traits.parameterized_instances.insert(
                 (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
-                instance_def.subdict_traits.clone(),
+                ParameterizedInstanceInfo {
+                    class_index: inst_class_idx,
+                    init_ref,
+                    subdict_traits: instance_def.subdict_traits.clone(),
+                },
             );
         }
     }
