@@ -36,6 +36,10 @@ pub enum Decl {
         methods: Vec<ExternMethod>,
         span: Span,
     },
+    PubUse {
+        names: Vec<String>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

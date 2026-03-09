@@ -70,6 +70,10 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                 .collect(),
             span: (0, 0),
         },
+        Decl::PubUse { names, .. } => Decl::PubUse {
+            names: names.clone(),
+            span: (0, 0),
+        },
     }
 }
 
@@ -613,6 +617,11 @@ fn roundtrip_wildcard_pattern() {
     _ => 0,
 }"#;
     assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_pub_use() {
+    assert_surface_roundtrip("pub use Option, Some, None");
 }
 
 // --- Operator precedence tests ---

@@ -293,6 +293,27 @@ fn test_trait_method_missing_annotation() {
 }
 
 #[test]
+fn test_pub_use() {
+    let (module, errors) = parse("pub use Option, Some, None");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_pub_use_multiple_decls() {
+    let src = "pub use Option, Some, None\npub use Result";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_pub_use_no_names() {
+    let (_, errors) = parse("pub use");
+    assert!(!errors.is_empty(), "expected parse error for empty pub use");
+}
+
+#[test]
 fn test_error_recovery() {
     let (_, errors) = parse("fun bad( = 42");
     assert!(!errors.is_empty(), "expected parse errors");

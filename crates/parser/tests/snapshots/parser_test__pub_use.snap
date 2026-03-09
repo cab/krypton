@@ -1,0 +1,13 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - PubUse:
+      names:
+        - Option
+        - Some
+        - None
+      span:
+        - 0
+        - 26

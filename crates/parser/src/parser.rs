@@ -1242,8 +1242,21 @@ where
             span: to_span(e.span()),
         });
 
+    let pub_use_decl = just(Token::Pub)
+        .ignore_then(just(Token::Use))
+        .ignore_then(
+            select! { Token::Ident(s) => s.to_string() }
+                .separated_by(just(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .map_with(|names, e| Decl::PubUse {
+            names,
+            span: to_span(e.span()),
+        });
+
     // --- Combined ---
-    choice((fun_decl, type_decl, trait_decl, impl_decl, import_decl, extern_decl))
+    choice((pub_use_decl, fun_decl, type_decl, trait_decl, impl_decl, import_decl, extern_decl))
 }
 
 fn module_parser<'tokens, 'src: 'tokens, I>(

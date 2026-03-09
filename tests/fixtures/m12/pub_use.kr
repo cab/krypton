@@ -1,0 +1,4 @@
+# expect: ok
+import core/option.{Option, Some, None}
+pub use Option, Some, None
+pub use Result

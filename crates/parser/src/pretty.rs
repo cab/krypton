@@ -66,6 +66,10 @@ impl<'a> Formatter<'a> {
                 ..
             } => self.fmt_impl(trait_name, target_type, type_constraints, methods),
             Decl::Import { path, names, .. } => self.fmt_import(path, names),
+            Decl::PubUse { names, .. } => {
+                self.buf.push_str("pub use ");
+                self.buf.push_str(&names.join(", "));
+            }
             Decl::ExternJava {
                 class_name,
                 methods,

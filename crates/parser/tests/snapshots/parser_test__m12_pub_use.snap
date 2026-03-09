@@ -1,0 +1,31 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - Import:
+      path: core/option
+      names:
+        - name: Option
+          alias: ~
+        - name: Some
+          alias: ~
+        - name: None
+          alias: ~
+      span:
+        - 13
+        - 52
+  - PubUse:
+      names:
+        - Option
+        - Some
+        - None
+      span:
+        - 53
+        - 79
+  - PubUse:
+      names:
+        - Result
+      span:
+        - 80
+        - 94
