@@ -155,8 +155,12 @@ fn main() {
             }
             debug!("parsing complete");
 
+            let file_path = std::path::Path::new(&file);
+            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -237,8 +241,12 @@ fn main() {
             }
             debug!("parsing complete");
 
+            let file_path = std::path::Path::new(&file);
+            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -327,8 +335,12 @@ fn main() {
                 process::exit(1);
             }
 
+            let file_path = std::path::Path::new(&file);
+            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
             let t = Instant::now();
-            match krypton_typechecker::infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+            match krypton_typechecker::infer::infer_module(&module, &resolver) {
                 Ok(modules) => {
                     phases.push(("typecheck", t.elapsed()));
                     let info = &modules[0];
