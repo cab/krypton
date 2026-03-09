@@ -1580,6 +1580,8 @@ fn infer_module_inner(
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
+    // Track imported type info for pub use re-exports: type_name → (source_module_path, visibility)
+    let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
             // Check for circular imports
@@ -1689,6 +1691,62 @@ fn infer_module_inner(
                 }
             }
 
+            // Process re-exported functions from the cached module
+            for (name, scheme) in &cached.reexported_fn_types {
+                if requested.contains(name.as_str()) {
+                    let effective_name = aliases.get(name)
+                        .cloned()
+                        .unwrap_or_else(|| name.clone());
+                    env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
+                    imported_fn_types.push((effective_name.clone(), scheme.clone()));
+                    // Use the original provenance if available, otherwise point to the re-exporting module
+                    let original_prov = cached.fn_provenance.get(name)
+                        .cloned()
+                        .unwrap_or_else(|| (path.clone(), name.clone()));
+                    fn_provenance_map.insert(effective_name, original_prov);
+                }
+            }
+
+            // Process re-exported types from the cached module
+            for reex_type_name in &cached.reexported_type_names {
+                if requested.contains(reex_type_name.as_str()) {
+                    let original_vis = cached.reexported_type_visibility.get(reex_type_name)
+                        .cloned()
+                        .unwrap_or(Visibility::Pub);
+                    // Look up the type info from the cached module's type provenance
+                    // to find the original source module, then register in our registry
+                    if registry.lookup_type(reex_type_name).is_none() {
+                        // The type was already registered in the re-exporting module's inference.
+                        // We need to re-parse the original source to get the type declaration.
+                        let original_path = cached.type_provenance.get(reex_type_name);
+                        if let Some(orig_path) = original_path {
+                            if let Some(orig_source) = resolver.resolve(orig_path) {
+                                let (orig_module, _) = krypton_parser::parser::parse(&orig_source);
+                                for odecl in &orig_module.decls {
+                                    if let Decl::DefType(td) = odecl {
+                                        if td.name == *reex_type_name {
+                                            registry.register_name(&td.name);
+                                            let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
+                                                .map_err(|e| spanned(e, *span))?;
+                                            if matches!(original_vis, Visibility::PubOpen) {
+                                                for (cname, scheme) in &constructors {
+                                                    env.bind(cname.clone(), scheme.clone());
+                                                    // Also add constructors to imported_fn_types so they're visible
+                                                    imported_fn_types.push((cname.clone(), scheme.clone()));
+                                                    fn_provenance_map.insert(cname.clone(), (orig_path.clone(), cname.clone()));
+                                                }
+                                            }
+                                            imported_type_info.insert(td.name.clone(), (orig_path.clone(), original_vis.clone()));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Process type declarations from imported module source with visibility enforcement
             for sdecl in &imported_module.decls {
                 if let Decl::DefType(td) = sdecl {
@@ -1710,6 +1768,8 @@ fn infer_module_inner(
                                 }
                             }
                         }
+                        // Track imported type info for pub use re-exports
+                        imported_type_info.insert(td.name.clone(), (path.clone(), td.visibility.clone()));
                     } else if import_all {
                         // Wildcard import — skip private types silently
                         if matches!(td.visibility, Visibility::Private) {
@@ -1755,6 +1815,38 @@ fn infer_module_inner(
             }
             for ext in &cached.imported_extern_fns {
                 imported_extern_fns.push(ext.clone());
+            }
+        }
+    }
+
+    // Process pub use re-export declarations
+    let mut reexported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
+    let mut reexported_type_names: Vec<String> = Vec::new();
+    let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
+    for decl in &module.decls {
+        if let Decl::PubUse { names, span } = decl {
+            for name in names {
+                let found_fn = imported_fn_types.iter().any(|(n, _)| n == name);
+                let found_type = imported_type_info.contains_key(name);
+
+                if !found_fn && !found_type {
+                    return Err(spanned(TypeError::PrivateReexport {
+                        name: name.clone(),
+                    }, *span));
+                }
+                if found_fn {
+                    if let Some((_, scheme)) = imported_fn_types.iter().find(|(n, _)| n == name) {
+                        reexported_fn_types.push((name.clone(), scheme.clone()));
+                    }
+                }
+                if found_type {
+                    reexported_type_names.push(name.clone());
+                    // Preserve the original visibility from the source module
+                    let original_vis = imported_type_info.get(name)
+                        .map(|(_, vis)| vis.clone())
+                        .unwrap_or(Visibility::Pub);
+                    reexported_type_visibility.insert(name.clone(), original_vis);
+                }
             }
         }
     }
@@ -2437,6 +2529,11 @@ fn infer_module_inner(
         }
     }
 
+    // Add type provenance entries from imported types (for re-exports and cross-module codegen)
+    for (type_name, (source_path, _)) in &imported_type_info {
+        type_provenance.insert(type_name.clone(), source_path.clone());
+    }
+
     // Build type_visibility map from parsed type declarations
     let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
     for decl in &module.decls {
@@ -2460,6 +2557,9 @@ fn infer_module_inner(
         fn_provenance: fn_provenance_map,
         type_provenance,
         type_visibility,
+        reexported_fn_types,
+        reexported_type_names,
+        reexported_type_visibility,
     })
 }
 

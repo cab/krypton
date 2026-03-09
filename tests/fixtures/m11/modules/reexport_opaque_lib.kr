@@ -1,0 +1,2 @@
+import vis_lib.{Opaque}
+pub use Opaque

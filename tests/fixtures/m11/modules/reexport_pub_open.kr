@@ -1,0 +1,4 @@
+# expect: output "Red"
+import reexport_lib.{Color, Red}
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun main() = println(Red)

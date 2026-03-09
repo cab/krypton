@@ -137,6 +137,12 @@ pub struct TypedModule {
     pub type_provenance: HashMap<String, String>,
     /// Maps type_name → visibility for types declared in this module.
     pub type_visibility: HashMap<String, Visibility>,
+    /// Functions re-exported via `pub use` — these become part of this module's public API.
+    pub reexported_fn_types: Vec<(String, TypeScheme)>,
+    /// Type names re-exported via `pub use`.
+    pub reexported_type_names: Vec<String>,
+    /// Maps re-exported type name → original visibility (preserves pub/pub open distinction).
+    pub reexported_type_visibility: HashMap<String, Visibility>,
 }
 
 pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {

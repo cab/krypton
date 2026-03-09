@@ -33,6 +33,7 @@ pub enum TypeErrorCode {
     E0502, // Circular import
     E0503, // Private name in import
     E0504, // Bare import (no selective names)
+    E0505, // Cannot re-export name (not in scope or private)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -65,6 +66,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0502 => write!(f, "E0502"),
             TypeErrorCode::E0503 => write!(f, "E0503"),
             TypeErrorCode::E0504 => write!(f, "E0504"),
+            TypeErrorCode::E0505 => write!(f, "E0505"),
         }
     }
 }
@@ -99,6 +101,7 @@ pub enum TypeError {
     CircularImport { cycle: Vec<String> },
     PrivateName { name: String, module_path: String },
     BareImport { path: String },
+    PrivateReexport { name: String },
 }
 
 impl TypeError {
@@ -133,6 +136,7 @@ impl TypeError {
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
+            TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
         }
     }
 
@@ -241,6 +245,9 @@ impl TypeError {
                 let last = path.rsplit('/').next().unwrap_or(path);
                 Some(format!("use `import {path}.{{name1, name2}}` to import specific names — qualified imports (`{last}.foo()`) are not yet supported"))
             }
+            TypeError::PrivateReexport { .. } => {
+                Some("only names that are imported and public can be re-exported with `pub use`".to_string())
+            }
         }
     }
 }
@@ -332,6 +339,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::BareImport { path } => {
                 write!(f, "bare import of module `{}` is not supported", path)
+            }
+            TypeError::PrivateReexport { name } => {
+                write!(f, "cannot re-export `{}`: name is not in scope or is private", name)
             }
         }
     }
