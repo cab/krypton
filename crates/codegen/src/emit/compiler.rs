@@ -337,8 +337,7 @@ pub(super) struct TraitState {
 
 #[derive(Clone)]
 pub(super) struct ParameterizedInstanceInfo {
-    pub(super) class_index: u16,
-    pub(super) init_ref: u16,
+    pub(super) class_name: String,
     pub(super) subdict_traits: Vec<(String, usize)>,
 }
 
@@ -1596,9 +1595,15 @@ impl Compiler {
                         self.emit(Instruction::Getstatic(field_ref));
                         self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
                     } else if let Some(param_info) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
-                        // Construct parameterized instance on the fly
-                        let inst_class = param_info.class_index;
-                        let init_ref = param_info.init_ref;
+                        // Construct parameterized instance on the fly — lazily resolve CP entries
+                        let inst_class = self.cp.add_class(&param_info.class_name)?;
+                        self.types.class_descriptors.insert(inst_class, format!("L{};", param_info.class_name));
+                        let mut init_desc = String::from("(");
+                        for _ in &param_info.subdict_traits {
+                            init_desc.push_str("Ljava/lang/Object;");
+                        }
+                        init_desc.push_str(")V");
+                        let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
                         self.emit(Instruction::New(inst_class));
                         self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
                         self.emit(Instruction::Dup);

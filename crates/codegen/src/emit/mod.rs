@@ -644,23 +644,10 @@ fn compile_module_inner(
             )?;
             result_classes.push((instance_class_name.clone(), instance_bytes));
 
-            // Register class in main cpool (no INSTANCE field — constructed on demand)
-            let inst_class_idx = compiler.cp.add_class(&instance_class_name)?;
-            let inst_desc = format!("L{instance_class_name};");
-            compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-
-            let mut init_desc = String::from("(");
-            for _ in &instance_def.subdict_traits {
-                init_desc.push_str("Ljava/lang/Object;");
-            }
-            init_desc.push_str(")V");
-            let init_ref = compiler.cp.add_method_ref(inst_class_idx, "<init>", &init_desc)?;
-
             compiler.traits.parameterized_instances.insert(
                 (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
                 ParameterizedInstanceInfo {
-                    class_index: inst_class_idx,
-                    init_ref,
+                    class_name: instance_class_name.clone(),
                     subdict_traits: instance_def.subdict_traits.clone(),
                 },
             );

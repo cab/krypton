@@ -401,3 +401,48 @@ fn test_typed_module_direct() {
     assert!(output.status.success(), "java exited with {}", output.status);
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "42");
 }
+
+#[test]
+fn test_unused_parameterized_instance_not_in_constant_pool() {
+    // Option deriving Show creates parameterized Show$Option,
+    // but main() never calls show() — so Show$Option should not be in the CP
+    let src = r#"
+type Option[a] = Some(a) | None deriving [Show]
+fun main() = println(Some(42))
+"#;
+    let full_src = format!("{PRINTLN_EXTERN}\n{src}");
+    let (module, errors) = parse(&full_src);
+    assert!(errors.is_empty());
+    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
+    let classes = compile_module(typed_module, "Test").expect("compile");
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+    }
+    let output = Command::new("javap")
+        .arg("-v")
+        .arg(dir.path().join("Test.class"))
+        .output()
+        .expect("javap");
+    let javap_out = String::from_utf8_lossy(&output.stdout);
+    // Check that Show$Option doesn't appear as a Class entry in the constant pool.
+    // It may appear as a substring of method names like Show$Option$show, so we
+    // check specifically for the javap class reference format.
+    assert!(
+        !javap_out.contains("// class Show$Option"),
+        "unused parameterized instance Show$Option should not appear as a class in constant pool:\n{javap_out}"
+    );
+}
+
+#[test]
+fn test_parameterized_instance_show_option() {
+    let src = r#"
+type Option[a] = Some(a) | None deriving [Show]
+fun main() = println(show(Some(42)))
+"#;
+    assert_eq!(run_program(src), "Some(42)");
+}
