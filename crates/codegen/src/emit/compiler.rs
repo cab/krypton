@@ -705,9 +705,13 @@ impl Compiler {
                 self.emit(Instruction::Goto(0)); // placeholder
                 self.frame.pop_type();
                 let false_pos = self.code.len();
+                // Record frame at false_pos (Ifeq target: stack has no boolean result)
+                self.frame.record_frame(false_pos as u16);
                 self.emit(Instruction::Iconst_0);
                 self.frame.push_type(VerificationType::Integer);
                 let end_pos = self.code.len();
+                // Record frame at end_pos (both paths converge with Integer on stack)
+                self.frame.record_frame(end_pos as u16);
                 // Patch jumps
                 self.code[false_label] = Instruction::Ifeq(false_pos as u16);
                 self.code[end_label] = Instruction::Goto(end_pos as u16);
@@ -724,9 +728,13 @@ impl Compiler {
                 self.emit(Instruction::Goto(0)); // placeholder
                 self.frame.pop_type();
                 let true_pos = self.code.len();
+                // Record frame at true_pos (Ifne target: stack has no boolean result)
+                self.frame.record_frame(true_pos as u16);
                 self.emit(Instruction::Iconst_1);
                 self.frame.push_type(VerificationType::Integer);
                 let end_pos = self.code.len();
+                // Record frame at end_pos (both paths converge with Integer on stack)
+                self.frame.record_frame(end_pos as u16);
                 // Patch jumps
                 self.code[true_label] = Instruction::Ifne(true_pos as u16);
                 self.code[end_label] = Instruction::Goto(end_pos as u16);
