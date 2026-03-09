@@ -1,0 +1,14 @@
+# expect: output "true"
+trait MyEq[a] {
+  fun my_eq(x: a, y: a) -> Bool
+}
+
+impl MyEq[Int] {
+  fun my_eq(x: Int, y: Int) -> Bool = x == y
+}
+
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+fun main() = println(my_eq(42, 42))

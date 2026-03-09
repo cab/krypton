@@ -1011,7 +1011,7 @@ where
             Token::Ident(s) => s.to_string(),
             Token::Self_ => "self".to_string(),
         }
-        .then_ignore(just(Token::Colon))
+        .then_ignore(just(Token::Colon).labelled("type annotation — trait method parameters require types, e.g. (x: a, y: a)"))
         .then(ty.clone())
         .map_with(|(name, ty_ann), e| Param {
             name,
@@ -1101,17 +1101,22 @@ where
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
         .then(
+            just(Token::Arrow)
+                .ignore_then(ty.clone())
+                .or_not(),
+        )
+        .then(
             just(Token::Assign)
                 .ignore_then(expr.clone())
                 .or(expr.clone()),
         )
-        .map_with(|((name, params), body), e| FnDecl {
+        .map_with(|(((name, params), return_type), body), e| FnDecl {
             name,
             visibility: Visibility::Private,
             type_params: vec![],
             params,
             constraints: vec![],
-            return_type: None,
+            return_type,
             body: Box::new(body),
             span: to_span(e.span()),
         });

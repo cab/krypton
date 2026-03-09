@@ -1,0 +1,10 @@
+# expect: error E0001
+trait MyShow[a] {
+  fun my_show(x: a) -> String
+}
+
+impl MyShow[Int] {
+  fun my_show(x: Bool) = "hello"
+}
+
+fun main() = my_show(42)

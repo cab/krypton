@@ -281,6 +281,18 @@ fn test_question_mark() {
 }
 
 #[test]
+fn test_trait_method_missing_annotation() {
+    let src = "trait Eq[a] {\n  fun eq(a, a) -> Bool\n}";
+    let (_, errors) = parse(src);
+    assert!(!errors.is_empty(), "expected a parse error");
+    assert!(
+        errors[0].message.contains("trait method parameters require types"),
+        "expected helpful error about typed parameters, got: {}",
+        errors[0].message,
+    );
+}
+
+#[test]
 fn test_error_recovery() {
     let (_, errors) = parse("fun bad( = 42");
     assert!(!errors.is_empty(), "expected parse errors");
