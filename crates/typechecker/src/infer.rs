@@ -1797,9 +1797,6 @@ pub(crate) fn infer_module_inner(
                     env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
                     imported_fn_types.push((effective_name.clone(), scheme.clone()));
                     fn_provenance_map.insert(effective_name, (path.clone(), name.clone()));
-                } else {
-                    // Bind non-requested names in env for typechecking only
-                    env.bind(name.clone(), scheme.clone());
                 }
             }
 

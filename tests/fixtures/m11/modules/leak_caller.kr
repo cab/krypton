@@ -1,0 +1,3 @@
+# expect: error E0003
+import leak_lib.{exported}
+fun main() -> Int = internal_helper(5)
