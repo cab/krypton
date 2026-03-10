@@ -154,3 +154,21 @@ fn graph_prelude_included() {
     let option_pos = paths.iter().position(|&p| p == "core/option").unwrap();
     assert!(option_pos < prelude_pos, "core/option should come before prelude");
 }
+
+#[test]
+fn graph_parse_error_in_import() {
+    let resolver = MapResolver::new(vec![
+        ("bad", "fun broken( -> Int = 1"), // invalid syntax
+    ]);
+    let root = parse("import bad.{broken}\nfun main() -> Int = broken()");
+    let result = build_module_graph(&root, &resolver);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ModuleGraphError::ParseError { path, errors } => {
+            assert_eq!(path, "bad");
+            assert!(!errors.is_empty(), "should have parse error details");
+        }
+        other => panic!("expected ParseError, got {other:?}"),
+    }
+}

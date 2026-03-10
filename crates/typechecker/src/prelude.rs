@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use krypton_parser::ast::{Decl, Visibility};
-
-use krypton_modules::module_resolver::{ModuleResolver, StdlibResolver};
+use krypton_parser::ast::{Decl, Module, Visibility};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{ExternFnInfo, TypedModule};
 use crate::types::{TypeEnv, TypeVarGen};
@@ -18,7 +16,7 @@ pub fn auto_import_prelude(
     env: &mut TypeEnv,
     registry: &mut TypeRegistry,
     gen: &mut TypeVarGen,
-    _resolver: &dyn ModuleResolver,
+    parsed_modules: &HashMap<String, &Module>,
     cache: &mut HashMap<String, TypedModule>,
     is_prelude_tree: bool,
     fn_provenance_map: &mut HashMap<String, (String, String)>,
@@ -36,9 +34,7 @@ pub fn auto_import_prelude(
     let cached = match cache.get("prelude") {
         Some(c) => c,
         None => {
-            // Fallback should not happen with proper graph building, but be safe
-            registry.register_name("Vec");
-            return Ok(());
+            panic!("prelude not found in cache — module graph should have resolved it");
         }
     };
 
@@ -52,7 +48,6 @@ pub fn auto_import_prelude(
     }
 
     // Bind re-exported types into registry
-    let stdlib = StdlibResolver;
     for reex_type_name in &cached.reexported_type_names {
         let original_vis = cached.reexported_type_visibility.get(reex_type_name)
             .cloned()
@@ -61,8 +56,7 @@ pub fn auto_import_prelude(
         if registry.lookup_type(reex_type_name).is_none() {
             let original_path = cached.type_provenance.get(reex_type_name);
             if let Some(orig_path) = original_path {
-                if let Some(orig_source) = stdlib.resolve(orig_path) {
-                    let (orig_module, _) = krypton_parser::parser::parse(&orig_source);
+                if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
                     for odecl in &orig_module.decls {
                         if let Decl::DefType(td) = odecl {
                             if td.name == *reex_type_name {

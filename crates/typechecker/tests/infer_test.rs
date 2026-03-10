@@ -986,3 +986,27 @@ fn infer_module_private_trait() {
     let result2 = infer::infer_module(&module2, &FakeResolver);
     assert!(result2.is_ok(), "wildcard import should skip private traits: {:?}", result2.err());
 }
+
+#[test]
+fn infer_module_parse_error_produces_e0506() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "broken" {
+                Some("fun bad( -> Int = 1".to_string()) // invalid syntax
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import broken.{bad}
+        fun main() -> Int = bad()
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_err(), "import of module with parse errors should fail");
+    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    assert_eq!(err.error.error_code().to_string(), "E0506");
+}

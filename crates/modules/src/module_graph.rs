@@ -41,10 +41,11 @@ pub fn build_module_graph(
 ) -> Result<ModuleGraph, ModuleGraphError> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut stack: Vec<String> = Vec::new();
+    let mut stack_set: HashSet<String> = HashSet::new();
     let mut result: Vec<ResolvedModule> = Vec::new();
 
     // Auto-add prelude and its transitive deps (uses stdlib resolver internally)
-    visit_prelude_tree("prelude", resolver, &mut visited, &mut stack, &mut result)?;
+    visit_prelude_tree("prelude", resolver, &mut visited, &mut stack, &mut stack_set, &mut result)?;
 
     // Walk root imports with proper span tracking for error messages
     for decl in &root.decls {
@@ -55,7 +56,7 @@ pub fn build_module_graph(
                     span: *span,
                 });
             }
-            visit_user_module(path, *span, resolver, &mut visited, &mut stack, &mut result)?;
+            visit_user_module(path, *span, resolver, &mut visited, &mut stack, &mut stack_set, &mut result)?;
         }
     }
 
@@ -68,13 +69,14 @@ fn visit_prelude_tree(
     resolver: &dyn ModuleResolver,
     visited: &mut HashSet<String>,
     stack: &mut Vec<String>,
+    stack_set: &mut HashSet<String>,
     result: &mut Vec<ResolvedModule>,
 ) -> Result<(), ModuleGraphError> {
     if visited.contains(path) {
         return Ok(());
     }
 
-    if stack.contains(&path.to_string()) {
+    if stack_set.contains(path) {
         let mut cycle = stack.clone();
         cycle.push(path.to_string());
         return Err(ModuleGraphError::CircularImport {
@@ -107,14 +109,22 @@ fn visit_prelude_tree(
     }
 
     stack.push(path.to_string());
+    stack_set.insert(path.to_string());
 
     for decl in &module.decls {
-        if let Decl::Import { path: dep_path, .. } = decl {
-            visit_prelude_tree(dep_path, resolver, visited, stack, result)?;
+        if let Decl::Import { path: dep_path, names, span, .. } = decl {
+            if names.is_empty() {
+                return Err(ModuleGraphError::BareImport {
+                    path: dep_path.clone(),
+                    span: *span,
+                });
+            }
+            visit_prelude_tree(dep_path, resolver, visited, stack, stack_set, result)?;
         }
     }
 
     stack.pop();
+    stack_set.remove(path);
     visited.insert(path.to_string());
 
     result.push(ResolvedModule {
@@ -132,13 +142,14 @@ fn visit_user_module(
     resolver: &dyn ModuleResolver,
     visited: &mut HashSet<String>,
     stack: &mut Vec<String>,
+    stack_set: &mut HashSet<String>,
     result: &mut Vec<ResolvedModule>,
 ) -> Result<(), ModuleGraphError> {
     if visited.contains(path) {
         return Ok(());
     }
 
-    if stack.contains(&path.to_string()) {
+    if stack_set.contains(path) {
         let mut cycle = stack.clone();
         cycle.push(path.to_string());
         return Err(ModuleGraphError::CircularImport {
@@ -161,6 +172,7 @@ fn visit_user_module(
     }
 
     stack.push(path.to_string());
+    stack_set.insert(path.to_string());
 
     for decl in &module.decls {
         if let Decl::Import { path: dep_path, names, span, .. } = decl {
@@ -170,11 +182,12 @@ fn visit_user_module(
                     span: *span,
                 });
             }
-            visit_user_module(dep_path, *span, resolver, visited, stack, result)?;
+            visit_user_module(dep_path, *span, resolver, visited, stack, stack_set, result)?;
         }
     }
 
     stack.pop();
+    stack_set.remove(path);
     visited.insert(path.to_string());
 
     result.push(ResolvedModule {

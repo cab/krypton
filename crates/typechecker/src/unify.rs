@@ -34,6 +34,7 @@ pub enum TypeErrorCode {
     E0503, // Private name in import
     E0504, // Bare import (no selective names)
     E0505, // Cannot re-export name (not in scope or private)
+    E0506, // Parse error in imported module
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -67,6 +68,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0503 => write!(f, "E0503"),
             TypeErrorCode::E0504 => write!(f, "E0504"),
             TypeErrorCode::E0505 => write!(f, "E0505"),
+            TypeErrorCode::E0506 => write!(f, "E0506"),
         }
     }
 }
@@ -102,6 +104,7 @@ pub enum TypeError {
     PrivateName { name: String, module_path: String },
     BareImport { path: String },
     PrivateReexport { name: String },
+    ModuleParseError { path: String, errors: Vec<String> },
 }
 
 impl TypeError {
@@ -137,6 +140,7 @@ impl TypeError {
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
+            TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
         }
     }
 
@@ -248,6 +252,9 @@ impl TypeError {
             TypeError::PrivateReexport { .. } => {
                 Some("only names that are imported and public can be re-exported with `pub import`".to_string())
             }
+            TypeError::ModuleParseError { path, errors } => {
+                Some(format!("module `{}` has parse errors: {}", path, errors.join("; ")))
+            }
         }
     }
 }
@@ -342,6 +349,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::PrivateReexport { name } => {
                 write!(f, "cannot re-export `{}`: name is not in scope or is private", name)
+            }
+            TypeError::ModuleParseError { path, .. } => {
+                write!(f, "parse error in imported module `{}`", path)
             }
         }
     }

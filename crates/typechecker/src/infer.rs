@@ -1587,16 +1587,16 @@ pub fn infer_module(module: &Module, resolver: &dyn krypton_modules::module_reso
     let graph = module_graph::build_module_graph(module, resolver)
         .map_err(map_graph_error)?;
 
-    // Build parsed module lookup for import binding
-    let mut parsed_modules: HashMap<String, Module> = HashMap::new();
+    // Build parsed module lookup for import binding (borrows from graph)
+    let mut parsed_modules: HashMap<String, &Module> = HashMap::new();
     let mut cache: HashMap<String, TypedModule> = HashMap::new();
 
     // Type-check each dependency in topological order
     for resolved in &graph.modules {
-        parsed_modules.insert(resolved.path.clone(), resolved.module.clone());
+        parsed_modules.insert(resolved.path.clone(), &resolved.module);
         if !cache.contains_key(&resolved.path) {
             let typed = infer_module_inner(
-                &resolved.module, resolver, &mut cache, &parsed_modules,
+                &resolved.module, &mut cache, &parsed_modules,
                 Some(resolved.path.clone()),
             )?;
             cache.insert(resolved.path.clone(), typed);
@@ -1604,7 +1604,7 @@ pub fn infer_module(module: &Module, resolver: &dyn krypton_modules::module_reso
     }
 
     // Type-check the root module
-    let main = infer_module_inner(module, resolver, &mut cache, &parsed_modules, None)?;
+    let main = infer_module_inner(module, &mut cache, &parsed_modules, None)?;
 
     let mut result = vec![main];
     // Collect cached imported modules (stable ordering by path)
@@ -1630,7 +1630,7 @@ fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> Spanne
             spanned(TypeError::BareImport { path }, span)
         }
         ModuleGraphError::ParseError { path, errors } => {
-            panic!("parse error in {path}: {errors:?}");
+            spanned(TypeError::ModuleParseError { path, errors }, (0, 0))
         }
     }
 }
@@ -1648,9 +1648,8 @@ pub fn infer_module_single(module: &Module, resolver: &dyn krypton_modules::modu
 /// results from `cache` — no recursive resolution or cycle detection needed.
 pub(crate) fn infer_module_inner(
     module: &Module,
-    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     cache: &mut HashMap<String, TypedModule>,
-    parsed_modules: &HashMap<String, Module>,
+    parsed_modules: &HashMap<String, &Module>,
     module_path: Option<String>,
 ) -> Result<TypedModule, SpannedTypeError> {
     let mut env = TypeEnv::new();
@@ -1676,7 +1675,7 @@ pub(crate) fn infer_module_inner(
     });
     crate::prelude::auto_import_prelude(
         &mut env, &mut registry, &mut gen,
-        resolver, cache, is_prelude_tree,
+        parsed_modules, cache, is_prelude_tree,
         &mut fn_provenance_map, &mut type_provenance,
         &mut imported_extern_fns,
     )?;
@@ -1834,8 +1833,7 @@ pub(crate) fn infer_module_inner(
                         // We need to re-parse the original source to get the type declaration.
                         let original_path = cached.type_provenance.get(reex_type_name);
                         if let Some(orig_path) = original_path {
-                            if let Some(orig_source) = resolver.resolve(orig_path) {
-                                let (orig_module, _) = krypton_parser::parser::parse(&orig_source);
+                            if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
                                 for odecl in &orig_module.decls {
                                     if let Decl::DefType(td) = odecl {
                                         if td.name == *reex_type_name {
@@ -2796,17 +2794,16 @@ pub(crate) fn infer_module_inner(
             if existing_type_names.contains(type_name) || !matches!(vis, Visibility::PubOpen) {
                 continue;
             }
-            if let Some(source) = resolver.resolve(source_path) {
-                let (imported_mod, _) = krypton_parser::parser::parse(&source);
-                for decl in imported_mod.decls {
+            if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {
+                for decl in &imported_mod.decls {
                     if let Decl::DefType(td) = decl {
                         if td.name == *type_name {
-                            if let TypeDeclKind::Sum { variants } = td.kind {
+                            if let TypeDeclKind::Sum { variants } = &td.kind {
                                 type_provenance.insert(td.name.clone(), source_path.clone());
-                                for v in &variants {
+                                for v in variants {
                                     type_provenance.insert(v.name.clone(), source_path.clone());
                                 }
-                                sum_decls.push((td.name, td.type_params, variants));
+                                sum_decls.push((td.name.clone(), td.type_params.clone(), variants.clone()));
                             }
                             break;
                         }
