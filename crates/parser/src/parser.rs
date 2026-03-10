@@ -379,11 +379,15 @@ where
             stmt.clone()
                 .separated_by(just(Token::Semicolon))
                 .allow_trailing()
-                .at_least(1)
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map_with(|exprs, e| {
-                    if exprs.len() == 1 {
+                    if exprs.is_empty() {
+                        Expr::Lit {
+                            value: Lit::Unit,
+                            span: to_span(e.span()),
+                        }
+                    } else if exprs.len() == 1 {
                         // Single expression block — just return the expr with the block span
                         let mut single = exprs.into_iter().next().unwrap();
                         // For consistency, wrap in Do if it's a let
