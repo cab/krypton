@@ -148,6 +148,11 @@ fn m11_fixtures() {
 }
 
 #[test]
+fn m11_module_fixtures() {
+    run_codegen_fixtures("m11/modules");
+}
+
+#[test]
 fn a_fixtures() {
     run_codegen_fixtures("a");
 }

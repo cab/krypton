@@ -28,6 +28,13 @@ use class_gen::{
 /// Java 21 class file version (major 65).
 const JAVA_21: Version = Version::Java21 { minor: 0 };
 
+/// A trait instance exported from a library module so importing modules can reference it.
+struct ExportedInstance {
+    trait_name: String,
+    type_name: String,
+    class_name: String,
+}
+
 /// Extract the type name from a Type for instance lookup.
 fn type_to_name(ty: &Type) -> String {
     match ty {
@@ -197,15 +204,16 @@ pub fn compile_module(
     typed_module: &TypedModule,
     class_name: &str,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    compile_module_inner(typed_module, class_name, true)
+    let (classes, _) = compile_module_inner(typed_module, class_name, true, &[])?;
+    Ok(classes)
 }
 
 /// Compile a library module (no main function required).
-pub fn compile_library_module(
+fn compile_library_module(
     typed_module: &TypedModule,
     class_name: &str,
-) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    compile_module_inner(typed_module, class_name, false)
+) -> Result<(Vec<(String, Vec<u8>)>, Vec<ExportedInstance>), CodegenError> {
+    compile_module_inner(typed_module, class_name, false, &[])
 }
 
 /// Compile all modules returned by the typechecker. The first module is the main module;
@@ -215,14 +223,25 @@ pub fn compile_modules(
     main_class_name: &str,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut all_classes = Vec::new();
+    let mut all_exported_instances = Vec::new();
+
+    // Compile library modules first, collecting exported instances
     for module in typed_modules {
-        let classes = if let Some(path) = &module.module_path {
-            compile_library_module(module, path)?
-        } else {
-            compile_module(module, main_class_name)?
-        };
-        all_classes.extend(classes);
+        if let Some(path) = &module.module_path {
+            let (classes, exported) = compile_library_module(module, path)?;
+            all_classes.extend(classes);
+            all_exported_instances.extend(exported);
+        }
     }
+
+    // Compile main module with imported instances
+    for module in typed_modules {
+        if module.module_path.is_none() {
+            let (classes, _) = compile_module_inner(module, main_class_name, true, &all_exported_instances)?;
+            all_classes.extend(classes);
+        }
+    }
+
     Ok(all_classes)
 }
 
@@ -230,7 +249,8 @@ fn compile_module_inner(
     typed_module: &TypedModule,
     class_name: &str,
     is_main: bool,
-) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
+    imported_instances: &[ExportedInstance],
+) -> Result<(Vec<(String, Vec<u8>)>, Vec<ExportedInstance>), CodegenError> {
     if is_main && !typed_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction);
     }
@@ -567,6 +587,18 @@ fn compile_module_inner(
         }
     }
 
+    // Register imported trait instances from library modules (no class generation needed)
+    for imported in imported_instances {
+        let inst_class_idx = compiler.cp.add_class(&imported.class_name)?;
+        let inst_desc = format!("L{};", imported.class_name);
+        compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
+        let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+        compiler.traits.instance_singletons.insert(
+            (imported.trait_name.clone(), imported.type_name.clone()),
+            InstanceSingletonInfo { instance_field_ref },
+        );
+    }
+
     // Process instance definitions: generate singleton/parameterized classes
     for instance_def in &typed_module.instance_defs {
         let q_trait = qualify_type(&instance_def.trait_name);
@@ -653,6 +685,22 @@ fn compile_module_inner(
                     subdict_traits: instance_def.subdict_traits.clone(),
                 },
             );
+        }
+    }
+
+    // Collect exported instances for downstream modules
+    let mut exported_instances = Vec::new();
+    for ((trait_name, type_name), _) in &compiler.traits.instance_singletons {
+        // Only export user-defined instances (skip builtins like Show$Int, Eq$String, etc.)
+        let builtin_types = ["Int", "Float", "Bool", "String"];
+        if !builtin_types.contains(&type_name.as_str()) {
+            let q_trait = qualify_type(trait_name);
+            let inst_class = format!("{q_trait}${type_name}");
+            exported_instances.push(ExportedInstance {
+                trait_name: trait_name.clone(),
+                type_name: type_name.clone(),
+                class_name: inst_class,
+            });
         }
     }
 
@@ -885,7 +933,7 @@ fn compile_module_inner(
     let class_bytes = compiler.build_class(this_class, object_class, extra_methods, is_main)?;
     result_classes.push((class_name.to_string(), class_bytes));
 
-    Ok(result_classes)
+    Ok((result_classes, exported_instances))
 }
 
 /// Generate a minimal valid `.class` file containing a no-op
