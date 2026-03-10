@@ -1619,8 +1619,12 @@ pub(crate) fn infer_module_inner(
     let mut imported_fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
     // Track trait instances from imported modules for cross-module deriving
     let mut imported_instance_defs: Vec<InstanceDefInfo> = Vec::new();
+    // Track re-exports from `pub import` declarations
+    let mut reexported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
+    let mut reexported_type_names: Vec<String> = Vec::new();
+    let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
     for decl in &module.decls {
-        if let Decl::Import { path, names, span } = decl {
+        if let Decl::Import { is_pub, path, names, span } = decl {
             // Check for circular imports
             if import_stack.contains(path) {
                 let mut cycle = import_stack.clone();
@@ -1902,36 +1906,31 @@ pub(crate) fn infer_module_inner(
                     imported_instance_defs.push(inst.clone());
                 }
             }
-        }
-    }
 
-    // Process pub use re-export declarations
-    let mut reexported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
-    let mut reexported_type_names: Vec<String> = Vec::new();
-    let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
-    for decl in &module.decls {
-        if let Decl::PubUse { names, span } = decl {
-            for name in names {
-                let found_fn = imported_fn_types.iter().any(|(n, _)| n == name);
-                let found_type = imported_type_info.contains_key(name);
+            // Process pub import re-exports: mark all imported names as re-exported
+            if *is_pub {
+                for name in names {
+                    let name = &name.name;
+                    let found_fn = imported_fn_types.iter().any(|(n, _)| n == name);
+                    let found_type = imported_type_info.contains_key(name);
 
-                if !found_fn && !found_type {
-                    return Err(spanned(TypeError::PrivateReexport {
-                        name: name.clone(),
-                    }, *span));
-                }
-                if found_fn {
-                    if let Some((_, scheme)) = imported_fn_types.iter().find(|(n, _)| n == name) {
-                        reexported_fn_types.push((name.clone(), scheme.clone()));
+                    if !found_fn && !found_type {
+                        return Err(spanned(TypeError::PrivateReexport {
+                            name: name.clone(),
+                        }, *span));
                     }
-                }
-                if found_type {
-                    reexported_type_names.push(name.clone());
-                    // Preserve the original visibility from the source module
-                    let original_vis = imported_type_info.get(name)
-                        .map(|(_, vis)| vis.clone())
-                        .unwrap_or(Visibility::Pub);
-                    reexported_type_visibility.insert(name.clone(), original_vis);
+                    if found_fn {
+                        if let Some((_, scheme)) = imported_fn_types.iter().find(|(n, _)| n == name) {
+                            reexported_fn_types.push((name.clone(), scheme.clone()));
+                        }
+                    }
+                    if found_type {
+                        reexported_type_names.push(name.clone());
+                        let original_vis = imported_type_info.get(name)
+                            .map(|(_, vis)| vis.clone())
+                            .unwrap_or(Visibility::Pub);
+                        reexported_type_visibility.insert(name.clone(), original_vis);
+                    }
                 }
             }
         }

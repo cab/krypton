@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - Import:
+      is_pub: false
       path: core/option
       names:
         - name: Option
@@ -16,6 +17,7 @@ decls:
         - 13
         - 52
   - Import:
+      is_pub: false
       path: core/list
       names:
         - name: List

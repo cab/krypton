@@ -293,24 +293,24 @@ fn test_trait_method_missing_annotation() {
 }
 
 #[test]
-fn test_pub_use() {
-    let (module, errors) = parse("pub use Option, Some, None");
+fn test_pub_import() {
+    let (module, errors) = parse("pub import core/option.{Option, Some, None}");
     assert!(errors.is_empty(), "errors: {errors:?}");
     assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_pub_use_multiple_decls() {
-    let src = "pub use Option, Some, None\npub use Result";
+fn test_pub_import_multiple() {
+    let src = "pub import core/option.{Option, Some, None}\npub import core/result.{Result}";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "errors: {errors:?}");
     assert_yaml_snapshot!(module);
 }
 
 #[test]
-fn test_pub_use_no_names() {
-    let (_, errors) = parse("pub use");
-    assert!(!errors.is_empty(), "expected parse error for empty pub use");
+fn test_pub_use_suggests_pub_import() {
+    let (_, errors) = parse("pub use Foo");
+    assert!(!errors.is_empty(), "expected parse error for pub use");
 }
 
 #[test]

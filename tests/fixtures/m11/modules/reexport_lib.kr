@@ -1,2 +1,1 @@
-import vis_lib.{public_fn, Color, Red, Blue}
-pub use public_fn, Color, Red, Blue
+pub import vis_lib.{public_fn, Color, Red, Blue}

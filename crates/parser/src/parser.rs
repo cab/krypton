@@ -1196,10 +1196,22 @@ where
         .or_not()
         .map(|n| n.unwrap_or_default());
 
+    let pub_import_decl = just(Token::Pub)
+        .ignore_then(just(Token::Import))
+        .ignore_then(import_path.clone())
+        .then(import_names.clone())
+        .map_with(|(path, names), e| Decl::Import {
+            is_pub: true,
+            path,
+            names,
+            span: to_span(e.span()),
+        });
+
     let import_decl = just(Token::Import)
         .ignore_then(import_path)
         .then(import_names)
         .map_with(|(path, names), e| Decl::Import {
+            is_pub: false,
             path,
             names,
             span: to_span(e.span()),
@@ -1244,21 +1256,9 @@ where
             span: to_span(e.span()),
         });
 
-    let pub_use_decl = just(Token::Pub)
-        .ignore_then(just(Token::Use))
-        .ignore_then(
-            select! { Token::Ident(s) => s.to_string() }
-                .separated_by(just(Token::Comma))
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .map_with(|names, e| Decl::PubUse {
-            names,
-            span: to_span(e.span()),
-        });
-
     // --- Combined ---
-    choice((pub_use_decl, fun_decl, type_decl, trait_decl, impl_decl, import_decl, extern_decl))
+    // pub_import_decl must come before fun_decl since both start with `pub`
+    choice((pub_import_decl, fun_decl, type_decl, trait_decl, impl_decl, import_decl, extern_decl))
 }
 
 fn module_parser<'tokens, 'src: 'tokens, I>(

@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - Import:
+      is_pub: true
       path: core/option
       names:
         - name: Option
@@ -13,19 +14,5 @@ decls:
         - name: None
           alias: ~
       span:
-        - 13
-        - 52
-  - PubUse:
-      names:
-        - Option
-        - Some
-        - None
-      span:
-        - 53
-        - 79
-  - PubUse:
-      names:
-        - Result
-      span:
-        - 80
-        - 94
+        - 0
+        - 43

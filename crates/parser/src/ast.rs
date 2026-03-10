@@ -27,6 +27,7 @@ pub enum Decl {
         span: Span,
     },
     Import {
+        is_pub: bool,
         path: String,
         names: Vec<ImportName>,
         span: Span,
@@ -34,10 +35,6 @@ pub enum Decl {
     ExternJava {
         class_name: String,
         methods: Vec<ExternMethod>,
-        span: Span,
-    },
-    PubUse {
-        names: Vec<String>,
         span: Span,
     },
 }

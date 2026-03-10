@@ -246,7 +246,7 @@ impl TypeError {
                 Some(format!("use `import {path}.{{name1, name2}}` to import specific names — qualified imports (`{last}.foo()`) are not yet supported"))
             }
             TypeError::PrivateReexport { .. } => {
-                Some("only names that are imported and public can be re-exported with `pub use`".to_string())
+                Some("only names that are imported and public can be re-exported with `pub import`".to_string())
             }
         }
     }

@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - Import:
+      is_pub: false
       path: core/string
       names:
         - name: split

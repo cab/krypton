@@ -1,0 +1,3 @@
+# expect: ok
+pub import core/option.{Option, Some, None}
+pub import core/result.{Result}

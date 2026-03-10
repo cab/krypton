@@ -65,11 +65,7 @@ impl<'a> Formatter<'a> {
                 methods,
                 ..
             } => self.fmt_impl(trait_name, target_type, type_constraints, methods),
-            Decl::Import { path, names, .. } => self.fmt_import(path, names),
-            Decl::PubUse { names, .. } => {
-                self.buf.push_str("pub use ");
-                self.buf.push_str(&names.join(", "));
-            }
+            Decl::Import { is_pub, path, names, .. } => self.fmt_import(*is_pub, path, names),
             Decl::ExternJava {
                 class_name,
                 methods,
@@ -349,7 +345,10 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn fmt_import(&mut self, path: &str, names: &[ImportName]) {
+    fn fmt_import(&mut self, is_pub: bool, path: &str, names: &[ImportName]) {
+        if is_pub {
+            self.buf.push_str("pub ");
+        }
         self.buf.push_str("import ");
         self.buf.push_str(path);
         if !names.is_empty() {

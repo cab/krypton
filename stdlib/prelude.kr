@@ -1,6 +1,4 @@
-import core/option.{Option, Some, None}
-import core/result.{Result, Ok, Err}
-import core/list.{List, Cons, Nil}
-import core/ordering.{Ordering, LT, EQ, GT}
-
-pub use Option, Some, None, Result, Ok, Err, List, Cons, Nil, Ordering, LT, EQ, GT
+pub import core/option.{Option, Some, None}
+pub import core/result.{Result, Ok, Err}
+pub import core/list.{List, Cons, Nil}
+pub import core/ordering.{Ordering, LT, EQ, GT}

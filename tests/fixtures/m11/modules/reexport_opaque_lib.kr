@@ -1,2 +1,1 @@
-import vis_lib.{Opaque}
-pub use Opaque
+pub import vis_lib.{Opaque}

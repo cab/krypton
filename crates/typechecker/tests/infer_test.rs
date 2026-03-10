@@ -865,13 +865,13 @@ fn infer_module_bare_import_error() {
 }
 
 #[test]
-fn infer_module_pub_use_reexport() {
+fn infer_module_pub_import_reexport() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             match module_path {
                 "lib_a" => Some("pub fun helper(x: Int) -> Int = x + 1".to_string()),
-                "facade" => Some("import lib_a.{helper}\npub use helper".to_string()),
+                "facade" => Some("pub import lib_a.{helper}".to_string()),
                 _ => None,
             }
         }
@@ -883,7 +883,7 @@ fn infer_module_pub_use_reexport() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_ok(), "pub use re-export should succeed: {:?}", result.err());
+    assert!(result.is_ok(), "pub import re-export should succeed: {:?}", result.err());
     let modules = result.unwrap();
     // Main module should have helper in its fn_types
     let main_mod = &modules[0];
@@ -895,13 +895,13 @@ fn infer_module_pub_use_reexport() {
 }
 
 #[test]
-fn infer_module_pub_use_reexport_private_error() {
+fn infer_module_pub_import_reexport_private_error() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             match module_path {
                 "lib_a" => Some("pub fun helper(x: Int) -> Int = x + 1".to_string()),
-                "facade" => Some("import lib_a.{helper}\npub use helper, missing_name".to_string()),
+                "facade" => Some("pub import lib_a.{helper, missing_name}".to_string()),
                 _ => None,
             }
         }
@@ -913,7 +913,7 @@ fn infer_module_pub_use_reexport_private_error() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_err(), "pub use of non-existent name should fail");
+    assert!(result.is_err(), "pub import of non-existent name should fail");
     let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
     assert_eq!(err.error.error_code().to_string(), "E0505");
 }

@@ -48,7 +48,8 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             methods: methods.iter().map(zero_spans_fn_decl).collect(),
             span: (0, 0),
         },
-        Decl::Import { path, names, .. } => Decl::Import {
+        Decl::Import { is_pub, path, names, .. } => Decl::Import {
+            is_pub: *is_pub,
             path: path.clone(),
             names: names.clone(),
             span: (0, 0),
@@ -69,10 +70,6 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                     span: (0, 0),
                 })
                 .collect(),
-            span: (0, 0),
-        },
-        Decl::PubUse { names, .. } => Decl::PubUse {
-            names: names.clone(),
             span: (0, 0),
         },
     }
@@ -621,8 +618,8 @@ fn roundtrip_wildcard_pattern() {
 }
 
 #[test]
-fn roundtrip_pub_use() {
-    assert_surface_roundtrip("pub use Option, Some, None");
+fn roundtrip_pub_import() {
+    assert_surface_roundtrip("pub import core/option.{Option, Some, None}");
 }
 
 // --- Operator precedence tests ---
