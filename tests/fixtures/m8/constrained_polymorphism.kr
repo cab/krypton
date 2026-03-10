@@ -3,9 +3,9 @@ extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-type A = { x: Int } deriving [Eq]
+type A = { x: Int } deriving (Eq)
 
-type B = { y: Int } deriving [Eq]
+type B = { y: Int } deriving (Eq)
 
 fun same(x, y) = eq(x, y)
 

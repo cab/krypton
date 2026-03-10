@@ -222,9 +222,9 @@ impl<'a> Formatter<'a> {
             }
         }
         if !t.deriving.is_empty() {
-            self.buf.push_str(" deriving [");
+            self.buf.push_str(" deriving (");
             self.buf.push_str(&t.deriving.join(", "));
-            self.buf.push(']');
+            self.buf.push(')');
         }
     }
 

@@ -925,7 +925,7 @@ fn cross_module_deriving_show() {
     impl ModuleResolver for Resolver {
         fn resolve(&self, path: &str) -> Option<String> {
             match path {
-                "mylib" => Some("pub open type Point = { x: Int, y: Int } deriving [Show]".into()),
+                "mylib" => Some("pub open type Point = { x: Int, y: Int } deriving (Show)".into()),
                 _ => StdlibResolver.resolve(path),
             }
         }

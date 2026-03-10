@@ -1,6 +1,6 @@
 # expect: ok
 type Point = { x: Int, y: Int }
 
-type Person = { name: String, age: Int } deriving [Eq, Show]
+type Person = { name: String, age: Int } deriving (Eq, Show)
 
 fun get_x(p) = p.x

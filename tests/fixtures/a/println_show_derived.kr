@@ -1,4 +1,4 @@
 # expect: output "MySome(1)"
 import core/io.{println}
-type MyOption[a] = MySome(a) | MyNone deriving [Show]
+type MyOption[a] = MySome(a) | MyNone deriving (Show)
 fun main() = println(MySome(1))

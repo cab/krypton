@@ -407,7 +407,7 @@ fn test_unused_parameterized_instance_not_in_constant_pool() {
     // Option deriving Show creates parameterized Show$Option,
     // but main() never calls show() — so Show$Option should not be in the CP
     let src = r#"
-type Option[a] = Some(a) | None deriving [Show]
+type Option[a] = Some(a) | None deriving (Show)
 fun main() = println(Some(42))
 "#;
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
@@ -441,7 +441,7 @@ fun main() = println(Some(42))
 #[test]
 fn test_parameterized_instance_show_option() {
     let src = r#"
-type Option[a] = Some(a) | None deriving [Show]
+type Option[a] = Some(a) | None deriving (Show)
 fun main() = println(show(Some(42)))
 "#;
     assert_eq!(run_program(src), "Some(42)");

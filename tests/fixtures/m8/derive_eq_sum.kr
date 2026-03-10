@@ -3,6 +3,6 @@ extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-type Color = Red | Green | Blue deriving [Eq]
+type Color = Red | Green | Blue deriving (Eq)
 
 fun main() = println(Red == Green)

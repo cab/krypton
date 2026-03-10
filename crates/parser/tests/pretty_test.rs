@@ -458,7 +458,7 @@ fn roundtrip_pub_open_type() {
 
 #[test]
 fn roundtrip_deriving() {
-    assert_surface_roundtrip("type Color = Red | Green | Blue deriving [Eq, Show]");
+    assert_surface_roundtrip("type Color = Red | Green | Blue deriving (Eq, Show)");
 }
 
 #[test]
@@ -653,7 +653,7 @@ fn snapshot_multi_decl_program() {
 
 type Point = { x: Int, y: Int }
 
-type Option[a] = Some(a) | None deriving [Eq, Show]
+type Option[a] = Some(a) | None deriving (Eq, Show)
 
 trait Eq[a] {
     fun eq(self: a, other: a) -> Bool

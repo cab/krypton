@@ -3,6 +3,6 @@ extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-type Point = { x: Int, y: Int } deriving [Show]
+type Point = { x: Int, y: Int } deriving (Show)
 
 fun main() = println(show(Point(1, 2)))

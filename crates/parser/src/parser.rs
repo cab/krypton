@@ -981,7 +981,7 @@ where
             select! { Token::Ident(s) => s.to_string() }
                 .separated_by(just(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+                .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
         .or_not()
         .map(|d| d.unwrap_or_default());

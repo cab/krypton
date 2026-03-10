@@ -3,6 +3,6 @@ extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-type Option[a] = Some(a) | None deriving [Show]
+type Option[a] = Some(a) | None deriving (Show)
 
 fun main() = println(show(Some(42)))
