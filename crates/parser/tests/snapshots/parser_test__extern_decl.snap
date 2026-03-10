@@ -6,7 +6,8 @@ decls:
   - ExternJava:
       class_name: java.lang.Math
       methods:
-        - name: abs
+        - visibility: Private
+          name: abs
           param_types:
             - Named:
                 name: Int
@@ -22,7 +23,8 @@ decls:
           span:
             - 31
             - 50
-        - name: max
+        - visibility: Private
+          name: max
           param_types:
             - Named:
                 name: Int

@@ -1724,10 +1724,48 @@ impl Compiler {
                         }
                     } else {
                         let type_name = type_to_name(first_arg_ty);
-                        if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name)) {
+                        if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
                             let field_ref = singleton.instance_field_ref;
                             self.emit(Instruction::Getstatic(field_ref));
                             self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                        } else if let Some(param_info) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
+                            // Construct parameterized instance on the fly
+                            let inst_class = self.cp.add_class(&param_info.class_name)?;
+                            self.types.class_descriptors.insert(inst_class, format!("L{};", param_info.class_name));
+                            let mut init_desc = String::from("(");
+                            for _ in &param_info.subdict_traits {
+                                init_desc.push_str("Ljava/lang/Object;");
+                            }
+                            init_desc.push_str(")V");
+                            let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+                            self.emit(Instruction::New(inst_class));
+                            self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                            self.emit(Instruction::Dup);
+                            self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                            for (subdict_trait, param_idx) in &param_info.subdict_traits {
+                                let type_arg = match first_arg_ty {
+                                    Type::Named(_, type_args) => &type_args[*param_idx],
+                                    Type::Own(inner) => {
+                                        if let Type::Named(_, type_args) = inner.as_ref() { &type_args[*param_idx] } else { first_arg_ty }
+                                    }
+                                    _ => first_arg_ty,
+                                };
+                                let sub_type_name = type_to_name(type_arg);
+                                if let Some(singleton) = self.traits.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
+                                    let field_ref = singleton.instance_field_ref;
+                                    self.emit(Instruction::Getstatic(field_ref));
+                                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                                } else {
+                                    return Err(CodegenError::UndefinedVariable(
+                                        format!("no instance of {subdict_trait} for {sub_type_name}"),
+                                    ));
+                                }
+                            }
+                            self.emit(Instruction::Invokespecial(init_ref));
+                            for _ in &param_info.subdict_traits {
+                                self.frame.pop_type();
+                            }
+                            self.frame.pop_type(); // dup
                         }
                     }
                 }

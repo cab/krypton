@@ -57,6 +57,7 @@ pub enum Visibility {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ExternMethod {
+    pub visibility: Visibility,
     pub name: String,
     pub param_types: Vec<TypeExpr>,
     pub return_type: TypeExpr,

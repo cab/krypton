@@ -6,7 +6,8 @@ decls:
   - ExternJava:
       class_name: java.lang.System
       methods:
-        - name: gc
+        - visibility: Private
+          name: gc
           param_types: []
           return_type:
             Named:

@@ -1,8 +1,11 @@
 # core/io — I/O functions
 extern "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
-    fun print(Object) -> Unit
-    fun readLine() -> String
-    fun read_file(String) -> Result[String, String]
-    fun write_file(String, String) -> Result[String, Unit]
+    fun raw_println(Object) -> Unit
+    fun raw_print(Object) -> Unit
+    pub fun readLine() -> String
+    pub fun read_file(String) -> Result[String, String]
+    pub fun write_file(String, String) -> Result[String, Unit]
 }
+
+pub fun println(x) = raw_println(show(x))
+pub fun print(x) = raw_print(show(x))

@@ -62,6 +62,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             methods: methods
                 .iter()
                 .map(|m| ExternMethod {
+                    visibility: m.visibility.clone(),
                     name: m.name.clone(),
                     param_types: m.param_types.iter().map(zero_spans_type_expr).collect(),
                     return_type: zero_spans_type_expr(&m.return_type),

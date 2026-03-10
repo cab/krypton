@@ -6,7 +6,8 @@ decls:
   - ExternJava:
       class_name: java.lang.Math
       methods:
-        - name: abs
+        - visibility: Private
+          name: abs
           param_types:
             - Named:
                 name: Int

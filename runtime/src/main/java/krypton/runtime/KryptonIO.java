@@ -13,6 +13,14 @@ public final class KryptonIO {
         System.out.print(value);
     }
 
+    public static void raw_println(Object value) {
+        System.out.println(value);
+    }
+
+    public static void raw_print(Object value) {
+        System.out.print(value);
+    }
+
     public static String readLine() {
         return new Scanner(System.in).nextLine();
     }

@@ -1337,11 +1337,13 @@ fn detect_trait_constraints(
 
 /// Walk a typed AST looking for calls to trait methods. For each call,
 /// resolve the argument type and verify that a matching instance exists.
+/// Also checks calls to imported constrained functions (via `fn_constraints`).
 fn check_trait_instances(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, String>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
+    fn_constraints: &HashMap<String, Vec<String>>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -1364,6 +1366,27 @@ fn check_trait_instances(
                                     },
                                     expr.span,
                                 ));
+                            }
+                        }
+                    }
+                    // Check calls to constrained functions (e.g., imported `println` requires Show)
+                    if let Some(constraints) = fn_constraints.get(name.as_str()) {
+                        if let Some(first_arg) = args.first() {
+                            let arg_ty = subst.apply(&first_arg.ty);
+                            let concrete_ty = strip_own(&arg_ty);
+                            if !matches!(concrete_ty, Type::Var(_)) {
+                                for trait_name in constraints {
+                                    if trait_registry.find_instance(trait_name, &concrete_ty).is_none() {
+                                        return Err(spanned(
+                                            TypeError::NoInstance {
+                                                trait_name: trait_name.clone(),
+                                                ty: format!("{}", concrete_ty),
+                                                required_by: None,
+                                            },
+                                            expr.span,
+                                        ));
+                                    }
+                                }
                             }
                         }
                     }
@@ -1590,6 +1613,8 @@ pub(crate) fn infer_module_inner(
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     // Track imported type info for pub use re-exports: type_name → (source_module_path, visibility)
     let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
+    // Track fn_constraints from imported modules for cross-module constraint checking
+    let mut imported_fn_constraints: HashMap<String, Vec<String>> = HashMap::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
             // Check for circular imports
@@ -1629,11 +1654,20 @@ pub(crate) fn infer_module_inner(
                 .collect();
 
             // Build fn visibility map from parsed imported module
-            let fn_vis: HashMap<&str, &Visibility> = imported_module.decls.iter()
+            let mut fn_vis: HashMap<&str, &Visibility> = imported_module.decls.iter()
                 .filter_map(|d| {
                     if let Decl::DefFn(f) = d { Some((f.name.as_str(), &f.visibility)) } else { None }
                 })
                 .collect();
+
+            // Also include extern method visibility
+            for d in &imported_module.decls {
+                if let Decl::ExternJava { methods, .. } = d {
+                    for m in methods {
+                        fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
+                    }
+                }
+            }
 
             // Build set of constructor names belonging to non-PubOpen types.
             // These should not be bound from fn_types (they are handled by
@@ -1653,6 +1687,17 @@ pub(crate) fn infer_module_inner(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Check visibility of explicitly requested extern methods
+            for name in &requested {
+                if let Some(vis) = fn_vis.get(name) {
+                    if matches!(vis, Visibility::Private) && requested.contains(name) {
+                        return Err(spanned(TypeError::PrivateName {
+                            name: name.to_string(), module_path: path.clone(),
+                        }, *span));
                     }
                 }
             }
@@ -1823,6 +1868,26 @@ pub(crate) fn infer_module_inner(
             }
             for ext in &cached.imported_extern_fns {
                 imported_extern_fns.push(ext.clone());
+            }
+
+            // Collect fn_constraints from imported module for cross-module constraint checking.
+            // Map using the effective name (after aliasing) so callers see constraints.
+            for (name, constraints) in &cached.fn_constraints {
+                let effective_name = aliases.get(name)
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
+                if requested.contains(name.as_str()) || import_all {
+                    imported_fn_constraints.insert(effective_name, constraints.clone());
+                }
+            }
+            // Also propagate constraints from the imported module's own imports
+            for (name, constraints) in &cached.imported_fn_constraints {
+                let effective_name = aliases.get(name)
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
+                if requested.contains(name.as_str()) || import_all {
+                    imported_fn_constraints.insert(effective_name, constraints.clone());
+                }
             }
         }
     }
@@ -2306,10 +2371,11 @@ pub(crate) fn infer_module_inner(
     }
 
     // Post-inference instance resolution: check that all trait method calls have instances
-    if !trait_method_map.is_empty() {
+    // and check cross-module constraints (e.g., imported `println` requires Show)
+    if !trait_method_map.is_empty() || !imported_fn_constraints.is_empty() {
         for body in fn_bodies.iter() {
             if let Some(body) = body {
-                check_trait_instances(body, &trait_method_map, &trait_registry, &subst)?;
+                check_trait_instances(body, &trait_method_map, &trait_registry, &subst, &imported_fn_constraints)?;
             }
         }
     }
@@ -2556,6 +2622,7 @@ pub(crate) fn infer_module_inner(
         trait_defs,
         instance_defs,
         fn_constraints,
+        imported_fn_constraints,
         trait_method_map: trait_method_map.clone(),
         extern_fns,
         imported_extern_fns,

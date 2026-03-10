@@ -1213,14 +1213,16 @@ where
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LParen), just(Token::RParen));
 
-    let extern_method = just(Token::Fun)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+    let extern_method = just(Token::Pub).or_not()
+        .then_ignore(just(Token::Fun))
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(extern_param_types)
         .then(
             just(Token::Arrow)
                 .ignore_then(ty.clone()),
         )
-        .map_with(|((name, param_types), return_type), e| ExternMethod {
+        .map_with(|(((pub_opt, name), param_types), return_type), e| ExternMethod {
+            visibility: if pub_opt.is_some() { Visibility::Pub } else { Visibility::Private },
             name,
             param_types,
             return_type,

@@ -1,0 +1,4 @@
+# expect: error E0301
+import core/io.{println}
+type Opaque = { x: Int }
+fun main() = println(Opaque(1))

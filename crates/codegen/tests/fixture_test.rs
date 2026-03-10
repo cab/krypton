@@ -146,3 +146,8 @@ fn m10_fixtures() {
 fn m11_fixtures() {
     run_codegen_fixtures("m11");
 }
+
+#[test]
+fn a_fixtures() {
+    run_codegen_fixtures("a");
+}

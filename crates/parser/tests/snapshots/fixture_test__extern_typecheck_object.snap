@@ -6,7 +6,8 @@ decls:
   - ExternJava:
       class_name: krypton.runtime.KryptonIO
       methods:
-        - name: println
+        - visibility: Private
+          name: println
           param_types:
             - Named:
                 name: Object

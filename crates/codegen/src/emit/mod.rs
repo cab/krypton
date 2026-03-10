@@ -464,6 +464,10 @@ fn compile_module_inner(
     // Process trait definitions: generate interface classes
     compiler.traits.trait_method_map = typed_module.trait_method_map.clone();
     compiler.traits.fn_constraints = typed_module.fn_constraints.clone();
+    // Merge imported function constraints so cross-module calls get dict args
+    for (name, constraints) in &typed_module.imported_fn_constraints {
+        compiler.traits.fn_constraints.entry(name.clone()).or_insert_with(|| constraints.clone());
+    }
 
     for trait_def in &typed_module.trait_defs {
         let qualified_trait = qualify_type(&trait_def.name);
