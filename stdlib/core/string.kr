@@ -1,6 +1,6 @@
 # core/string — String utility functions
 extern "krypton.runtime.KryptonString" {
-    pub fun split(String, String) -> List[String]
+    pub fun split(String, String) -> Vec[String]
     pub fun concat(String, String) -> String
     pub fun trim(String) -> String
     pub fun substring(String, Int, Int) -> String

@@ -61,4 +61,27 @@ class KryptonStringTest {
     void codepointSliceEmpty() {
         assertEquals("", KryptonString.codepointSlice("abc", 1, 1));
     }
+
+    @Test
+    void splitBasic() {
+        KryptonArray result = (KryptonArray) KryptonString.split("a,b,c", ",");
+        assertEquals(3, result.length());
+        assertEquals("a", result.get(0));
+        assertEquals("b", result.get(1));
+        assertEquals("c", result.get(2));
+    }
+
+    @Test
+    void splitEmpty() {
+        KryptonArray result = (KryptonArray) KryptonString.split("", ",");
+        assertEquals(1, result.length());
+        assertEquals("", result.get(0));
+    }
+
+    @Test
+    void splitNoMatch() {
+        KryptonArray result = (KryptonArray) KryptonString.split("hello", ",");
+        assertEquals(1, result.length());
+        assertEquals("hello", result.get(0));
+    }
 }

@@ -11,19 +11,12 @@ public final class KryptonString {
     }
     public static Object split(String s, String delimiter) {
         String[] parts = s.split(delimiter, -1);
-        try {
-            Class<?> consClass = Class.forName("List$Cons");
-            Class<?> nilClass = Class.forName("List$Nil");
-            // Build linked list from right to left: Nil, then Cons(last, Nil), etc.
-            Object list = nilClass.getDeclaredConstructor().newInstance();
-            for (int i = parts.length - 1; i >= 0; i--) {
-                list = consClass.getDeclaredConstructor(Object.class, Object.class)
-                        .newInstance(parts[i], list);
-            }
-            return list;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct List: " + e.getMessage(), e);
+        KryptonArray arr = new KryptonArray(parts.length);
+        for (int i = 0; i < parts.length; i++) {
+            arr.set(i, parts[i]);
         }
+        arr.freeze();
+        return arr;
     }
     public static String trim(String s) { return s.trim(); }
     public static String substring(String s, long start, long end) {

@@ -1,4 +1,12 @@
-# expect: ok
+# expect: output "hello"
 import core/string.{split}
+import core/vec.{nth}
 
-fun main() -> List[String] = split("hello world", " ")
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+fun main() = match nth(split("hello world", " "), 0) {
+    Some(s) => println(s),
+    None => println("error"),
+}
