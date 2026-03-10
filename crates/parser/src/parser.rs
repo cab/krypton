@@ -1024,6 +1024,7 @@ where
 
     let trait_method = just(Token::Fun)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(type_params.clone())
         .then(
             trait_method_param
                 .separated_by(just(Token::Comma))
@@ -1041,11 +1042,11 @@ where
                 .or(expr.clone())
                 .or_not(),
         )
-        .map_with(|(((name, params), return_type), body), e| {
+        .map_with(|((((name, type_params), params), return_type), body), e| {
             FnDecl {
                 name,
                 visibility: Visibility::Private,
-                type_params: vec![],
+                type_params,
                 params,
                 constraints: vec![],
                 return_type,
@@ -1115,6 +1116,7 @@ where
     // impl Trait[Type] { methods } or impl Trait[Type] where constraints { methods }
     let impl_method = just(Token::Fun)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(type_params.clone())
         .then(
             param
                 .separated_by(just(Token::Comma))
@@ -1131,10 +1133,10 @@ where
                 .ignore_then(expr.clone())
                 .or(expr.clone()),
         )
-        .map_with(|(((name, params), return_type), body), e| FnDecl {
+        .map_with(|((((name, type_params), params), return_type), body), e| FnDecl {
             name,
             visibility: Visibility::Private,
-            type_params: vec![],
+            type_params,
             params,
             constraints: vec![],
             return_type,

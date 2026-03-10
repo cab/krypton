@@ -125,52 +125,6 @@ fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> SpannedTypeErro
     SpannedTypeError { error, span, note: None, secondary_span: None }
 }
 
-/// Collect lowercase type variable names from a trait method's param/return type annotations.
-fn collect_type_var_names_from_method(method: &krypton_parser::ast::FnDecl) -> Vec<String> {
-    use krypton_parser::ast::TypeExpr;
-    let mut names = Vec::new();
-    fn collect_from_texpr(texpr: &TypeExpr, names: &mut Vec<String>) {
-        match texpr {
-            TypeExpr::Var { name, .. } => {
-                if !names.contains(name) {
-                    names.push(name.clone());
-                }
-            }
-            TypeExpr::App { name, args, .. } => {
-                // The head might be a type variable (lowercase)
-                if name.starts_with(|c: char| c.is_ascii_lowercase()) && !names.contains(name) {
-                    names.push(name.clone());
-                }
-                for a in args {
-                    collect_from_texpr(a, names);
-                }
-            }
-            TypeExpr::Named { .. } => {}
-            TypeExpr::Fn { params, ret, .. } => {
-                for p in params {
-                    collect_from_texpr(p, names);
-                }
-                collect_from_texpr(ret, names);
-            }
-            TypeExpr::Own { inner, .. } => collect_from_texpr(inner, names),
-            TypeExpr::Tuple { elements, .. } => {
-                for e in elements {
-                    collect_from_texpr(e, names);
-                }
-            }
-        }
-    }
-    for p in &method.params {
-        if let Some(ref ty) = p.ty {
-            collect_from_texpr(ty, &mut names);
-        }
-    }
-    if let Some(ref ret) = method.return_type {
-        collect_from_texpr(ret, &mut names);
-    }
-    names
-}
-
 /// Recursively replace Type::Var(old_id) with Type::Var(new_id) in a type tree.
 fn remap_type_var(ty: &Type, old_id: u32, new_id: u32) -> Type {
     match ty {
@@ -1363,13 +1317,7 @@ fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type
         Type::App(ctor, args) => {
             let new_ctor = substitute_type_var(ctor, var_id, replacement);
             let new_args: Vec<Type> = args.iter().map(|a| substitute_type_var(a, var_id, replacement)).collect();
-            // If ctor was the trait type var and replacement is a Named type, reduce
-            match &new_ctor {
-                Type::Named(name, ctor_args) if ctor_args.is_empty() => {
-                    Type::Named(name.clone(), new_args)
-                }
-                _ => Type::App(Box::new(new_ctor), new_args),
-            }
+            crate::types::normalize_app(new_ctor, new_args)
         }
         Type::Own(inner) => Type::Own(Box::new(substitute_type_var(inner, var_id, replacement))),
         Type::Tuple(elems) => {
@@ -1746,6 +1694,7 @@ pub(crate) fn infer_module_inner(
     let mut subst = Substitution::new();
     let mut gen = TypeVarGen::new();
     let mut registry = TypeRegistry::new();
+    registry.register_builtins();
     let mut let_own_spans: HashSet<Span> = HashSet::new();
     let mut lambda_own_captures: HashMap<Span, String> = HashMap::new();
 
@@ -1756,6 +1705,10 @@ pub(crate) fn infer_module_inner(
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
     let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
     let mut type_provenance: HashMap<String, String> = HashMap::new();
+    // Mark builtins as non-local so the orphan check rejects `impl Trait[Int]` etc.
+    for name in &["Int", "Float", "Bool", "String", "Unit"] {
+        type_provenance.insert(name.to_string(), "core".to_string());
+    }
 
     // Auto-import prelude types (Option, Result, List, Ordering) from stdlib prelude.kr
     // Prelude is already type-checked and in cache (graph builder ensures this).
@@ -2166,6 +2119,7 @@ pub(crate) fn infer_module_inner(
                             span: (0, 0),
                             is_builtin: false,
                         };
+                        // A-T14: silently ignores duplicate imported instances; should be an error
                         let _ = trait_registry.register_instance(instance);
                     }
                 }
@@ -2225,16 +2179,13 @@ pub(crate) fn infer_module_inner(
             let mut type_param_map = HashMap::new();
             type_param_map.insert(type_param.name.clone(), tv_id);
 
-            // For HK trait methods, collect additional method-local type vars
-            // by scanning method signatures for unbound lowercase type var names
+            // For HK trait methods, use explicit type_params from the method declaration
             let mut trait_methods = Vec::new();
             let mut exported_methods = Vec::new();
             for method in methods {
-                // Collect method-local type variable names from params and return type
                 let mut method_type_param_map = type_param_map.clone();
-                let method_type_var_names = collect_type_var_names_from_method(method);
                 let mut method_tv_ids = Vec::new();
-                for tv_name in &method_type_var_names {
+                for tv_name in &method.type_params {
                     if !method_type_param_map.contains_key(tv_name) {
                         let mv_id = gen.fresh();
                         method_type_param_map.insert(tv_name.clone(), mv_id);
@@ -2468,6 +2419,21 @@ pub(crate) fn infer_module_inner(
                 }
             };
 
+            // Kind-arity check: verify the impl target has the right arity for the trait
+            if let Some(trait_info) = trait_registry.lookup_trait(trait_name) {
+                let expected_arity = trait_info.type_var_arity;
+                if expected_arity > 0 {
+                    let actual_arity = registry.expected_arity(&target_name).unwrap_or(0);
+                    if actual_arity != expected_arity {
+                        return Err(spanned(TypeError::KindMismatch {
+                            type_name: target_name.clone(),
+                            expected_arity,
+                            actual_arity,
+                        }, *span));
+                    }
+                }
+            }
+
             let method_names: Vec<String> = if let Decl::DefImpl { methods, .. } = decl {
                 methods.iter().map(|m| m.name.clone()).collect()
             } else {
@@ -2698,8 +2664,7 @@ pub(crate) fn infer_module_inner(
                 // Build type_param_map for impl method annotations
                 // (needed for type vars in HKT method annotations like `Box[a]`)
                 let mut impl_method_tpm = HashMap::new();
-                let method_tvn = collect_type_var_names_from_method(method);
-                for tv_name in &method_tvn {
+                for tv_name in &method.type_params {
                     if !impl_method_tpm.contains_key(tv_name) {
                         impl_method_tpm.insert(tv_name.clone(), gen.fresh());
                     }

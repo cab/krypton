@@ -522,9 +522,8 @@ impl Compiler {
                 }
             }
             Type::Own(inner) => self.type_to_jvm(inner),
-            Type::App(ctor, _) => {
-                // After substitution, App should reduce to Named. If not, treat like the ctor.
-                self.type_to_jvm(ctor)
+            Type::App(_, _) => {
+                unreachable!("ICE: Type::App should be reduced after substitution")
             }
             other => type_to_jvm_basic(other),
         }

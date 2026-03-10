@@ -33,6 +33,15 @@ pub enum Type {
     Tuple(Vec<Type>),
 }
 
+/// Normalize a type application: if the constructor is a zero-arg Named type,
+/// fold the args into it; otherwise reconstruct App.
+pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
+    match ctor {
+        Type::Named(name, ctor_args) if ctor_args.is_empty() => Type::Named(name, args),
+        _ => Type::App(Box::new(ctor), args),
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -175,13 +184,7 @@ impl Substitution {
             Type::App(ctor, args) => {
                 let applied_ctor = self.apply(ctor);
                 let applied_args: Vec<Type> = args.iter().map(|a| self.apply(a)).collect();
-                // If the constructor resolved to a Named type (zero-arg), reduce App(Named(n,[]),args) to Named(n,args)
-                match applied_ctor {
-                    Type::Named(name, ctor_args) if ctor_args.is_empty() => {
-                        Type::Named(name, applied_args)
-                    }
-                    _ => Type::App(Box::new(applied_ctor), applied_args),
-                }
+                normalize_app(applied_ctor, applied_args)
             }
             Type::Own(inner) => Type::Own(Box::new(self.apply(inner))),
             Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| self.apply(e)).collect()),

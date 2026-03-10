@@ -1,0 +1,11 @@
+# expect: ok
+type Pair[a, b] = Pair(a, b)
+
+trait Bifunctor[f[_, _]] {
+  fun bimap[a, b, c, d](fab: f[a, b], g: (a) -> c, h: (b) -> d) -> f[c, d]
+}
+
+impl Bifunctor[Pair] {
+  fun bimap[a, b, c, d](fab: Pair[a, b], g: (a) -> c, h: (b) -> d) -> Pair[c, d] =
+    match fab { Pair(x, y) => Pair(g(x), h(y)) }
+}

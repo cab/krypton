@@ -1,4 +1,4 @@
-# expect: ok
+# expect: error E0011
 type Box[a] = Box(a)
 
 trait Functor[f[_]] {
@@ -6,6 +6,6 @@ trait Functor[f[_]] {
 }
 
 impl Functor[Box] {
-  fun fmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
+  fun fmap(fa: Box[a], g: (a) -> b) -> Box[b] =
     match fa { Box(x) => Box(g(x)) }
 }

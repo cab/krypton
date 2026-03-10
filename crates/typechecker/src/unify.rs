@@ -35,7 +35,7 @@ pub enum TypeErrorCode {
     E0504, // Bare import (no selective names)
     E0505, // Cannot re-export name (not in scope or private)
     E0506, // Parse error in imported module
-    E0012, // Kind mismatch (type applied with wrong number of type args)
+    E0507, // Kind mismatch (type applied with wrong number of type args)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -70,7 +70,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0504 => write!(f, "E0504"),
             TypeErrorCode::E0505 => write!(f, "E0505"),
             TypeErrorCode::E0506 => write!(f, "E0506"),
-            TypeErrorCode::E0012 => write!(f, "E0012"),
+            TypeErrorCode::E0507 => write!(f, "E0507"),
         }
     }
 }
@@ -144,7 +144,7 @@ impl TypeError {
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
-            TypeError::KindMismatch { .. } => TypeErrorCode::E0012,
+            TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
         }
     }
 

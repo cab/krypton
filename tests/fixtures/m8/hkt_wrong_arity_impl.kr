@@ -1,0 +1,10 @@
+# expect: error E0507
+type Box[a] = Box(a)
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl Functor[Int] {
+  fun fmap[a, b](fa: Int, g: (a) -> b) -> Int = fa
+}

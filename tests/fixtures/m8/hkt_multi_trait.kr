@@ -5,13 +5,15 @@ trait Functor[f[_]] {
   fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
 }
 
+trait Container[f[_]] {
+  fun wrap[a](x: a) -> f[a]
+}
+
 impl Functor[Box] {
   fun fmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
     match fa { Box(x) => Box(g(x)) }
 }
 
-fun main() -> Int {
-  let b = Box(42)
-  let b2 = fmap(b, x => x + 1)
-  match b2 { Box(n) => n }
+impl Container[Box] {
+  fun wrap[a](x: a) -> Box[a] = Box(x)
 }

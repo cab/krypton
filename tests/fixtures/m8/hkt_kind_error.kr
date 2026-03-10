@@ -1,2 +1,2 @@
-# expect: error E0012
+# expect: error E0507
 fun main(x: Int[String]) -> Int = 42

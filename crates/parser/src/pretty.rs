@@ -271,6 +271,11 @@ impl<'a> Formatter<'a> {
     fn fmt_trait_method(&mut self, m: &FnDecl) {
         self.buf.push_str("fun ");
         self.buf.push_str(&m.name);
+        if !m.type_params.is_empty() {
+            self.buf.push('[');
+            self.buf.push_str(&m.type_params.join(", "));
+            self.buf.push(']');
+        }
         self.buf.push('(');
         for (i, p) in m.params.iter().enumerate() {
             if i > 0 {
@@ -338,6 +343,11 @@ impl<'a> Formatter<'a> {
     fn fmt_impl_method(&mut self, m: &FnDecl) {
         self.buf.push_str("fun ");
         self.buf.push_str(&m.name);
+        if !m.type_params.is_empty() {
+            self.buf.push('[');
+            self.buf.push_str(&m.type_params.join(", "));
+            self.buf.push(']');
+        }
         self.buf.push('(');
         for (i, p) in m.params.iter().enumerate() {
             if i > 0 {

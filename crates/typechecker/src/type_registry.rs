@@ -43,6 +43,20 @@ impl TypeRegistry {
         }
     }
 
+    /// Register built-in types (Int, Float, Bool, String, Unit, Object) so that
+    /// arity checks can find them in the registry instead of a separate function.
+    pub fn register_builtins(&mut self) {
+        for name in &["Int", "Float", "Bool", "String", "Unit"] {
+            self.types.entry(name.to_string()).or_insert(TypeInfo {
+                name: name.to_string(),
+                type_params: vec![],
+                type_param_vars: vec![],
+                kind: TypeKind::Record { fields: vec![] },
+                is_prelude: true,
+            });
+        }
+    }
+
     pub fn register_type(&mut self, info: TypeInfo) -> Result<(), TypeError> {
         if let Some(existing) = self.types.get(&info.name) {
             if !existing.is_prelude {
@@ -131,7 +145,7 @@ pub fn resolve_type_expr(
             // Validate the type name
             resolve_named(name, type_param_map, registry)?;
             // Kind check: verify arity matches
-            let expected = builtin_arity(name).or_else(|| registry.expected_arity(name));
+            let expected = registry.expected_arity(name);
             if let Some(expected) = expected {
                 if expected != resolved_args.len() {
                     return Err(TypeError::KindMismatch {
@@ -161,14 +175,6 @@ pub fn resolve_type_expr(
             }
             Ok(Type::Tuple(elem_types))
         }
-    }
-}
-
-/// Return the arity of builtin types (those not in the registry).
-fn builtin_arity(name: &str) -> Option<usize> {
-    match name {
-        "Int" | "Float" | "Bool" | "String" | "Unit" | "Object" => Some(0),
-        _ => None,
     }
 }
 
