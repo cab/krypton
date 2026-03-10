@@ -1,2 +1,2 @@
 # expect: error E0004
-fun _() = 42(1)
+fun _test() = 42(1)

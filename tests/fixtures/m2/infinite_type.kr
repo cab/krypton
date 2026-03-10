@@ -1,2 +1,2 @@
 # expect: error E0007
-fun _() = { let f = x => x(x); f }
+fun _test() = { let f = x => x(x); f }

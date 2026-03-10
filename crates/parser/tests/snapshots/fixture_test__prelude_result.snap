@@ -107,8 +107,7 @@ decls:
                 Constructor:
                   name: Err
                   args:
-                    - Var:
-                        name: _
+                    - Wildcard:
                         span:
                           - 170
                           - 171

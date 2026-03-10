@@ -17,4 +17,4 @@ expression: "surface_lex(\"+ - * / < > = ! ? | . : , ; ~ _\")"
 - Comma
 - Semicolon
 - Tilde
-- Ident: _
+- Underscore

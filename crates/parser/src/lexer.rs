@@ -196,6 +196,7 @@ pub fn lexer<'src>(
         "tuple" => Token::Tuple,
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
+        "_" => Token::Underscore,
         _ => Token::Ident(s),
     }));
 

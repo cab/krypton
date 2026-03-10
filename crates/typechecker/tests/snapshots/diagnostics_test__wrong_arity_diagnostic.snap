@@ -3,11 +3,11 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"{ let f = x => x; f(1, 2) }\")"
 ---
 [E0005] Error: wrong arity: expected 1 arguments, found 2
-   ╭─[ test.kr:1:29 ]
+   ╭─[ test.kr:1:33 ]
    │
- 1 │ fun _() = { let f = x => x; f(1, 2) }
-   │                             ───┬───  
-   │                                ╰───── E0005: wrong arity: expected 1 arguments, found 2
+ 1 │ fun _test() = { let f = x => x; f(1, 2) }
+   │                                 ───┬───  
+   │                                    ╰───── E0005: wrong arity: expected 1 arguments, found 2
    │ 
    │ Help: this function expects 1 argument(s)
 ───╯

@@ -15,7 +15,7 @@ fn parse_and_infer_module_error(src: &str) -> String {
 }
 
 fn render_error(src: &str) -> String {
-    let wrapped = format!("fun _() = {src}");
+    let wrapped = format!("fun _test() = {src}");
     parse_and_infer_module_error(&wrapped)
 }
 

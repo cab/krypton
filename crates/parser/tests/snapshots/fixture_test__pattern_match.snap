@@ -25,8 +25,7 @@ decls:
                 - 44
           arms:
             - pattern:
-                Var:
-                  name: _
+                Wildcard:
                   span:
                     - 51
                     - 52
@@ -105,8 +104,7 @@ decls:
                 - 115
                 - 125
             - pattern:
-                Var:
-                  name: _
+                Wildcard:
                   span:
                     - 131
                     - 132

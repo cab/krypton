@@ -6,7 +6,7 @@ use krypton_typechecker::scc;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 
 fn parse_expr_via_module(src: &str) -> krypton_parser::ast::Expr {
-    let wrapped = format!("fun _() = {src}");
+    let wrapped = format!("fun _test() = {src}");
     let (module, errors) = parse(&wrapped);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     match &module.decls[0] {

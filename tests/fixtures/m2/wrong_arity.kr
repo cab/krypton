@@ -1,2 +1,2 @@
 # expect: error E0005
-fun _() = { let f = x => x; f(1, 2) }
+fun _test() = { let f = x => x; f(1, 2) }

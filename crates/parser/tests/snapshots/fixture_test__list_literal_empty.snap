@@ -23,13 +23,11 @@ decls:
                 Constructor:
                   name: Cons
                   args:
-                    - Var:
-                        name: _
+                    - Wildcard:
                         span:
                           - 47
                           - 48
-                    - Var:
-                        name: _
+                    - Wildcard:
                         span:
                           - 50
                           - 51

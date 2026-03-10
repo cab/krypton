@@ -79,8 +79,7 @@ decls:
                         span:
                           - 74
                           - 75
-                    - Var:
-                        name: _
+                    - Wildcard:
                         span:
                           - 77
                           - 78

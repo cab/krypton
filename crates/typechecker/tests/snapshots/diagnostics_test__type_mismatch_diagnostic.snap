@@ -3,9 +3,9 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: "render_error(\"if true { 1 } else { \\\"hi\\\" }\")"
 ---
 [E0001] Error: type mismatch: expected Int, found String
-   ╭─[ test.kr:1:11 ]
+   ╭─[ test.kr:1:15 ]
    │
- 1 │ fun _() = if true { 1 } else { "hi" }
-   │           ─────────────┬─────────────  
-   │                        ╰─────────────── E0001: type mismatch: expected Int, found String
+ 1 │ fun _test() = if true { 1 } else { "hi" }
+   │               ─────────────┬─────────────  
+   │                            ╰─────────────── E0001: type mismatch: expected Int, found String
 ───╯

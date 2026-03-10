@@ -50,8 +50,7 @@ decls:
                 Constructor:
                   name: Err
                   args:
-                    - Var:
-                        name: _
+                    - Wildcard:
                         span:
                           - 109
                           - 110
