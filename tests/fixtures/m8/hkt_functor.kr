@@ -1,0 +1,11 @@
+# expect: ok
+type Box[a] = Box(a)
+
+trait Functor[f[_]] {
+  fun fmap(fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl Functor[Box] {
+  fun fmap(fa: Box[a], g: (a) -> b) -> Box[b] =
+    match fa { Box(x) => Box(g(x)) }
+}

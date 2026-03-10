@@ -26,6 +26,9 @@ pub enum Type {
     Fn(Vec<Type>, Box<Type>),
     Var(TypeVarId),
     Named(std::string::String, Vec<Type>),
+    /// Type constructor application where the constructor is a type variable.
+    /// e.g., `f[a]` when `f` is a higher-kinded type variable.
+    App(Box<Type>, Vec<Type>),
     Own(Box<Type>),
     Tuple(Vec<Type>),
 }
@@ -51,6 +54,20 @@ impl fmt::Display for Type {
             Type::Var(id) => write!(f, "{}", var_name(*id)),
             Type::Named(name, args) => {
                 write!(f, "{}", name)?;
+                if !args.is_empty() {
+                    write!(f, "[")?;
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", a)?;
+                    }
+                    write!(f, "]")?;
+                }
+                Ok(())
+            }
+            Type::App(ctor, args) => {
+                write!(f, "{}", ctor)?;
                 if !args.is_empty() {
                     write!(f, "[")?;
                     for (i, a) in args.iter().enumerate() {
@@ -154,6 +171,17 @@ impl Substitution {
             ),
             Type::Named(name, args) => {
                 Type::Named(name.clone(), args.iter().map(|a| self.apply(a)).collect())
+            }
+            Type::App(ctor, args) => {
+                let applied_ctor = self.apply(ctor);
+                let applied_args: Vec<Type> = args.iter().map(|a| self.apply(a)).collect();
+                // If the constructor resolved to a Named type (zero-arg), reduce App(Named(n,[]),args) to Named(n,args)
+                match applied_ctor {
+                    Type::Named(name, ctor_args) if ctor_args.is_empty() => {
+                        Type::Named(name, applied_args)
+                    }
+                    _ => Type::App(Box::new(applied_ctor), applied_args),
+                }
             }
             Type::Own(inner) => Type::Own(Box::new(self.apply(inner))),
             Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| self.apply(e)).collect()),

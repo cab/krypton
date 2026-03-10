@@ -1,0 +1,2 @@
+# expect: error E0012
+fun main(x: Int[String]) -> Int = 42

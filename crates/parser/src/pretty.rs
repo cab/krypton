@@ -54,13 +54,13 @@ impl<'a> Formatter<'a> {
             Decl::DefTrait {
                 visibility,
                 name,
-                type_var,
+                type_param,
                 superclasses,
                 methods,
                 ..
             } => {
                 self.fmt_visibility(visibility);
-                self.fmt_trait(name, type_var, superclasses, methods);
+                self.fmt_trait(name, type_param, superclasses, methods);
             }
             Decl::DefImpl {
                 trait_name,
@@ -231,18 +231,28 @@ impl<'a> Formatter<'a> {
     fn fmt_trait(
         &mut self,
         name: &str,
-        type_var: &str,
+        type_param: &TraitTypeParam,
         superclasses: &[String],
         methods: &[FnDecl],
     ) {
         self.buf.push_str("trait ");
         self.buf.push_str(name);
         self.buf.push('[');
-        self.buf.push_str(type_var);
+        self.buf.push_str(&type_param.name);
+        if type_param.arity > 0 {
+            self.buf.push('[');
+            for i in 0..type_param.arity {
+                if i > 0 {
+                    self.buf.push_str(", ");
+                }
+                self.buf.push('_');
+            }
+            self.buf.push(']');
+        }
         self.buf.push(']');
         if !superclasses.is_empty() {
             self.buf.push_str(" where ");
-            self.buf.push_str(type_var);
+            self.buf.push_str(&type_param.name);
             self.buf.push_str(": ");
             self.buf.push_str(&superclasses.join(", "));
         }

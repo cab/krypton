@@ -18,14 +18,18 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
         Decl::DefTrait {
             visibility,
             name,
-            type_var,
+            type_param,
             superclasses,
             methods,
             ..
         } => Decl::DefTrait {
             visibility: visibility.clone(),
             name: name.clone(),
-            type_var: type_var.clone(),
+            type_param: TraitTypeParam {
+                name: type_param.name.clone(),
+                arity: type_param.arity,
+                span: (0, 0),
+            },
             superclasses: superclasses.clone(),
             methods: methods.iter().map(zero_spans_fn_decl).collect(),
             span: (0, 0),

@@ -108,6 +108,8 @@ pub struct ExportedTraitDef {
     pub name: String,
     pub type_var: String,
     pub type_var_id: u32,
+    /// 0 = kind *, 1 = * -> *, etc.
+    pub type_var_arity: usize,
     pub superclasses: Vec<String>,
     pub methods: Vec<ExportedTraitMethod>,
 }

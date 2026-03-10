@@ -1067,11 +1067,27 @@ where
         .or_not()
         .map(|s| s.unwrap_or_default());
 
+    // Parse trait type parameter: `a` (arity 0) or `f[_]` (arity 1) or `f[_, _]` (arity 2)
+    let trait_type_param = select! { Token::Ident(s) => s.to_string() }
+        .then(
+            just(Token::Underscore)
+                .separated_by(just(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                .or_not(),
+        )
+        .map_with(|(name, holes), e| TraitTypeParam {
+            arity: holes.map(|h| h.len()).unwrap_or(0),
+            name,
+            span: to_span(e.span()),
+        });
+
     let trait_decl = vis.clone()
         .then_ignore(just(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(
-            select! { Token::Ident(s) => s.to_string() }
+            trait_type_param
                 .delimited_by(just(Token::LBracket), just(Token::RBracket)),
         )
         .then(trait_superclasses)
@@ -1083,10 +1099,10 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
-        .map_with(|((((visibility, name), type_var), superclasses), methods), e| Decl::DefTrait {
+        .map_with(|((((visibility, name), type_param), superclasses), methods), e| Decl::DefTrait {
             visibility,
             name,
-            type_var,
+            type_param,
             superclasses,
             methods,
             span: to_span(e.span()),

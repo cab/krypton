@@ -9,6 +9,8 @@ pub struct TraitInfo {
     pub name: String,
     pub type_var: String,
     pub type_var_id: u32,
+    /// 0 = kind *, 1 = * -> *, 2 = * -> * -> *, etc.
+    pub type_var_arity: usize,
     pub superclasses: Vec<String>,
     pub methods: Vec<TraitMethod>,
     pub span: Span,
@@ -80,6 +82,23 @@ impl TraitRegistry {
     }
 
     pub fn find_instance(&self, trait_name: &str, ty: &Type) -> Option<&InstanceInfo> {
+        // For HK traits (arity > 0), match by extracting the outermost type constructor
+        let trait_info = self.traits.get(trait_name);
+        if let Some(info) = trait_info {
+            if info.type_var_arity > 0 {
+                // Extract the type constructor name from the concrete type
+                let ctor_name = match ty {
+                    Type::Named(name, _) => Some(name.as_str()),
+                    _ => None,
+                };
+                if let Some(ctor_name) = ctor_name {
+                    return self.instances.iter().find(|inst| {
+                        inst.trait_name == trait_name && inst.target_type_name == ctor_name
+                    });
+                }
+                return None;
+            }
+        }
         self.instances.iter().find(|inst| {
             inst.trait_name == trait_name && types_match(&inst.target_type, ty)
         })
@@ -161,6 +180,7 @@ pub fn register_builtin_traits(
             name: def.name.to_string(),
             type_var: "a".to_string(),
             type_var_id: tv_id,
+            type_var_arity: 0,
             superclasses,
             methods: vec![TraitMethod {
                 name: def.method.to_string(),
@@ -183,6 +203,7 @@ pub fn register_builtin_traits(
             name: "Neg".to_string(),
             type_var: "a".to_string(),
             type_var_id: tv_id,
+            type_var_arity: 0,
             superclasses: vec![],
             methods: vec![TraitMethod {
                 name: "neg".to_string(),
@@ -203,6 +224,7 @@ pub fn register_builtin_traits(
             name: "Show".to_string(),
             type_var: "a".to_string(),
             type_var_id: tv_id,
+            type_var_arity: 0,
             superclasses: vec![],
             methods: vec![TraitMethod {
                 name: "show".to_string(),
@@ -281,6 +303,14 @@ fn types_match(a: &Type, b: &Type) -> bool {
         (Type::Own(a), Type::Own(b)) => types_match(a, b),
         // own T matches T for instance lookup
         (Type::Own(inner), other) | (other, Type::Own(inner)) => types_match(inner, other),
+        // App reduces to Named for matching purposes
+        (Type::App(ctor, args1), Type::Named(n, args2)) | (Type::Named(n, args2), Type::App(ctor, args1)) => {
+            if let Type::Named(cn, ca) = ctor.as_ref() {
+                ca.is_empty() && cn == n && args1.len() == args2.len() && args1.iter().zip(args2).all(|(a, b)| types_match(a, b))
+            } else {
+                false
+            }
+        }
         _ => false,
     }
 }

@@ -35,6 +35,7 @@ pub enum TypeErrorCode {
     E0504, // Bare import (no selective names)
     E0505, // Cannot re-export name (not in scope or private)
     E0506, // Parse error in imported module
+    E0012, // Kind mismatch (type applied with wrong number of type args)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -69,6 +70,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0504 => write!(f, "E0504"),
             TypeErrorCode::E0505 => write!(f, "E0505"),
             TypeErrorCode::E0506 => write!(f, "E0506"),
+            TypeErrorCode::E0012 => write!(f, "E0012"),
         }
     }
 }
@@ -105,6 +107,7 @@ pub enum TypeError {
     BareImport { path: String },
     PrivateReexport { name: String },
     ModuleParseError { path: String, errors: Vec<String> },
+    KindMismatch { type_name: String, expected_arity: usize, actual_arity: usize },
 }
 
 impl TypeError {
@@ -141,6 +144,7 @@ impl TypeError {
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
+            TypeError::KindMismatch { .. } => TypeErrorCode::E0012,
         }
     }
 
@@ -255,6 +259,9 @@ impl TypeError {
             TypeError::ModuleParseError { path, errors } => {
                 Some(format!("module `{}` has parse errors: {}", path, errors.join("; ")))
             }
+            TypeError::KindMismatch { type_name, expected_arity, actual_arity } => {
+                Some(format!("`{}` expects {} type argument(s) but was given {}", type_name, expected_arity, actual_arity))
+            }
         }
     }
 }
@@ -353,6 +360,9 @@ impl fmt::Display for TypeError {
             TypeError::ModuleParseError { path, .. } => {
                 write!(f, "parse error in imported module `{}`", path)
             }
+            TypeError::KindMismatch { type_name, expected_arity, actual_arity } => {
+                write!(f, "kind mismatch: `{}` expects {} type argument(s) but was given {}", type_name, expected_arity, actual_arity)
+            }
         }
     }
 }
@@ -394,6 +404,7 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
             params.iter().any(|p| occurs_in(var, p, subst)) || occurs_in(var, ret, subst)
         }
         Type::Named(_, args) => args.iter().any(|a| occurs_in(var, a, subst)),
+        Type::App(ctor, args) => occurs_in(var, ctor, subst) || args.iter().any(|a| occurs_in(var, a, subst)),
         Type::Own(inner) => occurs_in(var, inner, subst),
         Type::Tuple(elems) => elems.iter().any(|e| occurs_in(var, e, subst)),
         _ => false,
@@ -489,6 +500,37 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
             if !matches!(inner.as_ref(), Type::Fn(_, _)) =>
         {
             unify(inner, &other, subst)
+        }
+
+        // Type constructor application (HKT)
+        (Type::App(ctor1, args1), Type::App(ctor2, args2)) => {
+            unify(ctor1, ctor2, subst)?;
+            if args1.len() != args2.len() {
+                return Err(TypeError::WrongArity {
+                    expected: args1.len(),
+                    actual: args2.len(),
+                });
+            }
+            for (a, b) in args1.iter().zip(args2.iter()) {
+                unify(a, b, subst)?;
+            }
+            Ok(())
+        }
+        // App(Var(f), args) vs Named(name, args2): bind f to the constructor
+        (Type::App(ctor, args1), Type::Named(name, args2))
+        | (Type::Named(name, args2), Type::App(ctor, args1)) => {
+            // Unify the constructor with the zero-arg Named type (the constructor itself)
+            unify(ctor, &Type::Named(name.clone(), vec![]), subst)?;
+            if args1.len() != args2.len() {
+                return Err(TypeError::WrongArity {
+                    expected: args1.len(),
+                    actual: args2.len(),
+                });
+            }
+            for (a, b) in args1.iter().zip(args2.iter()) {
+                unify(a, b, subst)?;
+            }
+            Ok(())
         }
 
         // Tuple types

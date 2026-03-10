@@ -29,7 +29,12 @@ decls:
   - DefTrait:
       visibility: Private
       name: Eq
-      type_var: a
+      type_param:
+        name: a
+        arity: 0
+        span:
+          - 55
+          - 56
       superclasses: []
       methods:
         - name: eq

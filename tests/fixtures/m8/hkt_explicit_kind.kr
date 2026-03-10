@@ -1,0 +1,4 @@
+# expect: ok
+trait Container[f[_]] {
+  fun wrap(x: a) -> f[a]
+}

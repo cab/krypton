@@ -78,6 +78,11 @@ impl TypeRegistry {
         self.types.contains_key(name) || self.forward_declared.contains(name)
     }
 
+    /// Return the expected number of type parameters for a named type.
+    pub fn expected_arity(&self, name: &str) -> Option<usize> {
+        self.types.get(name).map(|info| info.type_params.len())
+    }
+
     /// Check if a name is a constructor (record or sum variant).
     pub fn is_constructor(&self, name: &str) -> bool {
         for info in self.types.values() {
@@ -115,11 +120,26 @@ pub fn resolve_type_expr(
             }
         }
         TypeExpr::App { name, args, .. } => {
-            // Validate the type name
-            resolve_named(name, type_param_map, registry)?;
             let mut resolved_args = Vec::new();
             for a in args {
                 resolved_args.push(resolve_type_expr(a, type_param_map, registry)?);
+            }
+            // If the name is a type parameter (HKT variable), produce Type::App
+            if let Some(&var_id) = type_param_map.get(name) {
+                return Ok(Type::App(Box::new(Type::Var(var_id)), resolved_args));
+            }
+            // Validate the type name
+            resolve_named(name, type_param_map, registry)?;
+            // Kind check: verify arity matches
+            let expected = builtin_arity(name).or_else(|| registry.expected_arity(name));
+            if let Some(expected) = expected {
+                if expected != resolved_args.len() {
+                    return Err(TypeError::KindMismatch {
+                        type_name: name.clone(),
+                        expected_arity: expected,
+                        actual_arity: resolved_args.len(),
+                    });
+                }
             }
             Ok(Type::Named(name.clone(), resolved_args))
         }
@@ -141,6 +161,14 @@ pub fn resolve_type_expr(
             }
             Ok(Type::Tuple(elem_types))
         }
+    }
+}
+
+/// Return the arity of builtin types (those not in the registry).
+fn builtin_arity(name: &str) -> Option<usize> {
+    match name {
+        "Int" | "Float" | "Bool" | "String" | "Unit" | "Object" => Some(0),
+        _ => None,
     }
 }
 

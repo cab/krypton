@@ -77,6 +77,12 @@ fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
                 free_vars_into(a, out);
             }
         }
+        Type::App(ctor, args) => {
+            free_vars_into(ctor, out);
+            for a in args {
+                free_vars_into(a, out);
+            }
+        }
         Type::Own(inner) => free_vars_into(inner, out),
         Type::Tuple(elems) => {
             for e in elems {
@@ -119,6 +125,52 @@ fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> SpannedTypeErro
     SpannedTypeError { error, span, note: None, secondary_span: None }
 }
 
+/// Collect lowercase type variable names from a trait method's param/return type annotations.
+fn collect_type_var_names_from_method(method: &krypton_parser::ast::FnDecl) -> Vec<String> {
+    use krypton_parser::ast::TypeExpr;
+    let mut names = Vec::new();
+    fn collect_from_texpr(texpr: &TypeExpr, names: &mut Vec<String>) {
+        match texpr {
+            TypeExpr::Var { name, .. } => {
+                if !names.contains(name) {
+                    names.push(name.clone());
+                }
+            }
+            TypeExpr::App { name, args, .. } => {
+                // The head might be a type variable (lowercase)
+                if name.starts_with(|c: char| c.is_ascii_lowercase()) && !names.contains(name) {
+                    names.push(name.clone());
+                }
+                for a in args {
+                    collect_from_texpr(a, names);
+                }
+            }
+            TypeExpr::Named { .. } => {}
+            TypeExpr::Fn { params, ret, .. } => {
+                for p in params {
+                    collect_from_texpr(p, names);
+                }
+                collect_from_texpr(ret, names);
+            }
+            TypeExpr::Own { inner, .. } => collect_from_texpr(inner, names),
+            TypeExpr::Tuple { elements, .. } => {
+                for e in elements {
+                    collect_from_texpr(e, names);
+                }
+            }
+        }
+    }
+    for p in &method.params {
+        if let Some(ref ty) = p.ty {
+            collect_from_texpr(ty, &mut names);
+        }
+    }
+    if let Some(ref ret) = method.return_type {
+        collect_from_texpr(ret, &mut names);
+    }
+    names
+}
+
 /// Recursively replace Type::Var(old_id) with Type::Var(new_id) in a type tree.
 fn remap_type_var(ty: &Type, old_id: u32, new_id: u32) -> Type {
     match ty {
@@ -129,6 +181,10 @@ fn remap_type_var(ty: &Type, old_id: u32, new_id: u32) -> Type {
         ),
         Type::Named(name, args) => Type::Named(
             name.clone(),
+            args.iter().map(|a| remap_type_var(a, old_id, new_id)).collect(),
+        ),
+        Type::App(ctor, args) => Type::App(
+            Box::new(remap_type_var(ctor, old_id, new_id)),
             args.iter().map(|a| remap_type_var(a, old_id, new_id)).collect(),
         ),
         Type::Tuple(elems) => Type::Tuple(
@@ -1282,6 +1338,17 @@ fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type
             let new_args = args.iter().map(|a| substitute_type_var(a, var_id, replacement)).collect();
             Type::Named(name.clone(), new_args)
         }
+        Type::App(ctor, args) => {
+            let new_ctor = substitute_type_var(ctor, var_id, replacement);
+            let new_args: Vec<Type> = args.iter().map(|a| substitute_type_var(a, var_id, replacement)).collect();
+            // If ctor was the trait type var and replacement is a Named type, reduce
+            match &new_ctor {
+                Type::Named(name, ctor_args) if ctor_args.is_empty() => {
+                    Type::Named(name.clone(), new_args)
+                }
+                _ => Type::App(Box::new(new_ctor), new_args),
+            }
+        }
         Type::Own(inner) => Type::Own(Box::new(substitute_type_var(inner, var_id, replacement))),
         Type::Tuple(elems) => {
             let new_elems = elems.iter().map(|e| substitute_type_var(e, var_id, replacement)).collect();
@@ -2116,6 +2183,7 @@ pub(crate) fn infer_module_inner(
             name: trait_def.name.clone(),
             type_var: trait_def.type_var.clone(),
             type_var_id: new_tv_id,
+            type_var_arity: trait_def.type_var_arity,
             superclasses: trait_def.superclasses.clone(),
             methods: trait_methods,
             span: (0, 0),
@@ -2125,37 +2193,54 @@ pub(crate) fn infer_module_inner(
     // Second pass: process DefTrait declarations
     let mut exported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
     for decl in &module.decls {
-        if let Decl::DefTrait { visibility, name, type_var, superclasses, methods, span } = decl {
+        if let Decl::DefTrait { visibility, name, type_param, superclasses, methods, span } = decl {
             // Skip if this trait is already registered as a built-in
             if trait_registry.lookup_trait(name).is_some() {
                 continue;
             }
             let tv_id = gen.fresh();
+            let type_var_arity = type_param.arity;
             let mut type_param_map = HashMap::new();
-            type_param_map.insert(type_var.clone(), tv_id);
+            type_param_map.insert(type_param.name.clone(), tv_id);
 
+            // For HK trait methods, collect additional method-local type vars
+            // by scanning method signatures for unbound lowercase type var names
             let mut trait_methods = Vec::new();
             let mut exported_methods = Vec::new();
             for method in methods {
+                // Collect method-local type variable names from params and return type
+                let mut method_type_param_map = type_param_map.clone();
+                let method_type_var_names = collect_type_var_names_from_method(method);
+                let mut method_tv_ids = Vec::new();
+                for tv_name in &method_type_var_names {
+                    if !method_type_param_map.contains_key(tv_name) {
+                        let mv_id = gen.fresh();
+                        method_type_param_map.insert(tv_name.clone(), mv_id);
+                        method_tv_ids.push(mv_id);
+                    }
+                }
+
                 let mut param_types = Vec::new();
                 for p in &method.params {
                     if let Some(ref ty_expr) = p.ty {
-                        param_types.push(type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
+                        param_types.push(type_registry::resolve_type_expr(ty_expr, &method_type_param_map, &registry)
                             .map_err(|e| spanned(e, method.span))?);
                     } else {
                         param_types.push(Type::Var(gen.fresh()));
                     }
                 }
                 let return_type = if let Some(ref ret_expr) = method.return_type {
-                    type_registry::resolve_type_expr(ret_expr, &type_param_map, &registry)
+                    type_registry::resolve_type_expr(ret_expr, &method_type_param_map, &registry)
                         .map_err(|e| spanned(e, method.span))?
                 } else {
                     Type::Var(gen.fresh())
                 };
 
-                // Bind the method as a polymorphic function: forall a. fn(params) -> ret
+                // Bind the method as a polymorphic function: forall tv_id, method_tvs. fn(params) -> ret
                 let fn_ty = Type::Fn(param_types.clone(), Box::new(return_type.clone()));
-                let scheme = TypeScheme { vars: vec![tv_id], ty: fn_ty };
+                let mut all_vars = vec![tv_id];
+                all_vars.extend_from_slice(&method_tv_ids);
+                let scheme = TypeScheme { vars: all_vars, ty: fn_ty };
                 env.bind(method.name.clone(), scheme);
 
                 exported_methods.push(ExportedTraitMethod {
@@ -2173,8 +2258,9 @@ pub(crate) fn infer_module_inner(
 
             trait_registry.register_trait(TraitInfo {
                 name: name.clone(),
-                type_var: type_var.clone(),
+                type_var: type_param.name.clone(),
                 type_var_id: tv_id,
+                type_var_arity,
                 superclasses: superclasses.clone(),
                 methods: trait_methods,
                 span: *span,
@@ -2183,8 +2269,9 @@ pub(crate) fn infer_module_inner(
             exported_trait_defs.push(ExportedTraitDef {
                 visibility: visibility.clone(),
                 name: name.clone(),
-                type_var: type_var.clone(),
+                type_var: type_param.name.clone(),
                 type_var_id: tv_id,
+                type_var_arity,
                 superclasses: superclasses.clone(),
                 methods: exported_methods,
             });
@@ -2586,12 +2673,21 @@ pub(crate) fn infer_module_inner(
                 }).collect();
                 let _concrete_ret_type = substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
 
+                // Build type_param_map for impl method annotations
+                // (needed for type vars in HKT method annotations like `Box[a]`)
+                let mut impl_method_tpm = HashMap::new();
+                let method_tvn = collect_type_var_names_from_method(method);
+                for tv_name in &method_tvn {
+                    if !impl_method_tpm.contains_key(tv_name) {
+                        impl_method_tpm.insert(tv_name.clone(), gen.fresh());
+                    }
+                }
+
                 // Validate user-provided type annotations against the trait signature
-                let empty_map = HashMap::new();
                 for (i, p) in method.params.iter().enumerate() {
                     if let Some(ref ty_expr) = p.ty {
                         if i < concrete_param_types.len() {
-                            let annotated_ty = type_registry::resolve_type_expr(ty_expr, &empty_map, &registry)
+                            let annotated_ty = type_registry::resolve_type_expr(ty_expr, &impl_method_tpm, &registry)
                                 .map_err(|e| spanned(e, p.span))?;
                             unify(&annotated_ty, &concrete_param_types[i], &mut subst)
                                 .map_err(|e| spanned(e, p.span))?;
@@ -2600,7 +2696,7 @@ pub(crate) fn infer_module_inner(
                 }
                 if let Some(ref ret_ty_expr) = method.return_type {
                     let concrete_ret = substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
-                    let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &empty_map, &registry)
+                    let annotated_ret = type_registry::resolve_type_expr(ret_ty_expr, &impl_method_tpm, &registry)
                         .map_err(|e| spanned(e, method.span))?;
                     unify(&annotated_ret, &concrete_ret, &mut subst)
                         .map_err(|e| spanned(e, method.span))?;

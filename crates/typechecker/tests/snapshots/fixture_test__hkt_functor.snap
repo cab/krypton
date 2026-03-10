@@ -1,0 +1,6 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+Box: forall f. fn(f) -> Box[f]
+Functor$Box$fmap: fn(Box[w], fn(w) -> y) -> own Box[y]
