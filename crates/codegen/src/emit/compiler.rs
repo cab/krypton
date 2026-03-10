@@ -331,7 +331,7 @@ pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<String, TraitDispatchInfo>,
     pub(super) instance_singletons: HashMap<(String, String), InstanceSingletonInfo>,
     pub(super) trait_method_map: HashMap<String, String>,
-    pub(super) fn_constraints: HashMap<String, Vec<String>>,
+    pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) dict_locals: HashMap<String, u16>,
     pub(super) parameterized_instances: HashMap<(String, String), ParameterizedInstanceInfo>,
 }
@@ -1710,12 +1710,11 @@ impl Compiler {
 
         // Push dict args first for constrained functions
         if !constraint_traits.is_empty() {
-            for trait_name in &constraint_traits {
-                // Determine concrete type from the first user arg
-                // (same logic as trait method dispatch)
-                if !args.is_empty() {
-                    let first_arg_ty = &args[0].ty;
-                    let is_type_var = matches!(first_arg_ty, Type::Var(_));
+            for (trait_name, param_idx) in &constraint_traits {
+                // Determine concrete type from the constrained parameter
+                if let Some(target_arg) = args.get(*param_idx) {
+                    let target_arg_ty = &target_arg.ty;
+                    let is_type_var = matches!(target_arg_ty, Type::Var(_));
                     if is_type_var {
                         // Forward our own dict local
                         if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
@@ -1723,7 +1722,7 @@ impl Compiler {
                             self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
                         }
                     } else {
-                        let type_name = type_to_name(first_arg_ty);
+                        let type_name = type_to_name(target_arg_ty);
                         if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
                             let field_ref = singleton.instance_field_ref;
                             self.emit(Instruction::Getstatic(field_ref));
@@ -1742,13 +1741,13 @@ impl Compiler {
                             self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
                             self.emit(Instruction::Dup);
                             self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
-                            for (subdict_trait, param_idx) in &param_info.subdict_traits {
-                                let type_arg = match first_arg_ty {
-                                    Type::Named(_, type_args) => &type_args[*param_idx],
+                            for (subdict_trait, sub_param_idx) in &param_info.subdict_traits {
+                                let type_arg = match target_arg_ty {
+                                    Type::Named(_, type_args) => &type_args[*sub_param_idx],
                                     Type::Own(inner) => {
-                                        if let Type::Named(_, type_args) = inner.as_ref() { &type_args[*param_idx] } else { first_arg_ty }
+                                        if let Type::Named(_, type_args) = inner.as_ref() { &type_args[*sub_param_idx] } else { target_arg_ty }
                                     }
-                                    _ => first_arg_ty,
+                                    _ => target_arg_ty,
                                 };
                                 let sub_type_name = type_to_name(type_arg);
                                 if let Some(singleton) = self.traits.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
@@ -1766,6 +1765,10 @@ impl Compiler {
                                 self.frame.pop_type();
                             }
                             self.frame.pop_type(); // dup
+                        } else {
+                            return Err(CodegenError::UndefinedVariable(
+                                format!("no instance of {trait_name} for {type_name}"),
+                            ));
                         }
                     }
                 }
@@ -3249,7 +3252,7 @@ impl Compiler {
         let constraint_traits = self.traits.fn_constraints.get(&decl.name).cloned().unwrap_or_default();
         let num_dict_params = constraint_traits.len();
         let mut fn_params = Vec::new();
-        for trait_name in &constraint_traits {
+        for (trait_name, _) in &constraint_traits {
             let slot = self.next_local;
             let jvm_ty = JvmType::StructRef(self.refs.object_class);
             self.traits.dict_locals.insert(trait_name.clone(), slot);

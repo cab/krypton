@@ -1275,7 +1275,8 @@ fn detect_trait_constraints(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, String>,
     subst: &Substitution,
-    constraints: &mut Vec<String>,
+    param_type_var_map: &HashMap<TypeVarId, usize>,
+    constraints: &mut Vec<(String, usize)>,
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -1287,8 +1288,9 @@ fn detect_trait_constraints(
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
-                            if matches!(concrete_ty, Type::Var(_)) {
-                                constraints.push(trait_name.clone());
+                            if let Type::Var(v) = concrete_ty {
+                                let param_idx = param_type_var_map.get(&v).copied().unwrap_or(0);
+                                constraints.push((trait_name.clone(), param_idx));
                             }
                         }
                     }
@@ -1343,7 +1345,7 @@ fn check_trait_instances(
     trait_method_map: &HashMap<String, String>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_constraints: &HashMap<String, Vec<String>>,
+    fn_constraints: &HashMap<String, Vec<(String, usize)>>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -1371,11 +1373,11 @@ fn check_trait_instances(
                     }
                     // Check calls to constrained functions (e.g., imported `println` requires Show)
                     if let Some(constraints) = fn_constraints.get(name.as_str()) {
-                        if let Some(first_arg) = args.first() {
-                            let arg_ty = subst.apply(&first_arg.ty);
-                            let concrete_ty = strip_own(&arg_ty);
-                            if !matches!(concrete_ty, Type::Var(_)) {
-                                for trait_name in constraints {
+                        for (trait_name, param_idx) in constraints {
+                            if let Some(arg) = args.get(*param_idx) {
+                                let arg_ty = subst.apply(&arg.ty);
+                                let concrete_ty = strip_own(&arg_ty);
+                                if !matches!(concrete_ty, Type::Var(_)) {
                                     if trait_registry.find_instance(trait_name, &concrete_ty).is_none() {
                                         return Err(spanned(
                                             TypeError::NoInstance {
@@ -1614,7 +1616,7 @@ pub(crate) fn infer_module_inner(
     // Track imported type info for pub use re-exports: type_name → (source_module_path, visibility)
     let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
     // Track fn_constraints from imported modules for cross-module constraint checking
-    let mut imported_fn_constraints: HashMap<String, Vec<String>> = HashMap::new();
+    let mut imported_fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
             // Check for circular imports
@@ -2509,10 +2511,21 @@ pub(crate) fn infer_module_inner(
     functions.extend(derived_impl_functions);
 
     // Detect constrained functions: functions that call trait methods on type variables
-    let mut fn_constraints: HashMap<String, Vec<String>> = HashMap::new();
+    let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
     for func in &functions {
+        // Build param_type_var_map: type var id → param index for this function
+        let mut param_type_var_map: HashMap<TypeVarId, usize> = HashMap::new();
+        if let Some((_, scheme)) = results.iter().find(|(n, _)| n == &func.name) {
+            if let Type::Fn(param_types, _) = &scheme.ty {
+                for (idx, pty) in param_types.iter().enumerate() {
+                    if let Type::Var(v) = pty {
+                        param_type_var_map.insert(*v, idx);
+                    }
+                }
+            }
+        }
         let mut constraints = Vec::new();
-        detect_trait_constraints(&func.body, &trait_method_map, &subst, &mut constraints);
+        detect_trait_constraints(&func.body, &trait_method_map, &subst, &param_type_var_map, &mut constraints);
         if !constraints.is_empty() {
             constraints.sort();
             constraints.dedup();
@@ -2595,6 +2608,33 @@ pub(crate) fn infer_module_inner(
                                 }
                                 sum_decls.push((td.name, td.type_params, variants));
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Inject imported sum types into sum_decls for codegen
+    {
+        let existing_type_names: HashSet<String> = sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
+        for (type_name, (source_path, vis)) in &imported_type_info {
+            if existing_type_names.contains(type_name) || !matches!(vis, Visibility::PubOpen) {
+                continue;
+            }
+            if let Some(source) = resolver.resolve(source_path) {
+                let (imported_mod, _) = krypton_parser::parser::parse(&source);
+                for decl in imported_mod.decls {
+                    if let Decl::DefType(td) = decl {
+                        if td.name == *type_name {
+                            if let TypeDeclKind::Sum { variants } = td.kind {
+                                type_provenance.insert(td.name.clone(), source_path.clone());
+                                for v in &variants {
+                                    type_provenance.insert(v.name.clone(), source_path.clone());
+                                }
+                                sum_decls.push((td.name, td.type_params, variants));
+                            }
+                            break;
                         }
                     }
                 }
