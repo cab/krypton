@@ -3,4 +3,4 @@ source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
 Pair: forall f g. fn(f, g) -> Pair[f, g]
-Bifunctor$Pair$bimap: fn(Pair[c1, d1], fn(c1) -> g1, fn(d1) -> h1) -> own Pair[g1, h1]
+Bifunctor$Pair$bimap: fn(Pair[d1, e1], fn(d1) -> h1, fn(e1) -> i1) -> own Pair[h1, i1]

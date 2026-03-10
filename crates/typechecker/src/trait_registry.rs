@@ -237,6 +237,27 @@ pub fn register_builtin_traits(
         env.bind("show".to_string(), TypeScheme { vars: vec![tv_id], ty: fn_ty });
     }
 
+    // Resource: close(~a) -> Unit
+    {
+        let tv_id = gen.fresh();
+        let type_var = Type::Var(tv_id);
+        let _ = registry.register_trait(TraitInfo {
+            name: "Resource".to_string(),
+            type_var: "a".to_string(),
+            type_var_id: tv_id,
+            type_var_arity: 0,
+            superclasses: vec![],
+            methods: vec![TraitMethod {
+                name: "close".to_string(),
+                param_types: vec![Type::Own(Box::new(type_var.clone()))],
+                return_type: Type::Unit,
+            }],
+            span: builtin_span,
+        });
+        let fn_ty = Type::Fn(vec![Type::Own(Box::new(type_var))], Box::new(Type::Unit));
+        env.bind("close".to_string(), TypeScheme { vars: vec![tv_id], ty: fn_ty });
+    }
+
     // Register built-in instances
     struct BuiltinInstance {
         trait_name: &'static str,

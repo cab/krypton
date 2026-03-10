@@ -4,4 +4,4 @@ expression: snapshot
 ---
 Box: forall f. fn(f) -> Box[f]
 main: fn() -> Int
-Functor$Box$fmap: fn(Box[h1], fn(h1) -> j1) -> own Box[j1]
+Functor$Box$fmap: fn(Box[i1], fn(i1) -> k1) -> own Box[k1]

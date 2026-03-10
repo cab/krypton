@@ -1,0 +1,26 @@
+# expect: output "a\nb\nclose_b\nclose_a"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type HandleA = MkHandleA(Int)
+type HandleB = MkHandleB(Int)
+
+trait Resource[a] {
+    fun close(x: ~a) -> Unit
+}
+
+impl Resource[HandleA] {
+    fun close(h: ~HandleA) -> Unit = println("close_a")
+}
+
+impl Resource[HandleB] {
+    fun close(h: ~HandleB) -> Unit = println("close_b")
+}
+
+fun main() -> Unit = {
+    let a: ~HandleA = MkHandleA(1)
+    println("a")
+    let b: ~HandleB = MkHandleB(2)
+    println("b")
+}

@@ -3,5 +3,5 @@ source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
 Box: forall f. fn(f) -> Box[f]
-Functor$Box$fmap: fn(Box[y], fn(y) -> a1) -> own Box[a1]
-Container$Box$wrap: fn(s) -> own Box[s]
+Functor$Box$fmap: fn(Box[z], fn(z) -> b1) -> own Box[b1]
+Container$Box$wrap: fn(t) -> own Box[t]

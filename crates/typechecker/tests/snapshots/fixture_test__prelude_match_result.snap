@@ -2,5 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-handle: forall t. fn(Result[t, own Int]) -> Int
+handle: forall u. fn(Result[u, own Int]) -> Int
 main: fn() -> Int

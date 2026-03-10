@@ -1,0 +1,12 @@
+# expect: output "done"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Box = MkBox(Int)
+
+fun main() -> Unit = {
+    let b: ~Box = MkBox(1)
+    let b: ~Box = MkBox(2)
+    println("done")
+}

@@ -46,13 +46,13 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
             }
         } else if let Some(text) = rest.strip_prefix("output") {
             let text = text.trim();
-            // Strip surrounding quotes if present
+            // Strip surrounding quotes if present, then unescape \n
             let text = if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
-                &text[1..text.len() - 1]
+                text[1..text.len() - 1].replace("\\n", "\n")
             } else {
-                text
+                text.to_string()
             };
-            expectations.push(Expectation::Output(text.to_string()));
+            expectations.push(Expectation::Output(text));
         }
     }
     expectations

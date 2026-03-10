@@ -4,4 +4,4 @@ expression: snapshot
 ---
 Some: forall f. fn(f) -> Option[f]
 None: forall f. Option[f]
-unwrap_or: forall q. fn(Option[q], q) -> q
+unwrap_or: forall r. fn(Option[r], r) -> r

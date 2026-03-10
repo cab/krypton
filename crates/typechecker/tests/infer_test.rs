@@ -262,7 +262,7 @@ fn infer_sum_constructor() {
         @"
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
-    wrap: forall p. fn(p) -> Option[p]
+    wrap: forall q. fn(q) -> Option[q]
     "
     );
 }
@@ -276,7 +276,7 @@ fn infer_bare_variant() {
         @"
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
-    none: forall q. fn() -> Option[q]
+    none: forall r. fn() -> Option[r]
     "
     );
 }
@@ -298,9 +298,9 @@ fn infer_scc_generalization_order() {
             "fun id(x) = x\nfun f(n) = id(n)\nfun g(s) = id(s)"
         ),
         @"
-    id: forall o. fn(o) -> o
-    f: forall u. fn(u) -> u
-    g: forall z. fn(z) -> z
+    id: forall p. fn(p) -> p
+    f: forall v. fn(v) -> v
+    g: forall a1. fn(a1) -> a1
     "
     );
 }
@@ -370,7 +370,7 @@ fn infer_match_option() {
         @"
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
-    unwrap_or: forall q. fn(Option[q], q) -> q
+    unwrap_or: forall r. fn(Option[r], r) -> r
     "
     );
 }
@@ -391,7 +391,7 @@ fn infer_match_variable() {
         infer_module_types(
             "fun identity(x) = match x { y => y }"
         ),
-        @"identity: forall o. fn(o) -> o"
+        @"identity: forall p. fn(p) -> p"
     );
 }
 
@@ -425,7 +425,7 @@ fn infer_tuple_in_match() {
         infer_module_types(
             "fun first(p) = match p { (a, b) => a }"
         ),
-        @"first: forall r s. fn((r, s)) -> r"
+        @"first: forall s t. fn((s, t)) -> s"
     );
 }
 
@@ -440,7 +440,7 @@ fn infer_tuple_polymorphic() {
         infer_module_types(
             "fun swap(p) = match p { (a, b) => (b, a) }"
         ),
-        @"swap: forall r s. fn((r, s)) -> (s, r)"
+        @"swap: forall s t. fn((s, t)) -> (t, s)"
     );
 }
 
@@ -450,7 +450,7 @@ fn infer_match_wrong_constructor() {
         infer_module_types(
             "type Color = Red | Green | Blue\ntype Option[a] = Some(a) | None\nfun bad(c) = match Red { Some(x) => x, _ => 0 }"
         ),
-        @"TypeError: type mismatch: expected Color, found Option[s]"
+        @"TypeError: type mismatch: expected Color, found Option[t]"
     );
 }
 
@@ -487,7 +487,7 @@ fn test_exhaustive_wildcard_covers_all() {
         @"
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
-    test: forall p. fn(p) -> Int
+    test: forall q. fn(q) -> Int
     "
     );
 }
@@ -551,7 +551,7 @@ fn explicit_type_param_generalized() {
     // fun view[t](x: ~t) -> t should produce forall t. fn(own t) -> t
     insta::assert_snapshot!(
         infer_module_fn("fun view[t](x: ~t) -> t = x", "view"),
-        @"forall o. fn(own o) -> o"
+        @"forall p. fn(own p) -> p"
     );
 }
 
@@ -560,7 +560,7 @@ fn explicit_type_param_identity() {
     // fun id[a](x: a) -> a should produce forall a. fn(a) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall o. fn(o) -> o"
+        @"forall p. fn(p) -> p"
     );
 }
 
@@ -569,7 +569,7 @@ fn explicit_type_param_multiple() {
     // fun const[a, b](x: a, y: b) -> a should produce forall a b. fn(a, b) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun const_[a, b](x: a, y: b) -> a = x", "const_"),
-        @"forall o p. fn(o, p) -> o"
+        @"forall p q. fn(p, q) -> p"
     );
 }
 
@@ -578,7 +578,7 @@ fn no_type_params_still_generalizes() {
     // Unannotated identity should still generalize via HM
     insta::assert_snapshot!(
         infer_module_fn("fun id(x) = x", "id"),
-        @"forall o. fn(o) -> o"
+        @"forall p. fn(p) -> p"
     );
 }
 
@@ -620,7 +620,7 @@ fn typo_in_type_name() {
 fn type_param_not_unknown() {
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall o. fn(o) -> o"
+        @"forall p. fn(p) -> p"
     );
 }
 

@@ -276,6 +276,9 @@ fn compile_module_inner(
 
     let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
 
+    // Pass auto-close info from typechecker
+    compiler.auto_close = typed_module.auto_close.clone();
+
     // Register java/lang/Object in class_descriptors for erased type variables
     compiler.types
         .class_descriptors

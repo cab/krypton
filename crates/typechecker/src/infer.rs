@@ -2837,6 +2837,9 @@ pub(crate) fn infer_module_inner(
     // Run affine ownership verification after successful inference
     crate::ownership::check_ownership(module, &results, &registry, &let_own_spans, &lambda_own_captures, &struct_update_info)?;
 
+    // Compute auto-close info for Resource bindings
+    let auto_close = crate::auto_close::compute_auto_close(&functions, &results, &trait_registry);
+
     instance_defs.extend(derived_instance_defs);
 
     // Collect struct declarations from AST for codegen
@@ -2939,6 +2942,7 @@ pub(crate) fn infer_module_inner(
         reexported_type_names,
         reexported_type_visibility,
         exported_trait_defs,
+        auto_close,
     })
 }
 

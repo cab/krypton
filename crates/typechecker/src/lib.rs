@@ -1,3 +1,4 @@
+pub mod auto_close;
 pub mod diagnostics;
 pub mod exhaustiveness;
 pub mod infer;

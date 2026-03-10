@@ -4,4 +4,4 @@ expression: snapshot
 ---
 Some: forall f. fn(f) -> Option[f]
 None: forall f. Option[f]
-map_option: forall x y. fn(Option[x], fn(x) -> y) -> Option[y]
+map_option: forall y z. fn(Option[y], fn(y) -> z) -> Option[z]

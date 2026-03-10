@@ -4,6 +4,22 @@ use crate::types::{Substitution, Type, TypeScheme};
 use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant, Visibility};
 
 #[derive(Debug, Clone)]
+pub struct AutoCloseBinding {
+    pub name: String,
+    pub type_name: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AutoCloseInfo {
+    /// Function end: fn_name → bindings to close (LIFO order)
+    pub fn_exits: HashMap<String, Vec<AutoCloseBinding>>,
+    /// Shadow point: let_span → old binding to close before new binding takes effect
+    pub shadow_closes: HashMap<Span, AutoCloseBinding>,
+    /// QuestionMark early return: qm_span → bindings to close before early return (LIFO order)
+    pub early_returns: HashMap<Span, Vec<AutoCloseBinding>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum TypedPattern {
     Wildcard { ty: Type, span: Span },
     Var { name: String, ty: Type, span: Span },
@@ -168,6 +184,8 @@ pub struct TypedModule {
     pub reexported_type_visibility: HashMap<String, Visibility>,
     /// Trait definitions exported for cross-module use.
     pub exported_trait_defs: Vec<ExportedTraitDef>,
+    /// Auto-close info for Resource bindings.
+    pub auto_close: AutoCloseInfo,
 }
 
 pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {

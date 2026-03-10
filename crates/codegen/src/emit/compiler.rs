@@ -367,6 +367,7 @@ pub(super) struct Compiler {
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
     pub(super) traits: TraitState,
     pub(super) vec_info: Option<VecInfo>,
+    pub(super) auto_close: krypton_typechecker::typed_ast::AutoCloseInfo,
 }
 
 impl Compiler {
@@ -480,6 +481,7 @@ impl Compiler {
                 parameterized_instances: HashMap::new(),
             },
             vec_info: None,
+            auto_close: krypton_typechecker::typed_ast::AutoCloseInfo::default(),
         };
 
         Ok((compiler, this_class, object_class))
@@ -563,7 +565,7 @@ impl Compiler {
             TypedExprKind::Lit(value) => self.compile_lit(value),
             TypedExprKind::BinaryOp { op, lhs, rhs } => self.compile_binop(op, lhs, rhs),
             TypedExprKind::If { cond, then_, else_ } => self.compile_if(cond, then_, else_, in_tail),
-            TypedExprKind::Let { name, value, body } => self.compile_let(name, value, body, in_tail),
+            TypedExprKind::Let { name, value, body } => self.compile_let(name, value, body, in_tail, expr.span),
             TypedExprKind::Var(name) => self.compile_var(name),
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
@@ -575,7 +577,7 @@ impl Compiler {
             TypedExprKind::Match { scrutinee, arms } => self.compile_match(scrutinee, arms, in_tail),
             TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
             TypedExprKind::Lambda { params, body } => self.compile_lambda(params, body, &expr.ty),
-            TypedExprKind::QuestionMark { expr: inner, is_option } => self.compile_question_mark(inner, *is_option, &expr.ty),
+            TypedExprKind::QuestionMark { expr: inner, is_option } => self.compile_question_mark(inner, *is_option, &expr.ty, expr.span),
             TypedExprKind::VecLit(elems) => self.compile_vec_lit(elems),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
@@ -1062,11 +1064,44 @@ impl Compiler {
         value: &TypedExpr,
         body: &Option<Box<TypedExpr>>,
         in_tail: bool,
+        span: krypton_parser::ast::Span,
     ) -> Result<JvmType, CodegenError> {
         // Check if the value is a lambda — record its type info for higher-order calls
         let is_lambda = matches!(value.kind, TypedExprKind::Lambda { .. });
 
+        // Emit shadow close for old binding before compiling new value
+        // (shadow close happens after new value is on stack but before store)
+        let shadow_close = self.auto_close.shadow_closes.get(&span).cloned();
+
         let ty = self.compile_expr(value, false)?;
+
+        // Emit shadow close after evaluating value but before storing
+        if let Some(binding) = shadow_close {
+            // Save the new value to a temp slot to preserve it while we close the old binding
+            let temp_slot = self.next_local;
+            self.next_local += 1;
+            let temp_store = match ty {
+                JvmType::Long | JvmType::Double => unreachable!("resource is always ref"),
+                JvmType::Int => Instruction::Istore(temp_slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(temp_slot as u8),
+            };
+            self.emit(temp_store.clone());
+            self.pop_jvm_type(ty);
+            let vtypes = self.jvm_type_to_vtypes(ty);
+            self.frame.local_types.extend(vtypes);
+
+            self.emit_auto_close(&binding)?;
+
+            // Reload the new value
+            let temp_load = match ty {
+                JvmType::Long | JvmType::Double => unreachable!("resource is always ref"),
+                JvmType::Int => Instruction::Iload(temp_slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(temp_slot as u8),
+            };
+            self.emit(temp_load);
+            self.push_jvm_type(ty);
+        }
+
         let slot = self.next_local;
         let slot_size = match ty {
             JvmType::Long | JvmType::Double => 2,
@@ -1866,6 +1901,7 @@ impl Compiler {
         inner: &TypedExpr,
         is_option: bool,
         result_ty: &Type,
+        span: krypton_parser::ast::Span,
     ) -> Result<JvmType, CodegenError> {
         // Compile inner expression — produces a StructRef for the sum type (Result or Option)
         let inner_type = self.compile_expr(inner, false)?;
@@ -1952,10 +1988,17 @@ impl Compiler {
         let goto_idx = self.code.len();
         self.emit(Instruction::Goto(0)); // placeholder
 
-        // Early return branch: load temp and Areturn
+        // Early return branch: close live resources, load temp and Areturn
         let early_return_start = self.code.len() as u16;
         self.frame.stack_types = stack_at_branch;
         self.frame.record_frame(early_return_start);
+
+        // Auto-close live resources before early return
+        if let Some(bindings) = self.auto_close.early_returns.get(&span).cloned() {
+            for binding in &bindings {
+                self.emit_auto_close(binding)?;
+            }
+        }
 
         self.emit(Instruction::Aload(temp_slot as u8));
         self.frame.push_type(VerificationType::Object {
@@ -3237,6 +3280,39 @@ impl Compiler {
         Ok(last_type)
     }
 
+    /// Emit a close() call for an auto-close binding via the Resource trait dispatch.
+    fn emit_auto_close(&mut self, binding: &krypton_typechecker::typed_ast::AutoCloseBinding) -> Result<(), CodegenError> {
+        let key = ("Resource".to_string(), binding.type_name.clone());
+        let singleton = self.traits.instance_singletons.get(&key)
+            .ok_or_else(|| CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name)))?;
+        let instance_field_ref = singleton.instance_field_ref;
+        let dispatch = self.traits.trait_dispatch.get("Resource")
+            .ok_or_else(|| CodegenError::TypeError("Resource trait dispatch not found".into()))?;
+        let interface_class = dispatch.interface_class;
+        let method_ref = *dispatch.method_refs.get("close")
+            .ok_or_else(|| CodegenError::TypeError("close method ref not found".into()))?;
+
+        // getstatic Resource$Type.INSTANCE
+        self.emit(Instruction::Getstatic(instance_field_ref));
+        self.frame.push_type(VerificationType::Object { cpool_index: interface_class });
+
+        // aload <resource_local>
+        let (slot, _) = self.locals.get(&binding.name).copied()
+            .ok_or_else(|| CodegenError::UndefinedVariable(binding.name.clone()))?;
+        self.emit(Instruction::Aload(slot as u8));
+        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+
+        // invokeinterface Resource.close, 2
+        self.emit(Instruction::Invokeinterface(method_ref, 2));
+        self.frame.pop_type(); self.frame.pop_type(); // pop receiver + arg
+        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+
+        // pop Unit return
+        self.emit(Instruction::Pop);
+        self.frame.pop_type();
+        Ok(())
+    }
+
     /// Compile a function declaration into a JVM Method.
     pub(super) fn compile_function(&mut self, decl: &TypedFnDecl) -> Result<Method, CodegenError> {
         self.reset_method_state();
@@ -3331,6 +3407,41 @@ impl Compiler {
             self.emit(Instruction::Checkcast(cast_class));
             self.frame.pop_type();
             self.frame.push_type(VerificationType::Object { cpool_index: cast_class });
+        }
+
+        // Auto-close live resources at function exit
+        if let Some(bindings) = self.auto_close.fn_exits.get(&decl.name).cloned() {
+            // Save return value to temp
+            let ret_slot = self.next_local;
+            let ret_slot_size = match return_type {
+                JvmType::Long | JvmType::Double => 2,
+                _ => 1,
+            };
+            self.next_local += ret_slot_size;
+            let ret_store = match return_type {
+                JvmType::Long => Instruction::Lstore(ret_slot as u8),
+                JvmType::Double => Instruction::Dstore(ret_slot as u8),
+                JvmType::Int => Instruction::Istore(ret_slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(ret_slot as u8),
+            };
+            self.emit(ret_store);
+            self.pop_jvm_type(return_type);
+            let vtypes = self.jvm_type_to_vtypes(return_type);
+            self.frame.local_types.extend(vtypes);
+
+            for binding in &bindings {
+                self.emit_auto_close(binding)?;
+            }
+
+            // Reload return value
+            let ret_load = match return_type {
+                JvmType::Long => Instruction::Lload(ret_slot as u8),
+                JvmType::Double => Instruction::Dload(ret_slot as u8),
+                JvmType::Int => Instruction::Iload(ret_slot as u8),
+                JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(ret_slot as u8),
+            };
+            self.emit(ret_load);
+            self.push_jvm_type(return_type);
         }
 
         // Emit typed return

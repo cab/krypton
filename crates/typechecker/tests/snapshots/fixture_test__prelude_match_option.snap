@@ -2,5 +2,5 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-unwrap_or: forall p. fn(Option[p], p) -> p
+unwrap_or: forall q. fn(Option[q], q) -> q
 main: fn() -> Int

@@ -4,5 +4,5 @@ expression: snapshot
 ---
 Ok: forall f g. fn(g) -> Result[f, g]
 Err: forall f g. fn(f) -> Result[f, g]
-extract: forall v. fn(Result[v, Int]) -> Int
+extract: forall w. fn(Result[w, Int]) -> Int
 test: fn() -> Int

@@ -4,4 +4,4 @@ expression: snapshot
 ---
 Cons: forall f. fn(f, List[f]) -> List[f]
 Nil: forall f. List[f]
-length: forall t. fn(List[t]) -> own Int
+length: forall u. fn(List[u]) -> own Int
