@@ -1581,9 +1581,31 @@ fn process_extern_methods(
 /// as a mutually recursive group, then generalized before later SCCs see them.
 #[tracing::instrument(skip(module, resolver), fields(decls = module.decls.len()))]
 pub fn infer_module(module: &Module, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> Result<Vec<TypedModule>, SpannedTypeError> {
+    use krypton_modules::module_graph;
+
+    // Build the module graph (resolves, parses, toposorts all imports + prelude)
+    let graph = module_graph::build_module_graph(module, resolver)
+        .map_err(map_graph_error)?;
+
+    // Build parsed module lookup for import binding
+    let mut parsed_modules: HashMap<String, Module> = HashMap::new();
     let mut cache: HashMap<String, TypedModule> = HashMap::new();
-    let mut import_stack: Vec<String> = Vec::new();
-    let main = infer_module_inner(module, resolver, &mut cache, &mut import_stack, None)?;
+
+    // Type-check each dependency in topological order
+    for resolved in &graph.modules {
+        parsed_modules.insert(resolved.path.clone(), resolved.module.clone());
+        if !cache.contains_key(&resolved.path) {
+            let typed = infer_module_inner(
+                &resolved.module, resolver, &mut cache, &parsed_modules,
+                Some(resolved.path.clone()),
+            )?;
+            cache.insert(resolved.path.clone(), typed);
+        }
+    }
+
+    // Type-check the root module
+    let main = infer_module_inner(module, resolver, &mut cache, &parsed_modules, None)?;
+
     let mut result = vec![main];
     // Collect cached imported modules (stable ordering by path)
     let mut paths: Vec<String> = cache.keys().cloned().collect();
@@ -1594,18 +1616,41 @@ pub fn infer_module(module: &Module, resolver: &dyn krypton_modules::module_reso
     Ok(result)
 }
 
+/// Convert a `ModuleGraphError` into a `SpannedTypeError`.
+fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> SpannedTypeError {
+    use krypton_modules::module_graph::ModuleGraphError;
+    match e {
+        ModuleGraphError::CircularImport { cycle, span } => {
+            spanned(TypeError::CircularImport { cycle }, span)
+        }
+        ModuleGraphError::UnknownModule { path, span } => {
+            spanned(TypeError::UnknownModule { path }, span)
+        }
+        ModuleGraphError::BareImport { path, span } => {
+            spanned(TypeError::BareImport { path }, span)
+        }
+        ModuleGraphError::ParseError { path, errors } => {
+            panic!("parse error in {path}: {errors:?}");
+        }
+    }
+}
+
 /// Return the main `TypedModule` from `infer_module` result (for backward compatibility).
 pub fn infer_module_single(module: &Module, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> Result<TypedModule, SpannedTypeError> {
     let mut modules = infer_module(module, resolver)?;
     Ok(modules.remove(0))
 }
 
-/// Internal per-module inference with cache and circular import detection.
+/// Internal per-module inference with pre-resolved module cache.
+///
+/// The module graph has already been resolved and toposorted by `infer_module`.
+/// Import declarations look up parsed ASTs from `parsed_modules` and typed
+/// results from `cache` — no recursive resolution or cycle detection needed.
 pub(crate) fn infer_module_inner(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     cache: &mut HashMap<String, TypedModule>,
-    import_stack: &mut Vec<String>,
+    parsed_modules: &HashMap<String, Module>,
     module_path: Option<String>,
 ) -> Result<TypedModule, SpannedTypeError> {
     let mut env = TypeEnv::new();
@@ -1624,9 +1669,14 @@ pub(crate) fn infer_module_inner(
     let mut type_provenance: HashMap<String, String> = HashMap::new();
 
     // Auto-import prelude types (Option, Result, List, Ordering) from stdlib prelude.kr
+    // Prelude is already type-checked and in cache (graph builder ensures this).
+    // Skip when we ARE the prelude or one of its transitive deps.
+    let is_prelude_tree = module_path.as_ref().is_some_and(|p| {
+        p == "prelude" || krypton_modules::stdlib_loader::StdlibLoader::PRELUDE_MODULES.contains(&p.as_str())
+    });
     crate::prelude::auto_import_prelude(
         &mut env, &mut registry, &mut gen,
-        resolver, cache, import_stack,
+        resolver, cache, is_prelude_tree,
         &mut fn_provenance_map, &mut type_provenance,
         &mut imported_extern_fns,
     )?;
@@ -1648,33 +1698,13 @@ pub(crate) fn infer_module_inner(
     let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
     for decl in &module.decls {
         if let Decl::Import { is_pub, path, names, span } = decl {
-            // Check for circular imports
-            if import_stack.contains(path) {
-                let mut cycle = import_stack.clone();
-                cycle.push(path.clone());
-                return Err(spanned(TypeError::CircularImport { cycle }, *span));
-            }
+            // Graph builder already validated: no cycles, no bare imports, no unknown modules.
+            // Look up the parsed AST from the pre-resolved graph.
+            let imported_module = parsed_modules.get(path)
+                .expect("module graph should contain all imported modules");
 
-            // Bare imports (no selective names) are not yet supported
-            if names.is_empty() {
-                return Err(spanned(TypeError::BareImport { path: path.clone() }, *span));
-            }
-
-            let source = resolver.resolve(path)
-                .ok_or_else(|| spanned(TypeError::UnknownModule { path: path.clone() }, *span))?;
-
-            let (imported_module, parse_errors) = krypton_parser::parser::parse(&source);
-            assert!(parse_errors.is_empty(), "parse error in {path}");
-
-            // Recursively infer the imported module if not already cached
-            if !cache.contains_key(path) {
-                import_stack.push(path.clone());
-                let imported_typed = infer_module_inner(
-                    &imported_module, resolver, cache, import_stack, Some(path.clone()),
-                )?;
-                import_stack.pop();
-                cache.insert(path.clone(), imported_typed);
-            }
+            // Module should already be type-checked (topological order guarantees this)
+            assert!(cache.contains_key(path), "module {path} should be in cache (topological order)");
 
             let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
             let import_all = names.is_empty();

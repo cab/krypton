@@ -2,3 +2,6 @@
 name = "krypton-modules"
 version.workspace = true
 edition.workspace = true
+
+[dependencies]
+krypton-parser = { path = "../parser" }

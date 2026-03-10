@@ -2,76 +2,45 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::{Decl, Visibility};
 
-use crate::infer::infer_module_inner;
 use krypton_modules::module_resolver::{ModuleResolver, StdlibResolver};
-use krypton_modules::stdlib_loader::StdlibLoader;
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{ExternFnInfo, TypedModule};
 use crate::types::{TypeEnv, TypeVarGen};
 use crate::unify::SpannedTypeError;
 
-/// Resolver wrapper that falls back to stdlib for prelude transitive deps.
-struct PreludeResolver<'a> {
-    inner: &'a dyn ModuleResolver,
-    stdlib: StdlibResolver,
-}
-
-impl<'a> ModuleResolver for PreludeResolver<'a> {
-    fn resolve(&self, module_path: &str) -> Option<String> {
-        // Try stdlib first (prelude imports core/* modules)
-        if let Some(source) = self.stdlib.resolve(module_path) {
-            return Some(source);
-        }
-        self.inner.resolve(module_path)
-    }
-}
-
 /// Auto-import prelude types and functions into a module's environment.
-/// Resolves `prelude.kr` from stdlib, typechecks it (caching the result),
-/// and binds all re-exported names into the given environment.
+/// The prelude and its transitive dependencies are already type-checked
+/// and present in `cache` (the module graph builder ensures this).
 ///
-/// Skipped when `import_stack` contains "prelude" (prevents circular deps
-/// when typechecking prelude itself and its transitive deps).
+/// Skipped when `is_prelude_tree` is true (when type-checking the prelude
+/// itself or its transitive core/* deps).
 pub fn auto_import_prelude(
     env: &mut TypeEnv,
     registry: &mut TypeRegistry,
     gen: &mut TypeVarGen,
-    resolver: &dyn ModuleResolver,
+    _resolver: &dyn ModuleResolver,
     cache: &mut HashMap<String, TypedModule>,
-    import_stack: &mut Vec<String>,
+    is_prelude_tree: bool,
     fn_provenance_map: &mut HashMap<String, (String, String)>,
     type_provenance: &mut HashMap<String, String>,
     imported_extern_fns: &mut Vec<ExternFnInfo>,
 ) -> Result<(), SpannedTypeError> {
     // Skip auto-import when we're typechecking the prelude or its transitive deps
-    if import_stack.iter().any(|s| s == "prelude") {
+    if is_prelude_tree {
         // Still register Vec as known type name
         registry.register_name("Vec");
         return Ok(());
     }
 
-    // Resolve and typecheck prelude.kr if not already cached
-    if !cache.contains_key("prelude") {
-        let source = StdlibLoader::get_source("prelude")
-            .expect("missing stdlib source for prelude");
-        let (prelude_module, parse_errors) = krypton_parser::parser::parse(source);
-        assert!(parse_errors.is_empty(), "parse errors in stdlib prelude");
-
-        // Use a resolver that falls back to stdlib for prelude's transitive deps
-        let prelude_resolver = PreludeResolver {
-            inner: resolver,
-            stdlib: StdlibResolver,
-        };
-
-        import_stack.push("prelude".to_string());
-        let prelude_typed = infer_module_inner(
-            &prelude_module, &prelude_resolver, cache, import_stack, Some("prelude".to_string()),
-        )?;
-        import_stack.pop();
-        cache.insert("prelude".to_string(), prelude_typed);
-    }
-
-    let cached = cache.get("prelude").unwrap();
+    // Prelude should already be in cache from the module graph
+    let cached = match cache.get("prelude") {
+        Some(c) => c,
+        None => {
+            // Fallback should not happen with proper graph building, but be safe
+            registry.register_name("Vec");
+            return Ok(());
+        }
+    };
 
     // Bind re-exported functions (constructors) into env with provenance
     for (name, scheme) in &cached.reexported_fn_types {
