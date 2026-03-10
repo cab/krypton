@@ -1,0 +1,7 @@
+# expect: output "true"
+import core/io.{println}
+import trait_eq_lib.{Dir, North}
+
+fun main() = {
+  println(North == North);
+}

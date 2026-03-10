@@ -917,3 +917,26 @@ fn infer_module_pub_use_reexport_private_error() {
     let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
     assert_eq!(err.error.error_code().to_string(), "E0505");
 }
+
+#[test]
+fn cross_module_deriving_show() {
+    use krypton_typechecker::module_resolver::StdlibResolver;
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, path: &str) -> Option<String> {
+            match path {
+                "mylib" => Some("pub open type Point = { x: Int, y: Int } deriving [Show]".into()),
+                _ => StdlibResolver.resolve(path),
+            }
+        }
+    }
+    let src = r#"
+        import mylib.{Point}
+        import core/io.{println}
+        fun main() = println(Point { x = 1, y = 2 })
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &Resolver);
+    assert!(result.is_ok(), "cross-module deriving Show should work: {:?}", result.err());
+}

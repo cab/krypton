@@ -101,6 +101,7 @@ pub struct TraitDefInfo {
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
 }
 
+#[derive(Clone)]
 pub struct InstanceDefInfo {
     pub trait_name: String,
     pub target_type_name: String,

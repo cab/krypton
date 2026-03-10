@@ -1617,6 +1617,8 @@ pub(crate) fn infer_module_inner(
     let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
     // Track fn_constraints from imported modules for cross-module constraint checking
     let mut imported_fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
+    // Track trait instances from imported modules for cross-module deriving
+    let mut imported_instance_defs: Vec<InstanceDefInfo> = Vec::new();
     for decl in &module.decls {
         if let Decl::Import { path, names, span } = decl {
             // Check for circular imports
@@ -1891,6 +1893,15 @@ pub(crate) fn infer_module_inner(
                     imported_fn_constraints.insert(effective_name, constraints.clone());
                 }
             }
+
+            // Propagate trait instances from the imported module
+            for inst in &cached.instance_defs {
+                if !imported_instance_defs.iter().any(|existing|
+                    existing.trait_name == inst.trait_name && existing.target_type_name == inst.target_type_name
+                ) {
+                    imported_instance_defs.push(inst.clone());
+                }
+            }
         }
     }
 
@@ -1977,6 +1988,19 @@ pub(crate) fn infer_module_inner(
     // Register built-in operator traits (Add, Sub, Mul, Div, Eq, Ord, Neg)
     let mut trait_registry = TraitRegistry::new();
     trait_registry::register_builtin_traits(&mut trait_registry, &mut env, &mut gen);
+
+    // Register trait instances imported from other modules
+    for inst_def in &imported_instance_defs {
+        let instance = InstanceInfo {
+            trait_name: inst_def.trait_name.clone(),
+            target_type: inst_def.target_type.clone(),
+            target_type_name: inst_def.target_type_name.clone(),
+            methods: inst_def.qualified_method_names.iter().map(|(m, _)| m.clone()).collect(),
+            span: (0, 0),
+            is_builtin: false,
+        };
+        let _ = trait_registry.register_instance(instance);
+    }
 
     // Second pass: process DefTrait declarations
     for decl in &module.decls {

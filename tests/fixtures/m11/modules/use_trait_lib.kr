@@ -1,0 +1,8 @@
+# expect: output "Red"
+import core/io.{println}
+import trait_lib.{Color, Red}
+
+fun main() = {
+  let c = Red;
+  println(c);
+}
