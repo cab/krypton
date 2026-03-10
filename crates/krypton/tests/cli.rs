@@ -113,7 +113,7 @@ fn test_fmt_pretty_prints() {
 }
 
 #[test]
-fn test_compile_produces_class_file() {
+fn test_compile_produces_jar() {
     let dir = tempdir().expect("failed to create temp dir");
     let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
     std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
@@ -124,7 +124,45 @@ fn test_compile_produces_class_file() {
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(dir.path().join("Kr$Hello.class").exists(), "Kr$Hello.class should be created");
+    assert!(dir.path().join("hello.jar").exists(), "hello.jar should be created");
+}
+
+#[test]
+fn test_compile_jar_runs_with_java() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
+
+    let compile = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["compile", "hello.kr"])
+        .output()
+        .expect("failed to run krypton");
+    assert!(compile.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&compile.stderr));
+
+    let run = Command::new("java")
+        .current_dir(dir.path())
+        .args(["-jar", "hello.jar"])
+        .output()
+        .expect("failed to run java");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(run.status.success(), "java -jar should succeed: {}", String::from_utf8_lossy(&run.stderr));
+    assert!(stdout.contains("hello world"), "stdout should contain 'hello world': {stdout}");
+}
+
+#[test]
+fn test_compile_custom_output() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["compile", "hello.kr", "-o", "build/out.jar"])
+        .output()
+        .expect("failed to run krypton");
+    assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(dir.path().join("build/out.jar").exists(), "build/out.jar should be created");
 }
 
 #[test]

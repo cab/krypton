@@ -57,9 +57,12 @@ enum Commands {
     Check {
         file: String,
     },
-    /// Compile a file to a JVM .class file
+    /// Compile a file to a JVM .jar file
     Compile {
         file: String,
+        /// Output path for the jar file (default: <stem>.jar)
+        #[arg(short, long)]
+        output: Option<String>,
     },
     /// Compile and run a file on the JVM
     Run {
@@ -137,7 +140,7 @@ fn main() {
             }
             println!("{}", krypton_parser::pretty::pretty_print(&module));
         }
-        Commands::Compile { file } => {
+        Commands::Compile { file, output } => {
             info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
@@ -196,21 +199,31 @@ fn main() {
                     info!(classes = classes.len(), "codegen complete");
 
                     let t = Instant::now();
-                    for (name, bytes) in &classes {
-                        let out_path = format!("{}.class", name);
-                        if let Some(parent) = std::path::Path::new(&out_path).parent() {
-                            if !parent.as_os_str().is_empty() {
-                                std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                                    eprintln!("Error creating directory {}: {}", parent.display(), e);
-                                    process::exit(1);
-                                });
-                            }
+                    let out_path = match &output {
+                        Some(o) => PathBuf::from(o),
+                        None => PathBuf::from(format!("{}.jar", stem)),
+                    };
+                    if let Some(parent) = out_path.parent() {
+                        if !parent.as_os_str().is_empty() {
+                            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                                eprintln!("Error creating directory {}: {}", parent.display(), e);
+                                process::exit(1);
+                            });
                         }
-                        std::fs::write(&out_path, bytes).unwrap_or_else(|e| {
-                            eprintln!("Error writing {}: {}", out_path, e);
-                            process::exit(1);
-                        });
                     }
+                    let jar_bytes = krypton_codegen::jar::write_jar(
+                        &classes,
+                        &class_name,
+                        find_runtime_jar().as_deref(),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error creating jar: {}", e);
+                        process::exit(1);
+                    });
+                    std::fs::write(&out_path, jar_bytes).unwrap_or_else(|e| {
+                        eprintln!("Error writing {}: {}", out_path.display(), e);
+                        process::exit(1);
+                    });
                     phases.push(("emit", t.elapsed()));
                 }
                 Err(e) => {
