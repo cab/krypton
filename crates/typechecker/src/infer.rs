@@ -1556,7 +1556,7 @@ pub fn infer_module_single(module: &Module, resolver: &dyn crate::module_resolve
 }
 
 /// Internal per-module inference with cache and circular import detection.
-fn infer_module_inner(
+pub(crate) fn infer_module_inner(
     module: &Module,
     resolver: &dyn crate::module_resolver::ModuleResolver,
     cache: &mut HashMap<String, TypedModule>,
@@ -1573,13 +1573,21 @@ fn infer_module_inner(
     // Seed intrinsic function types (user defs can shadow these)
     crate::intrinsics::register_intrinsics(&mut env, &mut gen);
 
-    // Seed prelude types (Option, Result, List, Ordering) from stdlib
-    crate::prelude::register_prelude_types(&mut env, &mut registry, &mut gen);
+    // These must be declared before auto_import_prelude since it populates them
+    let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
+    let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
+    let mut type_provenance: HashMap<String, String> = HashMap::new();
+
+    // Auto-import prelude types (Option, Result, List, Ordering) from stdlib prelude.kr
+    crate::prelude::auto_import_prelude(
+        &mut env, &mut registry, &mut gen,
+        resolver, cache, import_stack,
+        &mut fn_provenance_map, &mut type_provenance,
+        &mut imported_extern_fns,
+    )?;
 
     // Process import declarations with per-module inference, caching, and circular detection
-    let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
-    let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
     // Track imported type info for pub use re-exports: type_name → (source_module_path, visibility)
     let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
     for decl in &module.decls {
@@ -1876,14 +1884,16 @@ fn infer_module_inner(
     let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
     for decl in &module.decls {
         if let Decl::DefType(type_decl) = decl {
-            // If shadowing a prelude type, unbind old constructors first
+            // If shadowing a prelude type, unbind old constructors and clear provenance
             if let Some(existing) = registry.lookup_type(&type_decl.name) {
                 if existing.is_prelude {
                     if let crate::type_registry::TypeKind::Sum { variants } = &existing.kind {
                         for v in variants {
                             env.unbind(&v.name);
+                            fn_provenance_map.remove(&v.name);
                         }
                     }
+                    type_provenance.remove(&type_decl.name);
                 }
             }
 
@@ -2447,9 +2457,6 @@ fn infer_module_inner(
     // Build trait_defs for codegen (include built-in traits that have user instances)
     let mut trait_defs = Vec::new();
     let mut seen_traits = std::collections::HashSet::new();
-    // Track type provenance: type_name → source_module_path
-    let mut type_provenance: HashMap<String, String> = HashMap::new();
-
     // First add built-in traits (needed if user code has `impl Add Vec2` etc.)
     for (trait_name, info) in trait_registry.traits() {
         let method_info: Vec<(String, usize)> = info.methods.iter().map(|m| {

@@ -1,0 +1,7 @@
+# expect: ok
+# Prelude types are available without explicit import
+fun test_option() = Some(42)
+fun test_list() = Cons(1, Cons(2, Nil))
+fun test_result() -> Result[String, Int] = Ok(42)
+fun test_ordering() = LT
+fun main() = test_option()

@@ -1,0 +1,4 @@
+# expect: ok
+# User type shadows prelude Option
+type Option[a] = MyVariant(a) | MyNone
+fun main() = MyVariant(42)
