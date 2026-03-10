@@ -1,0 +1,33 @@
+# expect: output "done"
+
+import core/io.{println}
+
+fun side_effect() -> Unit {
+  let x = 1;
+}
+
+fun explicit_unit() -> Unit {
+  ()
+}
+
+fun multi_let() -> Unit {
+  let x = 1;
+  let y = 2;
+}
+
+fun call_void() -> Unit {
+  side_effect()
+}
+
+fun expr_discarded() -> Unit {
+  let z = "hi";
+}
+
+fun main() -> Unit {
+  side_effect()
+  explicit_unit()
+  multi_let()
+  call_void()
+  expr_discarded()
+  println("done")
+}

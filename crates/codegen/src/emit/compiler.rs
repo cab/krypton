@@ -1144,6 +1144,8 @@ impl Compiler {
         if let Some(body) = body {
             self.compile_expr(body, in_tail)
         } else {
+            self.emit(Instruction::Iconst_0);
+            self.frame.push_type(VerificationType::Integer);
             Ok(JvmType::Int)
         }
     }
@@ -1281,6 +1283,8 @@ impl Compiler {
         if let Some(body) = body {
             self.compile_expr(body, in_tail)
         } else {
+            self.emit(Instruction::Iconst_0);
+            self.frame.push_type(VerificationType::Integer);
             Ok(JvmType::Int)
         }
     }
