@@ -1,0 +1,6 @@
+# expect: error E0302
+import user_trait_lib.{Printable, display, Point, MkPoint}
+impl Printable[Point] {
+  fun display(p: Point) -> String = "nope"
+}
+fun main() = display(MkPoint(0, 0))

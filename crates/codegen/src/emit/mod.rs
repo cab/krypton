@@ -491,10 +491,14 @@ fn compile_module_inner(
 
     for trait_def in &typed_module.trait_defs {
         let qualified_trait = qualify_type(&trait_def.name);
-        let interface_bytes = generate_trait_interface_class(&qualified_trait, &trait_def.methods)?;
-        result_classes.push((qualified_trait.clone(), interface_bytes));
 
-        // Register interface class in main cpool
+        // Only generate the interface class for locally-defined traits
+        if !trait_def.is_imported {
+            let interface_bytes = generate_trait_interface_class(&qualified_trait, &trait_def.methods)?;
+            result_classes.push((qualified_trait.clone(), interface_bytes));
+        }
+
+        // Register interface class in main cpool (needed for both local and imported traits)
         let iface_class = compiler.cp.add_class(&qualified_trait)?;
         compiler.types.class_descriptors.insert(iface_class, format!("L{qualified_trait};"));
 

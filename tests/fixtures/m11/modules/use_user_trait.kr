@@ -1,0 +1,8 @@
+# expect: output "hello"
+import core/io.{println}
+import user_trait_lib.{Printable, display}
+type Greeting = MkGreeting(String)
+impl Printable[Greeting] {
+  fun display(g: Greeting) -> String = "hello"
+}
+fun main() = println(display(MkGreeting("hi")))

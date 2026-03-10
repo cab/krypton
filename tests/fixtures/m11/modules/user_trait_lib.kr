@@ -1,0 +1,7 @@
+pub open type Point = MkPoint(Int, Int)
+trait Printable[a] {
+  fun display(x: a) -> String
+}
+impl Printable[Point] {
+  fun display(p: Point) -> String = "point"
+}

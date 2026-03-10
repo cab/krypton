@@ -99,6 +99,23 @@ pub struct TypedFnDecl {
 pub struct TraitDefInfo {
     pub name: String,
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
+    pub is_imported: bool,
+}
+
+#[derive(Clone)]
+pub struct ExportedTraitDef {
+    pub name: String,
+    pub type_var: String,
+    pub type_var_id: u32,
+    pub superclasses: Vec<String>,
+    pub methods: Vec<ExportedTraitMethod>,
+}
+
+#[derive(Clone)]
+pub struct ExportedTraitMethod {
+    pub name: String,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
 }
 
 #[derive(Clone)]
@@ -146,6 +163,8 @@ pub struct TypedModule {
     pub reexported_type_names: Vec<String>,
     /// Maps re-exported type name → original visibility (preserves pub/pub open distinction).
     pub reexported_type_visibility: HashMap<String, Visibility>,
+    /// Trait definitions exported for cross-module use.
+    pub exported_trait_defs: Vec<ExportedTraitDef>,
 }
 
 pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {

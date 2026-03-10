@@ -1,0 +1,6 @@
+# expect: error
+import user_trait_lib.{Point, MkPoint}
+impl Printable[Point] {
+  fun display(p: Point) -> String = "nope"
+}
+fun main() = display(MkPoint(0, 0))

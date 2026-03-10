@@ -1,0 +1,10 @@
+# expect: output "true"
+import core/io.{println}
+import user_trait_lib.{Point, MkPoint}
+trait Describable[a] {
+  fun describe(x: a) -> String
+}
+impl Describable[Point] {
+  fun describe(p: Point) -> String = "true"
+}
+fun main() = println(describe(MkPoint(1, 2)))
