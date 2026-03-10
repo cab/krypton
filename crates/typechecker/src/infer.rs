@@ -1309,8 +1309,9 @@ fn detect_trait_constraints(
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
                             if let Type::Var(v) = concrete_ty {
-                                let param_idx = param_type_var_map.get(&v).copied().unwrap_or(0);
-                                constraints.push((trait_name.clone(), param_idx));
+                                if let Some(param_idx) = param_type_var_map.get(&v).copied() {
+                                    constraints.push((trait_name.clone(), param_idx));
+                                }
                             }
                         }
                     }
@@ -1686,8 +1687,6 @@ pub(crate) fn infer_module_inner(
     let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
     // Track fn_constraints from imported modules for cross-module constraint checking
     let mut imported_fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
-    // Track trait instances from imported modules for cross-module deriving
-    let mut imported_instance_defs: Vec<InstanceDefInfo> = Vec::new();
     // Track trait definitions from imported modules for cross-module trait usage
     let mut imported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
     let mut imported_trait_names: HashSet<String> = HashSet::new();
@@ -1949,15 +1948,6 @@ pub(crate) fn infer_module_inner(
                 }
             }
 
-            // Propagate trait instances from the imported module
-            for inst in &cached.instance_defs {
-                if !imported_instance_defs.iter().any(|existing|
-                    existing.trait_name == inst.trait_name && existing.target_type_name == inst.target_type_name
-                ) {
-                    imported_instance_defs.push(inst.clone());
-                }
-            }
-
             // Propagate trait definitions from the imported module
             for trait_def in &cached.exported_trait_defs {
                 let explicitly_requested = requested.contains(trait_def.name.as_str())
@@ -2063,17 +2053,38 @@ pub(crate) fn infer_module_inner(
     trait_registry::register_builtin_traits(&mut trait_registry, &mut env, &mut gen);
     let builtin_trait_names: HashSet<String> = trait_registry.traits().keys().cloned().collect();
 
-    // Register trait instances imported from other modules
-    for inst_def in &imported_instance_defs {
-        let instance = InstanceInfo {
-            trait_name: inst_def.trait_name.clone(),
-            target_type: inst_def.target_type.clone(),
-            target_type_name: inst_def.target_type_name.clone(),
-            methods: inst_def.qualified_method_names.iter().map(|(m, _)| m.clone()).collect(),
-            span: (0, 0),
-            is_builtin: false,
-        };
-        let _ = trait_registry.register_instance(instance);
+    // Structural instance lookup: for each type/trait in scope, look up instances
+    // in the defining module. The orphan rule guarantees instances live in the
+    // module defining the type or the trait.
+    {
+        let mut source_modules: HashSet<&str> = HashSet::new();
+        for (_, source_path) in &type_provenance {
+            source_modules.insert(source_path.as_str());
+        }
+        // Also include sources from imported_type_info (not yet in type_provenance)
+        for (_, (source_path, _)) in &imported_type_info {
+            source_modules.insert(source_path.as_str());
+        }
+
+        let mut seen_instances: HashSet<(String, String)> = HashSet::new();
+        for module_path in &source_modules {
+            if let Some(cached_module) = cache.get(*module_path) {
+                for inst in &cached_module.instance_defs {
+                    let key = (inst.trait_name.clone(), inst.target_type_name.clone());
+                    if seen_instances.insert(key) {
+                        let instance = InstanceInfo {
+                            trait_name: inst.trait_name.clone(),
+                            target_type: inst.target_type.clone(),
+                            target_type_name: inst.target_type_name.clone(),
+                            methods: inst.qualified_method_names.iter().map(|(m, _)| m.clone()).collect(),
+                            span: (0, 0),
+                            is_builtin: false,
+                        };
+                        let _ = trait_registry.register_instance(instance);
+                    }
+                }
+            }
+        }
     }
 
     // Register trait definitions imported from other modules
@@ -2684,8 +2695,10 @@ pub(crate) fn infer_module_inner(
         if let Some((_, scheme)) = results.iter().find(|(n, _)| n == &func.name) {
             if let Type::Fn(param_types, _) = &scheme.ty {
                 for (idx, pty) in param_types.iter().enumerate() {
-                    if let Type::Var(v) = pty {
-                        param_type_var_map.insert(*v, idx);
+                    // Collect all type vars in this param (including nested ones
+                    // like `a` in `Option[a]`) so parameterized instances work
+                    for v in free_vars(pty) {
+                        param_type_var_map.entry(v).or_insert(idx);
                     }
                 }
             }

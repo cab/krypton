@@ -1,0 +1,6 @@
+# expect: output "Msg: hi"
+import trait_reexport.{Msg, MkMsg}
+import trait_origin_lib.{Render, render}
+import core/io.{println}
+
+fun main() = println(render(MkMsg("hi")))

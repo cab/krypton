@@ -1,0 +1,11 @@
+pub open type Msg = MkMsg(String)
+
+pub trait Render[a] {
+  fun render(x: a) -> String
+}
+
+impl Render[Msg] {
+  fun render(m: Msg) -> String = match m {
+    MkMsg(s) => "Msg: " + s,
+  }
+}
