@@ -1067,8 +1067,9 @@ where
         .or_not()
         .map(|s| s.unwrap_or_default());
 
-    let trait_decl = just(Token::Trait)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+    let trait_decl = vis.clone()
+        .then_ignore(just(Token::Trait))
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(
             select! { Token::Ident(s) => s.to_string() }
                 .delimited_by(just(Token::LBracket), just(Token::RBracket)),
@@ -1082,7 +1083,8 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
-        .map_with(|(((name, type_var), superclasses), methods), e| Decl::DefTrait {
+        .map_with(|((((visibility, name), type_var), superclasses), methods), e| Decl::DefTrait {
+            visibility,
             name,
             type_var,
             superclasses,

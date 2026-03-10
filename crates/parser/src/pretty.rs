@@ -52,12 +52,16 @@ impl<'a> Formatter<'a> {
             Decl::DefFn(f) => self.fmt_fn_decl(f),
             Decl::DefType(t) => self.fmt_type_decl(t),
             Decl::DefTrait {
+                visibility,
                 name,
                 type_var,
                 superclasses,
                 methods,
                 ..
-            } => self.fmt_trait(name, type_var, superclasses, methods),
+            } => {
+                self.fmt_visibility(visibility);
+                self.fmt_trait(name, type_var, superclasses, methods);
+            }
             Decl::DefImpl {
                 trait_name,
                 target_type,

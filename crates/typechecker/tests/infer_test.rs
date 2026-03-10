@@ -940,3 +940,49 @@ fn cross_module_deriving_show() {
     let result = infer::infer_module(&module, &Resolver);
     assert!(result.is_ok(), "cross-module deriving Show should work: {:?}", result.err());
 }
+
+#[test]
+fn infer_module_private_trait() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "traitlib" {
+                // Private trait (no pub) — should not be importable
+                Some(r#"
+                    type MyType = MkMyType(Int)
+                    trait Secret[a] {
+                        fun secret(x: a) -> Int
+                    }
+                    impl Secret[MyType] {
+                        fun secret(x: MyType) -> Int = 1
+                    }
+                    pub fun public_fn() -> Int = 42
+                "#.to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    // Explicitly importing a private trait should fail with E0503
+    let src = r#"
+        import traitlib.{Secret, public_fn}
+        fun main() -> Int = public_fn()
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_err(), "importing private trait should fail");
+    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    assert_eq!(err.error.error_code().to_string(), "E0503");
+
+    // Wildcard import should silently skip private traits
+    let src2 = r#"
+        import traitlib.{public_fn}
+        fun main() -> Int = public_fn()
+    "#;
+    let (module2, errors2) = parse(src2);
+    assert!(errors2.is_empty());
+    let result2 = infer::infer_module(&module2, &FakeResolver);
+    assert!(result2.is_ok(), "wildcard import should skip private traits: {:?}", result2.err());
+}

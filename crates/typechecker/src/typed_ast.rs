@@ -104,6 +104,7 @@ pub struct TraitDefInfo {
 
 #[derive(Clone)]
 pub struct ExportedTraitDef {
+    pub visibility: Visibility,
     pub name: String,
     pub type_var: String,
     pub type_var_id: u32,

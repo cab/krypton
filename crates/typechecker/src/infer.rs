@@ -1932,11 +1932,21 @@ pub(crate) fn infer_module_inner(
 
             // Propagate trait definitions from the imported module
             for trait_def in &cached.exported_trait_defs {
-                if (requested.contains(trait_def.name.as_str())
-                    || trait_def.methods.iter().any(|m| requested.contains(m.name.as_str()))
-                    || import_all)
+                let explicitly_requested = requested.contains(trait_def.name.as_str())
+                    || trait_def.methods.iter().any(|m| requested.contains(m.name.as_str()));
+                if (explicitly_requested || import_all)
                     && !imported_trait_names.contains(&trait_def.name)
                 {
+                    // Enforce visibility: private traits cannot be imported
+                    if matches!(trait_def.visibility, Visibility::Private) {
+                        if explicitly_requested {
+                            return Err(spanned(TypeError::PrivateName {
+                                name: trait_def.name.clone(), module_path: path.clone(),
+                            }, *span));
+                        }
+                        // Wildcard import — skip private traits silently
+                        continue;
+                    }
                     imported_trait_defs.push(trait_def.clone());
                     imported_trait_names.insert(trait_def.name.clone());
                     type_provenance.insert(trait_def.name.clone(), path.clone());
@@ -2079,7 +2089,7 @@ pub(crate) fn infer_module_inner(
     // Second pass: process DefTrait declarations
     let mut exported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
     for decl in &module.decls {
-        if let Decl::DefTrait { name, type_var, superclasses, methods, span } = decl {
+        if let Decl::DefTrait { visibility, name, type_var, superclasses, methods, span } = decl {
             // Skip if this trait is already registered as a built-in
             if trait_registry.lookup_trait(name).is_some() {
                 continue;
@@ -2135,6 +2145,7 @@ pub(crate) fn infer_module_inner(
             }).map_err(|e| spanned(e, *span))?;
 
             exported_trait_defs.push(ExportedTraitDef {
+                visibility: visibility.clone(),
                 name: name.clone(),
                 type_var: type_var.clone(),
                 type_var_id: tv_id,

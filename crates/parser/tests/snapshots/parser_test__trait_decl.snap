@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefTrait:
+      visibility: Private
       name: Eq
       type_var: a
       superclasses: []

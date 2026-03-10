@@ -27,6 +27,7 @@ decls:
         - 13
         - 44
   - DefTrait:
+      visibility: Private
       name: Eq
       type_var: a
       superclasses: []

@@ -16,12 +16,14 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
         Decl::DefFn(f) => Decl::DefFn(zero_spans_fn_decl(f)),
         Decl::DefType(t) => Decl::DefType(zero_spans_type_decl(t)),
         Decl::DefTrait {
+            visibility,
             name,
             type_var,
             superclasses,
             methods,
             ..
         } => Decl::DefTrait {
+            visibility: visibility.clone(),
             name: name.clone(),
             type_var: type_var.clone(),
             superclasses: superclasses.clone(),

@@ -13,6 +13,7 @@ pub enum Decl {
     DefFn(FnDecl),
     DefType(TypeDecl),
     DefTrait {
+        visibility: Visibility,
         name: String,
         type_var: String,
         superclasses: Vec<String>,
