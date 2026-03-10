@@ -8,9 +8,11 @@ ristretto_classfile.workspace = true
 krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }
 tracing.workspace = true
+zip = "2"
 
 [dev-dependencies]
 insta.workspace = true
 tempfile = "3"
+zip = { version = "2", features = ["default"] }
 krypton-test-harness = { path = "../test-harness" }
 krypton-modules = { path = "../modules" }
