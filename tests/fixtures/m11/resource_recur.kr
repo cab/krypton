@@ -1,0 +1,21 @@
+# expect: output "iter\nclosed\niter\nclosed\niter\nclosed\ndone\nclosed"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Handle = MkHandle(Int)
+
+trait Resource[a] {
+    fun close(x: ~a) -> Unit
+}
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun loop(n: Int, h: ~Handle) -> Unit =
+    if n >= 3 { println("done") }
+    else { println("iter")
+           recur(n + 1, MkHandle(n + 1)) }
+
+fun main() -> Unit = loop(0, MkHandle(0))

@@ -569,7 +569,7 @@ impl Compiler {
             TypedExprKind::Var(name) => self.compile_var(name),
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
-            TypedExprKind::Recur(args) => self.compile_recur(args, in_tail),
+            TypedExprKind::Recur(args) => self.compile_recur(args, in_tail, expr.span),
             TypedExprKind::FieldAccess { expr: target, field } => self.compile_field_access(target, field),
             TypedExprKind::Tuple(elems) => self.compile_tuple(elems, &expr.ty),
             TypedExprKind::LetPattern { pattern, value, body } => self.compile_let_pattern(pattern, value, body, in_tail),
@@ -2100,6 +2100,7 @@ impl Compiler {
         &mut self,
         args: &[TypedExpr],
         in_tail: bool,
+        expr_span: krypton_parser::ast::Span,
     ) -> Result<JvmType, CodegenError> {
         if !in_tail {
             return Err(CodegenError::RecurNotInTailPosition);
@@ -2108,6 +2109,14 @@ impl Compiler {
             CodegenError::UnsupportedExpr("recur outside function".to_string())
         })?;
         let fn_params = self.fn_params.clone();
+
+        // Auto-close live resources before recur (before compiling new args,
+        // while old resource values are still in their local slots)
+        if let Some(bindings) = self.auto_close.recur_closes.get(&expr_span).cloned() {
+            for binding in &bindings {
+                self.emit_auto_close(binding)?;
+            }
+        }
 
         // Compile all args onto the stack
         for arg in args {

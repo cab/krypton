@@ -17,6 +17,8 @@ pub struct AutoCloseInfo {
     pub shadow_closes: HashMap<Span, AutoCloseBinding>,
     /// QuestionMark early return: qm_span → bindings to close before early return (LIFO order)
     pub early_returns: HashMap<Span, Vec<AutoCloseBinding>>,
+    /// Recur back-edge: recur_span → bindings to close before jumping back (LIFO order)
+    pub recur_closes: HashMap<Span, Vec<AutoCloseBinding>>,
 }
 
 #[derive(Debug, Clone)]

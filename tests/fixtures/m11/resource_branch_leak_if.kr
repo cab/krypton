@@ -1,0 +1,19 @@
+# expect: error E0105
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Handle = MkHandle(String)
+
+trait Resource[a] {
+    fun close(x: ~a) -> Unit
+}
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun main() -> Unit = {
+    let h: ~Handle = MkHandle("test")
+    if true { close(h) } else { () }
+}

@@ -1,6 +1,10 @@
 use crate::trait_registry::TraitRegistry;
-use crate::typed_ast::{AutoCloseBinding, AutoCloseInfo, TypedExpr, TypedExprKind, TypedFnDecl};
+use crate::typed_ast::{
+    AutoCloseBinding, AutoCloseInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern,
+};
 use crate::types::Type;
+use crate::unify::{SpannedTypeError, TypeError};
+use krypton_parser::ast::Span;
 
 /// A live resource binding: (name, type_name).
 type LiveBinding = (String, String);
@@ -23,14 +27,95 @@ fn is_owned_resource(ty: &Type, registry: &TraitRegistry) -> Option<String> {
             if registry.find_instance("Resource", inner).is_some() {
                 return Some(name.to_string());
             }
+        } else {
+            // #6: Panic on unexpected type inside Own.
+            // Type::Fn is fine (affine closures), Type::Unit is fine (degenerate).
+            // Type::Var is fine (unresolved generics in polymorphic contexts).
+            // Type::App and Type::Tuple inside Own indicate a compiler bug.
+            match inner.as_ref() {
+                Type::Fn(_, _) | Type::Unit | Type::Var(_) => {}
+                Type::App(_, _) | Type::Tuple(_) => {
+                    panic!(
+                        "unexpected type inside Own for auto-close: {:?} — possible compiler bug",
+                        inner
+                    );
+                }
+                _ => {}
+            }
         }
     }
     None
 }
 
+/// Recursively collect all `Var` names with `Type::Own` anywhere in an expression tree.
+/// Used for deep consumption detection in `App` arguments.
+fn collect_consumed_vars(expr: &TypedExpr) -> Vec<String> {
+    let mut result = Vec::new();
+    collect_consumed_vars_inner(expr, &mut result);
+    result
+}
+
+fn collect_consumed_vars_inner(expr: &TypedExpr, acc: &mut Vec<String>) {
+    match &expr.kind {
+        TypedExprKind::Var(name) => {
+            if let Type::Own(_) = &expr.ty {
+                acc.push(name.clone());
+            }
+        }
+        TypedExprKind::App { func, args } => {
+            collect_consumed_vars_inner(func, acc);
+            for arg in args {
+                collect_consumed_vars_inner(arg, acc);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Recursively collect resource bindings from a pattern.
+fn collect_resource_bindings(
+    pattern: &TypedPattern,
+    registry: &TraitRegistry,
+) -> Vec<LiveBinding> {
+    let mut result = Vec::new();
+    collect_resource_bindings_inner(pattern, registry, &mut result);
+    result
+}
+
+fn collect_resource_bindings_inner(
+    pattern: &TypedPattern,
+    registry: &TraitRegistry,
+    acc: &mut Vec<LiveBinding>,
+) {
+    match pattern {
+        TypedPattern::Var { name, ty, .. } => {
+            if let Some(type_name) = is_owned_resource(ty, registry) {
+                acc.push((name.clone(), type_name));
+            }
+        }
+        TypedPattern::Constructor { args, .. } => {
+            for arg in args {
+                collect_resource_bindings_inner(arg, registry, acc);
+            }
+        }
+        TypedPattern::Tuple { elements, .. } => {
+            for elem in elements {
+                collect_resource_bindings_inner(elem, registry, acc);
+            }
+        }
+        TypedPattern::StructPat { fields, .. } => {
+            for (_, field_pat) in fields {
+                collect_resource_bindings_inner(field_pat, registry, acc);
+            }
+        }
+        TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+    }
+}
+
 struct AutoCloseAnalyzer<'a> {
     registry: &'a TraitRegistry,
     info: AutoCloseInfo,
+    errors: Vec<SpannedTypeError>,
 }
 
 impl<'a> AutoCloseAnalyzer<'a> {
@@ -38,6 +123,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
         Self {
             registry,
             info: AutoCloseInfo::default(),
+            errors: Vec::new(),
         }
     }
 
@@ -78,6 +164,15 @@ impl<'a> AutoCloseAnalyzer<'a> {
         }
     }
 
+    /// Assert no duplicate span insertion for a HashMap key.
+    fn assert_no_duplicate_span(&self, map_name: &str, span: Span, map_contains: bool) {
+        assert!(
+            !map_contains,
+            "duplicate span in auto_close {} — possible desugaring bug at {:?}",
+            map_name, span
+        );
+    }
+
     fn walk_expr(&mut self, expr: &TypedExpr, live: &mut Vec<LiveBinding>) {
         match &expr.kind {
             TypedExprKind::Let { name, value, body } => {
@@ -86,6 +181,12 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 // Shadow check: if name already in live, close the old one
                 if let Some(pos) = live.iter().position(|(n, _)| n == name) {
                     let (old_name, old_type_name) = live.remove(pos);
+                    // #5: Assert no duplicate span
+                    self.assert_no_duplicate_span(
+                        "shadow_closes",
+                        expr.span,
+                        self.info.shadow_closes.contains_key(&expr.span),
+                    );
                     self.info.shadow_closes.insert(
                         expr.span,
                         AutoCloseBinding {
@@ -110,13 +211,13 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for arg in args {
                     self.walk_expr(arg, live);
                 }
-                // Consumption detection: if arg is a Var in live and param is ~T, mark consumed
+                // #4: Deep consumption detection — find all Var names with Own type
+                // anywhere in the argument expression tree, not just direct Var args
                 for arg in args {
-                    if let TypedExprKind::Var(var_name) = &arg.kind {
-                        if let Type::Own(_) = &arg.ty {
-                            if let Some(pos) = live.iter().position(|(n, _)| n == var_name) {
-                                live.remove(pos);
-                            }
+                    let consumed = collect_consumed_vars(arg);
+                    for var_name in consumed {
+                        if let Some(pos) = live.iter().position(|(n, _)| n == &var_name) {
+                            live.remove(pos);
                         }
                     }
                 }
@@ -134,6 +235,12 @@ impl<'a> AutoCloseAnalyzer<'a> {
                             type_name: type_name.clone(),
                         })
                         .collect();
+                    // #5: Assert no duplicate span
+                    self.assert_no_duplicate_span(
+                        "early_returns",
+                        expr.span,
+                        self.info.early_returns.contains_key(&expr.span),
+                    );
                     self.info.early_returns.insert(expr.span, bindings);
                 }
             }
@@ -144,6 +251,25 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 let mut else_live = live.clone();
                 self.walk_expr(then_, &mut then_live);
                 self.walk_expr(else_, &mut else_live);
+
+                // #1: Check for asymmetric branch consumption of ~Resource values
+                for (name, type_name) in live.iter() {
+                    let in_then = then_live.iter().any(|(n, _)| n == name);
+                    let in_else = else_live.iter().any(|(n, _)| n == name);
+                    if in_then != in_else {
+                        // Consumed in one branch but not the other
+                        self.errors.push(SpannedTypeError {
+                            error: TypeError::ResourceBranchLeak {
+                                name: name.clone(),
+                                type_name: type_name.clone(),
+                            },
+                            span: expr.span,
+                            note: None,
+                            secondary_span: None,
+                        });
+                    }
+                }
+
                 // Merge: keep only bindings present in both branches
                 live.retain(|binding| {
                     then_live.iter().any(|(n, _)| n == &binding.0)
@@ -162,6 +288,27 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     self.walk_expr(&arm.body, &mut arm_live);
                     branch_lives.push(arm_live);
                 }
+
+                // #1: Check for asymmetric branch consumption of ~Resource values
+                for (name, type_name) in live.iter() {
+                    let present_count = branch_lives
+                        .iter()
+                        .filter(|bl| bl.iter().any(|(n, _)| n == name))
+                        .count();
+                    if present_count > 0 && present_count < branch_lives.len() {
+                        // Consumed in some branches but not all
+                        self.errors.push(SpannedTypeError {
+                            error: TypeError::ResourceBranchLeak {
+                                name: name.clone(),
+                                type_name: type_name.clone(),
+                            },
+                            span: expr.span,
+                            note: None,
+                            secondary_span: None,
+                        });
+                    }
+                }
+
                 // Merge: keep only bindings present in ALL branches
                 live.retain(|binding| {
                     branch_lives
@@ -215,14 +362,46 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
-            TypedExprKind::LetPattern { value, body, .. } => {
+            TypedExprKind::LetPattern { pattern, value, body } => {
                 self.walk_expr(value, live);
+
+                // #3: Track resource bindings from destructured patterns
+                let bindings = collect_resource_bindings(pattern, self.registry);
+                for binding in bindings {
+                    live.push(binding);
+                }
+
                 if let Some(body) = body {
                     self.walk_expr(body, live);
                 }
             }
 
-            TypedExprKind::Recur(args) | TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
+            TypedExprKind::Recur(args) => {
+                // #2: Auto-close before recur — close live resources before jumping back
+                // Record snapshot of current live bindings for recur point
+                if !live.is_empty() {
+                    let bindings: Vec<AutoCloseBinding> = live
+                        .iter()
+                        .rev()
+                        .map(|(name, type_name)| AutoCloseBinding {
+                            name: name.clone(),
+                            type_name: type_name.clone(),
+                        })
+                        .collect();
+                    // #5: Assert no duplicate span
+                    self.assert_no_duplicate_span(
+                        "recur_closes",
+                        expr.span,
+                        self.info.recur_closes.contains_key(&expr.span),
+                    );
+                    self.info.recur_closes.insert(expr.span, bindings);
+                }
+                for arg in args {
+                    self.walk_expr(arg, live);
+                }
+            }
+
+            TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
                 for arg in args {
                     self.walk_expr(arg, live);
                 }
@@ -243,13 +422,14 @@ fn resource_close_self_type(fn_name: &str) -> Option<&str> {
 }
 
 /// Compute auto-close information for all functions in the module.
+/// Returns the auto-close info and any diagnostic errors (e.g., branch leaks).
 pub fn compute_auto_close(
     functions: &[TypedFnDecl],
     fn_types: &[(String, crate::types::TypeScheme)],
     registry: &TraitRegistry,
-) -> AutoCloseInfo {
+) -> Result<AutoCloseInfo, SpannedTypeError> {
     if registry.lookup_trait("Resource").is_none() {
-        return AutoCloseInfo::default();
+        return Ok(AutoCloseInfo::default());
     }
 
     let mut analyzer = AutoCloseAnalyzer::new(registry);
@@ -271,5 +451,10 @@ pub fn compute_auto_close(
         analyzer.analyze_function(decl, &param_types, close_self_type);
     }
 
-    analyzer.info
+    // Return first error if any
+    if let Some(err) = analyzer.errors.into_iter().next() {
+        return Err(err);
+    }
+
+    Ok(analyzer.info)
 }

@@ -36,6 +36,7 @@ pub enum TypeErrorCode {
     E0505, // Cannot re-export name (not in scope or private)
     E0506, // Parse error in imported module
     E0507, // Kind mismatch (type applied with wrong number of type args)
+    E0105, // Resource branch leak (consumed in some branches but not all)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -71,6 +72,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0505 => write!(f, "E0505"),
             TypeErrorCode::E0506 => write!(f, "E0506"),
             TypeErrorCode::E0507 => write!(f, "E0507"),
+            TypeErrorCode::E0105 => write!(f, "E0105"),
         }
     }
 }
@@ -108,6 +110,7 @@ pub enum TypeError {
     PrivateReexport { name: String },
     ModuleParseError { path: String, errors: Vec<String> },
     KindMismatch { type_name: String, expected_arity: usize, actual_arity: usize },
+    ResourceBranchLeak { name: String, type_name: String },
 }
 
 impl TypeError {
@@ -145,6 +148,7 @@ impl TypeError {
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
             TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
+            TypeError::ResourceBranchLeak { .. } => TypeErrorCode::E0105,
         }
     }
 
@@ -262,6 +266,9 @@ impl TypeError {
             TypeError::KindMismatch { type_name, expected_arity, actual_arity } => {
                 Some(format!("`{}` expects {} type argument(s) but was given {}", type_name, expected_arity, actual_arity))
             }
+            TypeError::ResourceBranchLeak { name, type_name } => {
+                Some(format!("`~{}` resource `{}` is closed in some branches but not all — this will leak the resource", type_name, name))
+            }
         }
     }
 }
@@ -362,6 +369,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::KindMismatch { type_name, expected_arity, actual_arity } => {
                 write!(f, "kind mismatch: `{}` expects {} type argument(s) but was given {}", type_name, expected_arity, actual_arity)
+            }
+            TypeError::ResourceBranchLeak { name, type_name } => {
+                write!(f, "resource `{}` (~{}) consumed in some branches but not all", name, type_name)
             }
         }
     }

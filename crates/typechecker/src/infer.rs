@@ -2838,7 +2838,7 @@ pub(crate) fn infer_module_inner(
     crate::ownership::check_ownership(module, &results, &registry, &let_own_spans, &lambda_own_captures, &struct_update_info)?;
 
     // Compute auto-close info for Resource bindings
-    let auto_close = crate::auto_close::compute_auto_close(&functions, &results, &trait_registry);
+    let auto_close = crate::auto_close::compute_auto_close(&functions, &results, &trait_registry)?;
 
     instance_defs.extend(derived_instance_defs);
 
