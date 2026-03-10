@@ -20,6 +20,7 @@ decls:
           exprs:
             - Let:
                 name: x
+                ty: ~
                 value:
                   Lit:
                     value:
@@ -33,6 +34,7 @@ decls:
                   - 92
             - Let:
                 name: y
+                ty: ~
                 value:
                   Lit:
                     value:
@@ -147,6 +149,7 @@ decls:
           exprs:
             - Let:
                 name: a
+                ty: ~
                 value:
                   Lit:
                     value:
@@ -160,6 +163,7 @@ decls:
                   - 333
             - Let:
                 name: b
+                ty: ~
                 value:
                   Lit:
                     value:
@@ -211,6 +215,7 @@ decls:
           exprs:
             - Let:
                 name: x
+                ty: ~
                 value:
                   BinaryOp:
                     op: Add

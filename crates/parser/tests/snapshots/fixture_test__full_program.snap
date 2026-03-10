@@ -174,6 +174,7 @@ decls:
           exprs:
             - Let:
                 name: x
+                ty: ~
                 value:
                   Lit:
                     value:
@@ -208,6 +209,7 @@ decls:
           exprs:
             - Let:
                 name: p
+                ty: ~
                 value:
                   App:
                     func:
@@ -226,6 +228,7 @@ decls:
                   - 237
             - Let:
                 name: s
+                ty: ~
                 value:
                   App:
                     func:

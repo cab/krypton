@@ -355,11 +355,23 @@ fn infer_expr_inner(
 
         Expr::Let {
             name,
+            ty: ty_ann,
             value,
             body,
             span,
         } => {
             let val_typed = infer_expr_inner(value, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+
+            // If there's a type annotation, resolve it and unify with the inferred type
+            if let Some(ty_expr) = ty_ann {
+                if let Some(reg) = registry {
+                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &std::collections::HashMap::new(), reg)
+                        .map_err(|e| spanned(e, *span))?;
+                    unify(&val_typed.ty, &annotated_ty, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                }
+            }
+
             let resolved_val = subst.apply(&val_typed.ty);
             if matches!(&resolved_val, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _))) {
                 if let Some(ref mut los) = let_own_spans {
@@ -649,8 +661,18 @@ fn infer_expr_inner(
             })
         }
 
-        Expr::LetPattern { pattern, value, body, span } => {
+        Expr::LetPattern { pattern, ty: ty_ann, value, body, span } => {
             let val_typed = infer_expr_inner(value, env, subst, gen, registry, recur_params, let_own_spans.as_deref_mut(), lambda_own_captures.as_deref_mut())?;
+
+            // If there's a type annotation, resolve it and unify with the inferred type
+            if let Some(ty_expr) = ty_ann {
+                if let Some(reg) = registry {
+                    let annotated_ty = type_registry::resolve_type_expr(ty_expr, &std::collections::HashMap::new(), reg)
+                        .map_err(|e| spanned(e, *span))?;
+                    unify(&val_typed.ty, &annotated_ty, subst)
+                        .map_err(|e| spanned(e, *span))?;
+                }
+            }
             match body {
                 Some(body) => {
                     env.push_scope();

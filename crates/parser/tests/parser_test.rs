@@ -318,3 +318,19 @@ fn test_error_recovery() {
     let (_, errors) = parse("fun bad( = 42");
     assert!(!errors.is_empty(), "expected parse errors");
 }
+
+#[test]
+fn let_with_type_annotation() {
+    let src = "fun f() -> Int { let x: Int = 5; x }";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn let_with_generic_type_annotation() {
+    let src = "fun f() { let xs: List[Int] = [1, 2, 3]; xs }";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}

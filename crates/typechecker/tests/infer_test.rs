@@ -1010,3 +1010,21 @@ fn infer_module_parse_error_produces_e0506() {
     let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
     assert_eq!(err.error.error_code().to_string(), "E0506");
 }
+
+#[test]
+fn let_type_annotation_correct() {
+    let result = infer_module_fn("fun f() -> Int { let x: Int = 5; x }", "f");
+    assert_eq!(result, "fn() -> Int");
+}
+
+#[test]
+fn let_type_annotation_mismatch() {
+    let result = infer_module_fn("fun f() -> Int { let x: String = 5; x }", "f");
+    assert!(result.starts_with("TypeError:"), "expected type error, got: {result}");
+}
+
+#[test]
+fn let_type_annotation_generic() {
+    let result = infer_module_fn("fun f() -> Vec[Int] { let xs: Vec[Int] = [1, 2, 3]; xs }", "f");
+    assert_eq!(result, "fn() -> Vec[Int]");
+}

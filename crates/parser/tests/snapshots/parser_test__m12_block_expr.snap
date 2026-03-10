@@ -20,6 +20,7 @@ decls:
           exprs:
             - Let:
                 name: x
+                ty: ~
                 value:
                   Lit:
                     value:
@@ -33,6 +34,7 @@ decls:
                   - 46
             - Let:
                 name: y
+                ty: ~
                 value:
                   Lit:
                     value:

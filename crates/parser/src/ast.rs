@@ -144,6 +144,7 @@ pub enum Expr {
     },
     Let {
         name: String,
+        ty: Option<TypeExpr>,
         value: Box<Expr>,
         body: Option<Box<Expr>>,
         span: Span,
@@ -207,6 +208,7 @@ pub enum Expr {
     },
     LetPattern {
         pattern: Pattern,
+        ty: Option<TypeExpr>,
         value: Box<Expr>,
         body: Option<Box<Expr>>,
         span: Span,

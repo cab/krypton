@@ -83,6 +83,7 @@ decls:
           exprs:
             - Let:
                 name: msg
+                ty: ~
                 value:
                   Lit:
                     value:

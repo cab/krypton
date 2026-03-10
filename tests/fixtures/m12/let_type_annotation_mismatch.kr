@@ -1,0 +1,5 @@
+# expect: error E0001
+fun bad() -> Int {
+    let x: String = 5;
+    x
+}

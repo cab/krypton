@@ -1,0 +1,5 @@
+# expect: ok
+fun annotated() -> Int {
+    let x: Int = 5;
+    x
+}

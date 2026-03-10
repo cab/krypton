@@ -178,9 +178,10 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             span: (0, 0),
         },
         Expr::Let {
-            name, value, body, ..
+            name, ty, value, body, ..
         } => Expr::Let {
             name: name.clone(),
+            ty: ty.as_ref().map(zero_spans_type_expr),
             value: Box::new(zero_spans_expr(value)),
             body: body.as_ref().map(|b| Box::new(zero_spans_expr(b))),
             span: (0, 0),
@@ -240,11 +241,13 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
         },
         Expr::LetPattern {
             pattern,
+            ty,
             value,
             body,
             ..
         } => Expr::LetPattern {
             pattern: zero_spans_pattern(pattern),
+            ty: ty.as_ref().map(zero_spans_type_expr),
             value: Box::new(zero_spans_expr(value)),
             body: body.as_ref().map(|b| Box::new(zero_spans_expr(b))),
             span: (0, 0),
@@ -702,4 +705,14 @@ fn configurable_indent_width() {
         output.contains("\n  let x = 1;"),
         "expected 2-space indent, got:\n{output}"
     );
+}
+
+#[test]
+fn roundtrip_let_type_annotation() {
+    assert_surface_roundtrip("fun f() -> Int { let x: Int = 5; x }");
+}
+
+#[test]
+fn roundtrip_let_pattern_type_annotation() {
+    assert_surface_roundtrip("fun f() { let (a, b): (Int, String) = pair; a }");
 }

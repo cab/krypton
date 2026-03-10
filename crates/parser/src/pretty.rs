@@ -498,13 +498,17 @@ impl<'a> Formatter<'a> {
                 }
             }
             Expr::Let {
-                name, value, body, ..
+                name, ty, value, body, ..
             } => {
                 match body {
                     Some(body_expr) => {
                         // let with body → wrap in block: { let x = val; body }
                         self.buf.push_str("{ let ");
                         self.buf.push_str(name);
+                        if let Some(ty) = ty {
+                            self.buf.push_str(": ");
+                            self.fmt_type_expr(ty);
+                        }
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                         self.buf.push_str("; ");
@@ -514,6 +518,10 @@ impl<'a> Formatter<'a> {
                     None => {
                         self.buf.push_str("let ");
                         self.buf.push_str(name);
+                        if let Some(ty) = ty {
+                            self.buf.push_str(": ");
+                            self.fmt_type_expr(ty);
+                        }
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                     }
@@ -521,6 +529,7 @@ impl<'a> Formatter<'a> {
             }
             Expr::LetPattern {
                 pattern,
+                ty,
                 value,
                 body,
                 ..
@@ -529,6 +538,10 @@ impl<'a> Formatter<'a> {
                     Some(body_expr) => {
                         self.buf.push_str("{ let ");
                         self.fmt_pattern(pattern);
+                        if let Some(ty) = ty {
+                            self.buf.push_str(": ");
+                            self.fmt_type_expr(ty);
+                        }
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                         self.buf.push_str("; ");
@@ -538,6 +551,10 @@ impl<'a> Formatter<'a> {
                     None => {
                         self.buf.push_str("let ");
                         self.fmt_pattern(pattern);
+                        if let Some(ty) = ty {
+                            self.buf.push_str(": ");
+                            self.fmt_type_expr(ty);
+                        }
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                     }

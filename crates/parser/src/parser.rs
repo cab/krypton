@@ -340,13 +340,15 @@ where
                 .ignore_then(
                     // Try pattern destructuring first
                     pattern.clone()
+                        .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
                         .then_ignore(just(Token::Assign))
                         .then(expr.clone())
-                        .map(|(pat, value)| {
+                        .map(|((pat, ty_ann), value)| {
                             // Check if it's a simple var pattern
                             if let Pattern::Var { name, .. } = &pat {
                                 Expr::Let {
                                     name: name.clone(),
+                                    ty: ty_ann,
                                     value: Box::new(value),
                                     body: None,
                                     span: (0, 0), // will be overwritten
@@ -354,6 +356,7 @@ where
                             } else {
                                 Expr::LetPattern {
                                     pattern: pat,
+                                    ty: ty_ann,
                                     value: Box::new(value),
                                     body: None,
                                     span: (0, 0),

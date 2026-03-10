@@ -1,0 +1,68 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: f
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: xs
+                ty:
+                  App:
+                    name: List
+                    args:
+                      - Named:
+                          name: Int
+                          span:
+                            - 23
+                            - 26
+                    span:
+                      - 18
+                      - 27
+                value:
+                  List:
+                    elements:
+                      - Lit:
+                          value:
+                            Int: 1
+                          span:
+                            - 31
+                            - 32
+                      - Lit:
+                          value:
+                            Int: 2
+                          span:
+                            - 34
+                            - 35
+                      - Lit:
+                          value:
+                            Int: 3
+                          span:
+                            - 37
+                            - 38
+                    span:
+                      - 30
+                      - 39
+                body: ~
+                span:
+                  - 10
+                  - 39
+            - Var:
+                name: xs
+                span:
+                  - 41
+                  - 43
+          span:
+            - 8
+            - 45
+      span:
+        - 0
+        - 45

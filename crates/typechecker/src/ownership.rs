@@ -438,7 +438,7 @@ fn check_expr(
             Ok(())
         }
 
-        Expr::Let { name, value, body, span } => {
+        Expr::Let { name, value, body, span, .. } => {
             check_expr(value, owned, consumed, partially_consumed, fn_param_info, affine, fn_qualifiers, let_own_spans, lambda_own_captures, own_fn_notes, struct_update_info, registry)?;
             let is_own_let = let_own_spans.contains(span);
             if is_own_let {
