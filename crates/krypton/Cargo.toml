@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 krypton-parser = { path = "../parser" }
+krypton-modules = { path = "../modules" }
 krypton-typechecker = { path = "../typechecker" }
 krypton-codegen = { path = "../codegen" }
 clap = { workspace = true }

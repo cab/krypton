@@ -3,7 +3,7 @@ use std::path::Path;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 use krypton_typechecker::infer;
-use krypton_typechecker::module_resolver::CompositeResolver;
+use krypton_modules::module_resolver::CompositeResolver;
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
     infer_module_snapshot_with_resolver(source, &CompositeResolver::stdlib_only())
@@ -11,7 +11,7 @@ fn infer_module_snapshot(source: &str) -> Result<String, String> {
 
 fn infer_module_snapshot_with_resolver(
     source: &str,
-    resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<String, String> {
     let (module, errors) = parse(source);
     if !errors.is_empty() {

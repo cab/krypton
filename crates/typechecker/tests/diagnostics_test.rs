@@ -1,7 +1,7 @@
 use krypton_parser::parser::parse;
 use krypton_typechecker::diagnostics::render_type_errors;
 use krypton_typechecker::infer;
-use krypton_typechecker::module_resolver::CompositeResolver;
+use krypton_modules::module_resolver::CompositeResolver;
 
 fn parse_and_infer_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
@@ -75,7 +75,7 @@ fn render_fixture_error(fixture: &str) -> String {
     strip_ansi_escapes(rendered)
 }
 
-fn render_module_error_with_resolver(src: &str, resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver) -> String {
+fn render_module_error_with_resolver(src: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let err = match infer::infer_module(&module, resolver) {
@@ -226,7 +226,7 @@ fn undeclared_typevar_suggestion() {
 
 #[test]
 fn circular_import_error() {
-    use krypton_typechecker::module_resolver::ModuleResolver;
+    use krypton_modules::module_resolver::ModuleResolver;
 
     struct CircularResolver;
     impl ModuleResolver for CircularResolver {

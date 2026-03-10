@@ -342,6 +342,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "krypton-codegen",
+ "krypton-modules",
  "krypton-parser",
  "krypton-typechecker",
  "tempfile",
@@ -354,6 +355,7 @@ name = "krypton-codegen"
 version = "0.1.0"
 dependencies = [
  "insta",
+ "krypton-modules",
  "krypton-parser",
  "krypton-test-harness",
  "krypton-typechecker",
@@ -361,6 +363,10 @@ dependencies = [
  "tempfile",
  "tracing",
 ]
+
+[[package]]
+name = "krypton-modules"
+version = "0.1.0"
 
 [[package]]
 name = "krypton-parser"
@@ -388,6 +394,7 @@ version = "0.1.0"
 dependencies = [
  "ariadne",
  "insta",
+ "krypton-modules",
  "krypton-parser",
  "krypton-test-harness",
  "serde",

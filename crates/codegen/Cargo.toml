@@ -13,3 +13,4 @@ tracing.workspace = true
 insta.workspace = true
 tempfile = "3"
 krypton-test-harness = { path = "../test-harness" }
+krypton-modules = { path = "../modules" }

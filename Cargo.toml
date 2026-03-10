@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/parser", "crates/typechecker", "crates/krypton", "crates/test-harness", "crates/codegen"]
+members = ["crates/parser", "crates/modules", "crates/typechecker", "crates/krypton", "crates/test-harness", "crates/codegen"]
 resolver = "2"
 
 [workspace.package]

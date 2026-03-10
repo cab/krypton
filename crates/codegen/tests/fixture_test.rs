@@ -5,7 +5,7 @@ use std::process::Command;
 use krypton_codegen::emit::compile_modules;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
-use krypton_typechecker::module_resolver::CompositeResolver;
+use krypton_modules::module_resolver::CompositeResolver;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 
 fn build_classpath(class_dir: &Path) -> String {
@@ -19,7 +19,7 @@ fn build_classpath(class_dir: &Path) -> String {
     }
 }
 
-fn run_program_with_resolver(source: &str, resolver: &dyn krypton_typechecker::module_resolver::ModuleResolver) -> String {
+fn run_program_with_resolver(source: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> String {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 

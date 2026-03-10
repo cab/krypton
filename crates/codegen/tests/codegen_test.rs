@@ -1,7 +1,7 @@
 use krypton_codegen::emit::compile_module;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
-use krypton_typechecker::module_resolver::CompositeResolver;
+use krypton_modules::module_resolver::CompositeResolver;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;

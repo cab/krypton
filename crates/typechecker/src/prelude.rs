@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use krypton_parser::ast::{Decl, Visibility};
 
 use crate::infer::infer_module_inner;
-use crate::module_resolver::{ModuleResolver, StdlibResolver};
-use crate::stdlib_loader::StdlibLoader;
+use krypton_modules::module_resolver::{ModuleResolver, StdlibResolver};
+use krypton_modules::stdlib_loader::StdlibLoader;
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{ExternFnInfo, TypedModule};
 use crate::types::{TypeEnv, TypeVarGen};

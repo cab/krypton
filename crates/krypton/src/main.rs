@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use krypton_typechecker::module_resolver::CompositeResolver;
+use krypton_modules::module_resolver::CompositeResolver;
 use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, Instant};

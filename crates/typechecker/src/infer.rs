@@ -1580,7 +1580,7 @@ fn process_extern_methods(
 /// in dependency order. Functions within the same SCC are inferred together
 /// as a mutually recursive group, then generalized before later SCCs see them.
 #[tracing::instrument(skip(module, resolver), fields(decls = module.decls.len()))]
-pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::ModuleResolver) -> Result<Vec<TypedModule>, SpannedTypeError> {
+pub fn infer_module(module: &Module, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> Result<Vec<TypedModule>, SpannedTypeError> {
     let mut cache: HashMap<String, TypedModule> = HashMap::new();
     let mut import_stack: Vec<String> = Vec::new();
     let main = infer_module_inner(module, resolver, &mut cache, &mut import_stack, None)?;
@@ -1595,7 +1595,7 @@ pub fn infer_module(module: &Module, resolver: &dyn crate::module_resolver::Modu
 }
 
 /// Return the main `TypedModule` from `infer_module` result (for backward compatibility).
-pub fn infer_module_single(module: &Module, resolver: &dyn crate::module_resolver::ModuleResolver) -> Result<TypedModule, SpannedTypeError> {
+pub fn infer_module_single(module: &Module, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> Result<TypedModule, SpannedTypeError> {
     let mut modules = infer_module(module, resolver)?;
     Ok(modules.remove(0))
 }
@@ -1603,7 +1603,7 @@ pub fn infer_module_single(module: &Module, resolver: &dyn crate::module_resolve
 /// Internal per-module inference with cache and circular import detection.
 pub(crate) fn infer_module_inner(
     module: &Module,
-    resolver: &dyn crate::module_resolver::ModuleResolver,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     cache: &mut HashMap<String, TypedModule>,
     import_stack: &mut Vec<String>,
     module_path: Option<String>,
@@ -2739,8 +2739,8 @@ pub(crate) fn infer_module_inner(
     // Inject prelude sum types not shadowed by user declarations
     {
         let user_type_names: HashSet<String> = sum_decls.iter().map(|(n, _, _): &(String, Vec<String>, Vec<Variant>)| n.clone()).collect();
-        for &module_path in crate::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
-            if let Some(source) = crate::stdlib_loader::StdlibLoader::get_source(module_path) {
+        for &module_path in krypton_modules::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
+            if let Some(source) = krypton_modules::stdlib_loader::StdlibLoader::get_source(module_path) {
                 let (stdlib_module, _) = krypton_parser::parser::parse(source);
                 for decl in stdlib_module.decls {
                     if let Decl::DefType(td) = decl {

@@ -1,7 +1,7 @@
 use krypton_parser::ast::Module;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer;
-use krypton_typechecker::module_resolver::{CompositeResolver, ModuleResolver};
+use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_typechecker::scc;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 
@@ -920,7 +920,7 @@ fn infer_module_pub_import_reexport_private_error() {
 
 #[test]
 fn cross_module_deriving_show() {
-    use krypton_typechecker::module_resolver::StdlibResolver;
+    use krypton_modules::module_resolver::StdlibResolver;
     struct Resolver;
     impl ModuleResolver for Resolver {
         fn resolve(&self, path: &str) -> Option<String> {

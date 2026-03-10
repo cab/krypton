@@ -1,0 +1,4 @@
+[package]
+name = "krypton-modules"
+version.workspace = true
+edition.workspace = true
