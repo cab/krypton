@@ -1,0 +1,6 @@
+# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+pub trait Div[a] {
+    fun div(self: a, other: a) -> a
+}
+impl Div[Int] { fun div(a: Int, b: Int) -> Int = __krypton_intrinsic() }
+impl Div[Float] { fun div(a: Float, b: Float) -> Float = __krypton_intrinsic() }

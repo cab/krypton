@@ -77,7 +77,7 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
 
 /// Check if a function name is a compiler intrinsic.
 fn is_intrinsic(name: &str) -> bool {
-    matches!(name, "panic" | "intrinsic")
+    matches!(name, "panic" | "__krypton_intrinsic")
 }
 
 /// Map a TypeExpr to a JvmType (for struct field declarations in AST).
@@ -190,14 +190,6 @@ fn collect_tuple_arities_expr(expr: &krypton_typechecker::typed_ast::TypedExpr, 
             _ => {}
         }
     }
-}
-
-/// Compile a single module without library dependencies. Use [`compile_modules`] for full programs.
-pub fn compile_module_standalone(
-    typed_module: &TypedModule,
-    class_name: &str,
-) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    compile_modules(std::slice::from_ref(typed_module), class_name)
 }
 
 /// Compile a library module (no main function required).
@@ -625,7 +617,6 @@ fn compile_module_inner(
     }
 
     // Process instance definitions: generate singleton/parameterized classes
-    let mut emitted_instance_classes: std::collections::HashSet<String> = std::collections::HashSet::new();
     for instance_def in &typed_module.instance_defs {
         // Skip intrinsic instances — bridge bytecode handles these
         if instance_def.is_intrinsic {
@@ -633,11 +624,6 @@ fn compile_module_inner(
         }
         let q_trait = qualify_type(&instance_def.trait_name);
         let instance_class_name = format!("{}${}", q_trait, instance_def.target_type_name);
-
-        // Skip if already emitted (dedup across imports)
-        if !emitted_instance_classes.insert(instance_class_name.clone()) {
-            continue;
-        }
 
         // Collect method info for the instance class
         let mut method_info = Vec::new();

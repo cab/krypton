@@ -1,0 +1,8 @@
+# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+pub trait Eq[a] {
+    fun eq(self: a, other: a) -> Bool
+}
+impl Eq[Int] { fun eq(a: Int, b: Int) -> Bool = __krypton_intrinsic() }
+impl Eq[Float] { fun eq(a: Float, b: Float) -> Bool = __krypton_intrinsic() }
+impl Eq[String] { fun eq(a: String, b: String) -> Bool = __krypton_intrinsic() }
+impl Eq[Bool] { fun eq(a: Bool, b: Bool) -> Bool = __krypton_intrinsic() }

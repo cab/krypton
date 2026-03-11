@@ -1,0 +1,7 @@
+import core/eq.{Eq}
+# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+pub trait Ord[a] where a: Eq {
+    fun lt(self: a, other: a) -> Bool
+}
+impl Ord[Int] { fun lt(a: Int, b: Int) -> Bool = __krypton_intrinsic() }
+impl Ord[Float] { fun lt(a: Float, b: Float) -> Bool = __krypton_intrinsic() }

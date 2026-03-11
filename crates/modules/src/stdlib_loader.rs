@@ -1,63 +1,37 @@
+use include_dir::{include_dir, Dir};
+use std::sync::LazyLock;
+
+static STDLIB_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../stdlib");
+
+/// Module paths extracted from prelude.kr `pub import <path>.{...}` lines,
+/// plus "prelude" itself.
+pub static PRELUDE_MODULES: LazyLock<Vec<String>> = LazyLock::new(|| {
+    let prelude_src = STDLIB_DIR
+        .get_file("prelude.kr")
+        .expect("stdlib must contain prelude.kr")
+        .contents_utf8()
+        .expect("prelude.kr must be valid UTF-8");
+
+    let mut modules: Vec<String> = prelude_src
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            // Match lines like: pub import core/foo.{...}
+            let rest = trimmed.strip_prefix("pub import ")?;
+            let dot_pos = rest.find('.')?;
+            Some(rest[..dot_pos].to_string())
+        })
+        .collect();
+    modules.push("prelude".to_string());
+    modules
+});
+
 pub struct StdlibLoader;
 
 impl StdlibLoader {
-    const OPTION: &str = include_str!("../../../stdlib/core/option.kr");
-    const RESULT: &str = include_str!("../../../stdlib/core/result.kr");
-    const LIST: &str = include_str!("../../../stdlib/core/list.kr");
-    const STRING: &str = include_str!("../../../stdlib/core/string.kr");
-    const ORDERING: &str = include_str!("../../../stdlib/core/ordering.kr");
-    const IO: &str = include_str!("../../../stdlib/core/io.kr");
-    const VEC: &str = include_str!("../../../stdlib/core/vec.kr");
-    const EQ: &str = include_str!("../../../stdlib/core/eq.kr");
-    const ORD: &str = include_str!("../../../stdlib/core/ord.kr");
-    const ADD: &str = include_str!("../../../stdlib/core/add.kr");
-    const SUB: &str = include_str!("../../../stdlib/core/sub.kr");
-    const MUL: &str = include_str!("../../../stdlib/core/mul.kr");
-    const DIV: &str = include_str!("../../../stdlib/core/div.kr");
-    const NEG: &str = include_str!("../../../stdlib/core/neg.kr");
-    const SHOW: &str = include_str!("../../../stdlib/core/show.kr");
-    const RESOURCE: &str = include_str!("../../../stdlib/core/resource.kr");
-    const PRELUDE: &str = include_str!("../../../stdlib/prelude.kr");
-
-    /// Module paths for prelude types (auto-seeded without import).
-    pub const PRELUDE_MODULES: &[&str] = &[
-        "core/eq",
-        "core/ord",
-        "core/add",
-        "core/sub",
-        "core/mul",
-        "core/div",
-        "core/neg",
-        "core/show",
-        "core/resource",
-        "core/option",
-        "core/result",
-        "core/list",
-        "core/ordering",
-        "core/io",
-    ];
-
     pub fn get_source(module_path: &str) -> Option<&'static str> {
-        match module_path {
-            "core/option" => Some(Self::OPTION),
-            "core/result" => Some(Self::RESULT),
-            "core/list" => Some(Self::LIST),
-            "core/string" => Some(Self::STRING),
-            "core/ordering" => Some(Self::ORDERING),
-            "core/io" => Some(Self::IO),
-            "core/vec" => Some(Self::VEC),
-            "core/eq" => Some(Self::EQ),
-            "core/ord" => Some(Self::ORD),
-            "core/add" => Some(Self::ADD),
-            "core/sub" => Some(Self::SUB),
-            "core/mul" => Some(Self::MUL),
-            "core/div" => Some(Self::DIV),
-            "core/neg" => Some(Self::NEG),
-            "core/show" => Some(Self::SHOW),
-            "core/resource" => Some(Self::RESOURCE),
-            "prelude" => Some(Self::PRELUDE),
-            _ => None,
-        }
+        let file_path = format!("{module_path}.kr");
+        STDLIB_DIR.get_file(&file_path)?.contents_utf8()
     }
 }
 
@@ -102,8 +76,23 @@ mod tests {
 
     #[test]
     fn test_core_paths_never_filesystem() {
-        // include_str! embeds at compile time, so this is always embedded content
+        // include_dir! embeds at compile time, so this is always embedded content
         let source = StdlibLoader::get_source("core/option").unwrap();
         assert!(source.contains("type Option"));
+    }
+
+    #[test]
+    fn test_prelude_modules_contains_expected() {
+        let modules = &*PRELUDE_MODULES;
+        assert!(modules.contains(&"core/option".to_string()));
+        assert!(modules.contains(&"core/eq".to_string()));
+        assert!(modules.contains(&"prelude".to_string()));
+    }
+
+    #[test]
+    fn test_prelude_modules_dynamic() {
+        // Verify the list is derived from prelude.kr, not hardcoded
+        let modules = &*PRELUDE_MODULES;
+        assert!(modules.len() > 5, "prelude should have many modules");
     }
 }

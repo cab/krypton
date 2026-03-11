@@ -1,0 +1,6 @@
+# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+pub trait Neg[a] {
+    fun neg(self: a) -> a
+}
+impl Neg[Int] { fun neg(a: Int) -> Int = __krypton_intrinsic() }
+impl Neg[Float] { fun neg(a: Float) -> Float = __krypton_intrinsic() }

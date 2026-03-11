@@ -244,3 +244,11 @@ fn circular_import_error() {
     assert!(output.contains("E0502"), "expected E0502 in:\n{output}");
     assert!(output.contains("circular import"), "expected 'circular import' in:\n{output}");
 }
+
+#[test]
+fn reserved_name_error() {
+    let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
+    let output = parse_and_infer_module_error(src);
+    assert!(output.contains("E0012"), "expected E0012 in:\n{output}");
+    assert!(output.contains("reserved compiler name"), "expected 'reserved compiler name' in:\n{output}");
+}

@@ -1,0 +1,6 @@
+# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+pub trait Mul[a] {
+    fun mul(self: a, other: a) -> a
+}
+impl Mul[Int] { fun mul(a: Int, b: Int) -> Int = __krypton_intrinsic() }
+impl Mul[Float] { fun mul(a: Float, b: Float) -> Float = __krypton_intrinsic() }

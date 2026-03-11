@@ -1727,7 +1727,7 @@ pub(crate) fn infer_module_inner(
 
     // Skip prelude auto-import when we ARE the prelude or one of its transitive deps.
     let is_prelude_tree = module_path.as_ref().is_some_and(|p| {
-        p == "prelude" || krypton_modules::stdlib_loader::StdlibLoader::PRELUDE_MODULES.contains(&p.as_str())
+        krypton_modules::stdlib_loader::PRELUDE_MODULES.iter().any(|m| m == p)
     });
 
     // Register Vec as a known type name (no constructors — backed by KryptonArray)
@@ -2271,8 +2271,7 @@ pub(crate) fn infer_module_inner(
             });
         }
 
-        // Silently skip if already registered (e.g. same trait via multiple import paths)
-        let _ = trait_registry.register_trait(TraitInfo {
+        trait_registry.register_trait(TraitInfo {
             name: trait_def.name.clone(),
             type_var: trait_def.type_var.clone(),
             type_var_id: new_tv_id,
@@ -2280,7 +2279,7 @@ pub(crate) fn infer_module_inner(
             superclasses: trait_def.superclasses.clone(),
             methods: trait_methods,
             span: (0, 0),
-        });
+        }).expect("imported trait should not already be registered (checked above)");
     }
 
     // Second pass: process DefTrait declarations
@@ -2629,6 +2628,17 @@ pub(crate) fn infer_module_inner(
         }
     }
 
+    // Reject user-defined functions with reserved __krypton_ prefix
+    if !is_core_module {
+        for decl in &module.decls {
+            if let Decl::DefFn(f) = decl {
+                if f.name.starts_with("__krypton_") {
+                    return Err(spanned(TypeError::ReservedName { name: f.name.clone() }, f.span));
+                }
+            }
+        }
+    }
+
     // Collect DefFn declarations (includes impl method bodies for type checking)
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
@@ -2767,10 +2777,10 @@ pub(crate) fn infer_module_inner(
 
             let mut qualified_method_names = Vec::new();
 
-            // Detect if all method bodies are intrinsic() calls
+            // Detect if all method bodies are __krypton_intrinsic() calls
             let all_intrinsic = methods.iter().all(|m| {
                 matches!(&*m.body, Expr::App { func, args, .. }
-                    if args.is_empty() && matches!(func.as_ref(), Expr::Var { name, .. } if name == "intrinsic"))
+                    if args.is_empty() && matches!(func.as_ref(), Expr::Var { name, .. } if name == "__krypton_intrinsic"))
             });
 
             for method in methods {

@@ -1298,6 +1298,33 @@ fn prelude_fn_shadowable() {
 }
 
 #[test]
+fn reserved_name_krypton_intrinsic_rejected() {
+    let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
+    let module = parse_module(src);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_err(), "should reject __krypton_intrinsic");
+    let err = match result { Err(e) => e, Ok(_) => unreachable!() };
+    assert_eq!(err.error.error_code().to_string(), "E0012");
+}
+
+#[test]
+fn reserved_name_krypton_prefix_rejected() {
+    let src = "fun __krypton_foo() = 1\nfun main() = __krypton_foo()";
+    let module = parse_module(src);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_err(), "should reject __krypton_ prefix");
+    let err = match result { Err(e) => e, Ok(_) => unreachable!() };
+    assert_eq!(err.error.error_code().to_string(), "E0012");
+}
+
+#[test]
+fn non_reserved_name_allowed() {
+    // A user function named "intrinsic" (without __krypton_ prefix) should be fine
+    let result = infer_module_fn("fun intrinsic() = 42\nfun main() = intrinsic()", "intrinsic");
+    assert_eq!(result, "fn() -> Int");
+}
+
+#[test]
 fn prelude_not_imported_in_prelude_tree() {
     use krypton_modules::module_resolver::StdlibResolver;
     // Prelude-tree modules should not self-import the prelude.

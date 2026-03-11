@@ -37,6 +37,7 @@ pub enum TypeErrorCode {
     E0506, // Parse error in imported module
     E0507, // Kind mismatch (type applied with wrong number of type args)
     E0105, // Resource branch leak (consumed in some branches but not all)
+    E0012, // Reserved name
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -73,6 +74,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0506 => write!(f, "E0506"),
             TypeErrorCode::E0507 => write!(f, "E0507"),
             TypeErrorCode::E0105 => write!(f, "E0105"),
+            TypeErrorCode::E0012 => write!(f, "E0012"),
         }
     }
 }
@@ -111,6 +113,7 @@ pub enum TypeError {
     ModuleParseError { path: String, errors: Vec<String> },
     KindMismatch { type_name: String, expected_arity: usize, actual_arity: usize },
     ResourceBranchLeak { name: String, type_name: String },
+    ReservedName { name: String },
 }
 
 impl TypeError {
@@ -149,6 +152,7 @@ impl TypeError {
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
             TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
             TypeError::ResourceBranchLeak { .. } => TypeErrorCode::E0105,
+            TypeError::ReservedName { .. } => TypeErrorCode::E0012,
         }
     }
 
@@ -269,6 +273,9 @@ impl TypeError {
             TypeError::ResourceBranchLeak { name, type_name } => {
                 Some(format!("`~{}` resource `{}` is closed in some branches but not all — this will leak the resource", type_name, name))
             }
+            TypeError::ReservedName { name } => {
+                Some(format!("names starting with `__krypton_` are reserved for compiler internals; rename `{}`", name))
+            }
         }
     }
 }
@@ -372,6 +379,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::ResourceBranchLeak { name, type_name } => {
                 write!(f, "resource `{}` (~{}) consumed in some branches but not all", name, type_name)
+            }
+            TypeError::ReservedName { name } => {
+                write!(f, "`{}` is a reserved compiler name and cannot be used", name)
             }
         }
     }

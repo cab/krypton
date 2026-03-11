@@ -8,10 +8,10 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
         ty: Type::Fn(vec![Type::String], Box::new(Type::Var(a))),
     });
 
-    // intrinsic: forall b. fn() -> b  (only available in core/ modules)
+    // __krypton_intrinsic: forall b. fn() -> b  (only available in core/ modules)
     if is_core_module {
         let b = gen.fresh();
-        env.bind("intrinsic".to_string(), TypeScheme {
+        env.bind("__krypton_intrinsic".to_string(), TypeScheme {
             vars: vec![b],
             ty: Type::Fn(vec![], Box::new(Type::Var(b))),
         });
