@@ -2,3 +2,5 @@ pub import core/option.{Option, Some, None}
 pub import core/result.{Result, Ok, Err}
 pub import core/list.{List, Cons, Nil}
 pub import core/ordering.{Ordering, LT, EQ, GT}
+
+pub import core/io.{println}

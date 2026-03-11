@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, Lit, Module, Pattern, Span, TypeDeclKind, UnaryOp, Variant, Visibility};
+use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, ImportName, Lit, Module, Pattern, Span, TypeDeclKind, UnaryOp, Variant, Visibility};
 
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
@@ -1710,18 +1710,84 @@ pub(crate) fn infer_module_inner(
         type_provenance.insert(name.to_string(), "core".to_string());
     }
 
-    // Auto-import prelude types (Option, Result, List, Ordering) from stdlib prelude.kr
-    // Prelude is already type-checked and in cache (graph builder ensures this).
-    // Skip when we ARE the prelude or one of its transitive deps.
+    // Skip prelude auto-import when we ARE the prelude or one of its transitive deps.
     let is_prelude_tree = module_path.as_ref().is_some_and(|p| {
         p == "prelude" || krypton_modules::stdlib_loader::StdlibLoader::PRELUDE_MODULES.contains(&p.as_str())
     });
-    crate::prelude::auto_import_prelude(
-        &mut env, &mut registry, &mut gen,
-        parsed_modules, cache, is_prelude_tree,
-        &mut fn_provenance_map, &mut type_provenance,
-        &mut imported_extern_fns,
-    )?;
+
+    // Register Vec as a known type name (no constructors — backed by KryptonArray)
+    registry.register_name("Vec");
+
+    // Build synthetic prelude import: gather all re-exported names from the cached prelude
+    // and construct a Decl::Import so the normal import loop handles everything.
+    let synthetic_prelude_import: Option<Decl>;
+    let mut prelude_imported_names: HashSet<String> = HashSet::new();
+    if !is_prelude_tree && cache.contains_key("prelude") {
+        let cached = cache.get("prelude").unwrap();
+        let mut names: Vec<ImportName> = Vec::new();
+
+        // Re-exported type names (e.g. Option, Result, List, Ordering)
+        // Constructor names (Some, None, Ok, Err, etc.) are automatically bound
+        // by the import loop's type-processing section for PubOpen types.
+        for type_name in &cached.reexported_type_names {
+            names.push(ImportName { name: type_name.clone(), alias: None });
+        }
+
+        // Build set of constructor names from PubOpen re-exported types,
+        // so we can exclude them from the re-exported fn list (they come from type processing).
+        let mut prelude_constructor_names: HashSet<String> = HashSet::new();
+        for type_name in &cached.reexported_type_names {
+            let vis = cached.reexported_type_visibility.get(type_name)
+                .cloned()
+                .unwrap_or(Visibility::Pub);
+            if matches!(vis, Visibility::PubOpen) {
+                if let Some(orig_path) = cached.type_provenance.get(type_name) {
+                    if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
+                        for odecl in &orig_module.decls {
+                            if let Decl::DefType(td) = odecl {
+                                if td.name == *type_name {
+                                    match &td.kind {
+                                        TypeDeclKind::Sum { variants } => {
+                                            for v in variants {
+                                                prelude_constructor_names.insert(v.name.clone());
+                                            }
+                                        }
+                                        TypeDeclKind::Record { .. } => {
+                                            prelude_constructor_names.insert(td.name.clone());
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Re-exported functions (e.g. println), excluding constructors
+        // that will be bound via type processing
+        for (name, _) in &cached.reexported_fn_types {
+            if !prelude_constructor_names.contains(name) {
+                names.push(ImportName { name: name.clone(), alias: None });
+            }
+        }
+
+        // Track which names came from the prelude so we can remove shadowed
+        // entries from imported_fn_constraints later.
+        for n in &names {
+            prelude_imported_names.insert(n.name.clone());
+        }
+
+        synthetic_prelude_import = Some(Decl::Import {
+            is_pub: false,
+            path: "prelude".to_string(),
+            names,
+            span: (0, 0),
+        });
+    } else {
+        synthetic_prelude_import = None;
+    }
 
     // Process import declarations with per-module inference, caching, and circular detection
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
@@ -1736,7 +1802,12 @@ pub(crate) fn infer_module_inner(
     let mut reexported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     let mut reexported_type_names: Vec<String> = Vec::new();
     let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
-    for decl in &module.decls {
+
+    // Build decl list: synthetic prelude import (if any) + module's own decls
+    let all_decls: Vec<&Decl> = synthetic_prelude_import.iter()
+        .chain(module.decls.iter())
+        .collect();
+    for decl in &all_decls {
         if let Decl::Import { is_pub, path, names, span } = decl {
             // Graph builder already validated: no cycles, no bare imports, no unknown modules.
             // Look up the parsed AST from the pre-resolved graph.
@@ -1806,10 +1877,19 @@ pub(crate) fn infer_module_inner(
             // Extract type signatures from cached module and bind with provenance.
             // Enforce visibility: private names cannot be imported explicitly.
             let cached = cache.get(path).unwrap();
+            // Build set of re-exported fn names to avoid double-binding.
+            // Re-exported fns appear in both fn_types and reexported_fn_types;
+            // the re-export loop below handles them with correct provenance.
+            let reexported_fn_names: HashSet<&str> = cached.reexported_fn_types.iter()
+                .map(|(n, _)| n.as_str()).collect();
             for (name, scheme) in &cached.fn_types {
                 // Skip constructors of non-PubOpen types — these are not
                 // accessible from the importing module.
                 if opaque_constructors.contains(name) {
+                    continue;
+                }
+                // Skip names that will be handled by the re-export loop below
+                if reexported_fn_names.contains(name.as_str()) {
                     continue;
                 }
                 let vis = fn_vis.get(name.as_str()).copied().unwrap_or(&Visibility::Pub);
@@ -1842,7 +1922,7 @@ pub(crate) fn infer_module_inner(
                 }
             }
 
-            // Process re-exported functions from the cached module
+            // Process re-exported functions from the cached module.
             for (name, scheme) in &cached.reexported_fn_types {
                 if requested.contains(name.as_str()) {
                     let effective_name = aliases.get(name)
@@ -1878,6 +1958,10 @@ pub(crate) fn infer_module_inner(
                                             registry.register_name(&td.name);
                                             let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
                                                 .map_err(|e| spanned(e, *span))?;
+                                            // Mark prelude-sourced types as shadowable
+                                            if path == "prelude" {
+                                                registry.set_prelude(&td.name);
+                                            }
                                             if matches!(original_vis, Visibility::PubOpen) {
                                                 for (cname, scheme) in &constructors {
                                                     env.bind(cname.clone(), scheme.clone());
@@ -1911,6 +1995,10 @@ pub(crate) fn infer_module_inner(
                             registry.register_name(&td.name);
                             let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
                                 .map_err(|e| spanned(e, *span))?;
+                            // Mark prelude-sourced types as shadowable
+                            if path == "prelude" {
+                                registry.set_prelude(&td.name);
+                            }
                             // Only bind constructors if pub open
                             if matches!(td.visibility, Visibility::PubOpen) {
                                 for (cname, scheme) in constructors {
@@ -1929,6 +2017,10 @@ pub(crate) fn infer_module_inner(
                             registry.register_name(&td.name);
                             let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
                                 .map_err(|e| spanned(e, *span))?;
+                            // Mark prelude-sourced types as shadowable
+                            if path == "prelude" {
+                                registry.set_prelude(&td.name);
+                            }
                             if matches!(td.visibility, Visibility::PubOpen) {
                                 for (cname, scheme) in constructors {
                                     env.bind(cname, scheme);
@@ -2049,6 +2141,29 @@ pub(crate) fn infer_module_inner(
                 *span, None, &no_aliases,
             )?;
             extern_fns.append(&mut fns);
+        }
+    }
+
+    // Shadow prelude names in imported_fn_constraints when a local extern or
+    // fn def defines the same name. This prevents stale trait constraints from
+    // the prelude leaking into local definitions that shadow them.
+    if !prelude_imported_names.is_empty() {
+        for decl in &module.decls {
+            match decl {
+                Decl::ExternJava { methods, .. } => {
+                    for m in methods {
+                        if prelude_imported_names.contains(&m.name) {
+                            imported_fn_constraints.remove(&m.name);
+                        }
+                    }
+                }
+                Decl::DefFn(f) => {
+                    if prelude_imported_names.contains(&f.name) {
+                        imported_fn_constraints.remove(&f.name);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -2860,29 +2975,6 @@ pub(crate) fn infer_module_inner(
         _ => None,
     }).collect();
 
-    // Inject prelude sum types not shadowed by user declarations
-    {
-        let user_type_names: HashSet<String> = sum_decls.iter().map(|(n, _, _): &(String, Vec<String>, Vec<Variant>)| n.clone()).collect();
-        for &module_path in krypton_modules::stdlib_loader::StdlibLoader::PRELUDE_MODULES {
-            if let Some(source) = krypton_modules::stdlib_loader::StdlibLoader::get_source(module_path) {
-                let (stdlib_module, _) = krypton_parser::parser::parse(source);
-                for decl in stdlib_module.decls {
-                    if let Decl::DefType(td) = decl {
-                        if let TypeDeclKind::Sum { variants } = td.kind {
-                            if !user_type_names.contains(&td.name) {
-                                type_provenance.insert(td.name.clone(), module_path.to_string());
-                                for v in &variants {
-                                    type_provenance.insert(v.name.clone(), module_path.to_string());
-                                }
-                                sum_decls.push((td.name, td.type_params, variants));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // Inject imported sum types into sum_decls for codegen
     {
         let existing_type_names: HashSet<String> = sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
@@ -2909,9 +3001,15 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Add type provenance entries from imported types (for re-exports and cross-module codegen)
+    // Add type provenance entries from imported types (for re-exports and cross-module codegen).
+    // Skip types that are locally defined — local defs shadow imports.
+    let local_type_names: HashSet<String> = module.decls.iter().filter_map(|d| {
+        if let Decl::DefType(td) = d { Some(td.name.clone()) } else { None }
+    }).collect();
     for (type_name, (source_path, _)) in &imported_type_info {
-        type_provenance.insert(type_name.clone(), source_path.clone());
+        if !local_type_names.contains(type_name) {
+            type_provenance.insert(type_name.clone(), source_path.clone());
+        }
     }
 
     // Build type_visibility map from parsed type declarations

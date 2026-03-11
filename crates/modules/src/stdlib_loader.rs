@@ -16,6 +16,7 @@ impl StdlibLoader {
         "core/result",
         "core/list",
         "core/ordering",
+        "core/io",
     ];
 
     pub fn get_source(module_path: &str) -> Option<&'static str> {

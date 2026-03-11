@@ -1,3 +1,5 @@
+import core/result.{Result, Ok, Err}
+
 # core/io — I/O functions
 extern "krypton.runtime.KryptonIO" {
     fun raw_println(Object) -> Unit

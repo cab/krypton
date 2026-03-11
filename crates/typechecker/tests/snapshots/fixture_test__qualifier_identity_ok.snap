@@ -2,5 +2,15 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
+println: forall p. fn(p) -> Unit
+Some: forall b. fn(b) -> Option[b]
+None: forall b. Option[b]
+Ok: forall c d. fn(d) -> Result[c, d]
+Err: forall c d. fn(c) -> Result[c, d]
+Cons: forall e. fn(e, List[e]) -> List[e]
+Nil: forall e. List[e]
+LT: Ordering
+EQ: Ordering
+GT: Ordering
 identity: forall p. fn(p) -> p
 test: fn(own String) -> String

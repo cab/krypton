@@ -4,7 +4,6 @@ pub mod exhaustiveness;
 pub mod infer;
 pub mod intrinsics;
 pub mod ownership;
-pub mod prelude;
 pub mod scc;
 pub mod trait_registry;
 pub mod type_registry;

@@ -183,6 +183,16 @@ fn infer_forward_reference() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     f: fn(own Int) -> Int
     g: fn(own Int) -> Int
     "
@@ -198,7 +208,19 @@ fn infer_do_block_scoping() {
 fn infer_module_basic() {
     insta::assert_snapshot!(
         infer_module_types("fun add(a, b) = a + b"),
-        @"add: fn(Int, Int) -> Int"
+        @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
+    add: fn(Int, Int) -> Int
+    "
     );
 }
 
@@ -207,6 +229,16 @@ fn infer_module_forward_ref() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     f: fn(own Int) -> Int
     g: fn(own Int) -> Int
     "
@@ -220,6 +252,16 @@ fn infer_mutual_recursion() {
             "fun is_even(n) = if n == 0 { true } else { is_odd(n - 1) }\nfun is_odd(n) = if n == 0 { false } else { is_even(n - 1) }"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     is_even: fn(own Int) -> Bool
     is_odd: fn(Int) -> own Bool
     "
@@ -247,6 +289,16 @@ fn infer_record_constructor() {
             "type Point = { x: Int, y: Int }\nfun p() = Point(1, 2)"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Point: fn(Int, Int) -> Point
     p: fn() -> Point
     "
@@ -260,6 +312,16 @@ fn infer_sum_constructor() {
             "type Option[a] = Some(a) | None\nfun wrap(x) = Some(x)"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
     wrap: forall q. fn(q) -> Option[q]
@@ -274,6 +336,16 @@ fn infer_bare_variant() {
             "type Option[a] = Some(a) | None\nfun none() = None"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
     none: forall r. fn() -> Option[r]
@@ -298,6 +370,16 @@ fn infer_scc_generalization_order() {
             "fun id(x) = x\nfun f(n) = id(n)\nfun g(s) = id(s)"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     id: forall p. fn(p) -> p
     f: forall v. fn(v) -> v
     g: forall a1. fn(a1) -> a1
@@ -312,6 +394,16 @@ fn infer_field_access() {
             "type Point = { x: Int, y: Int }\nfun get_x() = Point(1, 2).x"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Point: fn(Int, Int) -> Point
     get_x: fn() -> Int
     "
@@ -325,6 +417,16 @@ fn infer_struct_update() {
             "type Point = { x: Int, y: Int }\nfun move_x() = { Point(1, 2) | x = 42 }"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Point: fn(Int, Int) -> Point
     move_x: fn() -> Point
     "
@@ -368,6 +470,16 @@ fn infer_match_option() {
             "type Option[a] = Some(a) | None\nfun unwrap_or(opt, default) = match opt { Some(x) => x, None => default }"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
     unwrap_or: forall r. fn(Option[r], r) -> r
@@ -381,7 +493,19 @@ fn infer_match_literal() {
         infer_module_types(
             "fun describe(x) = match x { 1 => \"one\", 2 => \"two\", _ => \"other\" }"
         ),
-        @"describe: fn(Int) -> String"
+        @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
+    describe: fn(Int) -> String
+    "
     );
 }
 
@@ -391,7 +515,19 @@ fn infer_match_variable() {
         infer_module_types(
             "fun identity(x) = match x { y => y }"
         ),
-        @"identity: forall p. fn(p) -> p"
+        @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
+    identity: forall p. fn(p) -> p
+    "
     );
 }
 
@@ -402,6 +538,16 @@ fn infer_match_nested_constructor() {
             "type List[a] = Cons(a, List[a]) | Nil\nfun sum2(xs) = match xs { Cons(h, Cons(h2, t)) => h + h2, _ => 0 }"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Cons: forall f. fn(f, List[f]) -> List[f]
     Nil: forall f. List[f]
     sum2: fn(List[Int]) -> Int
@@ -425,7 +571,19 @@ fn infer_tuple_in_match() {
         infer_module_types(
             "fun first(p) = match p { (a, b) => a }"
         ),
-        @"first: forall s t. fn((s, t)) -> s"
+        @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
+    first: forall s t. fn((s, t)) -> s
+    "
     );
 }
 
@@ -440,7 +598,19 @@ fn infer_tuple_polymorphic() {
         infer_module_types(
             "fun swap(p) = match p { (a, b) => (b, a) }"
         ),
-        @"swap: forall s t. fn((s, t)) -> (t, s)"
+        @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
+    swap: forall s t. fn((s, t)) -> (t, s)
+    "
     );
 }
 
@@ -461,6 +631,16 @@ fn test_exhaustive_complete() {
             "type Option[a] = Some(a) | None\nfun unwrap(opt) = match opt { Some(x) => x, None => 0 }"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
     unwrap: fn(Option[own Int]) -> Int
@@ -485,6 +665,16 @@ fn test_exhaustive_wildcard_covers_all() {
             "type Option[a] = Some(a) | None\nfun test(opt) = match opt { _ => 0 }"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Some: forall f. fn(f) -> Option[f]
     None: forall f. Option[f]
     test: forall q. fn(q) -> Int
@@ -508,10 +698,20 @@ fn infer_call_site_coercion_borrow() {
         infer_module_types(
             "fun len(s: String) -> Int = 42\nfun test(buf: ~String) -> Int = { len(buf); len(buf) }"
         ),
-        @r#"
+        @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     len: fn(String) -> Int
     test: fn(own String) -> Int
-    "#
+    "
     );
 }
 
@@ -522,6 +722,16 @@ fn infer_call_site_coercion_no_collection() {
             "type MyList = Cons(String, MyList) | Nil\nfun test(buf: ~String) -> MyList = Cons(buf, Nil)"
         ),
         @"
+    println: forall p. fn(p) -> Unit
+    Some: forall b. fn(b) -> Option[b]
+    None: forall b. Option[b]
+    Ok: forall c d. fn(d) -> Result[c, d]
+    Err: forall c d. fn(c) -> Result[c, d]
+    Cons: forall e. fn(e, List[e]) -> List[e]
+    Nil: forall e. List[e]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     Cons: fn(String, MyList) -> MyList
     Nil: MyList
     test: fn(own String) -> MyList
@@ -1027,4 +1237,79 @@ fn let_type_annotation_mismatch() {
 fn let_type_annotation_generic() {
     let result = infer_module_fn("fun f() -> Vec[Int] { let xs: Vec[Int] = [1, 2, 3]; xs }", "f");
     assert_eq!(result, "fn() -> Vec[Int]");
+}
+
+// --- Prelude synthetic import tests ---
+
+#[test]
+fn prelude_option_auto_imported() {
+    let result = infer_module_fn("fun wrap(x) = Some(x)", "wrap");
+    assert!(
+        !result.starts_with("TypeError:"),
+        "Some should be available from prelude: {result}"
+    );
+}
+
+#[test]
+fn prelude_result_auto_imported() {
+    let result = infer_module_fn("fun ok(x) = Ok(x)", "ok");
+    assert!(
+        !result.starts_with("TypeError:"),
+        "Ok should be available from prelude: {result}"
+    );
+}
+
+#[test]
+fn prelude_println_auto_imported() {
+    let result = infer_module_fn("fun greet(x) = println(x)", "greet");
+    assert!(
+        !result.starts_with("TypeError:"),
+        "println should be available from prelude: {result}"
+    );
+}
+
+#[test]
+fn prelude_type_shadowable() {
+    // User defines their own Option type that shadows prelude's Option
+    let result = infer_module_fn(
+        "type Option = MyOpt(Int)\nfun make() = MyOpt(42)",
+        "make",
+    );
+    assert!(
+        !result.starts_with("TypeError:"),
+        "local type should shadow prelude Option: {result}"
+    );
+}
+
+#[test]
+fn prelude_fn_shadowable() {
+    // User declares extern println that shadows prelude's println — no Show constraint
+    let result = infer_module_fn(
+        r#"extern "java/io/PrintStream" {
+            fun println(Object) -> Unit
+        }
+        fun greet() = println(42)"#,
+        "greet",
+    );
+    assert!(
+        !result.starts_with("TypeError:"),
+        "extern should shadow prelude println: {result}"
+    );
+}
+
+#[test]
+fn prelude_not_imported_in_prelude_tree() {
+    use krypton_modules::module_resolver::StdlibResolver;
+    // Prelude-tree modules should not self-import the prelude.
+    // We test by inferring the prelude module itself — it should succeed without errors.
+    let prelude_src = StdlibResolver.resolve("prelude")
+        .expect("prelude should be resolvable");
+    let (module, errors) = parse(&prelude_src);
+    assert!(errors.is_empty(), "prelude parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(
+        result.is_ok(),
+        "prelude module should type-check without self-import: {:?}",
+        result.err()
+    );
 }
