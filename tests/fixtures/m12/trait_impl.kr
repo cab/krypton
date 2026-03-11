@@ -1,10 +1,6 @@
 # expect: ok
 type Point = { x: Int, y: Int }
 
-trait Eq[a] {
-    fun eq(self: a, other: a) -> Bool
-}
-
 impl Eq[Point] {
     fun eq(a, b) = a.x == b.x && a.y == b.y
 }

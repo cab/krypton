@@ -5,10 +5,6 @@ extern "krypton.runtime.KryptonIO" {
 
 type Point = { x: Int, y: Int }
 
-trait Eq[a] {
-    fun eq(_0: a, _1: a) -> Bool
-}
-
 impl Eq[Point] {
     fun eq(a, b) = if a.x == b.x { a.y == b.y } else { false }
 }

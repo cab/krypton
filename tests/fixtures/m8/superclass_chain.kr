@@ -5,16 +5,8 @@ extern "krypton.runtime.KryptonIO" {
 
 type Num = { n: Int }
 
-trait Eq[a] {
-    fun eq(_0: a, _1: a) -> Bool
-}
-
 impl Eq[Num] {
     fun eq(a, b) = a.n == b.n
-}
-
-trait Ord[a] where a: Eq {
-    fun lt(_0: a, _1: a) -> Bool
 }
 
 impl Ord[Num] {

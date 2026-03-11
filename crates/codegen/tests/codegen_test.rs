@@ -1,4 +1,4 @@
-use krypton_codegen::emit::compile_module;
+use krypton_codegen::emit::{compile_module_standalone, compile_modules};
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_modules::module_resolver::CompositeResolver;
@@ -29,7 +29,7 @@ fn run_program(source: &str) -> String {
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check should succeed");
-    let classes = compile_module(&typed_modules[0], "Test").expect("compile_module should succeed");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -189,7 +189,7 @@ fn test_java_21_classfile_version() {
     let (module, errors) = parse("fun main() = 42");
     assert!(errors.is_empty());
     let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_module(typed_module, "Test").expect("compile_module should succeed");
+    let classes = compile_module_standalone(typed_module, "Test").expect("compile_module_standalone should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
@@ -250,7 +250,7 @@ fun main() = None
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
     let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_module(typed_module, "Test").expect("compile");
+    let classes = compile_module_standalone(typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -338,7 +338,6 @@ fun main() = println(second(Cons(10, Cons(20, Nil))))
 fn test_trait_dictionary_parameter() {
     let src = r#"
 type Point = { x: Int, y: Int }
-trait Eq[a] { fun eq(_0: a, _1: a) -> Bool }
 impl Eq[Point] { fun eq(x, y) = if x.x == y.x { x.y == y.y } else { false } }
 fun are_equal(x, y) = eq(x, y)
 fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
@@ -351,7 +350,7 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
     let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_module(typed_module, "Test").expect("compile");
+    let classes = compile_module_standalone(typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -380,7 +379,7 @@ fn test_typed_module_direct() {
     let (module, errors) = parse(&source);
     assert!(errors.is_empty());
     let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_module(typed_module, "Test").expect("codegen");
+    let classes = compile_module_standalone(typed_module, "Test").expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -414,7 +413,7 @@ fun main() = println(Some(42))
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
     let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_module(typed_module, "Test").expect("compile");
+    let classes = compile_module_standalone(typed_module, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -441,8 +440,8 @@ fun main() = println(Some(42))
 #[test]
 fn test_parameterized_instance_show_option() {
     let src = r#"
-type Option[a] = Some(a) | None deriving (Show)
-fun main() = println(show(Some(42)))
+type Maybe[a] = Just(a) | Nothing deriving (Show)
+fun main() = println(show(Just(42)))
 "#;
-    assert_eq!(run_program(src), "Some(42)");
+    assert_eq!(run_program(src), "Just(42)");
 }

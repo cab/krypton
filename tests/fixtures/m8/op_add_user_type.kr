@@ -5,10 +5,6 @@ extern "krypton.runtime.KryptonIO" {
 
 type Vec2 = { x: Int, y: Int }
 
-trait Add[a] {
-    fun add(_0: a, _1: a) -> a
-}
-
 impl Add[Vec2] {
     fun add(a, b) = Vec2(a.x + b.x, a.y + b.y)
 }

@@ -146,6 +146,7 @@ pub struct InstanceDefInfo {
     pub target_type: Type,
     pub qualified_method_names: Vec<(String, String)>, // (method_name, qualified_name)
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
+    pub is_intrinsic: bool, // true when all method bodies are intrinsic()
 }
 
 #[derive(Clone)]

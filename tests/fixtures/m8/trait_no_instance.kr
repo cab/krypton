@@ -1,8 +1,4 @@
 # expect: error E0301
 type Point = { x: Int, y: Int }
 
-trait Eq[a] {
-    fun eq(_0: a, _1: a) -> Bool
-}
-
 fun main() = eq(Point(1, 2), Point(1, 2))

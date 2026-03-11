@@ -6,10 +6,6 @@ extern "krypton.runtime.KryptonIO" {
 type HandleA = MkHandleA(Int)
 type HandleB = MkHandleB(Int)
 
-trait Resource[a] {
-    fun close(x: ~a) -> Unit
-}
-
 impl Resource[HandleA] {
     fun close(h: ~HandleA) -> Unit = println("close_a")
 }

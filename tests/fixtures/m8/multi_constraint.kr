@@ -5,16 +5,8 @@ extern "krypton.runtime.KryptonIO" {
 
 type Box = { val: Int }
 
-trait Eq[a] {
-    fun eq(_0: a, _1: a) -> Bool
-}
-
 impl Eq[Box] {
     fun eq(a, b) = a.val == b.val
-}
-
-trait Show[a] {
-    fun show(_0: a) -> String
 }
 
 impl Show[Box] {

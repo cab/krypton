@@ -26,68 +26,14 @@ decls:
       span:
         - 13
         - 44
-  - DefTrait:
-      visibility: Private
-      name: Eq
-      type_param:
-        name: a
-        arity: 0
-        span:
-          - 55
-          - 56
-      superclasses: []
-      methods:
-        - name: eq
-          visibility: Private
-          type_params: []
-          params:
-            - name: self
-              ty:
-                Var:
-                  name: a
-                  span:
-                    - 77
-                    - 78
-              span:
-                - 71
-                - 78
-            - name: other
-              ty:
-                Var:
-                  name: a
-                  span:
-                    - 87
-                    - 88
-              span:
-                - 80
-                - 88
-          constraints: []
-          return_type:
-            Named:
-              name: Bool
-              span:
-                - 93
-                - 97
-          body:
-            Lit:
-              value: Unit
-              span:
-                - 64
-                - 97
-          span:
-            - 64
-            - 97
-      span:
-        - 46
-        - 99
   - DefImpl:
       trait_name: Eq
       target_type:
         Named:
           name: Point
           span:
-            - 109
-            - 114
+            - 54
+            - 59
       type_constraints: []
       methods:
         - name: eq
@@ -97,13 +43,13 @@ decls:
             - name: a
               ty: ~
               span:
-                - 129
-                - 130
+                - 74
+                - 75
             - name: b
               ty: ~
               span:
-                - 132
-                - 133
+                - 77
+                - 78
           constraints: []
           return_type: ~
           body:
@@ -118,27 +64,27 @@ decls:
                         Var:
                           name: a
                           span:
-                            - 137
-                            - 138
+                            - 82
+                            - 83
                       field: x
                       span:
-                        - 137
-                        - 140
+                        - 82
+                        - 85
                   rhs:
                     FieldAccess:
                       expr:
                         Var:
                           name: b
                           span:
-                            - 144
-                            - 145
+                            - 89
+                            - 90
                       field: x
                       span:
-                        - 144
-                        - 147
+                        - 89
+                        - 92
                   span:
-                    - 137
-                    - 147
+                    - 82
+                    - 92
               rhs:
                 BinaryOp:
                   op: Eq
@@ -148,33 +94,33 @@ decls:
                         Var:
                           name: a
                           span:
-                            - 151
-                            - 152
+                            - 96
+                            - 97
                       field: y
                       span:
-                        - 151
-                        - 154
+                        - 96
+                        - 99
                   rhs:
                     FieldAccess:
                       expr:
                         Var:
                           name: b
                           span:
-                            - 158
-                            - 159
+                            - 103
+                            - 104
                       field: y
                       span:
-                        - 158
-                        - 161
+                        - 103
+                        - 106
                   span:
-                    - 151
-                    - 161
+                    - 96
+                    - 106
               span:
-                - 137
-                - 161
+                - 82
+                - 106
           span:
-            - 122
-            - 161
+            - 67
+            - 106
       span:
-        - 101
-        - 163
+        - 46
+        - 108

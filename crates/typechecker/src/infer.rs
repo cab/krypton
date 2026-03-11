@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, ImportName, Lit, Module, Pattern, Span, TypeDecl, TypeDeclKind, UnaryOp, Variant, Visibility};
 
 use crate::scc;
-use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
+use crate::trait_registry::{TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{self, ExternFnInfo, ExportedTraitDef, ExportedTraitMethod, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
@@ -1713,7 +1713,8 @@ pub(crate) fn infer_module_inner(
     let mut lambda_own_captures: HashMap<Span, String> = HashMap::new();
 
     // Seed intrinsic function types (user defs can shadow these)
-    crate::intrinsics::register_intrinsics(&mut env, &mut gen);
+    let is_core_module = module_path.as_ref().is_some_and(|p| p.starts_with("core/"));
+    crate::intrinsics::register_intrinsics(&mut env, &mut gen, is_core_module);
 
     // These must be declared before the synthetic prelude import since it populates them
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
@@ -1767,6 +1768,11 @@ pub(crate) fn infer_module_inner(
             }
         }
 
+        // Re-exported trait names (e.g. Eq, Show, Add, etc.)
+        for trait_def in &cached.exported_trait_defs {
+            names.push(ImportName { name: trait_def.name.clone(), alias: None });
+        }
+
         // Re-exported functions (e.g. println), excluding constructors
         // that will be bound via type processing
         for (name, _) in &cached.reexported_fn_types {
@@ -1802,6 +1808,7 @@ pub(crate) fn infer_module_inner(
     let mut reexported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     let mut reexported_type_names: Vec<String> = Vec::new();
     let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
+    let mut reexported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
 
     // Build decl list: synthetic prelude import (if any) + module's own decls
     let all_decls: Vec<&Decl> = synthetic_prelude_import.iter()
@@ -2083,7 +2090,12 @@ pub(crate) fn infer_module_inner(
                     }
                     imported_trait_defs.push(trait_def.clone());
                     imported_trait_names.insert(trait_def.name.clone());
-                    type_provenance.insert(trait_def.name.clone(), path.clone());
+                    // Use original source module for provenance (not re-export path)
+                    // so structural instance lookup finds instances in the defining module
+                    let prov = cached.type_provenance.get(&trait_def.name)
+                        .cloned()
+                        .unwrap_or_else(|| path.clone());
+                    type_provenance.insert(trait_def.name.clone(), prov);
                 }
             }
 
@@ -2093,8 +2105,9 @@ pub(crate) fn infer_module_inner(
                     let name = &name.name;
                     let found_fn = imported_fn_types.iter().any(|(n, _)| n == name);
                     let found_type = imported_type_info.contains_key(name);
+                    let found_trait = imported_trait_names.contains(name);
 
-                    if !found_fn && !found_type {
+                    if !found_fn && !found_type && !found_trait {
                         return Err(spanned(TypeError::PrivateReexport {
                             name: name.clone(),
                         }, *span));
@@ -2110,6 +2123,11 @@ pub(crate) fn infer_module_inner(
                             .map(|(_, vis)| vis.clone())
                             .unwrap_or(Visibility::Pub);
                         reexported_type_visibility.insert(name.clone(), original_vis);
+                    }
+                    if found_trait {
+                        if let Some(td) = imported_trait_defs.iter().find(|td| td.name == *name) {
+                            reexported_trait_defs.push(td.clone());
+                        }
                     }
                 }
             }
@@ -2187,10 +2205,8 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Register built-in operator traits (Add, Sub, Mul, Div, Eq, Ord, Neg)
+    // Initialize trait registry (traits come from imported .kr modules via prelude)
     let mut trait_registry = TraitRegistry::new();
-    trait_registry::register_builtin_traits(&mut trait_registry, &mut env, &mut gen);
-    let builtin_trait_names: HashSet<String> = trait_registry.traits().keys().cloned().collect();
 
     // Structural instance lookup: for each type/trait in scope, look up instances
     // in the defining module. The orphan rule guarantees instances live in the
@@ -2229,7 +2245,7 @@ pub(crate) fn infer_module_inner(
 
     // Register trait definitions imported from other modules
     for trait_def in &imported_trait_defs {
-        // Skip if already registered (builtin overlap)
+        // Skip duplicate imports silently (same trait imported via multiple paths)
         if trait_registry.lookup_trait(&trait_def.name).is_some() {
             continue;
         }
@@ -2255,7 +2271,8 @@ pub(crate) fn infer_module_inner(
             });
         }
 
-        trait_registry.register_trait(TraitInfo {
+        // Silently skip if already registered (e.g. same trait via multiple import paths)
+        let _ = trait_registry.register_trait(TraitInfo {
             name: trait_def.name.clone(),
             type_var: trait_def.type_var.clone(),
             type_var_id: new_tv_id,
@@ -2263,16 +2280,16 @@ pub(crate) fn infer_module_inner(
             superclasses: trait_def.superclasses.clone(),
             methods: trait_methods,
             span: (0, 0),
-        }).map_err(|e| spanned(e, (0, 0)))?;
+        });
     }
 
     // Second pass: process DefTrait declarations
     let mut exported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
     for decl in &module.decls {
         if let Decl::DefTrait { visibility, name, type_param, superclasses, methods, span } = decl {
-            // Skip if this trait is already registered as a built-in
+            // Error if this trait conflicts with an imported trait
             if trait_registry.lookup_trait(name).is_some() {
-                continue;
+                return Err(spanned(TypeError::DuplicateType { name: name.clone() }, *span));
             }
             let tv_id = gen.fresh();
             let type_var_arity = type_param.arity;
@@ -2471,6 +2488,7 @@ pub(crate) fn infer_module_inner(
                     target_type,
                     qualified_method_names: vec![(method_name.to_string(), qualified_name)],
                     subdict_traits,
+                    is_intrinsic: false,
                 });
             }
         }
@@ -2749,6 +2767,12 @@ pub(crate) fn infer_module_inner(
 
             let mut qualified_method_names = Vec::new();
 
+            // Detect if all method bodies are intrinsic() calls
+            let all_intrinsic = methods.iter().all(|m| {
+                matches!(&*m.body, Expr::App { func, args, .. }
+                    if args.is_empty() && matches!(func.as_ref(), Expr::Var { name, .. } if name == "intrinsic"))
+            });
+
             for method in methods {
                 let qualified_name = format!("{}${}${}", trait_name, target_type_name, method.name);
 
@@ -2787,6 +2811,12 @@ pub(crate) fn infer_module_inner(
                         .map_err(|e| spanned(e, method.span))?;
                     unify(&annotated_ret, &concrete_ret, &mut subst)
                         .map_err(|e| spanned(e, method.span))?;
+                }
+
+                // For intrinsic impls, skip body type-checking (bridge bytecode handles these)
+                if all_intrinsic {
+                    qualified_method_names.push((method.name.clone(), qualified_name));
+                    continue;
                 }
 
                 // Type-check the method body
@@ -2836,6 +2866,7 @@ pub(crate) fn infer_module_inner(
                 target_type: resolved_target,
                 qualified_method_names,
                 subdict_traits: vec![],
+                is_intrinsic: all_intrinsic,
             });
         }
     }
@@ -2907,10 +2938,6 @@ pub(crate) fn infer_module_inner(
             is_imported,
         });
         seen_traits.insert(trait_name.clone());
-        // Only set "core" provenance for actual built-in traits (not imported or user-defined)
-        if builtin_trait_names.contains(trait_name) && !is_imported {
-            type_provenance.insert(trait_name.clone(), "core".to_string());
-        }
     }
     // Then add user-defined traits (skip if already registered)
     for decl in &module.decls {
@@ -2999,6 +3026,8 @@ pub(crate) fn infer_module_inner(
             type_visibility.insert(td.name.clone(), td.visibility.clone());
         }
     }
+
+    exported_trait_defs.extend(reexported_trait_defs);
 
     Ok(TypedModule {
         module_path,

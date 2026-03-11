@@ -183,7 +183,7 @@ fn infer_forward_reference() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -209,7 +209,7 @@ fn infer_module_basic() {
     insta::assert_snapshot!(
         infer_module_types("fun add(a, b) = a + b"),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -229,7 +229,7 @@ fn infer_module_forward_ref() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -252,7 +252,7 @@ fn infer_mutual_recursion() {
             "fun is_even(n) = if n == 0 { true } else { is_odd(n - 1) }\nfun is_odd(n) = if n == 0 { false } else { is_even(n - 1) }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -289,7 +289,7 @@ fn infer_record_constructor() {
             "type Point = { x: Int, y: Int }\nfun p() = Point(1, 2)"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -312,7 +312,7 @@ fn infer_sum_constructor() {
             "type Option[a] = Some(a) | None\nfun wrap(x) = Some(x)"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -336,7 +336,7 @@ fn infer_bare_variant() {
             "type Option[a] = Some(a) | None\nfun none() = None"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -370,7 +370,7 @@ fn infer_scc_generalization_order() {
             "fun id(x) = x\nfun f(n) = id(n)\nfun g(s) = id(s)"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -394,7 +394,7 @@ fn infer_field_access() {
             "type Point = { x: Int, y: Int }\nfun get_x() = Point(1, 2).x"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -417,7 +417,7 @@ fn infer_struct_update() {
             "type Point = { x: Int, y: Int }\nfun move_x() = { Point(1, 2) | x = 42 }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -470,7 +470,7 @@ fn infer_match_option() {
             "type Option[a] = Some(a) | None\nfun unwrap_or(opt, default) = match opt { Some(x) => x, None => default }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -494,7 +494,7 @@ fn infer_match_literal() {
             "fun describe(x) = match x { 1 => \"one\", 2 => \"two\", _ => \"other\" }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -516,7 +516,7 @@ fn infer_match_variable() {
             "fun identity(x) = match x { y => y }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -538,7 +538,7 @@ fn infer_match_nested_constructor() {
             "type List[a] = Cons(a, List[a]) | Nil\nfun sum2(xs) = match xs { Cons(h, Cons(h2, t)) => h + h2, _ => 0 }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -572,7 +572,7 @@ fn infer_tuple_in_match() {
             "fun first(p) = match p { (a, b) => a }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -599,7 +599,7 @@ fn infer_tuple_polymorphic() {
             "fun swap(p) = match p { (a, b) => (b, a) }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -631,7 +631,7 @@ fn test_exhaustive_complete() {
             "type Option[a] = Some(a) | None\nfun unwrap(opt) = match opt { Some(x) => x, None => 0 }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -665,7 +665,7 @@ fn test_exhaustive_wildcard_covers_all() {
             "type Option[a] = Some(a) | None\nfun test(opt) = match opt { _ => 0 }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -699,7 +699,7 @@ fn infer_call_site_coercion_borrow() {
             "fun len(s: String) -> Int = 42\nfun test(buf: ~String) -> Int = { len(buf); len(buf) }"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]
@@ -722,7 +722,7 @@ fn infer_call_site_coercion_no_collection() {
             "type MyList = Cons(String, MyList) | Nil\nfun test(buf: ~String) -> MyList = Cons(buf, Nil)"
         ),
         @"
-    println: forall p. fn(p) -> Unit
+    println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
     Ok: forall c d. fn(d) -> Result[c, d]

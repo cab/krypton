@@ -5,16 +5,8 @@ extern "krypton.runtime.KryptonIO" {
 
 type Wrapper = { val: Int }
 
-trait Eq[a] {
-    fun eq(_0: a, _1: a) -> Bool
-}
-
 impl Eq[Wrapper] {
     fun eq(a, b) = a.val == b.val
-}
-
-trait Ord[a] where a: Eq {
-    fun lt(_0: a, _1: a) -> Bool
 }
 
 impl Ord[Wrapper] {

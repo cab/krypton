@@ -1,3 +1,13 @@
+pub import core/eq.{Eq}
+pub import core/ord.{Ord}
+pub import core/add.{Add}
+pub import core/sub.{Sub}
+pub import core/mul.{Mul}
+pub import core/div.{Div}
+pub import core/neg.{Neg}
+pub import core/show.{Show}
+pub import core/resource.{Resource}
+
 pub import core/option.{Option, Some, None}
 pub import core/result.{Result, Ok, Err}
 pub import core/list.{List, Cons, Nil}

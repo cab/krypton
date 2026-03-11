@@ -6,10 +6,6 @@ extern "krypton.runtime.KryptonIO" {
 type Handle = MkHandle(String)
 type Choice = Yes | No
 
-trait Resource[a] {
-    fun close(x: ~a) -> Unit
-}
-
 impl Resource[Handle] {
     fun close(h: ~Handle) -> Unit = println("closed")
 }
