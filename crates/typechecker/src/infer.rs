@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, ImportName, Lit, Module, Pattern, Span, TypeDeclKind, UnaryOp, Variant, Visibility};
+use krypton_parser::ast::{BinOp, Decl, ExternMethod, Expr, ImportName, Lit, Module, Pattern, Span, TypeDecl, TypeDeclKind, UnaryOp, Variant, Visibility};
 
 use crate::scc;
 use crate::trait_registry::{self, TraitInfo, TraitMethod, TraitRegistry, InstanceInfo};
@@ -8,6 +8,20 @@ use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{self, ExternFnInfo, ExportedTraitDef, ExportedTraitMethod, TraitDefInfo, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
+
+fn find_type_decl<'a>(decls: &'a [Decl], name: &str) -> Option<&'a TypeDecl> {
+    decls.iter().find_map(|d| match d {
+        Decl::DefType(td) if td.name == name => Some(td),
+        _ => None,
+    })
+}
+
+fn constructor_names(td: &TypeDecl) -> Vec<String> {
+    match &td.kind {
+        TypeDeclKind::Sum { variants } => variants.iter().map(|v| v.name.clone()).collect(),
+        TypeDeclKind::Record { .. } => vec![td.name.clone()],
+    }
+}
 
 /// Strip `Own` wrapper from non-function types.
 /// Used at consumption sites (binary ops, if conditions, etc.) where
@@ -1701,7 +1715,7 @@ pub(crate) fn infer_module_inner(
     // Seed intrinsic function types (user defs can shadow these)
     crate::intrinsics::register_intrinsics(&mut env, &mut gen);
 
-    // These must be declared before auto_import_prelude since it populates them
+    // These must be declared before the synthetic prelude import since it populates them
     let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
     let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
     let mut type_provenance: HashMap<String, String> = HashMap::new();
@@ -1720,10 +1734,12 @@ pub(crate) fn infer_module_inner(
 
     // Build synthetic prelude import: gather all re-exported names from the cached prelude
     // and construct a Decl::Import so the normal import loop handles everything.
-    let synthetic_prelude_import: Option<Decl>;
     let mut prelude_imported_names: HashSet<String> = HashSet::new();
-    if !is_prelude_tree && cache.contains_key("prelude") {
-        let cached = cache.get("prelude").unwrap();
+    let synthetic_prelude_import = if !is_prelude_tree {
+        cache.get("prelude")
+    } else {
+        None
+    }.map(|cached| {
         let mut names: Vec<ImportName> = Vec::new();
 
         // Re-exported type names (e.g. Option, Result, List, Ordering)
@@ -1743,22 +1759,8 @@ pub(crate) fn infer_module_inner(
             if matches!(vis, Visibility::PubOpen) {
                 if let Some(orig_path) = cached.type_provenance.get(type_name) {
                     if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                        for odecl in &orig_module.decls {
-                            if let Decl::DefType(td) = odecl {
-                                if td.name == *type_name {
-                                    match &td.kind {
-                                        TypeDeclKind::Sum { variants } => {
-                                            for v in variants {
-                                                prelude_constructor_names.insert(v.name.clone());
-                                            }
-                                        }
-                                        TypeDeclKind::Record { .. } => {
-                                            prelude_constructor_names.insert(td.name.clone());
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
+                        if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
+                            prelude_constructor_names.extend(constructor_names(td));
                         }
                     }
                 }
@@ -1779,15 +1781,13 @@ pub(crate) fn infer_module_inner(
             prelude_imported_names.insert(n.name.clone());
         }
 
-        synthetic_prelude_import = Some(Decl::Import {
+        Decl::Import {
             is_pub: false,
             path: "prelude".to_string(),
             names,
             span: (0, 0),
-        });
-    } else {
-        synthetic_prelude_import = None;
-    }
+        }
+    });
 
     // Process import declarations with per-module inference, caching, and circular detection
     let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
@@ -1848,17 +1848,7 @@ pub(crate) fn infer_module_inner(
             for sdecl in &imported_module.decls {
                 if let Decl::DefType(td) = sdecl {
                     if !matches!(td.visibility, Visibility::PubOpen) {
-                        // Record type: constructor has same name as type
-                        match &td.kind {
-                            TypeDeclKind::Record { .. } => {
-                                opaque_constructors.insert(td.name.clone());
-                            }
-                            TypeDeclKind::Sum { variants } => {
-                                for v in variants {
-                                    opaque_constructors.insert(v.name.clone());
-                                }
-                            }
-                        }
+                        opaque_constructors.extend(constructor_names(td));
                     }
                 }
             }
@@ -1952,28 +1942,23 @@ pub(crate) fn infer_module_inner(
                         let original_path = cached.type_provenance.get(reex_type_name);
                         if let Some(orig_path) = original_path {
                             if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                                for odecl in &orig_module.decls {
-                                    if let Decl::DefType(td) = odecl {
-                                        if td.name == *reex_type_name {
-                                            registry.register_name(&td.name);
-                                            let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
-                                                .map_err(|e| spanned(e, *span))?;
-                                            // Mark prelude-sourced types as shadowable
-                                            if path == "prelude" {
-                                                registry.set_prelude(&td.name);
-                                            }
-                                            if matches!(original_vis, Visibility::PubOpen) {
-                                                for (cname, scheme) in &constructors {
-                                                    env.bind(cname.clone(), scheme.clone());
-                                                    // Also add constructors to imported_fn_types so they're visible
-                                                    imported_fn_types.push((cname.clone(), scheme.clone()));
-                                                    fn_provenance_map.insert(cname.clone(), (orig_path.clone(), cname.clone()));
-                                                }
-                                            }
-                                            imported_type_info.insert(td.name.clone(), (orig_path.clone(), original_vis.clone()));
-                                            break;
+                                if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name) {
+                                    registry.register_name(&td.name);
+                                    let constructors = type_registry::process_type_decl(td, &mut registry, &mut gen)
+                                        .map_err(|e| spanned(e, *span))?;
+                                    // Mark prelude-sourced types as shadowable
+                                    if path == "prelude" {
+                                        registry.set_prelude(&td.name);
+                                    }
+                                    if matches!(original_vis, Visibility::PubOpen) {
+                                        for (cname, scheme) in &constructors {
+                                            env.bind(cname.clone(), scheme.clone());
+                                            // Also add constructors to imported_fn_types so they're visible
+                                            imported_fn_types.push((cname.clone(), scheme.clone()));
+                                            fn_provenance_map.insert(cname.clone(), (orig_path.clone(), cname.clone()));
                                         }
                                     }
+                                    imported_type_info.insert(td.name.clone(), (orig_path.clone(), original_vis.clone()));
                                 }
                             }
                         }
@@ -2983,18 +2968,13 @@ pub(crate) fn infer_module_inner(
                 continue;
             }
             if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {
-                for decl in &imported_mod.decls {
-                    if let Decl::DefType(td) = decl {
-                        if td.name == *type_name {
-                            if let TypeDeclKind::Sum { variants } = &td.kind {
-                                type_provenance.insert(td.name.clone(), source_path.clone());
-                                for v in variants {
-                                    type_provenance.insert(v.name.clone(), source_path.clone());
-                                }
-                                sum_decls.push((td.name.clone(), td.type_params.clone(), variants.clone()));
-                            }
-                            break;
+                if let Some(td) = find_type_decl(&imported_mod.decls, type_name) {
+                    if let TypeDeclKind::Sum { variants } = &td.kind {
+                        type_provenance.insert(td.name.clone(), source_path.clone());
+                        for v in variants {
+                            type_provenance.insert(v.name.clone(), source_path.clone());
                         }
+                        sum_decls.push((td.name.clone(), td.type_params.clone(), variants.clone()));
                     }
                 }
             }
