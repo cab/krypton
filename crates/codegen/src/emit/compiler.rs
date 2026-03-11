@@ -1024,10 +1024,19 @@ impl Compiler {
 
         // Save stack state at branch point (after consuming condition)
         let stack_at_branch = self.frame.stack_types.clone();
+        let locals_at_branch = self.locals.clone();
+        let local_types_at_branch = self.frame.local_types.clone();
+        let next_local_at_branch = self.next_local;
 
         // Compile then branch
         let then_type = self.compile_expr(then_, in_tail)?;
         let stack_after_then = self.frame.stack_types.clone();
+        let then_next_local = self.next_local;
+
+        // Restore locals for else branch (then-branch locals are out of scope)
+        self.locals = locals_at_branch.clone();
+        self.frame.local_types = local_types_at_branch.clone();
+        self.next_local = next_local_at_branch;
 
         // Emit Goto with placeholder
         let goto_idx = self.code.len();
@@ -1042,6 +1051,12 @@ impl Compiler {
 
         // Compile else branch
         let _else_type = self.compile_expr(else_, in_tail)?;
+        let else_next_local = self.next_local;
+
+        // Restore locals for merge point (else-branch locals are out of scope)
+        self.locals = locals_at_branch;
+        self.frame.local_types = local_types_at_branch;
+        self.next_local = then_next_local.max(else_next_local);
 
         let after_else = self.code.len() as u16;
 
@@ -3269,13 +3284,10 @@ impl Compiler {
         let mut last_type = JvmType::Int;
         for (i, expr) in exprs.iter().enumerate() {
             let is_last = i == exprs.len() - 1;
-            let is_let_stmt =
-                matches!(expr.kind, TypedExprKind::Let { body: None, .. } | TypedExprKind::LetPattern { body: None, .. });
-
             let expr_tail = in_tail && is_last;
             let ty = self.compile_expr(expr, expr_tail)?;
 
-            if !is_last && !is_let_stmt {
+            if !is_last {
                 // Pop the value — it's not used
                 match ty {
                     JvmType::Long | JvmType::Double => {
