@@ -12,6 +12,6 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-MyVariant: forall f. fn(f) -> Option[f]
-MyNone: forall f. Option[f]
+MyVariant: forall j. fn(j) -> Option[j]
+MyNone: forall j. Option[j]
 main: fn() -> Option[own Int]

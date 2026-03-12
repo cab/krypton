@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 63
 expression: snapshot
 ---
 println: forall i. fn(i) -> Unit
@@ -12,4 +13,4 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-apply: forall q s. fn(fn(q) -> s, q) -> s
+apply: forall u w. fn(fn(u) -> w, u) -> w

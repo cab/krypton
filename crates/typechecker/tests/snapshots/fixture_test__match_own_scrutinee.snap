@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 63
 expression: snapshot
 ---
 println: forall i. fn(i) -> Unit
@@ -12,6 +13,6 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Some: forall f. fn(f) -> Option[f]
-None: forall f. Option[f]
+Some: forall j. fn(j) -> Option[j]
+None: forall j. Option[j]
 test: fn(own Option[String]) -> String

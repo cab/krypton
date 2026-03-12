@@ -12,7 +12,7 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Some: forall f. fn(f) -> Option[f]
-None: forall f. Option[f]
+Some: forall j. fn(j) -> Option[j]
+None: forall j. Option[j]
 unwrap: fn(Option[own Int]) -> Int
 test: fn() -> Int

@@ -12,6 +12,6 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Some: forall f. fn(f) -> Option[f]
-None: forall f. Option[f]
-unwrap_or: forall r. fn(Option[r], r) -> r
+Some: forall j. fn(j) -> Option[j]
+None: forall j. Option[j]
+unwrap_or: forall v. fn(Option[v], v) -> v

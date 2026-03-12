@@ -12,9 +12,9 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Some: forall f. fn(f) -> Option[f]
-None: forall f. Option[f]
-Cons: forall g. fn(g, List[g]) -> List[g]
-Nil: forall g. List[g]
+Some: forall j. fn(j) -> Option[j]
+None: forall j. Option[j]
+Cons: forall k. fn(k, List[k]) -> List[k]
+Nil: forall k. List[k]
 unwrap_nested: fn(Option[Option[own Int]]) -> Int
 first_two: fn(List[Int]) -> Int

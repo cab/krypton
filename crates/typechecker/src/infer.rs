@@ -131,6 +131,19 @@ fn free_vars_env(env: &TypeEnv, subst: &Substitution) -> HashSet<TypeVarId> {
     s
 }
 
+fn reserve_gen_for_env_schemes(env: &TypeEnv, gen: &mut TypeVarGen) {
+    let mut next_reserved = 0;
+    env.for_each_scheme(|scheme| {
+        for var in &scheme.vars {
+            next_reserved = next_reserved.max(*var + 1);
+        }
+        for var in free_vars(&scheme.ty) {
+            next_reserved = next_reserved.max(var + 1);
+        }
+    });
+    gen.reserve_at_least(next_reserved);
+}
+
 /// Generalize a type into a type scheme by quantifying over variables
 /// free in the type but not free in the environment.
 fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> TypeScheme {
@@ -359,7 +372,9 @@ fn infer_expr_inner(
                 // function signature and pass it as expected_type for bidirectional checking.
                 let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
                     func_param_types.as_ref().and_then(|fparams| {
-                        fparams.get(i).map(|expected_arg_ty| subst.apply(expected_arg_ty))
+                        fparams
+                            .get(i)
+                            .map(|expected_arg_ty| subst.apply(expected_arg_ty))
                     })
                 } else {
                     None
@@ -2812,6 +2827,11 @@ pub(crate) fn infer_module_inner(
             }
         }
     }
+
+    // Imported schemes come from already-inferred modules and can carry type variable IDs
+    // larger than a fresh local generator starting at 0. Reserve past them so local
+    // inference cannot collide with imported quantified variables.
+    reserve_gen_for_env_schemes(&env, &mut gen);
 
     // Process ExternJava declarations
     let mut extern_fns: Vec<ExternFnInfo> = Vec::new();

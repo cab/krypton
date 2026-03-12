@@ -13,5 +13,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Buffer: fn(own String) -> Buffer
-identity: forall p. fn(p) -> p
+identity: forall t. fn(t) -> t
 test: fn(Buffer) -> Buffer

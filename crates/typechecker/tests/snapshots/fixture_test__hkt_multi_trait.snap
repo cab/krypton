@@ -12,6 +12,6 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Box: forall f. fn(f) -> Box[f]
-Functor$Box$fmap: fn(Box[z], fn(z) -> b1) -> own Box[b1]
-Container$Box$wrap: fn(t) -> own Box[t]
+Box: forall j. fn(j) -> Box[j]
+Functor$Box$fmap: fn(Box[d1], fn(d1) -> f1) -> own Box[f1]
+Container$Box$wrap: fn(x) -> own Box[x]

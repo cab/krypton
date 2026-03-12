@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 63
 expression: snapshot
 ---
 println: forall i. fn(i) -> Unit
@@ -12,5 +13,5 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Pair: forall f g. fn(f, g) -> Pair[f, g]
-Bifunctor$Pair$bimap: fn(Pair[d1, e1], fn(d1) -> h1, fn(e1) -> i1) -> own Pair[h1, i1]
+Pair: forall j k. fn(j, k) -> Pair[j, k]
+Bifunctor$Pair$bimap: fn(Pair[h1, i1], fn(h1) -> l1, fn(i1) -> m1) -> own Pair[l1, m1]

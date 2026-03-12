@@ -12,6 +12,6 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-ok_val: forall q. fn() -> Result[q, own Int]
-err_val: forall w. fn() -> Result[own String, w]
+ok_val: forall u. fn() -> Result[u, own Int]
+err_val: forall a1. fn() -> Result[own String, a1]
 main: fn() -> Int

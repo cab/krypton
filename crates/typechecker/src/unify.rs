@@ -1,6 +1,7 @@
 use krypton_parser::ast::Span;
 
 use crate::types::{Substitution, Type, TypeVarId};
+use std::collections::HashSet;
 use std::fmt;
 
 /// Error codes for type errors.
@@ -82,38 +83,122 @@ impl fmt::Display for TypeErrorCode {
 /// Errors that can occur during type unification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeError {
-    Mismatch { expected: Type, actual: Type },
-    InfiniteType { var: TypeVarId, ty: Type },
-    WrongArity { expected: usize, actual: usize },
-    UnknownVariable { name: String },
-    NotAFunction { actual: Type },
-    DuplicateType { name: String },
-    UnknownField { type_name: String, field_name: String },
-    MissingFields { type_name: String, fields: Vec<String> },
-    NotAStruct { actual: Type },
-    NonExhaustive { missing: Vec<String> },
-    AlreadyMoved { name: String },
-    MovedInBranch { name: String },
-    CapturedMoved { name: String },
-    QualifierMismatch { name: String, callee: String, param: String },
-    UnsupportedExpr { description: String },
-    NoInstance { trait_name: String, ty: String, required_by: Option<String> },
-    OrphanInstance { trait_name: String, ty: String },
-    CannotDerive { trait_name: String, type_name: String, field_type: String },
-    DefinitionConflictsWithTraitMethod { def_name: String, trait_name: String },
-    UnknownType { name: String, suggestion: Option<String> },
-    QuestionMarkBadReturn { actual: Type },
-    QuestionMarkBadOperand { actual: Type },
-    QuestionMarkMismatch { expr_kind: String, return_kind: String },
-    UnknownModule { path: String },
-    CircularImport { cycle: Vec<String> },
-    PrivateName { name: String, module_path: String },
-    BareImport { path: String },
-    PrivateReexport { name: String },
-    ModuleParseError { path: String, errors: Vec<String> },
-    KindMismatch { type_name: String, expected_arity: usize, actual_arity: usize },
-    ResourceBranchLeak { name: String, type_name: String },
-    ReservedName { name: String },
+    Mismatch {
+        expected: Type,
+        actual: Type,
+    },
+    InfiniteType {
+        var: TypeVarId,
+        ty: Type,
+    },
+    WrongArity {
+        expected: usize,
+        actual: usize,
+    },
+    UnknownVariable {
+        name: String,
+    },
+    NotAFunction {
+        actual: Type,
+    },
+    DuplicateType {
+        name: String,
+    },
+    UnknownField {
+        type_name: String,
+        field_name: String,
+    },
+    MissingFields {
+        type_name: String,
+        fields: Vec<String>,
+    },
+    NotAStruct {
+        actual: Type,
+    },
+    NonExhaustive {
+        missing: Vec<String>,
+    },
+    AlreadyMoved {
+        name: String,
+    },
+    MovedInBranch {
+        name: String,
+    },
+    CapturedMoved {
+        name: String,
+    },
+    QualifierMismatch {
+        name: String,
+        callee: String,
+        param: String,
+    },
+    UnsupportedExpr {
+        description: String,
+    },
+    NoInstance {
+        trait_name: String,
+        ty: String,
+        required_by: Option<String>,
+    },
+    OrphanInstance {
+        trait_name: String,
+        ty: String,
+    },
+    CannotDerive {
+        trait_name: String,
+        type_name: String,
+        field_type: String,
+    },
+    DefinitionConflictsWithTraitMethod {
+        def_name: String,
+        trait_name: String,
+    },
+    UnknownType {
+        name: String,
+        suggestion: Option<String>,
+    },
+    QuestionMarkBadReturn {
+        actual: Type,
+    },
+    QuestionMarkBadOperand {
+        actual: Type,
+    },
+    QuestionMarkMismatch {
+        expr_kind: String,
+        return_kind: String,
+    },
+    UnknownModule {
+        path: String,
+    },
+    CircularImport {
+        cycle: Vec<String>,
+    },
+    PrivateName {
+        name: String,
+        module_path: String,
+    },
+    BareImport {
+        path: String,
+    },
+    PrivateReexport {
+        name: String,
+    },
+    ModuleParseError {
+        path: String,
+        errors: Vec<String>,
+    },
+    KindMismatch {
+        type_name: String,
+        expected_arity: usize,
+        actual_arity: usize,
+    },
+    ResourceBranchLeak {
+        name: String,
+        type_name: String,
+    },
+    ReservedName {
+        name: String,
+    },
 }
 
 impl TypeError {
@@ -135,8 +220,13 @@ impl TypeError {
             TypeError::CapturedMoved { .. } => TypeErrorCode::E0103,
             TypeError::QualifierMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
-            TypeError::NoInstance { required_by: None, .. } => TypeErrorCode::E0301,
-            TypeError::NoInstance { required_by: Some(_), .. } => TypeErrorCode::E0303,
+            TypeError::NoInstance {
+                required_by: None, ..
+            } => TypeErrorCode::E0301,
+            TypeError::NoInstance {
+                required_by: Some(_),
+                ..
+            } => TypeErrorCode::E0303,
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
             TypeError::CannotDerive { .. } => TypeErrorCode::E0304,
             TypeError::DefinitionConflictsWithTraitMethod { .. } => TypeErrorCode::E0305,
@@ -305,8 +395,15 @@ impl fmt::Display for TypeError {
             TypeError::NotAFunction { actual } => {
                 write!(f, "not a function: type {} is not callable", actual)
             }
-            TypeError::UnknownField { type_name, field_name } => {
-                write!(f, "unknown field: type {} has no field {}", type_name, field_name)
+            TypeError::UnknownField {
+                type_name,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "unknown field: type {} has no field {}",
+                    type_name, field_name
+                )
             }
             TypeError::MissingFields { type_name, fields } => {
                 write!(f, "missing fields on {}: {}", type_name, fields.join(", "))
@@ -333,28 +430,66 @@ impl fmt::Display for TypeError {
                 write!(f, "not yet implemented: {}", description)
             }
             TypeError::NoInstance { trait_name, ty, .. } => {
-                write!(f, "the trait `{}` is not implemented for `{}`", trait_name, ty)
+                write!(
+                    f,
+                    "the trait `{}` is not implemented for `{}`",
+                    trait_name, ty
+                )
             }
             TypeError::OrphanInstance { trait_name, ty } => {
-                write!(f, "orphan instance: cannot implement `{}` for `{}`", trait_name, ty)
+                write!(
+                    f,
+                    "orphan instance: cannot implement `{}` for `{}`",
+                    trait_name, ty
+                )
             }
-            TypeError::CannotDerive { trait_name, type_name, field_type } => {
-                write!(f, "cannot derive `{}` for `{}`: field type `{}` does not implement `{}`", trait_name, type_name, field_type, trait_name)
+            TypeError::CannotDerive {
+                trait_name,
+                type_name,
+                field_type,
+            } => {
+                write!(
+                    f,
+                    "cannot derive `{}` for `{}`: field type `{}` does not implement `{}`",
+                    trait_name, type_name, field_type, trait_name
+                )
             }
-            TypeError::DefinitionConflictsWithTraitMethod { def_name, trait_name } => {
-                write!(f, "definition `{}` conflicts with trait method `{}.{}`", def_name, trait_name, def_name)
+            TypeError::DefinitionConflictsWithTraitMethod {
+                def_name,
+                trait_name,
+            } => {
+                write!(
+                    f,
+                    "definition `{}` conflicts with trait method `{}.{}`",
+                    def_name, trait_name, def_name
+                )
             }
             TypeError::UnknownType { name, .. } => {
                 write!(f, "unknown type: {}", name)
             }
             TypeError::QuestionMarkBadReturn { actual } => {
-                write!(f, "`?` operator in function returning `{}` (expected Result or Option)", actual)
+                write!(
+                    f,
+                    "`?` operator in function returning `{}` (expected Result or Option)",
+                    actual
+                )
             }
             TypeError::QuestionMarkBadOperand { actual } => {
-                write!(f, "`?` operator on `{}` (expected Result or Option)", actual)
+                write!(
+                    f,
+                    "`?` operator on `{}` (expected Result or Option)",
+                    actual
+                )
             }
-            TypeError::QuestionMarkMismatch { expr_kind, return_kind } => {
-                write!(f, "`?` on `{}` in function returning `{}`", expr_kind, return_kind)
+            TypeError::QuestionMarkMismatch {
+                expr_kind,
+                return_kind,
+            } => {
+                write!(
+                    f,
+                    "`?` on `{}` in function returning `{}`",
+                    expr_kind, return_kind
+                )
             }
             TypeError::UnknownModule { path } => {
                 write!(f, "unknown module: {}", path)
@@ -369,19 +504,39 @@ impl fmt::Display for TypeError {
                 write!(f, "bare import of module `{}` is not supported", path)
             }
             TypeError::PrivateReexport { name } => {
-                write!(f, "cannot re-export `{}`: name is not in scope or is private", name)
+                write!(
+                    f,
+                    "cannot re-export `{}`: name is not in scope or is private",
+                    name
+                )
             }
             TypeError::ModuleParseError { path, .. } => {
                 write!(f, "parse error in imported module `{}`", path)
             }
-            TypeError::KindMismatch { type_name, expected_arity, actual_arity } => {
-                write!(f, "kind mismatch: `{}` expects {} type argument(s) but was given {}", type_name, expected_arity, actual_arity)
+            TypeError::KindMismatch {
+                type_name,
+                expected_arity,
+                actual_arity,
+            } => {
+                write!(
+                    f,
+                    "kind mismatch: `{}` expects {} type argument(s) but was given {}",
+                    type_name, expected_arity, actual_arity
+                )
             }
             TypeError::ResourceBranchLeak { name, type_name } => {
-                write!(f, "resource `{}` (~{}) consumed in some branches but not all", name, type_name)
+                write!(
+                    f,
+                    "resource `{}` (~{}) consumed in some branches but not all",
+                    name, type_name
+                )
             }
             TypeError::ReservedName { name } => {
-                write!(f, "`{}` is a reserved compiler name and cannot be used", name)
+                write!(
+                    f,
+                    "`{}` is a reserved compiler name and cannot be used",
+                    name
+                )
             }
         }
     }
@@ -406,9 +561,33 @@ impl std::error::Error for TypeError {}
 
 /// Resolve type variable chains through the substitution.
 fn walk(ty: &Type, subst: &Substitution) -> Type {
+    let mut visiting = HashSet::new();
+    let mut chain = Vec::new();
+    walk_inner(ty, subst, &mut visiting, &mut chain)
+}
+
+fn walk_inner(
+    ty: &Type,
+    subst: &Substitution,
+    visiting: &mut HashSet<TypeVarId>,
+    chain: &mut Vec<TypeVarId>,
+) -> Type {
     match ty {
         Type::Var(id) => match subst.get(*id) {
-            Some(t) => walk(t, subst),
+            Some(t) => {
+                if !visiting.insert(*id) {
+                    chain.push(*id);
+                    panic!(
+                        "substitution cycle detected in walk for type vars {:?}",
+                        chain
+                    );
+                }
+                chain.push(*id);
+                let resolved = walk_inner(t, subst, visiting, chain);
+                chain.pop();
+                visiting.remove(id);
+                resolved
+            }
             None => ty.clone(),
         },
         _ => ty.clone(),
@@ -424,7 +603,9 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
             params.iter().any(|p| occurs_in(var, p, subst)) || occurs_in(var, ret, subst)
         }
         Type::Named(_, args) => args.iter().any(|a| occurs_in(var, a, subst)),
-        Type::App(ctor, args) => occurs_in(var, ctor, subst) || args.iter().any(|a| occurs_in(var, a, subst)),
+        Type::App(ctor, args) => {
+            occurs_in(var, ctor, subst) || args.iter().any(|a| occurs_in(var, a, subst))
+        }
         Type::Own(inner) => occurs_in(var, inner, subst),
         Type::Tuple(elems) => elems.iter().any(|e| occurs_in(var, e, subst)),
         _ => false,

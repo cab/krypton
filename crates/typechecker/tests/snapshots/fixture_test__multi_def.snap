@@ -12,5 +12,5 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-id: forall p. fn(p) -> p
-always: forall s t. fn(s, t) -> s
+id: forall t. fn(t) -> t
+always: forall w x. fn(w, x) -> w

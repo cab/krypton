@@ -12,5 +12,5 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-identity: forall p. fn(p) -> p
+identity: forall t. fn(t) -> t
 test: fn(own String) -> String

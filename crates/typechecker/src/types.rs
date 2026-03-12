@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Type variable identifier.
@@ -169,25 +169,63 @@ impl Substitution {
 
     /// Recursively apply this substitution to a type.
     pub fn apply(&self, ty: &Type) -> Type {
+        let mut visiting = HashSet::new();
+        let mut chain = Vec::new();
+        self.apply_inner(ty, &mut visiting, &mut chain)
+    }
+
+    fn apply_inner(
+        &self,
+        ty: &Type,
+        visiting: &mut HashSet<TypeVarId>,
+        chain: &mut Vec<TypeVarId>,
+    ) -> Type {
         match ty {
             Type::Var(id) => match self.map.get(id) {
-                Some(t) => self.apply(t),
+                Some(t) => {
+                    if !visiting.insert(*id) {
+                        chain.push(*id);
+                        panic!(
+                            "substitution cycle detected while applying type vars {:?}",
+                            chain
+                        );
+                    }
+                    chain.push(*id);
+                    let resolved = self.apply_inner(t, visiting, chain);
+                    chain.pop();
+                    visiting.remove(id);
+                    resolved
+                }
                 None => ty.clone(),
             },
             Type::Fn(params, ret) => Type::Fn(
-                params.iter().map(|p| self.apply(p)).collect(),
-                Box::new(self.apply(ret)),
+                params
+                    .iter()
+                    .map(|p| self.apply_inner(p, visiting, chain))
+                    .collect(),
+                Box::new(self.apply_inner(ret, visiting, chain)),
             ),
-            Type::Named(name, args) => {
-                Type::Named(name.clone(), args.iter().map(|a| self.apply(a)).collect())
-            }
+            Type::Named(name, args) => Type::Named(
+                name.clone(),
+                args.iter()
+                    .map(|a| self.apply_inner(a, visiting, chain))
+                    .collect(),
+            ),
             Type::App(ctor, args) => {
-                let applied_ctor = self.apply(ctor);
-                let applied_args: Vec<Type> = args.iter().map(|a| self.apply(a)).collect();
+                let applied_ctor = self.apply_inner(ctor, visiting, chain);
+                let applied_args: Vec<Type> = args
+                    .iter()
+                    .map(|a| self.apply_inner(a, visiting, chain))
+                    .collect();
                 normalize_app(applied_ctor, applied_args)
             }
-            Type::Own(inner) => Type::Own(Box::new(self.apply(inner))),
-            Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| self.apply(e)).collect()),
+            Type::Own(inner) => Type::Own(Box::new(self.apply_inner(inner, visiting, chain))),
+            Type::Tuple(elems) => Type::Tuple(
+                elems
+                    .iter()
+                    .map(|e| self.apply_inner(e, visiting, chain))
+                    .collect(),
+            ),
             _ => ty.clone(),
         }
     }
@@ -286,7 +324,12 @@ impl TypeEnv {
     }
 
     /// Bind a name in the current scope with provenance (source module path).
-    pub fn bind_with_provenance(&mut self, name: std::string::String, scheme: TypeScheme, module_path: std::string::String) {
+    pub fn bind_with_provenance(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        module_path: std::string::String,
+    ) {
         self.bind(name.clone(), scheme);
         self.provenance.insert(name, module_path);
     }
@@ -326,6 +369,10 @@ impl TypeVarGen {
         let id = self.next;
         self.next += 1;
         id
+    }
+
+    pub fn reserve_at_least(&mut self, next: TypeVarId) {
+        self.next = self.next.max(next);
     }
 }
 

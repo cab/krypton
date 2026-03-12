@@ -12,7 +12,7 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Ok: forall f g. fn(g) -> Result[f, g]
-Err: forall f g. fn(f) -> Result[f, g]
-extract: forall w. fn(Result[w, Int]) -> Int
+Ok: forall j k. fn(k) -> Result[j, k]
+Err: forall j k. fn(j) -> Result[j, k]
+extract: forall a1. fn(Result[a1, Int]) -> Int
 test: fn() -> Int

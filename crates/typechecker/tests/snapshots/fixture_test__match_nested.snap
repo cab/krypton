@@ -12,6 +12,6 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Cons: forall f. fn(f, List[f]) -> List[f]
-Nil: forall f. List[f]
+Cons: forall j. fn(j, List[j]) -> List[j]
+Nil: forall j. List[j]
 sum_first_two: fn(List[Int]) -> Int
