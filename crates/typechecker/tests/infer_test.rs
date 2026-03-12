@@ -1261,6 +1261,100 @@ fn cross_module_deriving_show() {
 }
 
 #[test]
+fn cross_module_derived_constrained_instance_resolves_when_inner_instance_exists() {
+    use krypton_modules::module_resolver::StdlibResolver;
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, path: &str) -> Option<String> {
+            match path {
+                "mylib" => Some("pub open type Box[a] = Box(a) deriving (Show)".into()),
+                _ => StdlibResolver.resolve(path),
+            }
+        }
+    }
+    let src = r#"
+        import mylib.{Box}
+        import core/io.{println}
+
+        type Player = { name: String, score: Int } deriving (Show)
+
+        fun main() = println(Box(Player { name = "ana", score = 7 }))
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &Resolver);
+    assert!(
+        result.is_ok(),
+        "cross-module derived constrained instance should resolve: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn cross_module_derived_constrained_instance_reports_e0301_when_inner_instance_missing() {
+    use krypton_modules::module_resolver::StdlibResolver;
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, path: &str) -> Option<String> {
+            match path {
+                "mylib" => Some("pub open type Box[a] = Box(a) deriving (Show)".into()),
+                _ => StdlibResolver.resolve(path),
+            }
+        }
+    }
+    let src = r#"
+        import mylib.{Box}
+        import core/io.{println}
+
+        type Player = { name: String, score: Int }
+
+        fun main() = println(Box(Player { name = "ana", score = 7 }))
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let err = match infer::infer_module(&module, &Resolver) {
+        Ok(_) => panic!("expected E0301"),
+        Err(err) => err,
+    };
+    assert_eq!(err.error.error_code().to_string(), "E0301");
+}
+
+#[test]
+fn cross_module_derived_instance_exports_constraint_metadata() {
+    use krypton_modules::module_resolver::StdlibResolver;
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, path: &str) -> Option<String> {
+            match path {
+                "mylib" => Some("pub open type Box[a] = Box(a) deriving (Show)".into()),
+                _ => StdlibResolver.resolve(path),
+            }
+        }
+    }
+    let src = r#"
+        import mylib.{Box}
+        fun main(x) = x
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let modules = infer::infer_module(&module, &Resolver).expect("typecheck should succeed");
+    let imported = modules
+        .iter()
+        .find(|typed_module| typed_module.module_path.as_deref() == Some("mylib"))
+        .expect("expected imported mylib module");
+    let instance = imported
+        .instance_defs
+        .iter()
+        .find(|inst| inst.trait_name == "Show" && inst.target_type_name == "Box")
+        .expect("expected derived Show[Box[a]] instance");
+
+    assert_eq!(instance.constraints.len(), 1);
+    assert_eq!(instance.constraints[0].trait_name, "Show");
+    assert_eq!(instance.constraints[0].type_var, "a");
+    assert!(instance.type_var_ids.contains_key("a"));
+}
+
+#[test]
 fn infer_module_private_trait() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {

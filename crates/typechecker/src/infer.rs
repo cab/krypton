@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
-    BinOp, Decl, Expr, ExternMethod, ImportName, Lit, Module, Pattern, Span, TypeDecl,
-    TypeDeclKind, UnaryOp, Variant, Visibility,
+    BinOp, Decl, Expr, ExternMethod, ImportName, Lit, Module, Pattern, Span, TypeConstraint,
+    TypeDecl, TypeDeclKind, UnaryOp, Variant, Visibility,
 };
 
 use crate::scc;
@@ -80,6 +80,108 @@ fn free_vars(ty: &Type) -> HashSet<TypeVarId> {
     let mut out = HashSet::new();
     free_vars_into(ty, &mut out);
     out
+}
+
+fn match_type_with_bindings(
+    pattern: &Type,
+    actual: &Type,
+    bindings: &mut HashMap<TypeVarId, Type>,
+) -> bool {
+    match (pattern, actual) {
+        (Type::Var(id), _) => match bindings.get(id) {
+            Some(existing) => existing == actual,
+            None => {
+                bindings.insert(*id, actual.clone());
+                true
+            }
+        },
+        (Type::Int, Type::Int)
+        | (Type::Float, Type::Float)
+        | (Type::Bool, Type::Bool)
+        | (Type::String, Type::String)
+        | (Type::Unit, Type::Unit) => true,
+        (Type::Own(lhs), Type::Own(rhs)) => match_type_with_bindings(lhs, rhs, bindings),
+        (Type::Fn(lhs_params, lhs_ret), Type::Fn(rhs_params, rhs_ret)) => {
+            lhs_params.len() == rhs_params.len()
+                && lhs_params
+                    .iter()
+                    .zip(rhs_params.iter())
+                    .all(|(lhs, rhs)| match_type_with_bindings(lhs, rhs, bindings))
+                && match_type_with_bindings(lhs_ret, rhs_ret, bindings)
+        }
+        (Type::Named(lhs_name, lhs_args), Type::Named(rhs_name, rhs_args)) => {
+            lhs_name == rhs_name
+                && lhs_args.len() == rhs_args.len()
+                && lhs_args
+                    .iter()
+                    .zip(rhs_args.iter())
+                    .all(|(lhs, rhs)| match_type_with_bindings(lhs, rhs, bindings))
+        }
+        _ => false,
+    }
+}
+
+fn collect_derived_constraints_for_type(
+    trait_registry: &TraitRegistry,
+    trait_name: &str,
+    field_type: &Type,
+    local_type_params: &HashMap<TypeVarId, String>,
+    visited: &mut HashSet<(String, String)>,
+    constraints: &mut Vec<TypeConstraint>,
+) -> bool {
+    let key = (trait_name.to_string(), format!("{field_type}"));
+    if !visited.insert(key) {
+        return true;
+    }
+
+    if let Type::Var(type_var) = field_type {
+        if let Some(type_var_name) = local_type_params.get(type_var) {
+            if !constraints.iter().any(|constraint| {
+                constraint.trait_name == trait_name && constraint.type_var == *type_var_name
+            }) {
+                constraints.push(TypeConstraint {
+                    type_var: type_var_name.clone(),
+                    trait_name: trait_name.to_string(),
+                    span: (0, 0),
+                });
+            }
+            return true;
+        }
+    }
+
+    let Some(instance) = trait_registry.find_instance(trait_name, field_type) else {
+        return false;
+    };
+
+    if instance.constraints.is_empty() {
+        return true;
+    }
+
+    let mut bindings = HashMap::new();
+    if !match_type_with_bindings(&instance.target_type, field_type, &mut bindings) {
+        return false;
+    }
+
+    for constraint in &instance.constraints {
+        let Some(type_var_id) = instance.type_var_ids.get(&constraint.type_var) else {
+            return false;
+        };
+        let Some(required_type) = bindings.get(type_var_id) else {
+            return false;
+        };
+        if !collect_derived_constraints_for_type(
+            trait_registry,
+            &constraint.trait_name,
+            required_type,
+            local_type_params,
+            visited,
+            constraints,
+        ) {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Recursive accumulator for `free_vars`.
@@ -3173,37 +3275,37 @@ pub(crate) fn infer_module_inner(
                     }
                 };
 
-                // Track which type params need subdictionaries
-                let mut subdict_traits: Vec<(String, usize)> = Vec::new();
+                let derived_type_var_ids: HashMap<String, TypeVarId> = type_decl
+                    .type_params
+                    .iter()
+                    .cloned()
+                    .zip(type_info.type_param_vars.iter().copied())
+                    .collect();
+                let local_type_params: HashMap<TypeVarId, String> = derived_type_var_ids
+                    .iter()
+                    .map(|(name, id)| (*id, name.clone()))
+                    .collect();
+                let mut derived_constraints: Vec<TypeConstraint> = Vec::new();
+                let mut visited_constraints: HashSet<(String, String)> = HashSet::new();
 
                 // Validate that all field types have instances for this trait
                 for ft in &field_types {
-                    match ft {
-                        Type::Var(v) => {
-                            // Type parameter — record constraint
-                            if let Some(idx) =
-                                type_info.type_param_vars.iter().position(|&pv| pv == *v)
-                            {
-                                if !subdict_traits
-                                    .iter()
-                                    .any(|(t, i)| t == trait_name && *i == idx)
-                                {
-                                    subdict_traits.push((trait_name.clone(), idx));
-                                }
-                            }
-                        }
-                        _ => {
-                            if trait_registry.find_instance(trait_name, ft).is_none() {
-                                return Err(spanned(
-                                    TypeError::CannotDerive {
-                                        trait_name: trait_name.clone(),
-                                        type_name: type_decl.name.clone(),
-                                        field_type: format!("{}", ft),
-                                    },
-                                    type_decl.span,
-                                ));
-                            }
-                        }
+                    if !collect_derived_constraints_for_type(
+                        &trait_registry,
+                        trait_name,
+                        ft,
+                        &local_type_params,
+                        &mut visited_constraints,
+                        &mut derived_constraints,
+                    ) {
+                        return Err(spanned(
+                            TypeError::CannotDerive {
+                                trait_name: trait_name.clone(),
+                                type_name: type_decl.name.clone(),
+                                field_type: format!("{}", ft),
+                            },
+                            type_decl.span,
+                        ));
                     }
                 }
 
@@ -3227,8 +3329,8 @@ pub(crate) fn infer_module_inner(
                     trait_name: trait_name.clone(),
                     target_type: target_type.clone(),
                     target_type_name: target_type_name.clone(),
-                    type_var_ids: HashMap::new(),
-                    constraints: vec![],
+                    type_var_ids: derived_type_var_ids.clone(),
+                    constraints: derived_constraints.clone(),
                     methods: vec![method_name.to_string()],
                     span: type_decl.span,
                     is_builtin: false,
@@ -3271,10 +3373,10 @@ pub(crate) fn infer_module_inner(
                     trait_name: trait_name.clone(),
                     target_type_name,
                     target_type,
-                    type_var_ids: HashMap::new(),
-                    constraints: vec![],
+                    type_var_ids: derived_type_var_ids.clone(),
+                    constraints: derived_constraints.clone(),
                     qualified_method_names: vec![(method_name.to_string(), qualified_name)],
-                    subdict_traits,
+                    subdict_traits: vec![],
                     is_intrinsic: false,
                 });
             }

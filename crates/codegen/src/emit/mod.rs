@@ -28,6 +28,46 @@ use class_gen::{
 /// Java 21 class file version (major 65).
 const JAVA_21: Version = Version::Java21 { minor: 0 };
 
+#[derive(Clone)]
+struct ImportedInstanceInfo {
+    class_name: String,
+    target_type: Type,
+    requirements: Vec<DictRequirement>,
+}
+
+fn dict_requirements_for_instance(
+    type_var_ids: &HashMap<String, u32>,
+    constraints: &[krypton_parser::ast::TypeConstraint],
+    subdict_traits: &[(String, usize)],
+) -> Vec<DictRequirement> {
+    let mut dict_requirements: Vec<DictRequirement> = subdict_traits
+        .iter()
+        .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
+            trait_name: trait_name.clone(),
+            param_idx: *param_idx,
+        })
+        .collect();
+    for constraint in constraints {
+        if let Some(&type_var) = type_var_ids.get(&constraint.type_var) {
+            if !dict_requirements.iter().any(|requirement| {
+                matches!(
+                    requirement,
+                    DictRequirement::Constraint {
+                        trait_name,
+                        type_var: existing_type_var,
+                    } if trait_name == &constraint.trait_name && *existing_type_var == type_var
+                )
+            }) {
+                dict_requirements.push(DictRequirement::Constraint {
+                    trait_name: constraint.trait_name.clone(),
+                    type_var,
+                });
+            }
+        }
+    }
+    dict_requirements
+}
+
 
 /// Extract the type name from a Type for instance lookup.
 fn type_to_name(ty: &Type) -> String {
@@ -220,7 +260,7 @@ pub fn compile_modules(
     let mut all_classes = Vec::new();
 
     // Build instance class name map from all library modules
-    let mut instance_class_map: HashMap<(String, String), String> = HashMap::new();
+    let mut instance_class_map: HashMap<(String, String), ImportedInstanceInfo> = HashMap::new();
     for module in typed_modules {
         if module.module_path.is_some() {
             for inst in &module.instance_defs {
@@ -230,7 +270,15 @@ pub fn compile_modules(
                 let class_name = format!("{}${}", q_trait, inst.target_type_name);
                 instance_class_map.insert(
                     (inst.trait_name.clone(), inst.target_type_name.clone()),
-                    class_name,
+                    ImportedInstanceInfo {
+                        class_name,
+                        target_type: inst.target_type.clone(),
+                        requirements: dict_requirements_for_instance(
+                            &inst.type_var_ids,
+                            &inst.constraints,
+                            &inst.subdict_traits,
+                        ),
+                    },
                 );
             }
         }
@@ -259,7 +307,7 @@ fn compile_module_inner(
     typed_module: &TypedModule,
     class_name: &str,
     is_main: bool,
-    imported_instances: &HashMap<(String, String), String>,
+    imported_instances: &HashMap<(String, String), ImportedInstanceInfo>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     if is_main && !typed_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction);
@@ -617,15 +665,32 @@ fn compile_module_inner(
     }
 
     // Register imported trait instances from library modules (no class generation needed)
-    for ((trait_name, type_name), inst_class_name) in imported_instances {
-        let inst_class_idx = compiler.cp.add_class(inst_class_name)?;
-        let inst_desc = format!("L{inst_class_name};");
-        compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-        let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
-        compiler.traits.instance_singletons.insert(
-            (trait_name.clone(), type_name.clone()),
-            InstanceSingletonInfo { instance_field_ref },
-        );
+    for ((trait_name, type_name), imported_instance) in imported_instances {
+        let inst_class_idx = compiler.cp.add_class(&imported_instance.class_name)?;
+        let inst_desc = format!("L{};", imported_instance.class_name);
+        compiler
+            .types
+            .class_descriptors
+            .insert(inst_class_idx, inst_desc.clone());
+        if imported_instance.requirements.is_empty() {
+            let instance_field_ref =
+                compiler
+                    .cp
+                    .add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+            compiler.traits.instance_singletons.insert(
+                (trait_name.clone(), type_name.clone()),
+                InstanceSingletonInfo { instance_field_ref },
+            );
+        } else {
+            compiler.traits.parameterized_instances.insert(
+                (trait_name.clone(), type_name.clone()),
+                ParameterizedInstanceInfo {
+                    class_name: imported_instance.class_name.clone(),
+                    target_type: imported_instance.target_type.clone(),
+                    requirements: imported_instance.requirements.clone(),
+                },
+            );
+        }
     }
 
     // Process instance definitions: generate singleton/parameterized classes
@@ -636,32 +701,11 @@ fn compile_module_inner(
         }
         let q_trait = qualify_type(&instance_def.trait_name);
         let instance_class_name = format!("{}${}", q_trait, instance_def.target_type_name);
-        let mut dict_requirements: Vec<DictRequirement> = instance_def
-            .subdict_traits
-            .iter()
-            .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
-                trait_name: trait_name.clone(),
-                param_idx: *param_idx,
-            })
-            .collect();
-        for constraint in &instance_def.constraints {
-            if let Some(&type_var) = instance_def.type_var_ids.get(&constraint.type_var) {
-                if !dict_requirements.iter().any(|requirement| {
-                    matches!(
-                        requirement,
-                        DictRequirement::Constraint {
-                            trait_name,
-                            type_var: existing_type_var,
-                        } if trait_name == &constraint.trait_name && *existing_type_var == type_var
-                    )
-                }) {
-                    dict_requirements.push(DictRequirement::Constraint {
-                        trait_name: constraint.trait_name.clone(),
-                        type_var,
-                    });
-                }
-            }
-        }
+        let dict_requirements = dict_requirements_for_instance(
+            &instance_def.type_var_ids,
+            &instance_def.constraints,
+            &instance_def.subdict_traits,
+        );
 
         // Collect method info for the instance class
         let mut method_info = Vec::new();
