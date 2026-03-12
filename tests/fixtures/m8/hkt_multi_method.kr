@@ -12,6 +12,6 @@ impl Functor[Box] {
 
 fun main() -> Int {
   let b = Box(42)
-  let b2 = fmap(b, x => x + 1)
+  let b2 = fmap(b, x -> x + 1)
   match b2 { Box(n) => n }
 }

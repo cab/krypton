@@ -2,6 +2,6 @@
 fun consume(buf: ~String) -> String = buf
 
 fun make(x: ~String) -> String {
-    let f = () => consume(x);
+    let f = () -> consume(x);
     f()
 }

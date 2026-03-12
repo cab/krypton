@@ -161,7 +161,6 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
         },
         Expr::Lambda {
             params,
-            return_type,
             body,
             ..
         } => Expr::Lambda {
@@ -173,7 +172,6 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
                     span: (0, 0),
                 })
                 .collect(),
-            return_type: return_type.as_ref().map(zero_spans_type_expr),
             body: Box::new(zero_spans_expr(body)),
             span: (0, 0),
         },
@@ -570,17 +568,17 @@ fn roundtrip_do_block() {
 
 #[test]
 fn roundtrip_lambda_single() {
-    assert_surface_roundtrip("fun f() -> (Int) -> Int = x => x + 1");
+    assert_surface_roundtrip("fun f() -> (Int) -> Int = x -> x + 1");
 }
 
 #[test]
 fn roundtrip_lambda_multi() {
-    assert_surface_roundtrip("fun f() = (x, y) => x + y");
+    assert_surface_roundtrip("fun f() = (x, y) -> x + y");
 }
 
 #[test]
 fn roundtrip_lambda_typed() {
-    assert_surface_roundtrip("fun f() = (x: Int) => x + 1");
+    assert_surface_roundtrip("fun f() = (x: Int) -> x + 1");
 }
 
 #[test]

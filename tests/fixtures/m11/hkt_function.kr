@@ -18,5 +18,5 @@ impl Hoist[Int] {
   fun hoist[f[_], g[_]](x: f[Int], k: (f[Int]) -> g[Int]) -> g[Int] = k(x)
 }
 
-fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x => x)
+fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x -> x)
 fun main(x: Box[Int]) -> Box[Int] = apply(x)

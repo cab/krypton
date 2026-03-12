@@ -3,6 +3,6 @@ fun consume(buf: ~String) -> Int = 42
 
 fun bad(x: ~String) -> Int {
     if true { consume(x) } else { 0 };
-    let f = () => consume(x);
+    let f = () -> consume(x);
     f()
 }

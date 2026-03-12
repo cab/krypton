@@ -1,4 +1,4 @@
 # expect: output "2"
 import core/list.{filter, length}
 extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
-fun main() = println(length(filter(Cons(1, Cons(2, Cons(3, Nil))), x => x > 1)))
+fun main() = println(length(filter(Cons(1, Cons(2, Cons(3, Nil))), x -> x > 1)))

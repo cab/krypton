@@ -617,16 +617,16 @@ impl<'a> Formatter<'a> {
             }
             Expr::Lambda { params, body, .. } => {
                 if params.is_empty() {
-                    // Zero-arg lambda: () => body
-                    self.buf.push_str("() => ");
+                    // Zero-arg lambda: () -> body
+                    self.buf.push_str("() -> ");
                     self.fmt_expr(body);
                 } else if params.len() == 1 && params[0].ty.is_none() {
-                    // Single untyped param: x => body
+                    // Single untyped param: x -> body
                     self.buf.push_str(&params[0].name);
-                    self.buf.push_str(" => ");
+                    self.buf.push_str(" -> ");
                     self.fmt_expr(body);
                 } else {
-                    // Multi or typed params: (x, y) => body
+                    // Multi or typed params: (x, y) -> body
                     self.buf.push('(');
                     for (i, p) in params.iter().enumerate() {
                         if i > 0 {
@@ -634,7 +634,7 @@ impl<'a> Formatter<'a> {
                         }
                         self.fmt_param(p);
                     }
-                    self.buf.push_str(") => ");
+                    self.buf.push_str(") -> ");
                     self.fmt_expr(body);
                 }
             }

@@ -28,7 +28,7 @@ pub fun concat(xs, ys) = match xs {
     Cons(h, rest) => Cons(h, concat(rest, ys)),
 }
 
-pub fun reverse(xs) = fold(xs, Nil, (acc, x) => Cons(x, acc))
+pub fun reverse(xs) = fold(xs, Nil, (acc, x) -> Cons(x, acc))
 
 pub fun head(xs) = match xs {
     Cons(h, _) => Some(h),

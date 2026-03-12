@@ -3,4 +3,4 @@ fun call_many(f: () -> String) -> String = f()
 
 fun consume(buf: ~String) -> String = buf
 
-fun bad(x: ~String) -> String = call_many(() => consume(x))
+fun bad(x: ~String) -> String = call_many(() -> consume(x))

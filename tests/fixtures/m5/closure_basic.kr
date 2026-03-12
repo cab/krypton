@@ -4,6 +4,6 @@ extern "krypton.runtime.KryptonIO" {
 }
 
 fun main() {
-    let f = x => x + 1;
+    let f = x -> x + 1;
     println(f(5))
 }

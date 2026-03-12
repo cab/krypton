@@ -50,12 +50,12 @@ fn not_a_function_diagnostic() {
 
 #[test]
 fn wrong_arity_diagnostic() {
-    insta::assert_snapshot!(render_error("{ let f = x => x; f(1, 2) }"));
+    insta::assert_snapshot!(render_error("{ let f = x -> x; f(1, 2) }"));
 }
 
 #[test]
 fn infinite_type_diagnostic() {
-    insta::assert_snapshot!(render_error("x => x(x)"));
+    insta::assert_snapshot!(render_error("x -> x(x)"));
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn render_module_error(src: &str) -> String {
 
 #[test]
 fn own_fn_vs_fn_help_text() {
-    let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() => x)";
+    let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() -> x)";
     let output = render_module_error(src);
     assert!(
         output.contains("single-use closure"),
@@ -124,7 +124,7 @@ fn no_own_mismatch_no_help() {
 
 #[test]
 fn own_fn_capture_note_e0101() {
-    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(x: ~String) -> String = { let f = () => consume(x); f(); f() }";
+    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(x: ~String) -> String = { let f = () -> consume(x); f(); f() }";
     let output = render_module_error(src);
     assert!(
         output.contains("captures own value `x`"),
@@ -134,7 +134,7 @@ fn own_fn_capture_note_e0101() {
 
 #[test]
 fn own_fn_capture_note_e0001() {
-    let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() => x)";
+    let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() -> x)";
     let output = render_module_error(src);
     assert!(
         output.contains("captures own value `x`"),
@@ -144,7 +144,7 @@ fn own_fn_capture_note_e0001() {
 
 #[test]
 fn own_fn_capture_note_correct_name() {
-    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(a: String, b: ~String) -> String = { let f = () => consume(b); f(); f() }";
+    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(a: String, b: ~String) -> String = { let f = () -> consume(b); f(); f() }";
     let output = render_module_error(src);
     assert!(
         output.contains("captures own value `b`"),
@@ -213,8 +213,8 @@ fn error_codes_present() {
         ("E0001", "if true { 1 } else { \"hi\" }"),
         ("E0003", "x + 1"),
         ("E0004", "42(1)"),
-        ("E0005", "{ let f = x => x; f(1, 2) }"),
-        ("E0007", "x => x(x)"),
+        ("E0005", "{ let f = x -> x; f(1, 2) }"),
+        ("E0007", "x -> x(x)"),
     ];
     for (code, src) in cases {
         let output = render_error(src);

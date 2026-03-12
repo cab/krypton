@@ -3,6 +3,6 @@ fun consume(buf: ~String) -> String = buf
 
 fun bad(x: ~String) -> String {
     consume(x);
-    let f = () => consume(x);
+    let f = () -> consume(x);
     f()
 }

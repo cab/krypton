@@ -94,7 +94,7 @@ fn test_if_else() {
 
 #[test]
 fn test_lambda() {
-    let (module, errors) = parse("fun f() -> (Int) -> Int = x => x + 1");
+    let (module, errors) = parse("fun f() -> (Int) -> Int = x -> x + 1");
     assert!(errors.is_empty(), "errors: {errors:?}");
     assert_yaml_snapshot!(module);
 }

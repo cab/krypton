@@ -648,13 +648,13 @@ fun main() = println(to_num(East))
 
 #[test]
 fn test_lambda_basic() {
-    let src = "fun main() = { let f = x => x + 1; println(f(5)) }";
+    let src = "fun main() = { let f = x -> x + 1; println(f(5)) }";
     assert_eq!(run_program(src), "6");
 }
 
 #[test]
 fn test_lambda_capture() {
-    let src = "fun main() = { let y = 10; let f = x => x + y; println(f(5)) }";
+    let src = "fun main() = { let y = 10; let f = x -> x + y; println(f(5)) }";
     assert_eq!(run_program(src), "15");
 }
 
@@ -662,7 +662,7 @@ fn test_lambda_capture() {
 fn test_higher_order() {
     let src = r#"
 fun apply_fn(f, x) = f(x)
-fun main() = println(apply_fn(x => x + 1, 5))
+fun main() = println(apply_fn(x -> x + 1, 5))
 "#;
     assert_eq!(run_program(src), "6");
 }

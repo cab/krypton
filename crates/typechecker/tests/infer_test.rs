@@ -59,17 +59,17 @@ fn infer_string_literal() {
 
 #[test]
 fn infer_identity_lambda() {
-    insta::assert_snapshot!(infer("x => x"), @"forall a. fn(a) -> a");
+    insta::assert_snapshot!(infer("x -> x"), @"forall a. fn(a) -> a");
 }
 
 #[test]
 fn infer_const_lambda() {
-    insta::assert_snapshot!(infer("x => 42"), @"forall a. fn(a) -> own Int");
+    insta::assert_snapshot!(infer("x -> 42"), @"forall a. fn(a) -> own Int");
 }
 
 #[test]
 fn infer_let_id_applied() {
-    insta::assert_snapshot!(infer("{ let id = x => x; id(42) }"), @"own Int");
+    insta::assert_snapshot!(infer("{ let id = x -> x; id(42) }"), @"own Int");
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn infer_if_non_bool_cond() {
 
 #[test]
 fn infer_application() {
-    insta::assert_snapshot!(infer("{ let f = x => x + 1; f(5) }"), @"Int");
+    insta::assert_snapshot!(infer("{ let f = x -> x + 1; f(5) }"), @"Int");
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn infer_nested_let() {
 
 #[test]
 fn infer_let_polymorphism() {
-    insta::assert_snapshot!(infer("{ let id = x => x; let a = id(1); id(true) }"), @"own Bool");
+    insta::assert_snapshot!(infer("{ let id = x -> x; let a = id(1); id(true) }"), @"own Bool");
 }
 
 #[test]
@@ -851,7 +851,7 @@ fn explicit_hkt_type_param_generalized() {
                 match fa { Box(x) => Box(g(x)) }
         }
 
-        fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x => x)
+        fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x -> x)
     "#;
     insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall x y. fn(x[y]) -> x[y]");
 }
@@ -1705,7 +1705,7 @@ fn lambda_params_inferred_from_higher_order_fn() {
         infer_module_types(r#"
             type Player = { name: String, score: Int }
             fun apply(p: Player, f: (Player) -> Int) -> Int = f(p)
-            fun get_score(p: Player) -> Int = apply(p, (x) => x.score)
+            fun get_score(p: Player) -> Int = apply(p, (x) -> x.score)
         "#),
         @"println: forall i. fn(i) -> Unit
 Some: forall b. fn(b) -> Option[b]

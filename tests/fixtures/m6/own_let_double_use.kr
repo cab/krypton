@@ -2,7 +2,7 @@
 fun consume(buf: ~String) -> String = buf
 
 fun bad(x: ~String) -> String {
-    let f = () => consume(x);
+    let f = () -> consume(x);
     f();
     f()
 }

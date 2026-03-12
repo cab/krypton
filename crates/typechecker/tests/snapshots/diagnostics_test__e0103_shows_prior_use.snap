@@ -8,7 +8,7 @@ expression: output
  5 │     consume(x);
    │             ┬  
    │             ╰── consumed here
- 6 │     let f = () => consume(x);
+ 6 │     let f = () -> consume(x);
    │             ────────┬───────  
    │                     ╰───────── E0103: capture of moved value: `x`
    │ 

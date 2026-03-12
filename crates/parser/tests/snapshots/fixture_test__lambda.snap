@@ -136,7 +136,6 @@ decls:
               span:
                 - 122
                 - 123
-          return_type: ~
           body:
             BinaryOp:
               op: Add

@@ -5,4 +5,4 @@ extern "krypton.runtime.KryptonIO" {
 
 fun apply_fn(f, x) = f(x)
 
-fun main() = println(apply_fn(x => x + 1, 5))
+fun main() = println(apply_fn(x -> x + 1, 5))

@@ -34,7 +34,6 @@ decls:
               span:
                 - 26
                 - 27
-          return_type: ~
           body:
             BinaryOp:
               op: Add

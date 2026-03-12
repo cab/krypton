@@ -5,4 +5,4 @@ fun multi_param(a, b, c) = a + (b + c)
 
 fun higher_order(f, x) = f(x)
 
-fun closure(x) = y => x + y
+fun closure(x) = y -> x + y

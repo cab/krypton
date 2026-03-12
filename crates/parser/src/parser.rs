@@ -506,7 +506,7 @@ where
                 span: to_span(e.span()),
             });
 
-        // Lambda: x => body, (x, y) => body, (x: Int) => body
+        // Lambda: x -> body, (x, y) -> body, (x: Int) -> body
         // Lambda params with optional type annotation
         let lambda_param = select! { Token::Ident(s) => s.to_string() }
             .then(
@@ -520,46 +520,43 @@ where
                 span: to_span(e.span()),
             });
 
-        // Zero-arg lambda: () => body
+        // Zero-arg lambda: () -> body
         let zero_lambda = symbol(Token::LParen)
             .then(closing_symbol(Token::RParen))
-            .then_ignore(symbol(Token::FatArrow))
+            .then_ignore(symbol(Token::Arrow))
             .then(expr.clone())
             .map_with(|(_, body), e| Expr::Lambda {
                 params: vec![],
-                return_type: None,
                 body: Box::new(body),
                 span: to_span(e.span()),
             });
 
-        // Multi-param lambda: (x, y) => body or (x: Int, y: Int) => body
+        // Multi-param lambda: (x, y) -> body or (x: Int, y: Int) -> body
         let multi_lambda = lambda_param
             .clone()
             .separated_by(symbol(Token::Comma))
             .at_least(1)
             .collect::<Vec<_>>()
             .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
-            .then_ignore(symbol(Token::FatArrow))
+            .then_ignore(symbol(Token::Arrow))
             .then(expr.clone())
             .map_with(|(params, body), e| Expr::Lambda {
                 params,
-                return_type: None,
                 body: Box::new(body),
                 span: to_span(e.span()),
             });
 
-        // Single-param lambda: x => body
+        // Single-param lambda: x -> body
         let single_lambda = select! { Token::Ident(s) => s.to_string() }
             .map_with(|name, e| Param {
                 name,
                 ty: None,
                 span: to_span(e.span()),
             })
-            .then_ignore(symbol(Token::FatArrow))
+            .then_ignore(symbol(Token::Arrow))
             .then(expr.clone())
             .map_with(|(param, body), e| Expr::Lambda {
                 params: vec![param],
-                return_type: None,
                 body: Box::new(body),
                 span: to_span(e.span()),
             });

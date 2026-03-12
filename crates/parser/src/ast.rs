@@ -165,7 +165,6 @@ pub enum Expr {
     },
     Lambda {
         params: Vec<Param>,
-        return_type: Option<TypeExpr>,
         body: Box<Expr>,
         span: Span,
     },

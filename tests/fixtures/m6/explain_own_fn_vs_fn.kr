@@ -1,4 +1,4 @@
 # expect: error E0001
 fun call_many(f: () -> String) -> String = f()
 
-fun bad(x: ~String) -> String = call_many(() => x)
+fun bad(x: ~String) -> String = call_many(() -> x)
