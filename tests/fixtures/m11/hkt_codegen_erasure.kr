@@ -1,0 +1,33 @@
+# expect: output "7"
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+import core/list.{List, Cons, Nil}
+import core/vec.{to_list}
+
+type Box[a] = Box(a)
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl Functor[Box] {
+  fun fmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
+    match fa { Box(x) => Box(g(x)) }
+}
+
+fun fold_box[W[_], T](xs: List[T], start: W[T], f: (W[T], T) -> W[T]) -> W[T] =
+  match xs {
+    Nil => start,
+    Cons(head, tail) => recur(tail, f(start, head), f),
+  }
+
+fun main() -> Unit = {
+  let result = fold_box(to_list([1, 2, 4]), Box(0), (acc, n) => match acc {
+    Box(total) => Box(total + n),
+  })
+  match result {
+    Box(total) => println(total),
+  }
+}

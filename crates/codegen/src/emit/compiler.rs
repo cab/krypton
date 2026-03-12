@@ -396,6 +396,15 @@ pub(super) struct Compiler {
 }
 
 impl Compiler {
+    fn is_abstract_type_ctor(ty: &Type) -> bool {
+        match ty {
+            Type::Var(_) => true,
+            Type::Own(inner) => Self::is_abstract_type_ctor(inner),
+            Type::App(ctor, _) => Self::is_abstract_type_ctor(ctor),
+            _ => false,
+        }
+    }
+
     pub(super) fn new(class_name: &str) -> Result<(Self, u16, u16), CodegenError> {
         let mut cp = ConstantPool::default();
 
@@ -551,8 +560,13 @@ impl Compiler {
                 }
             }
             Type::Own(inner) => self.type_to_jvm(inner),
+            Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor) => {
+                Ok(JvmType::StructRef(self.refs.object_class))
+            }
             Type::App(_, _) => {
-                unreachable!("ICE: Type::App should be reduced after substitution")
+                Err(CodegenError::TypeError(format!(
+                    "unexpected unreduced concrete type application during codegen erasure: {ty}"
+                )))
             }
             other => type_to_jvm_basic(other),
         }
@@ -2395,6 +2409,20 @@ impl Compiler {
                             Self::bind_type_vars(pattern_arg, actual_arg, bindings)
                         })
             }
+            (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
+                p_args.len() == a_args.len()
+                    && Self::bind_type_vars(
+                        p_ctor,
+                        &Type::Named(a_name.clone(), Vec::new()),
+                        bindings,
+                    )
+                    && p_args
+                        .iter()
+                        .zip(a_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
+                        })
+            }
             (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
             (ty, Type::Own(actual_inner)) => Self::bind_type_vars(ty, actual_inner, bindings),
             (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
@@ -2465,7 +2493,9 @@ impl Compiler {
         ty: &Type,
         pushed_class: u16,
     ) -> Result<(), CodegenError> {
-        if let Type::Var(_) = ty {
+        if matches!(ty, Type::Var(_))
+            || matches!(ty, Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor))
+        {
             if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
                 self.emit(Instruction::Aload(dict_slot as u8));
                 self.frame.push_type(VerificationType::Object {
