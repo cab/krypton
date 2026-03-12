@@ -1,7 +1,7 @@
+use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::ast::Module;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer;
-use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_typechecker::scc;
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 
@@ -19,13 +19,12 @@ fn infer_module_fn(src: &str, fn_name: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-        Ok(modules) => {
-            modules[0].fn_types
-                .iter()
-                .find(|(name, _)| name == fn_name)
-                .map(|(_, scheme)| format!("{scheme}"))
-                .unwrap_or_else(|| panic!("function {fn_name} not found in module"))
-        }
+        Ok(modules) => modules[0]
+            .fn_types
+            .iter()
+            .find(|(name, _)| name == fn_name)
+            .map(|(_, scheme)| format!("{scheme}"))
+            .unwrap_or_else(|| panic!("function {fn_name} not found in module")),
         Err(e) => format!("TypeError: {}", e.error),
     }
 }
@@ -132,7 +131,8 @@ fn parse_module(src: &str) -> Module {
 fn infer_module_types(src: &str) -> String {
     let module = parse_module(src);
     match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
-        Ok(modules) => modules[0].fn_types
+        Ok(modules) => modules[0]
+            .fn_types
             .iter()
             .map(|(name, scheme)| format!("{}: {}", name, scheme))
             .collect::<Vec<_>>()
@@ -272,14 +272,14 @@ fn infer_mutual_recursion() {
 fn scc_tarjan_unit_test() {
     // Graph: a(0) -> b(1), b(1) -> a(0), c(2) -> a(0)
     let adj = vec![
-        vec![1],    // a -> b
-        vec![0],    // b -> a
-        vec![0],    // c -> a
+        vec![1], // a -> b
+        vec![0], // b -> a
+        vec![0], // c -> a
     ];
     let sccs = scc::tarjan_scc(&adj);
     assert_eq!(sccs.len(), 2);
     assert_eq!(sccs[0], vec![0, 1]); // {a, b} — mutual recursion
-    assert_eq!(sccs[1], vec![2]);    // {c} — depends on a
+    assert_eq!(sccs[1], vec![2]); // {c} — depends on a
 }
 
 #[test]
@@ -322,9 +322,9 @@ fn infer_sum_constructor() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall f. fn(f) -> Option[f]
-    None: forall f. Option[f]
-    wrap: forall q. fn(q) -> Option[q]
+    Some: forall j. fn(j) -> Option[j]
+    None: forall j. Option[j]
+    wrap: forall u. fn(u) -> Option[u]
     "
     );
 }
@@ -346,9 +346,9 @@ fn infer_bare_variant() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall f. fn(f) -> Option[f]
-    None: forall f. Option[f]
-    none: forall r. fn() -> Option[r]
+    Some: forall j. fn(j) -> Option[j]
+    None: forall j. Option[j]
+    none: forall v. fn() -> Option[v]
     "
     );
 }
@@ -380,9 +380,9 @@ fn infer_scc_generalization_order() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    id: forall p. fn(p) -> p
-    f: forall v. fn(v) -> v
-    g: forall a1. fn(a1) -> a1
+    id: forall t. fn(t) -> t
+    f: forall z. fn(z) -> z
+    g: forall e1. fn(e1) -> e1
     "
     );
 }
@@ -480,9 +480,9 @@ fn infer_match_option() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall f. fn(f) -> Option[f]
-    None: forall f. Option[f]
-    unwrap_or: forall r. fn(Option[r], r) -> r
+    Some: forall j. fn(j) -> Option[j]
+    None: forall j. Option[j]
+    unwrap_or: forall v. fn(Option[v], v) -> v
     "
     );
 }
@@ -526,7 +526,7 @@ fn infer_match_variable() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    identity: forall p. fn(p) -> p
+    identity: forall t. fn(t) -> t
     "
     );
 }
@@ -548,8 +548,8 @@ fn infer_match_nested_constructor() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Cons: forall f. fn(f, List[f]) -> List[f]
-    Nil: forall f. List[f]
+    Cons: forall j. fn(j, List[j]) -> List[j]
+    Nil: forall j. List[j]
     sum2: fn(List[Int]) -> Int
     "
     );
@@ -582,7 +582,7 @@ fn infer_tuple_in_match() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    first: forall s t. fn((s, t)) -> s
+    first: forall w x. fn((w, x)) -> w
     "
     );
 }
@@ -609,7 +609,7 @@ fn infer_tuple_polymorphic() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    swap: forall s t. fn((s, t)) -> (t, s)
+    swap: forall w x. fn((w, x)) -> (x, w)
     "
     );
 }
@@ -620,7 +620,7 @@ fn infer_match_wrong_constructor() {
         infer_module_types(
             "type Color = Red | Green | Blue\ntype Option[a] = Some(a) | None\nfun bad(c) = match Red { Some(x) => x, _ => 0 }"
         ),
-        @"TypeError: type mismatch: expected Color, found Option[t]"
+        @"TypeError: type mismatch: expected Color, found Option[x]"
     );
 }
 
@@ -641,8 +641,8 @@ fn test_exhaustive_complete() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall f. fn(f) -> Option[f]
-    None: forall f. Option[f]
+    Some: forall j. fn(j) -> Option[j]
+    None: forall j. Option[j]
     unwrap: fn(Option[own Int]) -> Int
     "
     );
@@ -675,9 +675,9 @@ fn test_exhaustive_wildcard_covers_all() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall f. fn(f) -> Option[f]
-    None: forall f. Option[f]
-    test: forall q. fn(q) -> Int
+    Some: forall j. fn(j) -> Option[j]
+    None: forall j. Option[j]
+    test: forall u. fn(u) -> Int
     "
     );
 }
@@ -761,7 +761,7 @@ fn explicit_type_param_generalized() {
     // fun view[t](x: ~t) -> t should produce forall t. fn(own t) -> t
     insta::assert_snapshot!(
         infer_module_fn("fun view[t](x: ~t) -> t = x", "view"),
-        @"forall p. fn(own p) -> p"
+        @"forall t. fn(own t) -> t"
     );
 }
 
@@ -770,7 +770,7 @@ fn explicit_type_param_identity() {
     // fun id[a](x: a) -> a should produce forall a. fn(a) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall p. fn(p) -> p"
+        @"forall t. fn(t) -> t"
     );
 }
 
@@ -779,7 +779,7 @@ fn explicit_type_param_multiple() {
     // fun const[a, b](x: a, y: b) -> a should produce forall a b. fn(a, b) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun const_[a, b](x: a, y: b) -> a = x", "const_"),
-        @"forall p q. fn(p, q) -> p"
+        @"forall t u. fn(t, u) -> t"
     );
 }
 
@@ -788,7 +788,7 @@ fn no_type_params_still_generalizes() {
     // Unannotated identity should still generalize via HM
     insta::assert_snapshot!(
         infer_module_fn("fun id(x) = x", "id"),
-        @"forall p. fn(p) -> p"
+        @"forall t. fn(t) -> t"
     );
 }
 
@@ -830,7 +830,7 @@ fn typo_in_type_name() {
 fn type_param_not_unknown() {
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall p. fn(p) -> p"
+        @"forall t. fn(t) -> t"
     );
 }
 
@@ -887,10 +887,21 @@ fn infer_module_returns_all_modules() {
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let modules = infer::infer_module(&module, &FakeResolver).unwrap();
     // Main module + mylib
-    assert!(modules.len() >= 2, "expected at least 2 modules, got {}", modules.len());
-    assert!(modules[0].module_path.is_none(), "first module should be main (no path)");
-    assert!(modules.iter().any(|m| m.module_path.as_deref() == Some("mylib")),
-        "should have a TypedModule for mylib");
+    assert!(
+        modules.len() >= 2,
+        "expected at least 2 modules, got {}",
+        modules.len()
+    );
+    assert!(
+        modules[0].module_path.is_none(),
+        "first module should be main (no path)"
+    );
+    assert!(
+        modules
+            .iter()
+            .any(|m| m.module_path.as_deref() == Some("mylib")),
+        "should have a TypedModule for mylib"
+    );
 }
 
 #[test]
@@ -915,8 +926,10 @@ fn infer_module_provenance_on_bindings() {
     let modules = infer::infer_module(&module, &FakeResolver).unwrap();
     // The main module should have `add` in fn_types with provenance
     let main = &modules[0];
-    assert!(main.fn_types.iter().any(|(n, _)| n == "add"),
-        "main module should have add in fn_types");
+    assert!(
+        main.fn_types.iter().any(|(n, _)| n == "add"),
+        "main module should have add in fn_types"
+    );
 }
 
 #[test]
@@ -946,8 +959,14 @@ fn infer_module_cache_prevents_recheck() {
     assert!(errors.is_empty());
     let modules = infer::infer_module(&module, &CountingResolver).unwrap();
     // Only one TypedModule for mylib despite resolver being called
-    let mylib_count = modules.iter().filter(|m| m.module_path.as_deref() == Some("mylib")).count();
-    assert_eq!(mylib_count, 1, "should have exactly one TypedModule for mylib");
+    let mylib_count = modules
+        .iter()
+        .filter(|m| m.module_path.as_deref() == Some("mylib"))
+        .count();
+    assert_eq!(
+        mylib_count, 1,
+        "should have exactly one TypedModule for mylib"
+    );
 }
 
 #[test]
@@ -985,8 +1004,12 @@ fn infer_module_stdlib_own_typed_module() {
     assert!(errors.is_empty());
     let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only()).unwrap();
     // Should have a TypedModule for core/option
-    assert!(modules.iter().any(|m| m.module_path.as_deref() == Some("core/option")),
-        "should have a TypedModule for core/option");
+    assert!(
+        modules
+            .iter()
+            .any(|m| m.module_path.as_deref() == Some("core/option")),
+        "should have a TypedModule for core/option"
+    );
 }
 
 #[test]
@@ -1010,7 +1033,11 @@ fn infer_module_cross_module_typecheck() {
     assert!(errors.is_empty());
     let modules = infer::infer_module(&module, &FakeResolver).unwrap();
     let main = &modules[0];
-    let quad_type = main.fn_types.iter().find(|(n, _)| n == "quadruple").unwrap();
+    let quad_type = main
+        .fn_types
+        .iter()
+        .find(|(n, _)| n == "quadruple")
+        .unwrap();
     assert_eq!(format!("{}", quad_type.1), "fn(Int) -> Int");
 }
 
@@ -1036,7 +1063,10 @@ fn infer_module_private_by_default() {
     assert!(errors.is_empty());
     let result = infer::infer_module(&module, &FakeResolver);
     assert!(result.is_err(), "importing private fn should fail");
-    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("expected error"),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0503");
 
     // Importing only the public function should succeed
@@ -1047,7 +1077,11 @@ fn infer_module_private_by_default() {
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
     let result2 = infer::infer_module(&module2, &FakeResolver);
-    assert!(result2.is_ok(), "importing pub fn should work: {:?}", result2.err());
+    assert!(
+        result2.is_ok(),
+        "importing pub fn should work: {:?}",
+        result2.err()
+    );
 }
 
 #[test]
@@ -1070,7 +1104,10 @@ fn infer_module_bare_import_error() {
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
     assert!(result.is_err(), "bare import should fail");
-    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("expected error"),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0504");
 }
 
@@ -1093,15 +1130,23 @@ fn infer_module_pub_import_reexport() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_ok(), "pub import re-export should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "pub import re-export should succeed: {:?}",
+        result.err()
+    );
     let modules = result.unwrap();
     // Main module should have helper in its fn_types
     let main_mod = &modules[0];
-    assert!(main_mod.fn_types.iter().any(|(n, _)| n == "helper"),
-        "main module should have 'helper' in fn_types");
+    assert!(
+        main_mod.fn_types.iter().any(|(n, _)| n == "helper"),
+        "main module should have 'helper' in fn_types"
+    );
     // fn_provenance should point to the original module (lib_a), not the facade
-    assert_eq!(main_mod.fn_provenance.get("helper"),
-        Some(&("lib_a".to_string(), "helper".to_string())));
+    assert_eq!(
+        main_mod.fn_provenance.get("helper"),
+        Some(&("lib_a".to_string(), "helper".to_string()))
+    );
 }
 
 #[test]
@@ -1123,8 +1168,14 @@ fn infer_module_pub_import_reexport_private_error() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_err(), "pub import of non-existent name should fail");
-    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    assert!(
+        result.is_err(),
+        "pub import of non-existent name should fail"
+    );
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("expected error"),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0505");
 }
 
@@ -1148,7 +1199,11 @@ fn cross_module_deriving_show() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &Resolver);
-    assert!(result.is_ok(), "cross-module deriving Show should work: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "cross-module deriving Show should work: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -1158,7 +1213,8 @@ fn infer_module_private_trait() {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "traitlib" {
                 // Private trait (no pub) — should not be importable
-                Some(r#"
+                Some(
+                    r#"
                     type MyType = MkMyType(Int)
                     trait Secret[a] {
                         fun secret(x: a) -> Int
@@ -1167,7 +1223,9 @@ fn infer_module_private_trait() {
                         fun secret(x: MyType) -> Int = 1
                     }
                     pub fun public_fn() -> Int = 42
-                "#.to_string())
+                "#
+                    .to_string(),
+                )
             } else {
                 None
             }
@@ -1183,7 +1241,10 @@ fn infer_module_private_trait() {
     assert!(errors.is_empty());
     let result = infer::infer_module(&module, &FakeResolver);
     assert!(result.is_err(), "importing private trait should fail");
-    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("expected error"),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0503");
 
     // Wildcard import should silently skip private traits
@@ -1194,7 +1255,11 @@ fn infer_module_private_trait() {
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
     let result2 = infer::infer_module(&module2, &FakeResolver);
-    assert!(result2.is_ok(), "wildcard import should skip private traits: {:?}", result2.err());
+    assert!(
+        result2.is_ok(),
+        "wildcard import should skip private traits: {:?}",
+        result2.err()
+    );
 }
 
 #[test]
@@ -1216,8 +1281,14 @@ fn infer_module_parse_error_produces_e0506() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_err(), "import of module with parse errors should fail");
-    let err = match result { Err(e) => e, Ok(_) => panic!("expected error") };
+    assert!(
+        result.is_err(),
+        "import of module with parse errors should fail"
+    );
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("expected error"),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0506");
 }
 
@@ -1230,12 +1301,18 @@ fn let_type_annotation_correct() {
 #[test]
 fn let_type_annotation_mismatch() {
     let result = infer_module_fn("fun f() -> Int { let x: String = 5; x }", "f");
-    assert!(result.starts_with("TypeError:"), "expected type error, got: {result}");
+    assert!(
+        result.starts_with("TypeError:"),
+        "expected type error, got: {result}"
+    );
 }
 
 #[test]
 fn let_type_annotation_generic() {
-    let result = infer_module_fn("fun f() -> Vec[Int] { let xs: Vec[Int] = [1, 2, 3]; xs }", "f");
+    let result = infer_module_fn(
+        "fun f() -> Vec[Int] { let xs: Vec[Int] = [1, 2, 3]; xs }",
+        "f",
+    );
     assert_eq!(result, "fn() -> Vec[Int]");
 }
 
@@ -1271,10 +1348,7 @@ fn prelude_println_auto_imported() {
 #[test]
 fn prelude_type_shadowable() {
     // User defines their own Option type that shadows prelude's Option
-    let result = infer_module_fn(
-        "type Option = MyOpt(Int)\nfun make() = MyOpt(42)",
-        "make",
-    );
+    let result = infer_module_fn("type Option = MyOpt(Int)\nfun make() = MyOpt(42)", "make");
     assert!(
         !result.starts_with("TypeError:"),
         "local type should shadow prelude Option: {result}"
@@ -1303,7 +1377,10 @@ fn reserved_name_krypton_intrinsic_rejected() {
     let module = parse_module(src);
     let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
     assert!(result.is_err(), "should reject __krypton_intrinsic");
-    let err = match result { Err(e) => e, Ok(_) => unreachable!() };
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => unreachable!(),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0012");
 }
 
@@ -1313,14 +1390,20 @@ fn reserved_name_krypton_prefix_rejected() {
     let module = parse_module(src);
     let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
     assert!(result.is_err(), "should reject __krypton_ prefix");
-    let err = match result { Err(e) => e, Ok(_) => unreachable!() };
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => unreachable!(),
+    };
     assert_eq!(err.error.error_code().to_string(), "E0012");
 }
 
 #[test]
 fn non_reserved_name_allowed() {
     // A user function named "intrinsic" (without __krypton_ prefix) should be fine
-    let result = infer_module_fn("fun intrinsic() = 42\nfun main() = intrinsic()", "intrinsic");
+    let result = infer_module_fn(
+        "fun intrinsic() = 42\nfun main() = intrinsic()",
+        "intrinsic",
+    );
     assert_eq!(result, "fn() -> Int");
 }
 
@@ -1329,7 +1412,8 @@ fn prelude_not_imported_in_prelude_tree() {
     use krypton_modules::module_resolver::StdlibResolver;
     // Prelude-tree modules should not self-import the prelude.
     // We test by inferring the prelude module itself — it should succeed without errors.
-    let prelude_src = StdlibResolver.resolve("prelude")
+    let prelude_src = StdlibResolver
+        .resolve("prelude")
         .expect("prelude should be resolvable");
     let (module, errors) = parse(&prelude_src);
     assert!(errors.is_empty(), "prelude parse errors: {:?}", errors);

@@ -165,9 +165,11 @@ pub fn resolve_type_expr(
             let ret_type = resolve_type_expr(ret, type_param_map, registry)?;
             Ok(Type::Fn(param_types, Box::new(ret_type)))
         }
-        TypeExpr::Own { inner, .. } => {
-            Ok(Type::Own(Box::new(resolve_type_expr(inner, type_param_map, registry)?)))
-        }
+        TypeExpr::Own { inner, .. } => Ok(Type::Own(Box::new(resolve_type_expr(
+            inner,
+            type_param_map,
+            registry,
+        )?))),
         TypeExpr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
@@ -220,7 +222,10 @@ fn resolve_named(
                 } else {
                     None
                 };
-                Err(TypeError::UnknownType { name: name.to_string(), suggestion })
+                Err(TypeError::UnknownType {
+                    name: name.to_string(),
+                    suggestion,
+                })
             }
         }
     }

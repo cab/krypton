@@ -1,9 +1,9 @@
 use std::path::Path;
 
+use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
 use krypton_typechecker::infer;
-use krypton_modules::module_resolver::CompositeResolver;
 
 fn infer_module_snapshot(source: &str) -> Result<String, String> {
     infer_module_snapshot_with_resolver(source, &CompositeResolver::stdlib_only())
@@ -19,7 +19,8 @@ fn infer_module_snapshot_with_resolver(
     }
     match infer::infer_module(&module, resolver) {
         Ok(modules) => {
-            let lines: Vec<String> = modules[0].fn_types
+            let lines: Vec<String> = modules[0]
+                .fn_types
                 .iter()
                 .map(|(name, scheme)| format!("{name}: {scheme}"))
                 .collect();
@@ -128,7 +129,11 @@ fn m11_module_fixtures() {
         .join("tests/fixtures/m11/modules");
 
     let fixtures = discover_fixtures(&fixture_dir);
-    assert!(!fixtures.is_empty(), "no fixtures found in {}", fixture_dir.display());
+    assert!(
+        !fixtures.is_empty(),
+        "no fixtures found in {}",
+        fixture_dir.display()
+    );
 
     for fixture_path in fixtures {
         let fixture = load_fixture(&fixture_path);
@@ -138,9 +143,8 @@ fn m11_module_fixtures() {
             .to_string_lossy()
             .to_string();
 
-        let resolver = CompositeResolver::with_source_root(
-            fixture_path.parent().unwrap().to_path_buf(),
-        );
+        let resolver =
+            CompositeResolver::with_source_root(fixture_path.parent().unwrap().to_path_buf());
 
         for expectation in &fixture.expectations {
             match expectation {
@@ -161,11 +165,19 @@ fn m11_module_fixtures() {
                 Expectation::Output(_) => {
                     // Verify type-checking succeeds (runtime test handled by codegen)
                     let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
-                    assert!(result.is_ok(), "fixture {name}: expected ok but got error {:?}", result.err());
+                    assert!(
+                        result.is_ok(),
+                        "fixture {name}: expected ok but got error {:?}",
+                        result.err()
+                    );
                 }
                 Expectation::Ok => {
                     let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
-                    assert!(result.is_ok(), "fixture {name}: expected ok but got error {:?}", result.err());
+                    assert!(
+                        result.is_ok(),
+                        "fixture {name}: expected ok but got error {:?}",
+                        result.err()
+                    );
                 }
             }
         }

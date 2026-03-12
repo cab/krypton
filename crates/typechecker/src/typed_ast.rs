@@ -23,12 +23,38 @@ pub struct AutoCloseInfo {
 
 #[derive(Debug, Clone)]
 pub enum TypedPattern {
-    Wildcard { ty: Type, span: Span },
-    Var { name: String, ty: Type, span: Span },
-    Constructor { name: String, args: Vec<TypedPattern>, ty: Type, span: Span },
-    Lit { value: Lit, ty: Type, span: Span },
-    Tuple { elements: Vec<TypedPattern>, ty: Type, span: Span },
-    StructPat { name: String, fields: Vec<(String, TypedPattern)>, rest: bool, ty: Type, span: Span },
+    Wildcard {
+        ty: Type,
+        span: Span,
+    },
+    Var {
+        name: String,
+        ty: Type,
+        span: Span,
+    },
+    Constructor {
+        name: String,
+        args: Vec<TypedPattern>,
+        ty: Type,
+        span: Span,
+    },
+    Lit {
+        value: Lit,
+        ty: Type,
+        span: Span,
+    },
+    Tuple {
+        elements: Vec<TypedPattern>,
+        ty: Type,
+        span: Span,
+    },
+    StructPat {
+        name: String,
+        fields: Vec<(String, TypedPattern)>,
+        rest: bool,
+        ty: Type,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -146,7 +172,7 @@ pub struct InstanceDefInfo {
     pub target_type: Type,
     pub qualified_method_names: Vec<(String, String)>, // (method_name, qualified_name)
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
-    pub is_intrinsic: bool, // true when all method bodies are intrinsic()
+    pub is_intrinsic: bool,                   // true when all method bodies are intrinsic()
 }
 
 #[derive(Clone)]
@@ -235,7 +261,9 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
             }
             TypedExprKind::Let { value, body, .. } => {
                 work.push(value);
-                if let Some(body) = body { work.push(body); }
+                if let Some(body) = body {
+                    work.push(body);
+                }
             }
             TypedExprKind::Do(exprs) => work.extend(exprs.iter_mut()),
             TypedExprKind::Match { scrutinee, arms } => {
@@ -247,7 +275,9 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
             }
             TypedExprKind::Lambda { body, .. } => work.push(body),
             TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
-            TypedExprKind::Recur(args) | TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
+            TypedExprKind::Recur(args)
+            | TypedExprKind::Tuple(args)
+            | TypedExprKind::VecLit(args) => {
                 work.extend(args.iter_mut());
             }
             TypedExprKind::BinaryOp { lhs, rhs, .. } => {
@@ -256,16 +286,26 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
             }
             TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
             TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields { work.push(e); }
+                for (_, e) in fields {
+                    work.push(e);
+                }
             }
             TypedExprKind::StructUpdate { base, fields } => {
                 work.push(base);
-                for (_, e) in fields { work.push(e); }
+                for (_, e) in fields {
+                    work.push(e);
+                }
             }
-            TypedExprKind::LetPattern { pattern, value, body } => {
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body,
+            } => {
                 apply_subst_pattern(pattern, subst);
                 work.push(value);
-                if let Some(body) = body { work.push(body); }
+                if let Some(body) = body {
+                    work.push(body);
+                }
             }
             TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
         }

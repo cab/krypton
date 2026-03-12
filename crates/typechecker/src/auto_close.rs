@@ -73,10 +73,7 @@ fn collect_consumed_vars_inner(expr: &TypedExpr, acc: &mut Vec<String>) {
 }
 
 /// Recursively collect resource bindings from a pattern.
-fn collect_resource_bindings(
-    pattern: &TypedPattern,
-    registry: &TraitRegistry,
-) -> Vec<LiveBinding> {
+fn collect_resource_bindings(pattern: &TypedPattern, registry: &TraitRegistry) -> Vec<LiveBinding> {
     let mut result = Vec::new();
     collect_resource_bindings_inner(pattern, registry, &mut result);
     result
@@ -127,7 +124,12 @@ impl<'a> AutoCloseAnalyzer<'a> {
         }
     }
 
-    fn analyze_function(&mut self, decl: &TypedFnDecl, fn_param_types: &[Type], close_self_type: Option<&str>) {
+    fn analyze_function(
+        &mut self,
+        decl: &TypedFnDecl,
+        fn_param_types: &[Type],
+        close_self_type: Option<&str>,
+    ) {
         let mut live: Vec<LiveBinding> = Vec::new();
 
         // Check function params for ~Resource bindings
@@ -362,7 +364,11 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
-            TypedExprKind::LetPattern { pattern, value, body } => {
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body,
+            } => {
                 self.walk_expr(value, live);
 
                 // #3: Track resource bindings from destructured patterns
@@ -418,7 +424,11 @@ impl<'a> AutoCloseAnalyzer<'a> {
 fn resource_close_self_type(fn_name: &str) -> Option<&str> {
     let rest = fn_name.strip_prefix("Resource$")?;
     let type_name = rest.strip_suffix("$close")?;
-    if type_name.is_empty() { None } else { Some(type_name) }
+    if type_name.is_empty() {
+        None
+    } else {
+        Some(type_name)
+    }
 }
 
 /// Compute auto-close information for all functions in the module.

@@ -1537,13 +1537,11 @@ impl Compiler {
             }
         }
 
-        eprintln!("adding {name}",);
         let (slot, ty) = self
             .locals
             .get(name)
             .copied()
             .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
-        eprintln!("added {slot} of {ty:?}");
 
         let load = match ty {
             JvmType::Long => Instruction::Lload(slot as u8),
@@ -2061,7 +2059,6 @@ impl Compiler {
         field: &str,
     ) -> Result<JvmType, CodegenError> {
         let base_type = self.compile_expr(expr, false)?;
-        eprintln!("base type {:?} fpr {:?}", base_type, expr);
         let class_idx = match base_type {
             JvmType::StructRef(idx) => idx,
             _ => {
@@ -2073,7 +2070,6 @@ impl Compiler {
 
         // Find struct info by class index
         let (struct_name, accessor_ref, field_type) = {
-            eprintln!("looking for {class_idx:?} in {:?}", self.types.struct_info);
             let si = self
                 .types
                 .struct_info
@@ -3342,11 +3338,17 @@ impl Compiler {
                             self.push_jvm_type(*field_jvm_type);
                         }
 
-                        if let TypedPattern::Var { name: var_name, ty: var_tc_type, .. } = sub_pat {
+                        if let TypedPattern::Var {
+                            name: var_name,
+                            ty: var_tc_type,
+                            ..
+                        } = sub_pat
+                        {
                             // For erased (generic) fields, resolve the actual JVM type
                             // from the typechecker type on the pattern variable.
                             let actual_type = if *is_erased {
-                                self.type_to_jvm(var_tc_type).unwrap_or(JvmType::StructRef(self.refs.object_class))
+                                self.type_to_jvm(var_tc_type)
+                                    .unwrap_or(JvmType::StructRef(self.refs.object_class))
                             } else {
                                 *field_jvm_type
                             };
@@ -3354,7 +3356,9 @@ impl Compiler {
                             // If the field was erased, cast/unbox from Object to the actual type.
                             if *is_erased {
                                 match actual_type {
-                                    JvmType::StructRef(class_idx) if class_idx != self.refs.object_class => {
+                                    JvmType::StructRef(class_idx)
+                                        if class_idx != self.refs.object_class =>
+                                    {
                                         // Cast Object to the correct struct class.
                                         self.frame.pop_type();
                                         self.frame.push_type(VerificationType::Object {

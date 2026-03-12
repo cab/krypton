@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use krypton_parser::ast::Span;
 
-use crate::typed_ast::{TypedMatchArm, TypedPattern};
 use crate::type_registry::{TypeKind, TypeRegistry};
+use crate::typed_ast::{TypedMatchArm, TypedPattern};
 use crate::types::Type;
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -91,10 +91,8 @@ fn check_patterns_exhaustive(
 
                         // Check each field position for exhaustiveness
                         for (i, field_ty) in variant_info.fields.iter().enumerate() {
-                            let field_pats: Vec<&TypedPattern> = sub_patterns
-                                .iter()
-                                .filter_map(|pats| pats.get(i))
-                                .collect();
+                            let field_pats: Vec<&TypedPattern> =
+                                sub_patterns.iter().filter_map(|pats| pats.get(i)).collect();
 
                             check_patterns_exhaustive(field_ty, &field_pats, Some(registry), span)?;
                         }
@@ -137,7 +135,10 @@ fn check_patterns_exhaustive(
 }
 
 fn is_catch_all(pattern: &TypedPattern) -> bool {
-    matches!(pattern, TypedPattern::Wildcard { .. } | TypedPattern::Var { .. })
+    matches!(
+        pattern,
+        TypedPattern::Wildcard { .. } | TypedPattern::Var { .. }
+    )
 }
 
 fn constructor_name(pattern: &TypedPattern) -> Option<&str> {

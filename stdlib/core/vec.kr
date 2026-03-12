@@ -1,3 +1,5 @@
+import core/list.{Cons, Nil, List}
+
 # core/vec — Vec type (backed by KryptonArray)
 extern "krypton.runtime.KryptonArray" {
     fun staticLength(Object) -> Int
@@ -16,5 +18,5 @@ pub fun nth(xs, index) = if index < 0 {
     }
 }
 
-fun vec_from_vec_go(xs, i, acc) = if i < 0 { acc } else { vec_from_vec_go(xs, i - 1, Cons(staticGet(xs, i), acc)) }
-pub fun to_list(xs) = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
+fun vec_from_vec_go(xs, i, acc)  = if i < 0 { acc } else { vec_from_vec_go(xs, i - 1, Cons(staticGet(xs, i), acc)) }
+pub fun to_list[a](xs: Vec[a]) = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)

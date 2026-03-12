@@ -99,9 +99,9 @@ impl TraitRegistry {
                 return None;
             }
         }
-        self.instances.iter().find(|inst| {
-            inst.trait_name == trait_name && types_match(&inst.target_type, ty)
-        })
+        self.instances
+            .iter()
+            .find(|inst| inst.trait_name == trait_name && types_match(&inst.target_type, ty))
     }
 
     pub fn check_superclasses(&self, instance: &InstanceInfo) -> Result<(), TypeError> {
@@ -110,7 +110,10 @@ impl TraitRegistry {
             None => return Ok(()),
         };
         for superclass in &trait_info.superclasses {
-            if self.find_instance(superclass, &instance.target_type).is_none() {
+            if self
+                .find_instance(superclass, &instance.target_type)
+                .is_none()
+            {
                 return Err(TypeError::NoInstance {
                     trait_name: superclass.clone(),
                     ty: instance.target_type_name.clone(),
@@ -121,10 +124,14 @@ impl TraitRegistry {
         Ok(())
     }
 
-    pub fn find_instance_by_trait_and_span(&self, trait_name: &str, span: Span) -> Option<&InstanceInfo> {
-        self.instances.iter().find(|inst| {
-            inst.trait_name == trait_name && inst.span == span
-        })
+    pub fn find_instance_by_trait_and_span(
+        &self,
+        trait_name: &str,
+        span: Span,
+    ) -> Option<&InstanceInfo> {
+        self.instances
+            .iter()
+            .find(|inst| inst.trait_name == trait_name && inst.span == span)
     }
 
     pub fn trait_method_names(&self) -> Vec<(String, String)> {
@@ -146,7 +153,6 @@ impl TraitRegistry {
     }
 }
 
-
 /// Check if two types match for instance lookup (concrete type matching).
 /// Type variables in the instance type (first arg) act as wildcards.
 fn types_match(a: &Type, b: &Type) -> bool {
@@ -159,15 +165,21 @@ fn types_match(a: &Type, b: &Type) -> bool {
         | (Type::String, Type::String)
         | (Type::Unit, Type::Unit) => true,
         (Type::Named(n1, args1), Type::Named(n2, args2)) => {
-            n1 == n2 && args1.len() == args2.len() && args1.iter().zip(args2).all(|(a, b)| types_match(a, b))
+            n1 == n2
+                && args1.len() == args2.len()
+                && args1.iter().zip(args2).all(|(a, b)| types_match(a, b))
         }
         (Type::Own(a), Type::Own(b)) => types_match(a, b),
         // own T matches T for instance lookup
         (Type::Own(inner), other) | (other, Type::Own(inner)) => types_match(inner, other),
         // App reduces to Named for matching purposes
-        (Type::App(ctor, args1), Type::Named(n, args2)) | (Type::Named(n, args2), Type::App(ctor, args1)) => {
+        (Type::App(ctor, args1), Type::Named(n, args2))
+        | (Type::Named(n, args2), Type::App(ctor, args1)) => {
             if let Type::Named(cn, ca) = ctor.as_ref() {
-                ca.is_empty() && cn == n && args1.len() == args2.len() && args1.iter().zip(args2).all(|(a, b)| types_match(a, b))
+                ca.is_empty()
+                    && cn == n
+                    && args1.len() == args2.len()
+                    && args1.iter().zip(args2).all(|(a, b)| types_match(a, b))
             } else {
                 false
             }

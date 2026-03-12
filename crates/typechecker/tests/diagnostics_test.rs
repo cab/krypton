@@ -1,7 +1,7 @@
+use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_typechecker::diagnostics::render_type_errors;
 use krypton_typechecker::infer;
-use krypton_modules::module_resolver::CompositeResolver;
 
 fn parse_and_infer_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
@@ -75,7 +75,10 @@ fn render_fixture_error(fixture: &str) -> String {
     strip_ansi_escapes(rendered)
 }
 
-fn render_module_error_with_resolver(src: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> String {
+fn render_module_error_with_resolver(
+    src: &str,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let err = match infer::infer_module(&module, resolver) {
@@ -154,13 +157,23 @@ fn test_qualifier_mismatch_diagnostic() {
     let output = render_fixture_error("../../tests/fixtures/m6/qualifier_dup_error.kr");
     insta::assert_snapshot!(output);
     // No type-theory jargon in error/help lines (exclude file path lines)
-    let message_lines: String = output.lines()
+    let message_lines: String = output
+        .lines()
         .filter(|l| !l.contains("qualifier_dup_error.kr"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(!message_lines.contains("affine"), "should not contain 'affine': {message_lines}");
-    assert!(!message_lines.contains("qualifier"), "should not contain 'qualifier': {message_lines}");
-    assert!(!message_lines.contains("unlimited"), "should not contain 'unlimited': {message_lines}");
+    assert!(
+        !message_lines.contains("affine"),
+        "should not contain 'affine': {message_lines}"
+    );
+    assert!(
+        !message_lines.contains("qualifier"),
+        "should not contain 'qualifier': {message_lines}"
+    );
+    assert!(
+        !message_lines.contains("unlimited"),
+        "should not contain 'unlimited': {message_lines}"
+    );
 }
 
 #[test]
@@ -242,7 +255,10 @@ fn circular_import_error() {
     let src = "import a.{foo}\nfun main() -> Int = foo(1)";
     let output = render_module_error_with_resolver(src, &CircularResolver);
     assert!(output.contains("E0502"), "expected E0502 in:\n{output}");
-    assert!(output.contains("circular import"), "expected 'circular import' in:\n{output}");
+    assert!(
+        output.contains("circular import"),
+        "expected 'circular import' in:\n{output}"
+    );
 }
 
 #[test]
@@ -250,5 +266,8 @@ fn reserved_name_error() {
     let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
     let output = parse_and_infer_module_error(src);
     assert!(output.contains("E0012"), "expected E0012 in:\n{output}");
-    assert!(output.contains("reserved compiler name"), "expected 'reserved compiler name' in:\n{output}");
+    assert!(
+        output.contains("reserved compiler name"),
+        "expected 'reserved compiler name' in:\n{output}"
+    );
 }

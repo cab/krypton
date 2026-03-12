@@ -18,10 +18,7 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
             }
         }
         Expr::If {
-            cond,
-            then_,
-            else_,
-            ..
+            cond, then_, else_, ..
         } => {
             collect_refs(cond, names, refs);
             collect_refs(then_, names, refs);
@@ -194,14 +191,14 @@ mod tests {
         // Graph: a(0) -> b(1), b(1) -> a(0), c(2) -> a(0)
         // SCCs: {a, b} (mutual recursion) and {c} (depends on a)
         let adj = vec![
-            vec![1],    // a -> b
-            vec![0],    // b -> a
-            vec![0],    // c -> a
+            vec![1], // a -> b
+            vec![0], // b -> a
+            vec![0], // c -> a
         ];
         let sccs = tarjan_scc(&adj);
         // Should be in dependency order: {a,b} first, then {c}
         assert_eq!(sccs.len(), 2);
         assert_eq!(sccs[0], vec![0, 1]); // {a, b}
-        assert_eq!(sccs[1], vec![2]);    // {c}
+        assert_eq!(sccs[1], vec![2]); // {c}
     }
 }
