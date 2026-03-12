@@ -615,6 +615,7 @@ impl Compiler {
                 value,
                 body,
             } => self.compile_let_pattern(pattern, value, body, in_tail),
+            TypedExprKind::StructLit { fields, .. } => self.compile_struct_lit(fields, &expr.ty),
             TypedExprKind::StructUpdate { base, fields } => {
                 self.compile_struct_update(base, fields)
             }
@@ -2178,6 +2179,59 @@ impl Compiler {
         self.push_jvm_type(base_type);
 
         Ok(base_type)
+    }
+
+    fn compile_struct_lit(
+        &mut self,
+        fields: &[(String, TypedExpr)],
+        struct_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let struct_jvm = self.type_to_jvm(struct_ty)?;
+        let class_idx = match struct_jvm {
+            JvmType::StructRef(idx) => idx,
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "struct literal for non-struct type".to_string(),
+                ))
+            }
+        };
+
+        let si = self
+            .types
+            .struct_info
+            .values()
+            .find(|s| s.class_index == class_idx)
+            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
+        let constructor_ref = si.constructor_ref;
+        let ordered_fields = si.fields.clone();
+
+        let field_values: HashMap<&str, &TypedExpr> = fields
+            .iter()
+            .map(|(name, expr)| (name.as_str(), expr))
+            .collect();
+
+        self.emit(Instruction::New(class_idx));
+        self.frame.push_type(VerificationType::UninitializedThis);
+        self.emit(Instruction::Dup);
+        self.frame.push_type(VerificationType::UninitializedThis);
+
+        for (field_name, _) in &ordered_fields {
+            let value = field_values.get(field_name.as_str()).ok_or_else(|| {
+                CodegenError::TypeError(format!("missing struct field: {field_name}"))
+            })?;
+            self.compile_expr(value, false)?;
+        }
+
+        for (_, field_type) in &ordered_fields {
+            self.pop_jvm_type(*field_type);
+        }
+        self.frame.pop_type();
+        self.frame.pop_type();
+
+        self.emit(Instruction::Invokespecial(constructor_ref));
+        self.push_jvm_type(struct_jvm);
+
+        Ok(struct_jvm)
     }
 
     fn compile_recur(
