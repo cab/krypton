@@ -1340,3 +1340,31 @@ fn prelude_not_imported_in_prelude_tree() {
         result.err()
     );
 }
+
+// ── Lambda parameter type propagation from call site ──
+
+#[test]
+fn lambda_params_inferred_from_higher_order_fn() {
+    // Lambda param types should be inferred from the function signature,
+    // allowing field access on record-typed params without annotation.
+    insta::assert_snapshot!(
+        infer_module_types(r#"
+            type Player = { name: String, score: Int }
+            fun apply(p: Player, f: (Player) -> Int) -> Int = f(p)
+            fun get_score(p: Player) -> Int = apply(p, (x) => x.score)
+        "#),
+        @"println: forall i. fn(i) -> Unit
+Some: forall b. fn(b) -> Option[b]
+None: forall b. Option[b]
+Ok: forall c d. fn(d) -> Result[c, d]
+Err: forall c d. fn(c) -> Result[c, d]
+Cons: forall e. fn(e, List[e]) -> List[e]
+Nil: forall e. List[e]
+LT: Ordering
+EQ: Ordering
+GT: Ordering
+Player: fn(String, Int) -> Player
+apply: fn(Player, fn(Player) -> Int) -> Int
+get_score: fn(Player) -> Int"
+    );
+}

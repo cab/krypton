@@ -1,15 +1,18 @@
 use std::collections::{BTreeMap, HashMap};
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
-use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedPattern};
+use krypton_typechecker::typed_ast::{
+    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedPattern,
+};
 use krypton_typechecker::types::Type;
-use ristretto_classfile::attributes::{Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType};
+use ristretto_classfile::attributes::{
+    Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType,
+};
 use ristretto_classfile::{
-    ClassAccessFlags, ClassFile, ConstantPool, Method,
-    MethodAccessFlags, ReferenceKind,
+    ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags, ReferenceKind,
 };
 
-use super::{JAVA_21, type_to_name, type_to_jvm_basic, jvm_type_to_field_descriptor, is_intrinsic};
+use super::{is_intrinsic, jvm_type_to_field_descriptor, type_to_jvm_basic, type_to_name, JAVA_21};
 
 /// Tracks the JVM type of a value on the operand stack.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,6 +65,7 @@ pub(super) struct FunctionInfo {
 }
 
 /// Info about a struct type for codegen.
+#[derive(Debug)]
 pub(super) struct StructInfo {
     pub(super) class_index: u16,
     pub(super) class_name: String,
@@ -182,9 +186,7 @@ impl FrameState {
             JvmType::Ref => vec![VerificationType::Object {
                 cpool_index: string_class,
             }],
-            JvmType::StructRef(idx) => vec![VerificationType::Object {
-                cpool_index: idx,
-            }],
+            JvmType::StructRef(idx) => vec![VerificationType::Object { cpool_index: idx }],
         }
     }
 
@@ -317,13 +319,13 @@ impl CodegenTypeInfo {
 
 /// Info about a trait for dispatch.
 pub(super) struct TraitDispatchInfo {
-    pub(super) interface_class: u16,       // class index of the trait interface in main cpool
+    pub(super) interface_class: u16, // class index of the trait interface in main cpool
     pub(super) method_refs: HashMap<String, u16>, // method_name → interface method_ref
 }
 
 /// Info about a trait instance singleton.
 pub(super) struct InstanceSingletonInfo {
-    pub(super) instance_field_ref: u16,    // field_ref for INSTANCE field (for getstatic)
+    pub(super) instance_field_ref: u16, // field_ref for INSTANCE field (for getstatic)
 }
 
 /// Trait dispatch state for codegen.
@@ -398,18 +400,17 @@ impl Compiler {
             cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
 
         // Unboxing support
-        let long_unbox =
-            cp.add_method_ref(long_box_class, "longValue", "()J")?;
-        let double_unbox =
-            cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
-        let bool_unbox =
-            cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
+        let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
+        let double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
+        let bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
 
         // String operations
-        let string_concat =
-            cp.add_method_ref(string_class, "concat", "(Ljava/lang/String;)Ljava/lang/String;")?;
-        let string_equals =
-            cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
+        let string_concat = cp.add_method_ref(
+            string_class,
+            "concat",
+            "(Ljava/lang/String;)Ljava/lang/String;",
+        )?;
+        let string_equals = cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
 
         // Intrinsic support
         let runtime_exception_class = cp.add_class("java/lang/RuntimeException")?;
@@ -520,7 +521,9 @@ impl Compiler {
                 if let Some(info) = self.types.tuple_info.get(&arity) {
                     Ok(JvmType::StructRef(info.class_index))
                 } else {
-                    Err(CodegenError::TypeError(format!("unknown tuple arity: {arity}")))
+                    Err(CodegenError::TypeError(format!(
+                        "unknown tuple arity: {arity}"
+                    )))
                 }
             }
             Type::Own(inner) => self.type_to_jvm(inner),
@@ -560,24 +563,46 @@ impl Compiler {
         self.frame.jvm_type_to_vtypes(ty, self.refs.string_class)
     }
 
-    pub(super) fn compile_expr(&mut self, expr: &TypedExpr, in_tail: bool) -> Result<JvmType, CodegenError> {
+    pub(super) fn compile_expr(
+        &mut self,
+        expr: &TypedExpr,
+        in_tail: bool,
+    ) -> Result<JvmType, CodegenError> {
         match &expr.kind {
             TypedExprKind::Lit(value) => self.compile_lit(value),
             TypedExprKind::BinaryOp { op, lhs, rhs } => self.compile_binop(op, lhs, rhs),
-            TypedExprKind::If { cond, then_, else_ } => self.compile_if(cond, then_, else_, in_tail),
-            TypedExprKind::Let { name, value, body } => self.compile_let(name, value, body, in_tail, expr.span),
+            TypedExprKind::If { cond, then_, else_ } => {
+                self.compile_if(cond, then_, else_, in_tail)
+            }
+            TypedExprKind::Let { name, value, body } => {
+                self.compile_let(name, value, body, in_tail, expr.span)
+            }
             TypedExprKind::Var(name) => self.compile_var(name),
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
             TypedExprKind::Recur(args) => self.compile_recur(args, in_tail, expr.span),
-            TypedExprKind::FieldAccess { expr: target, field } => self.compile_field_access(target, field),
+            TypedExprKind::FieldAccess {
+                expr: target,
+                field,
+            } => self.compile_field_access(target, field),
             TypedExprKind::Tuple(elems) => self.compile_tuple(elems, &expr.ty),
-            TypedExprKind::LetPattern { pattern, value, body } => self.compile_let_pattern(pattern, value, body, in_tail),
-            TypedExprKind::StructUpdate { base, fields } => self.compile_struct_update(base, fields),
-            TypedExprKind::Match { scrutinee, arms } => self.compile_match(scrutinee, arms, in_tail),
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body,
+            } => self.compile_let_pattern(pattern, value, body, in_tail),
+            TypedExprKind::StructUpdate { base, fields } => {
+                self.compile_struct_update(base, fields)
+            }
+            TypedExprKind::Match { scrutinee, arms } => {
+                self.compile_match(scrutinee, arms, in_tail)
+            }
             TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
             TypedExprKind::Lambda { params, body } => self.compile_lambda(params, body, &expr.ty),
-            TypedExprKind::QuestionMark { expr: inner, is_option } => self.compile_question_mark(inner, *is_option, &expr.ty, expr.span),
+            TypedExprKind::QuestionMark {
+                expr: inner,
+                is_option,
+            } => self.compile_question_mark(inner, *is_option, &expr.ty, expr.span),
             TypedExprKind::VecLit(elems) => self.compile_vec_lit(elems),
             other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
         }
@@ -680,8 +705,8 @@ impl Compiler {
                         self.compile_expr(rhs, false)?;
                         self.emit(Instruction::Invokevirtual(self.refs.string_concat));
                         self.frame.pop_type(); // pop rhs string
-                        // receiver consumed, result string pushed (net: pop 1 push 0, but
-                        // invokevirtual pops receiver+arg and pushes result, so just pop rhs)
+                                               // receiver consumed, result string pushed (net: pop 1 push 0, but
+                                               // invokevirtual pops receiver+arg and pushes result, so just pop rhs)
                         Ok(JvmType::Ref)
                     }
                     _ => {
@@ -761,19 +786,30 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         let type_name = type_to_name(&lhs.ty);
 
-        let dispatch = self.traits.trait_dispatch.get(trait_name)
-            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}")))?;
-        let iface_method_ref = *dispatch.method_refs.get(method_name)
-            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}")))?;
+        let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
+            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
+        })?;
+        let iface_method_ref = *dispatch.method_refs.get(method_name).ok_or_else(|| {
+            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"))
+        })?;
         let iface_class = dispatch.interface_class;
 
-        let singleton = self.traits.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
-            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no instance of {trait_name} for {type_name}")))?;
+        let singleton = self
+            .traits
+            .instance_singletons
+            .get(&(trait_name.to_string(), type_name.clone()))
+            .ok_or_else(|| {
+                CodegenError::UndefinedVariable(format!(
+                    "no instance of {trait_name} for {type_name}"
+                ))
+            })?;
         let field_ref = singleton.instance_field_ref;
 
         // Load singleton instance
         self.emit(Instruction::Getstatic(field_ref));
-        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: iface_class,
+        });
 
         // Compile and box lhs
         let lhs_jvm = self.compile_expr(lhs, false)?;
@@ -788,7 +824,9 @@ impl Compiler {
         self.frame.pop_type(); // rhs
         self.frame.pop_type(); // lhs
         self.frame.pop_type(); // receiver
-        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: self.refs.object_class,
+        });
 
         // Unbox result
         self.unbox_if_needed(result_jvm);
@@ -805,19 +843,30 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         let type_name = type_to_name(&operand.ty);
 
-        let dispatch = self.traits.trait_dispatch.get(trait_name)
-            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}")))?;
-        let iface_method_ref = *dispatch.method_refs.get(method_name)
-            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}")))?;
+        let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
+            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
+        })?;
+        let iface_method_ref = *dispatch.method_refs.get(method_name).ok_or_else(|| {
+            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"))
+        })?;
         let iface_class = dispatch.interface_class;
 
-        let singleton = self.traits.instance_singletons.get(&(trait_name.to_string(), type_name.clone()))
-            .ok_or_else(|| CodegenError::UndefinedVariable(format!("no instance of {trait_name} for {type_name}")))?;
+        let singleton = self
+            .traits
+            .instance_singletons
+            .get(&(trait_name.to_string(), type_name.clone()))
+            .ok_or_else(|| {
+                CodegenError::UndefinedVariable(format!(
+                    "no instance of {trait_name} for {type_name}"
+                ))
+            })?;
         let field_ref = singleton.instance_field_ref;
 
         // Load singleton instance
         self.emit(Instruction::Getstatic(field_ref));
-        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: iface_class,
+        });
 
         // Compile and box operand
         let op_jvm = self.compile_expr(operand, false)?;
@@ -827,7 +876,9 @@ impl Compiler {
         self.emit(Instruction::Invokeinterface(iface_method_ref, 2));
         self.frame.pop_type(); // operand
         self.frame.pop_type(); // receiver
-        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: self.refs.object_class,
+        });
 
         // Unbox result
         self.unbox_if_needed(result_jvm);
@@ -883,12 +934,12 @@ impl Compiler {
         // User-type trait dispatch for Eq/Ord
         if !matches!(operand_jvm, JvmType::Long | JvmType::Double) {
             let (trait_name, method_name, swap, negate) = match op {
-                BinOp::Eq  => ("Eq",  "eq", false, false),
-                BinOp::Neq => ("Eq",  "eq", false, true),
-                BinOp::Lt  => ("Ord", "lt", false, false),
-                BinOp::Gt  => ("Ord", "lt", true,  false),
-                BinOp::Le  => ("Ord", "lt", true,  true),
-                BinOp::Ge  => ("Ord", "lt", false, true),
+                BinOp::Eq => ("Eq", "eq", false, false),
+                BinOp::Neq => ("Eq", "eq", false, true),
+                BinOp::Lt => ("Ord", "lt", false, false),
+                BinOp::Gt => ("Ord", "lt", true, false),
+                BinOp::Le => ("Ord", "lt", true, true),
+                BinOp::Ge => ("Ord", "lt", false, true),
                 _ => unreachable!(),
             };
             let (lhs_arg, rhs_arg) = if swap { (rhs, lhs) } else { (lhs, rhs) };
@@ -989,9 +1040,7 @@ impl Compiler {
                     self.emit(Instruction::Dneg);
                     Ok(JvmType::Double)
                 }
-                _ => {
-                    self.compile_trait_unaryop("Neg", "neg", operand, operand_jvm)
-                }
+                _ => self.compile_trait_unaryop("Neg", "neg", operand, operand_jvm),
             },
             UnaryOp::Not => {
                 // Boolean NOT: XOR with 1
@@ -1140,10 +1189,12 @@ impl Compiler {
                 other => other,
             };
             if let Type::Fn(param_types, ret_type) = fn_type {
-                let param_jvm: Result<Vec<JvmType>, _> = param_types.iter().map(|t| self.type_to_jvm(t)).collect();
+                let param_jvm: Result<Vec<JvmType>, _> =
+                    param_types.iter().map(|t| self.type_to_jvm(t)).collect();
                 if let Ok(param_jvm) = param_jvm {
                     if let Ok(ret_jvm) = self.type_to_jvm(ret_type) {
-                        self.local_fn_info.insert(name.to_string(), (param_jvm, ret_jvm));
+                        self.local_fn_info
+                            .insert(name.to_string(), (param_jvm, ret_jvm));
                     }
                 }
             }
@@ -1167,9 +1218,11 @@ impl Compiler {
 
     fn compile_tuple(&mut self, elems: &[TypedExpr], _ty: &Type) -> Result<JvmType, CodegenError> {
         let arity = elems.len();
-        let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
-            CodegenError::TypeError(format!("unknown tuple arity: {arity}"))
-        })?;
+        let info = self
+            .types
+            .tuple_info
+            .get(&arity)
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown tuple arity: {arity}")))?;
         let class_index = info.class_index;
         let constructor_ref = info.constructor_ref;
 
@@ -1209,7 +1262,10 @@ impl Compiler {
             4 => self.emit(Instruction::Iconst_4),
             5 => self.emit(Instruction::Iconst_5),
             _ => {
-                let idx = self.cp.add_integer(n).expect("failed to add integer constant");
+                let idx = self
+                    .cp
+                    .add_integer(n)
+                    .expect("failed to add integer constant");
                 if idx <= 255 {
                     self.emit(Instruction::Ldc(idx as u8));
                 } else {
@@ -1220,11 +1276,15 @@ impl Compiler {
     }
 
     fn compile_vec_lit(&mut self, elems: &[TypedExpr]) -> Result<JvmType, CodegenError> {
-        let info = self.vec_info.as_ref().ok_or_else(|| {
-            CodegenError::TypeError("Vec info not registered".to_string())
-        })?.clone();
+        let info = self
+            .vec_info
+            .as_ref()
+            .ok_or_else(|| CodegenError::TypeError("Vec info not registered".to_string()))?
+            .clone();
 
-        let arr_vtype = VerificationType::Object { cpool_index: info.class_index };
+        let arr_vtype = VerificationType::Object {
+            cpool_index: info.class_index,
+        };
 
         // new KryptonArray(capacity)
         self.emit(Instruction::New(info.class_index));
@@ -1253,7 +1313,7 @@ impl Compiler {
             self.frame.pop_type(); // boxed_elem
             self.frame.pop_type(); // index
             self.frame.pop_type(); // arr (dup'd)
-            // stack: [arr]
+                                   // stack: [arr]
         }
 
         // freeze
@@ -1261,7 +1321,7 @@ impl Compiler {
         self.frame.push_type(arr_vtype.clone());
         self.emit(Instruction::Invokevirtual(info.freeze_ref));
         self.frame.pop_type(); // arr (dup'd, consumed by freeze)
-        // stack: [arr]
+                               // stack: [arr]
 
         Ok(JvmType::StructRef(info.class_index))
     }
@@ -1320,7 +1380,9 @@ impl Compiler {
                     JvmType::Long => Instruction::Lload(scrutinee_slot as u8),
                     JvmType::Double => Instruction::Dload(scrutinee_slot as u8),
                     JvmType::Int => Instruction::Iload(scrutinee_slot as u8),
-                    JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(scrutinee_slot as u8),
+                    JvmType::Ref | JvmType::StructRef(_) => {
+                        Instruction::Aload(scrutinee_slot as u8)
+                    }
                 };
                 self.emit(load);
                 self.push_jvm_type(scrutinee_type);
@@ -1347,7 +1409,11 @@ impl Compiler {
             TypedPattern::Tuple { elements, .. } => {
                 let elem_types = match value_ty {
                     Type::Tuple(elems) => elems,
-                    _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
+                    _ => {
+                        return Err(CodegenError::TypeError(
+                            "expected tuple type for tuple pattern".into(),
+                        ))
+                    }
                 };
                 let arity = elements.len();
                 let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
@@ -1366,22 +1432,29 @@ impl Compiler {
 
                     // Load tuple, invoke accessor _i() -> Object
                     self.emit(Instruction::Aload(scrutinee_slot as u8));
-                    self.frame.push_type(VerificationType::Object { cpool_index: tuple_class });
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: tuple_class,
+                    });
                     self.emit(Instruction::Invokevirtual(field_ref));
                     self.frame.pop_type(); // pop tuple ref
-                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: self.refs.object_class,
+                    });
 
                     // Unbox if primitive, checkcast if struct/string ref
                     match elem_jvm_type {
                         JvmType::StructRef(idx) => {
                             self.emit(Instruction::Checkcast(idx));
                             self.frame.pop_type();
-                            self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                            self.frame
+                                .push_type(VerificationType::Object { cpool_index: idx });
                         }
                         JvmType::Ref => {
                             self.emit(Instruction::Checkcast(self.refs.string_class));
                             self.frame.pop_type();
-                            self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: self.refs.string_class,
+                            });
                         }
                         _ => self.unbox_if_needed(elem_jvm_type),
                     }
@@ -1399,13 +1472,16 @@ impl Compiler {
                                 JvmType::Long => Instruction::Lstore(var_slot as u8),
                                 JvmType::Double => Instruction::Dstore(var_slot as u8),
                                 JvmType::Int => Instruction::Istore(var_slot as u8),
-                                JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                                JvmType::Ref | JvmType::StructRef(_) => {
+                                    Instruction::Astore(var_slot as u8)
+                                }
                             };
                             self.emit(store);
                             self.pop_jvm_type(elem_jvm_type);
                             let vtypes = self.jvm_type_to_vtypes(elem_jvm_type);
                             self.frame.local_types.extend(vtypes);
-                            self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
+                            self.locals
+                                .insert(var_name.clone(), (var_slot, elem_jvm_type));
                         }
                         TypedPattern::Tuple { .. } => {
                             // Store in temp local and recurse
@@ -1413,11 +1489,18 @@ impl Compiler {
                             self.next_local += 1;
                             self.emit(Instruction::Astore(nested_slot as u8));
                             self.frame.pop_type();
-                            self.frame.local_types.push(VerificationType::Object { cpool_index: match elem_jvm_type {
-                                JvmType::StructRef(idx) => idx,
-                                _ => self.refs.object_class,
-                            }});
-                            self.bind_irrefutable_pattern(sub_pat, nested_slot, elem_jvm_type, elem_ty)?;
+                            self.frame.local_types.push(VerificationType::Object {
+                                cpool_index: match elem_jvm_type {
+                                    JvmType::StructRef(idx) => idx,
+                                    _ => self.refs.object_class,
+                                },
+                            });
+                            self.bind_irrefutable_pattern(
+                                sub_pat,
+                                nested_slot,
+                                elem_jvm_type,
+                                elem_ty,
+                            )?;
                         }
                         TypedPattern::Wildcard { .. } => {
                             // Already filtered above, but handle gracefully
@@ -1454,11 +1537,13 @@ impl Compiler {
             }
         }
 
+        eprintln!("adding {name}",);
         let (slot, ty) = self
             .locals
             .get(name)
             .copied()
             .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
+        eprintln!("added {slot} of {ty:?}");
 
         let load = match ty {
             JvmType::Long => Instruction::Lload(slot as u8),
@@ -1474,7 +1559,12 @@ impl Compiler {
         Ok(ty)
     }
 
-    fn compile_intrinsic(&mut self, name: &str, args: &[TypedExpr], result_ty: &Type) -> Result<JvmType, CodegenError> {
+    fn compile_intrinsic(
+        &mut self,
+        name: &str,
+        args: &[TypedExpr],
+        result_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
         match name {
             "panic" => {
                 let re_class = self.refs.runtime_exception_class;
@@ -1496,11 +1586,18 @@ impl Compiler {
                 self.push_jvm_type(jvm_ret);
                 Ok(jvm_ret)
             }
-            _ => Err(CodegenError::UnsupportedExpr(format!("unknown intrinsic: {name}"))),
+            _ => Err(CodegenError::UnsupportedExpr(format!(
+                "unknown intrinsic: {name}"
+            ))),
         }
     }
 
-    fn compile_app(&mut self, func: &TypedExpr, args: &[TypedExpr], result_ty: &Type) -> Result<JvmType, CodegenError> {
+    fn compile_app(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+        result_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
         let name = match &func.kind {
             TypedExprKind::Var(name) => name.as_str(),
             other => {
@@ -1604,8 +1701,10 @@ impl Compiler {
                     self.frame.pop_type(); // each boxed arg
                 }
                 self.pop_jvm_type(jvm_ty); // receiver
-                // Push Object result
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                                           // Push Object result
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
                 // Unbox if needed
                 self.unbox_if_needed(ho_ret_type);
                 // Checkcast Object → specific ref type if needed
@@ -1613,12 +1712,15 @@ impl Compiler {
                     JvmType::Ref => {
                         self.emit(Instruction::Checkcast(self.refs.string_class));
                         self.frame.pop_type();
-                        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: self.refs.string_class,
+                        });
                     }
                     JvmType::StructRef(idx) if idx != self.refs.object_class => {
                         self.emit(Instruction::Checkcast(idx));
                         self.frame.pop_type();
-                        self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                        self.frame
+                            .push_type(VerificationType::Object { cpool_index: idx });
                     }
                     _ => {}
                 }
@@ -1640,23 +1742,38 @@ impl Compiler {
                     // Load dict from local variable (constrained function's dict param)
                     if let Some(&dict_slot) = self.traits.dict_locals.get(&trait_name) {
                         self.emit(Instruction::Aload(dict_slot as u8));
-                        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: iface_class,
+                        });
                     } else {
-                        return Err(CodegenError::UndefinedVariable(
-                            format!("no dict local for trait {trait_name}"),
-                        ));
+                        return Err(CodegenError::UndefinedVariable(format!(
+                            "no dict local for trait {trait_name}"
+                        )));
                     }
                 } else {
                     // Concrete type — getstatic Instance.INSTANCE or construct parameterized
                     let type_name = type_to_name(first_arg_ty);
-                    if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
+                    if let Some(singleton) = self
+                        .traits
+                        .instance_singletons
+                        .get(&(trait_name.clone(), type_name.clone()))
+                    {
                         let field_ref = singleton.instance_field_ref;
                         self.emit(Instruction::Getstatic(field_ref));
-                        self.frame.push_type(VerificationType::Object { cpool_index: iface_class });
-                    } else if let Some(param_info) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: iface_class,
+                        });
+                    } else if let Some(param_info) = self
+                        .traits
+                        .parameterized_instances
+                        .get(&(trait_name.clone(), type_name.clone()))
+                        .cloned()
+                    {
                         // Construct parameterized instance on the fly — lazily resolve CP entries
                         let inst_class = self.cp.add_class(&param_info.class_name)?;
-                        self.types.class_descriptors.insert(inst_class, format!("L{};", param_info.class_name));
+                        self.types
+                            .class_descriptors
+                            .insert(inst_class, format!("L{};", param_info.class_name));
                         let mut init_desc = String::from("(");
                         for _ in &param_info.subdict_traits {
                             init_desc.push_str("Ljava/lang/Object;");
@@ -1664,28 +1781,42 @@ impl Compiler {
                         init_desc.push_str(")V");
                         let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
                         self.emit(Instruction::New(inst_class));
-                        self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: inst_class,
+                        });
                         self.emit(Instruction::Dup);
-                        self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: inst_class,
+                        });
                         // Push subdictionaries
                         for (subdict_trait, param_idx) in &param_info.subdict_traits {
                             // Resolve the type arg at param_idx
                             let type_arg = match first_arg_ty {
                                 Type::Named(_, type_args) => &type_args[*param_idx],
                                 Type::Own(inner) => {
-                                    if let Type::Named(_, type_args) = inner.as_ref() { &type_args[*param_idx] } else { first_arg_ty }
+                                    if let Type::Named(_, type_args) = inner.as_ref() {
+                                        &type_args[*param_idx]
+                                    } else {
+                                        first_arg_ty
+                                    }
                                 }
                                 _ => first_arg_ty,
                             };
                             let sub_type_name = type_to_name(type_arg);
-                            if let Some(singleton) = self.traits.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
+                            if let Some(singleton) = self
+                                .traits
+                                .instance_singletons
+                                .get(&(subdict_trait.clone(), sub_type_name.clone()))
+                            {
                                 let field_ref = singleton.instance_field_ref;
                                 self.emit(Instruction::Getstatic(field_ref));
-                                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                                self.frame.push_type(VerificationType::Object {
+                                    cpool_index: self.refs.object_class,
+                                });
                             } else {
-                                return Err(CodegenError::UndefinedVariable(
-                                    format!("no instance of {subdict_trait} for {sub_type_name}"),
-                                ));
+                                return Err(CodegenError::UndefinedVariable(format!(
+                                    "no instance of {subdict_trait} for {sub_type_name}"
+                                )));
                             }
                         }
                         self.emit(Instruction::Invokespecial(init_ref));
@@ -1695,9 +1826,9 @@ impl Compiler {
                         }
                         self.frame.pop_type(); // dup
                     } else {
-                        return Err(CodegenError::UndefinedVariable(
-                            format!("no instance of {trait_name} for {type_name}"),
-                        ));
+                        return Err(CodegenError::UndefinedVariable(format!(
+                            "no instance of {trait_name} for {type_name}"
+                        )));
                     }
                 }
 
@@ -1709,7 +1840,10 @@ impl Compiler {
                 }
 
                 // invokeinterface
-                self.emit(Instruction::Invokeinterface(iface_method_ref, (arity + 1) as u8));
+                self.emit(Instruction::Invokeinterface(
+                    iface_method_ref,
+                    (arity + 1) as u8,
+                ));
 
                 // Pop args + receiver from stack tracker
                 for _ in 0..arity {
@@ -1718,14 +1852,19 @@ impl Compiler {
                 self.frame.pop_type(); // receiver (dict)
 
                 // Push Object result
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
 
                 // Determine expected return type from the interface method
                 // The return type is always Object from the interface — need to unbox
                 // based on expected result type. Look at the expr's type.
-                let result_jvm = self.type_to_jvm(&func.ty).unwrap_or(JvmType::StructRef(self.refs.object_class));
+                let result_jvm = self
+                    .type_to_jvm(&func.ty)
+                    .unwrap_or(JvmType::StructRef(self.refs.object_class));
                 let expected_ret = if let Type::Fn(_, ret) = &func.ty {
-                    self.type_to_jvm(ret).unwrap_or(JvmType::StructRef(self.refs.object_class))
+                    self.type_to_jvm(ret)
+                        .unwrap_or(JvmType::StructRef(self.refs.object_class))
                 } else {
                     result_jvm
                 };
@@ -1738,12 +1877,15 @@ impl Compiler {
                     JvmType::Ref => {
                         self.emit(Instruction::Checkcast(self.refs.string_class));
                         self.frame.pop_type();
-                        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.string_class });
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: self.refs.string_class,
+                        });
                     }
                     JvmType::StructRef(idx) if idx != self.refs.object_class => {
                         self.emit(Instruction::Checkcast(idx));
                         self.frame.pop_type();
-                        self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                        self.frame
+                            .push_type(VerificationType::Object { cpool_index: idx });
                     }
                     _ => {}
                 }
@@ -1753,10 +1895,16 @@ impl Compiler {
         }
 
         // Check if calling a constrained function — need to prepend dict args
-        let constraint_traits = self.traits.fn_constraints.get(name).cloned().unwrap_or_default();
+        let constraint_traits = self
+            .traits
+            .fn_constraints
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
 
         // Look up function info (need to clone out to avoid borrow conflict)
-        let info = self.types
+        let info = self
+            .types
             .functions
             .get(name)
             .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
@@ -1776,45 +1924,75 @@ impl Compiler {
                         // Forward our own dict local
                         if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
                             self.emit(Instruction::Aload(dict_slot as u8));
-                            self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: self.refs.object_class,
+                            });
                         }
                     } else {
                         let type_name = type_to_name(target_arg_ty);
-                        if let Some(singleton) = self.traits.instance_singletons.get(&(trait_name.clone(), type_name.clone())) {
+                        if let Some(singleton) = self
+                            .traits
+                            .instance_singletons
+                            .get(&(trait_name.clone(), type_name.clone()))
+                        {
                             let field_ref = singleton.instance_field_ref;
                             self.emit(Instruction::Getstatic(field_ref));
-                            self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
-                        } else if let Some(param_info) = self.traits.parameterized_instances.get(&(trait_name.clone(), type_name.clone())).cloned() {
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: self.refs.object_class,
+                            });
+                        } else if let Some(param_info) = self
+                            .traits
+                            .parameterized_instances
+                            .get(&(trait_name.clone(), type_name.clone()))
+                            .cloned()
+                        {
                             // Construct parameterized instance on the fly
                             let inst_class = self.cp.add_class(&param_info.class_name)?;
-                            self.types.class_descriptors.insert(inst_class, format!("L{};", param_info.class_name));
+                            self.types
+                                .class_descriptors
+                                .insert(inst_class, format!("L{};", param_info.class_name));
                             let mut init_desc = String::from("(");
                             for _ in &param_info.subdict_traits {
                                 init_desc.push_str("Ljava/lang/Object;");
                             }
                             init_desc.push_str(")V");
-                            let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+                            let init_ref =
+                                self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
                             self.emit(Instruction::New(inst_class));
-                            self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: inst_class,
+                            });
                             self.emit(Instruction::Dup);
-                            self.frame.push_type(VerificationType::Object { cpool_index: inst_class });
+                            self.frame.push_type(VerificationType::Object {
+                                cpool_index: inst_class,
+                            });
                             for (subdict_trait, sub_param_idx) in &param_info.subdict_traits {
                                 let type_arg = match target_arg_ty {
                                     Type::Named(_, type_args) => &type_args[*sub_param_idx],
                                     Type::Own(inner) => {
-                                        if let Type::Named(_, type_args) = inner.as_ref() { &type_args[*sub_param_idx] } else { target_arg_ty }
+                                        if let Type::Named(_, type_args) = inner.as_ref() {
+                                            &type_args[*sub_param_idx]
+                                        } else {
+                                            target_arg_ty
+                                        }
                                     }
                                     _ => target_arg_ty,
                                 };
                                 let sub_type_name = type_to_name(type_arg);
-                                if let Some(singleton) = self.traits.instance_singletons.get(&(subdict_trait.clone(), sub_type_name.clone())) {
+                                if let Some(singleton) = self
+                                    .traits
+                                    .instance_singletons
+                                    .get(&(subdict_trait.clone(), sub_type_name.clone()))
+                                {
                                     let field_ref = singleton.instance_field_ref;
                                     self.emit(Instruction::Getstatic(field_ref));
-                                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                                    self.frame.push_type(VerificationType::Object {
+                                        cpool_index: self.refs.object_class,
+                                    });
                                 } else {
-                                    return Err(CodegenError::UndefinedVariable(
-                                        format!("no instance of {subdict_trait} for {sub_type_name}"),
-                                    ));
+                                    return Err(CodegenError::UndefinedVariable(format!(
+                                        "no instance of {subdict_trait} for {sub_type_name}"
+                                    )));
                                 }
                             }
                             self.emit(Instruction::Invokespecial(init_ref));
@@ -1823,9 +2001,9 @@ impl Compiler {
                             }
                             self.frame.pop_type(); // dup
                         } else {
-                            return Err(CodegenError::UndefinedVariable(
-                                format!("no instance of {trait_name} for {type_name}"),
-                            ));
+                            return Err(CodegenError::UndefinedVariable(format!(
+                                "no instance of {trait_name} for {type_name}"
+                            )));
                         }
                     }
                 }
@@ -1838,7 +2016,9 @@ impl Compiler {
             let arg_type = self.compile_expr(arg, false)?;
             let expected = param_types[i + dict_offset];
             if let JvmType::StructRef(idx) = expected {
-                if idx == self.refs.object_class && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref) {
+                if idx == self.refs.object_class
+                    && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref)
+                {
                     // Primitive → Object: box
                     self.box_if_needed(arg_type);
                 } else if idx != self.refs.object_class {
@@ -1847,7 +2027,8 @@ impl Compiler {
                         if arg_idx == self.refs.object_class && arg_idx != idx {
                             self.emit(Instruction::Checkcast(idx));
                             self.frame.pop_type();
-                            self.frame.push_type(VerificationType::Object { cpool_index: idx });
+                            self.frame
+                                .push_type(VerificationType::Object { cpool_index: idx });
                         }
                     }
                 }
@@ -1880,6 +2061,7 @@ impl Compiler {
         field: &str,
     ) -> Result<JvmType, CodegenError> {
         let base_type = self.compile_expr(expr, false)?;
+        eprintln!("base type {:?} fpr {:?}", base_type, expr);
         let class_idx = match base_type {
             JvmType::StructRef(idx) => idx,
             _ => {
@@ -1890,15 +2072,18 @@ impl Compiler {
         };
 
         // Find struct info by class index
-        let (_struct_name, accessor_ref, field_type) = {
-            let si = self.types
+        let (struct_name, accessor_ref, field_type) = {
+            eprintln!("looking for {class_idx:?} in {:?}", self.types.struct_info);
+            let si = self
+                .types
                 .struct_info
                 .values()
                 .find(|s| s.class_index == class_idx)
                 .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
-            let accessor_ref = *si.accessor_refs.get(field).ok_or_else(|| {
-                CodegenError::TypeError(format!("unknown field: {field}"))
-            })?;
+            let accessor_ref = *si
+                .accessor_refs
+                .get(field)
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}")))?;
             let field_type = si
                 .fields
                 .iter()
@@ -1928,9 +2113,11 @@ impl Compiler {
         let sum_name = if is_option { "Option" } else { "Result" };
         let success_variant = if is_option { "Some" } else { "Ok" };
 
-        let sum_info = self.types.sum_type_info.get(sum_name).ok_or_else(|| {
-            CodegenError::TypeError(format!("unknown sum type: {sum_name}"))
-        })?;
+        let sum_info = self
+            .types
+            .sum_type_info
+            .get(sum_name)
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown sum type: {sum_name}")))?;
         let interface_class_index = sum_info.interface_class_index;
         let success_vi = sum_info.variants.get(success_variant).ok_or_else(|| {
             CodegenError::TypeError(format!("unknown variant: {success_variant}"))
@@ -2062,7 +2249,8 @@ impl Compiler {
         self.frame.local_types.extend(vtypes);
 
         // Look up struct info
-        let si = self.types
+        let si = self
+            .types
             .struct_info
             .values()
             .find(|s| s.class_index == class_idx)
@@ -2120,9 +2308,9 @@ impl Compiler {
         if !in_tail {
             return Err(CodegenError::RecurNotInTailPosition);
         }
-        let return_type = self.fn_return_type.ok_or_else(|| {
-            CodegenError::UnsupportedExpr("recur outside function".to_string())
-        })?;
+        let return_type = self
+            .fn_return_type
+            .ok_or_else(|| CodegenError::UnsupportedExpr("recur outside function".to_string()))?;
         let fn_params = self.fn_params.clone();
 
         // Auto-close live resources before recur (before compiling new args,
@@ -2156,10 +2344,17 @@ impl Compiler {
             .iter()
             .flat_map(|&(_, jvm_ty)| self.jvm_type_to_vtypes(jvm_ty))
             .collect();
-        self.frame.frames.insert(1, (
-            initial_locals.iter().filter(|vt| !matches!(vt, VerificationType::Top)).cloned().collect(),
-            vec![],
-        ));
+        self.frame.frames.insert(
+            1,
+            (
+                initial_locals
+                    .iter()
+                    .filter(|vt| !matches!(vt, VerificationType::Top))
+                    .cloned()
+                    .collect(),
+                vec![],
+            ),
+        );
 
         // Goto instruction 1 (after Nop at instruction 0)
         self.emit(Instruction::Goto(1));
@@ -2254,18 +2449,25 @@ impl Compiler {
             other => other,
         };
         let param_jvm_types = match fn_type {
-            Type::Fn(param_types, _) => {
-                param_types.iter().map(|t| self.type_to_jvm(t)).collect::<Result<Vec<_>, _>>()?
+            Type::Fn(param_types, _) => param_types
+                .iter()
+                .map(|t| self.type_to_jvm(t))
+                .collect::<Result<Vec<_>, _>>()?,
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "lambda has non-function type".to_string(),
+                ))
             }
-            _ => return Err(CodegenError::TypeError("lambda has non-function type".to_string())),
         };
 
         // Ensure FunN interface exists
-        self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
+        self.lambda
+            .ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
         let fun_class_idx = self.lambda.fun_classes[&arity];
 
         // Find captured variables: scan body for Var names that are in self.locals but not lambda params
-        let param_names: std::collections::HashSet<&str> = params.iter().map(|s| s.as_str()).collect();
+        let param_names: std::collections::HashSet<&str> =
+            params.iter().map(|s| s.as_str()).collect();
         let mut captures: Vec<(String, u16, JvmType)> = Vec::new();
         self.collect_captures(body, &param_names, &mut captures);
         // Deduplicate
@@ -2299,7 +2501,9 @@ impl Compiler {
         for (cap_name, _, cap_type) in &captures {
             let slot = self.next_local;
             self.locals.insert(cap_name.clone(), (slot, *cap_type));
-            self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
+            self.frame.local_types.push(VerificationType::Object {
+                cpool_index: self.refs.object_class,
+            });
             self.next_local += 1;
         }
 
@@ -2308,20 +2512,35 @@ impl Compiler {
         for (i, p) in params.iter().enumerate() {
             let slot = self.next_local;
             // Store as Object initially
-            self.locals.insert(p.clone(), (slot, JvmType::StructRef(self.refs.object_class)));
-            self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
+            self.locals.insert(
+                p.clone(),
+                (slot, JvmType::StructRef(self.refs.object_class)),
+            );
+            self.frame.local_types.push(VerificationType::Object {
+                cpool_index: self.refs.object_class,
+            });
             lambda_param_slots.push((slot, param_jvm_types[i]));
             self.next_local += 1;
         }
 
-        // Unbox params from Object to actual types
+        // JVM type erasure invariant: Lambda params and captures arrive as Object
+        // (FunN.apply signature is Object -> Object). Any slot whose actual type is
+        // not Object must be cast/unboxed here before the body can use it:
+        //   - Primitives (Int/Long/Double): unbox via Long.longValue() etc.
+        //   - Structs (StructRef != object_class): checkcast to the concrete class.
+        // The same invariant applies to erased generic variant fields extracted in
+        // compile_pattern_bind (e.g., Some(b) where b: Player).
+
+        // Unbox primitive params from Object to actual types
         for (i, p) in params.iter().enumerate() {
             let actual_type = param_jvm_types[i];
             if matches!(actual_type, JvmType::Long | JvmType::Double | JvmType::Int) {
                 let slot = lambda_param_slots[i].0;
                 // Load the Object param
                 self.emit(Instruction::Aload(slot as u8));
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
                 // Unbox
                 self.unbox_if_needed(actual_type);
                 // Store back to a new slot with correct type
@@ -2345,13 +2564,42 @@ impl Compiler {
             }
         }
 
+        // Cast struct-typed params from Object to their actual struct type
+        for (i, p) in params.iter().enumerate() {
+            let actual_type = param_jvm_types[i];
+            if let JvmType::StructRef(class_idx) = actual_type {
+                if class_idx != self.refs.object_class {
+                    let slot = lambda_param_slots[i].0;
+                    self.emit(Instruction::Aload(slot as u8));
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: self.refs.object_class,
+                    });
+                    self.emit(Instruction::Checkcast(class_idx));
+                    self.frame.pop_type();
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: class_idx,
+                    });
+                    let new_slot = self.next_local;
+                    self.next_local += 1;
+                    self.emit(Instruction::Astore(new_slot as u8));
+                    self.frame.pop_type();
+                    self.frame.local_types.push(VerificationType::Object {
+                        cpool_index: class_idx,
+                    });
+                    self.locals.insert(p.clone(), (new_slot, actual_type));
+                }
+            }
+        }
+
         // Also unbox captured vars if they are primitive types
         for (cap_name, _, cap_type) in &captures {
             let actual_type = *cap_type;
             if matches!(actual_type, JvmType::Long | JvmType::Double | JvmType::Int) {
                 let (slot, _) = self.locals[cap_name];
                 self.emit(Instruction::Aload(slot as u8));
-                self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
                 self.unbox_if_needed(actual_type);
                 let new_slot = self.next_local;
                 let slot_size = match actual_type {
@@ -2369,7 +2617,36 @@ impl Compiler {
                 self.pop_jvm_type(actual_type);
                 let vtypes = self.jvm_type_to_vtypes(actual_type);
                 self.frame.local_types.extend(vtypes);
-                self.locals.insert(cap_name.clone(), (new_slot, actual_type));
+                self.locals
+                    .insert(cap_name.clone(), (new_slot, actual_type));
+            }
+        }
+
+        // Cast struct-typed captured vars from Object to their actual struct type
+        for (cap_name, _, cap_type) in &captures {
+            let actual_type = *cap_type;
+            if let JvmType::StructRef(class_idx) = actual_type {
+                if class_idx != self.refs.object_class {
+                    let (slot, _) = self.locals[cap_name];
+                    self.emit(Instruction::Aload(slot as u8));
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: self.refs.object_class,
+                    });
+                    self.emit(Instruction::Checkcast(class_idx));
+                    self.frame.pop_type();
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: class_idx,
+                    });
+                    let new_slot = self.next_local;
+                    self.next_local += 1;
+                    self.emit(Instruction::Astore(new_slot as u8));
+                    self.frame.pop_type();
+                    self.frame.local_types.push(VerificationType::Object {
+                        cpool_index: class_idx,
+                    });
+                    self.locals
+                        .insert(cap_name.clone(), (new_slot, actual_type));
+                }
             }
         }
 
@@ -2408,7 +2685,9 @@ impl Compiler {
         };
 
         let lambda_method = Method {
-            access_flags: MethodAccessFlags::PRIVATE | MethodAccessFlags::STATIC | MethodAccessFlags::SYNTHETIC,
+            access_flags: MethodAccessFlags::PRIVATE
+                | MethodAccessFlags::STATIC
+                | MethodAccessFlags::SYNTHETIC,
             name_index: lambda_name_idx,
             descriptor_index: lambda_desc_idx,
             attributes: vec![Attribute::Code {
@@ -2442,8 +2721,12 @@ impl Compiler {
 
         // 2. Create method ref for the lambda impl
         let this_class = self.this_class;
-        let lambda_impl_ref = self.cp.add_method_ref(this_class, &lambda_name, &lambda_desc)?;
-        let lambda_impl_handle = self.cp.add_method_handle(ReferenceKind::InvokeStatic, lambda_impl_ref)?;
+        let lambda_impl_ref = self
+            .cp
+            .add_method_ref(this_class, &lambda_name, &lambda_desc)?;
+        let lambda_impl_handle = self
+            .cp
+            .add_method_handle(ReferenceKind::InvokeStatic, lambda_impl_ref)?;
 
         // 3. SAM method type: (Object, ...)Object for the apply method
         let mut sam_desc = String::from("(");
@@ -2471,7 +2754,9 @@ impl Compiler {
         }
         callsite_desc.push_str(&format!(")L{fun_class_name};"));
 
-        let indy_idx = self.cp.add_invoke_dynamic(bsm_index, "apply", &callsite_desc)?;
+        let indy_idx = self
+            .cp
+            .add_invoke_dynamic(bsm_index, "apply", &callsite_desc)?;
 
         // 6. Push captured variables onto stack (boxed)
         for (_cap_name, cap_slot, cap_type) in &captures {
@@ -2510,7 +2795,8 @@ impl Compiler {
     ) {
         use std::rc::Rc;
         let initial: Rc<std::collections::HashSet<&str>> = Rc::new(param_names.clone());
-        let mut work: Vec<(&TypedExpr, Rc<std::collections::HashSet<&str>>)> = Vec::with_capacity(16);
+        let mut work: Vec<(&TypedExpr, Rc<std::collections::HashSet<&str>>)> =
+            Vec::with_capacity(16);
         work.push((expr, initial));
         while let Some((expr, param_names)) = work.pop() {
             match &expr.kind {
@@ -2540,7 +2826,8 @@ impl Compiler {
                     work.push((then_, Rc::clone(&param_names)));
                     work.push((else_, param_names));
                 }
-                TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                TypedExprKind::Let { value, body, .. }
+                | TypedExprKind::LetPattern { value, body, .. } => {
                     if let Some(body) = body {
                         work.push((body, Rc::clone(&param_names)));
                     }
@@ -2563,7 +2850,8 @@ impl Compiler {
                         work.push((&arm.body, Rc::clone(&param_names)));
                     }
                 }
-                TypedExprKind::FieldAccess { expr, .. } | TypedExprKind::QuestionMark { expr, .. } => {
+                TypedExprKind::FieldAccess { expr, .. }
+                | TypedExprKind::QuestionMark { expr, .. } => {
                     work.push((expr, param_names));
                 }
                 TypedExprKind::StructLit { fields, .. } => {
@@ -2577,7 +2865,9 @@ impl Compiler {
                         work.push((e, Rc::clone(&param_names)));
                     }
                 }
-                TypedExprKind::Tuple(elems) | TypedExprKind::Recur(elems) | TypedExprKind::VecLit(elems) => {
+                TypedExprKind::Tuple(elems)
+                | TypedExprKind::Recur(elems)
+                | TypedExprKind::VecLit(elems) => {
                     for e in elems {
                         work.push((e, Rc::clone(&param_names)));
                     }
@@ -2634,10 +2924,20 @@ impl Compiler {
             // Compile pattern check (if not wildcard/var on last arm)
             self.nested_ifeq_patches.clear();
             let next_arm_patch = if !is_last {
-                self.compile_pattern_check(&arm.pattern, scrutinee_slot, scrutinee_type, &scrutinee.ty)?
+                self.compile_pattern_check(
+                    &arm.pattern,
+                    scrutinee_slot,
+                    scrutinee_type,
+                    &scrutinee.ty,
+                )?
             } else {
                 // Last arm: bind pattern variables but no branch check
-                self.compile_pattern_bind(&arm.pattern, scrutinee_slot, scrutinee_type, &scrutinee.ty)?;
+                self.compile_pattern_bind(
+                    &arm.pattern,
+                    scrutinee_slot,
+                    scrutinee_type,
+                    &scrutinee.ty,
+                )?;
                 None
             };
             let nested_patches = std::mem::take(&mut self.nested_ifeq_patches);
@@ -2679,7 +2979,9 @@ impl Compiler {
                 };
                 self.emit(Instruction::Checkcast(cast_class));
                 self.frame.pop_type();
-                self.frame.push_type(VerificationType::Object { cpool_index: cast_class });
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: cast_class,
+                });
             }
 
             // Goto after_match (except last arm)
@@ -2734,9 +3036,12 @@ impl Compiler {
         match pattern {
             TypedPattern::Constructor { name, args, .. } => {
                 // Look up variant info
-                let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown variant: {name}"))
-                })?;
+                let sum_name = self
+                    .types
+                    .variant_to_sum
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}")))?;
                 let sum_info = &self.types.sum_type_info[&sum_name];
                 let vi = &sum_info.variants[name];
                 let variant_class_index = vi.class_index;
@@ -2887,7 +3192,11 @@ impl Compiler {
                 // Tuples are irrefutable — instanceof check then bind fields
                 let elem_types = match scrutinee_tc_type {
                     Type::Tuple(elems) => elems,
-                    _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
+                    _ => {
+                        return Err(CodegenError::TypeError(
+                            "expected tuple type for tuple pattern".into(),
+                        ))
+                    }
                 };
                 let arity = elements.len();
                 let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
@@ -2917,10 +3226,14 @@ impl Compiler {
                     let elem_jvm_type = self.type_to_jvm(elem_ty)?;
 
                     self.emit(Instruction::Aload(scrutinee_slot as u8));
-                    self.frame.push_type(VerificationType::Object { cpool_index: tuple_class });
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: tuple_class,
+                    });
                     self.emit(Instruction::Getfield(field_ref));
                     self.frame.pop_type();
-                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: self.refs.object_class,
+                    });
                     self.unbox_if_needed(elem_jvm_type);
 
                     if let TypedPattern::Var { name: var_name, .. } = sub_pat {
@@ -2934,13 +3247,16 @@ impl Compiler {
                             JvmType::Long => Instruction::Lstore(var_slot as u8),
                             JvmType::Double => Instruction::Dstore(var_slot as u8),
                             JvmType::Int => Instruction::Istore(var_slot as u8),
-                            JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                            JvmType::Ref | JvmType::StructRef(_) => {
+                                Instruction::Astore(var_slot as u8)
+                            }
                         };
                         self.emit(store);
                         self.pop_jvm_type(elem_jvm_type);
                         let vtypes = self.jvm_type_to_vtypes(elem_jvm_type);
                         self.frame.local_types.extend(vtypes);
-                        self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
+                        self.locals
+                            .insert(var_name.clone(), (var_slot, elem_jvm_type));
                     }
                 }
 
@@ -2976,9 +3292,12 @@ impl Compiler {
             }
             TypedPattern::Constructor { name, args, .. } => {
                 // Last arm constructor — still need to extract fields
-                let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown variant: {name}"))
-                })?;
+                let sum_name = self
+                    .types
+                    .variant_to_sum
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}")))?;
                 let sum_info = &self.types.sum_type_info[&sum_name];
                 let vi = &sum_info.variants[name];
                 let variant_class_index = vi.class_index;
@@ -3023,12 +3342,42 @@ impl Compiler {
                             self.push_jvm_type(*field_jvm_type);
                         }
 
-                        if let TypedPattern::Var { name: var_name, .. } = sub_pat {
+                        if let TypedPattern::Var { name: var_name, ty: var_tc_type, .. } = sub_pat {
+                            // For erased (generic) fields, resolve the actual JVM type
+                            // from the typechecker type on the pattern variable.
                             let actual_type = if *is_erased {
-                                JvmType::StructRef(self.refs.object_class)
+                                self.type_to_jvm(var_tc_type).unwrap_or(JvmType::StructRef(self.refs.object_class))
                             } else {
                                 *field_jvm_type
                             };
+
+                            // If the field was erased, cast/unbox from Object to the actual type.
+                            if *is_erased {
+                                match actual_type {
+                                    JvmType::StructRef(class_idx) if class_idx != self.refs.object_class => {
+                                        // Cast Object to the correct struct class.
+                                        self.frame.pop_type();
+                                        self.frame.push_type(VerificationType::Object {
+                                            cpool_index: self.refs.object_class,
+                                        });
+                                        self.emit(Instruction::Checkcast(class_idx));
+                                        self.frame.pop_type();
+                                        self.frame.push_type(VerificationType::Object {
+                                            cpool_index: class_idx,
+                                        });
+                                    }
+                                    JvmType::Long | JvmType::Double | JvmType::Int => {
+                                        // Unbox Object to primitive.
+                                        self.frame.pop_type();
+                                        self.frame.push_type(VerificationType::Object {
+                                            cpool_index: self.refs.object_class,
+                                        });
+                                        self.unbox_if_needed(actual_type);
+                                    }
+                                    _ => {}
+                                }
+                            }
+
                             let var_slot = self.next_local;
                             let slot_size = match actual_type {
                                 JvmType::Long | JvmType::Double => 2,
@@ -3047,7 +3396,8 @@ impl Compiler {
                             self.pop_jvm_type(actual_type);
                             let vtypes = self.jvm_type_to_vtypes(actual_type);
                             self.frame.local_types.extend(vtypes);
-                            self.locals.insert(var_name.clone(), (var_slot, actual_type));
+                            self.locals
+                                .insert(var_name.clone(), (var_slot, actual_type));
                         }
                     }
                 }
@@ -3056,7 +3406,11 @@ impl Compiler {
             TypedPattern::Tuple { elements, .. } => {
                 let elem_types = match scrutinee_tc_type {
                     Type::Tuple(elems) => elems,
-                    _ => return Err(CodegenError::TypeError("expected tuple type for tuple pattern".into())),
+                    _ => {
+                        return Err(CodegenError::TypeError(
+                            "expected tuple type for tuple pattern".into(),
+                        ))
+                    }
                 };
                 let arity = elements.len();
                 let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
@@ -3074,10 +3428,14 @@ impl Compiler {
                     let elem_jvm_type = self.type_to_jvm(elem_ty)?;
 
                     self.emit(Instruction::Aload(scrutinee_slot as u8));
-                    self.frame.push_type(VerificationType::Object { cpool_index: tuple_class });
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: tuple_class,
+                    });
                     self.emit(Instruction::Getfield(field_ref));
                     self.frame.pop_type();
-                    self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+                    self.frame.push_type(VerificationType::Object {
+                        cpool_index: self.refs.object_class,
+                    });
                     self.unbox_if_needed(elem_jvm_type);
 
                     if let TypedPattern::Var { name: var_name, .. } = sub_pat {
@@ -3091,13 +3449,16 @@ impl Compiler {
                             JvmType::Long => Instruction::Lstore(var_slot as u8),
                             JvmType::Double => Instruction::Dstore(var_slot as u8),
                             JvmType::Int => Instruction::Istore(var_slot as u8),
-                            JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(var_slot as u8),
+                            JvmType::Ref | JvmType::StructRef(_) => {
+                                Instruction::Astore(var_slot as u8)
+                            }
                         };
                         self.emit(store);
                         self.pop_jvm_type(elem_jvm_type);
                         let vtypes = self.jvm_type_to_vtypes(elem_jvm_type);
                         self.frame.local_types.extend(vtypes);
-                        self.locals.insert(var_name.clone(), (var_slot, elem_jvm_type));
+                        self.locals
+                            .insert(var_name.clone(), (var_slot, elem_jvm_type));
                     }
                 }
                 Ok(())
@@ -3112,9 +3473,10 @@ impl Compiler {
     fn get_pattern_class_index(&self, pattern: &TypedPattern) -> Result<u16, CodegenError> {
         match pattern {
             TypedPattern::Constructor { name, .. } => {
-                let sum_name = self.types.variant_to_sum.get(name).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown variant: {name}"))
-                })?;
+                let sum_name =
+                    self.types.variant_to_sum.get(name).ok_or_else(|| {
+                        CodegenError::TypeError(format!("unknown variant: {name}"))
+                    })?;
                 let sum_info = &self.types.sum_type_info[sum_name];
                 Ok(sum_info.interface_class_index)
             }
@@ -3133,9 +3495,12 @@ impl Compiler {
         _outer_ifeq_idx: usize,
     ) -> Result<(), CodegenError> {
         if let TypedPattern::Constructor { name, args, .. } = pattern {
-            let sum_name = self.types.variant_to_sum.get(name).cloned().ok_or_else(|| {
-                CodegenError::TypeError(format!("unknown variant: {name}"))
-            })?;
+            let sum_name = self
+                .types
+                .variant_to_sum
+                .get(name)
+                .cloned()
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}")))?;
             let sum_info = &self.types.sum_type_info[&sum_name];
             let vi = &sum_info.variants[name];
             let variant_class_index = vi.class_index;
@@ -3228,7 +3593,8 @@ impl Compiler {
                             self.pop_jvm_type(actual_type);
                             let vtypes = self.jvm_type_to_vtypes(actual_type);
                             self.frame.local_types.extend(vtypes);
-                            self.locals.insert(var_name.clone(), (var_slot, actual_type));
+                            self.locals
+                                .insert(var_name.clone(), (var_slot, actual_type));
                         }
                         TypedPattern::Constructor { .. } => {
                             // Deeper nesting
@@ -3306,31 +3672,49 @@ impl Compiler {
     }
 
     /// Emit a close() call for an auto-close binding via the Resource trait dispatch.
-    fn emit_auto_close(&mut self, binding: &krypton_typechecker::typed_ast::AutoCloseBinding) -> Result<(), CodegenError> {
+    fn emit_auto_close(
+        &mut self,
+        binding: &krypton_typechecker::typed_ast::AutoCloseBinding,
+    ) -> Result<(), CodegenError> {
         let key = ("Resource".to_string(), binding.type_name.clone());
-        let singleton = self.traits.instance_singletons.get(&key)
-            .ok_or_else(|| CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name)))?;
+        let singleton = self.traits.instance_singletons.get(&key).ok_or_else(|| {
+            CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name))
+        })?;
         let instance_field_ref = singleton.instance_field_ref;
-        let dispatch = self.traits.trait_dispatch.get("Resource")
-            .ok_or_else(|| CodegenError::TypeError("Resource trait dispatch not found".into()))?;
+        let dispatch =
+            self.traits.trait_dispatch.get("Resource").ok_or_else(|| {
+                CodegenError::TypeError("Resource trait dispatch not found".into())
+            })?;
         let interface_class = dispatch.interface_class;
-        let method_ref = *dispatch.method_refs.get("close")
+        let method_ref = *dispatch
+            .method_refs
+            .get("close")
             .ok_or_else(|| CodegenError::TypeError("close method ref not found".into()))?;
 
         // getstatic Resource$Type.INSTANCE
         self.emit(Instruction::Getstatic(instance_field_ref));
-        self.frame.push_type(VerificationType::Object { cpool_index: interface_class });
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: interface_class,
+        });
 
         // aload <resource_local>
-        let (slot, _) = self.locals.get(&binding.name).copied()
+        let (slot, _) = self
+            .locals
+            .get(&binding.name)
+            .copied()
             .ok_or_else(|| CodegenError::UndefinedVariable(binding.name.clone()))?;
         self.emit(Instruction::Aload(slot as u8));
-        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: self.refs.object_class,
+        });
 
         // invokeinterface Resource.close, 2
         self.emit(Instruction::Invokeinterface(method_ref, 2));
-        self.frame.pop_type(); self.frame.pop_type(); // pop receiver + arg
-        self.frame.push_type(VerificationType::Object { cpool_index: self.refs.object_class });
+        self.frame.pop_type();
+        self.frame.pop_type(); // pop receiver + arg
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: self.refs.object_class,
+        });
 
         // pop Unit return
         self.emit(Instruction::Pop);
@@ -3343,9 +3727,11 @@ impl Compiler {
         self.reset_method_state();
 
         // Look up the function's type info
-        let info = self.types.functions.get(&decl.name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(decl.name.clone())
-        })?;
+        let info = self
+            .types
+            .functions
+            .get(&decl.name)
+            .ok_or_else(|| CodegenError::UndefinedVariable(decl.name.clone()))?;
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
@@ -3353,7 +3739,12 @@ impl Compiler {
         let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
 
         // Register dict params for constrained functions (leading params before user params)
-        let constraint_traits = self.traits.fn_constraints.get(&decl.name).cloned().unwrap_or_default();
+        let constraint_traits = self
+            .traits
+            .fn_constraints
+            .get(&decl.name)
+            .cloned()
+            .unwrap_or_default();
         let num_dict_params = constraint_traits.len();
         let mut fn_params = Vec::new();
         for (trait_name, _) in &constraint_traits {
@@ -3362,11 +3753,18 @@ impl Compiler {
             self.traits.dict_locals.insert(trait_name.clone(), slot);
             fn_params.push((slot, jvm_ty));
             self.next_local += 1;
-            self.frame.local_types.push(VerificationType::Object { cpool_index: self.refs.object_class });
+            self.frame.local_types.push(VerificationType::Object {
+                cpool_index: self.refs.object_class,
+            });
         }
 
         // Register user parameters as locals and save fn_params for recur
-        for (i, (param_name, &jvm_ty)) in decl.params.iter().zip(param_types[num_dict_params..].iter()).enumerate() {
+        for (i, (param_name, &jvm_ty)) in decl
+            .params
+            .iter()
+            .zip(param_types[num_dict_params..].iter())
+            .enumerate()
+        {
             let slot = self.next_local;
             let slot_size: u16 = match jvm_ty {
                 JvmType::Long | JvmType::Double => 2,
@@ -3389,8 +3787,13 @@ impl Compiler {
                         .collect::<Result<_, _>>()?;
                     let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
                     let arity = inner_params.len() as u8;
-                    self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
-                    self.local_fn_info.insert(param_name.clone(), (inner_param_jvm, inner_ret_jvm));
+                    self.lambda.ensure_fun_interface(
+                        arity,
+                        &mut self.cp,
+                        &mut self.types.class_descriptors,
+                    )?;
+                    self.local_fn_info
+                        .insert(param_name.clone(), (inner_param_jvm, inner_ret_jvm));
                 }
             }
         }
@@ -3431,7 +3834,9 @@ impl Compiler {
             };
             self.emit(Instruction::Checkcast(cast_class));
             self.frame.pop_type();
-            self.frame.push_type(VerificationType::Object { cpool_index: cast_class });
+            self.frame.push_type(VerificationType::Object {
+                cpool_index: cast_class,
+            });
         }
 
         // Auto-close live resources at function exit

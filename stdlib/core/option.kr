@@ -1,2 +1,7 @@
 # core/option — Option type for nullable values
 pub open type Option[a] = Some(a) | None
+
+pub fun unwrap[a](opt: Option[a]) -> a = match opt {
+    Some(v) => v,
+    None => panic("None"),
+}
