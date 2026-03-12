@@ -1477,6 +1477,33 @@ fn local_prelude_shadow_can_derive_show_without_importing_prelude_instance() {
 }
 
 #[test]
+fn empty_impl_is_rejected() {
+    let src = r#"
+        type Player2 = { name: String, score: (Int) -> Int }
+
+        impl Show[Player2] {
+        }
+
+        fun main() = 0
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only()) {
+        Ok(_) => panic!("expected E0306"),
+        Err(err) => err,
+    };
+    assert_eq!(err.error.error_code().to_string(), "E0306");
+    assert!(
+        err.error
+            .help()
+            .unwrap_or_default()
+            .contains("missing method(s): show"),
+        "unexpected help text: {:?}",
+        err.error.help()
+    );
+}
+
+#[test]
 fn infer_module_private_trait() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {

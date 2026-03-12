@@ -3622,7 +3622,7 @@ pub(crate) fn infer_module_inner(
             trait_name,
             target_type,
             type_constraints,
-            methods: _,
+            methods,
             span,
             ..
         } = decl
@@ -3702,13 +3702,36 @@ pub(crate) fn infer_module_inner(
                         ));
                     }
                 }
+
+                let expected_methods: HashSet<&str> =
+                    trait_info.methods.iter().map(|m| m.name.as_str()).collect();
+                let actual_methods: HashSet<&str> =
+                    methods.iter().map(|m| m.name.as_str()).collect();
+                let missing_methods: Vec<String> = trait_info
+                    .methods
+                    .iter()
+                    .filter(|m| !actual_methods.contains(m.name.as_str()))
+                    .map(|m| m.name.clone())
+                    .collect();
+                let extra_methods: Vec<String> = methods
+                    .iter()
+                    .filter(|m| !expected_methods.contains(m.name.as_str()))
+                    .map(|m| m.name.clone())
+                    .collect();
+                if !missing_methods.is_empty() || !extra_methods.is_empty() {
+                    return Err(spanned(
+                        TypeError::InvalidImpl {
+                            trait_name: trait_name.clone(),
+                            target_type: target_name.clone(),
+                            missing_methods,
+                            extra_methods,
+                        },
+                        *span,
+                    ));
+                }
             }
 
-            let method_names: Vec<String> = if let Decl::DefImpl { methods, .. } = decl {
-                methods.iter().map(|m| m.name.clone()).collect()
-            } else {
-                Vec::new()
-            };
+            let method_names: Vec<String> = methods.iter().map(|m| m.name.clone()).collect();
 
             let instance = InstanceInfo {
                 trait_name: trait_name.clone(),

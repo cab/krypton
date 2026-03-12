@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::TypeExpr;
 use krypton_typechecker::typed_ast::TypedModule;
+use krypton_typechecker::type_registry;
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{
@@ -120,8 +121,7 @@ fn is_intrinsic(name: &str) -> bool {
     matches!(name, "panic" | "__krypton_intrinsic")
 }
 
-/// Map a TypeExpr to a JvmType (for struct field declarations in AST).
-fn type_expr_to_jvm(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
+fn type_expr_to_jvm_basic(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
     match texpr {
         TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => match name.as_str() {
             "Int" => Ok(JvmType::Long),
@@ -137,6 +137,22 @@ fn type_expr_to_jvm(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
             "unsupported type expr in struct field: {texpr:?}"
         ))),
     }
+}
+
+/// Map a record field TypeExpr to a JvmType using the typechecker's erasure rules.
+fn type_expr_to_jvm(
+    compiler: &Compiler,
+    texpr: &TypeExpr,
+    type_registry_ref: &type_registry::TypeRegistry,
+) -> Result<JvmType, CodegenError> {
+    let resolved = type_registry::resolve_type_expr(
+        texpr,
+        &HashMap::new(),
+        &HashMap::new(),
+        type_registry_ref,
+    )
+    .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+    compiler.type_to_jvm(&resolved)
 }
 
 fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool {
@@ -338,8 +354,39 @@ fn compile_module_inner(
     };
 
     let type_info = &typed_module.fn_types;
-
     let struct_decls = &typed_module.struct_decls;
+    let sum_decls = &typed_module.sum_decls;
+    let mut field_type_registry = type_registry::TypeRegistry::new();
+    field_type_registry.register_builtins();
+    for (struct_name, ast_fields) in struct_decls {
+        let resolved_fields = ast_fields
+            .iter()
+            .map(|(_, texpr)| {
+                type_registry::resolve_type_expr(
+                    texpr,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    &field_type_registry,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+        field_type_registry
+            .register_type(type_registry::TypeInfo {
+                name: struct_name.clone(),
+                type_params: vec![],
+                type_param_vars: vec![],
+                kind: type_registry::TypeKind::Record {
+                    fields: ast_fields
+                        .iter()
+                        .map(|(name, _)| name.clone())
+                        .zip(resolved_fields.into_iter())
+                        .collect(),
+                },
+                is_prelude: false,
+            })
+            .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+    }
 
     // Process struct types: register in compiler, generate class files
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
@@ -350,17 +397,7 @@ fn compile_module_inner(
         let jvm_fields: Vec<(String, JvmType)> = ast_fields
             .iter()
             .map(|(fname, texpr)| {
-                // For struct-typed fields, we need to check if it refers to a known struct
-                let jt = match texpr {
-                    TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
-                        if let Some(si) = compiler.types.struct_info.get(name.as_str()) {
-                            JvmType::StructRef(si.class_index)
-                        } else {
-                            type_expr_to_jvm(texpr)?
-                        }
-                    }
-                    _ => type_expr_to_jvm(texpr)?,
-                };
+                let jt = type_expr_to_jvm(&compiler, texpr, &field_type_registry)?;
                 Ok((fname.clone(), jt))
             })
             .collect::<Result<_, CodegenError>>()?;
@@ -412,8 +449,6 @@ fn compile_module_inner(
         result_classes.push((qualified.clone(), struct_bytes));
     }
 
-    let sum_decls = &typed_module.sum_decls;
-
     // Process sum types: generate sealed interface + variant classes
     for (sum_name, type_params, variants) in sum_decls {
         let qualified_sum = qualify_type(sum_name);
@@ -440,7 +475,7 @@ fn compile_module_inner(
                     let jt = if is_erased {
                         JvmType::Ref // erased to Object
                     } else {
-                        type_expr_to_jvm(texpr)?
+                        type_expr_to_jvm_basic(texpr)?
                     };
                     Ok((field_name, jt, is_erased))
                 })
@@ -889,7 +924,7 @@ fn compile_module_inner(
                 .map(|t| compiler.type_to_jvm(t))
                 .collect::<Result<_, _>>()?;
             all_param_types.extend(user_param_types);
-            let return_type = compiler.type_to_jvm(ret_ty)?;
+            let return_type = compiler.type_to_jvm(ret_ty.as_ref())?;
             let jvm_name = if name == "main" {
                 "krypton_main"
             } else {
@@ -916,7 +951,7 @@ fn compile_module_inner(
             // Store TC types for detecting Fn-typed params in compile_function
             compiler.types.fn_tc_types.insert(
                 name.clone(),
-                (param_tys.clone(), (**ret_ty).clone()),
+                (param_tys.clone(), ret_ty.as_ref().clone()),
             );
         }
     }

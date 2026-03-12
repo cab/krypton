@@ -668,6 +668,54 @@ fun main() = println(apply_fn(x -> x + 1, 5))
 }
 
 #[test]
+fn test_named_function_reference_let_call() {
+    let src = r#"
+fun add1(x) = x + 1
+fun main() = { let f = add1; println(f(5)) }
+"#;
+    assert_eq!(run_program(src), "6");
+}
+
+#[test]
+fn test_named_function_reference_higher_order_arg() {
+    let src = r#"
+fun add1(x) = x + 1
+fun apply_fn(f, x) = f(x)
+fun main() = println(apply_fn(add1, 5))
+"#;
+    assert_eq!(run_program(src), "6");
+}
+
+#[test]
+fn test_struct_constructor_reference() {
+    let src = r#"
+type Player = { name: String, score: Int }
+fun main() = {
+    let mk = Player;
+    let p = mk("hi", 1);
+    println(p.name);
+    println(p.score)
+}
+"#;
+    assert_eq!(run_program(src), "hi\n1");
+}
+
+#[test]
+fn test_variant_constructor_reference() {
+    let src = r#"
+type Option[a] = Some(a) | None
+fun main() = {
+    let wrap = Some;
+    match wrap(42) {
+        Some(x) => println(x),
+        None => println(0),
+    }
+}
+"#;
+    assert_eq!(run_program(src), "42");
+}
+
+#[test]
 fn test_match_nested_pattern() {
     let src = r#"
 type List[a] = Cons(a, List[a]) | Nil
@@ -787,6 +835,18 @@ type Maybe[a] = Just(a) | Nothing deriving (Show)
 fun main() = println(show(Just(42)))
 "#;
     assert_eq!(run_program(src), "Just(42)");
+}
+
+#[test]
+fn test_record_function_field_codegen() {
+    let src = r#"
+type Player2 = { name: String, score: (Int) -> Int }
+impl Show[Player2] {
+    fun show(x: Player2) -> String = x.name
+}
+fun main() = println(show(Player2 { name = "hi", score = x -> x }))
+"#;
+    assert_eq!(run_program(src), "hi");
 }
 
 #[test]

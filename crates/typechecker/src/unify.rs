@@ -26,6 +26,7 @@ pub enum TypeErrorCode {
     E0303, // Missing superclass instance
     E0304, // Cannot derive trait (field missing required instance)
     E0305, // Definition conflicts with trait method
+    E0306, // Invalid impl method set
     E0011, // Unknown type
     E0401, // ? in function not returning Result or Option
     E0402, // ? on non-Result/Option
@@ -63,6 +64,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0303 => write!(f, "E0303"),
             TypeErrorCode::E0304 => write!(f, "E0304"),
             TypeErrorCode::E0305 => write!(f, "E0305"),
+            TypeErrorCode::E0306 => write!(f, "E0306"),
             TypeErrorCode::E0011 => write!(f, "E0011"),
             TypeErrorCode::E0401 => write!(f, "E0401"),
             TypeErrorCode::E0402 => write!(f, "E0402"),
@@ -153,6 +155,12 @@ pub enum TypeError {
         def_name: String,
         trait_name: String,
     },
+    InvalidImpl {
+        trait_name: String,
+        target_type: String,
+        missing_methods: Vec<String>,
+        extra_methods: Vec<String>,
+    },
     UnknownType {
         name: String,
         suggestion: Option<String>,
@@ -230,6 +238,7 @@ impl TypeError {
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
             TypeError::CannotDerive { .. } => TypeErrorCode::E0304,
             TypeError::DefinitionConflictsWithTraitMethod { .. } => TypeErrorCode::E0305,
+            TypeError::InvalidImpl { .. } => TypeErrorCode::E0306,
             TypeError::UnknownType { .. } => TypeErrorCode::E0011,
             TypeError::QuestionMarkBadReturn { .. } => TypeErrorCode::E0401,
             TypeError::QuestionMarkBadOperand { .. } => TypeErrorCode::E0402,
@@ -321,6 +330,26 @@ impl TypeError {
             }
             TypeError::DefinitionConflictsWithTraitMethod { .. } => {
                 Some("trait methods are bound as module-level names; choose a different name for this definition".to_string())
+            }
+            TypeError::InvalidImpl {
+                missing_methods,
+                extra_methods,
+                ..
+            } => {
+                let mut parts = Vec::new();
+                if !missing_methods.is_empty() {
+                    parts.push(format!(
+                        "missing method(s): {}",
+                        missing_methods.join(", ")
+                    ));
+                }
+                if !extra_methods.is_empty() {
+                    parts.push(format!(
+                        "unknown method(s): {}",
+                        extra_methods.join(", ")
+                    ));
+                }
+                Some(parts.join("; "))
             }
             TypeError::UnknownType { name, suggestion } => {
                 if let Some(s) = suggestion {
@@ -462,6 +491,17 @@ impl fmt::Display for TypeError {
                     f,
                     "definition `{}` conflicts with trait method `{}.{}`",
                     def_name, trait_name, def_name
+                )
+            }
+            TypeError::InvalidImpl {
+                trait_name,
+                target_type,
+                ..
+            } => {
+                write!(
+                    f,
+                    "invalid impl: `{}` for `{}` does not match trait requirements",
+                    trait_name, target_type
                 )
             }
             TypeError::UnknownType { name, .. } => {
