@@ -870,8 +870,31 @@ where
             span: to_span(e.span()),
         });
 
-    // --- Type params: [a, b] ---
-    let type_params = select! { Token::Ident(s) => s.to_string() }
+    // --- Type params: [a, f[_], g[_, _]] ---
+    let type_param = select! { Token::Ident(s) => s.to_string() }
+        .then(
+            symbol(Token::Underscore)
+                .separated_by(symbol(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+                .or_not(),
+        )
+        .map_with(|(name, holes), e| TypeParam {
+            arity: holes.map(|h| h.len()).unwrap_or(0),
+            name,
+            span: to_span(e.span()),
+        });
+
+    let fn_type_params = type_param
+        .clone()
+        .separated_by(symbol(Token::Comma))
+        .collect::<Vec<_>>()
+        .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+        .or_not()
+        .map(|tp| tp.unwrap_or_default());
+
+    let type_decl_params = select! { Token::Ident(s) => s.to_string() }
         .separated_by(symbol(Token::Comma))
         .collect::<Vec<_>>()
         .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
@@ -885,7 +908,7 @@ where
         .clone()
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
-        .then(type_params.clone())
+        .then(fn_type_params.clone())
         .then(
             param
                 .clone()
@@ -968,7 +991,7 @@ where
         .clone()
         .then_ignore(symbol(Token::Type))
         .then(select! { Token::Ident(s) => s.to_string() })
-        .then(type_params.clone())
+        .then(type_decl_params.clone())
         .then_ignore(symbol(Token::Assign))
         .then(record_kind.or(sum_kind))
         .then(deriving)
@@ -999,7 +1022,7 @@ where
 
     let trait_method = symbol(Token::Fun)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
-        .then(type_params.clone())
+        .then(fn_type_params.clone())
         .then(
             trait_method_param
                 .separated_by(symbol(Token::Comma))
@@ -1046,27 +1069,11 @@ where
         .or_not()
         .map(|s| s.unwrap_or_default());
 
-    // Parse trait type parameter: `a` (arity 0) or `f[_]` (arity 1) or `f[_, _]` (arity 2)
-    let trait_type_param = select! { Token::Ident(s) => s.to_string() }
-        .then(
-            symbol(Token::Underscore)
-                .separated_by(symbol(Token::Comma))
-                .at_least(1)
-                .collect::<Vec<_>>()
-                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
-                .or_not(),
-        )
-        .map_with(|(name, holes), e| TraitTypeParam {
-            arity: holes.map(|h| h.len()).unwrap_or(0),
-            name,
-            span: to_span(e.span()),
-        });
-
     let trait_decl = vis.clone()
         .then_ignore(symbol(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(
-            trait_type_param
+            type_param
                 .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
         )
         .then(trait_superclasses)
@@ -1091,7 +1098,7 @@ where
     // impl Trait[Type] { methods } or impl Trait[Type] where constraints { methods }
     let impl_method = symbol(Token::Fun)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
-        .then(type_params.clone())
+        .then(fn_type_params.clone())
         .then(
             param
                 .separated_by(symbol(Token::Comma))

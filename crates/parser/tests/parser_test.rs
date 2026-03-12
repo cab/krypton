@@ -224,6 +224,54 @@ type Player = {
 }
 
 #[test]
+fn test_hkt_type_params_on_functions_and_methods() {
+    let src = r#"
+trait Hoist[a] {
+  fun hoist[f[_], g[_]](x: f[a], k: (f[a]) -> g[a]) -> g[a]
+}
+
+impl Hoist[Int] {
+  fun hoist[f[_], g[_]](x: f[Int], k: (f[Int]) -> g[Int]) -> g[Int] = k(x)
+}
+
+fun apply[f[_], a](fa: f[a]) -> f[a] = fa
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    match &module.decls[0] {
+        krypton_parser::ast::Decl::DefTrait { methods, .. } => {
+            assert_eq!(methods[0].type_params.len(), 2);
+            assert_eq!(methods[0].type_params[0].name, "f");
+            assert_eq!(methods[0].type_params[0].arity, 1);
+            assert_eq!(methods[0].type_params[1].name, "g");
+            assert_eq!(methods[0].type_params[1].arity, 1);
+        }
+        other => panic!("expected DefTrait, got {:?}", other),
+    }
+
+    match &module.decls[1] {
+        krypton_parser::ast::Decl::DefImpl { methods, .. } => {
+            assert_eq!(methods[0].type_params.len(), 2);
+            assert_eq!(methods[0].type_params[0].arity, 1);
+            assert_eq!(methods[0].type_params[1].arity, 1);
+        }
+        other => panic!("expected DefImpl, got {:?}", other),
+    }
+
+    match &module.decls[2] {
+        krypton_parser::ast::Decl::DefFn(f) => {
+            assert_eq!(f.type_params.len(), 2);
+            assert_eq!(f.type_params[0].name, "f");
+            assert_eq!(f.type_params[0].arity, 1);
+            assert_eq!(f.type_params[1].name, "a");
+            assert_eq!(f.type_params[1].arity, 0);
+        }
+        other => panic!("expected DefFn, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_import() {
     let (module, errors) = parse("import core/option.{Option, Some, None}");
     assert!(errors.is_empty(), "errors: {errors:?}");

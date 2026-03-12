@@ -1,0 +1,22 @@
+# expect: ok
+type Box[a] = Box(a)
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl Functor[Box] {
+  fun fmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
+    match fa { Box(x) => Box(g(x)) }
+}
+
+trait Hoist[a] {
+  fun hoist[f[_], g[_]](x: f[a], k: (f[a]) -> g[a]) -> g[a]
+}
+
+impl Hoist[Int] {
+  fun hoist[f[_], g[_]](x: f[Int], k: (f[Int]) -> g[Int]) -> g[Int] = k(x)
+}
+
+fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x => x)
+fun main(x: Box[Int]) -> Box[Int] = apply(x)

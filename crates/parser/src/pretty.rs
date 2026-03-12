@@ -90,6 +90,7 @@ impl<'a> Formatter<'a> {
         self.fmt_visibility(&f.visibility);
         self.buf.push_str("fun ");
         self.buf.push_str(&f.name);
+        self.fmt_type_params(&f.type_params);
         self.buf.push('(');
         for (i, p) in f.params.iter().enumerate() {
             if i > 0 {
@@ -179,6 +180,30 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    fn fmt_type_params(&mut self, params: &[TypeParam]) {
+        if params.is_empty() {
+            return;
+        }
+        self.buf.push('[');
+        for (i, param) in params.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            self.buf.push_str(&param.name);
+            if param.arity > 0 {
+                self.buf.push('[');
+                for hole_idx in 0..param.arity {
+                    if hole_idx > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.buf.push('_');
+                }
+                self.buf.push(']');
+            }
+        }
+        self.buf.push(']');
+    }
+
     fn fmt_type_decl(&mut self, t: &TypeDecl) {
         self.fmt_visibility(&t.visibility);
         self.buf.push_str("type ");
@@ -231,25 +256,13 @@ impl<'a> Formatter<'a> {
     fn fmt_trait(
         &mut self,
         name: &str,
-        type_param: &TraitTypeParam,
+        type_param: &TypeParam,
         superclasses: &[String],
         methods: &[FnDecl],
     ) {
         self.buf.push_str("trait ");
         self.buf.push_str(name);
-        self.buf.push('[');
-        self.buf.push_str(&type_param.name);
-        if type_param.arity > 0 {
-            self.buf.push('[');
-            for i in 0..type_param.arity {
-                if i > 0 {
-                    self.buf.push_str(", ");
-                }
-                self.buf.push('_');
-            }
-            self.buf.push(']');
-        }
-        self.buf.push(']');
+        self.fmt_type_params(std::slice::from_ref(type_param));
         if !superclasses.is_empty() {
             self.buf.push_str(" where ");
             self.buf.push_str(&type_param.name);
@@ -271,11 +284,7 @@ impl<'a> Formatter<'a> {
     fn fmt_trait_method(&mut self, m: &FnDecl) {
         self.buf.push_str("fun ");
         self.buf.push_str(&m.name);
-        if !m.type_params.is_empty() {
-            self.buf.push('[');
-            self.buf.push_str(&m.type_params.join(", "));
-            self.buf.push(']');
-        }
+        self.fmt_type_params(&m.type_params);
         self.buf.push('(');
         for (i, p) in m.params.iter().enumerate() {
             if i > 0 {
@@ -343,11 +352,7 @@ impl<'a> Formatter<'a> {
     fn fmt_impl_method(&mut self, m: &FnDecl) {
         self.buf.push_str("fun ");
         self.buf.push_str(&m.name);
-        if !m.type_params.is_empty() {
-            self.buf.push('[');
-            self.buf.push_str(&m.type_params.join(", "));
-            self.buf.push(']');
-        }
+        self.fmt_type_params(&m.type_params);
         self.buf.push('(');
         for (i, p) in m.params.iter().enumerate() {
             if i > 0 {

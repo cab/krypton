@@ -15,7 +15,7 @@ pub enum Decl {
     DefTrait {
         visibility: Visibility,
         name: String,
-        type_param: TraitTypeParam,
+        type_param: TypeParam,
         superclasses: Vec<String>,
         methods: Vec<FnDecl>,
         span: Span,
@@ -89,7 +89,7 @@ pub struct Variant {
 pub struct FnDecl {
     pub name: String,
     pub visibility: Visibility,
-    pub type_params: Vec<String>,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub constraints: Vec<TypeConstraint>,
     pub return_type: Option<TypeExpr>,
@@ -104,10 +104,10 @@ pub struct Param {
     pub span: Span,
 }
 
-/// Type parameter for a trait declaration, supporting higher-kinded types.
+/// Type parameter supporting higher-kinded types.
 /// `a` has arity 0 (kind *), `f[_]` has arity 1 (kind * -> *), etc.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct TraitTypeParam {
+pub struct TypeParam {
     pub name: String,
     /// Number of kind holes: 0 for `a` (kind *), 1 for `f[_]`, 2 for `f[_, _]`, etc.
     pub arity: usize,

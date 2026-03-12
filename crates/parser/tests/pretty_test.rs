@@ -25,7 +25,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
         } => Decl::DefTrait {
             visibility: visibility.clone(),
             name: name.clone(),
-            type_param: TraitTypeParam {
+            type_param: TypeParam {
                 name: type_param.name.clone(),
                 arity: type_param.arity,
                 span: (0, 0),
@@ -391,6 +391,11 @@ fn roundtrip_literal_unit() {
 #[test]
 fn roundtrip_variable() {
     assert_surface_roundtrip("fun f(x: Int) -> Int = x");
+}
+
+#[test]
+fn roundtrip_hkt_type_params_on_function() {
+    assert_surface_roundtrip("fun apply[f[_], a](fa: f[a]) -> f[a] = fa");
 }
 
 #[test]

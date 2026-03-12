@@ -122,28 +122,40 @@ impl TypeRegistry {
 pub fn resolve_type_expr(
     texpr: &TypeExpr,
     type_param_map: &HashMap<String, TypeVarId>,
+    type_param_arity: &HashMap<String, usize>,
     registry: &TypeRegistry,
 ) -> Result<Type, TypeError> {
     match texpr {
-        TypeExpr::Named { name, .. } => resolve_named(name, type_param_map, registry),
+        TypeExpr::Named { name, .. } => {
+            resolve_named(name, type_param_map, type_param_arity, registry)
+        }
         TypeExpr::Var { name, .. } => {
             if let Some(&var_id) = type_param_map.get(name) {
                 Ok(Type::Var(var_id))
             } else {
-                resolve_named(name, type_param_map, registry)
+                resolve_named(name, type_param_map, type_param_arity, registry)
             }
         }
         TypeExpr::App { name, args, .. } => {
             let mut resolved_args = Vec::new();
             for a in args {
-                resolved_args.push(resolve_type_expr(a, type_param_map, registry)?);
+                resolved_args.push(resolve_type_expr(a, type_param_map, type_param_arity, registry)?);
             }
             // If the name is a type parameter (HKT variable), produce Type::App
             if let Some(&var_id) = type_param_map.get(name) {
+                if let Some(expected_arity) = type_param_arity.get(name) {
+                    if *expected_arity != resolved_args.len() {
+                        return Err(TypeError::KindMismatch {
+                            type_name: name.clone(),
+                            expected_arity: *expected_arity,
+                            actual_arity: resolved_args.len(),
+                        });
+                    }
+                }
                 return Ok(Type::App(Box::new(Type::Var(var_id)), resolved_args));
             }
             // Validate the type name
-            resolve_named(name, type_param_map, registry)?;
+            resolve_named(name, type_param_map, type_param_arity, registry)?;
             // Kind check: verify arity matches
             let expected = registry.expected_arity(name);
             if let Some(expected) = expected {
@@ -160,20 +172,21 @@ pub fn resolve_type_expr(
         TypeExpr::Fn { params, ret, .. } => {
             let mut param_types = Vec::new();
             for p in params {
-                param_types.push(resolve_type_expr(p, type_param_map, registry)?);
+                param_types.push(resolve_type_expr(p, type_param_map, type_param_arity, registry)?);
             }
-            let ret_type = resolve_type_expr(ret, type_param_map, registry)?;
+            let ret_type = resolve_type_expr(ret, type_param_map, type_param_arity, registry)?;
             Ok(Type::Fn(param_types, Box::new(ret_type)))
         }
         TypeExpr::Own { inner, .. } => Ok(Type::Own(Box::new(resolve_type_expr(
             inner,
             type_param_map,
+            type_param_arity,
             registry,
         )?))),
         TypeExpr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
-                elem_types.push(resolve_type_expr(e, type_param_map, registry)?);
+                elem_types.push(resolve_type_expr(e, type_param_map, type_param_arity, registry)?);
             }
             Ok(Type::Tuple(elem_types))
         }
@@ -183,6 +196,7 @@ pub fn resolve_type_expr(
 fn resolve_named(
     name: &str,
     type_param_map: &HashMap<String, TypeVarId>,
+    _type_param_arity: &HashMap<String, usize>,
     registry: &TypeRegistry,
 ) -> Result<Type, TypeError> {
     // Check if it's a type parameter first
@@ -239,6 +253,7 @@ pub fn process_type_decl(
 ) -> Result<Vec<(String, TypeScheme)>, TypeError> {
     // Create fresh type vars for type params
     let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
+    let type_param_arity: HashMap<String, usize> = HashMap::new();
     let mut quantified_vars: Vec<TypeVarId> = Vec::new();
     for param_name in &decl.type_params {
         let var_id = gen.fresh();
@@ -256,7 +271,7 @@ pub fn process_type_decl(
         TypeDeclKind::Record { fields } => {
             let mut resolved_fields: Vec<(String, Type)> = Vec::new();
             for (name, texpr) in fields {
-                let ty = resolve_type_expr(texpr, &type_param_map, registry)?;
+                let ty = resolve_type_expr(texpr, &type_param_map, &type_param_arity, registry)?;
                 resolved_fields.push((name.clone(), ty));
             }
 
@@ -280,7 +295,12 @@ pub fn process_type_decl(
             for variant in variants {
                 let mut resolved_fields: Vec<Type> = Vec::new();
                 for texpr in &variant.fields {
-                    resolved_fields.push(resolve_type_expr(texpr, &type_param_map, registry)?);
+                    resolved_fields.push(resolve_type_expr(
+                        texpr,
+                        &type_param_map,
+                        &type_param_arity,
+                        registry,
+                    )?);
                 }
 
                 // Variant constructor

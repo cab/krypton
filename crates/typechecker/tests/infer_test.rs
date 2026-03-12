@@ -838,6 +838,51 @@ fn explicit_type_param_multiple() {
 }
 
 #[test]
+fn explicit_hkt_type_param_generalized() {
+    let src = r#"
+        type Box[a] = Box(a)
+
+        trait Functor[f[_]] {
+            fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+        }
+
+        impl Functor[Box] {
+            fun fmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
+                match fa { Box(x) => Box(g(x)) }
+        }
+
+        fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x => x)
+    "#;
+    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall x y. fn(x[y]) -> x[y]");
+}
+
+#[test]
+fn explicit_hkt_type_param_wrong_arity_is_error() {
+    let src = "fun bad[f[_], a, b](x: f[a, b]) -> f[a] = x";
+    let module = parse_module(src);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_err(), "expected kind mismatch");
+    let err = result.err().unwrap();
+    assert_eq!(err.error.error_code().to_string(), "E0507");
+}
+
+#[test]
+fn trait_and_impl_methods_accept_hkt_type_params() {
+    let src = r#"
+        trait Hoist[a] {
+            fun hoist[f[_], g[_]](x: f[a], k: (f[a]) -> g[a]) -> g[a]
+        }
+
+        impl Hoist[Int] {
+            fun hoist[f[_], g[_]](x: f[Int], k: (f[Int]) -> g[Int]) -> g[Int] = k(x)
+        }
+    "#;
+    let module = parse_module(src);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_ok(), "expected method-level HKTs to typecheck");
+}
+
+#[test]
 fn no_type_params_still_generalizes() {
     // Unannotated identity should still generalize via HM
     insta::assert_snapshot!(

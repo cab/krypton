@@ -1,0 +1,2 @@
+# expect: error E0507
+fun bad[f[_], a, b](x: f[a, b]) -> f[a] = x

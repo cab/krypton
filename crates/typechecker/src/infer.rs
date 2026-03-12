@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
     BinOp, Decl, Expr, ExternMethod, ImportName, Lit, Module, Pattern, Span, TypeConstraint,
-    TypeDecl, TypeDeclKind, UnaryOp, Variant, Visibility,
+    TypeDecl, TypeDeclKind, TypeParam, UnaryOp, Variant, Visibility,
 };
 
 use crate::scc;
@@ -27,6 +27,19 @@ fn constructor_names(td: &TypeDecl) -> Vec<String> {
         TypeDeclKind::Sum { variants } => variants.iter().map(|v| v.name.clone()).collect(),
         TypeDeclKind::Record { .. } => vec![td.name.clone()],
     }
+}
+
+fn build_type_param_maps(
+    params: &[TypeParam],
+    gen: &mut TypeVarGen,
+) -> (HashMap<String, TypeVarId>, HashMap<String, usize>) {
+    let mut ids = HashMap::new();
+    let mut arities = HashMap::new();
+    for param in params {
+        ids.insert(param.name.clone(), gen.fresh());
+        arities.insert(param.name.clone(), param.arity);
+    }
+    (ids, arities)
 }
 
 /// Strip `Own` wrapper from non-function types.
@@ -616,6 +629,7 @@ fn infer_expr_inner(
                     let annotated_ty = type_registry::resolve_type_expr(
                         ty_expr,
                         &std::collections::HashMap::new(),
+                        &std::collections::HashMap::new(),
                         reg,
                     )
                     .map_err(|e| spanned(e, *span))?;
@@ -1095,6 +1109,7 @@ fn infer_expr_inner(
                 if let Some(reg) = registry {
                     let annotated_ty = type_registry::resolve_type_expr(
                         ty_expr,
+                        &std::collections::HashMap::new(),
                         &std::collections::HashMap::new(),
                         reg,
                     )
@@ -2032,6 +2047,15 @@ fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type
     }
 }
 
+fn leading_type_var(ty: &Type) -> Option<TypeVarId> {
+    match ty {
+        Type::Var(v) => Some(*v),
+        Type::App(ctor, _) => leading_type_var(ctor),
+        Type::Own(inner) => leading_type_var(inner),
+        _ => None,
+    }
+}
+
 /// Detect trait method calls on type variables (indicating the function needs a dict param).
 fn detect_trait_constraints(
     expr: &TypedExpr,
@@ -2050,7 +2074,7 @@ fn detect_trait_constraints(
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
-                            if let Type::Var(v) = concrete_ty {
+                            if let Some(v) = leading_type_var(&concrete_ty) {
                                 if let Some(param_idx) = param_type_var_map.get(&v).copied() {
                                     constraints.push((trait_name.clone(), param_idx));
                                 }
@@ -2137,7 +2161,7 @@ fn check_trait_instances(
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
-                            if !matches!(concrete_ty, Type::Var(_))
+                            if leading_type_var(&concrete_ty).is_none()
                                 && trait_registry
                                     .find_instance(trait_name, &concrete_ty)
                                     .is_none()
@@ -2159,7 +2183,7 @@ fn check_trait_instances(
                             if let Some(arg) = args.get(*param_idx) {
                                 let arg_ty = subst.apply(&arg.ty);
                                 let concrete_ty = strip_own(&arg_ty);
-                                if !matches!(concrete_ty, Type::Var(_)) {
+                                if leading_type_var(&concrete_ty).is_none() {
                                     if trait_registry
                                         .find_instance(trait_name, &concrete_ty)
                                         .is_none()
@@ -2300,6 +2324,7 @@ fn process_extern_methods(
     aliases: &HashMap<String, String>,
 ) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
     let empty_map = HashMap::new();
+    let empty_arity = HashMap::new();
     let mut extern_fns = Vec::new();
     for method in methods {
         let bind_name = aliases.get(&method.name).unwrap_or(&method.name);
@@ -2312,7 +2337,8 @@ fn process_extern_methods(
         let mut scheme_vars = Vec::new();
         let mut param_types = Vec::new();
         for ty_expr in &method.param_types {
-            let resolved = type_registry::resolve_type_expr(ty_expr, &empty_map, registry)
+            let resolved =
+                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry)
                 .map_err(|e| spanned(e, span))?;
             if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                 let fresh = gen.fresh();
@@ -2324,7 +2350,7 @@ fn process_extern_methods(
         }
 
         let return_type =
-            type_registry::resolve_type_expr(&method.return_type, &empty_map, registry)
+            type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry)
                 .map_err(|e| spanned(e, span))?;
         let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
         {
@@ -2350,7 +2376,7 @@ fn process_extern_methods(
         let mut concrete_params = Vec::new();
         for ty_expr in &method.param_types {
             concrete_params.push(
-                type_registry::resolve_type_expr(ty_expr, &empty_map, registry)
+                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry)
                     .map_err(|e| spanned(e, span))?,
             );
         }
@@ -3157,18 +3183,22 @@ pub(crate) fn infer_module_inner(
             let tv_id = gen.fresh();
             let type_var_arity = type_param.arity;
             let mut type_param_map = HashMap::new();
+            let mut type_param_arity = HashMap::new();
             type_param_map.insert(type_param.name.clone(), tv_id);
+            type_param_arity.insert(type_param.name.clone(), type_param.arity);
 
             // For HK trait methods, use explicit type_params from the method declaration
             let mut trait_methods = Vec::new();
             let mut exported_methods = Vec::new();
             for method in methods {
                 let mut method_type_param_map = type_param_map.clone();
+                let mut method_type_param_arity = type_param_arity.clone();
                 let mut method_tv_ids = Vec::new();
-                for tv_name in &method.type_params {
-                    if !method_type_param_map.contains_key(tv_name) {
+                for tv_param in &method.type_params {
+                    if !method_type_param_map.contains_key(&tv_param.name) {
                         let mv_id = gen.fresh();
-                        method_type_param_map.insert(tv_name.clone(), mv_id);
+                        method_type_param_map.insert(tv_param.name.clone(), mv_id);
+                        method_type_param_arity.insert(tv_param.name.clone(), tv_param.arity);
                         method_tv_ids.push(mv_id);
                     }
                 }
@@ -3180,6 +3210,7 @@ pub(crate) fn infer_module_inner(
                             type_registry::resolve_type_expr(
                                 ty_expr,
                                 &method_type_param_map,
+                                &method_type_param_arity,
                                 &registry,
                             )
                             .map_err(|e| spanned(e, method.span))?,
@@ -3189,7 +3220,12 @@ pub(crate) fn infer_module_inner(
                     }
                 }
                 let return_type = if let Some(ref ret_expr) = method.return_type {
-                    type_registry::resolve_type_expr(ret_expr, &method_type_param_map, &registry)
+                    type_registry::resolve_type_expr(
+                        ret_expr,
+                        &method_type_param_map,
+                        &method_type_param_arity,
+                        &registry,
+                    )
                         .map_err(|e| spanned(e, method.span))?
                 } else {
                     Type::Var(gen.fresh())
@@ -3417,8 +3453,14 @@ pub(crate) fn infer_module_inner(
                 .into_iter()
                 .map(|name| (name, gen.fresh()))
                 .collect();
+            let type_param_arity: HashMap<String, usize> = HashMap::new();
             let resolved_target =
-                type_registry::resolve_type_expr(target_type, &type_param_map, &registry)
+                type_registry::resolve_type_expr(
+                    target_type,
+                    &type_param_map,
+                    &type_param_arity,
+                    &registry,
+                )
                     .map_err(|e| spanned(e, *span))?;
 
             // Orphan check: type must be known, and either the type or the trait must be locally defined
@@ -3618,10 +3660,8 @@ pub(crate) fn infer_module_inner(
             env.push_scope();
 
             // Build type_param_map from explicit type parameters
-            let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
-            for tp in &decl.type_params {
-                type_param_map.insert(tp.clone(), gen.fresh());
-            }
+            let (type_param_map, type_param_arity) =
+                build_type_param_maps(&decl.type_params, &mut gen);
             if !decl.constraints.is_empty() {
                 let requirements: Vec<(String, TypeVarId)> = decl
                     .constraints
@@ -3643,8 +3683,13 @@ pub(crate) fn infer_module_inner(
                 let ptv = Type::Var(gen.fresh());
                 if let Some(ref ty_expr) = p.ty {
                     let annotated_ty =
-                        type_registry::resolve_type_expr(ty_expr, &type_param_map, &registry)
-                            .map_err(|e| spanned(e, decl.span))?;
+                        type_registry::resolve_type_expr(
+                            ty_expr,
+                            &type_param_map,
+                            &type_param_arity,
+                            &registry,
+                        )
+                        .map_err(|e| spanned(e, decl.span))?;
                     unify(&ptv, &annotated_ty, &mut subst).map_err(|e| spanned(e, decl.span))?;
                 }
                 param_types.push(ptv.clone());
@@ -3654,8 +3699,13 @@ pub(crate) fn infer_module_inner(
             let prev_fn_return_type = env.fn_return_type.take();
             if let Some(ref ret_ty_expr) = decl.return_type {
                 let resolved_ret =
-                    type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
-                        .map_err(|e| spanned(e, decl.span))?;
+                    type_registry::resolve_type_expr(
+                        ret_ty_expr,
+                        &type_param_map,
+                        &type_param_arity,
+                        &registry,
+                    )
+                    .map_err(|e| spanned(e, decl.span))?;
                 env.fn_return_type = Some(resolved_ret);
             } else {
                 env.fn_return_type = Some(Type::Var(gen.fresh()));
@@ -3681,8 +3731,13 @@ pub(crate) fn infer_module_inner(
             // Enforce return type annotation if present
             let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
                 let annotated_ret =
-                    type_registry::resolve_type_expr(ret_ty_expr, &type_param_map, &registry)
-                        .map_err(|e| spanned(e, decl.span))?;
+                    type_registry::resolve_type_expr(
+                        ret_ty_expr,
+                        &type_param_map,
+                        &type_param_arity,
+                        &registry,
+                    )
+                    .map_err(|e| spanned(e, decl.span))?;
                 // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
                 // Bare `T` cannot be upgraded to `own T` — ownership must come from a literal,
                 // constructor, or another `own` source.
@@ -3795,9 +3850,11 @@ pub(crate) fn infer_module_inner(
                 // Build type_param_map for impl method annotations
                 // (needed for type vars in HKT method annotations like `Box[a]`)
                 let mut impl_method_tpm = HashMap::new();
-                for tv_name in &method.type_params {
-                    if !impl_method_tpm.contains_key(tv_name) {
-                        impl_method_tpm.insert(tv_name.clone(), gen.fresh());
+                let mut impl_method_tpa = HashMap::new();
+                for tv_param in &method.type_params {
+                    if !impl_method_tpm.contains_key(&tv_param.name) {
+                        impl_method_tpm.insert(tv_param.name.clone(), gen.fresh());
+                        impl_method_tpa.insert(tv_param.name.clone(), tv_param.arity);
                     }
                 }
 
@@ -3808,6 +3865,7 @@ pub(crate) fn infer_module_inner(
                             let annotated_ty = type_registry::resolve_type_expr(
                                 ty_expr,
                                 &impl_method_tpm,
+                                &impl_method_tpa,
                                 &registry,
                             )
                             .map_err(|e| spanned(e, p.span))?;
@@ -3820,8 +3878,13 @@ pub(crate) fn infer_module_inner(
                     let concrete_ret =
                         substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
                     let annotated_ret =
-                        type_registry::resolve_type_expr(ret_ty_expr, &impl_method_tpm, &registry)
-                            .map_err(|e| spanned(e, method.span))?;
+                        type_registry::resolve_type_expr(
+                            ret_ty_expr,
+                            &impl_method_tpm,
+                            &impl_method_tpa,
+                            &registry,
+                        )
+                        .map_err(|e| spanned(e, method.span))?;
                     unify(&annotated_ret, &concrete_ret, &mut subst)
                         .map_err(|e| spanned(e, method.span))?;
                 }
