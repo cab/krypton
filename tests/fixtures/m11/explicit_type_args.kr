@@ -1,0 +1,16 @@
+# expect: ok
+
+import core/list.{List, Cons, Nil, map}
+
+fun identity[a](x: a) -> a = x
+
+fun stringify(x: Int) -> String = "n"
+
+fun call_site() = identity[Int](42)
+
+fun standalone() = {
+  let id_int = identity[Int]
+  id_int(42)
+}
+
+fun method_site(xs: List[Int]) = xs.map[String](stringify)

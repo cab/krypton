@@ -272,6 +272,72 @@ fun apply[f[_], a](fa: f[a]) -> f[a] = fa
 }
 
 #[test]
+fn test_explicit_type_application_and_call() {
+    let src = r#"
+fun identity[a](x: a) -> a = x
+fun f() = identity[Int](42)
+fun g() = identity[Int]
+fun h(xs: List[Int], f: (Int) -> String) = xs.map[String](f)
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    match &module.decls[1] {
+        krypton_parser::ast::Decl::DefFn(f) => match &*f.body {
+            krypton_parser::ast::Expr::App { func, args, .. } => {
+                assert_eq!(args.len(), 1);
+                match func.as_ref() {
+                    krypton_parser::ast::Expr::TypeApp { expr, type_args, .. } => {
+                        assert_eq!(type_args.len(), 1);
+                        assert!(matches!(
+                            expr.as_ref(),
+                            krypton_parser::ast::Expr::Var { name, .. } if name == "identity"
+                        ));
+                    }
+                    other => panic!("expected TypeApp callee, got {:?}", other),
+                }
+            }
+            other => panic!("expected App body, got {:?}", other),
+        },
+        other => panic!("expected DefFn, got {:?}", other),
+    }
+
+    match &module.decls[2] {
+        krypton_parser::ast::Decl::DefFn(f) => match &*f.body {
+            krypton_parser::ast::Expr::TypeApp { expr, type_args, .. } => {
+                assert_eq!(type_args.len(), 1);
+                assert!(matches!(
+                    expr.as_ref(),
+                    krypton_parser::ast::Expr::Var { name, .. } if name == "identity"
+                ));
+            }
+            other => panic!("expected standalone TypeApp, got {:?}", other),
+        },
+        other => panic!("expected DefFn, got {:?}", other),
+    }
+
+    match &module.decls[3] {
+        krypton_parser::ast::Decl::DefFn(f) => match &*f.body {
+            krypton_parser::ast::Expr::App { func, args, .. } => {
+                assert_eq!(args.len(), 2);
+                match func.as_ref() {
+                    krypton_parser::ast::Expr::TypeApp { expr, type_args, .. } => {
+                        assert_eq!(type_args.len(), 1);
+                        assert!(matches!(
+                            expr.as_ref(),
+                            krypton_parser::ast::Expr::Var { name, .. } if name == "map"
+                        ));
+                    }
+                    other => panic!("expected UFCS TypeApp callee, got {:?}", other),
+                }
+            }
+            other => panic!("expected App body, got {:?}", other),
+        },
+        other => panic!("expected DefFn, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_import() {
     let (module, errors) = parse("import core/option.{Option, Some, None}");
     assert!(errors.is_empty(), "errors: {errors:?}");

@@ -352,6 +352,33 @@ fn is_concrete_non_function(ty: &Type, subst: &Substitution) -> bool {
     }
 }
 
+fn instantiate_scheme_with_types(
+    scheme: &TypeScheme,
+    explicit_types: &[Type],
+    span: Span,
+    gen: &mut TypeVarGen,
+) -> Result<Type, SpannedTypeError> {
+    if explicit_types.len() > scheme.vars.len() {
+        return Err(spanned(
+            TypeError::WrongArity {
+                expected: scheme.vars.len(),
+                actual: explicit_types.len(),
+            },
+            span,
+        ));
+    }
+
+    let mut sub = Substitution::new();
+    for &var in &scheme.vars {
+        sub = sub.compose(&Substitution::bind(var, Type::Var(gen.fresh())));
+    }
+    let offset = scheme.vars.len() - explicit_types.len();
+    for (&var, ty) in scheme.vars.iter().skip(offset).zip(explicit_types.iter()) {
+        sub = sub.compose(&Substitution::bind(var, ty.clone()));
+    }
+    Ok(sub.apply(&scheme.ty))
+}
+
 /// Infer the type of an expression using Algorithm J.
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn infer_expr(
@@ -360,7 +387,22 @@ pub fn infer_expr(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) -> Result<Type, SpannedTypeError> {
-    infer_expr_inner(expr, env, subst, gen, None, None, None, None, None).map(|te| te.ty)
+    let empty_type_param_map = HashMap::new();
+    let empty_type_param_arity = HashMap::new();
+    infer_expr_inner(
+        expr,
+        env,
+        subst,
+        gen,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &empty_type_param_map,
+        &empty_type_param_arity,
+    )
+    .map(|te| te.ty)
 }
 
 /// Infer the type of an expression, with optional access to the type registry
@@ -375,6 +417,8 @@ fn infer_expr_inner(
     mut let_own_spans: Option<&mut HashSet<Span>>,
     mut lambda_own_captures: Option<&mut HashMap<Span, String>>,
     expected_type: Option<&Type>,
+    type_param_map: &HashMap<String, TypeVarId>,
+    type_param_arity: &HashMap<String, usize>,
 ) -> Result<TypedExpr, SpannedTypeError> {
     match expr {
         Expr::Lit { value, span } => {
@@ -453,6 +497,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             env.fn_return_type = prev_fn_return_type;
             env.pop_scope();
@@ -492,6 +538,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             // Extract expected parameter types from the function signature
             // so we can propagate them into lambda arguments for bidirectional checking.
@@ -532,6 +580,8 @@ fn infer_expr_inner(
                     let_own_spans.as_deref_mut(),
                     lambda_own_captures.as_deref_mut(),
                     arg_expected_type.as_ref(),
+                    type_param_map,
+                    type_param_arity,
                 )?;
                 let a_ty = a_typed.ty.clone();
                 arg_types.push(a_ty.clone());
@@ -604,6 +654,79 @@ fn infer_expr_inner(
             })
         }
 
+        Expr::TypeApp {
+            expr,
+            type_args,
+            span,
+        } => {
+            let expr_typed = infer_expr_inner(
+                expr,
+                env,
+                subst,
+                gen,
+                registry,
+                recur_params,
+                let_own_spans.as_deref_mut(),
+                lambda_own_captures.as_deref_mut(),
+                None,
+                type_param_map,
+                type_param_arity,
+            )?;
+
+            let explicit_types = if let Some(reg) = registry {
+                type_args
+                    .iter()
+                    .map(|type_arg| {
+                        type_registry::resolve_type_expr(
+                            type_arg,
+                            type_param_map,
+                            type_param_arity,
+                            reg,
+                        )
+                        .map_err(|e| spanned(e, *span))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                return Err(spanned(
+                    TypeError::UnsupportedExpr {
+                        description: "explicit type application requires the type registry"
+                            .to_string(),
+                    },
+                    *span,
+                ));
+            };
+
+            let specialized_ty = match expr.as_ref() {
+                Expr::Var { name, .. } => {
+                    let Some(scheme) = env.lookup(name).cloned() else {
+                        return Err(spanned(
+                            TypeError::UnknownVariable { name: name.clone() },
+                            *span,
+                        ));
+                    };
+                    instantiate_scheme_with_types(&scheme, &explicit_types, *span, gen)?
+                }
+                _ => {
+                    return Err(spanned(
+                        TypeError::UnsupportedExpr {
+                            description:
+                                "explicit type arguments are only supported on named values"
+                                    .to_string(),
+                        },
+                        *span,
+                    ))
+                }
+            };
+
+            Ok(TypedExpr {
+                kind: TypedExprKind::TypeApp {
+                    expr: Box::new(expr_typed),
+                },
+                ty: specialized_ty,
+                span: *span,
+            })
+        }
+
         Expr::Let {
             name,
             ty: ty_ann,
@@ -621,6 +744,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
 
             // If there's a type annotation, resolve it and unify with the inferred type
@@ -628,8 +753,8 @@ fn infer_expr_inner(
                 if let Some(reg) = registry {
                     let annotated_ty = type_registry::resolve_type_expr(
                         ty_expr,
-                        &std::collections::HashMap::new(),
-                        &std::collections::HashMap::new(),
+                        type_param_map,
+                        type_param_arity,
                         reg,
                     )
                     .map_err(|e| spanned(e, *span))?;
@@ -659,6 +784,8 @@ fn infer_expr_inner(
                         let_own_spans,
                         lambda_own_captures,
                         None,
+                        type_param_map,
+                        type_param_arity,
                     )?;
                     env.pop_scope();
                     let ty = body_typed.ty.clone();
@@ -705,6 +832,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             unify(&cond_typed.ty, &Type::Bool, subst).map_err(|e| spanned(e, *span))?;
             let then_typed = infer_expr_inner(
@@ -717,6 +846,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let else_typed = infer_expr_inner(
                 else_,
@@ -728,6 +859,8 @@ fn infer_expr_inner(
                 let_own_spans,
                 lambda_own_captures,
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             unify(&then_typed.ty, &else_typed.ty, subst).map_err(|e| spanned(e, *span))?;
             let ty = subst.apply(&then_typed.ty);
@@ -764,6 +897,8 @@ fn infer_expr_inner(
                     let_own_spans.as_deref_mut(),
                     lambda_own_captures.as_deref_mut(),
                     None,
+                    type_param_map,
+                    type_param_arity,
                 )?);
             }
             env.pop_scope();
@@ -788,6 +923,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let rhs_typed = infer_expr_inner(
                 rhs,
@@ -799,6 +936,8 @@ fn infer_expr_inner(
                 let_own_spans,
                 lambda_own_captures,
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let ty = match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
@@ -850,6 +989,8 @@ fn infer_expr_inner(
                 let_own_spans,
                 lambda_own_captures,
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let ty = match op {
                 UnaryOp::Neg => {
@@ -901,6 +1042,8 @@ fn infer_expr_inner(
                             let_own_spans.as_deref_mut(),
                             lambda_own_captures.as_deref_mut(),
                             None,
+                            type_param_map,
+                            type_param_arity,
                         )?;
                         unify(&a_typed.ty, p, subst).map_err(|e| spanned(e, *span))?;
                         typed_args.push(a_typed);
@@ -918,6 +1061,8 @@ fn infer_expr_inner(
                             let_own_spans.as_deref_mut(),
                             lambda_own_captures.as_deref_mut(),
                             None,
+                            type_param_map,
+                            type_param_arity,
                         )?);
                     }
                 }
@@ -945,6 +1090,8 @@ fn infer_expr_inner(
                 let_own_spans,
                 lambda_own_captures,
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let resolved = subst.apply(&target_typed.ty);
             // Unwrap Own wrapper — field access works on the inner type
@@ -974,6 +1121,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let resolved = subst.apply(&base_typed.ty);
             // Unwrap Own wrapper — struct update works on the inner type
@@ -992,6 +1141,8 @@ fn infer_expr_inner(
                 recur_params,
                 let_own_spans,
                 lambda_own_captures,
+                type_param_map,
+                type_param_arity,
             )?;
             Ok(TypedExpr {
                 kind: TypedExprKind::StructUpdate {
@@ -1018,6 +1169,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let scrutinee_ty = subst.apply(&scrutinee_typed.ty);
             // Unwrap Own wrapper — match works on the inner type
@@ -1041,6 +1194,8 @@ fn infer_expr_inner(
                     let_own_spans.as_deref_mut(),
                     lambda_own_captures.as_deref_mut(),
                     None,
+                    type_param_map,
+                    type_param_arity,
                 )?;
                 unify(&result_ty, &body_typed.ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
@@ -1075,6 +1230,8 @@ fn infer_expr_inner(
                     let_own_spans.as_deref_mut(),
                     lambda_own_captures.as_deref_mut(),
                     None,
+                    type_param_map,
+                    type_param_arity,
                 )?);
             }
             let ty = Type::Tuple(typed_elems.iter().map(|te| te.ty.clone()).collect());
@@ -1102,6 +1259,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
 
             // If there's a type annotation, resolve it and unify with the inferred type
@@ -1109,8 +1268,8 @@ fn infer_expr_inner(
                 if let Some(reg) = registry {
                     let annotated_ty = type_registry::resolve_type_expr(
                         ty_expr,
-                        &std::collections::HashMap::new(),
-                        &std::collections::HashMap::new(),
+                        type_param_map,
+                        type_param_arity,
                         reg,
                     )
                     .map_err(|e| spanned(e, *span))?;
@@ -1139,6 +1298,8 @@ fn infer_expr_inner(
                         let_own_spans,
                         lambda_own_captures,
                         None,
+                        type_param_map,
+                        type_param_arity,
                     )?;
                     env.pop_scope();
                     let ty = body_typed.ty.clone();
@@ -1225,6 +1386,8 @@ fn infer_expr_inner(
                                     let_own_spans.as_deref_mut(),
                                     lambda_own_captures.as_deref_mut(),
                                     None,
+                                    type_param_map,
+                                    type_param_arity,
                                 )?;
                                 unify(&field_typed.ty, &expected, subst)
                                     .map_err(|e| spanned(e, *span))?;
@@ -1275,6 +1438,8 @@ fn infer_expr_inner(
                     let_own_spans.as_deref_mut(),
                     lambda_own_captures.as_deref_mut(),
                     None,
+                    type_param_map,
+                    type_param_arity,
                 )?;
                 unify(&subst.apply(&typed.ty), &subst.apply(&elem_var), subst)
                     .map_err(|e| spanned(e, *span))?;
@@ -1298,6 +1463,8 @@ fn infer_expr_inner(
                 let_own_spans.as_deref_mut(),
                 lambda_own_captures.as_deref_mut(),
                 None,
+                type_param_map,
+                type_param_arity,
             )?;
             let inner_ty = subst.apply(&inner_typed.ty);
             // Strip Own wrapper for analysis
@@ -1749,6 +1916,8 @@ fn resolve_struct_update(
     recur_params: Option<&[Type]>,
     mut let_own_spans: Option<&mut HashSet<Span>>,
     mut lambda_own_captures: Option<&mut HashMap<Span, String>>,
+    type_param_map: &HashMap<String, TypeVarId>,
+    type_param_arity: &HashMap<String, usize>,
 ) -> Result<Vec<(String, TypedExpr)>, SpannedTypeError> {
     match resolved_ty {
         Type::Named(name, type_args) => {
@@ -1788,6 +1957,8 @@ fn resolve_struct_update(
                                     let_own_spans.as_deref_mut(),
                                     lambda_own_captures.as_deref_mut(),
                                     None,
+                                    type_param_map,
+                                    type_param_arity,
                                 )?;
                                 unify(&field_typed.ty, &expected, subst)
                                     .map_err(|e| spanned(e, span))?;
@@ -1847,6 +2018,7 @@ fn first_own_capture(
             args.iter()
                 .find_map(|a| first_own_capture(a, params, env, subst))
         }),
+        Expr::TypeApp { expr, .. } => first_own_capture(expr, params, env, subst),
         Expr::Let {
             name,
             value,
@@ -1959,6 +2131,7 @@ fn collect_struct_update_info(
                     work.push(a);
                 }
             }
+            TypedExprKind::TypeApp { expr } => work.push(expr),
             TypedExprKind::If { cond, then_, else_ } => {
                 work.push(cond);
                 work.push(then_);
@@ -2056,6 +2229,14 @@ fn leading_type_var(ty: &Type) -> Option<TypeVarId> {
     }
 }
 
+fn typed_callee_var_name(expr: &TypedExpr) -> Option<&str> {
+    match &expr.kind {
+        TypedExprKind::Var(name) => Some(name.as_str()),
+        TypedExprKind::TypeApp { expr } => typed_callee_var_name(expr),
+        _ => None,
+    }
+}
+
 /// Detect trait method calls on type variables (indicating the function needs a dict param).
 fn detect_trait_constraints(
     expr: &TypedExpr,
@@ -2069,7 +2250,7 @@ fn detect_trait_constraints(
     while let Some(expr) = work.pop() {
         match &expr.kind {
             TypedExprKind::App { func, args } => {
-                if let TypedExprKind::Var(name) = &func.kind {
+                if let Some(name) = typed_callee_var_name(func) {
                     if let Some(trait_name) = trait_method_map.get(name) {
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
@@ -2087,6 +2268,7 @@ fn detect_trait_constraints(
                     work.push(a);
                 }
             }
+            TypedExprKind::TypeApp { expr } => work.push(expr),
             TypedExprKind::Lambda { body, .. } => work.push(body),
             TypedExprKind::If { cond, then_, else_ } => {
                 work.push(cond);
@@ -2156,7 +2338,7 @@ fn check_trait_instances(
     while let Some(expr) = work.pop() {
         match &expr.kind {
             TypedExprKind::App { func, args } => {
-                if let TypedExprKind::Var(name) = &func.kind {
+                if let Some(name) = typed_callee_var_name(func) {
                     if let Some(trait_name) = trait_method_map.get(name) {
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
@@ -2178,7 +2360,7 @@ fn check_trait_instances(
                         }
                     }
                     // Check calls to constrained functions (e.g., imported `println` requires Show)
-                    if let Some(constraints) = fn_constraints.get(name.as_str()) {
+                    if let Some(constraints) = fn_constraints.get(name) {
                         for (trait_name, param_idx) in constraints {
                             if let Some(arg) = args.get(*param_idx) {
                                 let arg_ty = subst.apply(&arg.ty);
@@ -2207,6 +2389,7 @@ fn check_trait_instances(
                     work.push(a);
                 }
             }
+            TypedExprKind::TypeApp { expr } => work.push(expr),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let trait_name = match op {
                     BinOp::Add => Some("Add"),
@@ -3721,6 +3904,8 @@ pub(crate) fn infer_module_inner(
                 Some(&mut let_own_spans),
                 Some(&mut lambda_own_captures),
                 None,
+                &type_param_map,
+                &type_param_arity,
             )?;
             env.fn_return_type = prev_fn_return_type;
             env.pop_scope();
@@ -3923,6 +4108,8 @@ pub(crate) fn infer_module_inner(
                     Some(&mut let_own_spans),
                     Some(&mut lambda_own_captures),
                     None,
+                    &impl_method_tpm,
+                    &impl_method_tpa,
                 )?;
                 env.fn_return_type = prev_fn_return_type;
                 env.pop_scope();

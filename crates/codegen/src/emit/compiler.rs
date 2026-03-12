@@ -618,6 +618,7 @@ impl Compiler {
             TypedExprKind::Var(name) => self.compile_var(name),
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
+            TypedExprKind::TypeApp { expr } => self.compile_expr(expr, in_tail),
             TypedExprKind::Recur(args) => self.compile_recur(args, in_tail, expr.span),
             TypedExprKind::FieldAccess {
                 expr: target,
@@ -2979,6 +2980,9 @@ impl Compiler {
                     for a in args {
                         work.push((a, Rc::clone(&param_names)));
                     }
+                }
+                TypedExprKind::TypeApp { expr } => {
+                    work.push((expr, param_names));
                 }
                 TypedExprKind::Match { scrutinee, arms } => {
                     work.push((scrutinee, Rc::clone(&param_names)));

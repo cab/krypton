@@ -494,6 +494,17 @@ impl<'a> Formatter<'a> {
                 }
                 self.buf.push(')');
             }
+            Expr::TypeApp { expr, type_args, .. } => {
+                self.fmt_expr_prec(expr, 7);
+                self.buf.push('[');
+                for (i, arg) in type_args.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_type_expr(arg);
+                }
+                self.buf.push(']');
+            }
             Expr::If {
                 cond,
                 then_,

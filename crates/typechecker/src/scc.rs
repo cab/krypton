@@ -17,6 +17,7 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
                 collect_refs(a, names, refs);
             }
         }
+        Expr::TypeApp { expr, .. } => collect_refs(expr, names, refs),
         Expr::If {
             cond, then_, else_, ..
         } => {

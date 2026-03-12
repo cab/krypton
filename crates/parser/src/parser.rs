@@ -604,8 +604,9 @@ where
         #[derive(Clone, Debug)]
         enum Postfix {
             Call(Vec<Expr>, LexSpan),
+            TypeArgs(Vec<TypeExpr>, LexSpan),
             FieldAccess(String, LexSpan),
-            Ufcs(String, Vec<Expr>, LexSpan),
+            Ufcs(String, Vec<TypeExpr>, Vec<Expr>, LexSpan),
             Question(LexSpan),
         }
 
@@ -617,9 +618,25 @@ where
             .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .map_with(|args, e| Postfix::Call(args, e.span()));
 
+        let type_args_postfix = ty
+            .clone()
+            .separated_by(symbol(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+            .map_with(|type_args, e| Postfix::TypeArgs(type_args, e.span()));
+
         // Dot access: .ident or .ident(args)
         let dot_postfix = symbol(Token::Dot)
             .ignore_then(select! { Token::Ident(s) => s.to_string() })
+            .then(
+                ty.clone()
+                    .separated_by(symbol(Token::Comma))
+                    .at_least(1)
+                    .collect::<Vec<_>>()
+                    .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+                    .or_not(),
+            )
             .then(
                 expr.clone()
                     .separated_by(symbol(Token::Comma))
@@ -627,9 +644,9 @@ where
                     .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
                     .or_not(),
             )
-            .map_with(|(field, args), e| {
+            .map_with(|((field, type_args), args), e| {
                 if let Some(args) = args {
-                    Postfix::Ufcs(field, args, e.span())
+                    Postfix::Ufcs(field, type_args.unwrap_or_default(), args, e.span())
                 } else {
                     Postfix::FieldAccess(field, e.span())
                 }
@@ -639,7 +656,7 @@ where
         let question_postfix = closing_symbol(Token::Question)
             .map_with(|_, e| Postfix::Question(e.span()));
 
-        let postfix = choice((dot_postfix, call_postfix, question_postfix));
+        let postfix = choice((dot_postfix, type_args_postfix, call_postfix, question_postfix));
 
         let atom = raw_atom.foldl(postfix.repeated(), |lhs, op| {
             match op {
@@ -651,6 +668,14 @@ where
                         span: full_span,
                     }
                 }
+                Postfix::TypeArgs(type_args, span) => {
+                    let full_span = (get_span(&lhs).0, span.end);
+                    Expr::TypeApp {
+                        expr: Box::new(lhs),
+                        type_args,
+                        span: full_span,
+                    }
+                }
                 Postfix::FieldAccess(field, span) => {
                     let full_span = (get_span(&lhs).0, span.end);
                     Expr::FieldAccess {
@@ -659,15 +684,27 @@ where
                         span: full_span,
                     }
                 }
-                Postfix::Ufcs(method, extra_args, span) => {
+                Postfix::Ufcs(method, type_args, extra_args, span) => {
                     let full_span = (get_span(&lhs).0, span.end);
                     let mut args = vec![lhs];
                     args.extend(extra_args);
-                    Expr::App {
-                        func: Box::new(Expr::Var {
+                    let func = if type_args.is_empty() {
+                        Expr::Var {
                             name: method,
                             span: to_span(span),
-                        }),
+                        }
+                    } else {
+                        Expr::TypeApp {
+                            expr: Box::new(Expr::Var {
+                                name: method,
+                                span: to_span(span),
+                            }),
+                            type_args,
+                            span: to_span(span),
+                        }
+                    };
+                    Expr::App {
+                        func: Box::new(func),
                         args,
                         span: full_span,
                     }
@@ -768,6 +805,7 @@ fn get_span(expr: &Expr) -> Span {
         Expr::Lit { span, .. }
         | Expr::Var { span, .. }
         | Expr::App { span, .. }
+        | Expr::TypeApp { span, .. }
         | Expr::If { span, .. }
         | Expr::Let { span, .. }
         | Expr::Do { span, .. }
@@ -791,6 +829,7 @@ fn set_span(expr: &mut Expr, new_span: Span) {
         Expr::Lit { span, .. }
         | Expr::Var { span, .. }
         | Expr::App { span, .. }
+        | Expr::TypeApp { span, .. }
         | Expr::If { span, .. }
         | Expr::Let { span, .. }
         | Expr::Do { span, .. }

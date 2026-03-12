@@ -45,6 +45,14 @@ fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
     }
 }
 
+fn callee_var_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Var { name, .. } => Some(name.as_str()),
+        Expr::TypeApp { expr, .. } => callee_var_name(expr),
+        _ => None,
+    }
+}
+
 /// Count the maximum number of uses of `name` along any single execution path.
 fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
     match expr {
@@ -63,6 +71,7 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
             }
             total
         }
+        Expr::TypeApp { expr, .. } => count_max_uses(expr, name, bound),
 
         Expr::Let {
             name: let_name,
@@ -415,17 +424,9 @@ fn check_expr(
                 registry,
             )?;
             // Determine which params are non-own (for non-consuming borrow)
-            let callee_params = if let Expr::Var { name, .. } = func.as_ref() {
-                fn_param_info.get(name)
-            } else {
-                None
-            };
+            let callee_params = callee_var_name(func).and_then(|name| fn_param_info.get(name));
             // Get qualifier requirements for the callee
-            let callee_qualifiers = if let Expr::Var { name, .. } = func.as_ref() {
-                fn_qualifiers.get(name)
-            } else {
-                None
-            };
+            let callee_qualifiers = callee_var_name(func).and_then(|name| fn_qualifiers.get(name));
             for (i, arg) in args.iter().enumerate() {
                 // Check qualifier mismatch: affine arg passed to RequiresU param
                 if let Expr::Var {
@@ -437,11 +438,8 @@ fn check_expr(
                     if affine.contains(arg_name) {
                         if let Some(quals) = callee_qualifiers {
                             if let Some((ParamQualifier::RequiresU, param_name)) = quals.get(i) {
-                                let callee_name = if let Expr::Var { name, .. } = func.as_ref() {
-                                    name.clone()
-                                } else {
-                                    "<anonymous>".to_string()
-                                };
+                                let callee_name =
+                                    callee_var_name(func).unwrap_or("<anonymous>").to_string();
                                 return Err(SpannedTypeError {
                                     error: TypeError::QualifierMismatch {
                                         name: arg_name.clone(),
@@ -503,6 +501,20 @@ fn check_expr(
             let _ = span;
             Ok(())
         }
+        Expr::TypeApp { expr, .. } => check_expr(
+            expr,
+            owned,
+            consumed,
+            partially_consumed,
+            fn_param_info,
+            affine,
+            fn_qualifiers,
+            let_own_spans,
+            lambda_own_captures,
+            own_fn_notes,
+            struct_update_info,
+            registry,
+        ),
 
         Expr::Let {
             name,
@@ -1101,6 +1113,7 @@ fn collect_free_owned(
                 collect_free_owned(a, owned, bound, acc);
             }
         }
+        Expr::TypeApp { expr, .. } => collect_free_owned(expr, owned, bound, acc),
         Expr::Let {
             name, value, body, ..
         } => {

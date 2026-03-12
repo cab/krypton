@@ -136,6 +136,11 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
+    TypeApp {
+        expr: Box<Expr>,
+        type_args: Vec<TypeExpr>,
+        span: Span,
+    },
     If {
         cond: Box<Expr>,
         then_: Box<Expr>,

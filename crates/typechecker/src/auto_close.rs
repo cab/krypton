@@ -68,6 +68,7 @@ fn collect_consumed_vars_inner(expr: &TypedExpr, acc: &mut Vec<String>) {
                 collect_consumed_vars_inner(arg, acc);
             }
         }
+        TypedExprKind::TypeApp { expr } => collect_consumed_vars_inner(expr, acc),
         _ => {}
     }
 }
@@ -223,6 +224,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
                         }
                     }
                 }
+            }
+
+            TypedExprKind::TypeApp { expr } => {
+                self.walk_expr(expr, live);
             }
 
             TypedExprKind::QuestionMark { expr: inner, .. } => {

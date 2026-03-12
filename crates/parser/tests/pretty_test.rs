@@ -203,6 +203,13 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             args: args.iter().map(zero_spans_expr).collect(),
             span: (0, 0),
         },
+        Expr::TypeApp {
+            expr, type_args, ..
+        } => Expr::TypeApp {
+            expr: Box::new(zero_spans_expr(expr)),
+            type_args: type_args.iter().map(zero_spans_type_expr).collect(),
+            span: (0, 0),
+        },
         Expr::Match {
             scrutinee, arms, ..
         } => Expr::Match {
@@ -396,6 +403,11 @@ fn roundtrip_variable() {
 #[test]
 fn roundtrip_hkt_type_params_on_function() {
     assert_surface_roundtrip("fun apply[f[_], a](fa: f[a]) -> f[a] = fa");
+}
+
+#[test]
+fn roundtrip_explicit_type_application() {
+    assert_surface_roundtrip("fun f() = identity[Int](42)\nfun g() = identity[Int]");
 }
 
 #[test]

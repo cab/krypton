@@ -891,6 +891,65 @@ fn no_type_params_still_generalizes() {
     );
 }
 
+#[test]
+fn explicit_type_args_call_site_success() {
+    let src = r#"
+        fun identity[a](x: a) -> a = x
+        fun use_it() = identity[Int](42)
+    "#;
+    insta::assert_snapshot!(infer_module_fn(src, "use_it"), @"fn() -> Int");
+}
+
+#[test]
+fn explicit_type_args_call_site_mismatch_is_error() {
+    let src = r#"
+        fun identity[a](x: a) -> a = x
+        fun use_it() = identity[Int]("hello")
+    "#;
+    let module = parse_module(src);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_err(), "expected mismatch error");
+    let err = result.err().unwrap();
+    assert_eq!(err.error.error_code().to_string(), "E0001");
+}
+
+#[test]
+fn explicit_type_args_wrong_count_is_error() {
+    let src = r#"
+        fun identity[a](x: a) -> a = x
+        fun use_it() = identity[Int, String](42)
+    "#;
+    let module = parse_module(src);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_err(), "expected wrong arity error");
+    let err = result.err().unwrap();
+    assert_eq!(err.error.error_code().to_string(), "E0005");
+}
+
+#[test]
+fn standalone_explicit_type_application_typechecks() {
+    let src = r#"
+        fun identity[a](x: a) -> a = x
+        fun use_it() = {
+            let id_int = identity[Int]
+            id_int(42)
+        }
+    "#;
+    insta::assert_snapshot!(infer_module_fn(src, "use_it"), @"fn() -> Int");
+}
+
+#[test]
+fn explicit_type_args_work_with_methods() {
+    let src = r#"
+        import core/list.{List, Cons, Nil, map}
+
+        fun stringify(x: Int) -> String = "n"
+
+        fun use_it(xs: List[Int]) = xs.map[String](stringify)
+    "#;
+    insta::assert_snapshot!(infer_module_fn(src, "use_it"), @"fn(List[Int]) -> List[String]");
+}
+
 // --- Unknown type error tests ---
 
 #[test]
