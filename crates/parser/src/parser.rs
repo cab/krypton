@@ -4,77 +4,48 @@ use chumsky::prelude::*;
 
 use crate::ast::*;
 use crate::diagnostics::{ErrorCode, ParseError};
-use crate::lexer::{self, Span as LexSpan, Spanned, Token};
+use crate::lexer::{self, Span as LexSpan, Token};
 
-/// Insert synthetic semicolons at newline boundaries (automatic semicolon insertion).
-///
-/// A semicolon is inserted between two adjacent tokens when:
-/// 1. The previous token can end a statement (ASI-triggering)
-/// 2. There is a newline in the source between the two tokens
-/// 3. The next token is not a continuation token
-fn insert_semicolons<'src>(
-    source: &str,
-    tokens: Vec<Spanned<Token<'src>>>,
-) -> Vec<Spanned<Token<'src>>> {
-    if tokens.is_empty() {
-        return tokens;
-    }
+fn ignored_newlines<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, (), extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    just(Token::Newline).repeated().ignored()
+}
 
-    let mut result: Vec<Spanned<Token<'src>>> = Vec::with_capacity(tokens.len() * 2);
+fn symbol<'tokens, 'src: 'tokens, I>(
+    tok: Token<'src>,
+) -> impl Parser<'tokens, I, Token<'src>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    ignored_newlines()
+        .ignore_then(just(tok))
+        .then_ignore(ignored_newlines())
+}
 
-    for i in 0..tokens.len() {
-        result.push(tokens[i].clone());
+fn closing_symbol<'tokens, 'src: 'tokens, I>(
+    tok: Token<'src>,
+) -> impl Parser<'tokens, I, Token<'src>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    ignored_newlines().ignore_then(just(tok))
+}
 
-        // Check if we should insert a semicolon after this token
-        if i + 1 < tokens.len() {
-            let (ref prev_tok, ref prev_span) = tokens[i];
-            let (ref next_tok, _) = tokens[i + 1];
-
-            let prev_triggers_asi = matches!(
-                prev_tok,
-                Token::Ident(_)
-                    | Token::Int(_)
-                    | Token::Float(_)
-                    | Token::String(_)
-                    | Token::Bool(_)
-                    | Token::RParen
-                    | Token::RBracket
-                    | Token::RBrace
-                    | Token::Underscore
-            );
-
-            if !prev_triggers_asi {
-                continue;
-            }
-
-            let next_is_continuation = matches!(
-                next_tok,
-                Token::Else
-                    | Token::FatArrow
-                    | Token::Arrow
-                    | Token::Where
-                    | Token::Dot
-                    | Token::Pipe
-            );
-
-            if next_is_continuation {
-                continue;
-            }
-
-            // Check for newline between the two tokens
-            let between_start = prev_span.end;
-            let between_end = tokens[i + 1].1.start;
-            if between_start < between_end
-                && source[between_start..between_end].contains('\n')
-            {
-                // Insert synthetic semicolon with zero-width span at end of previous token
-                let semi_span: LexSpan = (prev_span.end..prev_span.end).into();
-                result.push((Token::Semicolon, semi_span));
-            }
-        }
-    }
-
-    result
+fn stmt_sep<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, (), extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    choice((
+        just(Token::Semicolon).ignored(),
+        just(Token::Newline).repeated().at_least(1).ignored(),
+    ))
+    .repeated()
+    .at_least(1)
+    .ignored()
 }
 
 fn to_span(s: LexSpan) -> Span {
@@ -108,7 +79,7 @@ where
             });
 
         // ~Type → Own
-        let own_type = just(Token::Tilde)
+        let own_type = symbol(Token::Tilde)
             .ignore_then(ty.clone())
             .map_with(|inner, e| TypeExpr::Own {
                 inner: Box::new(inner),
@@ -120,11 +91,11 @@ where
         // (Type, Type) -> RetType → Fn
         let paren_type = ty
             .clone()
-            .separated_by(just(Token::Comma))
+            .separated_by(symbol(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .then(
-                just(Token::Arrow)
+                symbol(Token::Arrow)
                     .ignore_then(ty.clone())
                     .or_not(),
             )
@@ -149,10 +120,10 @@ where
         // Generic application: Name[args]
         base_type.clone().then(
             ty.clone()
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .at_least(1)
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
                 .or_not(),
         ).map_with(|(base, args), e| {
             match args {
@@ -179,7 +150,7 @@ where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
     recursive(|pattern| {
-        let wildcard = select! { Token::Underscore => () }.map_with(|_, e| Pattern::Wildcard {
+        let wildcard = symbol(Token::Underscore).map_with(|_, e| Pattern::Wildcard {
             span: to_span(e.span()),
         });
 
@@ -199,9 +170,9 @@ where
             .then(
                 pattern
                     .clone()
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
                     .or_not(),
             )
             .map_with(|(name, args), e| Pattern::Constructor {
@@ -213,7 +184,7 @@ where
         // Struct pattern: Name { field1, field2, .. }
         let struct_field = select! { Token::Ident(s) => s.to_string() }
             .then(
-                just(Token::Colon)
+                symbol(Token::Colon)
                     .ignore_then(pattern.clone())
                     .or_not(),
             )
@@ -228,15 +199,15 @@ where
         let struct_pat = select! { Token::Ident(s) if is_uppercase(s) => s.to_string() }
             .then(
                 struct_field
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .allow_trailing()
                     .collect::<Vec<_>>()
                     .then(
-                        just(Token::Comma)
-                            .ignore_then(just(Token::DotDot))
+                        symbol(Token::Comma)
+                            .ignore_then(symbol(Token::DotDot))
                             .or_not(),
                     )
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
             )
             .map_with(|(name, (fields, rest)), e| Pattern::StructPat {
                 name,
@@ -248,10 +219,10 @@ where
         // Tuple pattern: (a, b)
         let tuple_pat = pattern
             .clone()
-            .separated_by(just(Token::Comma))
+            .separated_by(symbol(Token::Comma))
             .at_least(2)
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .map_with(|elements, e| Pattern::Tuple {
                 elements,
                 span: to_span(e.span()),
@@ -265,8 +236,8 @@ where
             });
 
         // Unit pattern: ()
-        let unit_pat = just(Token::LParen)
-            .then(just(Token::RParen))
+        let unit_pat = symbol(Token::LParen)
+            .then(closing_symbol(Token::RParen))
             .map_with(|_, e| Pattern::Lit {
                 value: Lit::Unit,
                 span: to_span(e.span()),
@@ -287,7 +258,7 @@ where
         atomic
             .clone()
             .foldl(
-                just(Token::Pipe).ignore_then(atomic).repeated(),
+                symbol(Token::Pipe).ignore_then(atomic).repeated(),
                 |_lhs, _rhs| {
                     // For now, or-patterns are not in the AST — just return the rhs
                     // TODO: Add OrPattern to AST
@@ -310,8 +281,8 @@ where
         // --- Atoms ---
 
         // Unit literal: ()
-        let unit_lit = just(Token::LParen)
-            .then(just(Token::RParen))
+        let unit_lit = symbol(Token::LParen)
+            .then(closing_symbol(Token::RParen))
             .map_with(|_, e| Expr::Lit {
                 value: Lit::Unit,
                 span: to_span(e.span()),
@@ -336,12 +307,12 @@ where
         // Block: { stmt; stmt; expr }
         let block_expr = {
             // Statement in a block: let binding or expression
-            let let_stmt = just(Token::Let)
+            let let_stmt = symbol(Token::Let)
                 .ignore_then(
                     // Try pattern destructuring first
                     pattern.clone()
-                        .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
-                        .then_ignore(just(Token::Assign))
+                        .then(symbol(Token::Colon).ignore_then(ty.clone()).or_not())
+                        .then_ignore(symbol(Token::Assign))
                         .then(expr.clone())
                         .map(|((pat, ty_ann), value)| {
                             // Check if it's a simple var pattern
@@ -377,10 +348,10 @@ where
             let stmt = let_stmt.or(expr.clone());
 
             stmt.clone()
-                .separated_by(just(Token::Semicolon))
+                .separated_by(stmt_sep())
                 .allow_trailing()
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace))
                 .map_with(|exprs, e| {
                     if exprs.is_empty() {
                         Expr::Lit {
@@ -414,11 +385,11 @@ where
         };
 
         // If expression: if cond { then } else { else }
-        let if_expr = just(Token::If)
+        let if_expr = symbol(Token::If)
             .ignore_then(expr.clone())
             .then(expr.clone())
             .then(
-                just(Token::Else)
+                symbol(Token::Else)
                     .ignore_then(expr.clone())
                     .or_not(),
             )
@@ -436,11 +407,11 @@ where
         let match_arm = pattern
             .clone()
             .then(
-                just(Token::If)
+                symbol(Token::If)
                     .ignore_then(expr.clone())
                     .or_not(),
             )
-            .then_ignore(just(Token::FatArrow))
+            .then_ignore(symbol(Token::FatArrow))
             .then(expr.clone())
             .map_with(|((pat, guard), body), e| MatchArm {
                 pattern: pat,
@@ -449,14 +420,14 @@ where
                 span: to_span(e.span()),
             });
 
-        let match_expr = just(Token::Match)
+        let match_expr = symbol(Token::Match)
             .ignore_then(expr.clone())
             .then(
                 match_arm
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .allow_trailing()
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
             )
             .map_with(|(scrutinee, arms), e| Expr::Match {
                 scrutinee: Box::new(scrutinee),
@@ -465,12 +436,12 @@ where
             });
 
         // Recur: recur(args)
-        let recur_expr = just(Token::Recur)
+        let recur_expr = symbol(Token::Recur)
             .ignore_then(
                 expr.clone()
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+                    .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
             )
             .map_with(|args, e| Expr::Recur {
                 args,
@@ -480,10 +451,10 @@ where
         // List literal: [1, 2, 3]
         let list_lit = expr
             .clone()
-            .separated_by(just(Token::Comma))
+            .separated_by(symbol(Token::Comma))
             .allow_trailing()
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
             .map_with(|elements, e| Expr::List {
                 elements,
                 span: to_span(e.span()),
@@ -492,7 +463,7 @@ where
         // Struct literal: Name { field = val, ... }
         let struct_field = select! { Token::Ident(s) => s.to_string() }
             .then(
-                just(Token::Assign)
+                symbol(Token::Assign)
                     .ignore_then(expr.clone())
                     .or_not(),
             )
@@ -507,10 +478,10 @@ where
         let struct_lit = select! { Token::Ident(s) if is_uppercase(s) => s.to_string() }
             .then(
                 struct_field.clone()
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .allow_trailing()
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
             )
             .map_with(|(name, fields), e| Expr::StructLit {
                 name,
@@ -519,16 +490,16 @@ where
             });
 
         // Struct update: { base | field = val, ... }
-        let struct_update = just(Token::LBrace)
+        let struct_update = symbol(Token::LBrace)
             .ignore_then(expr.clone())
-            .then_ignore(just(Token::Pipe))
+            .then_ignore(symbol(Token::Pipe))
             .then(
                 struct_field.clone()
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .allow_trailing()
                     .collect::<Vec<_>>(),
             )
-            .then_ignore(just(Token::RBrace))
+            .then_ignore(closing_symbol(Token::RBrace))
             .map_with(|(base, fields), e| Expr::StructUpdate {
                 base: Box::new(base),
                 fields,
@@ -539,7 +510,7 @@ where
         // Lambda params with optional type annotation
         let lambda_param = select! { Token::Ident(s) => s.to_string() }
             .then(
-                just(Token::Colon)
+                symbol(Token::Colon)
                     .ignore_then(ty.clone())
                     .or_not(),
             )
@@ -550,9 +521,9 @@ where
             });
 
         // Zero-arg lambda: () => body
-        let zero_lambda = just(Token::LParen)
-            .then(just(Token::RParen))
-            .then_ignore(just(Token::FatArrow))
+        let zero_lambda = symbol(Token::LParen)
+            .then(closing_symbol(Token::RParen))
+            .then_ignore(symbol(Token::FatArrow))
             .then(expr.clone())
             .map_with(|(_, body), e| Expr::Lambda {
                 params: vec![],
@@ -564,11 +535,11 @@ where
         // Multi-param lambda: (x, y) => body or (x: Int, y: Int) => body
         let multi_lambda = lambda_param
             .clone()
-            .separated_by(just(Token::Comma))
+            .separated_by(symbol(Token::Comma))
             .at_least(1)
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
-            .then_ignore(just(Token::FatArrow))
+            .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
+            .then_ignore(symbol(Token::FatArrow))
             .then(expr.clone())
             .map_with(|(params, body), e| Expr::Lambda {
                 params,
@@ -584,7 +555,7 @@ where
                 ty: None,
                 span: to_span(e.span()),
             })
-            .then_ignore(just(Token::FatArrow))
+            .then_ignore(symbol(Token::FatArrow))
             .then(expr.clone())
             .map_with(|(param, body), e| Expr::Lambda {
                 params: vec![param],
@@ -596,10 +567,10 @@ where
         // Parenthesized expression or tuple: (expr) or (expr, expr)
         let paren_or_tuple = expr
             .clone()
-            .separated_by(just(Token::Comma))
+            .separated_by(symbol(Token::Comma))
             .at_least(1)
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .map_with(|mut elements, e| {
                 if elements.len() == 1 {
                     elements.remove(0)
@@ -641,19 +612,19 @@ where
         // Function call: expr(args)
         let call_postfix = expr
             .clone()
-            .separated_by(just(Token::Comma))
+            .separated_by(symbol(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .map_with(|args, e| Postfix::Call(args, e.span()));
 
         // Dot access: .ident or .ident(args)
-        let dot_postfix = just(Token::Dot)
+        let dot_postfix = symbol(Token::Dot)
             .ignore_then(select! { Token::Ident(s) => s.to_string() })
             .then(
                 expr.clone()
-                    .separated_by(just(Token::Comma))
+                    .separated_by(symbol(Token::Comma))
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
                     .or_not(),
             )
             .map_with(|(field, args), e| {
@@ -665,7 +636,7 @@ where
             });
 
         // Question mark: expr?
-        let question_postfix = just(Token::Question)
+        let question_postfix = closing_symbol(Token::Question)
             .map_with(|_, e| Postfix::Question(e.span()));
 
         let postfix = choice((dot_postfix, call_postfix, question_postfix));
@@ -714,7 +685,7 @@ where
         // --- Pratt expression with operators ---
         let pratt_expr = atom.pratt((
             // Precedence 1: || (lowest)
-            infix(left(1), just(Token::Or), |lhs, _, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            infix(left(1), symbol(Token::Or), |lhs, _, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::BinaryOp {
                     op: BinOp::Or,
                     lhs: Box::new(lhs),
@@ -723,7 +694,7 @@ where
                 }
             }),
             // Precedence 2: &&
-            infix(left(2), just(Token::And), |lhs, _, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            infix(left(2), symbol(Token::And), |lhs, _, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::BinaryOp {
                     op: BinOp::And,
                     lhs: Box::new(lhs),
@@ -732,14 +703,14 @@ where
                 }
             }),
             // Precedence 3: comparison (non-associative)
-            infix(none(3), select! {
+            infix(none(3), ignored_newlines().ignore_then(select! {
                 Token::Eq => BinOp::Eq,
                 Token::Neq => BinOp::Neq,
                 Token::Lt => BinOp::Lt,
                 Token::Gt => BinOp::Gt,
                 Token::Le => BinOp::Le,
                 Token::Ge => BinOp::Ge,
-            }, |lhs, op, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            }).then_ignore(ignored_newlines()), |lhs, op, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::BinaryOp {
                     op,
                     lhs: Box::new(lhs),
@@ -748,10 +719,10 @@ where
                 }
             }),
             // Precedence 4: + -
-            infix(left(4), select! {
+            infix(left(4), ignored_newlines().ignore_then(select! {
                 Token::Plus => BinOp::Add,
                 Token::Minus => BinOp::Sub,
-            }, |lhs, op, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            }).then_ignore(ignored_newlines()), |lhs, op, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::BinaryOp {
                     op,
                     lhs: Box::new(lhs),
@@ -760,10 +731,10 @@ where
                 }
             }),
             // Precedence 5: * /
-            infix(left(5), select! {
+            infix(left(5), ignored_newlines().ignore_then(select! {
                 Token::Star => BinOp::Mul,
                 Token::Slash => BinOp::Div,
-            }, |lhs, op, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            }).then_ignore(ignored_newlines()), |lhs, op, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::BinaryOp {
                     op,
                     lhs: Box::new(lhs),
@@ -772,14 +743,14 @@ where
                 }
             }),
             // Precedence 6: prefix - and !
-            prefix(6, just(Token::Minus), |_, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            prefix(6, symbol(Token::Minus), |_, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::UnaryOp {
                     op: UnaryOp::Neg,
                     operand: Box::new(rhs),
                     span: to_span(e.span()),
                 }
             }),
-            prefix(6, just(Token::Bang), |_, rhs, e: &mut MapExtra<'_, '_, I, _>| {
+            prefix(6, symbol(Token::Bang), |_, rhs, e: &mut MapExtra<'_, '_, I, _>| {
                 Expr::UnaryOp {
                     op: UnaryOp::Not,
                     operand: Box::new(rhs),
@@ -843,8 +814,8 @@ fn visibility_parser<'tokens, 'src: 'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
-    just(Token::Pub)
-        .ignore_then(just(Token::Open).or_not())
+    symbol(Token::Pub)
+        .ignore_then(symbol(Token::Open).or_not())
         .map(|open| {
             if open.is_some() {
                 Visibility::PubOpen
@@ -868,7 +839,7 @@ where
 
     // --- Type constraint: a: Trait ---
     let type_constraint = select! { Token::Ident(s) => s.to_string() }
-        .then_ignore(just(Token::Colon))
+        .then_ignore(symbol(Token::Colon))
         .then(select! { Token::Ident(s) => s.to_string() })
         .map_with(|(type_var, trait_name), e| TypeConstraint {
             type_var,
@@ -877,10 +848,10 @@ where
         });
 
     // --- Where clause: where a: Ord, b: Eq ---
-    let where_clause = just(Token::Where)
+    let where_clause = symbol(Token::Where)
         .ignore_then(
             type_constraint
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>(),
         )
         .or_not()
@@ -889,7 +860,7 @@ where
     // --- Param: name or name: Type ---
     let param = select! { Token::Ident(s) => s.to_string() }
         .then(
-            just(Token::Colon)
+            symbol(Token::Colon)
                 .ignore_then(ty.clone())
                 .or_not(),
         )
@@ -901,9 +872,9 @@ where
 
     // --- Type params: [a, b] ---
     let type_params = select! { Token::Ident(s) => s.to_string() }
-        .separated_by(just(Token::Comma))
+        .separated_by(symbol(Token::Comma))
         .collect::<Vec<_>>()
-        .delimited_by(just(Token::LBracket), just(Token::RBracket))
+        .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
         .or_not()
         .map(|tp| tp.unwrap_or_default());
 
@@ -912,25 +883,25 @@ where
     // fun name(params) { body }
     let fun_decl = vis
         .clone()
-        .then_ignore(just(Token::Fun))
+        .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(type_params.clone())
         .then(
             param
                 .clone()
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LParen), just(Token::RParen)),
+                .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
         )
         .then(
-            just(Token::Arrow)
+            symbol(Token::Arrow)
                 .ignore_then(ty.clone())
                 .or_not(),
         )
         .then(where_clause.clone())
         .then(
             // = expr or { block }
-            just(Token::Assign)
+            symbol(Token::Assign)
                 .ignore_then(expr.clone())
                 .or(expr.clone()),
         )
@@ -951,23 +922,23 @@ where
     // type Name[params] = { fields } (record)
     // type Name[params] = Variant1 | Variant2 (sum)
     let record_field = select! { Token::Ident(s) => s.to_string() }
-        .then_ignore(just(Token::Colon))
+        .then_ignore(symbol(Token::Colon))
         .then(ty.clone());
 
     let record_kind = record_field
-        .separated_by(just(Token::Comma))
+        .separated_by(symbol(Token::Comma))
         .allow_trailing()
         .collect::<Vec<_>>()
-        .delimited_by(just(Token::LBrace), just(Token::RBrace))
+        .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace))
         .map(|fields| TypeDeclKind::Record { fields });
 
     // Sum variant: Name(types) or bare Name
     let variant = select! { Token::Ident(s) => s.to_string() }
         .then(
             ty.clone()
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LParen), just(Token::RParen))
+                .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
                 .or_not(),
         )
         .map_with(|(name, fields), e| Variant {
@@ -977,28 +948,28 @@ where
         });
 
     let sum_kind = variant
-        .separated_by(just(Token::Pipe))
+        .separated_by(symbol(Token::Pipe))
         .at_least(1)
         .collect::<Vec<_>>()
         .map(|variants| TypeDeclKind::Sum { variants });
 
     // Optional deriving
-    let deriving = just(Token::Deriving)
+    let deriving = symbol(Token::Deriving)
         .ignore_then(
             select! { Token::Ident(s) => s.to_string() }
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LParen), just(Token::RParen)),
+                .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
         )
         .or_not()
         .map(|d| d.unwrap_or_default());
 
     let type_decl = vis
         .clone()
-        .then_ignore(just(Token::Type))
+        .then_ignore(symbol(Token::Type))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(type_params.clone())
-        .then_ignore(just(Token::Assign))
+        .then_ignore(symbol(Token::Assign))
         .then(record_kind.or(sum_kind))
         .then(deriving)
         .map_with(|((((visibility, name), type_params), kind), deriving), e| {
@@ -1018,7 +989,7 @@ where
             Token::Ident(s) => s.to_string(),
             Token::Self_ => "self".to_string(),
         }
-        .then_ignore(just(Token::Colon).labelled("type annotation — trait method parameters require types, e.g. (x: a, y: a)"))
+        .then_ignore(symbol(Token::Colon).labelled("type annotation — trait method parameters require types, e.g. (x: a, y: a)"))
         .then(ty.clone())
         .map_with(|(name, ty_ann), e| Param {
             name,
@@ -1026,22 +997,22 @@ where
             span: to_span(e.span()),
         });
 
-    let trait_method = just(Token::Fun)
+    let trait_method = symbol(Token::Fun)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
         .then(type_params.clone())
         .then(
             trait_method_param
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LParen), just(Token::RParen)),
+                .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
         )
         .then(
-            just(Token::Arrow)
+            symbol(Token::Arrow)
                 .ignore_then(ty.clone())
                 .or_not(),
         )
         .then(
-            just(Token::Assign)
+            symbol(Token::Assign)
                 .ignore_then(expr.clone())
                 .or(expr.clone())
                 .or_not(),
@@ -1062,13 +1033,13 @@ where
             }
         });
 
-    let trait_superclasses = just(Token::Where)
+    let trait_superclasses = symbol(Token::Where)
         .ignore_then(
             select! { Token::Ident(s) => s.to_string() }
-                .then_ignore(just(Token::Colon))
+                .then_ignore(symbol(Token::Colon))
                 .ignore_then(
                     select! { Token::Ident(s) => s.to_string() }
-                        .separated_by(just(Token::Plus).or(just(Token::Comma)))
+                        .separated_by(symbol(Token::Plus).or(symbol(Token::Comma)))
                         .collect::<Vec<_>>(),
                 ),
         )
@@ -1078,11 +1049,11 @@ where
     // Parse trait type parameter: `a` (arity 0) or `f[_]` (arity 1) or `f[_, _]` (arity 2)
     let trait_type_param = select! { Token::Ident(s) => s.to_string() }
         .then(
-            just(Token::Underscore)
-                .separated_by(just(Token::Comma))
+            symbol(Token::Underscore)
+                .separated_by(symbol(Token::Comma))
                 .at_least(1)
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
                 .or_not(),
         )
         .map_with(|(name, holes), e| TraitTypeParam {
@@ -1092,20 +1063,20 @@ where
         });
 
     let trait_decl = vis.clone()
-        .then_ignore(just(Token::Trait))
+        .then_ignore(symbol(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(
             trait_type_param
-                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
         )
         .then(trait_superclasses)
         .then(
             trait_method
                 .clone()
-                .separated_by(just(Token::Semicolon).or_not())
+                .separated_by(stmt_sep().or_not())
                 .allow_trailing()
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(|((((visibility, name), type_param), superclasses), methods), e| Decl::DefTrait {
             visibility,
@@ -1118,22 +1089,22 @@ where
 
     // --- Impl declaration ---
     // impl Trait[Type] { methods } or impl Trait[Type] where constraints { methods }
-    let impl_method = just(Token::Fun)
+    let impl_method = symbol(Token::Fun)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
         .then(type_params.clone())
         .then(
             param
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LParen), just(Token::RParen)),
+                .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
         )
         .then(
-            just(Token::Arrow)
+            symbol(Token::Arrow)
                 .ignore_then(ty.clone())
                 .or_not(),
         )
         .then(
-            just(Token::Assign)
+            symbol(Token::Assign)
                 .ignore_then(expr.clone())
                 .or(expr.clone()),
         )
@@ -1149,7 +1120,7 @@ where
         });
 
     let impl_type_constraint = select! { Token::Ident(s) => s.to_string() }
-        .then_ignore(just(Token::Colon))
+        .then_ignore(symbol(Token::Colon))
         .then(select! { Token::Ident(s) => s.to_string() })
         .map_with(|(type_var, trait_name), e| TypeConstraint {
             type_var,
@@ -1157,28 +1128,28 @@ where
             span: to_span(e.span()),
         });
 
-    let impl_constraints = just(Token::Where)
+    let impl_constraints = symbol(Token::Where)
         .ignore_then(
             impl_type_constraint
-                .separated_by(just(Token::Comma))
+                .separated_by(symbol(Token::Comma))
                 .collect::<Vec<_>>(),
         )
         .or_not()
         .map(|c| c.unwrap_or_default());
 
-    let impl_decl = just(Token::Impl)
+    let impl_decl = symbol(Token::Impl)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })
         .then(
             ty.clone()
-                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
         )
         .then(impl_constraints)
         .then(
             impl_method
-                .separated_by(just(Token::Semicolon).or_not())
+                .separated_by(stmt_sep().or_not())
                 .allow_trailing()
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(|(((trait_name, target_type), type_constraints), methods), e| Decl::DefImpl {
             trait_name,
@@ -1210,21 +1181,21 @@ where
 
     let import_name = select! { Token::Ident(s) => s.to_string() }
         .then(
-            just(Token::As)
+            symbol(Token::As)
                 .ignore_then(select! { Token::Ident(s) => s.to_string() })
                 .or_not(),
         )
         .map(|(name, alias)| ImportName { name, alias });
 
     let import_names = import_name
-        .separated_by(just(Token::Comma))
+        .separated_by(symbol(Token::Comma))
         .collect::<Vec<_>>()
-        .delimited_by(just(Token::Dot).then(just(Token::LBrace)), just(Token::RBrace))
+        .delimited_by(symbol(Token::Dot).then(symbol(Token::LBrace)), closing_symbol(Token::RBrace))
         .or_not()
         .map(|n| n.unwrap_or_default());
 
-    let pub_import_decl = just(Token::Pub)
-        .ignore_then(just(Token::Import))
+    let pub_import_decl = symbol(Token::Pub)
+        .ignore_then(symbol(Token::Import))
         .ignore_then(import_path.clone())
         .then(import_names.clone())
         .map_with(|(path, names), e| Decl::Import {
@@ -1234,7 +1205,7 @@ where
             span: to_span(e.span()),
         });
 
-    let import_decl = just(Token::Import)
+    let import_decl = symbol(Token::Import)
         .ignore_then(import_path)
         .then(import_names)
         .map_with(|(path, names), e| Decl::Import {
@@ -1248,16 +1219,16 @@ where
     // extern "class.Name" { fun method(params) -> Ret }
     let extern_param_types = ty
         .clone()
-        .separated_by(just(Token::Comma))
+        .separated_by(symbol(Token::Comma))
         .collect::<Vec<_>>()
-        .delimited_by(just(Token::LParen), just(Token::RParen));
+        .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen));
 
-    let extern_method = just(Token::Pub).or_not()
-        .then_ignore(just(Token::Fun))
+    let extern_method = symbol(Token::Pub).or_not()
+        .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(extern_param_types)
         .then(
-            just(Token::Arrow)
+            symbol(Token::Arrow)
                 .ignore_then(ty.clone()),
         )
         .map_with(|(((pub_opt, name), param_types), return_type), e| ExternMethod {
@@ -1268,14 +1239,14 @@ where
             span: to_span(e.span()),
         });
 
-    let extern_decl = just(Token::Extern)
+    let extern_decl = symbol(Token::Extern)
         .ignore_then(select! { Token::String(s) => s.to_string() })
         .then(
             extern_method
-                .separated_by(just(Token::Semicolon).or_not())
+                .separated_by(stmt_sep().or_not())
                 .allow_trailing()
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(|(class_name, methods), e| Decl::ExternJava {
             class_name,
@@ -1293,11 +1264,14 @@ fn module_parser<'tokens, 'src: 'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
-    decl_parser()
-        .separated_by(just(Token::Semicolon).or_not())
+    ignored_newlines()
+        .ignore_then(
+            decl_parser()
+        .separated_by(stmt_sep().or_not())
         .allow_trailing()
         .collect::<Vec<_>>()
-        .map(|decls| Module { decls })
+        .map(|decls| Module { decls }))
+        .then_ignore(ignored_newlines())
 }
 
 fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
@@ -1321,7 +1295,6 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
 pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
     let tokens = tokens.unwrap_or_default();
-    let tokens = insert_semicolons(source, tokens);
     tracing::debug!(tokens = tokens.len(), lex_errors = lex_errors.len(), "lexing complete");
 
     let mut errors: Vec<ParseError> = lex_errors

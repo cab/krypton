@@ -2,4 +2,5 @@
 source: crates/parser/tests/lexer_test.rs
 expression: "surface_lex(\"# this is a comment\\n42\")"
 ---
+- Newline
 - Int: 42

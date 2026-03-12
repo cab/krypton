@@ -173,6 +173,57 @@ fn test_struct_literal() {
 }
 
 #[test]
+fn test_multiline_call_argument_with_struct_literal() {
+    let src = r#"
+type Player = { name: String, score: Int }
+fun main() = println(
+  Player { name = "hi", score = 1 }
+)
+"#;
+    let (_module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
+fn test_multiline_function_signature_before_return_arrow() {
+    let src = r#"
+fun fold[T](
+  xs: List[T],
+  start: T,
+  f: (Option[T], T) -> T
+) -> Option[T] {
+  1
+}
+"#;
+    let (_module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
+fn test_block_body_after_assign_is_not_record_like() {
+    let src = r#"
+fun f() = {
+  let x = 1
+  x
+}
+"#;
+    let (_module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
+fn test_multiline_record_type_fields_do_not_use_asi() {
+    let src = r#"
+type Player = {
+  name: String,
+  score: Int,
+}
+"#;
+    let (_module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+}
+
+#[test]
 fn test_import() {
     let (module, errors) = parse("import core/option.{Option, Some, None}");
     assert!(errors.is_empty(), "errors: {errors:?}");

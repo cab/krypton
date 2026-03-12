@@ -2,10 +2,10 @@
 source: crates/parser/tests/diagnostics_test.rs
 expression: plain
 ---
-[P0001] Error: found '42' expected something else
+[P0001] Error: found '42' expected '\n', or something else
    ╭─[ test.kr:1:5 ]
    │
  1 │ fun 42()
    │     ─┬  
-   │      ╰── P0001: found '42' expected something else
+   │      ╰── P0001: found '42' expected '\n', or something else
 ───╯

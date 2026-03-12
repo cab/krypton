@@ -14,6 +14,7 @@ pub enum Token<'src> {
     RBracket,
     LBrace,
     RBrace,
+    Newline,
     // Literals
     Int(i64),
     Float(f64),
@@ -85,6 +86,7 @@ impl fmt::Display for Token<'_> {
             Token::RBracket => write!(f, "]"),
             Token::LBrace => write!(f, "{{"),
             Token::RBrace => write!(f, "}}"),
+            Token::Newline => write!(f, "\\n"),
             Token::Int(n) => write!(f, "{n}"),
             Token::Float(n) => write!(f, "{n}"),
             Token::String(s) => write!(f, "\"{s}\""),
@@ -243,17 +245,25 @@ pub fn lexer<'src>(
         just('}').to(Token::RBrace),
     ));
 
-    // Comments: # to end of line
+    // Significant newlines are emitted as tokens. Horizontal whitespace and comments are trivia.
+    let newline = just('\n').to(Token::Newline);
+
+    // Comments: # to end of line, but do not consume the newline itself.
     let comment = just('#')
         .then(any().and_is(just('\n').not()).repeated())
-        .padded();
+        .ignored();
 
-    let token = choice((num, string, multi_op, ident, single_op, delim));
+    let trivia = choice((
+        one_of(" \t\r").ignored(),
+        comment,
+    ))
+    .repeated();
+
+    let token = choice((newline, num, string, multi_op, ident, single_op, delim));
 
     token
         .map_with(|tok, e| (tok, e.span()))
-        .padded_by(comment.repeated())
-        .padded()
+        .padded_by(trivia)
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .collect()
