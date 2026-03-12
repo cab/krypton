@@ -1,0 +1,8 @@
+# expect: output true
+import core/io.{println}
+import constrained_ref_lib.{render_it}
+
+fun main() = {
+  let f = render_it[Int]
+  println(f(42) == "42")
+}

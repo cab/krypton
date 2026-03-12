@@ -1,0 +1,12 @@
+# expect: output true
+import core/io.{println}
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun use_it[a](x: a) -> String where a: Show = {
+  let f = show_it
+  f(x)
+}
+
+fun main() = println(use_it(42) == "42")

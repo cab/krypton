@@ -1,0 +1,1 @@
+pub fun apply_to_int(f: (Int) -> String, x: Int) -> String = f(x)

@@ -134,6 +134,236 @@ fn match_type_with_bindings(
     }
 }
 
+fn bare_function_ref_name(expr: &TypedExpr) -> Option<&str> {
+    match &expr.kind {
+        TypedExprKind::Var(name) => Some(name.as_str()),
+        TypedExprKind::TypeApp { expr } => bare_function_ref_name(expr),
+        _ => None,
+    }
+}
+
+#[derive(Clone)]
+enum FunctionConstraintRef {
+    TypeParam { trait_name: String, param_idx: usize },
+    TypeVar {
+        trait_name: String,
+        type_var: TypeVarId,
+    },
+}
+
+impl FunctionConstraintRef {
+    fn trait_name(&self) -> &str {
+        match self {
+            FunctionConstraintRef::TypeParam { trait_name, .. }
+            | FunctionConstraintRef::TypeVar { trait_name, .. } => trait_name,
+        }
+    }
+}
+
+fn resolve_function_ref_requirement_type(
+    requirement: &FunctionConstraintRef,
+    declared_param_types: &[Type],
+    actual_param_types: &[Type],
+) -> Option<Type> {
+    match requirement {
+        FunctionConstraintRef::TypeParam { param_idx, .. } => {
+            actual_param_types.get(*param_idx).cloned()
+        }
+        FunctionConstraintRef::TypeVar { type_var, .. } => {
+            let mut bindings = HashMap::new();
+            for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
+                if !match_type_with_bindings(declared, actual, &mut bindings) {
+                    return None;
+                }
+            }
+            bindings.get(type_var).cloned()
+        }
+    }
+}
+
+fn check_constrained_function_refs(
+    expr: &TypedExpr,
+    current_requirements: &[(String, TypeVarId)],
+    fn_schemes: &HashMap<String, TypeScheme>,
+    fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
+    imported_fn_constraints: &HashMap<String, Vec<(String, usize)>>,
+    trait_registry: &TraitRegistry,
+) -> Result<(), SpannedTypeError> {
+    let mut work: Vec<&TypedExpr> = vec![expr];
+    while let Some(expr) = work.pop() {
+        if let Some(name) = bare_function_ref_name(expr) {
+            let fn_type = match &expr.ty {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            if let Type::Fn(actual_param_types, _) = fn_type {
+                let requirements: Vec<FunctionConstraintRef> =
+                    if let Some(reqs) = fn_constraint_requirements.get(name) {
+                        reqs.iter()
+                            .map(|(trait_name, type_var)| FunctionConstraintRef::TypeVar {
+                                trait_name: trait_name.clone(),
+                                type_var: *type_var,
+                            })
+                            .collect()
+                    } else if let Some(reqs) = imported_fn_constraints.get(name) {
+                        reqs.iter()
+                            .map(|(trait_name, param_idx)| FunctionConstraintRef::TypeParam {
+                                trait_name: trait_name.clone(),
+                                param_idx: *param_idx,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+
+                if !requirements.is_empty() {
+                    let scheme = fn_schemes.get(name).ok_or_else(|| {
+                        spanned(
+                            TypeError::UnsupportedExpr {
+                                description: format!(
+                                    "missing function type metadata for constrained function reference `{name}`"
+                                ),
+                            },
+                            expr.span,
+                        )
+                    })?;
+                    let declared_param_types = match &scheme.ty {
+                        Type::Fn(params, _) => params,
+                        other => {
+                            return Err(spanned(
+                                TypeError::UnsupportedExpr {
+                                    description: format!(
+                                        "constrained function reference `{name}` has non-function type `{other}`"
+                                    ),
+                                },
+                                expr.span,
+                            ))
+                        }
+                    };
+
+                    for requirement in &requirements {
+                        let requirement_ty = resolve_function_ref_requirement_type(
+                            requirement,
+                            declared_param_types,
+                            actual_param_types,
+                        )
+                        .ok_or_else(|| {
+                            spanned(
+                                TypeError::UnsupportedExpr {
+                                    description: format!(
+                                        "could not resolve `{}` for constrained function reference `{name}`",
+                                        requirement.trait_name()
+                                    ),
+                                },
+                                expr.span,
+                            )
+                        })?;
+
+                        let requirement_ty = strip_own(&requirement_ty);
+                        if free_vars(&requirement_ty).is_empty() {
+                            if trait_registry
+                                .find_instance(requirement.trait_name(), &requirement_ty)
+                                .is_none()
+                            {
+                                return Err(spanned(
+                                    TypeError::NoInstance {
+                                        trait_name: requirement.trait_name().to_string(),
+                                        ty: format!("{requirement_ty}"),
+                                        required_by: None,
+                                    },
+                                    expr.span,
+                                ));
+                            }
+                            continue;
+                        }
+
+                        if let Type::Var(type_var) = requirement_ty {
+                            if current_requirements.iter().any(|(trait_name, current_type_var)| {
+                                trait_name == requirement.trait_name() && *current_type_var == type_var
+                            }) {
+                                continue;
+                            }
+                        }
+
+                        if current_requirements
+                            .iter()
+                            .any(|(trait_name, _)| trait_name == requirement.trait_name())
+                        {
+                            continue;
+                        }
+
+                        return Err(spanned(
+                            TypeError::UnsupportedExpr {
+                                description: format!(
+                                    "Krypton does not support first-class constrained polymorphic function values like `{name}`; instantiate the function or wrap the call in a lambda"
+                                ),
+                            },
+                            expr.span,
+                        ));
+                    }
+                }
+            }
+        }
+
+        match &expr.kind {
+            TypedExprKind::App { args, .. } => {
+                for arg in args {
+                    work.push(arg);
+                }
+            }
+            TypedExprKind::TypeApp { .. } => {}
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
+            }
+            TypedExprKind::Let { value, body, .. }
+            | TypedExprKind::LetPattern { value, body, .. } => {
+                work.push(value);
+                if let Some(body) = body {
+                    work.push(body);
+                }
+            }
+            TypedExprKind::Do(exprs)
+            | TypedExprKind::Tuple(exprs)
+            | TypedExprKind::Recur(exprs)
+            | TypedExprKind::VecLit(exprs) => {
+                for expr in exprs {
+                    work.push(expr);
+                }
+            }
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms {
+                    work.push(&arm.body);
+                }
+            }
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                work.push(lhs);
+                work.push(rhs);
+            }
+            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, expr) in fields {
+                    work.push(expr);
+                }
+            }
+            TypedExprKind::StructUpdate { base, fields, .. } => {
+                work.push(base);
+                for (_, expr) in fields {
+                    work.push(expr);
+                }
+            }
+            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+        }
+    }
+
+    Ok(())
+}
+
 fn collect_derived_constraints_for_type(
     trait_registry: &TraitRegistry,
     trait_name: &str,
@@ -4202,6 +4432,22 @@ pub(crate) fn infer_module_inner(
     }
     functions.extend(impl_functions);
     functions.extend(derived_impl_functions);
+
+    let fn_schemes: HashMap<String, TypeScheme> = results.iter().cloned().collect();
+    for func in &functions {
+        let current_requirements = fn_constraint_requirements
+            .get(&func.name)
+            .cloned()
+            .unwrap_or_default();
+        check_constrained_function_refs(
+            &func.body,
+            &current_requirements,
+            &fn_schemes,
+            &fn_constraint_requirements,
+            &imported_fn_constraints,
+            &trait_registry,
+        )?;
+    }
 
     // Detect constrained functions: functions that call trait methods on type variables
     let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();

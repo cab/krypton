@@ -1,0 +1,10 @@
+# expect: output true
+import core/io.{println}
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun main() = {
+  let captured_fn_str = show_it[String]
+  println(captured_fn_str("hello") == "hello")
+}

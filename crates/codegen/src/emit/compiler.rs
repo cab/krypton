@@ -638,7 +638,29 @@ impl Compiler {
             }
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
-            TypedExprKind::TypeApp { expr } => self.compile_expr(expr, in_tail),
+            TypedExprKind::TypeApp { expr: inner } => {
+                if let TypedExprKind::Var(name) = &inner.kind {
+                    let fn_type = match &expr.ty {
+                        Type::Own(inner) => inner.as_ref(),
+                        other => other,
+                    };
+                    if matches!(fn_type, Type::Fn(_, _)) && !self.locals.contains_key(name) {
+                        if self.types.functions.contains_key(name)
+                            || self.types.struct_info.contains_key(name)
+                            || self
+                                .types
+                                .variant_to_sum
+                                .get(name)
+                                .and_then(|sum_name| self.types.sum_type_info.get(sum_name))
+                                .and_then(|sum_info| sum_info.variants.get(name))
+                                .is_some_and(|variant| !variant.fields.is_empty())
+                        {
+                            return self.compile_fn_ref(name, &expr.ty);
+                        }
+                    }
+                }
+                self.compile_expr(inner, in_tail)
+            }
             TypedExprKind::Recur(args) => self.compile_recur(args, in_tail, expr.span),
             TypedExprKind::FieldAccess {
                 expr: target,
@@ -1620,6 +1642,7 @@ impl Compiler {
         bridge_name: &str,
         bridge_desc: &str,
         fun_class_idx: u16,
+        capture_count: usize,
     ) -> Result<JvmType, CodegenError> {
         let bsm_handle = self.lambda.ensure_metafactory(&mut self.cp)?;
         let bridge_ref = self
@@ -1644,12 +1667,19 @@ impl Compiler {
         });
 
         let fun_class_name = format!("Fun{arity}");
-        let callsite_desc = format!("()L{fun_class_name};");
+        let mut callsite_desc = String::from("(");
+        for _ in 0..capture_count {
+            callsite_desc.push_str("Ljava/lang/Object;");
+        }
+        callsite_desc.push_str(&format!(")L{fun_class_name};"));
         let indy_idx = self
             .cp
             .add_invoke_dynamic(bsm_index, "apply", &callsite_desc)?;
 
         self.emit(Instruction::Invokedynamic(indy_idx));
+        for _ in 0..capture_count {
+            self.frame.pop_type();
+        }
         let result_type = JvmType::StructRef(fun_class_idx);
         self.push_jvm_type(result_type);
         Ok(result_type)
@@ -1679,9 +1709,30 @@ impl Compiler {
             .ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
         let fun_class_idx = self.lambda.fun_classes[&arity];
 
+        let dict_requirements = if let Some(requirements) =
+            self.traits.impl_dict_requirements.get(name)
+        {
+            requirements.clone()
+        } else {
+            self.traits
+                .fn_constraints
+                .get(name)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
+                    trait_name,
+                    param_idx,
+                })
+                .collect::<Vec<_>>()
+        };
+
         let bridge_name = format!("lambda${}", self.lambda.lambda_counter);
         self.lambda.lambda_counter += 1;
         let mut bridge_desc = String::from("(");
+        for _ in &dict_requirements {
+            bridge_desc.push_str("Ljava/lang/Object;");
+        }
         for _ in &param_jvm_types {
             bridge_desc.push_str("Ljava/lang/Object;");
         }
@@ -1701,13 +1752,18 @@ impl Compiler {
         self.code.clear();
         self.locals.clear();
         self.frame.local_types.clear();
-        self.next_local = param_jvm_types.len() as u16;
+        self.next_local = (dict_requirements.len() + param_jvm_types.len()) as u16;
         self.frame.stack_types.clear();
         self.frame.frames.clear();
         self.frame.max_stack_depth = 0;
         self.fn_params.clear();
         self.fn_return_type = None;
 
+        for _ in &dict_requirements {
+            self.frame.local_types.push(VerificationType::Object {
+                cpool_index: self.refs.object_class,
+            });
+        }
         for _ in &param_jvm_types {
             self.frame.local_types.push(VerificationType::Object {
                 cpool_index: self.refs.object_class,
@@ -1720,15 +1776,24 @@ impl Compiler {
             let is_void = info.is_void;
             let method_ref = info.method_ref;
 
-            if param_types.len() != param_jvm_types.len() {
+            if param_types.len() != dict_requirements.len() + param_jvm_types.len() {
                 return Err(CodegenError::UnsupportedExpr(format!(
-                    "function reference for constrained function `{name}` is not supported"
+                    "function reference `{name}` has mismatched parameter metadata"
                 )));
             }
 
+            let mut bridge_slot = 0u16;
+            for _ in &dict_requirements {
+                self.emit(Instruction::Aload(bridge_slot as u8));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
+                bridge_slot += 1;
+            }
+
             for (i, actual_type) in param_jvm_types.iter().copied().enumerate() {
-                self.load_bridge_arg(i as u16, actual_type);
-                let expected_type = param_types[i];
+                self.load_bridge_arg(bridge_slot, actual_type);
+                let expected_type = param_types[dict_requirements.len() + i];
                 if let JvmType::StructRef(idx) = expected_type {
                     if idx == self.refs.object_class
                         && !matches!(actual_type, JvmType::StructRef(_) | JvmType::Ref)
@@ -1736,6 +1801,7 @@ impl Compiler {
                         self.box_if_needed(actual_type);
                     }
                 }
+                bridge_slot += 1;
             }
 
             self.emit(Instruction::Invokestatic(method_ref));
@@ -1878,7 +1944,40 @@ impl Compiler {
         self.fn_return_type = saved_fn_return_type;
         self.local_fn_info = saved_local_fn_info;
 
-        self.emit_fun_reference_indy(arity, &bridge_name, &bridge_desc, fun_class_idx)
+        if !dict_requirements.is_empty() {
+            let declared_param_types = self
+                .types
+                .fn_tc_types
+                .get(name)
+                .map(|(params, _)| params.clone())
+                .unwrap_or_else(|| param_types.clone());
+            for requirement in &dict_requirements {
+                let requirement_ty = Self::resolve_function_ref_requirement_type(
+                    requirement,
+                    &declared_param_types,
+                    param_types,
+                )
+                .ok_or_else(|| {
+                    CodegenError::UndefinedVariable(format!(
+                        "could not resolve function reference dictionary requirement {} for {name}",
+                        requirement.trait_name()
+                    ))
+                })?;
+                self.emit_dict_argument_for_type(
+                    requirement.trait_name(),
+                    &requirement_ty,
+                    self.refs.object_class,
+                )?;
+            }
+        }
+
+        self.emit_fun_reference_indy(
+            arity,
+            &bridge_name,
+            &bridge_desc,
+            fun_class_idx,
+            dict_requirements.len(),
+        )
     }
 
     fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
@@ -1957,6 +2056,14 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         let name = match &func.kind {
             TypedExprKind::Var(name) => name.as_str(),
+            TypedExprKind::TypeApp { expr } => match &expr.kind {
+                TypedExprKind::Var(name) => name.as_str(),
+                other => {
+                    return Err(CodegenError::UnsupportedExpr(format!(
+                        "non-variable function call: {other:?}"
+                    )))
+                }
+            },
             other => {
                 return Err(CodegenError::UnsupportedExpr(format!(
                     "non-variable function call: {other:?}"
@@ -2799,6 +2906,27 @@ impl Compiler {
                 let mut bindings = HashMap::new();
                 for (param_ty, arg) in param_types.iter().zip(args.iter()) {
                     if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
+                        return None;
+                    }
+                }
+                bindings.get(type_var).cloned()
+            }
+        }
+    }
+
+    fn resolve_function_ref_requirement_type(
+        requirement: &DictRequirement,
+        declared_param_types: &[Type],
+        actual_param_types: &[Type],
+    ) -> Option<Type> {
+        match requirement {
+            DictRequirement::TypeParam { param_idx, .. } => {
+                actual_param_types.get(*param_idx).cloned()
+            }
+            DictRequirement::Constraint { type_var, .. } => {
+                let mut bindings = HashMap::new();
+                for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
+                    if !Self::bind_type_vars(declared, actual, &mut bindings) {
                         return None;
                     }
                 }

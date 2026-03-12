@@ -1,0 +1,10 @@
+# expect: output true
+import core/io.{println}
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun main() = {
+  let f = show_it[Int]
+  println(f(42) == "42")
+}

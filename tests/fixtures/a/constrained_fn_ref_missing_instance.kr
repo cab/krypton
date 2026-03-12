@@ -1,0 +1,10 @@
+# expect: error E0301
+import core/show.{Show}
+
+type Secret = Secret
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun main() = {
+  let f = show_it[Secret]
+  f(Secret)
+}

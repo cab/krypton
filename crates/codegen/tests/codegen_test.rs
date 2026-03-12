@@ -883,3 +883,81 @@ fn test_constrained_instance_class_captures_dictionary_parameter() {
         "expected constrained instance construction with dictionary arg, javap output:\n{test_output}"
     );
 }
+
+#[test]
+fn test_constrained_function_ref_capture_runtime() {
+    let src = r#"
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun main() = {
+  let f = show_it[Int]
+  println(f(42) == "42")
+}
+"#;
+    assert_eq!(run_program(src), "true");
+}
+
+#[test]
+fn test_constrained_function_ref_capture_from_polymorphic_scope_runtime() {
+    let src = r#"
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun use_it[a](x: a) -> String where a: Show = {
+  let f = show_it
+  f(x)
+}
+
+fun main() = println(use_it(42) == "42")
+"#;
+    assert_eq!(run_program(src), "true");
+}
+
+#[test]
+fn test_eta_expansion_of_constrained_function_runtime() {
+    let src = r#"
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+
+fun main() = {
+  let f = y -> show_it[Int](y)
+  println(f(42) == "42")
+}
+"#;
+    assert_eq!(run_program(src), "true");
+}
+
+#[test]
+fn test_constrained_function_ref_capture_uses_invokedynamic_with_capture() {
+    let src = r#"
+import core/show.{Show}
+
+fun show_it[a](x: a) -> String where a: Show = show(x)
+fun stringify(x: Int) -> String = show_it(x)
+
+fun main() = {
+  let constrained = show_it[Int]
+  let plain = stringify
+  println(constrained(1) + plain(2))
+}
+"#;
+    let full_source = format!("{PRINTLN_EXTERN}\n{src}");
+    let (module, errors) = parse(&full_source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let typed_modules =
+        infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check should succeed");
+    let dir = compile_typed_modules(&typed_modules);
+    let test_output = javap_output(&dir.path().join("Test.class"), true);
+    assert!(
+        test_output.contains("InvokeDynamic") && test_output.contains("apply:(Ljava/lang/Object;)LFun1;"),
+        "expected constrained function ref to capture a dictionary, javap output:\n{test_output}"
+    );
+    assert!(
+        test_output.contains("apply:()LFun1;"),
+        "expected unconstrained function ref to keep zero-capture path, javap output:\n{test_output}"
+    );
+}

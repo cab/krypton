@@ -1,0 +1,3 @@
+import core/show.{Show}
+
+pub fun render_it[a](x: a) -> String where a: Show = show(x)

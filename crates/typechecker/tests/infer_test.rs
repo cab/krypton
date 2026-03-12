@@ -939,6 +939,35 @@ fn standalone_explicit_type_application_typechecks() {
 }
 
 #[test]
+fn constrained_polymorphic_function_reference_is_rejected() {
+    let src = r#"
+        import core/show.{Show}
+
+        fun show_it[a](x: a) -> String where a: Show = show(x)
+
+        fun main() = {
+            let r = show_it
+            0
+        }
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    assert!(result.is_err(), "expected constrained polymorphic ref to fail");
+    let err = result.err().unwrap();
+    assert_eq!(err.error.error_code().to_string(), "E0001");
+    let message = err.error.to_string();
+    assert!(
+        message.contains("first-class constrained polymorphic function values"),
+        "unexpected error message: {message}"
+    );
+    assert!(
+        message.contains("lambda"),
+        "expected lambda guidance in error message: {message}"
+    );
+}
+
+#[test]
 fn explicit_type_args_work_with_methods() {
     let src = r#"
         import core/list.{List, Cons, Nil, map}
