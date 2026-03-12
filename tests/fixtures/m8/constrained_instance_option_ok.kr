@@ -1,0 +1,12 @@
+# expect: output true
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Option[a] = Some(a) | None
+
+impl Show[Option[a]] where a: Show {
+    fun show(_value) = "ok"
+}
+
+fun main() = println(show(Some(42)) == "ok")

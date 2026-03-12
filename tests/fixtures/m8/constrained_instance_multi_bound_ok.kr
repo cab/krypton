@@ -1,0 +1,12 @@
+# expect: output true
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Pair[a, b] = Pair(a, b)
+
+impl Show[Pair[a, b]] where a: Eq, b: Show {
+    fun show(_value) = "pair"
+}
+
+fun main() = println(show(Pair(1, "ok")) == "pair")

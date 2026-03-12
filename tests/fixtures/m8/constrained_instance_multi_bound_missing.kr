@@ -1,0 +1,9 @@
+# expect: error E0301
+type Pair[a, b] = Pair(a, b)
+type Secret = Secret(Int)
+
+impl Show[Pair[a, b]] where a: Eq, b: Show {
+    fun show(_value) = "pair"
+}
+
+fun main() = show(Pair(Secret(1), "ok"))

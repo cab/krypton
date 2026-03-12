@@ -170,6 +170,7 @@ pub struct InstanceDefInfo {
     pub trait_name: String,
     pub target_type_name: String,
     pub target_type: Type,
+    pub type_var_ids: HashMap<String, u32>,
     pub constraints: Vec<TypeConstraint>,
     pub qualified_method_names: Vec<(String, String)>, // (method_name, qualified_name)
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances

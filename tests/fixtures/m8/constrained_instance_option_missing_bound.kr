@@ -1,0 +1,9 @@
+# expect: error E0301
+type Option[a] = Some(a) | None
+type Secret = Secret(Int)
+
+impl Show[Option[a]] where a: Show {
+    fun show(_value) = "ok"
+}
+
+fun main() = show(Some(Secret(1)))

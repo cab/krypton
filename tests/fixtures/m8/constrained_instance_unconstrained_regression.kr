@@ -1,0 +1,12 @@
+# expect: output true
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Box = Box(Int)
+
+impl Show[Box] {
+    fun show(_value) = "box"
+}
+
+fun main() = println(show(Box(1)) == "box")
