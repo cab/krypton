@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::types::{Substitution, Type, TypeScheme};
-use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant, Visibility};
+use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint, TypeExpr, UnaryOp, Variant, Visibility};
 
 #[derive(Debug, Clone)]
 pub struct AutoCloseBinding {
@@ -170,6 +170,7 @@ pub struct InstanceDefInfo {
     pub trait_name: String,
     pub target_type_name: String,
     pub target_type: Type,
+    pub constraints: Vec<TypeConstraint>,
     pub qualified_method_names: Vec<(String, String)>, // (method_name, qualified_name)
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
     pub is_intrinsic: bool,                   // true when all method bodies are intrinsic()

@@ -169,6 +169,60 @@ fn infer_module_with_custom_resolver() {
 }
 
 #[test]
+fn impl_where_clause_constraints_are_stored_on_instance_defs() {
+    let src = r#"
+        type Option[a] = Some(a) | None
+
+        trait MyEq[a] {
+            fun eq(x: a, y: a) -> Bool
+        }
+
+        impl MyEq[Option[a]] where a: MyEq {
+            fun eq(x, y) = true
+        }
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+
+    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only()).unwrap();
+    let instance = modules[0]
+        .instance_defs
+        .iter()
+        .find(|inst| inst.trait_name == "MyEq" && inst.target_type_name == "Option")
+        .expect("expected MyEq[Option[a]] instance");
+
+    assert_eq!(instance.constraints.len(), 1);
+    assert_eq!(instance.constraints[0].type_var, "a");
+    assert_eq!(instance.constraints[0].trait_name, "MyEq");
+}
+
+#[test]
+fn impl_without_where_clause_stores_empty_constraints() {
+    let src = r#"
+        type Point = { x: Int, y: Int }
+
+        trait MyEq[a] {
+            fun eq(x: a, y: a) -> Bool
+        }
+
+        impl MyEq[Point] {
+            fun eq(x, y) = true
+        }
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+
+    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only()).unwrap();
+    let instance = modules[0]
+        .instance_defs
+        .iter()
+        .find(|inst| inst.trait_name == "MyEq" && inst.target_type_name == "Point")
+        .expect("expected MyEq[Point] instance");
+
+    assert!(instance.constraints.is_empty());
+}
+
+#[test]
 fn infer_undefined_variable() {
     insta::assert_snapshot!(infer("x"), @"TypeError: unknown variable: x");
 }

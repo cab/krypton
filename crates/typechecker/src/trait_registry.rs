@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use krypton_parser::ast::TypeConstraint;
 use krypton_parser::ast::Span;
 
 use crate::types::Type;
@@ -26,6 +27,7 @@ pub struct InstanceInfo {
     pub trait_name: String,
     pub target_type: Type,
     pub target_type_name: String,
+    pub constraints: Vec<TypeConstraint>,
     pub methods: Vec<String>,
     pub span: Span,
     pub is_builtin: bool,

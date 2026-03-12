@@ -131,6 +131,34 @@ fn free_vars_env(env: &TypeEnv, subst: &Substitution) -> HashSet<TypeVarId> {
     s
 }
 
+fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut HashSet<String>) {
+    match texpr {
+        krypton_parser::ast::TypeExpr::Var { name, .. } => {
+            out.insert(name.clone());
+        }
+        krypton_parser::ast::TypeExpr::App { args, .. } => {
+            for arg in args {
+                collect_type_expr_var_names(arg, out);
+            }
+        }
+        krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
+            for param in params {
+                collect_type_expr_var_names(param, out);
+            }
+            collect_type_expr_var_names(ret, out);
+        }
+        krypton_parser::ast::TypeExpr::Own { inner, .. } => {
+            collect_type_expr_var_names(inner, out);
+        }
+        krypton_parser::ast::TypeExpr::Tuple { elements, .. } => {
+            for element in elements {
+                collect_type_expr_var_names(element, out);
+            }
+        }
+        krypton_parser::ast::TypeExpr::Named { .. } => {}
+    }
+}
+
 fn reserve_gen_for_env_schemes(env: &TypeEnv, gen: &mut TypeVarGen) {
     let mut next_reserved = 0;
     env.for_each_scheme(|scheme| {
@@ -2940,6 +2968,7 @@ pub(crate) fn infer_module_inner(
                             trait_name: inst.trait_name.clone(),
                             target_type: inst.target_type.clone(),
                             target_type_name: inst.target_type_name.clone(),
+                            constraints: inst.constraints.clone(),
                             methods: inst
                                 .qualified_method_names
                                 .iter()
@@ -3197,6 +3226,7 @@ pub(crate) fn infer_module_inner(
                     trait_name: trait_name.clone(),
                     target_type: target_type.clone(),
                     target_type_name: target_type_name.clone(),
+                    constraints: vec![],
                     methods: vec![method_name.to_string()],
                     span: type_decl.span,
                     is_builtin: false,
@@ -3239,6 +3269,7 @@ pub(crate) fn infer_module_inner(
                     trait_name: trait_name.clone(),
                     target_type_name,
                     target_type,
+                    constraints: vec![],
                     qualified_method_names: vec![(method_name.to_string(), qualified_name)],
                     subdict_traits,
                     is_intrinsic: false,
@@ -3265,14 +3296,23 @@ pub(crate) fn infer_module_inner(
         if let Decl::DefImpl {
             trait_name,
             target_type,
+            type_constraints,
             methods: _,
             span,
             ..
         } = decl
         {
-            let empty_map = HashMap::new();
+            let mut impl_type_param_names = HashSet::new();
+            collect_type_expr_var_names(target_type, &mut impl_type_param_names);
+            for constraint in type_constraints {
+                impl_type_param_names.insert(constraint.type_var.clone());
+            }
+            let type_param_map: HashMap<String, TypeVarId> = impl_type_param_names
+                .into_iter()
+                .map(|name| (name, gen.fresh()))
+                .collect();
             let resolved_target =
-                type_registry::resolve_type_expr(target_type, &empty_map, &registry)
+                type_registry::resolve_type_expr(target_type, &type_param_map, &registry)
                     .map_err(|e| spanned(e, *span))?;
 
             // Orphan check: type must be known, and either the type or the trait must be locally defined
@@ -3343,6 +3383,7 @@ pub(crate) fn infer_module_inner(
                 trait_name: trait_name.clone(),
                 target_type: resolved_target,
                 target_type_name: target_name,
+                constraints: type_constraints.clone(),
                 methods: method_names,
                 span: *span,
                 is_builtin: false,
@@ -3730,6 +3771,7 @@ pub(crate) fn infer_module_inner(
                 trait_name: trait_name.clone(),
                 target_type_name,
                 target_type: resolved_target,
+                constraints: instance.constraints.clone(),
                 qualified_method_names,
                 subdict_traits: vec![],
                 is_intrinsic: all_intrinsic,
