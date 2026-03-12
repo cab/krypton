@@ -3032,6 +3032,7 @@ pub(crate) fn infer_module_inner(
                         }
                     }
                     type_provenance.remove(&type_decl.name);
+                    imported_type_info.remove(&type_decl.name);
                 }
             }
 

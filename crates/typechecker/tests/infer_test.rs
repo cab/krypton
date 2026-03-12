@@ -1355,6 +1355,24 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
 }
 
 #[test]
+fn local_prelude_shadow_can_derive_show_without_importing_prelude_instance() {
+    use krypton_modules::module_resolver::StdlibResolver;
+
+    let src = r#"
+        type Option[a] = Some(a) | None deriving (Show)
+        fun main() = println(Some(42))
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &StdlibResolver);
+    assert!(
+        result.is_ok(),
+        "local shadowed prelude type should derive Show independently: {:?}",
+        result.err()
+    );
+}
+
+#[test]
 fn infer_module_private_trait() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {
