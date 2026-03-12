@@ -105,17 +105,54 @@ impl TraitRegistry {
         let trait_info = self.traits.get(trait_name);
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
-                // Extract the type constructor name from the concrete type
-                let ctor_name = match ty {
-                    Type::Named(name, _) => Some(name.as_str()),
-                    _ => None,
-                };
-                if let Some(ctor_name) = ctor_name {
-                    return self.instances.iter().find(|inst| {
-                        inst.trait_name == trait_name && inst.target_type_name == ctor_name
-                    });
-                }
-                return None;
+                resolution_stack.push(key);
+                let matched = self.instances.iter().find(|inst| {
+                    if inst.trait_name != trait_name {
+                        return false;
+                    }
+
+                    let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty) else {
+                        return false;
+                    };
+                    let Some((inst_ctor, inst_bound_args)) =
+                        split_instance_type_constructor(&inst.target_type)
+                    else {
+                        return false;
+                    };
+
+                    let actual_len = actual_bound_args.len();
+                    let inst_len = inst_bound_args.len();
+                    if actual_ctor != inst_ctor
+                        || (actual_len != inst_len && actual_len != inst_len + info.type_var_arity)
+                    {
+                        return false;
+                    }
+
+                    let mut bindings = HashMap::new();
+                    if !inst_bound_args
+                        .iter()
+                        .zip(actual_bound_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
+                        })
+                    {
+                        return false;
+                    }
+
+                    let ctor_binding =
+                        Type::Named(actual_ctor.clone(), actual_bound_args[..inst_len].to_vec());
+
+                    inst.constraints.iter().all(|constraint| {
+                        let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                            return false;
+                        };
+                        let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
+                        self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
+                            .is_some()
+                    })
+                });
+                resolution_stack.pop();
+                return matched;
             }
         }
 
@@ -258,6 +295,27 @@ fn types_match_with_bindings(
     }
 }
 
+fn split_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
+    match ty {
+        Type::Named(name, args) => Some((name.clone(), args.clone())),
+        Type::Own(inner) => split_type_constructor(inner),
+        _ => None,
+    }
+}
+
+fn split_instance_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
+    match ty {
+        Type::Named(name, args) => Some((name.clone(), args.clone())),
+        Type::App(ctor, args) => {
+            let (ctor_name, mut ctor_args) = split_instance_type_constructor(ctor)?;
+            ctor_args.extend(args.iter().cloned());
+            Some((ctor_name, ctor_args))
+        }
+        Type::Own(inner) => split_instance_type_constructor(inner),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
@@ -266,11 +324,15 @@ mod tests {
     use std::collections::HashMap;
 
     fn trait_info(name: &str) -> TraitInfo {
+        trait_info_with_arity(name, 0)
+    }
+
+    fn trait_info_with_arity(name: &str, type_var_arity: usize) -> TraitInfo {
         TraitInfo {
             name: name.to_string(),
             type_var: "a".to_string(),
             type_var_id: 0,
-            type_var_arity: 0,
+            type_var_arity,
             superclasses: vec![],
             methods: Vec::<TraitMethod>::new(),
             span: (0, 0),
@@ -343,5 +405,134 @@ mod tests {
             .unwrap();
 
         assert!(registry.find_instance("Show", &Type::Int).is_none());
+    }
+
+    #[test]
+    fn unconstrained_hkt_instance_still_matches_by_constructor() {
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info_with_arity("Functor", 1))
+            .unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: "Functor".to_string(),
+                target_type: Type::Named("List".to_string(), vec![]),
+                target_type_name: "List".to_string(),
+                type_var_ids: HashMap::new(),
+                constraints: vec![],
+                methods: vec![],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+
+        let list_int = Type::Named("List".to_string(), vec![Type::Int]);
+
+        assert!(registry.find_instance("Functor", &list_int).is_some());
+    }
+
+    #[test]
+    fn constrained_hkt_instance_requires_constructor_bounds() {
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info_with_arity("Functor", 1))
+            .unwrap();
+        registry
+            .register_trait(trait_info_with_arity("Foldable", 1))
+            .unwrap();
+        registry
+            .register_trait(trait_info_with_arity("Traversable", 1))
+            .unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: "Functor".to_string(),
+                target_type: Type::Named("List".to_string(), vec![]),
+                target_type_name: "List".to_string(),
+                type_var_ids: HashMap::new(),
+                constraints: vec![],
+                methods: vec![],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: "Foldable".to_string(),
+                target_type: Type::Named("List".to_string(), vec![]),
+                target_type_name: "List".to_string(),
+                type_var_ids: HashMap::new(),
+                constraints: vec![],
+                methods: vec![],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: "Traversable".to_string(),
+                target_type: Type::Named("List".to_string(), vec![]),
+                target_type_name: "List".to_string(),
+                type_var_ids: HashMap::from([(String::from("f"), 0)]),
+                constraints: vec![
+                    TypeConstraint {
+                        type_var: "f".to_string(),
+                        trait_name: "Functor".to_string(),
+                        span: (0, 0),
+                    },
+                    TypeConstraint {
+                        type_var: "f".to_string(),
+                        trait_name: "Foldable".to_string(),
+                        span: (0, 0),
+                    },
+                ],
+                methods: vec![],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+
+        let list_int = Type::Named("List".to_string(), vec![Type::Int]);
+
+        assert!(registry.find_instance("Traversable", &list_int).is_some());
+    }
+
+    #[test]
+    fn constrained_hkt_instance_binds_partially_applied_constructor_arguments() {
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info("Show"))
+            .unwrap();
+        registry
+            .register_trait(trait_info_with_arity("Functor", 1))
+            .unwrap();
+        registry
+            .register_instance(instance("Show", Type::Int, "Int", vec![]))
+            .unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: "Functor".to_string(),
+                target_type: Type::Named("Result".to_string(), vec![Type::Var(0)]),
+                target_type_name: "Result".to_string(),
+                type_var_ids: HashMap::from([(String::from("e"), 0)]),
+                constraints: vec![TypeConstraint {
+                    type_var: "e".to_string(),
+                    trait_name: "Show".to_string(),
+                    span: (0, 0),
+                }],
+                methods: vec![],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+
+        let result_int_string =
+            Type::Named("Result".to_string(), vec![Type::Int, Type::String]);
+        let result_blob_string = Type::Named(
+            "Result".to_string(),
+            vec![Type::Named("Blob".to_string(), vec![]), Type::String],
+        );
+
+        assert!(registry.find_instance("Functor", &result_int_string).is_some());
+        assert!(registry.find_instance("Functor", &result_blob_string).is_none());
     }
 }
