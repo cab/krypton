@@ -615,7 +615,27 @@ impl Compiler {
             TypedExprKind::Let { name, value, body } => {
                 self.compile_let(name, value, body, in_tail, expr.span)
             }
-            TypedExprKind::Var(name) => self.compile_var(name),
+            TypedExprKind::Var(name) => {
+                let fn_type = match &expr.ty {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                if matches!(fn_type, Type::Fn(_, _)) && !self.locals.contains_key(name) {
+                    if self.types.functions.contains_key(name)
+                        || self.types.struct_info.contains_key(name)
+                        || self
+                            .types
+                            .variant_to_sum
+                            .get(name)
+                            .and_then(|sum_name| self.types.sum_type_info.get(sum_name))
+                            .and_then(|sum_info| sum_info.variants.get(name))
+                            .is_some_and(|variant| !variant.fields.is_empty())
+                    {
+                        return self.compile_fn_ref(name, &expr.ty);
+                    }
+                }
+                self.compile_var(name)
+            }
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
             TypedExprKind::TypeApp { expr } => self.compile_expr(expr, in_tail),
@@ -1170,8 +1190,16 @@ impl Compiler {
         in_tail: bool,
         span: krypton_parser::ast::Span,
     ) -> Result<JvmType, CodegenError> {
-        // Check if the value is a lambda — record its type info for higher-order calls
-        let is_lambda = matches!(value.kind, TypedExprKind::Lambda { .. });
+        // Function-typed bindings need local_fn_info so later `f(args)` calls can
+        // unbox/cast the invokeinterface result correctly.
+        let is_fn_value = matches!(value.kind, TypedExprKind::Lambda { .. })
+            || matches!(
+                match &value.ty {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                },
+                Type::Fn(_, _)
+            );
 
         // Emit shadow close for old binding before compiling new value
         // (shadow close happens after new value is on stack but before store)
@@ -1222,8 +1250,8 @@ impl Compiler {
         self.emit(store);
         self.locals.insert(name.to_string(), (slot, ty));
 
-        // If the value was a lambda, record local_fn_info from the TypedExpr's type
-        if is_lambda {
+        // If the value is function-typed, record local_fn_info from the TypedExpr's type.
+        if is_fn_value {
             let fn_type = match &value.ty {
                 Type::Own(inner) => inner.as_ref(),
                 other => other,
@@ -1560,6 +1588,297 @@ impl Compiler {
                 "unsupported pattern in let: {pattern:?}"
             ))),
         }
+    }
+
+    fn load_bridge_arg(&mut self, slot: u16, actual_type: JvmType) {
+        self.emit(Instruction::Aload(slot as u8));
+        self.frame.push_type(VerificationType::Object {
+            cpool_index: self.refs.object_class,
+        });
+        match actual_type {
+            JvmType::Long | JvmType::Double | JvmType::Int => self.unbox_if_needed(actual_type),
+            JvmType::Ref => {
+                self.emit(Instruction::Checkcast(self.refs.string_class));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.string_class,
+                });
+            }
+            JvmType::StructRef(idx) if idx != self.refs.object_class => {
+                self.emit(Instruction::Checkcast(idx));
+                self.frame.pop_type();
+                self.frame
+                    .push_type(VerificationType::Object { cpool_index: idx });
+            }
+            JvmType::StructRef(_) => {}
+        }
+    }
+
+    fn emit_fun_reference_indy(
+        &mut self,
+        arity: u8,
+        bridge_name: &str,
+        bridge_desc: &str,
+        fun_class_idx: u16,
+    ) -> Result<JvmType, CodegenError> {
+        let bsm_handle = self.lambda.ensure_metafactory(&mut self.cp)?;
+        let bridge_ref = self
+            .cp
+            .add_method_ref(self.this_class, bridge_name, bridge_desc)?;
+        let bridge_handle = self
+            .cp
+            .add_method_handle(ReferenceKind::InvokeStatic, bridge_ref)?;
+
+        let mut sam_desc = String::from("(");
+        for _ in 0..arity {
+            sam_desc.push_str("Ljava/lang/Object;");
+        }
+        sam_desc.push_str(")Ljava/lang/Object;");
+        let sam_type = self.cp.add_method_type(&sam_desc)?;
+        let instantiated_type = self.cp.add_method_type(&sam_desc)?;
+
+        let bsm_index = self.lambda.bootstrap_methods.len() as u16;
+        self.lambda.bootstrap_methods.push(BootstrapMethod {
+            bootstrap_method_ref: bsm_handle,
+            arguments: vec![sam_type, bridge_handle, instantiated_type],
+        });
+
+        let fun_class_name = format!("Fun{arity}");
+        let callsite_desc = format!("()L{fun_class_name};");
+        let indy_idx = self
+            .cp
+            .add_invoke_dynamic(bsm_index, "apply", &callsite_desc)?;
+
+        self.emit(Instruction::Invokedynamic(indy_idx));
+        let result_type = JvmType::StructRef(fun_class_idx);
+        self.push_jvm_type(result_type);
+        Ok(result_type)
+    }
+
+    fn compile_fn_ref(&mut self, name: &str, expr_ty: &Type) -> Result<JvmType, CodegenError> {
+        let fn_type = match expr_ty {
+            Type::Own(inner) => inner.as_ref(),
+            other => other,
+        };
+        let (param_types, ret_type) = match fn_type {
+            Type::Fn(param_types, ret_type) => (param_types, ret_type),
+            other => {
+                return Err(CodegenError::TypeError(format!(
+                    "function reference has non-function type: {other}"
+                )))
+            }
+        };
+        let param_jvm_types = param_types
+            .iter()
+            .map(|ty| self.type_to_jvm(ty))
+            .collect::<Result<Vec<_>, _>>()?;
+        let ret_jvm = self.type_to_jvm(ret_type)?;
+        let arity = param_jvm_types.len() as u8;
+
+        self.lambda
+            .ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
+        let fun_class_idx = self.lambda.fun_classes[&arity];
+
+        let bridge_name = format!("lambda${}", self.lambda.lambda_counter);
+        self.lambda.lambda_counter += 1;
+        let mut bridge_desc = String::from("(");
+        for _ in &param_jvm_types {
+            bridge_desc.push_str("Ljava/lang/Object;");
+        }
+        bridge_desc.push_str(")Ljava/lang/Object;");
+
+        let saved_code = std::mem::take(&mut self.code);
+        let saved_locals = std::mem::take(&mut self.locals);
+        let saved_local_types = std::mem::take(&mut self.frame.local_types);
+        let saved_next_local = self.next_local;
+        let saved_stack_types = std::mem::take(&mut self.frame.stack_types);
+        let saved_frames = std::mem::take(&mut self.frame.frames);
+        let saved_max_stack_depth = self.frame.max_stack_depth;
+        let saved_fn_params = std::mem::take(&mut self.fn_params);
+        let saved_fn_return_type = self.fn_return_type.take();
+        let saved_local_fn_info = std::mem::take(&mut self.local_fn_info);
+
+        self.code.clear();
+        self.locals.clear();
+        self.frame.local_types.clear();
+        self.next_local = param_jvm_types.len() as u16;
+        self.frame.stack_types.clear();
+        self.frame.frames.clear();
+        self.frame.max_stack_depth = 0;
+        self.fn_params.clear();
+        self.fn_return_type = None;
+
+        for _ in &param_jvm_types {
+            self.frame.local_types.push(VerificationType::Object {
+                cpool_index: self.refs.object_class,
+            });
+        }
+
+        if let Some(info) = self.types.functions.get(name) {
+            let param_types = info.param_types.clone();
+            let return_type = info.return_type;
+            let is_void = info.is_void;
+            let method_ref = info.method_ref;
+
+            if param_types.len() != param_jvm_types.len() {
+                return Err(CodegenError::UnsupportedExpr(format!(
+                    "function reference for constrained function `{name}` is not supported"
+                )));
+            }
+
+            for (i, actual_type) in param_jvm_types.iter().copied().enumerate() {
+                self.load_bridge_arg(i as u16, actual_type);
+                let expected_type = param_types[i];
+                if let JvmType::StructRef(idx) = expected_type {
+                    if idx == self.refs.object_class
+                        && !matches!(actual_type, JvmType::StructRef(_) | JvmType::Ref)
+                    {
+                        self.box_if_needed(actual_type);
+                    }
+                }
+            }
+
+            self.emit(Instruction::Invokestatic(method_ref));
+            for actual_type in param_types.iter().rev().copied() {
+                self.pop_jvm_type(actual_type);
+            }
+            if is_void {
+                self.emit(Instruction::Iconst_0);
+                self.frame.push_type(VerificationType::Integer);
+            } else {
+                self.push_jvm_type(return_type);
+                match ret_jvm {
+                    JvmType::Long | JvmType::Double | JvmType::Int
+                        if matches!(return_type, JvmType::StructRef(idx) if idx == self.refs.object_class) =>
+                    {
+                        self.unbox_if_needed(ret_jvm);
+                    }
+                    JvmType::Ref
+                        if matches!(return_type, JvmType::StructRef(idx) if idx == self.refs.object_class) =>
+                    {
+                        self.emit(Instruction::Checkcast(self.refs.string_class));
+                        self.frame.pop_type();
+                        self.frame.push_type(VerificationType::Object {
+                            cpool_index: self.refs.string_class,
+                        });
+                    }
+                    JvmType::StructRef(idx)
+                        if idx != self.refs.object_class
+                            && matches!(return_type, JvmType::StructRef(ret_idx) if ret_idx == self.refs.object_class) =>
+                    {
+                        self.emit(Instruction::Checkcast(idx));
+                        self.frame.pop_type();
+                        self.frame
+                            .push_type(VerificationType::Object { cpool_index: idx });
+                    }
+                    _ => {}
+                }
+            }
+        } else if let Some(si) = self.types.struct_info.get(name) {
+            let class_index = si.class_index;
+            let constructor_ref = si.constructor_ref;
+            let field_types: Vec<JvmType> = si.fields.iter().map(|(_, ty)| *ty).collect();
+
+            self.emit(Instruction::New(class_index));
+            self.frame.push_type(VerificationType::UninitializedThis);
+            self.emit(Instruction::Dup);
+            self.frame.push_type(VerificationType::UninitializedThis);
+
+            for (i, actual_type) in field_types.iter().copied().enumerate() {
+                self.load_bridge_arg(i as u16, actual_type);
+            }
+
+            self.emit(Instruction::Invokespecial(constructor_ref));
+            for actual_type in field_types.iter().rev().copied() {
+                self.pop_jvm_type(actual_type);
+            }
+            self.frame.pop_type();
+            self.frame.pop_type();
+            self.push_jvm_type(JvmType::StructRef(class_index));
+        } else if let Some(sum_name) = self.types.variant_to_sum.get(name).cloned() {
+            let sum_info = &self.types.sum_type_info[&sum_name];
+            let variant = &sum_info.variants[name];
+            let class_index = variant.class_index;
+            let constructor_ref = variant.constructor_ref;
+            let interface_class_index = sum_info.interface_class_index;
+            let fields = variant.fields.clone();
+
+            self.emit(Instruction::New(class_index));
+            self.frame.push_type(VerificationType::UninitializedThis);
+            self.emit(Instruction::Dup);
+            self.frame.push_type(VerificationType::UninitializedThis);
+
+            for (i, ((_field_name, field_type, is_erased), actual_type)) in
+                fields.iter().zip(param_jvm_types.iter().copied()).enumerate()
+            {
+                self.load_bridge_arg(i as u16, actual_type);
+                if *is_erased {
+                    self.box_if_needed(actual_type);
+                } else if *field_type != actual_type {
+                    return Err(CodegenError::TypeError(format!(
+                        "variant reference `{name}` expected bridge arg type {field_type:?}, got {actual_type:?}"
+                    )));
+                }
+            }
+
+            self.emit(Instruction::Invokespecial(constructor_ref));
+            for (_field_name, actual_type, is_erased) in fields.iter().rev() {
+                if *is_erased {
+                    self.frame.pop_type();
+                } else {
+                    self.pop_jvm_type(*actual_type);
+                }
+            }
+            self.frame.pop_type();
+            self.frame.pop_type();
+            self.push_jvm_type(JvmType::StructRef(interface_class_index));
+        } else {
+            return Err(CodegenError::UndefinedVariable(name.to_string()));
+        }
+
+        let bridge_result = self.box_if_needed(ret_jvm);
+        debug_assert!(matches!(bridge_result, JvmType::Ref | JvmType::StructRef(_)));
+        self.emit(Instruction::Areturn);
+
+        let bridge_name_idx = self.cp.add_utf8(&bridge_name)?;
+        let bridge_desc_idx = self.cp.add_utf8(&bridge_desc)?;
+        let stack_map_frames = self.frame.build_stack_map_frames();
+        let code_attributes = if stack_map_frames.is_empty() {
+            vec![]
+        } else {
+            vec![Attribute::StackMapTable {
+                name_index: self.refs.smt_name,
+                frames: stack_map_frames,
+            }]
+        };
+        self.lambda.lambda_methods.push(Method {
+            access_flags: MethodAccessFlags::PRIVATE
+                | MethodAccessFlags::STATIC
+                | MethodAccessFlags::SYNTHETIC,
+            name_index: bridge_name_idx,
+            descriptor_index: bridge_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: self.refs.code_utf8,
+                max_stack: self.frame.max_stack(),
+                max_locals: self.next_local,
+                code: std::mem::take(&mut self.code),
+                exception_table: vec![],
+                attributes: code_attributes,
+            }],
+        });
+
+        self.code = saved_code;
+        self.locals = saved_locals;
+        self.frame.local_types = saved_local_types;
+        self.next_local = saved_next_local;
+        self.frame.stack_types = saved_stack_types;
+        self.frame.frames = saved_frames;
+        self.frame.max_stack_depth = saved_max_stack_depth;
+        self.fn_params = saved_fn_params;
+        self.fn_return_type = saved_fn_return_type;
+        self.local_fn_info = saved_local_fn_info;
+
+        self.emit_fun_reference_indy(arity, &bridge_name, &bridge_desc, fun_class_idx)
     }
 
     fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
