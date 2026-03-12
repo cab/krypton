@@ -16,7 +16,7 @@ pub use compiler::{CodegenError, JvmType};
 
 use compiler::{
     Compiler, FunctionInfo, StructInfo, VariantInfo, SumTypeInfo, TupleInfo, TraitDispatchInfo,
-    InstanceSingletonInfo, ParameterizedInstanceInfo, VecInfo,
+    DictRequirement, InstanceSingletonInfo, ParameterizedInstanceInfo, VecInfo,
 };
 use class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
@@ -497,6 +497,18 @@ fn compile_module_inner(
     // Process trait definitions: generate interface classes
     compiler.traits.trait_method_map = typed_module.trait_method_map.clone();
     compiler.traits.fn_constraints = typed_module.fn_constraints.clone();
+    for (name, requirements) in &typed_module.fn_constraint_requirements {
+        compiler.traits.impl_dict_requirements.insert(
+            name.clone(),
+            requirements
+                .iter()
+                .map(|(trait_name, type_var)| DictRequirement::Constraint {
+                    trait_name: trait_name.clone(),
+                    type_var: *type_var,
+                })
+                .collect(),
+        );
+    }
     // Merge imported function constraints so cross-module calls get dict args
     for (name, constraints) in &typed_module.imported_fn_constraints {
         compiler.traits.fn_constraints.entry(name.clone()).or_insert_with(|| constraints.clone());
@@ -624,6 +636,32 @@ fn compile_module_inner(
         }
         let q_trait = qualify_type(&instance_def.trait_name);
         let instance_class_name = format!("{}${}", q_trait, instance_def.target_type_name);
+        let mut dict_requirements: Vec<DictRequirement> = instance_def
+            .subdict_traits
+            .iter()
+            .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
+                trait_name: trait_name.clone(),
+                param_idx: *param_idx,
+            })
+            .collect();
+        for constraint in &instance_def.constraints {
+            if let Some(&type_var) = instance_def.type_var_ids.get(&constraint.type_var) {
+                if !dict_requirements.iter().any(|requirement| {
+                    matches!(
+                        requirement,
+                        DictRequirement::Constraint {
+                            trait_name,
+                            type_var: existing_type_var,
+                        } if trait_name == &constraint.trait_name && *existing_type_var == type_var
+                    )
+                }) {
+                    dict_requirements.push(DictRequirement::Constraint {
+                        trait_name: constraint.trait_name.clone(),
+                        type_var,
+                    });
+                }
+            }
+        }
 
         // Collect method info for the instance class
         let mut method_info = Vec::new();
@@ -639,10 +677,21 @@ fn compile_module_inner(
                         .map(|t| compiler.type_to_jvm(t))
                         .collect::<Result<_, _>>()?;
                     let ret_jvm = compiler.type_to_jvm(ret_ty)?;
-                    // Build the static method descriptor, prepending dict params if constrained
-                    let constraint_traits = typed_module.fn_constraints.get(qualified_name).cloned().unwrap_or_default();
+                    compiler
+                        .traits
+                        .impl_dict_requirements
+                        .insert(qualified_name.clone(), dict_requirements.clone());
+                    let fn_constraint_count = if dict_requirements.is_empty() {
+                        typed_module
+                            .fn_constraints
+                            .get(qualified_name)
+                            .map(|constraints| constraints.len())
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
                     let mut all_param_jvm = Vec::new();
-                    for _ in &constraint_traits {
+                    for _ in 0..(dict_requirements.len() + fn_constraint_count) {
                         all_param_jvm.push(JvmType::StructRef(compiler.refs.object_class));
                     }
                     all_param_jvm.extend(param_jvm.iter().copied());
@@ -662,7 +711,7 @@ fn compile_module_inner(
             }
         }
 
-        if instance_def.subdict_traits.is_empty() {
+        if dict_requirements.is_empty() {
             // Simple singleton instance
             let instance_bytes = generate_instance_class(
                 &instance_class_name,
@@ -686,7 +735,7 @@ fn compile_module_inner(
                 InstanceSingletonInfo { instance_field_ref },
             );
         } else {
-            // Parameterized instance — needs subdictionaries
+            // Parameterized instance — needs dictionaries
             let instance_bytes = generate_parameterized_instance_class(
                 &instance_class_name,
                 &q_trait,
@@ -695,7 +744,7 @@ fn compile_module_inner(
                 &param_jvm_types_map,
                 &return_jvm_types_map,
                 &param_class_names_map,
-                instance_def.subdict_traits.len(),
+                dict_requirements.len(),
             )?;
             result_classes.push((instance_class_name.clone(), instance_bytes));
 
@@ -703,7 +752,8 @@ fn compile_module_inner(
                 (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
                 ParameterizedInstanceInfo {
                     class_name: instance_class_name.clone(),
-                    subdict_traits: instance_def.subdict_traits.clone(),
+                    target_type: instance_def.target_type.clone(),
+                    requirements: dict_requirements,
                 },
             );
         }
@@ -769,10 +819,24 @@ fn compile_module_inner(
             {
                 continue;
             }
-            // For constrained functions, prepend dict params (one Object per trait constraint)
-            let constraint_traits = compiler.traits.fn_constraints.get(name).cloned().unwrap_or_default();
+            let impl_dict_count = compiler
+                .traits
+                .impl_dict_requirements
+                .get(name)
+                .map(|requirements| requirements.len())
+                .unwrap_or(0);
+            let fn_constraint_count = if impl_dict_count == 0 {
+                compiler
+                    .traits
+                    .fn_constraints
+                    .get(name)
+                    .map(|constraints| constraints.len())
+                    .unwrap_or(0)
+            } else {
+                0
+            };
             let mut all_param_types: Vec<JvmType> = Vec::new();
-            for _ in &constraint_traits {
+            for _ in 0..(impl_dict_count + fn_constraint_count) {
                 all_param_types.push(JvmType::StructRef(compiler.refs.object_class));
             }
             let user_param_types: Vec<JvmType> = param_tys

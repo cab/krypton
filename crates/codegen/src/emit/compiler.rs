@@ -334,14 +334,37 @@ pub(super) struct TraitState {
     pub(super) instance_singletons: HashMap<(String, String), InstanceSingletonInfo>,
     pub(super) trait_method_map: HashMap<String, String>,
     pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
+    pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
     pub(super) dict_locals: HashMap<String, u16>,
     pub(super) parameterized_instances: HashMap<(String, String), ParameterizedInstanceInfo>,
 }
 
 #[derive(Clone)]
+pub(super) enum DictRequirement {
+    TypeParam {
+        trait_name: String,
+        param_idx: usize,
+    },
+    Constraint {
+        trait_name: String,
+        type_var: u32,
+    },
+}
+
+impl DictRequirement {
+    fn trait_name(&self) -> &str {
+        match self {
+            DictRequirement::TypeParam { trait_name, .. }
+            | DictRequirement::Constraint { trait_name, .. } => trait_name,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct ParameterizedInstanceInfo {
     pub(super) class_name: String,
-    pub(super) subdict_traits: Vec<(String, usize)>,
+    pub(super) target_type: Type,
+    pub(super) requirements: Vec<DictRequirement>,
 }
 
 /// Info about the Vec backing class (KryptonArray).
@@ -478,6 +501,7 @@ impl Compiler {
                 instance_singletons: HashMap::new(),
                 trait_method_map: HashMap::new(),
                 fn_constraints: HashMap::new(),
+                impl_dict_requirements: HashMap::new(),
                 dict_locals: HashMap::new(),
                 parameterized_instances: HashMap::new(),
             },
@@ -1736,99 +1760,12 @@ impl Compiler {
                 let is_type_var = matches!(first_arg_ty, Type::Var(_));
 
                 // Load the dictionary (trait interface reference)
-                if is_type_var {
-                    // Load dict from local variable (constrained function's dict param)
-                    if let Some(&dict_slot) = self.traits.dict_locals.get(&trait_name) {
-                        self.emit(Instruction::Aload(dict_slot as u8));
-                        self.frame.push_type(VerificationType::Object {
-                            cpool_index: iface_class,
-                        });
-                    } else {
-                        return Err(CodegenError::UndefinedVariable(format!(
-                            "no dict local for trait {trait_name}"
-                        )));
-                    }
-                } else {
-                    // Concrete type — getstatic Instance.INSTANCE or construct parameterized
-                    let type_name = type_to_name(first_arg_ty);
-                    if let Some(singleton) = self
-                        .traits
-                        .instance_singletons
-                        .get(&(trait_name.clone(), type_name.clone()))
-                    {
-                        let field_ref = singleton.instance_field_ref;
-                        self.emit(Instruction::Getstatic(field_ref));
-                        self.frame.push_type(VerificationType::Object {
-                            cpool_index: iface_class,
-                        });
-                    } else if let Some(param_info) = self
-                        .traits
-                        .parameterized_instances
-                        .get(&(trait_name.clone(), type_name.clone()))
-                        .cloned()
-                    {
-                        // Construct parameterized instance on the fly — lazily resolve CP entries
-                        let inst_class = self.cp.add_class(&param_info.class_name)?;
-                        self.types
-                            .class_descriptors
-                            .insert(inst_class, format!("L{};", param_info.class_name));
-                        let mut init_desc = String::from("(");
-                        for _ in &param_info.subdict_traits {
-                            init_desc.push_str("Ljava/lang/Object;");
-                        }
-                        init_desc.push_str(")V");
-                        let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
-                        self.emit(Instruction::New(inst_class));
-                        self.frame.push_type(VerificationType::Object {
-                            cpool_index: inst_class,
-                        });
-                        self.emit(Instruction::Dup);
-                        self.frame.push_type(VerificationType::Object {
-                            cpool_index: inst_class,
-                        });
-                        // Push subdictionaries
-                        for (subdict_trait, param_idx) in &param_info.subdict_traits {
-                            // Resolve the type arg at param_idx
-                            let type_arg = match first_arg_ty {
-                                Type::Named(_, type_args) => &type_args[*param_idx],
-                                Type::Own(inner) => {
-                                    if let Type::Named(_, type_args) = inner.as_ref() {
-                                        &type_args[*param_idx]
-                                    } else {
-                                        first_arg_ty
-                                    }
-                                }
-                                _ => first_arg_ty,
-                            };
-                            let sub_type_name = type_to_name(type_arg);
-                            if let Some(singleton) = self
-                                .traits
-                                .instance_singletons
-                                .get(&(subdict_trait.clone(), sub_type_name.clone()))
-                            {
-                                let field_ref = singleton.instance_field_ref;
-                                self.emit(Instruction::Getstatic(field_ref));
-                                self.frame.push_type(VerificationType::Object {
-                                    cpool_index: self.refs.object_class,
-                                });
-                            } else {
-                                return Err(CodegenError::UndefinedVariable(format!(
-                                    "no instance of {subdict_trait} for {sub_type_name}"
-                                )));
-                            }
-                        }
-                        self.emit(Instruction::Invokespecial(init_ref));
-                        // Pop subdict args + dup from stack, leave one instance ref
-                        for _ in &param_info.subdict_traits {
-                            self.frame.pop_type();
-                        }
-                        self.frame.pop_type(); // dup
-                    } else {
-                        return Err(CodegenError::UndefinedVariable(format!(
-                            "no instance of {trait_name} for {type_name}"
-                        )));
-                    }
+                if is_type_var && !self.traits.dict_locals.contains_key(&trait_name) {
+                    return Err(CodegenError::UndefinedVariable(format!(
+                        "no dict local for trait {trait_name}"
+                    )));
                 }
+                self.emit_dict_argument_for_type(&trait_name, first_arg_ty, iface_class)?;
 
                 // Compile and box all arguments
                 let arity = args.len();
@@ -1893,6 +1830,12 @@ impl Compiler {
         }
 
         // Check if calling a constrained function — need to prepend dict args
+        let explicit_requirements = self
+            .traits
+            .impl_dict_requirements
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
         let constraint_traits = self
             .traits
             .fn_constraints
@@ -1912,104 +1855,46 @@ impl Compiler {
         let is_void = info.is_void;
 
         // Push dict args first for constrained functions
-        if !constraint_traits.is_empty() {
+        if !explicit_requirements.is_empty() {
+            if let Some((param_patterns, _)) = self.types.fn_tc_types.get(name).cloned() {
+                for requirement in &explicit_requirements {
+                    let requirement_ty = Self::resolve_function_requirement_type(
+                        requirement,
+                        &param_patterns,
+                        args,
+                    )
+                    .ok_or_else(|| {
+                        CodegenError::UndefinedVariable(format!(
+                            "could not resolve function dictionary requirement {} for {name}",
+                            requirement.trait_name()
+                        ))
+                    })?;
+                    self.emit_dict_argument_for_type(
+                        requirement.trait_name(),
+                        &requirement_ty,
+                        self.refs.object_class,
+                    )?;
+                }
+            }
+        } else if !constraint_traits.is_empty() {
             for (trait_name, param_idx) in &constraint_traits {
                 // Determine concrete type from the constrained parameter
                 if let Some(target_arg) = args.get(*param_idx) {
-                    let target_arg_ty = &target_arg.ty;
-                    let is_type_var = matches!(target_arg_ty, Type::Var(_));
-                    if is_type_var {
-                        // Forward our own dict local
-                        if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
-                            self.emit(Instruction::Aload(dict_slot as u8));
-                            self.frame.push_type(VerificationType::Object {
-                                cpool_index: self.refs.object_class,
-                            });
-                        }
-                    } else {
-                        let type_name = type_to_name(target_arg_ty);
-                        if let Some(singleton) = self
-                            .traits
-                            .instance_singletons
-                            .get(&(trait_name.clone(), type_name.clone()))
-                        {
-                            let field_ref = singleton.instance_field_ref;
-                            self.emit(Instruction::Getstatic(field_ref));
-                            self.frame.push_type(VerificationType::Object {
-                                cpool_index: self.refs.object_class,
-                            });
-                        } else if let Some(param_info) = self
-                            .traits
-                            .parameterized_instances
-                            .get(&(trait_name.clone(), type_name.clone()))
-                            .cloned()
-                        {
-                            // Construct parameterized instance on the fly
-                            let inst_class = self.cp.add_class(&param_info.class_name)?;
-                            self.types
-                                .class_descriptors
-                                .insert(inst_class, format!("L{};", param_info.class_name));
-                            let mut init_desc = String::from("(");
-                            for _ in &param_info.subdict_traits {
-                                init_desc.push_str("Ljava/lang/Object;");
-                            }
-                            init_desc.push_str(")V");
-                            let init_ref =
-                                self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
-                            self.emit(Instruction::New(inst_class));
-                            self.frame.push_type(VerificationType::Object {
-                                cpool_index: inst_class,
-                            });
-                            self.emit(Instruction::Dup);
-                            self.frame.push_type(VerificationType::Object {
-                                cpool_index: inst_class,
-                            });
-                            for (subdict_trait, sub_param_idx) in &param_info.subdict_traits {
-                                let type_arg = match target_arg_ty {
-                                    Type::Named(_, type_args) => &type_args[*sub_param_idx],
-                                    Type::Own(inner) => {
-                                        if let Type::Named(_, type_args) = inner.as_ref() {
-                                            &type_args[*sub_param_idx]
-                                        } else {
-                                            target_arg_ty
-                                        }
-                                    }
-                                    _ => target_arg_ty,
-                                };
-                                let sub_type_name = type_to_name(type_arg);
-                                if let Some(singleton) = self
-                                    .traits
-                                    .instance_singletons
-                                    .get(&(subdict_trait.clone(), sub_type_name.clone()))
-                                {
-                                    let field_ref = singleton.instance_field_ref;
-                                    self.emit(Instruction::Getstatic(field_ref));
-                                    self.frame.push_type(VerificationType::Object {
-                                        cpool_index: self.refs.object_class,
-                                    });
-                                } else {
-                                    return Err(CodegenError::UndefinedVariable(format!(
-                                        "no instance of {subdict_trait} for {sub_type_name}"
-                                    )));
-                                }
-                            }
-                            self.emit(Instruction::Invokespecial(init_ref));
-                            for _ in &param_info.subdict_traits {
-                                self.frame.pop_type();
-                            }
-                            self.frame.pop_type(); // dup
-                        } else {
-                            return Err(CodegenError::UndefinedVariable(format!(
-                                "no instance of {trait_name} for {type_name}"
-                            )));
-                        }
-                    }
+                    self.emit_dict_argument_for_type(
+                        trait_name,
+                        &target_arg.ty,
+                        self.refs.object_class,
+                    )?;
                 }
             }
         }
 
         // Compile each argument, boxing/casting if needed for erased type params
-        let dict_offset = constraint_traits.len();
+        let dict_offset = if !explicit_requirements.is_empty() {
+            explicit_requirements.len()
+        } else {
+            constraint_traits.len()
+        };
         for (i, arg) in args.iter().enumerate() {
             let arg_type = self.compile_expr(arg, false)?;
             let expected = param_types[i + dict_offset];
@@ -2428,6 +2313,177 @@ impl Compiler {
             }
             _ => {} // already a reference type, no unboxing needed
         }
+    }
+
+    fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<u32, Type>) -> bool {
+        match (pattern, actual) {
+            (Type::Var(id), ty) => {
+                bindings.insert(*id, ty.clone());
+                true
+            }
+            (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
+                p_name == a_name
+                    && p_args.len() == a_args.len()
+                    && p_args
+                        .iter()
+                        .zip(a_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
+                        })
+            }
+            (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
+                Self::bind_type_vars(p_ctor, a_ctor, bindings)
+                    && p_args.len() == a_args.len()
+                    && p_args
+                        .iter()
+                        .zip(a_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
+                        })
+            }
+            (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
+            (ty, Type::Own(actual_inner)) => Self::bind_type_vars(ty, actual_inner, bindings),
+            (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
+                p_elems.len() == a_elems.len()
+                    && p_elems
+                        .iter()
+                        .zip(a_elems.iter())
+                        .all(|(pattern_elem, actual_elem)| {
+                            Self::bind_type_vars(pattern_elem, actual_elem, bindings)
+                        })
+            }
+            _ => pattern == actual,
+        }
+    }
+
+    fn extract_type_arg(ty: &Type, param_idx: usize) -> Option<Type> {
+        match ty {
+            Type::Named(_, args) => args.get(param_idx).cloned(),
+            Type::Own(inner) => Self::extract_type_arg(inner, param_idx),
+            _ => None,
+        }
+    }
+
+    fn resolve_dict_requirement_type(
+        requirement: &DictRequirement,
+        instance_info: &ParameterizedInstanceInfo,
+        concrete_ty: &Type,
+    ) -> Option<Type> {
+        match requirement {
+            DictRequirement::TypeParam { param_idx, .. } => {
+                Self::extract_type_arg(concrete_ty, *param_idx)
+            }
+            DictRequirement::Constraint { type_var, .. } => {
+                let mut bindings = HashMap::new();
+                if Self::bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
+                    bindings.get(type_var).cloned()
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn resolve_function_requirement_type(
+        requirement: &DictRequirement,
+        param_types: &[Type],
+        args: &[TypedExpr],
+    ) -> Option<Type> {
+        match requirement {
+            DictRequirement::TypeParam { param_idx, .. } => {
+                args.get(*param_idx).map(|arg| arg.ty.clone())
+            }
+            DictRequirement::Constraint { type_var, .. } => {
+                let mut bindings = HashMap::new();
+                for (param_ty, arg) in param_types.iter().zip(args.iter()) {
+                    if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
+                        return None;
+                    }
+                }
+                bindings.get(type_var).cloned()
+            }
+        }
+    }
+
+    fn emit_dict_argument_for_type(
+        &mut self,
+        trait_name: &str,
+        ty: &Type,
+        pushed_class: u16,
+    ) -> Result<(), CodegenError> {
+        if let Type::Var(_) = ty {
+            if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
+                self.emit(Instruction::Aload(dict_slot as u8));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: pushed_class,
+                });
+                return Ok(());
+            }
+        }
+
+        let type_name = type_to_name(ty);
+        if let Some(singleton) = self
+            .traits
+            .instance_singletons
+            .get(&(trait_name.to_string(), type_name.clone()))
+        {
+            self.emit(Instruction::Getstatic(singleton.instance_field_ref));
+            self.frame.push_type(VerificationType::Object {
+                cpool_index: pushed_class,
+            });
+            return Ok(());
+        }
+
+        if let Some(instance_info) = self
+            .traits
+            .parameterized_instances
+            .get(&(trait_name.to_string(), type_name))
+            .cloned()
+        {
+            let inst_class = self.cp.add_class(&instance_info.class_name)?;
+            self.types
+                .class_descriptors
+                .insert(inst_class, format!("L{};", instance_info.class_name));
+            let mut init_desc = String::from("(");
+            for _ in &instance_info.requirements {
+                init_desc.push_str("Ljava/lang/Object;");
+            }
+            init_desc.push_str(")V");
+            let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+            self.emit(Instruction::New(inst_class));
+            self.frame.push_type(VerificationType::Object {
+                cpool_index: inst_class,
+            });
+            self.emit(Instruction::Dup);
+            self.frame.push_type(VerificationType::Object {
+                cpool_index: inst_class,
+            });
+            for requirement in &instance_info.requirements {
+                let requirement_ty =
+                    Self::resolve_dict_requirement_type(requirement, &instance_info, ty)
+                        .ok_or_else(|| {
+                            CodegenError::UndefinedVariable(format!(
+                                "could not resolve dictionary requirement {} for {ty}",
+                                requirement.trait_name()
+                            ))
+                        })?;
+                self.emit_dict_argument_for_type(
+                    requirement.trait_name(),
+                    &requirement_ty,
+                    self.refs.object_class,
+                )?;
+            }
+            self.emit(Instruction::Invokespecial(init_ref));
+            for _ in &instance_info.requirements {
+                self.frame.pop_type();
+            }
+            self.frame.pop_type();
+            return Ok(());
+        }
+
+        Err(CodegenError::UndefinedVariable(format!(
+            "no instance of {trait_name} for {ty}"
+        )))
     }
 
     /// Compile a lambda expression.
@@ -3743,18 +3799,31 @@ impl Compiler {
         let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
 
         // Register dict params for constrained functions (leading params before user params)
-        let constraint_traits = self
-            .traits
-            .fn_constraints
-            .get(&decl.name)
-            .cloned()
-            .unwrap_or_default();
-        let num_dict_params = constraint_traits.len();
+        let dict_requirements = if let Some(requirements) =
+            self.traits.impl_dict_requirements.get(&decl.name)
+        {
+            requirements.clone()
+        } else {
+            self.traits
+                .fn_constraints
+                .get(&decl.name)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
+                    trait_name,
+                    param_idx,
+                })
+                .collect()
+        };
+        let num_dict_params = dict_requirements.len();
         let mut fn_params = Vec::new();
-        for (trait_name, _) in &constraint_traits {
+        for requirement in &dict_requirements {
             let slot = self.next_local;
             let jvm_ty = JvmType::StructRef(self.refs.object_class);
-            self.traits.dict_locals.insert(trait_name.clone(), slot);
+            self.traits
+                .dict_locals
+                .insert(requirement.trait_name().to_string(), slot);
             fn_params.push((slot, jvm_ty));
             self.next_local += 1;
             self.frame.local_types.push(VerificationType::Object {

@@ -192,6 +192,7 @@ pub struct TypedModule {
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
     pub fn_constraints: HashMap<String, Vec<(String, usize)>>,
+    pub fn_constraint_requirements: HashMap<String, Vec<(String, u32)>>,
     /// Constraints inherited from imported modules (e.g., `println` requires `Show`).
     pub imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub trait_method_map: HashMap<String, String>,

@@ -3497,6 +3497,7 @@ pub(crate) fn infer_module_inner(
     // Store results indexed by declaration order
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
+    let mut fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>> = HashMap::new();
 
     // Process each SCC in topological order (dependencies first)
     for component in &sccs {
@@ -3517,6 +3518,21 @@ pub(crate) fn infer_module_inner(
             let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
             for tp in &decl.type_params {
                 type_param_map.insert(tp.clone(), gen.fresh());
+            }
+            if !decl.constraints.is_empty() {
+                let requirements: Vec<(String, TypeVarId)> = decl
+                    .constraints
+                    .iter()
+                    .filter_map(|constraint| {
+                        type_param_map
+                            .get(&constraint.type_var)
+                            .copied()
+                            .map(|type_var| (constraint.trait_name.clone(), type_var))
+                    })
+                    .collect();
+                if !requirements.is_empty() {
+                    fn_constraint_requirements.insert(decl.name.clone(), requirements);
+                }
             }
 
             let mut param_types = Vec::new();
@@ -3984,6 +4000,7 @@ pub(crate) fn infer_module_inner(
         trait_defs,
         instance_defs,
         fn_constraints,
+        fn_constraint_requirements,
         imported_fn_constraints,
         trait_method_map: trait_method_map.clone(),
         extern_fns,

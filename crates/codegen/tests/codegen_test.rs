@@ -1,7 +1,14 @@
 use krypton_codegen::emit::compile_modules;
+use krypton_parser::ast::{BinOp, Lit, TypeConstraint, TypeExpr, Variant, Visibility};
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
+use krypton_typechecker::typed_ast::{
+    AutoCloseInfo, ExternFnInfo, InstanceDefInfo, TraitDefInfo, TypedExpr, TypedExprKind,
+    TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+};
+use krypton_typechecker::types::{Type, TypeScheme};
 use krypton_modules::module_resolver::CompositeResolver;
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
@@ -56,6 +63,342 @@ fn run_program(source: &str) -> String {
     );
 
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn javap_output(class_file: &std::path::Path, verbose: bool) -> String {
+    let mut cmd = Command::new("javap");
+    if verbose {
+        cmd.arg("-v");
+    } else {
+        cmd.arg("-p");
+    }
+    let output = cmd.arg(class_file).output().expect("javap");
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+fn compile_typed_modules(typed_modules: &[TypedModule]) -> tempfile::TempDir {
+    let classes = compile_modules(typed_modules, "Test").expect("compile_modules should succeed");
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let class_path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = class_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let mut f = std::fs::File::create(&class_path).unwrap();
+        f.write_all(bytes).unwrap();
+    }
+    dir
+}
+
+fn run_typed_modules(typed_modules: &[TypedModule]) -> String {
+    let dir = compile_typed_modules(typed_modules);
+    let output = Command::new("java")
+        .arg("-cp")
+        .arg(build_classpath(dir.path()))
+        .arg("Test")
+        .output()
+        .expect("java command should run");
+
+    assert!(
+        output.status.success(),
+        "java exited with {}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn string_lit(value: &str) -> TypedExpr {
+    TypedExpr {
+        kind: TypedExprKind::Lit(Lit::String(value.to_string())),
+        ty: Type::String,
+        span: (0, 0),
+    }
+}
+
+fn int_lit(value: i64) -> TypedExpr {
+    TypedExpr {
+        kind: TypedExprKind::Lit(Lit::Int(value)),
+        ty: Type::Int,
+        span: (0, 0),
+    }
+}
+
+fn var_expr(name: &str, ty: Type) -> TypedExpr {
+    TypedExpr {
+        kind: TypedExprKind::Var(name.to_string()),
+        ty,
+        span: (0, 0),
+    }
+}
+
+fn app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type) -> TypedExpr {
+    TypedExpr {
+        kind: TypedExprKind::App {
+            func: Box::new(var_expr(name, func_ty)),
+            args,
+        },
+        ty: ret_ty,
+        span: (0, 0),
+    }
+}
+
+fn concat_expr(lhs: TypedExpr, rhs: TypedExpr) -> TypedExpr {
+    TypedExpr {
+        kind: TypedExprKind::BinaryOp {
+            op: BinOp::Add,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        },
+        ty: Type::String,
+        span: (0, 0),
+    }
+}
+
+fn wrap_type(inner: Type) -> Type {
+    Type::Named("Wrap".to_string(), vec![inner])
+}
+
+fn wrap_expr(inner: TypedExpr) -> TypedExpr {
+    let inner_ty = inner.ty.clone();
+    app_expr(
+        "Wrap",
+        Type::Fn(vec![inner_ty.clone()], Box::new(wrap_type(inner_ty.clone()))),
+        vec![inner],
+        wrap_type(inner_ty),
+    )
+}
+
+fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) -> TypedModule {
+    let a_ty = Type::Var(0);
+    let wrap_a_ty = wrap_type(a_ty.clone());
+    let wrap_int_ty = if nested {
+        wrap_type(wrap_type(Type::Int))
+    } else {
+        wrap_type(Type::Int)
+    };
+
+    let inner_pattern = TypedPattern::Var {
+        name: "inner".to_string(),
+        ty: a_ty.clone(),
+        span: (0, 0),
+    };
+    let wrap_pattern = TypedPattern::Constructor {
+        name: "Wrap".to_string(),
+        args: vec![inner_pattern],
+        ty: wrap_a_ty.clone(),
+        span: (0, 0),
+    };
+    let empty_pattern = TypedPattern::Constructor {
+        name: "Empty".to_string(),
+        args: vec![],
+        ty: wrap_a_ty.clone(),
+        span: (0, 0),
+    };
+
+    let render_inner = app_expr(
+        "render",
+        Type::Fn(vec![a_ty.clone()], Box::new(Type::String)),
+        vec![var_expr("inner", a_ty.clone())],
+        Type::String,
+    );
+    let wrap_render_body = TypedExpr {
+        kind: TypedExprKind::Match {
+            scrutinee: Box::new(var_expr("value", wrap_a_ty.clone())),
+            arms: vec![
+                TypedMatchArm {
+                    pattern: wrap_pattern,
+                    body: concat_expr(
+                        string_lit("Wrap("),
+                        concat_expr(render_inner, string_lit(")")),
+                    ),
+                },
+                TypedMatchArm {
+                    pattern: empty_pattern,
+                    body: string_lit("Empty"),
+                },
+            ],
+        },
+        ty: Type::String,
+        span: (0, 0),
+    };
+
+    let wrapped_main_value = if nested {
+        wrap_expr(wrap_expr(int_lit(42)))
+    } else {
+        wrap_expr(int_lit(42))
+    };
+    let rendered_main_value = if use_polymorphic_wrapper {
+        app_expr(
+            "render_wrap",
+            Type::Fn(vec![wrap_int_ty.clone()], Box::new(Type::String)),
+            vec![wrapped_main_value],
+            Type::String,
+        )
+    } else {
+        app_expr(
+            "render",
+            Type::Fn(vec![wrap_int_ty.clone()], Box::new(Type::String)),
+            vec![wrapped_main_value],
+            Type::String,
+        )
+    };
+
+    let mut fn_types = vec![
+        (
+            "Render$Int$render".to_string(),
+            TypeScheme::mono(Type::Fn(vec![Type::Int], Box::new(Type::String))),
+        ),
+        (
+            "Render$Wrap$render".to_string(),
+            TypeScheme {
+                vars: vec![0],
+                ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
+            },
+        ),
+        (
+            "main".to_string(),
+            TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
+        ),
+    ];
+
+    let mut functions = vec![
+        TypedFnDecl {
+            name: "Render$Int$render".to_string(),
+            visibility: Visibility::Pub,
+            params: vec!["x".to_string()],
+            body: string_lit("x"),
+        },
+        TypedFnDecl {
+            name: "Render$Wrap$render".to_string(),
+            visibility: Visibility::Pub,
+            params: vec!["value".to_string()],
+            body: wrap_render_body,
+        },
+    ];
+
+    let mut fn_constraints = HashMap::new();
+    let mut fn_constraint_requirements = HashMap::new();
+    if use_polymorphic_wrapper {
+        fn_types.push((
+            "render_wrap".to_string(),
+            TypeScheme {
+                vars: vec![0],
+                ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
+            },
+        ));
+        functions.push(TypedFnDecl {
+            name: "render_wrap".to_string(),
+            visibility: Visibility::Pub,
+            params: vec!["value".to_string()],
+            body: app_expr(
+                "render",
+                Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
+                vec![var_expr("value", wrap_a_ty.clone())],
+                Type::String,
+            ),
+        });
+        fn_constraints.insert("render_wrap".to_string(), vec![("Render".to_string(), 0)]);
+        fn_constraint_requirements.insert("render_wrap".to_string(), vec![("Render".to_string(), 0)]);
+    }
+
+    functions.push(TypedFnDecl {
+        name: "main".to_string(),
+        visibility: Visibility::Pub,
+        params: vec![],
+        body: app_expr(
+            "println",
+            Type::Fn(
+                vec![Type::Named("Object".to_string(), vec![])],
+                Box::new(Type::Unit),
+            ),
+            vec![rendered_main_value],
+            Type::Unit,
+        ),
+    });
+
+    TypedModule {
+        module_path: None,
+        fn_types,
+        functions,
+        trait_defs: vec![TraitDefInfo {
+            name: "Render".to_string(),
+            methods: vec![("render".to_string(), 1)],
+            is_imported: false,
+        }],
+        instance_defs: vec![
+            InstanceDefInfo {
+                trait_name: "Render".to_string(),
+                target_type_name: "Int".to_string(),
+                target_type: Type::Int,
+                type_var_ids: HashMap::new(),
+                constraints: vec![],
+                qualified_method_names: vec![(
+                    "render".to_string(),
+                    "Render$Int$render".to_string(),
+                )],
+                subdict_traits: vec![],
+                is_intrinsic: false,
+            },
+            InstanceDefInfo {
+                trait_name: "Render".to_string(),
+                target_type_name: "Wrap".to_string(),
+                target_type: wrap_a_ty.clone(),
+                type_var_ids: HashMap::from([("a".to_string(), 0)]),
+                constraints: vec![TypeConstraint {
+                    type_var: "a".to_string(),
+                    trait_name: "Render".to_string(),
+                    span: (0, 0),
+                }],
+                qualified_method_names: vec![(
+                    "render".to_string(),
+                    "Render$Wrap$render".to_string(),
+                )],
+                subdict_traits: vec![],
+                is_intrinsic: false,
+            },
+        ],
+        fn_constraints,
+        fn_constraint_requirements,
+        imported_fn_constraints: HashMap::new(),
+        trait_method_map: HashMap::from([("render".to_string(), "Render".to_string())]),
+        extern_fns: vec![ExternFnInfo {
+            name: "println".to_string(),
+            java_class: "krypton.runtime.KryptonIO".to_string(),
+            param_types: vec![Type::Named("Object".to_string(), vec![])],
+            return_type: Type::Unit,
+        }],
+        imported_extern_fns: vec![],
+        struct_decls: vec![],
+        sum_decls: vec![(
+            "Wrap".to_string(),
+            vec!["a".to_string()],
+            vec![
+                Variant {
+                    name: "Wrap".to_string(),
+                    fields: vec![TypeExpr::Var {
+                        name: "a".to_string(),
+                        span: (0, 0),
+                    }],
+                    span: (0, 0),
+                },
+                Variant {
+                    name: "Empty".to_string(),
+                    fields: vec![],
+                    span: (0, 0),
+                },
+            ],
+        )],
+        fn_provenance: HashMap::new(),
+        type_provenance: HashMap::new(),
+        type_visibility: HashMap::new(),
+        reexported_fn_types: vec![],
+        reexported_type_names: vec![],
+        reexported_type_visibility: HashMap::new(),
+        exported_trait_defs: vec![],
+        auto_close: AutoCloseInfo::default(),
+    }
 }
 
 #[test]
@@ -444,4 +787,39 @@ type Maybe[a] = Just(a) | Nothing deriving (Show)
 fun main() = println(show(Just(42)))
 "#;
     assert_eq!(run_program(src), "Just(42)");
+}
+
+#[test]
+fn test_constrained_instance_dictionary_passing_runtime() {
+    let module = build_constrained_render_module(false, false);
+    assert_eq!(run_typed_modules(&[module]), "Wrap(x)");
+}
+
+#[test]
+fn test_constrained_instance_dictionary_passing_nested_runtime() {
+    let module = build_constrained_render_module(false, true);
+    assert_eq!(run_typed_modules(&[module]), "Wrap(Wrap(x))");
+}
+
+#[test]
+fn test_constrained_instance_dictionary_forwarding_from_polymorphic_context() {
+    let module = build_constrained_render_module(true, false);
+    assert_eq!(run_typed_modules(&[module]), "Wrap(x)");
+}
+
+#[test]
+fn test_constrained_instance_class_captures_dictionary_parameter() {
+    let module = build_constrained_render_module(false, false);
+    let dir = compile_typed_modules(&[module]);
+    let class_output = javap_output(&dir.path().join("Render$Wrap.class"), false);
+    assert!(
+        class_output.contains("java.lang.Object dict0;"),
+        "expected constrained instance to store dictionary field, javap output:\n{class_output}"
+    );
+
+    let test_output = javap_output(&dir.path().join("Test.class"), true);
+    assert!(
+        test_output.contains("Method Render$Wrap.\"<init>\":(Ljava/lang/Object;)V"),
+        "expected constrained instance construction with dictionary arg, javap output:\n{test_output}"
+    );
 }
