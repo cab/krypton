@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ristretto_classfile::attributes::{Attribute, Instruction};
+use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, Field, FieldAccessFlags, FieldType, Method,
     MethodAccessFlags,
@@ -8,6 +8,39 @@ use ristretto_classfile::{
 
 use super::{JAVA_21, jvm_type_to_field_descriptor, jvm_type_to_base_field_type};
 use super::compiler::{JvmType, CodegenError};
+
+fn object_vtype(cpool_index: u16) -> VerificationType {
+    VerificationType::Object { cpool_index }
+}
+
+fn bridge_locals(this_class: u16, is_unary: bool, object_class: u16) -> Vec<VerificationType> {
+    let mut locals = vec![object_vtype(this_class), object_vtype(object_class)];
+    if !is_unary {
+        locals.push(object_vtype(object_class));
+    }
+    locals
+}
+
+fn branch_bridge_frames(
+    branch_target: u16,
+    join_target: u16,
+    locals: &[VerificationType],
+) -> Vec<StackFrame> {
+    vec![
+        StackFrame::FullFrame {
+            frame_type: 255,
+            offset_delta: branch_target,
+            locals: locals.to_vec(),
+            stack: vec![],
+        },
+        StackFrame::FullFrame {
+            frame_type: 255,
+            offset_delta: join_target - branch_target - 1,
+            locals: locals.to_vec(),
+            stack: vec![VerificationType::Integer],
+        },
+    ]
+}
 
 pub(super) fn generate_struct_class(
     name: &str,
@@ -830,6 +863,7 @@ pub(super) fn generate_builtin_trait_instance_class(
     let object_class = cp.add_class("java/lang/Object")?;
     let interface_class = cp.add_class(trait_interface_name)?;
     let code_utf8 = cp.add_utf8("Code")?;
+    let smt_name = cp.add_utf8("StackMapTable")?;
     let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
     let init_name = cp.add_utf8("<init>")?;
     let init_desc = cp.add_utf8("()V")?;
@@ -894,9 +928,17 @@ pub(super) fn generate_builtin_trait_instance_class(
     let method_desc_idx = cp.add_utf8(iface_desc)?;
 
     // Build bridge method bytecode
-    let (bridge_code, max_stack, max_locals) = build_bridge_bytecode(
-        &mut cp, bare_trait_name, type_name, is_unary,
+    let (bridge_code, max_stack, max_locals, bridge_frames) = build_bridge_bytecode(
+        &mut cp, this_class, object_class, bare_trait_name, type_name, is_unary,
     )?;
+    let bridge_attributes = if bridge_frames.is_empty() {
+        vec![]
+    } else {
+        vec![Attribute::StackMapTable {
+            name_index: smt_name,
+            frames: bridge_frames,
+        }]
+    };
 
     let bridge_method = Method {
         access_flags: MethodAccessFlags::PUBLIC,
@@ -908,7 +950,7 @@ pub(super) fn generate_builtin_trait_instance_class(
             max_locals,
             code: bridge_code,
             exception_table: vec![],
-            attributes: vec![],
+            attributes: bridge_attributes,
         }],
     };
 
@@ -940,11 +982,14 @@ pub(super) fn generate_builtin_trait_instance_class(
 /// Build the bridge method bytecode for a built-in trait instance.
 fn build_bridge_bytecode(
     cp: &mut ConstantPool,
+    this_class: u16,
+    object_class: u16,
     trait_name: &str,
     type_name: &str,
-    _is_unary: bool,
-) -> Result<(Vec<Instruction>, u16, u16), CodegenError> {
+    is_unary: bool,
+) -> Result<(Vec<Instruction>, u16, u16, Vec<StackFrame>), CodegenError> {
     let mut code = Vec::new();
+    let locals = bridge_locals(this_class, is_unary, object_class);
 
     match (trait_name, type_name) {
         // Binary arithmetic: Int (Long)
@@ -972,7 +1017,7 @@ fn build_bridge_bytecode(
             // Box result
             code.push(Instruction::Invokestatic(long_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3))
+            Ok((code, 4, 3, vec![]))
         }
 
         // Binary arithmetic: Float (Double)
@@ -996,7 +1041,7 @@ fn build_bridge_bytecode(
             code.push(op);
             code.push(Instruction::Invokestatic(double_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3))
+            Ok((code, 4, 3, vec![]))
         }
 
         // Unary Neg: Int
@@ -1010,7 +1055,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Lneg);
             code.push(Instruction::Invokestatic(long_box));
             code.push(Instruction::Areturn);
-            Ok((code, 2, 2))
+            Ok((code, 2, 2, vec![]))
         }
 
         // Unary Neg: Float
@@ -1024,7 +1069,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Dneg);
             code.push(Instruction::Invokestatic(double_box));
             code.push(Instruction::Areturn);
-            Ok((code, 2, 2))
+            Ok((code, 2, 2, vec![]))
         }
 
         // Eq: Int — Lcmp + branch
@@ -1048,7 +1093,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Iconst_0);              // false
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3))
+            Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
         }
 
         // Eq: Float — Dcmpl + branch
@@ -1071,7 +1116,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Iconst_0);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3))
+            Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
         }
 
         // Eq: String — String.equals
@@ -1086,7 +1131,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Invokevirtual(string_equals));
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 2, 3))
+            Ok((code, 2, 3, vec![]))
         }
 
         // Eq: Bool — unbox + compare
@@ -1109,7 +1154,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Iconst_1);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 2, 3))
+            Ok((code, 2, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
         }
 
         // Ord: Int — Lcmp + Iflt
@@ -1133,7 +1178,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Iconst_0);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3))
+            Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
         }
 
         // Ord: Float — Dcmpl + Iflt
@@ -1156,7 +1201,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Iconst_0);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3))
+            Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
         }
 
         // Add: String — String.concat
@@ -1171,7 +1216,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Checkcast(string_class));
             code.push(Instruction::Invokevirtual(string_concat));
             code.push(Instruction::Areturn);
-            Ok((code, 2, 3))
+            Ok((code, 2, 3, vec![]))
         }
 
         _ => Err(CodegenError::UnsupportedExpr(format!(
