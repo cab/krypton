@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
-    BinOp, Decl, Expr, ExternMethod, ImportName, Lit, Module, Span, TypeConstraint,
+    BinOp, Decl, Expr, ExternMethod, Lit, Module, Span, TypeConstraint,
     TypeDecl, TypeDeclKind, TypeParam, UnaryOp, Variant, Visibility,
 };
 
@@ -30,6 +30,7 @@ fn constructor_names(td: &TypeDecl) -> Vec<String> {
 }
 
 mod expr;
+mod imports;
 
 #[derive(Clone)]
 pub(super) struct QualifiedExport {
@@ -1357,6 +1358,397 @@ pub fn infer_module_single(
     Ok(modules.remove(0))
 }
 
+/// State accumulated during the bootstrap phases of module inference
+/// (env setup, import processing, extern loading, type registration).
+/// Consumed by `assemble_typed_module` at the end.
+pub(crate) struct ModuleInferenceState {
+    // Core inference state
+    pub(crate) env: TypeEnv,
+    pub(crate) subst: Substitution,
+    pub(crate) gen: TypeVarGen,
+    pub(crate) registry: TypeRegistry,
+    pub(crate) let_own_spans: HashSet<Span>,
+    pub(crate) lambda_own_captures: HashMap<Span, String>,
+    // Import accumulation
+    pub(crate) imported_fn_types: Vec<(String, TypeScheme)>,
+    pub(crate) fn_provenance_map: HashMap<String, (String, String)>,
+    pub(crate) type_provenance: HashMap<String, String>,
+    pub(crate) imported_extern_fns: Vec<ExternFnInfo>,
+    pub(crate) imported_type_info: HashMap<String, (String, Visibility)>,
+    pub(crate) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
+    pub(crate) imported_trait_defs: Vec<ExportedTraitDef>,
+    pub(crate) imported_trait_names: HashSet<String>,
+    pub(crate) qualified_modules: HashMap<String, QualifiedModuleBinding>,
+    // Re-export state
+    pub(crate) reexported_fn_types: Vec<(String, TypeScheme)>,
+    pub(crate) reexported_type_names: Vec<String>,
+    pub(crate) reexported_type_visibility: HashMap<String, Visibility>,
+    pub(crate) reexported_trait_defs: Vec<ExportedTraitDef>,
+    // Prelude tracking
+    pub(crate) prelude_imported_names: HashSet<String>,
+}
+
+impl ModuleInferenceState {
+    fn new(is_core_module: bool) -> Self {
+        let mut env = TypeEnv::new();
+        let mut gen = TypeVarGen::new();
+        let mut registry = TypeRegistry::new();
+        registry.register_builtins();
+
+        crate::intrinsics::register_intrinsics(&mut env, &mut gen, is_core_module);
+
+        let mut type_provenance: HashMap<String, String> = HashMap::new();
+        for name in &["Int", "Float", "Bool", "String", "Unit"] {
+            type_provenance.insert(name.to_string(), "core".to_string());
+        }
+
+        registry.register_name("Vec");
+
+        ModuleInferenceState {
+            env,
+            subst: Substitution::new(),
+            gen,
+            registry,
+            let_own_spans: HashSet::new(),
+            lambda_own_captures: HashMap::new(),
+            imported_fn_types: Vec::new(),
+            fn_provenance_map: HashMap::new(),
+            type_provenance,
+            imported_extern_fns: Vec::new(),
+            imported_type_info: HashMap::new(),
+            imported_fn_constraints: HashMap::new(),
+            imported_trait_defs: Vec::new(),
+            imported_trait_names: HashSet::new(),
+            qualified_modules: HashMap::new(),
+            reexported_fn_types: Vec::new(),
+            reexported_type_names: Vec::new(),
+            reexported_type_visibility: HashMap::new(),
+            reexported_trait_defs: Vec::new(),
+            prelude_imported_names: HashSet::new(),
+        }
+    }
+
+    fn process_local_externs(&mut self, module: &Module) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
+        let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
+        for decl in &module.decls {
+            if let Decl::ExternJava {
+                class_name,
+                methods,
+                span,
+            } = decl
+            {
+                let no_aliases = HashMap::new();
+                let mut fns = process_extern_methods(
+                    class_name, methods, &mut self.env, &mut self.gen, &self.registry,
+                    *span, None, &no_aliases,
+                )?;
+                extern_fns.append(&mut fns);
+            }
+        }
+        Ok(extern_fns)
+    }
+
+    fn cleanup_prelude_shadows(&mut self, module: &Module) {
+        if self.prelude_imported_names.is_empty() {
+            return;
+        }
+        for decl in &module.decls {
+            match decl {
+                Decl::ExternJava { methods, .. } => {
+                    for m in methods {
+                        if self.prelude_imported_names.contains(&m.name) {
+                            self.imported_fn_constraints.remove(&m.name);
+                        }
+                    }
+                }
+                Decl::DefFn(f) => {
+                    if self.prelude_imported_names.contains(&f.name) {
+                        self.imported_fn_constraints.remove(&f.name);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn preregister_type_names(&mut self, module: &Module) {
+        for decl in &module.decls {
+            if let Decl::DefType(type_decl) = decl {
+                self.registry.register_name(&type_decl.name);
+            }
+        }
+    }
+
+    fn process_local_type_decls(&mut self, module: &Module) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
+        let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
+        for decl in &module.decls {
+            if let Decl::DefType(type_decl) = decl {
+                if let Some(existing) = self.registry.lookup_type(&type_decl.name) {
+                    if existing.is_prelude {
+                        if let crate::type_registry::TypeKind::Sum { variants } = &existing.kind {
+                            for v in variants {
+                                self.env.unbind(&v.name);
+                                self.fn_provenance_map.remove(&v.name);
+                            }
+                        }
+                        self.type_provenance.remove(&type_decl.name);
+                        self.imported_type_info.remove(&type_decl.name);
+                    }
+                }
+
+                let constructors = type_registry::process_type_decl(type_decl, &mut self.registry, &mut self.gen)
+                    .map_err(|e| spanned(e, type_decl.span))?;
+                for (name, scheme) in constructors {
+                    self.env.bind(name.clone(), scheme.clone());
+                    constructor_schemes.push((name, scheme));
+                }
+            }
+        }
+        Ok(constructor_schemes)
+    }
+
+    /// Assemble the final TypedModule from accumulated state and inference-phase outputs.
+    fn assemble_typed_module(
+        mut self,
+        module: &Module,
+        module_path: Option<String>,
+        fn_decls: &[&krypton_parser::ast::FnDecl],
+        result_schemes: Vec<Option<TypeScheme>>,
+        fn_bodies: Vec<Option<TypedExpr>>,
+        impl_fn_types: Vec<(String, TypeScheme)>,
+        impl_functions: Vec<TypedFnDecl>,
+        instance_defs: Vec<InstanceDefInfo>,
+        derived_impl_fn_types: Vec<(String, TypeScheme)>,
+        derived_impl_functions: Vec<TypedFnDecl>,
+        derived_instance_defs: Vec<InstanceDefInfo>,
+        fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
+        trait_method_map: &HashMap<String, String>,
+        trait_registry: &TraitRegistry,
+        exported_trait_defs: Vec<ExportedTraitDef>,
+        extern_fns: Vec<ExternFnInfo>,
+        constructor_schemes: Vec<(String, TypeScheme)>,
+        parsed_modules: &HashMap<String, &Module>,
+    ) -> Result<TypedModule, SpannedTypeError> {
+        let mut results: Vec<(String, TypeScheme)> = self.imported_fn_types;
+        results.extend(constructor_schemes);
+        results.extend(
+            fn_decls
+                .iter()
+                .enumerate()
+                .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
+        );
+        results.extend(impl_fn_types);
+        results.extend(derived_impl_fn_types);
+
+        let mut functions: Vec<TypedFnDecl> = Vec::new();
+        let mut fn_bodies = fn_bodies;
+        for (i, decl) in fn_decls.iter().enumerate() {
+            let mut body = fn_bodies[i].take().unwrap();
+            typed_ast::apply_subst(&mut body, &self.subst);
+            functions.push(TypedFnDecl {
+                name: decl.name.clone(),
+                visibility: decl.visibility.clone(),
+                params: decl.params.iter().map(|p| p.name.clone()).collect(),
+                body,
+            });
+        }
+        functions.extend(impl_functions);
+        functions.extend(derived_impl_functions);
+
+        let fn_schemes: HashMap<String, TypeScheme> = results.iter().cloned().collect();
+        for func in &functions {
+            let current_requirements = fn_constraint_requirements
+                .get(&func.name)
+                .cloned()
+                .unwrap_or_default();
+            check_constrained_function_refs(
+                &func.body,
+                &current_requirements,
+                &fn_schemes,
+                fn_constraint_requirements,
+                &self.imported_fn_constraints,
+                trait_registry,
+            )?;
+        }
+
+        let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
+        for func in &functions {
+            let mut param_type_var_map: HashMap<TypeVarId, usize> = HashMap::new();
+            if let Some((_, scheme)) = results.iter().find(|(n, _)| n == &func.name) {
+                if let Type::Fn(param_types, _) = &scheme.ty {
+                    for (idx, pty) in param_types.iter().enumerate() {
+                        for v in free_vars(pty) {
+                            param_type_var_map.entry(v).or_insert(idx);
+                        }
+                    }
+                }
+            }
+            let mut constraints = Vec::new();
+            detect_trait_constraints(
+                &func.body,
+                trait_method_map,
+                &self.subst,
+                &param_type_var_map,
+                &mut constraints,
+            );
+            if !constraints.is_empty() {
+                constraints.sort();
+                constraints.dedup();
+                fn_constraints.insert(func.name.clone(), constraints);
+            }
+        }
+
+        let mut trait_defs = Vec::new();
+        let mut seen_traits = std::collections::HashSet::new();
+        for (trait_name, info) in trait_registry.traits() {
+            let is_imported = self.imported_trait_names.contains(trait_name);
+            let method_info: Vec<(String, usize)> = info
+                .methods
+                .iter()
+                .map(|m| (m.name.clone(), m.param_types.len()))
+                .collect();
+            trait_defs.push(TraitDefInfo {
+                name: trait_name.clone(),
+                methods: method_info,
+                is_imported,
+            });
+            seen_traits.insert(trait_name.clone());
+        }
+        for decl in &module.decls {
+            if let Decl::DefTrait { name, methods, .. } = decl {
+                if !seen_traits.contains(name) {
+                    let method_info: Vec<(String, usize)> = methods
+                        .iter()
+                        .map(|m| (m.name.clone(), m.params.len()))
+                        .collect();
+                    trait_defs.push(TraitDefInfo {
+                        name: name.clone(),
+                        methods: method_info,
+                        is_imported: false,
+                    });
+                }
+            }
+        }
+
+        let mut struct_update_info: HashMap<Span, (String, HashSet<String>)> = HashMap::new();
+        for func in &functions {
+            collect_struct_update_info(&func.body, &mut struct_update_info);
+        }
+
+        crate::ownership::check_ownership(
+            module,
+            &results,
+            &self.registry,
+            &self.let_own_spans,
+            &self.lambda_own_captures,
+            &struct_update_info,
+        )?;
+
+        let auto_close = crate::auto_close::compute_auto_close(&functions, &results, trait_registry)?;
+
+        let mut instance_defs = instance_defs;
+        instance_defs.extend(derived_instance_defs);
+
+        let struct_decls: Vec<_> = module
+            .decls
+            .iter()
+            .filter_map(|decl| match decl {
+                Decl::DefType(td) => match &td.kind {
+                    TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+
+        let mut sum_decls: Vec<(String, Vec<String>, Vec<Variant>)> = module
+            .decls
+            .iter()
+            .filter_map(|decl| match decl {
+                Decl::DefType(td) => match &td.kind {
+                    TypeDeclKind::Sum { variants } => {
+                        Some((td.name.clone(), td.type_params.clone(), variants.clone()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+
+        {
+            let existing_type_names: HashSet<String> =
+                sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
+            for (type_name, (source_path, vis)) in &self.imported_type_info {
+                if existing_type_names.contains(type_name) || !matches!(vis, Visibility::PubOpen) {
+                    continue;
+                }
+                if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {
+                    if let Some(td) = find_type_decl(&imported_mod.decls, type_name) {
+                        if let TypeDeclKind::Sum { variants } = &td.kind {
+                            self.type_provenance.insert(td.name.clone(), source_path.clone());
+                            for v in variants {
+                                self.type_provenance.insert(v.name.clone(), source_path.clone());
+                            }
+                            sum_decls.push((td.name.clone(), td.type_params.clone(), variants.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        let local_type_names: HashSet<String> = module
+            .decls
+            .iter()
+            .filter_map(|d| {
+                if let Decl::DefType(td) = d {
+                    Some(td.name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for (type_name, (source_path, _)) in &self.imported_type_info {
+            if !local_type_names.contains(type_name) {
+                self.type_provenance.insert(type_name.clone(), source_path.clone());
+            }
+        }
+
+        let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
+        for decl in &module.decls {
+            if let Decl::DefType(td) = decl {
+                type_visibility.insert(td.name.clone(), td.visibility.clone());
+            }
+        }
+
+        let mut exported_trait_defs = exported_trait_defs;
+        exported_trait_defs.extend(self.reexported_trait_defs);
+
+        Ok(TypedModule {
+            module_path,
+            fn_types: results,
+            functions,
+            trait_defs,
+            instance_defs,
+            fn_constraints,
+            fn_constraint_requirements: fn_constraint_requirements.clone(),
+            imported_fn_constraints: self.imported_fn_constraints,
+            trait_method_map: trait_method_map.clone(),
+            extern_fns,
+            imported_extern_fns: self.imported_extern_fns,
+            struct_decls,
+            sum_decls,
+            fn_provenance: self.fn_provenance_map,
+            type_provenance: self.type_provenance,
+            type_visibility,
+            reexported_fn_types: self.reexported_fn_types,
+            reexported_type_names: self.reexported_type_names,
+            reexported_type_visibility: self.reexported_type_visibility,
+            exported_trait_defs,
+            auto_close,
+        })
+    }
+}
+
 /// Internal per-module inference with pre-resolved module cache.
 ///
 /// The module graph has already been resolved and toposorted by `infer_module`.
@@ -1368,703 +1760,31 @@ pub(crate) fn infer_module_inner(
     parsed_modules: &HashMap<String, &Module>,
     module_path: Option<String>,
 ) -> Result<TypedModule, SpannedTypeError> {
-    let mut env = TypeEnv::new();
-    let mut subst = Substitution::new();
-    let mut gen = TypeVarGen::new();
-    let mut registry = TypeRegistry::new();
-    registry.register_builtins();
-    let mut let_own_spans: HashSet<Span> = HashSet::new();
-    let mut lambda_own_captures: HashMap<Span, String> = HashMap::new();
-
-    // Seed intrinsic function types (user defs can shadow these)
     let is_core_module = module_path.as_ref().is_some_and(|p| p.starts_with("core/"));
-    crate::intrinsics::register_intrinsics(&mut env, &mut gen, is_core_module);
-
-    // These must be declared before the synthetic prelude import since it populates them
-    let mut imported_extern_fns: Vec<ExternFnInfo> = Vec::new();
-    let mut fn_provenance_map: HashMap<String, (String, String)> = HashMap::new();
-    let mut type_provenance: HashMap<String, String> = HashMap::new();
-    // Mark builtins as non-local so the orphan check rejects `impl Trait[Int]` etc.
-    for name in &["Int", "Float", "Bool", "String", "Unit"] {
-        type_provenance.insert(name.to_string(), "core".to_string());
-    }
-
-    // Skip prelude auto-import when we ARE the prelude or one of its transitive deps.
     let is_prelude_tree = module_path.as_ref().is_some_and(|p| {
         krypton_modules::stdlib_loader::PRELUDE_MODULES
             .iter()
             .any(|m| m == p)
     });
 
-    // Register Vec as a known type name (no constructors — backed by KryptonArray)
-    registry.register_name("Vec");
+    let mut state = ModuleInferenceState::new(is_core_module);
 
-    // Build synthetic prelude import: gather all re-exported names from the cached prelude
-    // and construct a Decl::Import so the normal import loop handles everything.
-    let mut prelude_imported_names: HashSet<String> = HashSet::new();
-    let synthetic_prelude_import = if !is_prelude_tree {
-        cache.get("prelude")
-    } else {
-        None
-    }
-    .map(|cached| {
-        let mut names: Vec<ImportName> = Vec::new();
+    let synthetic_prelude_import = imports::build_synthetic_prelude_import(
+        is_prelude_tree,
+        cache,
+        parsed_modules,
+        &mut state.prelude_imported_names,
+    );
 
-        // Re-exported type names (e.g. Option, Result, List, Ordering)
-        // Constructor names (Some, None, Ok, Err, etc.) are automatically bound
-        // by the import loop's type-processing section for PubOpen types.
-        for type_name in &cached.reexported_type_names {
-            names.push(ImportName {
-                name: type_name.clone(),
-                alias: None,
-            });
-        }
+    state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;
+    reserve_gen_for_env_schemes(&state.env, &mut state.gen);
+    let extern_fns = state.process_local_externs(module)?;
+    state.cleanup_prelude_shadows(module);
+    state.preregister_type_names(module);
+    let constructor_schemes = state.process_local_type_decls(module)?;
 
-        // Build set of constructor names from PubOpen re-exported types,
-        // so we can exclude them from the re-exported fn list (they come from type processing).
-        let mut prelude_constructor_names: HashSet<String> = HashSet::new();
-        for type_name in &cached.reexported_type_names {
-            let vis = cached
-                .reexported_type_visibility
-                .get(type_name)
-                .cloned()
-                .unwrap_or(Visibility::Pub);
-            if matches!(vis, Visibility::PubOpen) {
-                if let Some(orig_path) = cached.type_provenance.get(type_name) {
-                    if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                        if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
-                            prelude_constructor_names.extend(constructor_names(td));
-                        }
-                    }
-                }
-            }
-        }
+    // --- Phases 12-21: trait/impl/deriving/SCC inference (inline for M17-T3) ---
 
-        // Re-exported trait names (e.g. Eq, Show, Add, etc.)
-        for trait_def in &cached.exported_trait_defs {
-            names.push(ImportName {
-                name: trait_def.name.clone(),
-                alias: None,
-            });
-        }
-
-        // Re-exported functions (e.g. println), excluding constructors
-        // that will be bound via type processing
-        for (name, _) in &cached.reexported_fn_types {
-            if !prelude_constructor_names.contains(name) {
-                names.push(ImportName {
-                    name: name.clone(),
-                    alias: None,
-                });
-            }
-        }
-
-        // Track which names came from the prelude so we can remove shadowed
-        // entries from imported_fn_constraints later.
-        for n in &names {
-            prelude_imported_names.insert(n.name.clone());
-        }
-
-        Decl::Import {
-            is_pub: false,
-            path: "prelude".to_string(),
-            names,
-            span: (0, 0),
-        }
-    });
-
-    // Process import declarations with per-module inference, caching, and circular detection
-    let mut imported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
-    // Track imported type info for pub use re-exports: type_name → (source_module_path, visibility)
-    let mut imported_type_info: HashMap<String, (String, Visibility)> = HashMap::new();
-    // Track fn_constraints from imported modules for cross-module constraint checking
-    let mut imported_fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
-    // Track trait definitions from imported modules for cross-module trait usage
-    let mut imported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
-    let mut imported_trait_names: HashSet<String> = HashSet::new();
-    // Track re-exports from `pub import` declarations
-    let mut reexported_fn_types: Vec<(String, TypeScheme)> = Vec::new();
-    let mut reexported_type_names: Vec<String> = Vec::new();
-    let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
-    let mut reexported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
-    let mut qualified_modules: HashMap<String, QualifiedModuleBinding> = HashMap::new();
-
-    // Build decl list: synthetic prelude import (if any) + module's own decls
-    let all_decls: Vec<&Decl> = synthetic_prelude_import
-        .iter()
-        .chain(module.decls.iter())
-        .collect();
-    for decl in &all_decls {
-        if let Decl::Import {
-            is_pub,
-            path,
-            names,
-            span,
-        } = decl
-        {
-            // Graph builder already validated: no cycles and no unknown modules.
-            // Look up the parsed AST from the pre-resolved graph.
-            let imported_module = parsed_modules
-                .get(path)
-                .expect("module graph should contain all imported modules");
-
-            // Module should already be type-checked (topological order guarantees this)
-            assert!(
-                cache.contains_key(path),
-                "module {path} should be in cache (topological order)"
-            );
-
-            let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
-            let import_all = names.is_empty();
-
-            // Build alias map from ImportName
-            let aliases: HashMap<String, String> = names
-                .iter()
-                .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
-                .collect();
-
-            // Build fn visibility map from parsed imported module
-            let mut fn_vis: HashMap<&str, &Visibility> = imported_module
-                .decls
-                .iter()
-                .filter_map(|d| {
-                    if let Decl::DefFn(f) = d {
-                        Some((f.name.as_str(), &f.visibility))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // Also include extern method visibility
-            for d in &imported_module.decls {
-                if let Decl::ExternJava { methods, .. } = d {
-                    for m in methods {
-                        fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
-                    }
-                }
-            }
-
-            // Build set of constructor names belonging to non-PubOpen types.
-            // These should not be bound from fn_types (they are handled by
-            // the type declaration processing below with visibility control).
-            let mut opaque_constructors: HashSet<String> = HashSet::new();
-            for sdecl in &imported_module.decls {
-                if let Decl::DefType(td) = sdecl {
-                    if !matches!(td.visibility, Visibility::PubOpen) {
-                        opaque_constructors.extend(constructor_names(td));
-                    }
-                }
-            }
-
-            // Check visibility of explicitly requested extern methods
-            for name in &requested {
-                if let Some(vis) = fn_vis.get(name) {
-                    if matches!(vis, Visibility::Private) && requested.contains(name) {
-                        return Err(spanned(
-                            TypeError::PrivateName {
-                                name: name.to_string(),
-                                module_path: path.clone(),
-                            },
-                            *span,
-                        ));
-                    }
-                }
-            }
-
-            // Extract type signatures from cached module and bind with provenance.
-            // Enforce visibility: private names cannot be imported explicitly.
-            let cached = cache.get(path).unwrap();
-            let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
-            let mut qualified_exports: HashMap<String, QualifiedExport> = HashMap::new();
-            // Build set of re-exported fn names to avoid double-binding.
-            // Re-exported fns appear in both fn_types and reexported_fn_types;
-            // the re-export loop below handles them with correct provenance.
-            let reexported_fn_names: HashSet<&str> = cached
-                .reexported_fn_types
-                .iter()
-                .map(|(n, _)| n.as_str())
-                .collect();
-            for (name, scheme) in &cached.fn_types {
-                // Skip constructors of non-PubOpen types — these are not
-                // accessible from the importing module.
-                if opaque_constructors.contains(name) {
-                    continue;
-                }
-                // Skip names that will be handled by the re-export loop below
-                if reexported_fn_names.contains(name.as_str()) {
-                    continue;
-                }
-                let vis = fn_vis
-                    .get(name.as_str())
-                    .copied()
-                    .unwrap_or(&Visibility::Pub);
-                if requested.contains(name.as_str()) {
-                    // Explicitly requested — check visibility
-                    if matches!(vis, Visibility::Private) {
-                        return Err(spanned(
-                            TypeError::PrivateName {
-                                name: name.clone(),
-                                module_path: path.clone(),
-                            },
-                            *span,
-                        ));
-                    }
-                    let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                    env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
-                    imported_fn_types.push((effective_name.clone(), scheme.clone()));
-                    fn_provenance_map.insert(effective_name, (path.clone(), name.clone()));
-                } else if import_all {
-                    // Wildcard import — skip private names silently
-                    if matches!(vis, Visibility::Private) {
-                        // Still bind for internal dependency resolution
-                        env.bind(name.clone(), scheme.clone());
-                        continue;
-                    }
-                    let hidden_name = format!("__qual${}${}", qualifier_name, name);
-                    qualified_exports.insert(
-                        name.clone(),
-                        QualifiedExport {
-                            local_name: hidden_name.clone(),
-                            scheme: scheme.clone(),
-                        },
-                    );
-                    imported_fn_types.push((hidden_name.clone(), scheme.clone()));
-                    fn_provenance_map.insert(hidden_name, (path.clone(), name.clone()));
-                }
-            }
-
-            for (name, scheme) in &cached.reexported_fn_types {
-                if import_all {
-                    let vis = fn_vis
-                        .get(name.as_str())
-                        .copied()
-                        .unwrap_or(&Visibility::Pub);
-                    if matches!(vis, Visibility::Private) {
-                        continue;
-                    }
-                    let hidden_name = format!("__qual${}${}", qualifier_name, name);
-                    let original_prov = cached
-                        .fn_provenance
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| (path.clone(), name.clone()));
-                    qualified_exports.insert(
-                        name.clone(),
-                        QualifiedExport {
-                            local_name: hidden_name.clone(),
-                            scheme: scheme.clone(),
-                        },
-                    );
-                    imported_fn_types.push((hidden_name.clone(), scheme.clone()));
-                    fn_provenance_map.insert(hidden_name, original_prov);
-                }
-            }
-
-            // Process re-exported functions from the cached module.
-            for (name, scheme) in &cached.reexported_fn_types {
-                if requested.contains(name.as_str()) {
-                    let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                    env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
-                    imported_fn_types.push((effective_name.clone(), scheme.clone()));
-                    // Use the original provenance if available, otherwise point to the re-exporting module
-                    let original_prov = cached
-                        .fn_provenance
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| (path.clone(), name.clone()));
-                    fn_provenance_map.insert(effective_name, original_prov);
-                }
-            }
-
-            // Process re-exported types from the cached module
-            for reex_type_name in &cached.reexported_type_names {
-                if requested.contains(reex_type_name.as_str()) {
-                    let effective_type_name = aliases
-                        .get(reex_type_name)
-                        .cloned()
-                        .unwrap_or_else(|| reex_type_name.clone());
-                    let original_vis = cached
-                        .reexported_type_visibility
-                        .get(reex_type_name)
-                        .cloned()
-                        .unwrap_or(Visibility::Pub);
-                    // Look up the type info from the cached module's type provenance
-                    // to find the original source module, then register in our registry
-                    if registry.lookup_type(reex_type_name).is_none() {
-                        // The type was already registered in the re-exporting module's inference.
-                        // We need to re-parse the original source to get the type declaration.
-                        let original_path = cached.type_provenance.get(reex_type_name);
-                        if let Some(orig_path) = original_path {
-                            if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                                if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name)
-                                {
-                                    registry.register_name(&td.name);
-                                    let constructors = type_registry::process_type_decl(
-                                        td,
-                                        &mut registry,
-                                        &mut gen,
-                                    )
-                                    .map_err(|e| spanned(e, *span))?;
-                                    if effective_type_name != *reex_type_name {
-                                        registry
-                                            .register_type_alias(&effective_type_name, reex_type_name)
-                                            .map_err(|e| spanned(e, *span))?;
-                                    }
-                                    // Mark prelude-sourced types as shadowable
-                                    if path == "prelude" {
-                                        registry.set_prelude(&td.name);
-                                    }
-                                    if matches!(original_vis, Visibility::PubOpen) {
-                                        for (cname, scheme) in &constructors {
-                                            env.bind(cname.clone(), scheme.clone());
-                                            // Also add constructors to imported_fn_types so they're visible
-                                            imported_fn_types.push((cname.clone(), scheme.clone()));
-                                            fn_provenance_map.insert(
-                                                cname.clone(),
-                                                (orig_path.clone(), cname.clone()),
-                                            );
-                                        }
-                                    }
-                                    imported_type_info.insert(
-                                        effective_type_name.clone(),
-                                        (orig_path.clone(), original_vis.clone()),
-                                    );
-                                    type_provenance.insert(td.name.clone(), orig_path.clone());
-                                }
-                            }
-                        }
-                    } else if effective_type_name != *reex_type_name {
-                        registry
-                            .register_type_alias(&effective_type_name, reex_type_name)
-                            .map_err(|e| spanned(e, *span))?;
-                        imported_type_info.insert(
-                            effective_type_name.clone(),
-                            (path.clone(), original_vis.clone()),
-                        );
-                    }
-                }
-            }
-
-            if import_all {
-                qualified_modules.insert(
-                    qualifier_name.clone(),
-                    QualifiedModuleBinding {
-                        module_path: path.clone(),
-                        exports: qualified_exports.clone(),
-                    },
-                );
-            }
-
-            // Process type declarations from imported module source with visibility enforcement
-            for sdecl in &imported_module.decls {
-                if let Decl::DefType(td) = sdecl {
-                    if requested.contains(td.name.as_str()) {
-                        let effective_type_name = aliases
-                            .get(&td.name)
-                            .cloned()
-                            .unwrap_or_else(|| td.name.clone());
-                        // Explicitly requested — check visibility
-                        if matches!(td.visibility, Visibility::Private) {
-                            return Err(spanned(
-                                TypeError::PrivateName {
-                                    name: td.name.clone(),
-                                    module_path: path.clone(),
-                                },
-                                *span,
-                            ));
-                        }
-                        if registry.lookup_type(&td.name).is_none() {
-                            registry.register_name(&td.name);
-                            let constructors =
-                                type_registry::process_type_decl(td, &mut registry, &mut gen)
-                                    .map_err(|e| spanned(e, *span))?;
-                            if effective_type_name != td.name {
-                                registry
-                                    .register_type_alias(&effective_type_name, &td.name)
-                                    .map_err(|e| spanned(e, *span))?;
-                            }
-                            // Mark prelude-sourced types as shadowable
-                            if path == "prelude" {
-                                registry.set_prelude(&td.name);
-                            }
-                            // Only bind constructors if pub open
-                            if matches!(td.visibility, Visibility::PubOpen) {
-                                for (cname, scheme) in constructors {
-                                    env.bind(cname, scheme);
-                                }
-                            }
-                        } else if effective_type_name != td.name {
-                            registry
-                                .register_type_alias(&effective_type_name, &td.name)
-                                .map_err(|e| spanned(e, *span))?;
-                        }
-                        // Track imported type info for pub use re-exports
-                        imported_type_info
-                            .insert(effective_type_name.clone(), (path.clone(), td.visibility.clone()));
-                        type_provenance.insert(td.name.clone(), path.clone());
-                    } else if import_all {
-                        // Wildcard import — skip private types silently
-                        if matches!(td.visibility, Visibility::Private) {
-                            continue;
-                        }
-                        if registry.lookup_type(&td.name).is_none() {
-                            registry.register_name(&td.name);
-                            let constructors =
-                                type_registry::process_type_decl(td, &mut registry, &mut gen)
-                                    .map_err(|e| spanned(e, *span))?;
-                            // Mark prelude-sourced types as shadowable
-                            if path == "prelude" {
-                                registry.set_prelude(&td.name);
-                            }
-                            if matches!(td.visibility, Visibility::PubOpen) {
-                                for (cname, scheme) in constructors {
-                                    let hidden_name =
-                                        format!("__qual${}${}", qualifier_name, cname);
-                                    qualified_exports.insert(
-                                        cname.clone(),
-                                        QualifiedExport {
-                                            local_name: hidden_name.clone(),
-                                            scheme: scheme.clone(),
-                                        },
-                                    );
-                                    imported_fn_types.push((hidden_name.clone(), scheme.clone()));
-                                    fn_provenance_map.insert(
-                                        hidden_name,
-                                        (path.clone(), cname.clone()),
-                                    );
-                                    env.bind(cname, scheme);
-                                }
-                            }
-                        }
-                    } else if registry.lookup_type(&td.name).is_none() {
-                        // Non-requested, non-wildcard: register for internal deps
-                        registry.register_name(&td.name);
-                        let constructors =
-                            type_registry::process_type_decl(td, &mut registry, &mut gen)
-                                .map_err(|e| spanned(e, *span))?;
-                        for (cname, scheme) in constructors {
-                            env.bind(cname, scheme);
-                        }
-                    }
-                }
-            }
-
-            // Process extern declarations from imported module (no name filter —
-            // extern methods are internal dependencies for DefFn functions)
-            for sdecl in &imported_module.decls {
-                if let Decl::ExternJava {
-                    class_name,
-                    methods,
-                    span: ext_span,
-                } = sdecl
-                {
-                    let mut fns = process_extern_methods(
-                        class_name, methods, &mut env, &mut gen, &registry, *ext_span, None,
-                        &aliases,
-                    )?;
-                    imported_extern_fns.append(&mut fns);
-                }
-            }
-
-            // Copy imported extern fns for codegen
-            for ext in &cached.extern_fns {
-                imported_extern_fns.push(ext.clone());
-            }
-            for ext in &cached.imported_extern_fns {
-                imported_extern_fns.push(ext.clone());
-            }
-
-            // Collect fn_constraints from imported module for cross-module constraint checking.
-            // Map using the effective name (after aliasing) so callers see constraints.
-            for (name, constraints) in &cached.fn_constraints {
-                let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                if requested.contains(name.as_str()) || import_all {
-                    imported_fn_constraints.insert(effective_name, constraints.clone());
-                }
-            }
-            // Also propagate constraints from the imported module's own imports
-            for (name, constraints) in &cached.imported_fn_constraints {
-                let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                if requested.contains(name.as_str()) || import_all {
-                    imported_fn_constraints.insert(effective_name, constraints.clone());
-                }
-            }
-
-            // Propagate trait definitions from the imported module
-            for trait_def in &cached.exported_trait_defs {
-                let explicitly_requested = requested.contains(trait_def.name.as_str())
-                    || trait_def
-                        .methods
-                        .iter()
-                        .any(|m| requested.contains(m.name.as_str()));
-                if (explicitly_requested || import_all)
-                    && !imported_trait_names.contains(&trait_def.name)
-                {
-                    // Enforce visibility: private traits cannot be imported
-                    if matches!(trait_def.visibility, Visibility::Private) {
-                        if explicitly_requested {
-                            return Err(spanned(
-                                TypeError::PrivateName {
-                                    name: trait_def.name.clone(),
-                                    module_path: path.clone(),
-                                },
-                                *span,
-                            ));
-                        }
-                        // Wildcard import — skip private traits silently
-                        continue;
-                    }
-                    imported_trait_defs.push(trait_def.clone());
-                    imported_trait_names.insert(trait_def.name.clone());
-                    // Use original source module for provenance (not re-export path)
-                    // so structural instance lookup finds instances in the defining module
-                    let prov = cached
-                        .type_provenance
-                        .get(&trait_def.name)
-                        .cloned()
-                        .unwrap_or_else(|| path.clone());
-                    type_provenance.insert(trait_def.name.clone(), prov);
-                }
-            }
-
-            // Process pub import re-exports: mark all imported names as re-exported
-            if *is_pub {
-                for import_name in names {
-                    let effective_name = import_name
-                        .alias
-                        .as_ref()
-                        .unwrap_or(&import_name.name)
-                        .clone();
-                    let found_fn = imported_fn_types.iter().any(|(n, _)| n == &effective_name);
-                    let found_type = imported_type_info.contains_key(&effective_name);
-                    let found_trait = imported_trait_names.contains(&effective_name);
-
-                    if !found_fn && !found_type && !found_trait {
-                        return Err(spanned(
-                            TypeError::PrivateReexport {
-                                name: effective_name.clone(),
-                            },
-                            *span,
-                        ));
-                    }
-                    if found_fn {
-                        if let Some((_, scheme)) = imported_fn_types
-                            .iter()
-                            .find(|(n, _)| n == &effective_name)
-                        {
-                            reexported_fn_types.push((effective_name.clone(), scheme.clone()));
-                        }
-                    }
-                    if found_type {
-                        reexported_type_names.push(effective_name.clone());
-                        let original_vis = imported_type_info
-                            .get(&effective_name)
-                            .map(|(_, vis)| vis.clone())
-                            .unwrap_or(Visibility::Pub);
-                        reexported_type_visibility.insert(effective_name.clone(), original_vis);
-                    }
-                    if found_trait {
-                        if let Some(td) = imported_trait_defs
-                            .iter()
-                            .find(|td| td.name == effective_name)
-                        {
-                            reexported_trait_defs.push(td.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Imported schemes come from already-inferred modules and can carry type variable IDs
-    // larger than a fresh local generator starting at 0. Reserve past them so local
-    // inference cannot collide with imported quantified variables.
-    reserve_gen_for_env_schemes(&env, &mut gen);
-
-    // Process ExternJava declarations
-    let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
-    for decl in &module.decls {
-        if let Decl::ExternJava {
-            class_name,
-            methods,
-            span,
-        } = decl
-        {
-            let no_aliases = HashMap::new();
-            let mut fns = process_extern_methods(
-                class_name,
-                methods,
-                &mut env,
-                &mut gen,
-                &registry,
-                *span,
-                None,
-                &no_aliases,
-            )?;
-            extern_fns.append(&mut fns);
-        }
-    }
-
-    // Shadow prelude names in imported_fn_constraints when a local extern or
-    // fn def defines the same name. This prevents stale trait constraints from
-    // the prelude leaking into local definitions that shadow them.
-    if !prelude_imported_names.is_empty() {
-        for decl in &module.decls {
-            match decl {
-                Decl::ExternJava { methods, .. } => {
-                    for m in methods {
-                        if prelude_imported_names.contains(&m.name) {
-                            imported_fn_constraints.remove(&m.name);
-                        }
-                    }
-                }
-                Decl::DefFn(f) => {
-                    if prelude_imported_names.contains(&f.name) {
-                        imported_fn_constraints.remove(&f.name);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    // Pre-register all type names so self-referential and mutually
-    // recursive type declarations can resolve each other.
-    for decl in &module.decls {
-        if let Decl::DefType(type_decl) = decl {
-            registry.register_name(&type_decl.name);
-        }
-    }
-
-    // First pass: process all DefType declarations
-    let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
-    for decl in &module.decls {
-        if let Decl::DefType(type_decl) = decl {
-            // If shadowing a prelude type, unbind old constructors and clear provenance
-            if let Some(existing) = registry.lookup_type(&type_decl.name) {
-                if existing.is_prelude {
-                    if let crate::type_registry::TypeKind::Sum { variants } = &existing.kind {
-                        for v in variants {
-                            env.unbind(&v.name);
-                            fn_provenance_map.remove(&v.name);
-                        }
-                    }
-                    type_provenance.remove(&type_decl.name);
-                    imported_type_info.remove(&type_decl.name);
-                }
-            }
-
-            let constructors = type_registry::process_type_decl(type_decl, &mut registry, &mut gen)
-                .map_err(|e| spanned(e, type_decl.span))?;
-            for (name, scheme) in constructors {
-                env.bind(name.clone(), scheme.clone());
-                constructor_schemes.push((name, scheme));
-            }
-        }
-    }
-
-    // Initialize trait registry (traits come from imported .kr modules via prelude)
     let mut trait_registry = TraitRegistry::new();
 
     // Structural instance lookup: for each type/trait in scope, look up instances
@@ -2072,11 +1792,10 @@ pub(crate) fn infer_module_inner(
     // module defining the type or the trait.
     {
         let mut source_modules: HashSet<&str> = HashSet::new();
-        for (_, source_path) in &type_provenance {
+        for (_, source_path) in &state.type_provenance {
             source_modules.insert(source_path.as_str());
         }
-        // Also include sources from imported_type_info (not yet in type_provenance)
-        for (_, (source_path, _)) in &imported_type_info {
+        for (_, (source_path, _)) in &state.imported_type_info {
             source_modules.insert(source_path.as_str());
         }
 
@@ -2109,12 +1828,11 @@ pub(crate) fn infer_module_inner(
     }
 
     // Register trait definitions imported from other modules
-    for trait_def in &imported_trait_defs {
-        // Skip duplicate imports silently (same trait imported via multiple paths)
+    for trait_def in &state.imported_trait_defs {
         if trait_registry.lookup_trait(&trait_def.name).is_some() {
             continue;
         }
-        let new_tv_id = gen.fresh();
+        let new_tv_id = state.gen.fresh();
         let old_tv_id = trait_def.type_var_id;
 
         let mut trait_methods = Vec::new();
@@ -2132,7 +1850,7 @@ pub(crate) fn infer_module_inner(
                 vars: vec![new_tv_id],
                 ty: fn_ty,
             };
-            env.bind(method.name.clone(), scheme);
+            state.env.bind(method.name.clone(), scheme);
 
             trait_methods.push(TraitMethod {
                 name: method.name.clone(),
@@ -2173,7 +1891,7 @@ pub(crate) fn infer_module_inner(
                     *span,
                 ));
             }
-            let tv_id = gen.fresh();
+            let tv_id = state.gen.fresh();
             let type_var_arity = type_param.arity;
             let mut type_param_map = HashMap::new();
             let mut type_param_arity = HashMap::new();
@@ -2189,7 +1907,7 @@ pub(crate) fn infer_module_inner(
                 let mut method_tv_ids = Vec::new();
                 for tv_param in &method.type_params {
                     if !method_type_param_map.contains_key(&tv_param.name) {
-                        let mv_id = gen.fresh();
+                        let mv_id = state.gen.fresh();
                         method_type_param_map.insert(tv_param.name.clone(), mv_id);
                         method_type_param_arity.insert(tv_param.name.clone(), tv_param.arity);
                         method_tv_ids.push(mv_id);
@@ -2204,12 +1922,12 @@ pub(crate) fn infer_module_inner(
                                 ty_expr,
                                 &method_type_param_map,
                                 &method_type_param_arity,
-                                &registry,
+                                &state.registry,
                             )
                             .map_err(|e| spanned(e, method.span))?,
                         );
                     } else {
-                        param_types.push(Type::Var(gen.fresh()));
+                        param_types.push(Type::Var(state.gen.fresh()));
                     }
                 }
                 let return_type = if let Some(ref ret_expr) = method.return_type {
@@ -2217,11 +1935,11 @@ pub(crate) fn infer_module_inner(
                         ret_expr,
                         &method_type_param_map,
                         &method_type_param_arity,
-                        &registry,
+                        &state.registry,
                     )
                         .map_err(|e| spanned(e, method.span))?
                 } else {
-                    Type::Var(gen.fresh())
+                    Type::Var(state.gen.fresh())
                 };
 
                 // Bind the method as a polymorphic function: forall tv_id, method_tvs. fn(params) -> ret
@@ -2232,7 +1950,7 @@ pub(crate) fn infer_module_inner(
                     vars: all_vars,
                     ty: fn_ty,
                 };
-                env.bind(method.name.clone(), scheme);
+                state.env.bind(method.name.clone(), scheme);
 
                 exported_methods.push(ExportedTraitMethod {
                     name: method.name.clone(),
@@ -2281,7 +1999,7 @@ pub(crate) fn infer_module_inner(
             if type_decl.deriving.is_empty() {
                 continue;
             }
-            let type_info = registry.lookup_type(&type_decl.name).unwrap();
+            let type_info = state.registry.lookup_type(&type_decl.name).unwrap();
 
             for trait_name in &type_decl.deriving {
                 if trait_registry.lookup_trait(trait_name).is_none() {
@@ -2444,7 +2162,7 @@ pub(crate) fn infer_module_inner(
             }
             let type_param_map: HashMap<String, TypeVarId> = impl_type_param_names
                 .into_iter()
-                .map(|name| (name, gen.fresh()))
+                .map(|name| (name, state.gen.fresh()))
                 .collect();
             let type_param_arity: HashMap<String, usize> = HashMap::new();
             let resolved_target =
@@ -2452,14 +2170,14 @@ pub(crate) fn infer_module_inner(
                     target_type,
                     &type_param_map,
                     &type_param_arity,
-                    &registry,
+                    &state.registry,
                 )
                     .map_err(|e| spanned(e, *span))?;
 
             // Orphan check: type must be known, and either the type or the trait must be locally defined
             let target_name = match &resolved_target {
                 Type::Named(name, _) => {
-                    if registry.lookup_type(name).is_none() {
+                    if state.registry.lookup_type(name).is_none() {
                         return Err(spanned(
                             TypeError::OrphanInstance {
                                 trait_name: trait_name.clone(),
@@ -2469,7 +2187,7 @@ pub(crate) fn infer_module_inner(
                         ));
                     }
                     let trait_is_local = local_trait_names.contains(trait_name);
-                    let type_is_local = !type_provenance.contains_key(name);
+                    let type_is_local = !state.type_provenance.contains_key(name);
                     if !type_is_local && !trait_is_local {
                         return Err(spanned(
                             TypeError::OrphanInstance {
@@ -2500,7 +2218,7 @@ pub(crate) fn infer_module_inner(
             if let Some(trait_info) = trait_registry.lookup_trait(trait_name) {
                 let expected_arity = trait_info.type_var_arity;
                 if expected_arity > 0 {
-                    let actual_arity = registry.expected_arity(&target_name).unwrap_or(0);
+                    let actual_arity = state.registry.expected_arity(&target_name).unwrap_or(0);
                     if actual_arity != expected_arity {
                         return Err(spanned(
                             TypeError::KindMismatch {
@@ -2665,19 +2383,19 @@ pub(crate) fn infer_module_inner(
         // Bind each name in the SCC to a fresh type variable (monomorphic within SCC)
         let mut pre_bound: Vec<(usize, Type)> = Vec::new();
         for &idx in component {
-            let tv = Type::Var(gen.fresh());
-            env.bind(fn_decls[idx].name.clone(), TypeScheme::mono(tv.clone()));
+            let tv = Type::Var(state.gen.fresh());
+            state.env.bind(fn_decls[idx].name.clone(), TypeScheme::mono(tv.clone()));
             pre_bound.push((idx, tv));
         }
 
         // Infer all bodies in the SCC
         for &(idx, ref tv) in &pre_bound {
             let decl = fn_decls[idx];
-            env.push_scope();
+            state.env.push_scope();
 
             // Build type_param_map from explicit type parameters
             let (type_param_map, type_param_arity) =
-                build_type_param_maps(&decl.type_params, &mut gen);
+                build_type_param_maps(&decl.type_params, &mut state.gen);
             if !decl.constraints.is_empty() {
                 let requirements: Vec<(String, TypeVarId)> = decl
                     .constraints
@@ -2696,57 +2414,57 @@ pub(crate) fn infer_module_inner(
 
             let mut param_types = Vec::new();
             for p in &decl.params {
-                let ptv = Type::Var(gen.fresh());
+                let ptv = Type::Var(state.gen.fresh());
                 if let Some(ref ty_expr) = p.ty {
                     let annotated_ty =
                         type_registry::resolve_type_expr(
                             ty_expr,
                             &type_param_map,
                             &type_param_arity,
-                            &registry,
+                            &state.registry,
                         )
                         .map_err(|e| spanned(e, decl.span))?;
-                    unify(&ptv, &annotated_ty, &mut subst).map_err(|e| spanned(e, decl.span))?;
+                    unify(&ptv, &annotated_ty, &mut state.subst).map_err(|e| spanned(e, decl.span))?;
                 }
                 param_types.push(ptv.clone());
-                env.bind(p.name.clone(), TypeScheme::mono(ptv));
+                state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
             // Set fn_return_type for ? operator support
-            let prev_fn_return_type = env.fn_return_type.take();
+            let prev_fn_return_type = state.env.fn_return_type.take();
             if let Some(ref ret_ty_expr) = decl.return_type {
                 let resolved_ret =
                     type_registry::resolve_type_expr(
                         ret_ty_expr,
                         &type_param_map,
                         &type_param_arity,
-                        &registry,
+                        &state.registry,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
-                env.fn_return_type = Some(resolved_ret);
+                state.env.fn_return_type = Some(resolved_ret);
             } else {
-                env.fn_return_type = Some(Type::Var(gen.fresh()));
+                state.env.fn_return_type = Some(Type::Var(state.gen.fresh()));
             }
 
             let body_typed = {
                 let mut ctx = InferenceContext {
-                    env: &mut env,
-                    subst: &mut subst,
-                    gen: &mut gen,
-                    registry: Some(&registry),
+                    env: &mut state.env,
+                    subst: &mut state.subst,
+                    gen: &mut state.gen,
+                    registry: Some(&state.registry),
                     recur_params: Some(&param_types),
-                    let_own_spans: Some(&mut let_own_spans),
-                    lambda_own_captures: Some(&mut lambda_own_captures),
+                    let_own_spans: Some(&mut state.let_own_spans),
+                    lambda_own_captures: Some(&mut state.lambda_own_captures),
                     type_param_map: &type_param_map,
                     type_param_arity: &type_param_arity,
-                    qualified_modules: &qualified_modules,
+                    qualified_modules: &state.qualified_modules,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
-            env.fn_return_type = prev_fn_return_type;
-            env.pop_scope();
+            state.env.fn_return_type = prev_fn_return_type;
+            state.env.pop_scope();
 
-            let param_types: Vec<Type> = param_types.iter().map(|t| subst.apply(t)).collect();
-            let body_ty = subst.apply(&body_typed.ty);
+            let param_types: Vec<Type> = param_types.iter().map(|t| state.subst.apply(t)).collect();
+            let body_ty = state.subst.apply(&body_typed.ty);
 
             // Enforce return type annotation if present
             let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
@@ -2755,7 +2473,7 @@ pub(crate) fn infer_module_inner(
                         ret_ty_expr,
                         &type_param_map,
                         &type_param_arity,
-                        &registry,
+                        &state.registry,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
                 // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
@@ -2774,15 +2492,15 @@ pub(crate) fn infer_module_inner(
                     }
                 }
                 let coerced_body_ty = strip_own(&body_ty);
-                unify(&coerced_body_ty, &annotated_ret, &mut subst)
+                unify(&coerced_body_ty, &annotated_ret, &mut state.subst)
                     .map_err(|e| spanned(e, decl.span))?;
-                subst.apply(&annotated_ret)
+                state.subst.apply(&annotated_ret)
             } else {
                 strip_own(&body_ty)
             };
 
             let fn_ty = Type::Fn(param_types, Box::new(ret_ty));
-            unify(tv, &fn_ty, &mut subst).map_err(|e| spanned(e, decl.span))?;
+            unify(tv, &fn_ty, &mut state.subst).map_err(|e| spanned(e, decl.span))?;
 
             fn_bodies[idx] = Some(body_typed);
         }
@@ -2792,24 +2510,24 @@ pub(crate) fn infer_module_inner(
         // generalized. This must change if nested let-polymorphism is added.
         let empty_env = TypeEnv::new();
         for &(idx, ref tv) in &pre_bound {
-            let final_ty = subst.apply(tv);
-            let scheme = generalize(&final_ty, &empty_env, &subst);
-            env.bind(fn_decls[idx].name.clone(), scheme.clone());
+            let final_ty = state.subst.apply(tv);
+            let scheme = generalize(&final_ty, &empty_env, &state.subst);
+            state.env.bind(fn_decls[idx].name.clone(), scheme.clone());
             result_schemes[idx] = Some(scheme);
         }
     }
 
     // Post-inference instance resolution: check that all trait method calls have instances
     // and check cross-module constraints (e.g., imported `println` requires Show)
-    if !trait_method_map.is_empty() || !imported_fn_constraints.is_empty() {
+    if !trait_method_map.is_empty() || !state.imported_fn_constraints.is_empty() {
         for body in fn_bodies.iter() {
             if let Some(body) = body {
                 check_trait_instances(
                     body,
                     &trait_method_map,
                     &trait_registry,
-                    &subst,
-                    &imported_fn_constraints,
+                    &state.subst,
+                    &state.imported_fn_constraints,
                 )?;
             }
         }
@@ -2873,7 +2591,7 @@ pub(crate) fn infer_module_inner(
                 let mut impl_method_tpa = HashMap::new();
                 for tv_param in &method.type_params {
                     if !impl_method_tpm.contains_key(&tv_param.name) {
-                        impl_method_tpm.insert(tv_param.name.clone(), gen.fresh());
+                        impl_method_tpm.insert(tv_param.name.clone(), state.gen.fresh());
                         impl_method_tpa.insert(tv_param.name.clone(), tv_param.arity);
                     }
                 }
@@ -2886,10 +2604,10 @@ pub(crate) fn infer_module_inner(
                                 ty_expr,
                                 &impl_method_tpm,
                                 &impl_method_tpa,
-                                &registry,
+                                &state.registry,
                             )
                             .map_err(|e| spanned(e, p.span))?;
-                            unify(&annotated_ty, &concrete_param_types[i], &mut subst)
+                            unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
                                 .map_err(|e| spanned(e, p.span))?;
                         }
                     }
@@ -2902,10 +2620,10 @@ pub(crate) fn infer_module_inner(
                             ret_ty_expr,
                             &impl_method_tpm,
                             &impl_method_tpa,
-                            &registry,
+                            &state.registry,
                         )
                         .map_err(|e| spanned(e, method.span))?;
-                    unify(&annotated_ret, &concrete_ret, &mut subst)
+                    unify(&annotated_ret, &concrete_ret, &mut state.subst)
                         .map_err(|e| spanned(e, method.span))?;
                 }
 
@@ -2916,49 +2634,49 @@ pub(crate) fn infer_module_inner(
                 }
 
                 // Type-check the method body
-                env.push_scope();
+                state.env.push_scope();
                 let mut param_types_inferred = Vec::new();
                 for (i, p) in method.params.iter().enumerate() {
-                    let ptv = Type::Var(gen.fresh());
+                    let ptv = Type::Var(state.gen.fresh());
                     if i < concrete_param_types.len() {
-                        unify(&ptv, &concrete_param_types[i], &mut subst)
+                        unify(&ptv, &concrete_param_types[i], &mut state.subst)
                             .map_err(|e| spanned(e, *span))?;
                     }
                     param_types_inferred.push(ptv.clone());
-                    env.bind(p.name.clone(), TypeScheme::mono(ptv));
+                    state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
                 }
                 // Set fn_return_type for ? operator support
-                let prev_fn_return_type = env.fn_return_type.take();
+                let prev_fn_return_type = state.env.fn_return_type.take();
                 let concrete_ret_type =
                     substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
-                env.fn_return_type = Some(concrete_ret_type);
+                state.env.fn_return_type = Some(concrete_ret_type);
 
                 let body_typed = {
                     let mut ctx = InferenceContext {
-                        env: &mut env,
-                        subst: &mut subst,
-                        gen: &mut gen,
-                        registry: Some(&registry),
+                        env: &mut state.env,
+                        subst: &mut state.subst,
+                        gen: &mut state.gen,
+                        registry: Some(&state.registry),
                         recur_params: Some(&param_types_inferred),
-                        let_own_spans: Some(&mut let_own_spans),
-                        lambda_own_captures: Some(&mut lambda_own_captures),
+                        let_own_spans: Some(&mut state.let_own_spans),
+                        lambda_own_captures: Some(&mut state.lambda_own_captures),
                         type_param_map: &impl_method_tpm,
                         type_param_arity: &impl_method_tpa,
-                        qualified_modules: &qualified_modules,
+                        qualified_modules: &state.qualified_modules,
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };
-                env.fn_return_type = prev_fn_return_type;
-                env.pop_scope();
+                state.env.fn_return_type = prev_fn_return_type;
+                state.env.pop_scope();
 
                 let mut body_typed = body_typed;
-                typed_ast::apply_subst(&mut body_typed, &subst);
+                typed_ast::apply_subst(&mut body_typed, &state.subst);
 
                 let final_param_types: Vec<Type> = param_types_inferred
                     .iter()
-                    .map(|t| subst.apply(t))
+                    .map(|t| state.subst.apply(t))
                     .collect();
-                let final_ret_type = subst.apply(&body_typed.ty);
+                let final_ret_type = state.subst.apply(&body_typed.ty);
 
                 let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));
                 let scheme = TypeScheme {
@@ -2990,238 +2708,26 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Collect results: imported stdlib functions first, then constructors, then user functions
-    let mut results: Vec<(String, TypeScheme)> = imported_fn_types;
-    results.extend(constructor_schemes);
-    results.extend(
-        fn_decls
-            .iter()
-            .enumerate()
-            .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
-    );
-    results.extend(impl_fn_types);
-    results.extend(derived_impl_fn_types);
-
-    // Apply final substitution to all typed function bodies
-    let mut functions: Vec<TypedFnDecl> = Vec::new();
-    for (i, decl) in fn_decls.iter().enumerate() {
-        let mut body = fn_bodies[i].take().unwrap();
-        typed_ast::apply_subst(&mut body, &subst);
-        functions.push(TypedFnDecl {
-            name: decl.name.clone(),
-            visibility: decl.visibility.clone(),
-            params: decl.params.iter().map(|p| p.name.clone()).collect(),
-            body,
-        });
-    }
-    functions.extend(impl_functions);
-    functions.extend(derived_impl_functions);
-
-    let fn_schemes: HashMap<String, TypeScheme> = results.iter().cloned().collect();
-    for func in &functions {
-        let current_requirements = fn_constraint_requirements
-            .get(&func.name)
-            .cloned()
-            .unwrap_or_default();
-        check_constrained_function_refs(
-            &func.body,
-            &current_requirements,
-            &fn_schemes,
-            &fn_constraint_requirements,
-            &imported_fn_constraints,
-            &trait_registry,
-        )?;
-    }
-
-    // Detect constrained functions: functions that call trait methods on type variables
-    let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
-    for func in &functions {
-        // Build param_type_var_map: type var id → param index for this function
-        let mut param_type_var_map: HashMap<TypeVarId, usize> = HashMap::new();
-        if let Some((_, scheme)) = results.iter().find(|(n, _)| n == &func.name) {
-            if let Type::Fn(param_types, _) = &scheme.ty {
-                for (idx, pty) in param_types.iter().enumerate() {
-                    // Collect all type vars in this param (including nested ones
-                    // like `a` in `Option[a]`) so parameterized instances work
-                    for v in free_vars(pty) {
-                        param_type_var_map.entry(v).or_insert(idx);
-                    }
-                }
-            }
-        }
-        let mut constraints = Vec::new();
-        detect_trait_constraints(
-            &func.body,
-            &trait_method_map,
-            &subst,
-            &param_type_var_map,
-            &mut constraints,
-        );
-        if !constraints.is_empty() {
-            constraints.sort();
-            constraints.dedup();
-            fn_constraints.insert(func.name.clone(), constraints);
-        }
-    }
-
-    // Build trait_defs for codegen (include built-in traits that have user instances)
-    let mut trait_defs = Vec::new();
-    let mut seen_traits = std::collections::HashSet::new();
-    // First add all traits from registry
-    for (trait_name, info) in trait_registry.traits() {
-        let is_imported = imported_trait_names.contains(trait_name);
-        let method_info: Vec<(String, usize)> = info
-            .methods
-            .iter()
-            .map(|m| (m.name.clone(), m.param_types.len()))
-            .collect();
-        trait_defs.push(TraitDefInfo {
-            name: trait_name.clone(),
-            methods: method_info,
-            is_imported,
-        });
-        seen_traits.insert(trait_name.clone());
-    }
-    // Then add user-defined traits (skip if already registered)
-    for decl in &module.decls {
-        if let Decl::DefTrait { name, methods, .. } = decl {
-            if !seen_traits.contains(name) {
-                let method_info: Vec<(String, usize)> = methods
-                    .iter()
-                    .map(|m| (m.name.clone(), m.params.len()))
-                    .collect();
-                trait_defs.push(TraitDefInfo {
-                    name: name.clone(),
-                    methods: method_info,
-                    is_imported: false,
-                });
-            }
-        }
-    }
-
-    // Collect struct update info (type name + updated fields) from typed AST
-    let mut struct_update_info: HashMap<Span, (String, HashSet<String>)> = HashMap::new();
-    for func in &functions {
-        collect_struct_update_info(&func.body, &mut struct_update_info);
-    }
-
-    // Run affine ownership verification after successful inference
-    crate::ownership::check_ownership(
+    state.assemble_typed_module(
         module,
-        &results,
-        &registry,
-        &let_own_spans,
-        &lambda_own_captures,
-        &struct_update_info,
-    )?;
-
-    // Compute auto-close info for Resource bindings
-    let auto_close = crate::auto_close::compute_auto_close(&functions, &results, &trait_registry)?;
-
-    instance_defs.extend(derived_instance_defs);
-
-    // Collect struct declarations from AST for codegen
-    let struct_decls: Vec<_> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefType(td) => match &td.kind {
-                TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-
-    // Collect sum type declarations from AST for codegen
-    let mut sum_decls: Vec<(String, Vec<String>, Vec<Variant>)> = module
-        .decls
-        .iter()
-        .filter_map(|decl| match decl {
-            Decl::DefType(td) => match &td.kind {
-                TypeDeclKind::Sum { variants } => {
-                    Some((td.name.clone(), td.type_params.clone(), variants.clone()))
-                }
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-
-    // Inject imported sum types into sum_decls for codegen
-    {
-        let existing_type_names: HashSet<String> =
-            sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
-        for (type_name, (source_path, vis)) in &imported_type_info {
-            if existing_type_names.contains(type_name) || !matches!(vis, Visibility::PubOpen) {
-                continue;
-            }
-            if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {
-                if let Some(td) = find_type_decl(&imported_mod.decls, type_name) {
-                    if let TypeDeclKind::Sum { variants } = &td.kind {
-                        type_provenance.insert(td.name.clone(), source_path.clone());
-                        for v in variants {
-                            type_provenance.insert(v.name.clone(), source_path.clone());
-                        }
-                        sum_decls.push((td.name.clone(), td.type_params.clone(), variants.clone()));
-                    }
-                }
-            }
-        }
-    }
-
-    // Add type provenance entries from imported types (for re-exports and cross-module codegen).
-    // Skip types that are locally defined — local defs shadow imports.
-    let local_type_names: HashSet<String> = module
-        .decls
-        .iter()
-        .filter_map(|d| {
-            if let Decl::DefType(td) = d {
-                Some(td.name.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
-    for (type_name, (source_path, _)) in &imported_type_info {
-        if !local_type_names.contains(type_name) {
-            type_provenance.insert(type_name.clone(), source_path.clone());
-        }
-    }
-
-    // Build type_visibility map from parsed type declarations
-    let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
-    for decl in &module.decls {
-        if let Decl::DefType(td) = decl {
-            type_visibility.insert(td.name.clone(), td.visibility.clone());
-        }
-    }
-
-    exported_trait_defs.extend(reexported_trait_defs);
-
-    Ok(TypedModule {
         module_path,
-        fn_types: results,
-        functions,
-        trait_defs,
+        &fn_decls,
+        result_schemes,
+        fn_bodies,
+        impl_fn_types,
+        impl_functions,
         instance_defs,
-        fn_constraints,
-        fn_constraint_requirements,
-        imported_fn_constraints,
-        trait_method_map: trait_method_map.clone(),
-        extern_fns,
-        imported_extern_fns,
-        struct_decls,
-        sum_decls,
-        fn_provenance: fn_provenance_map,
-        type_provenance,
-        type_visibility,
-        reexported_fn_types,
-        reexported_type_names,
-        reexported_type_visibility,
+        derived_impl_fn_types,
+        derived_impl_functions,
+        derived_instance_defs,
+        &fn_constraint_requirements,
+        &trait_method_map,
+        &trait_registry,
         exported_trait_defs,
-        auto_close,
-    })
+        extern_fns,
+        constructor_schemes,
+        parsed_modules,
+    )
 }
 
 /// Synthesize an `eq` method body for a derived Eq instance.
