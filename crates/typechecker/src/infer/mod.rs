@@ -1363,29 +1363,29 @@ pub fn infer_module_single(
 /// Consumed by `assemble_typed_module` at the end.
 pub(crate) struct ModuleInferenceState {
     // Core inference state
-    pub(crate) env: TypeEnv,
-    pub(crate) subst: Substitution,
-    pub(crate) gen: TypeVarGen,
-    pub(crate) registry: TypeRegistry,
-    pub(crate) let_own_spans: HashSet<Span>,
-    pub(crate) lambda_own_captures: HashMap<Span, String>,
+    pub(super) env: TypeEnv,
+    pub(super) subst: Substitution,
+    pub(super) gen: TypeVarGen,
+    pub(super) registry: TypeRegistry,
+    pub(super) let_own_spans: HashSet<Span>,
+    pub(super) lambda_own_captures: HashMap<Span, String>,
     // Import accumulation
-    pub(crate) imported_fn_types: Vec<(String, TypeScheme)>,
-    pub(crate) fn_provenance_map: HashMap<String, (String, String)>,
-    pub(crate) type_provenance: HashMap<String, String>,
-    pub(crate) imported_extern_fns: Vec<ExternFnInfo>,
-    pub(crate) imported_type_info: HashMap<String, (String, Visibility)>,
-    pub(crate) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
-    pub(crate) imported_trait_defs: Vec<ExportedTraitDef>,
-    pub(crate) imported_trait_names: HashSet<String>,
-    pub(crate) qualified_modules: HashMap<String, QualifiedModuleBinding>,
+    pub(super) imported_fn_types: Vec<(String, TypeScheme)>,
+    pub(super) fn_provenance_map: HashMap<String, (String, String)>,
+    pub(super) type_provenance: HashMap<String, String>,
+    pub(super) imported_extern_fns: Vec<ExternFnInfo>,
+    pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
+    pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
+    pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
+    pub(super) imported_trait_names: HashSet<String>,
+    pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
     // Re-export state
-    pub(crate) reexported_fn_types: Vec<(String, TypeScheme)>,
-    pub(crate) reexported_type_names: Vec<String>,
-    pub(crate) reexported_type_visibility: HashMap<String, Visibility>,
-    pub(crate) reexported_trait_defs: Vec<ExportedTraitDef>,
+    pub(super) reexported_fn_types: Vec<(String, TypeScheme)>,
+    pub(super) reexported_type_names: Vec<String>,
+    pub(super) reexported_type_visibility: HashMap<String, Visibility>,
+    pub(super) reexported_trait_defs: Vec<ExportedTraitDef>,
     // Prelude tracking
-    pub(crate) prelude_imported_names: HashSet<String>,
+    pub(super) prelude_imported_names: HashSet<String>,
 }
 
 impl ModuleInferenceState {
@@ -1754,6 +1754,23 @@ impl ModuleInferenceState {
 /// The module graph has already been resolved and toposorted by `infer_module`.
 /// Import declarations look up parsed ASTs from `parsed_modules` and typed
 /// results from `cache` — no recursive resolution or cycle detection needed.
+///
+/// Pipeline phases:
+///  1. Initialize state (env, registry, intrinsics)
+///  2. Build synthetic prelude import
+///  3. Process imports (types, fns, traits, re-exports)
+///  4. Reserve type var generator past imported schemes
+///  5. Process local extern declarations
+///  6. Clean up prelude shadows
+///  7. Pre-register local type names
+///  8. Process local type declarations
+///  9. Register traits (imported + local)
+/// 10. Process deriving declarations
+/// 11. Process impl blocks
+/// 12. SCC-based function inference
+/// 13. Post-inference instance resolution
+/// 14. Impl method type-checking
+/// 15. Assemble TypedModule
 pub(crate) fn infer_module_inner(
     module: &Module,
     cache: &mut HashMap<String, TypedModule>,
@@ -1769,11 +1786,10 @@ pub(crate) fn infer_module_inner(
 
     let mut state = ModuleInferenceState::new(is_core_module);
 
-    let synthetic_prelude_import = imports::build_synthetic_prelude_import(
+    let synthetic_prelude_import = state.build_synthetic_prelude_import(
         is_prelude_tree,
         cache,
         parsed_modules,
-        &mut state.prelude_imported_names,
     );
 
     state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;

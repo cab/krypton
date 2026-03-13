@@ -11,84 +11,83 @@ use super::{
     QualifiedExport, QualifiedModuleBinding,
 };
 
-/// Build a synthetic `Decl::Import` for the prelude, gathering all re-exported names
-/// from the cached prelude module. Returns `None` when we ARE the prelude or it
-/// isn't cached yet.
-pub(super) fn build_synthetic_prelude_import(
-    is_prelude_tree: bool,
-    cache: &HashMap<String, TypedModule>,
-    parsed_modules: &HashMap<String, &Module>,
-    prelude_imported_names: &mut HashSet<String>,
-) -> Option<Decl> {
-    if is_prelude_tree {
-        return None;
-    }
-    let cached = cache.get("prelude")?;
+impl ModuleInferenceState {
+    /// Build a synthetic `Decl::Import` for the prelude, gathering all re-exported names
+    /// from the cached prelude module. Returns `None` when we ARE the prelude or it
+    /// isn't cached yet.
+    pub(super) fn build_synthetic_prelude_import(
+        &mut self,
+        is_prelude_tree: bool,
+        cache: &HashMap<String, TypedModule>,
+        parsed_modules: &HashMap<String, &Module>,
+    ) -> Option<Decl> {
+        if is_prelude_tree {
+            return None;
+        }
+        let cached = cache.get("prelude")?;
 
-    let mut names: Vec<ImportName> = Vec::new();
+        let mut names: Vec<ImportName> = Vec::new();
 
-    // Re-exported type names (e.g. Option, Result, List, Ordering)
-    for type_name in &cached.reexported_type_names {
-        names.push(ImportName {
-            name: type_name.clone(),
-            alias: None,
-        });
-    }
+        // Re-exported type names (e.g. Option, Result, List, Ordering)
+        for type_name in &cached.reexported_type_names {
+            names.push(ImportName {
+                name: type_name.clone(),
+                alias: None,
+            });
+        }
 
-    // Build set of constructor names from PubOpen re-exported types,
-    // so we can exclude them from the re-exported fn list (they come from type processing).
-    let mut prelude_constructor_names: HashSet<String> = HashSet::new();
-    for type_name in &cached.reexported_type_names {
-        let vis = cached
-            .reexported_type_visibility
-            .get(type_name)
-            .cloned()
-            .unwrap_or(Visibility::Pub);
-        if matches!(vis, Visibility::PubOpen) {
-            if let Some(orig_path) = cached.type_provenance.get(type_name) {
-                if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                    if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
-                        prelude_constructor_names.extend(constructor_names(td));
+        // Build set of constructor names from PubOpen re-exported types,
+        // so we can exclude them from the re-exported fn list (they come from type processing).
+        let mut prelude_constructor_names: HashSet<String> = HashSet::new();
+        for type_name in &cached.reexported_type_names {
+            let vis = cached
+                .reexported_type_visibility
+                .get(type_name)
+                .cloned()
+                .unwrap_or(Visibility::Pub);
+            if matches!(vis, Visibility::PubOpen) {
+                if let Some(orig_path) = cached.type_provenance.get(type_name) {
+                    if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
+                        if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
+                            prelude_constructor_names.extend(constructor_names(td));
+                        }
                     }
                 }
             }
         }
-    }
 
-    // Re-exported trait names (e.g. Eq, Show, Add, etc.)
-    for trait_def in &cached.exported_trait_defs {
-        names.push(ImportName {
-            name: trait_def.name.clone(),
-            alias: None,
-        });
-    }
-
-    // Re-exported functions (e.g. println), excluding constructors
-    // that will be bound via type processing
-    for (name, _) in &cached.reexported_fn_types {
-        if !prelude_constructor_names.contains(name) {
+        // Re-exported trait names (e.g. Eq, Show, Add, etc.)
+        for trait_def in &cached.exported_trait_defs {
             names.push(ImportName {
-                name: name.clone(),
+                name: trait_def.name.clone(),
                 alias: None,
             });
         }
+
+        // Re-exported functions (e.g. println), excluding constructors
+        // that will be bound via type processing
+        for (name, _) in &cached.reexported_fn_types {
+            if !prelude_constructor_names.contains(name) {
+                names.push(ImportName {
+                    name: name.clone(),
+                    alias: None,
+                });
+            }
+        }
+
+        // Track which names came from the prelude so we can remove shadowed
+        // entries from imported_fn_constraints later.
+        for n in &names {
+            self.prelude_imported_names.insert(n.name.clone());
+        }
+
+        Some(Decl::Import {
+            is_pub: false,
+            path: "prelude".to_string(),
+            names,
+            span: (0, 0),
+        })
     }
-
-    // Track which names came from the prelude so we can remove shadowed
-    // entries from imported_fn_constraints later.
-    for n in &names {
-        prelude_imported_names.insert(n.name.clone());
-    }
-
-    Some(Decl::Import {
-        is_pub: false,
-        path: "prelude".to_string(),
-        names,
-        span: (0, 0),
-    })
-}
-
-impl ModuleInferenceState {
     /// Process all import declarations (Phase 6): the import loop.
     pub(super) fn process_imports(
         &mut self,
@@ -356,16 +355,6 @@ impl ModuleInferenceState {
             }
         }
 
-        if import_all {
-            self.qualified_modules.insert(
-                qualifier_name.clone(),
-                QualifiedModuleBinding {
-                    module_path: path.to_string(),
-                    exports: qualified_exports.clone(),
-                },
-            );
-        }
-
         // Process type declarations from imported module source with visibility enforcement
         for sdecl in &imported_module.decls {
             if let Decl::DefType(td) = sdecl {
@@ -451,6 +440,18 @@ impl ModuleInferenceState {
                     }
                 }
             }
+        }
+
+        // Store qualified module binding *after* type processing so PubOpen constructor
+        // entries added above are captured in qualified_exports.
+        if import_all {
+            self.qualified_modules.insert(
+                qualifier_name.clone(),
+                QualifiedModuleBinding {
+                    module_path: path.to_string(),
+                    exports: qualified_exports.clone(),
+                },
+            );
         }
 
         // Process extern declarations from imported module
