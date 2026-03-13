@@ -31,6 +31,7 @@ fn constructor_names(td: &TypeDecl) -> Vec<String> {
 
 mod expr;
 mod imports;
+mod pattern;
 
 #[derive(Clone)]
 pub(super) struct QualifiedExport {
