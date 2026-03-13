@@ -845,6 +845,51 @@ fn set_span(expr: &mut Expr, new_span: Span) {
     }
 }
 
+fn where_clause_parser<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, Vec<TypeConstraint>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+       + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    let bound_name = select! {
+        Token::Ident(s) => s.to_string(),
+        Token::Shared => "shared".to_string(),
+    };
+    let type_constraint_group = select! { Token::Ident(s) => s.to_string() }
+        .then_ignore(symbol(Token::Colon))
+        .then(
+            bound_name
+                .separated_by(symbol(Token::Plus))
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .map_with(|(type_var, bounds), e| {
+            let span = to_span(e.span());
+            bounds
+                .into_iter()
+                .map(|trait_name| TypeConstraint {
+                    type_var: type_var.clone(),
+                    trait_name,
+                    span,
+                })
+                .collect::<Vec<_>>()
+        });
+
+    symbol(Token::Where)
+        .ignore_then(
+            type_constraint_group
+                .separated_by(symbol(Token::Comma))
+                .collect::<Vec<Vec<_>>>(),
+        )
+        .or_not()
+        .map(|c| {
+            c.unwrap_or_default()
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+        })
+}
+
 fn visibility_parser<'tokens, 'src: 'tokens, I>(
 ) -> impl Parser<'tokens, I, Visibility, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
 where
@@ -873,45 +918,7 @@ where
     let ty = type_expr_parser();
     let vis = visibility_parser();
 
-    // --- Type constraint group: a: Trait1 + Trait2 + shared ---
-    let bound_name = select! {
-        Token::Ident(s) => s.to_string(),
-        Token::Shared => "shared".to_string(),
-    };
-    let type_constraint_group = select! { Token::Ident(s) => s.to_string() }
-        .then_ignore(symbol(Token::Colon))
-        .then(
-            bound_name
-                .separated_by(symbol(Token::Plus))
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .map_with(|(type_var, bounds), e| {
-            let span = to_span(e.span());
-            bounds
-                .into_iter()
-                .map(|trait_name| TypeConstraint {
-                    type_var: type_var.clone(),
-                    trait_name,
-                    span,
-                })
-                .collect::<Vec<_>>()
-        });
-
-    // --- Where clause: where a: Ord + Show, b: Eq ---
-    let where_clause = symbol(Token::Where)
-        .ignore_then(
-            type_constraint_group
-                .separated_by(symbol(Token::Comma))
-                .collect::<Vec<Vec<_>>>(),
-        )
-        .or_not()
-        .map(|c| {
-            c.unwrap_or_default()
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-        });
+    let where_clause = where_clause_parser();
 
     // --- Param: name or name: Type ---
     let param = select! { Token::Ident(s) => s.to_string() }
@@ -1182,43 +1189,7 @@ where
             span: to_span(e.span()),
         });
 
-    let impl_bound_name = select! {
-        Token::Ident(s) => s.to_string(),
-        Token::Shared => "shared".to_string(),
-    };
-    let impl_type_constraint_group = select! { Token::Ident(s) => s.to_string() }
-        .then_ignore(symbol(Token::Colon))
-        .then(
-            impl_bound_name
-                .separated_by(symbol(Token::Plus))
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .map_with(|(type_var, bounds), e| {
-            let span = to_span(e.span());
-            bounds
-                .into_iter()
-                .map(|trait_name| TypeConstraint {
-                    type_var: type_var.clone(),
-                    trait_name,
-                    span,
-                })
-                .collect::<Vec<_>>()
-        });
-
-    let impl_constraints = symbol(Token::Where)
-        .ignore_then(
-            impl_type_constraint_group
-                .separated_by(symbol(Token::Comma))
-                .collect::<Vec<Vec<_>>>(),
-        )
-        .or_not()
-        .map(|c| {
-            c.unwrap_or_default()
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-        });
+    let impl_constraints = where_clause_parser();
 
     let impl_decl = symbol(Token::Impl)
         .ignore_then(select! { Token::Ident(s) => s.to_string() })

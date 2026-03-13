@@ -437,19 +437,27 @@ impl<'a> OwnershipChecker<'a> {
                     {
                         if self.affine.contains(arg_name) {
                             if let Some(quals) = callee_qualifiers {
-                                if let Some((ParamQualifier::RequiresU, param_name)) = quals.get(i) {
-                                    let callee_name =
-                                        callee_var_name(func).unwrap_or("<anonymous>").to_string();
-                                    return Err(SpannedTypeError {
-                                        error: TypeError::QualifierMismatch {
-                                            name: arg_name.clone(),
-                                            callee: callee_name,
-                                            param: param_name.clone(),
-                                        },
-                                        span: *arg_span,
-                                        note: None,
-                                        secondary_span: None,
-                                    });
+                                if let Some((qualifier, param_name)) = quals.get(i) {
+                                    match qualifier {
+                                        ParamQualifier::RequiresU => {
+                                            let callee_name =
+                                                callee_var_name(func).unwrap_or("<anonymous>").to_string();
+                                            return Err(SpannedTypeError {
+                                                error: TypeError::QualifierMismatch {
+                                                    name: arg_name.clone(),
+                                                    callee: callee_name,
+                                                    param: param_name.clone(),
+                                                },
+                                                span: *arg_span,
+                                                note: None,
+                                                secondary_span: None,
+                                            });
+                                        }
+                                        ParamQualifier::Shared | ParamQualifier::Polymorphic => {
+                                            // Shared: `shared` bound — affine args are non-consuming borrows
+                                            // Polymorphic: used <=1 times — accepts both affine and unlimited
+                                        }
+                                    }
                                 }
                             }
                         }

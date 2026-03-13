@@ -1,0 +1,6 @@
+# expect: ok
+fun dup[a](x: a) -> (a, a) where a: shared = (x, x)
+fun test(buf: ~String) -> Unit = {
+    dup(buf)
+    println(buf)
+}
