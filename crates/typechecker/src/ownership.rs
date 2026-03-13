@@ -13,6 +13,8 @@ enum ParamQualifier {
     RequiresU,
     /// Used at most once — accepts both affine and unlimited values.
     Polymorphic,
+    /// Declared `shared` — accepts affine args without consuming them.
+    Shared,
 }
 
 /// Check if a param has an `own` type annotation.
@@ -184,9 +186,11 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
 ///
 /// For each function, returns a Vec<ParamQualifier> parallel to its params.
 /// A type-variable-typed param that is used >1 time in the body gets `RequiresU`.
+/// Params whose type var has a `shared` bound get `Shared` regardless of body usage.
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
     fn_types: &[(String, TypeScheme)],
+    shared_type_vars: &HashMap<String, HashSet<String>>,
 ) -> HashMap<String, Vec<(ParamQualifier, String)>> {
     let type_map: HashMap<&str, &TypeScheme> =
         fn_types.iter().map(|(n, s)| (n.as_str(), s)).collect();
@@ -205,6 +209,17 @@ fn compute_fn_qualifiers(
         };
 
         let quantified: HashSet<_> = scheme.vars.iter().copied().collect();
+
+        // Build type var ID → type param name mapping
+        let var_id_to_name: HashMap<_, _> = decl
+            .type_params
+            .iter()
+            .zip(scheme.vars.iter())
+            .map(|(tp, &id)| (id, tp.name.clone()))
+            .collect();
+
+        let fn_shared = shared_type_vars.get(&decl.name);
+
         let mut qualifiers = Vec::new();
 
         for (i, param_ty) in param_types.iter().enumerate() {
@@ -223,7 +238,20 @@ fn compute_fn_qualifiers(
                 .map(|p| p.name.clone())
                 .unwrap_or_default();
             if is_type_var {
-                if let Some(param) = decl.params.get(i) {
+                // Check if this type var has a `shared` bound
+                let is_shared = if let Type::Var(id) = inner {
+                    fn_shared.is_some_and(|shared_set| {
+                        var_id_to_name
+                            .get(id)
+                            .is_some_and(|name| shared_set.contains(name))
+                    })
+                } else {
+                    false
+                };
+
+                if is_shared {
+                    qualifiers.push((ParamQualifier::Shared, param_name));
+                } else if let Some(param) = decl.params.get(i) {
                     let bound = HashSet::new();
                     let uses = count_max_uses(&decl.body, &param.name, &bound);
                     if uses > 1 {
@@ -287,6 +315,7 @@ pub fn check_ownership(
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
+    shared_type_vars: &HashMap<String, HashSet<String>>,
 ) -> Result<(), SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
@@ -308,7 +337,7 @@ pub fn check_ownership(
         .collect();
 
     // Compute qualifier requirements per function
-    let fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types);
+    let fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types, shared_type_vars);
 
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {

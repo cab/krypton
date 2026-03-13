@@ -105,13 +105,22 @@ impl<'a> Formatter<'a> {
         }
         if !f.constraints.is_empty() {
             self.buf.push_str(" where ");
-            for (i, c) in f.constraints.iter().enumerate() {
+            // Group constraints by type_var, preserving order
+            let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+            for c in &f.constraints {
+                if let Some(group) = groups.iter_mut().find(|(tv, _)| tv == &c.type_var) {
+                    group.1.push(c.trait_name.clone());
+                } else {
+                    groups.push((c.type_var.clone(), vec![c.trait_name.clone()]));
+                }
+            }
+            for (i, (type_var, bounds)) in groups.iter().enumerate() {
                 if i > 0 {
                     self.buf.push_str(", ");
                 }
-                self.buf.push_str(&c.type_var);
+                self.buf.push_str(type_var);
                 self.buf.push_str(": ");
-                self.buf.push_str(&c.trait_name);
+                self.buf.push_str(&bounds.join(" + "));
             }
         }
         // Determine body style: block body (Do) vs expression body

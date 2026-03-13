@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
     BinOp, Decl, Expr, ExternMethod, Lit, Module, Span, TypeConstraint,
-    TypeDecl, TypeDeclKind, TypeParam, UnaryOp, Variant, Visibility,
+    TypeDecl, TypeDeclKind, TypeExpr, TypeParam, UnaryOp, Variant, Visibility,
 };
 
 use crate::scc;
@@ -1529,6 +1529,7 @@ impl ModuleInferenceState {
         extern_fns: Vec<ExternFnInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
         parsed_modules: &HashMap<String, &Module>,
+        shared_type_vars: &HashMap<String, HashSet<String>>,
     ) -> Result<TypedModule, SpannedTypeError> {
         let mut results: Vec<(String, TypeScheme)> = self.imported_fn_types;
         results.extend(constructor_schemes);
@@ -1643,6 +1644,7 @@ impl ModuleInferenceState {
             &self.let_own_spans,
             &self.lambda_own_captures,
             &struct_update_info,
+            &shared_type_vars,
         )?;
 
         let auto_close = crate::auto_close::compute_auto_close(&functions, &results, trait_registry)?;
@@ -2394,6 +2396,7 @@ pub(crate) fn infer_module_inner(
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
     let mut fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>> = HashMap::new();
+    let mut shared_type_vars: HashMap<String, HashSet<String>> = HashMap::new();
 
     // Process each SCC in topological order (dependencies first)
     for component in &sccs {
@@ -2413,10 +2416,36 @@ pub(crate) fn infer_module_inner(
             // Build type_param_map from explicit type parameters
             let (type_param_map, type_param_arity) =
                 build_type_param_maps(&decl.type_params, &mut state.gen);
+            // Collect shared type vars and filter them out of trait constraints
+            let mut shared_tv_names: HashSet<String> = HashSet::new();
             if !decl.constraints.is_empty() {
+                for constraint in &decl.constraints {
+                    if constraint.trait_name == "shared" {
+                        shared_tv_names.insert(constraint.type_var.clone());
+                    }
+                }
+
+                // Validate: ~a param where a: shared is contradictory
+                for p in &decl.params {
+                    if let Some(TypeExpr::Own { inner, .. }) = &p.ty {
+                        if let TypeExpr::Var { name, .. } = inner.as_ref() {
+                            if shared_tv_names.contains(name) {
+                                return Err(spanned(
+                                    TypeError::QualifierBoundViolation {
+                                        type_var: name.clone(),
+                                        param_name: p.name.clone(),
+                                    },
+                                    decl.span,
+                                ));
+                            }
+                        }
+                    }
+                }
+
                 let requirements: Vec<(String, TypeVarId)> = decl
                     .constraints
                     .iter()
+                    .filter(|c| c.trait_name != "shared")
                     .filter_map(|constraint| {
                         type_param_map
                             .get(&constraint.type_var)
@@ -2427,6 +2456,9 @@ pub(crate) fn infer_module_inner(
                 if !requirements.is_empty() {
                     fn_constraint_requirements.insert(decl.name.clone(), requirements);
                 }
+            }
+            if !shared_tv_names.is_empty() {
+                shared_type_vars.insert(decl.name.clone(), shared_tv_names);
             }
 
             let mut param_types = Vec::new();
@@ -2744,6 +2776,7 @@ pub(crate) fn infer_module_inner(
         extern_fns,
         constructor_schemes,
         parsed_modules,
+        &shared_type_vars,
     )
 }
 

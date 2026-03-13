@@ -40,6 +40,7 @@ pub enum TypeErrorCode {
     E0507, // Kind mismatch (type applied with wrong number of type args)
     E0508, // Unknown qualified export
     E0105, // Resource branch leak (consumed in some branches but not all)
+    E0106, // Qualifier bound violation (shared + ~T)
     E0012, // Reserved name
 }
 
@@ -79,6 +80,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0507 => write!(f, "E0507"),
             TypeErrorCode::E0508 => write!(f, "E0508"),
             TypeErrorCode::E0105 => write!(f, "E0105"),
+            TypeErrorCode::E0106 => write!(f, "E0106"),
             TypeErrorCode::E0012 => write!(f, "E0012"),
         }
     }
@@ -218,6 +220,10 @@ pub enum TypeError {
     ReservedName {
         name: String,
     },
+    QualifierBoundViolation {
+        type_var: String,
+        param_name: String,
+    },
 }
 
 impl TypeError {
@@ -264,6 +270,7 @@ impl TypeError {
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
             TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
             TypeError::ResourceBranchLeak { .. } => TypeErrorCode::E0105,
+            TypeError::QualifierBoundViolation { .. } => TypeErrorCode::E0106,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
         }
     }
@@ -425,6 +432,9 @@ impl TypeError {
             }
             TypeError::ReservedName { name } => {
                 Some(format!("names starting with `__krypton_` are reserved for compiler internals; rename `{}`", name))
+            }
+            TypeError::QualifierBoundViolation { .. } => {
+                Some("remove the `~` from the parameter type, or remove the `shared` bound".to_string())
             }
         }
     }
@@ -624,6 +634,16 @@ impl fmt::Display for TypeError {
                     f,
                     "`{}` is a reserved compiler name and cannot be used",
                     name
+                )
+            }
+            TypeError::QualifierBoundViolation {
+                type_var,
+                param_name,
+            } => {
+                write!(
+                    f,
+                    "qualifier bound violation: type variable `{}` is constrained to `shared` but parameter `{}` uses `~{}`",
+                    type_var, param_name, type_var
                 )
             }
         }

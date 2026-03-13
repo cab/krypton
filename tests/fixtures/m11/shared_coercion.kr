@@ -1,0 +1,6 @@
+# expect: ok
+fun identity[a](x: a) -> a where a: shared = x
+fun use_it(buf: ~String) -> Unit = {
+    identity(buf)
+    println(buf)
+}
