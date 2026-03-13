@@ -716,6 +716,18 @@ fun main() = {
 }
 
 #[test]
+fn test_qualified_nullary_constructor_reference() {
+    let src = r#"
+import core/option
+fun main() = {
+    let f: Option[Int] = option.None;
+    println(f)
+}
+"#;
+    assert_eq!(run_program(src), "None");
+}
+
+#[test]
 fn test_match_nested_pattern() {
     let src = r#"
 type List[a] = Cons(a, List[a]) | Nil

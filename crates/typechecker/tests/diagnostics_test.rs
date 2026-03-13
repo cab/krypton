@@ -262,6 +262,69 @@ fn circular_import_error() {
 }
 
 #[test]
+fn module_qualifier_value_diagnostic() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "helpers_a" => Some("pub fun compute(x: Int) -> Int = x + 10".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import helpers_a\nfun main() -> Int = { let m = helpers_a; 0 }";
+    let output = render_module_error_with_resolver(src, &Resolver);
+    assert!(output.contains("E0504"), "expected E0504 in:\n{output}");
+    assert!(
+        output.contains("compile-time only"),
+        "expected compile-time wording in:\n{output}"
+    );
+    assert!(
+        output.contains("not a runtime value"),
+        "expected runtime value wording in:\n{output}"
+    );
+    assert!(
+        output.contains("helpers_a."),
+        "expected qualified export example in:\n{output}"
+    );
+}
+
+#[test]
+fn module_qualifier_value_diagnostic_noncallable_example_has_no_call_syntax() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "choices" => Some("pub open type Option[a] = Some(a) | None".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import choices\nfun main() -> Int = { let m = choices; 0 }";
+    let output = render_module_error_with_resolver(src, &Resolver);
+    assert!(
+        !output.contains("choices.None(...)"),
+        "non-callable constructor should not be shown as callable:\n{output}"
+    );
+}
+
+#[test]
+fn module_qualifier_value_diagnostic_hides_internal_export_names() {
+    let src = "import core/option\nfun main() -> Int = { let m = option; 0 }";
+    let output = render_module_error(src);
+    assert!(
+        !output.contains('$'),
+        "internal lowered names should not appear in help text:\n{output}"
+    );
+}
+
+#[test]
 fn reserved_name_error() {
     let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
     let output = parse_and_infer_module_error(src);

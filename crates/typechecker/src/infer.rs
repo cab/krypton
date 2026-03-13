@@ -41,6 +41,37 @@ struct QualifiedModuleBinding {
     exports: HashMap<String, QualifiedExport>,
 }
 
+fn is_callable_scheme(scheme: &TypeScheme) -> bool {
+    match &scheme.ty {
+        Type::Fn(_, _) => true,
+        Type::Own(inner) => matches!(inner.as_ref(), Type::Fn(_, _)),
+        _ => false,
+    }
+}
+
+fn is_user_facing_export_name(name: &str) -> bool {
+    !name.starts_with("__") && !name.contains('$')
+}
+
+fn qualifier_suggested_usage(
+    qualifier: &str,
+    binding: &QualifiedModuleBinding,
+) -> Option<String> {
+    binding
+        .exports
+        .iter()
+        .filter(|(name, _)| is_user_facing_export_name(name))
+        .map(|(name, export)| (name.as_str(), is_callable_scheme(&export.scheme)))
+        .min_by_key(|(name, callable)| (!*callable, *name))
+        .map(|(name, callable)| {
+            if callable {
+                format!("{qualifier}.{name}(...)")
+            } else {
+                format!("{qualifier}.{name}")
+            }
+        })
+}
+
 fn build_type_param_maps(
     params: &[TypeParam],
     gen: &mut TypeVarGen,
@@ -698,10 +729,22 @@ fn infer_expr_inner(
                     span: *span,
                 })
             }
-            None => Err(spanned(
-                TypeError::UnknownVariable { name: name.clone() },
-                *span,
-            )),
+            None => {
+                if let Some(binding) = qualified_modules.get(name) {
+                    Err(spanned(
+                        TypeError::ModuleQualifierUsedAsValue {
+                            qualifier: name.clone(),
+                            suggested_usage: qualifier_suggested_usage(name, binding),
+                        },
+                        *span,
+                    ))
+                } else {
+                    Err(spanned(
+                        TypeError::UnknownVariable { name: name.clone() },
+                        *span,
+                    ))
+                }
+            }
         },
 
         Expr::Lambda {
@@ -814,6 +857,13 @@ fn infer_expr_inner(
                             ));
                         };
 
+                        let is_constructor =
+                            registry.is_some_and(|r| r.is_constructor(&export_name));
+                        let resolved_name = if is_constructor {
+                            export_name.clone()
+                        } else {
+                            export.local_name.clone()
+                        };
                         let func_ty = if explicit_type_args.is_empty() {
                             export.scheme.instantiate(&mut || gen.fresh())
                         } else {
@@ -847,7 +897,7 @@ fn infer_expr_inner(
                             )?
                         };
                         let func_typed = TypedExpr {
-                            kind: TypedExprKind::Var(export.local_name.clone()),
+                            kind: TypedExprKind::Var(resolved_name),
                             ty: func_ty.clone(),
                             span: *span,
                         };
@@ -891,8 +941,6 @@ fn infer_expr_inner(
                         }
 
                         let ret_var = Type::Var(gen.fresh());
-                        let is_constructor =
-                            registry.is_some_and(|r| r.is_constructor(&export.local_name));
                         let coerced_args = if is_constructor {
                             arg_types.clone()
                         } else {
@@ -944,11 +992,17 @@ fn infer_expr_inner(
                                     *span,
                                 ));
                             };
+                            let is_constructor =
+                                registry.is_some_and(|r| r.is_constructor(field));
+                            let resolved_name = if is_constructor {
+                                field.clone()
+                            } else {
+                                export.local_name.clone()
+                            };
                             let func_ty = export.scheme.instantiate(&mut || gen.fresh());
                             let func_typed = TypedExpr {
-                                kind: TypedExprKind::Var(export.local_name.clone()),
-                                ty: if registry.is_some_and(|r| r.is_constructor(&export.local_name))
-                                    && !matches!(&func_ty, Type::Fn(_, _))
+                                kind: TypedExprKind::Var(resolved_name),
+                                ty: if is_constructor && !matches!(&func_ty, Type::Fn(_, _))
                                 {
                                     Type::Own(Box::new(func_ty.clone()))
                                 } else {
@@ -1594,6 +1648,40 @@ fn infer_expr_inner(
             field,
             span,
         } => {
+            if let Expr::Var { name: qualifier, .. } = target.as_ref() {
+                if env.lookup(qualifier).is_none() {
+                    if let Some(binding) = qualified_modules.get(qualifier) {
+                        let Some(export) = binding.exports.get(field) else {
+                            return Err(spanned(
+                                TypeError::UnknownQualifiedExport {
+                                    qualifier: qualifier.clone(),
+                                    module_path: binding.module_path.clone(),
+                                    name: field.clone(),
+                                },
+                                *span,
+                            ));
+                        };
+                        let is_constructor = registry.is_some_and(|r| r.is_constructor(field));
+                        let resolved_name = if is_constructor {
+                            field.clone()
+                        } else {
+                            export.local_name.clone()
+                        };
+                        let export_ty = export.scheme.instantiate(&mut || gen.fresh());
+                        let ty = if is_constructor && !matches!(&export_ty, Type::Fn(_, _))
+                        {
+                            Type::Own(Box::new(export_ty.clone()))
+                        } else {
+                            export_ty.clone()
+                        };
+                        return Ok(TypedExpr {
+                            kind: TypedExprKind::Var(resolved_name),
+                            ty,
+                            span: *span,
+                        });
+                    }
+                }
+            }
             let target_typed = infer_expr_inner(
                 target,
                 env,
@@ -3571,7 +3659,7 @@ pub(crate) fn infer_module_inner(
                     qualifier_name.clone(),
                     QualifiedModuleBinding {
                         module_path: path.clone(),
-                        exports: qualified_exports,
+                        exports: qualified_exports.clone(),
                     },
                 );
             }
@@ -3639,6 +3727,20 @@ pub(crate) fn infer_module_inner(
                             }
                             if matches!(td.visibility, Visibility::PubOpen) {
                                 for (cname, scheme) in constructors {
+                                    let hidden_name =
+                                        format!("__qual${}${}", qualifier_name, cname);
+                                    qualified_exports.insert(
+                                        cname.clone(),
+                                        QualifiedExport {
+                                            local_name: hidden_name.clone(),
+                                            scheme: scheme.clone(),
+                                        },
+                                    );
+                                    imported_fn_types.push((hidden_name.clone(), scheme.clone()));
+                                    fn_provenance_map.insert(
+                                        hidden_name,
+                                        (path.clone(), cname.clone()),
+                                    );
                                     env.bind(cname, scheme);
                                 }
                             }

@@ -190,6 +190,10 @@ pub enum TypeError {
     BareImport {
         path: String,
     },
+    ModuleQualifierUsedAsValue {
+        qualifier: String,
+        suggested_usage: Option<String>,
+    },
     UnknownQualifiedExport {
         qualifier: String,
         module_path: String,
@@ -254,6 +258,7 @@ impl TypeError {
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
+            TypeError::ModuleQualifierUsedAsValue { .. } => TypeErrorCode::E0504,
             TypeError::UnknownQualifiedExport { .. } => TypeErrorCode::E0508,
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
@@ -387,6 +392,17 @@ impl TypeError {
             TypeError::BareImport { path } => {
                 let last = path.rsplit('/').next().unwrap_or(path);
                 Some(format!("use `import {path}.{{name1, name2}}` to import specific names — qualified imports (`{last}.foo()`) are not yet supported"))
+            }
+            TypeError::ModuleQualifierUsedAsValue {
+                suggested_usage, ..
+            } => {
+                let example = suggested_usage
+                    .as_ref()
+                    .map(|usage| format!("`{usage}`"))
+                    .unwrap_or_else(|| "`qualifier.some_export`".to_string());
+                Some(format!(
+                    "module qualifiers are compile-time only, not runtime values; call an exported name directly, for example {example}"
+                ))
             }
             TypeError::UnknownQualifiedExport {
                 qualifier,
@@ -557,6 +573,13 @@ impl fmt::Display for TypeError {
             }
             TypeError::BareImport { path } => {
                 write!(f, "bare import of module `{}` is not supported", path)
+            }
+            TypeError::ModuleQualifierUsedAsValue { qualifier, .. } => {
+                write!(
+                    f,
+                    "module qualifier `{}` cannot be used as a value: it is compile-time only, not a runtime value",
+                    qualifier
+                )
             }
             TypeError::UnknownQualifiedExport {
                 qualifier,

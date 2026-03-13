@@ -1348,6 +1348,59 @@ fn infer_module_missing_qualified_export_errors_clearly() {
 }
 
 #[test]
+fn infer_module_qualifier_used_as_value_errors_clearly() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub fun add(x: Int, y: Int) -> Int = x + y".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import mylib
+        fun main() -> Int = { let m = mylib; 0 }
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_err(), "module qualifier as value should fail");
+    let err = match result {
+        Err(err) => err,
+        Ok(_) => panic!("expected module qualifier value use to fail"),
+    };
+    assert_eq!(err.error.error_code().to_string(), "E0504");
+}
+
+#[test]
+fn infer_module_qualified_nullary_constructor_value_resolves() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub open type Option[a] = Some(a) | None".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import mylib
+        fun main() -> Option[Int] = mylib.None
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(
+        result.is_ok(),
+        "qualified nullary constructor should resolve as a value: {:?}",
+        result.err()
+    );
+}
+
+#[test]
 fn infer_module_constructor_alias_resolves() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {
