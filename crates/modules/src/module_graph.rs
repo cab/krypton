@@ -49,13 +49,7 @@ pub fn build_module_graph(
 
     // Walk root imports with proper span tracking for error messages
     for decl in &root.decls {
-        if let Decl::Import { path, names, span, .. } = decl {
-            if names.is_empty() {
-                return Err(ModuleGraphError::BareImport {
-                    path: path.clone(),
-                    span: *span,
-                });
-            }
+        if let Decl::Import { path, span, .. } = decl {
             visit_user_module(path, *span, resolver, &mut visited, &mut stack, &mut stack_set, &mut result)?;
         }
     }
@@ -112,13 +106,7 @@ fn visit_prelude_tree(
     stack_set.insert(path.to_string());
 
     for decl in &module.decls {
-        if let Decl::Import { path: dep_path, names, span, .. } = decl {
-            if names.is_empty() {
-                return Err(ModuleGraphError::BareImport {
-                    path: dep_path.clone(),
-                    span: *span,
-                });
-            }
+        if let Decl::Import { path: dep_path, .. } = decl {
             visit_prelude_tree(dep_path, resolver, visited, stack, stack_set, result)?;
         }
     }
@@ -175,13 +163,7 @@ fn visit_user_module(
     stack_set.insert(path.to_string());
 
     for decl in &module.decls {
-        if let Decl::Import { path: dep_path, names, span, .. } = decl {
-            if names.is_empty() {
-                return Err(ModuleGraphError::BareImport {
-                    path: dep_path.clone(),
-                    span: *span,
-                });
-            }
+        if let Decl::Import { path: dep_path, span, .. } = decl {
             visit_user_module(dep_path, *span, resolver, visited, stack, stack_set, result)?;
         }
     }

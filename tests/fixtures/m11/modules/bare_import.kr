@@ -1,3 +1,8 @@
-# expect: error E0504
+# expect: output 5
 import helpers_a
-fun main() = 1
+
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+fun main() = println(helpers_a.compute(-5))

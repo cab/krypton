@@ -29,6 +29,18 @@ fn constructor_names(td: &TypeDecl) -> Vec<String> {
     }
 }
 
+#[derive(Clone)]
+struct QualifiedExport {
+    local_name: String,
+    scheme: TypeScheme,
+}
+
+#[derive(Clone)]
+struct QualifiedModuleBinding {
+    module_path: String,
+    exports: HashMap<String, QualifiedExport>,
+}
+
 fn build_type_param_maps(
     params: &[TypeParam],
     gen: &mut TypeVarGen,
@@ -619,6 +631,7 @@ pub fn infer_expr(
 ) -> Result<Type, SpannedTypeError> {
     let empty_type_param_map = HashMap::new();
     let empty_type_param_arity = HashMap::new();
+    let empty_qualified_modules = HashMap::new();
     infer_expr_inner(
         expr,
         env,
@@ -631,6 +644,7 @@ pub fn infer_expr(
         None,
         &empty_type_param_map,
         &empty_type_param_arity,
+        &empty_qualified_modules,
     )
     .map(|te| te.ty)
 }
@@ -649,6 +663,7 @@ fn infer_expr_inner(
     expected_type: Option<&Type>,
     type_param_map: &HashMap<String, TypeVarId>,
     type_param_arity: &HashMap<String, usize>,
+    qualified_modules: &HashMap<String, QualifiedModuleBinding>,
 ) -> Result<TypedExpr, SpannedTypeError> {
     match expr {
         Expr::Lit { value, span } => {
@@ -729,6 +744,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             env.fn_return_type = prev_fn_return_type;
             env.pop_scope();
@@ -758,6 +774,260 @@ fn infer_expr_inner(
         Expr::App {
             func, args, span, ..
         } => {
+            let qualified_call = match (func.as_ref(), args.first()) {
+                (
+                    Expr::Var { name: export_name, .. },
+                    Some(Expr::Var {
+                        name: qualifier, ..
+                    }),
+                ) => Some((qualifier.clone(), export_name.clone(), Vec::new())),
+                (
+                    Expr::TypeApp {
+                        expr,
+                        type_args,
+                        ..
+                    },
+                    Some(Expr::Var {
+                        name: qualifier, ..
+                    }),
+                ) => match expr.as_ref() {
+                    Expr::Var { name: export_name, .. } => Some((
+                        qualifier.clone(),
+                        export_name.clone(),
+                        type_args.clone(),
+                    )),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some((qualifier, export_name, explicit_type_args)) = qualified_call {
+                if env.lookup(&qualifier).is_none() {
+                    if let Some(binding) = qualified_modules.get(&qualifier) {
+                        let Some(export) = binding.exports.get(&export_name) else {
+                            return Err(spanned(
+                                TypeError::UnknownQualifiedExport {
+                                    qualifier,
+                                    module_path: binding.module_path.clone(),
+                                    name: export_name,
+                                },
+                                *span,
+                            ));
+                        };
+
+                        let func_ty = if explicit_type_args.is_empty() {
+                            export.scheme.instantiate(&mut || gen.fresh())
+                        } else {
+                            let reg = registry.ok_or_else(|| {
+                                spanned(
+                                    TypeError::UnsupportedExpr {
+                                        description:
+                                            "explicit type application requires the type registry"
+                                                .to_string(),
+                                    },
+                                    *span,
+                                )
+                            })?;
+                            let explicit_types = explicit_type_args
+                                .iter()
+                                .map(|type_arg| {
+                                    type_registry::resolve_type_expr(
+                                        type_arg,
+                                        type_param_map,
+                                        type_param_arity,
+                                        reg,
+                                    )
+                                    .map_err(|e| spanned(e, *span))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            instantiate_scheme_with_types(
+                                &export.scheme,
+                                &explicit_types,
+                                *span,
+                                gen,
+                            )?
+                        };
+                        let func_typed = TypedExpr {
+                            kind: TypedExprKind::Var(export.local_name.clone()),
+                            ty: func_ty.clone(),
+                            span: *span,
+                        };
+                        let actual_args = &args[1..];
+                        let func_param_types = match &func_ty {
+                            Type::Fn(params, _) => Some(params.clone()),
+                            Type::Own(inner) => match inner.as_ref() {
+                                Type::Fn(params, _) => Some(params.clone()),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        let mut args_typed = Vec::new();
+                        let mut arg_types = Vec::new();
+                        for (i, a) in actual_args.iter().enumerate() {
+                            let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
+                                func_param_types.as_ref().and_then(|fparams| {
+                                    fparams
+                                        .get(i)
+                                        .map(|expected_arg_ty| subst.apply(expected_arg_ty))
+                                })
+                            } else {
+                                None
+                            };
+                            let a_typed = infer_expr_inner(
+                                a,
+                                env,
+                                subst,
+                                gen,
+                                registry,
+                                recur_params,
+                                let_own_spans.as_deref_mut(),
+                                lambda_own_captures.as_deref_mut(),
+                                arg_expected_type.as_ref(),
+                                type_param_map,
+                                type_param_arity,
+                                qualified_modules,
+                            )?;
+                            arg_types.push(a_typed.ty.clone());
+                            args_typed.push(a_typed);
+                        }
+
+                        let ret_var = Type::Var(gen.fresh());
+                        let is_constructor =
+                            registry.is_some_and(|r| r.is_constructor(&export.local_name));
+                        let coerced_args = if is_constructor {
+                            arg_types.clone()
+                        } else {
+                            coerce_own_args(&func_ty, &arg_types, subst)
+                        };
+                        let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
+                        let unwrapped_func_ty = match subst.apply(&func_ty) {
+                            Type::Own(inner) if matches!(*inner, Type::Fn(_, _)) => *inner,
+                            other => other,
+                        };
+                        unify(&unwrapped_func_ty, &expected_fn, subst)
+                            .map_err(|e| spanned(e, *span))?;
+                        let ty = subst.apply(&ret_var);
+                        return Ok(TypedExpr {
+                            kind: TypedExprKind::App {
+                                func: Box::new(func_typed),
+                                args: args_typed,
+                            },
+                            ty: if is_constructor {
+                                Type::Own(Box::new(ty))
+                            } else {
+                                ty
+                            },
+                            span: *span,
+                        });
+                    }
+                }
+            }
+
+            if let Expr::FieldAccess {
+                expr: qualifier_expr,
+                field,
+                ..
+            } = func.as_ref()
+            {
+                if let Expr::Var {
+                    name: qualifier, ..
+                } = qualifier_expr.as_ref()
+                {
+                    if env.lookup(qualifier).is_none() {
+                        if let Some(binding) = qualified_modules.get(qualifier) {
+                            let Some(export) = binding.exports.get(field) else {
+                                return Err(spanned(
+                                    TypeError::UnknownQualifiedExport {
+                                        qualifier: qualifier.clone(),
+                                        module_path: binding.module_path.clone(),
+                                        name: field.clone(),
+                                    },
+                                    *span,
+                                ));
+                            };
+                            let func_ty = export.scheme.instantiate(&mut || gen.fresh());
+                            let func_typed = TypedExpr {
+                                kind: TypedExprKind::Var(export.local_name.clone()),
+                                ty: if registry.is_some_and(|r| r.is_constructor(&export.local_name))
+                                    && !matches!(&func_ty, Type::Fn(_, _))
+                                {
+                                    Type::Own(Box::new(func_ty.clone()))
+                                } else {
+                                    func_ty.clone()
+                                },
+                                span: *span,
+                            };
+
+                            let func_param_types = match &func_ty {
+                                Type::Fn(params, _) => Some(params.clone()),
+                                Type::Own(inner) => match inner.as_ref() {
+                                    Type::Fn(params, _) => Some(params.clone()),
+                                    _ => None,
+                                },
+                                _ => None,
+                            };
+                            let mut args_typed = Vec::new();
+                            let mut arg_types = Vec::new();
+                            for (i, a) in args.iter().enumerate() {
+                                let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
+                                    func_param_types.as_ref().and_then(|fparams| {
+                                        fparams
+                                            .get(i)
+                                            .map(|expected_arg_ty| subst.apply(expected_arg_ty))
+                                    })
+                                } else {
+                                    None
+                                };
+                                let a_typed = infer_expr_inner(
+                                    a,
+                                    env,
+                                    subst,
+                                    gen,
+                                    registry,
+                                    recur_params,
+                                    let_own_spans.as_deref_mut(),
+                                    lambda_own_captures.as_deref_mut(),
+                                    arg_expected_type.as_ref(),
+                                    type_param_map,
+                                    type_param_arity,
+                                    qualified_modules,
+                                )?;
+                                arg_types.push(a_typed.ty.clone());
+                                args_typed.push(a_typed);
+                            }
+
+                            let ret_var = Type::Var(gen.fresh());
+                            let is_constructor = registry
+                                .is_some_and(|r| r.is_constructor(&export.local_name));
+                            let coerced_args = if is_constructor {
+                                arg_types.clone()
+                            } else {
+                                coerce_own_args(&func_ty, &arg_types, subst)
+                            };
+                            let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
+                            let unwrapped_func_ty = match subst.apply(&func_ty) {
+                                Type::Own(inner) if matches!(*inner, Type::Fn(_, _)) => *inner,
+                                other => other,
+                            };
+                            unify(&unwrapped_func_ty, &expected_fn, subst)
+                                .map_err(|e| spanned(e, *span))?;
+                            let ty = subst.apply(&ret_var);
+                            return Ok(TypedExpr {
+                                kind: TypedExprKind::App {
+                                    func: Box::new(func_typed),
+                                    args: args_typed,
+                                },
+                                ty: if is_constructor {
+                                    Type::Own(Box::new(ty))
+                                } else {
+                                    ty
+                                },
+                                span: *span,
+                            });
+                        }
+                    }
+                }
+            }
+
             let func_typed = infer_expr_inner(
                 func,
                 env,
@@ -770,6 +1040,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             // Extract expected parameter types from the function signature
             // so we can propagate them into lambda arguments for bidirectional checking.
@@ -812,6 +1083,7 @@ fn infer_expr_inner(
                     arg_expected_type.as_ref(),
                     type_param_map,
                     type_param_arity,
+                    qualified_modules,
                 )?;
                 let a_ty = a_typed.ty.clone();
                 arg_types.push(a_ty.clone());
@@ -901,6 +1173,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
 
             let explicit_types = if let Some(reg) = registry {
@@ -976,6 +1249,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
 
             // If there's a type annotation, resolve it and unify with the inferred type
@@ -1016,6 +1290,7 @@ fn infer_expr_inner(
                         None,
                         type_param_map,
                         type_param_arity,
+                        qualified_modules,
                     )?;
                     env.pop_scope();
                     let ty = body_typed.ty.clone();
@@ -1064,6 +1339,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             unify(&cond_typed.ty, &Type::Bool, subst).map_err(|e| spanned(e, *span))?;
             let then_typed = infer_expr_inner(
@@ -1078,6 +1354,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let else_typed = infer_expr_inner(
                 else_,
@@ -1091,6 +1368,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             unify(&then_typed.ty, &else_typed.ty, subst).map_err(|e| spanned(e, *span))?;
             let ty = subst.apply(&then_typed.ty);
@@ -1129,6 +1407,7 @@ fn infer_expr_inner(
                     None,
                     type_param_map,
                     type_param_arity,
+                    qualified_modules,
                 )?);
             }
             env.pop_scope();
@@ -1155,6 +1434,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let rhs_typed = infer_expr_inner(
                 rhs,
@@ -1168,6 +1448,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let ty = match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
@@ -1221,6 +1502,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let ty = match op {
                 UnaryOp::Neg => {
@@ -1274,6 +1556,7 @@ fn infer_expr_inner(
                             None,
                             type_param_map,
                             type_param_arity,
+                            qualified_modules,
                         )?;
                         unify(&a_typed.ty, p, subst).map_err(|e| spanned(e, *span))?;
                         typed_args.push(a_typed);
@@ -1293,6 +1576,7 @@ fn infer_expr_inner(
                             None,
                             type_param_map,
                             type_param_arity,
+                            qualified_modules,
                         )?);
                     }
                 }
@@ -1322,6 +1606,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let resolved = subst.apply(&target_typed.ty);
             // Unwrap Own wrapper — field access works on the inner type
@@ -1353,6 +1638,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let resolved = subst.apply(&base_typed.ty);
             // Unwrap Own wrapper — struct update works on the inner type
@@ -1373,6 +1659,7 @@ fn infer_expr_inner(
                 lambda_own_captures,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             Ok(TypedExpr {
                 kind: TypedExprKind::StructUpdate {
@@ -1401,6 +1688,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let scrutinee_ty = subst.apply(&scrutinee_typed.ty);
             // Unwrap Own wrapper — match works on the inner type
@@ -1426,6 +1714,7 @@ fn infer_expr_inner(
                     None,
                     type_param_map,
                     type_param_arity,
+                    qualified_modules,
                 )?;
                 unify(&result_ty, &body_typed.ty, subst).map_err(|e| spanned(e, *span))?;
                 env.pop_scope();
@@ -1462,6 +1751,7 @@ fn infer_expr_inner(
                     None,
                     type_param_map,
                     type_param_arity,
+                    qualified_modules,
                 )?);
             }
             let ty = Type::Tuple(typed_elems.iter().map(|te| te.ty.clone()).collect());
@@ -1491,6 +1781,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
 
             // If there's a type annotation, resolve it and unify with the inferred type
@@ -1530,6 +1821,7 @@ fn infer_expr_inner(
                         None,
                         type_param_map,
                         type_param_arity,
+                        qualified_modules,
                     )?;
                     env.pop_scope();
                     let ty = body_typed.ty.clone();
@@ -1618,6 +1910,7 @@ fn infer_expr_inner(
                                     None,
                                     type_param_map,
                                     type_param_arity,
+                                    qualified_modules,
                                 )?;
                                 unify(&field_typed.ty, &expected, subst)
                                     .map_err(|e| spanned(e, *span))?;
@@ -1670,6 +1963,7 @@ fn infer_expr_inner(
                     None,
                     type_param_map,
                     type_param_arity,
+                    qualified_modules,
                 )?;
                 unify(&subst.apply(&typed.ty), &subst.apply(&elem_var), subst)
                     .map_err(|e| spanned(e, *span))?;
@@ -1695,6 +1989,7 @@ fn infer_expr_inner(
                 None,
                 type_param_map,
                 type_param_arity,
+                qualified_modules,
             )?;
             let inner_ty = subst.apply(&inner_typed.ty);
             // Strip Own wrapper for analysis
@@ -2148,6 +2443,7 @@ fn resolve_struct_update(
     mut lambda_own_captures: Option<&mut HashMap<Span, String>>,
     type_param_map: &HashMap<String, TypeVarId>,
     type_param_arity: &HashMap<String, usize>,
+    qualified_modules: &HashMap<String, QualifiedModuleBinding>,
 ) -> Result<Vec<(String, TypedExpr)>, SpannedTypeError> {
     match resolved_ty {
         Type::Named(name, type_args) => {
@@ -2189,6 +2485,7 @@ fn resolve_struct_update(
                                     None,
                                     type_param_map,
                                     type_param_arity,
+                                    qualified_modules,
                                 )?;
                                 unify(&field_typed.ty, &expected, subst)
                                     .map_err(|e| spanned(e, span))?;
@@ -3010,6 +3307,7 @@ pub(crate) fn infer_module_inner(
     let mut reexported_type_names: Vec<String> = Vec::new();
     let mut reexported_type_visibility: HashMap<String, Visibility> = HashMap::new();
     let mut reexported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
+    let mut qualified_modules: HashMap<String, QualifiedModuleBinding> = HashMap::new();
 
     // Build decl list: synthetic prelude import (if any) + module's own decls
     let all_decls: Vec<&Decl> = synthetic_prelude_import
@@ -3024,7 +3322,7 @@ pub(crate) fn infer_module_inner(
             span,
         } = decl
         {
-            // Graph builder already validated: no cycles, no bare imports, no unknown modules.
+            // Graph builder already validated: no cycles and no unknown modules.
             // Look up the parsed AST from the pre-resolved graph.
             let imported_module = parsed_modules
                 .get(path)
@@ -3097,6 +3395,8 @@ pub(crate) fn infer_module_inner(
             // Extract type signatures from cached module and bind with provenance.
             // Enforce visibility: private names cannot be imported explicitly.
             let cached = cache.get(path).unwrap();
+            let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
+            let mut qualified_exports: HashMap<String, QualifiedExport> = HashMap::new();
             // Build set of re-exported fn names to avoid double-binding.
             // Re-exported fns appear in both fn_types and reexported_fn_types;
             // the re-export loop below handles them with correct provenance.
@@ -3141,10 +3441,43 @@ pub(crate) fn infer_module_inner(
                         env.bind(name.clone(), scheme.clone());
                         continue;
                     }
-                    let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                    env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.clone());
-                    imported_fn_types.push((effective_name.clone(), scheme.clone()));
-                    fn_provenance_map.insert(effective_name, (path.clone(), name.clone()));
+                    let hidden_name = format!("__qual${}${}", qualifier_name, name);
+                    qualified_exports.insert(
+                        name.clone(),
+                        QualifiedExport {
+                            local_name: hidden_name.clone(),
+                            scheme: scheme.clone(),
+                        },
+                    );
+                    imported_fn_types.push((hidden_name.clone(), scheme.clone()));
+                    fn_provenance_map.insert(hidden_name, (path.clone(), name.clone()));
+                }
+            }
+
+            for (name, scheme) in &cached.reexported_fn_types {
+                if import_all {
+                    let vis = fn_vis
+                        .get(name.as_str())
+                        .copied()
+                        .unwrap_or(&Visibility::Pub);
+                    if matches!(vis, Visibility::Private) {
+                        continue;
+                    }
+                    let hidden_name = format!("__qual${}${}", qualifier_name, name);
+                    let original_prov = cached
+                        .fn_provenance
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| (path.clone(), name.clone()));
+                    qualified_exports.insert(
+                        name.clone(),
+                        QualifiedExport {
+                            local_name: hidden_name.clone(),
+                            scheme: scheme.clone(),
+                        },
+                    );
+                    imported_fn_types.push((hidden_name.clone(), scheme.clone()));
+                    fn_provenance_map.insert(hidden_name, original_prov);
                 }
             }
 
@@ -3167,6 +3500,10 @@ pub(crate) fn infer_module_inner(
             // Process re-exported types from the cached module
             for reex_type_name in &cached.reexported_type_names {
                 if requested.contains(reex_type_name.as_str()) {
+                    let effective_type_name = aliases
+                        .get(reex_type_name)
+                        .cloned()
+                        .unwrap_or_else(|| reex_type_name.clone());
                     let original_vis = cached
                         .reexported_type_visibility
                         .get(reex_type_name)
@@ -3189,6 +3526,11 @@ pub(crate) fn infer_module_inner(
                                         &mut gen,
                                     )
                                     .map_err(|e| spanned(e, *span))?;
+                                    if effective_type_name != *reex_type_name {
+                                        registry
+                                            .register_type_alias(&effective_type_name, reex_type_name)
+                                            .map_err(|e| spanned(e, *span))?;
+                                    }
                                     // Mark prelude-sourced types as shadowable
                                     if path == "prelude" {
                                         registry.set_prelude(&td.name);
@@ -3205,20 +3547,43 @@ pub(crate) fn infer_module_inner(
                                         }
                                     }
                                     imported_type_info.insert(
-                                        td.name.clone(),
+                                        effective_type_name.clone(),
                                         (orig_path.clone(), original_vis.clone()),
                                     );
+                                    type_provenance.insert(td.name.clone(), orig_path.clone());
                                 }
                             }
                         }
+                    } else if effective_type_name != *reex_type_name {
+                        registry
+                            .register_type_alias(&effective_type_name, reex_type_name)
+                            .map_err(|e| spanned(e, *span))?;
+                        imported_type_info.insert(
+                            effective_type_name.clone(),
+                            (path.clone(), original_vis.clone()),
+                        );
                     }
                 }
+            }
+
+            if import_all {
+                qualified_modules.insert(
+                    qualifier_name.clone(),
+                    QualifiedModuleBinding {
+                        module_path: path.clone(),
+                        exports: qualified_exports,
+                    },
+                );
             }
 
             // Process type declarations from imported module source with visibility enforcement
             for sdecl in &imported_module.decls {
                 if let Decl::DefType(td) = sdecl {
                     if requested.contains(td.name.as_str()) {
+                        let effective_type_name = aliases
+                            .get(&td.name)
+                            .cloned()
+                            .unwrap_or_else(|| td.name.clone());
                         // Explicitly requested — check visibility
                         if matches!(td.visibility, Visibility::Private) {
                             return Err(spanned(
@@ -3234,6 +3599,11 @@ pub(crate) fn infer_module_inner(
                             let constructors =
                                 type_registry::process_type_decl(td, &mut registry, &mut gen)
                                     .map_err(|e| spanned(e, *span))?;
+                            if effective_type_name != td.name {
+                                registry
+                                    .register_type_alias(&effective_type_name, &td.name)
+                                    .map_err(|e| spanned(e, *span))?;
+                            }
                             // Mark prelude-sourced types as shadowable
                             if path == "prelude" {
                                 registry.set_prelude(&td.name);
@@ -3244,10 +3614,15 @@ pub(crate) fn infer_module_inner(
                                     env.bind(cname, scheme);
                                 }
                             }
+                        } else if effective_type_name != td.name {
+                            registry
+                                .register_type_alias(&effective_type_name, &td.name)
+                                .map_err(|e| spanned(e, *span))?;
                         }
                         // Track imported type info for pub use re-exports
                         imported_type_info
-                            .insert(td.name.clone(), (path.clone(), td.visibility.clone()));
+                            .insert(effective_type_name.clone(), (path.clone(), td.visibility.clone()));
+                        type_provenance.insert(td.name.clone(), path.clone());
                     } else if import_all {
                         // Wildcard import — skip private types silently
                         if matches!(td.visibility, Visibility::Private) {
@@ -3361,34 +3736,45 @@ pub(crate) fn infer_module_inner(
 
             // Process pub import re-exports: mark all imported names as re-exported
             if *is_pub {
-                for name in names {
-                    let name = &name.name;
-                    let found_fn = imported_fn_types.iter().any(|(n, _)| n == name);
-                    let found_type = imported_type_info.contains_key(name);
-                    let found_trait = imported_trait_names.contains(name);
+                for import_name in names {
+                    let effective_name = import_name
+                        .alias
+                        .as_ref()
+                        .unwrap_or(&import_name.name)
+                        .clone();
+                    let found_fn = imported_fn_types.iter().any(|(n, _)| n == &effective_name);
+                    let found_type = imported_type_info.contains_key(&effective_name);
+                    let found_trait = imported_trait_names.contains(&effective_name);
 
                     if !found_fn && !found_type && !found_trait {
                         return Err(spanned(
-                            TypeError::PrivateReexport { name: name.clone() },
+                            TypeError::PrivateReexport {
+                                name: effective_name.clone(),
+                            },
                             *span,
                         ));
                     }
                     if found_fn {
-                        if let Some((_, scheme)) = imported_fn_types.iter().find(|(n, _)| n == name)
+                        if let Some((_, scheme)) = imported_fn_types
+                            .iter()
+                            .find(|(n, _)| n == &effective_name)
                         {
-                            reexported_fn_types.push((name.clone(), scheme.clone()));
+                            reexported_fn_types.push((effective_name.clone(), scheme.clone()));
                         }
                     }
                     if found_type {
-                        reexported_type_names.push(name.clone());
+                        reexported_type_names.push(effective_name.clone());
                         let original_vis = imported_type_info
-                            .get(name)
+                            .get(&effective_name)
                             .map(|(_, vis)| vis.clone())
                             .unwrap_or(Visibility::Pub);
-                        reexported_type_visibility.insert(name.clone(), original_vis);
+                        reexported_type_visibility.insert(effective_name.clone(), original_vis);
                     }
                     if found_trait {
-                        if let Some(td) = imported_trait_defs.iter().find(|td| td.name == *name) {
+                        if let Some(td) = imported_trait_defs
+                            .iter()
+                            .find(|td| td.name == effective_name)
+                        {
                             reexported_trait_defs.push(td.clone());
                         }
                     }
@@ -4159,6 +4545,7 @@ pub(crate) fn infer_module_inner(
                 None,
                 &type_param_map,
                 &type_param_arity,
+                &qualified_modules,
             )?;
             env.fn_return_type = prev_fn_return_type;
             env.pop_scope();
@@ -4363,6 +4750,7 @@ pub(crate) fn infer_module_inner(
                     None,
                     &impl_method_tpm,
                     &impl_method_tpa,
+                    &qualified_modules,
                 )?;
                 env.fn_return_type = prev_fn_return_type;
                 env.pop_scope();

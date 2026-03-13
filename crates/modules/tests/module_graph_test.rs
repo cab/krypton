@@ -125,15 +125,13 @@ fn graph_bare_import() {
         ("foo", "pub fun bar() -> Int = 1"),
     ]);
     let root = parse("import foo\nfun main() -> Int = 1");
-    let result = build_module_graph(&root, &resolver);
+    let graph = build_module_graph(&root, &resolver).unwrap();
 
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        ModuleGraphError::BareImport { path, .. } => {
-            assert_eq!(path, "foo");
-        }
-        other => panic!("expected BareImport, got {other:?}"),
-    }
+    let user_modules: Vec<&str> = graph.modules.iter()
+        .filter(|m| !m.path.starts_with("core/") && m.path != "prelude")
+        .map(|m| m.path.as_str())
+        .collect();
+    assert_eq!(user_modules, vec!["foo"]);
 }
 
 #[test]

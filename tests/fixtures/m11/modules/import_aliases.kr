@@ -1,0 +1,11 @@
+# expect: output 10
+import helpers_a.{compute as magnitude}
+import core/option.{Option as Maybe}
+
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+fun keep(x: Maybe[Int]) -> Int = 0
+
+fun main() = println(magnitude(0) + keep(None))

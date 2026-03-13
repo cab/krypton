@@ -1,0 +1,3 @@
+# expect: error E0508
+import helpers_a
+fun main() -> Int = helpers_a.missing(-5)

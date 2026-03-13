@@ -1272,7 +1272,7 @@ fn infer_module_private_by_default() {
 }
 
 #[test]
-fn infer_module_bare_import_error() {
+fn infer_module_bare_import_binds_qualifier() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
@@ -1285,17 +1285,88 @@ fn infer_module_bare_import_error() {
     }
     let src = r#"
         import mylib
-        fun main() -> Int = 1
+        fun main() -> Int = mylib.add(1, 2)
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_err(), "bare import should fail");
+    assert!(result.is_ok(), "bare import should resolve qualified names: {:?}", result.err());
+}
+
+#[test]
+fn infer_module_import_alias_binds_only_alias() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub fun twice(x: Int) -> Int = x * 2".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import mylib.{twice as double}
+        fun main() -> Int = double(2) + twice(2)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_err(), "original import name should stay out of scope");
     let err = match result {
-        Err(e) => e,
-        Ok(_) => panic!("expected error"),
+        Err(err) => err,
+        Ok(_) => panic!("expected alias-only import to reject original name"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0504");
+    assert_eq!(err.error.error_code().to_string(), "E0003");
+}
+
+#[test]
+fn infer_module_missing_qualified_export_errors_clearly() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub fun add(x: Int, y: Int) -> Int = x + y".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import mylib
+        fun main() -> Int = mylib.missing(1, 2)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_err(), "missing qualified export should fail");
+    let err = match result {
+        Err(err) => err,
+        Ok(_) => panic!("expected missing qualified export to fail"),
+    };
+    assert_eq!(err.error.error_code().to_string(), "E0508");
+}
+
+#[test]
+fn infer_module_constructor_alias_resolves() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub open type Box[a] = Box(a)".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    let src = r#"
+        import mylib.{Box as MkBox}
+        fun main() = MkBox(1)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(result.is_ok(), "constructor alias should resolve: {:?}", result.err().map(|e| e.error.error_code().to_string()));
 }
 
 #[test]

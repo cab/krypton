@@ -38,6 +38,7 @@ pub enum TypeErrorCode {
     E0505, // Cannot re-export name (not in scope or private)
     E0506, // Parse error in imported module
     E0507, // Kind mismatch (type applied with wrong number of type args)
+    E0508, // Unknown qualified export
     E0105, // Resource branch leak (consumed in some branches but not all)
     E0012, // Reserved name
 }
@@ -76,6 +77,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0505 => write!(f, "E0505"),
             TypeErrorCode::E0506 => write!(f, "E0506"),
             TypeErrorCode::E0507 => write!(f, "E0507"),
+            TypeErrorCode::E0508 => write!(f, "E0508"),
             TypeErrorCode::E0105 => write!(f, "E0105"),
             TypeErrorCode::E0012 => write!(f, "E0012"),
         }
@@ -188,6 +190,11 @@ pub enum TypeError {
     BareImport {
         path: String,
     },
+    UnknownQualifiedExport {
+        qualifier: String,
+        module_path: String,
+        name: String,
+    },
     PrivateReexport {
         name: String,
     },
@@ -247,6 +254,7 @@ impl TypeError {
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
+            TypeError::UnknownQualifiedExport { .. } => TypeErrorCode::E0508,
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
             TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
@@ -380,6 +388,13 @@ impl TypeError {
                 let last = path.rsplit('/').next().unwrap_or(path);
                 Some(format!("use `import {path}.{{name1, name2}}` to import specific names — qualified imports (`{last}.foo()`) are not yet supported"))
             }
+            TypeError::UnknownQualifiedExport {
+                qualifier,
+                module_path,
+                name,
+            } => Some(format!(
+                "`{qualifier}.{name}` does not exist: module `{module_path}` has no public export named `{name}`"
+            )),
             TypeError::PrivateReexport { .. } => {
                 Some("only names that are imported and public can be re-exported with `pub import`".to_string())
             }
@@ -542,6 +557,16 @@ impl fmt::Display for TypeError {
             }
             TypeError::BareImport { path } => {
                 write!(f, "bare import of module `{}` is not supported", path)
+            }
+            TypeError::UnknownQualifiedExport {
+                qualifier,
+                module_path,
+                name,
+            } => {
+                write!(
+                    f,
+                    "qualified export `{qualifier}.{name}` not found in module `{module_path}`"
+                )
             }
             TypeError::PrivateReexport { name } => {
                 write!(

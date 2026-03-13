@@ -25,6 +25,7 @@ pub struct VariantInfo {
 
 pub struct TypeRegistry {
     types: HashMap<String, TypeInfo>,
+    aliases: HashMap<String, String>,
     /// Names that have been forward-declared but not yet fully registered.
     forward_declared: std::collections::HashSet<String>,
 }
@@ -39,6 +40,7 @@ impl TypeRegistry {
     pub fn new() -> Self {
         TypeRegistry {
             types: HashMap::new(),
+            aliases: HashMap::new(),
             forward_declared: std::collections::HashSet::new(),
         }
     }
@@ -69,6 +71,22 @@ impl TypeRegistry {
         Ok(())
     }
 
+    pub fn register_type_alias(&mut self, alias: &str, target: &str) -> Result<(), TypeError> {
+        if self.types.contains_key(alias) || self.aliases.contains_key(alias) {
+            return Err(TypeError::DuplicateType {
+                name: alias.to_string(),
+            });
+        }
+        if !self.types.contains_key(target) {
+            return Err(TypeError::UnknownType {
+                name: target.to_string(),
+                suggestion: None,
+            });
+        }
+        self.aliases.insert(alias.to_string(), target.to_string());
+        Ok(())
+    }
+
     /// Mark a registered type as a prelude type (can be shadowed by user definitions).
     pub fn set_prelude(&mut self, name: &str) {
         if let Some(info) = self.types.get_mut(name) {
@@ -77,7 +95,12 @@ impl TypeRegistry {
     }
 
     pub fn lookup_type(&self, name: &str) -> Option<&TypeInfo> {
-        self.types.get(name)
+        let canonical = self.canonical_name(name);
+        self.types.get(canonical)
+    }
+
+    pub fn canonical_name<'a>(&'a self, name: &'a str) -> &'a str {
+        self.aliases.get(name).map(|s| s.as_str()).unwrap_or(name)
     }
 
     /// Register a type name as known without full type info.
@@ -89,12 +112,14 @@ impl TypeRegistry {
 
     /// Check if a name is known (either fully registered or forward-declared).
     pub fn is_known(&self, name: &str) -> bool {
-        self.types.contains_key(name) || self.forward_declared.contains(name)
+        self.types.contains_key(name)
+            || self.aliases.contains_key(name)
+            || self.forward_declared.contains(name)
     }
 
     /// Return the expected number of type parameters for a named type.
     pub fn expected_arity(&self, name: &str) -> Option<usize> {
-        self.types.get(name).map(|info| info.type_params.len())
+        self.lookup_type(name).map(|info| info.type_params.len())
     }
 
     /// Check if a name is a constructor (record or sum variant).
@@ -167,7 +192,10 @@ pub fn resolve_type_expr(
                     });
                 }
             }
-            Ok(Type::Named(name.clone(), resolved_args))
+            Ok(Type::Named(
+                registry.canonical_name(name).to_string(),
+                resolved_args,
+            ))
         }
         TypeExpr::Fn { params, ret, .. } => {
             let mut param_types = Vec::new();
@@ -213,7 +241,10 @@ fn resolve_named(
         "Object" => Ok(Type::Named("Object".to_string(), Vec::new())),
         _ => {
             if registry.is_known(name) {
-                Ok(Type::Named(name.to_string(), Vec::new()))
+                Ok(Type::Named(
+                    registry.canonical_name(name).to_string(),
+                    Vec::new(),
+                ))
             } else {
                 // Compute suggestion: if lowercase, try capitalizing first letter
                 let suggestion = if name.starts_with(|c: char| c.is_ascii_lowercase()) {
