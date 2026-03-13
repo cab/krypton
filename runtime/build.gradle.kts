@@ -23,3 +23,24 @@ testing {
         }
     }
 }
+
+tasks.withType<Test> {
+    jvmArgs("-Djdk.tracePinnedThreads=short")
+}
+
+val noSynchronized by tasks.registering {
+    description = "Fail if production source uses 'synchronized' (pins virtual threads)"
+    doLast {
+        val violations = fileTree("src/main/java") {
+            include("**/*.java")
+        }.files.filter { it.readText().contains("synchronized") }
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "synchronized keyword found — use ReentrantLock instead:\n" +
+                violations.joinToString("\n") { "  ${it.relativeTo(projectDir)}" }
+            )
+        }
+    }
+}
+
+tasks.named("check") { dependsOn(noSynchronized) }
