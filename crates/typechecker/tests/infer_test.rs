@@ -1401,6 +1401,44 @@ fn infer_module_qualified_nullary_constructor_value_resolves() {
 }
 
 #[test]
+fn infer_module_qualified_constructor_call_typechecks() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub open type Box[a] = Box(a)".to_string())
+            } else {
+                None
+            }
+        }
+    }
+    // mylib.Box(42) is desugared by the parser to UFCS: Box(mylib, 42)
+    // The typechecker's reverse-app qualified-call path handles this.
+    // Verifies that qualified constructor calls resolve correctly and
+    // the is_constructor check uses the exported name (not internal local_name).
+    let src = r#"
+        import mylib
+        fun main() -> Box[Int] = mylib.Box(42)
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &FakeResolver);
+    assert!(
+        result.is_ok(),
+        "qualified constructor call should succeed: {:?}",
+        result.err()
+    );
+    let modules = result.unwrap();
+    let main_ty = modules[0]
+        .fn_types
+        .iter()
+        .find(|(n, _)| n == "main")
+        .map(|(_, scheme)| format!("{scheme}"))
+        .expect("main not found");
+    assert_eq!(main_ty, "fn() -> Box[Int]");
+}
+
+#[test]
 fn infer_module_constructor_alias_resolves() {
     struct FakeResolver;
     impl ModuleResolver for FakeResolver {

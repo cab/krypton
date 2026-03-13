@@ -10,16 +10,16 @@ use crate::unify::{unify, SpannedTypeError, TypeError};
 use super::QualifiedModuleBinding;
 
 pub(crate) struct InferenceContext<'a> {
-    pub env: &'a mut TypeEnv,
-    pub subst: &'a mut Substitution,
-    pub gen: &'a mut TypeVarGen,
-    pub registry: Option<&'a TypeRegistry>,
-    pub recur_params: Option<&'a [Type]>,
-    pub let_own_spans: Option<&'a mut HashSet<Span>>,
-    pub lambda_own_captures: Option<&'a mut HashMap<Span, String>>,
-    pub type_param_map: &'a HashMap<String, TypeVarId>,
-    pub type_param_arity: &'a HashMap<String, usize>,
-    pub qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
+    pub(super) env: &'a mut TypeEnv,
+    pub(super) subst: &'a mut Substitution,
+    pub(super) gen: &'a mut TypeVarGen,
+    pub(super) registry: Option<&'a TypeRegistry>,
+    pub(super) recur_params: Option<&'a [Type]>,
+    pub(super) let_own_spans: Option<&'a mut HashSet<Span>>,
+    pub(super) lambda_own_captures: Option<&'a mut HashMap<Span, String>>,
+    pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
+    pub(super) type_param_arity: &'a HashMap<String, usize>,
+    pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
 }
 
 impl<'a> InferenceContext<'a> {
@@ -60,6 +60,61 @@ impl<'a> InferenceContext<'a> {
             },
             _ => None,
         }
+    }
+
+    /// Shared tail for qualified-call paths: infer args with lambda expected-type
+    /// propagation, coerce own args, unify, and build `TypedExpr::App`.
+    fn infer_call_args_and_unify(
+        &mut self,
+        func_typed: TypedExpr,
+        func_ty: &Type,
+        args: &[Expr],
+        is_constructor: bool,
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        let func_param_types = self.extract_fn_params(func_ty);
+        let mut args_typed = Vec::new();
+        let mut arg_types = Vec::new();
+        for (i, a) in args.iter().enumerate() {
+            let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
+                func_param_types.as_ref().and_then(|fparams| {
+                    fparams
+                        .get(i)
+                        .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
+                })
+            } else {
+                None
+            };
+            let a_typed = self.infer_expr_inner(
+                a,
+                arg_expected_type.as_ref(),
+            )?;
+            arg_types.push(a_typed.ty.clone());
+            args_typed.push(a_typed);
+        }
+
+        let ret_var = Type::Var(self.fresh());
+        let coerced_args = if is_constructor {
+            arg_types.clone()
+        } else {
+            super::coerce_own_args(func_ty, &arg_types, self.subst)
+        };
+        let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
+        let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(func_ty));
+        self.unify_spanned(&unwrapped_func_ty, &expected_fn, span)?;
+        let ty = self.subst.apply(&ret_var);
+        Ok(TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(func_typed),
+                args: args_typed,
+            },
+            ty: if is_constructor {
+                Type::Own(Box::new(ty))
+            } else {
+                ty
+            },
+            span,
+        })
     }
 
     pub fn fresh(&mut self) -> TypeVarId {
@@ -148,6 +203,9 @@ impl<'a> InferenceContext<'a> {
                     param_types.push(tv.clone());
                     self.env.bind(p.name.clone(), TypeScheme::mono(tv));
                 }
+                // Save and set an independent fn_return_type for this lambda.
+                // Lambdas need their own return type so the `?` operator inside
+                // a lambda targets the lambda's return, not the enclosing function's.
                 let prev_fn_return_type = self.env.fn_return_type.take();
                 self.env.fn_return_type = Some(Type::Var(self.fresh()));
                 let saved_recur = self.recur_params.take();
@@ -266,49 +324,13 @@ impl<'a> InferenceContext<'a> {
                                 span: *span,
                             };
                             let actual_args = &args[1..];
-                            let func_param_types = self.extract_fn_params(&func_ty);
-                            let mut args_typed = Vec::new();
-                            let mut arg_types = Vec::new();
-                            for (i, a) in actual_args.iter().enumerate() {
-                                let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
-                                    func_param_types.as_ref().and_then(|fparams| {
-                                        fparams
-                                            .get(i)
-                                            .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
-                                    })
-                                } else {
-                                    None
-                                };
-                                let a_typed = self.infer_expr_inner(
-                                    a,
-                                    arg_expected_type.as_ref(),
-                                )?;
-                                arg_types.push(a_typed.ty.clone());
-                                args_typed.push(a_typed);
-                            }
-
-                            let ret_var = Type::Var(self.fresh());
-                            let coerced_args = if is_constructor {
-                                arg_types.clone()
-                            } else {
-                                super::coerce_own_args(&func_ty, &arg_types, self.subst)
-                            };
-                            let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
-                            let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(&func_ty));
-                            self.unify_spanned(&unwrapped_func_ty, &expected_fn, *span)?;
-                            let ty = self.subst.apply(&ret_var);
-                            return Ok(TypedExpr {
-                                kind: TypedExprKind::App {
-                                    func: Box::new(func_typed),
-                                    args: args_typed,
-                                },
-                                ty: if is_constructor {
-                                    Type::Own(Box::new(ty))
-                                } else {
-                                    ty
-                                },
-                                span: *span,
-                            });
+                            return self.infer_call_args_and_unify(
+                                func_typed,
+                                &func_ty,
+                                actual_args,
+                                is_constructor,
+                                *span,
+                            );
                         }
                     }
                 }
@@ -354,51 +376,13 @@ impl<'a> InferenceContext<'a> {
                                     span: *span,
                                 };
 
-                                let func_param_types = self.extract_fn_params(&func_ty);
-                                let mut args_typed = Vec::new();
-                                let mut arg_types = Vec::new();
-                                for (i, a) in args.iter().enumerate() {
-                                    let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
-                                        func_param_types.as_ref().and_then(|fparams| {
-                                            fparams
-                                                .get(i)
-                                                .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
-                                        })
-                                    } else {
-                                        None
-                                    };
-                                    let a_typed = self.infer_expr_inner(
-                                        a,
-                                        arg_expected_type.as_ref(),
-                                    )?;
-                                    arg_types.push(a_typed.ty.clone());
-                                    args_typed.push(a_typed);
-                                }
-
-                                let ret_var = Type::Var(self.fresh());
-                                let is_constructor = self.registry
-                                    .is_some_and(|r| r.is_constructor(&export.local_name));
-                                let coerced_args = if is_constructor {
-                                    arg_types.clone()
-                                } else {
-                                    super::coerce_own_args(&func_ty, &arg_types, self.subst)
-                                };
-                                let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
-                                let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(&func_ty));
-                                self.unify_spanned(&unwrapped_func_ty, &expected_fn, *span)?;
-                                let ty = self.subst.apply(&ret_var);
-                                return Ok(TypedExpr {
-                                    kind: TypedExprKind::App {
-                                        func: Box::new(func_typed),
-                                        args: args_typed,
-                                    },
-                                    ty: if is_constructor {
-                                        Type::Own(Box::new(ty))
-                                    } else {
-                                        ty
-                                    },
-                                    span: *span,
-                                });
+                                return self.infer_call_args_and_unify(
+                                    func_typed,
+                                    &func_ty,
+                                    args,
+                                    is_constructor,
+                                    *span,
+                                );
                             }
                         }
                     }
@@ -766,9 +750,7 @@ impl<'a> InferenceContext<'a> {
                     }
                     None => {
                         for a in args {
-                            let saved_recur = self.recur_params.take();
                             let a_typed = self.infer_expr_inner(a, None)?;
-                            self.recur_params = saved_recur;
                             typed_args.push(a_typed);
                         }
                     }
