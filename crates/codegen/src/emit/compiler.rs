@@ -4455,7 +4455,11 @@ impl Compiler {
 
             // If this param is function-typed, register in local_fn_info
             if let Some((ref tc_param_types, _)) = tc_types {
-                if let Type::Fn(inner_params, inner_ret) = &tc_param_types[i] {
+                let tc_param_type = match &tc_param_types[i] {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                if let Type::Fn(inner_params, inner_ret) = tc_param_type {
                     let inner_param_jvm: Vec<JvmType> = inner_params
                         .iter()
                         .map(|t| self.type_to_jvm(t))

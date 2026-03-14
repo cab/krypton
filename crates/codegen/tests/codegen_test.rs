@@ -661,6 +661,16 @@ fun main() = println(apply_fn(x -> x + 1, 5))
 }
 
 #[test]
+fn test_own_fn_param() {
+    let src = r#"
+fun call_once(f: ~() -> String) -> String = f()
+fun make_fn() -> String = "hello"
+fun main() = println(call_once(make_fn))
+"#;
+    assert_eq!(run_program(src), "hello");
+}
+
+#[test]
 fn test_named_function_reference_let_call() {
     let src = r#"
 fun add1(x) = x + 1

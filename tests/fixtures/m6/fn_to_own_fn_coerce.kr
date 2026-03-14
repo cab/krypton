@@ -1,6 +1,6 @@
-# expect: ok
+# expect: output "hello"
 fun call_once(f: ~() -> String) -> String = f()
 
 fun make_fn() -> String = "hello"
 
-fun main() -> String = call_once(make_fn)
+fun main() = println(call_once(make_fn))
