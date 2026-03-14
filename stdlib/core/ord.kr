@@ -1,5 +1,7 @@
 import core/eq.{Eq}
-# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+# Compiler intrinsic: primitive instance bodies are replaced by optimized JVM
+# bytecode (lcmp, dcmpl) at codegen time. The __krypton_intrinsic() marker tells
+# the compiler to skip body type-checking and use bridge bytecode instead.
 pub trait Ord[a] where a: Eq {
     fun lt(self: a, other: a) -> Bool
 }

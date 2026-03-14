@@ -1,4 +1,6 @@
-# Compiler intrinsic: codegen emits optimized bytecode for primitive instances.
+# Compiler intrinsic: primitive instance bodies are replaced by optimized JVM
+# bytecode (lmul, dmul) at codegen time. The __krypton_intrinsic() marker tells
+# the compiler to skip body type-checking and use bridge bytecode instead.
 pub trait Mul[a] {
     fun mul(self: a, other: a) -> a
 }
