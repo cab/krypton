@@ -1,0 +1,32 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+eq: forall c. fn(c, c) -> Bool
+lt: forall d. fn(d, d) -> Bool
+combine: forall c. fn(c, c) -> c
+sub: forall c. fn(c, c) -> c
+mul: forall c. fn(c, c) -> c
+div: forall c. fn(c, c) -> c
+neg: forall c. fn(c) -> c
+show: forall c. fn(c) -> String
+close: forall c. fn(own c) -> Unit
+peek: forall d. fn(d) -> d
+println: forall i. fn(i) -> Unit
+Some: forall b. fn(b) -> Option[b]
+None: forall b. Option[b]
+Ok: forall c d. fn(d) -> Result[c, d]
+Err: forall c d. fn(c) -> Result[c, d]
+Cons: forall e. fn(e, List[e]) -> List[e]
+Nil: forall e. List[e]
+LT: Ordering
+EQ: Ordering
+GT: Ordering
+spawn: forall g1. fn(fn(Mailbox[g1]) -> Unit) -> Ref[g1]
+send: forall m1. fn(Ref[m1], m1) -> Unit
+receive: forall t1. fn(Mailbox[t1]) -> t1
+Inc: CounterMsg
+Dec: CounterMsg
+Get: fn(Ref[Int]) -> CounterMsg
+counter: forall o2. fn(Mailbox[CounterMsg], Int) -> o2
+main: forall r2. fn() -> fn(Mailbox[CounterMsg], Int) -> r2

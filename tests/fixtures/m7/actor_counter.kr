@@ -1,0 +1,17 @@
+# expect: ok
+import core/actor.{Mailbox, Ref, send, receive, spawn}
+
+type CounterMsg = Inc | Dec | Get(Ref[Int])
+
+fun counter(mb: Mailbox[CounterMsg], state: Int) {
+  match receive(mb) {
+    Inc => recur(mb, state + 1),
+    Dec => recur(mb, state - 1),
+    Get(sender) => {
+      send(sender, state)
+      recur(mb, state)
+    },
+  }
+}
+
+fun main() = counter

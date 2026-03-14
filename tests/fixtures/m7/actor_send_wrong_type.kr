@@ -1,0 +1,11 @@
+# expect: error E0001
+import core/actor.{Mailbox, Ref, send, receive, spawn}
+
+type Msg = Ping | Pong
+
+fun actor(mb: Mailbox[Msg]) = receive(mb)
+
+fun main() {
+  let r: Ref[Msg] = spawn(actor)
+  send(r, 42)
+}

@@ -100,6 +100,11 @@ fn m6_fixtures() {
 }
 
 #[test]
+fn m7_fixtures() {
+    run_fixtures("m7");
+}
+
+#[test]
 fn m8_fixtures() {
     run_fixtures("m8");
 }

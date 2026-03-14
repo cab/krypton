@@ -1,0 +1,21 @@
+# core/actor — Actor primitives
+import core/option.{Option}
+
+pub opaque type Mailbox[m] = { _inner: Object }
+pub opaque type Ref[m] = { _inner: Object }
+
+extern "krypton.runtime.KryptonActors" {
+    fun raw_spawn(Object) -> Object
+    fun raw_send(Object, Object) -> Unit
+    fun raw_receive(Object) -> Object
+    fun raw_receive_timeout(Object, Int) -> Object
+    fun raw_actor_ref(Object) -> Object
+    fun raw_mailbox_size(Object) -> Int
+}
+
+pub fun spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m] = raw_spawn(f)
+pub fun send[m](r: Ref[m], msg: m) -> Unit = raw_send(r, msg)
+pub fun receive[m](mb: Mailbox[m]) -> m = raw_receive(mb)
+pub fun receive_timeout[m](mb: Mailbox[m], ms: Int) -> Option[m] = raw_receive_timeout(mb, ms)
+pub fun actor_ref[m](mb: Mailbox[m]) -> Ref[m] = raw_actor_ref(mb)
+pub fun mailbox_size[m](mb: Mailbox[m]) -> Int = raw_mailbox_size(mb)

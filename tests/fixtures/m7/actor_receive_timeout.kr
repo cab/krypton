@@ -1,0 +1,10 @@
+# expect: ok
+import core/actor.{Mailbox, receive_timeout}
+
+type Msg = Ping | Pong
+
+fun actor(mb: Mailbox[Msg]) = match receive_timeout(mb, 5000) {
+  Some(Ping) => recur(mb),
+  Some(Pong) => recur(mb),
+  None => (),
+}

@@ -1,0 +1,9 @@
+# expect: error E0006
+import core/actor.{Mailbox, receive}
+
+type Msg = Ping | Pong | Shutdown
+
+fun actor(mb: Mailbox[Msg]) = match receive(mb) {
+  Ping => recur(mb),
+  Pong => recur(mb),
+}
