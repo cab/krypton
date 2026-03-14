@@ -1544,11 +1544,7 @@ impl ModuleInferenceState {
         fn_decls: &[&krypton_parser::ast::FnDecl],
         result_schemes: Vec<Option<TypeScheme>>,
         fn_bodies: Vec<Option<TypedExpr>>,
-        impl_fn_types: Vec<(String, TypeScheme)>,
-        impl_functions: Vec<TypedFnDecl>,
         instance_defs: Vec<InstanceDefInfo>,
-        derived_impl_fn_types: Vec<(String, TypeScheme)>,
-        derived_impl_functions: Vec<TypedFnDecl>,
         derived_instance_defs: Vec<InstanceDefInfo>,
         fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
         trait_method_map: &HashMap<String, String>,
@@ -1559,6 +1555,9 @@ impl ModuleInferenceState {
         parsed_modules: &HashMap<String, &Module>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
     ) -> Result<TypedModule, SpannedTypeError> {
+        let mut instance_defs = instance_defs;
+        instance_defs.extend(derived_instance_defs);
+
         let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imported_fn_types;
         results.extend(constructor_schemes.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
         results.extend(
@@ -1567,8 +1566,13 @@ impl ModuleInferenceState {
                 .enumerate()
                 .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap(), FnOrigin::Regular)),
         );
-        results.extend(impl_fn_types.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
-        results.extend(derived_impl_fn_types.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
+        // Add instance method types to the flat list for internal analysis passes
+        for inst in &instance_defs {
+            for m in &inst.methods {
+                let qualified = typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name);
+                results.push((qualified, m.scheme.clone(), FnOrigin::Regular));
+            }
+        }
 
         // Build exported_fn_types: the public API surface for downstream importers.
         // Includes pub open constructors, pub local functions, and instance methods.
@@ -1612,8 +1616,18 @@ impl ModuleInferenceState {
                 body,
             });
         }
-        functions.extend(impl_functions);
-        functions.extend(derived_impl_functions);
+        // Build temporary flat list of instance method bodies for internal analysis passes
+        for inst in &instance_defs {
+            for m in &inst.methods {
+                let qualified = typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name);
+                functions.push(TypedFnDecl {
+                    name: qualified,
+                    visibility: Visibility::Pub,
+                    params: m.params.clone(),
+                    body: m.body.clone(),
+                });
+            }
+        }
 
         let fn_schemes: HashMap<String, TypeScheme> = results.iter().map(|(n, s, _)| (n.clone(), s.clone())).collect();
         for func in &functions {
@@ -1707,8 +1721,13 @@ impl ModuleInferenceState {
 
         let auto_close = crate::auto_close::compute_auto_close(&functions, &results, trait_registry)?;
 
-        let mut instance_defs = instance_defs;
-        instance_defs.extend(derived_instance_defs);
+        // Strip temporary instance method entries from functions and results —
+        // they live on instance_defs now, codegen reads them from there
+        functions.truncate(fn_decls.len());
+        // results contains: imported + constructors + fn_decls + instance methods
+        // Strip the instance method entries (they were appended last)
+        let results_base_len = results.len() - instance_defs.iter().map(|i| i.methods.len()).sum::<usize>();
+        results.truncate(results_base_len);
 
         let struct_decls: Vec<_> = module
             .decls
@@ -1890,9 +1909,9 @@ pub(crate) fn infer_module_inner(
                             type_var_ids: inst.type_var_ids.clone(),
                             constraints: inst.constraints.clone(),
                             methods: inst
-                                .qualified_method_names
+                                .methods
                                 .iter()
-                                .map(|(m, _)| m.clone())
+                                .map(|m| m.name.clone())
                                 .collect(),
                             span: (0, 0),
                             is_builtin: false,
@@ -2060,8 +2079,6 @@ pub(crate) fn infer_module_inner(
     }
 
     // Deriving pass: process DefType declarations with `deriving` clauses
-    let mut derived_impl_functions: Vec<TypedFnDecl> = Vec::new();
-    let mut derived_impl_fn_types: Vec<(String, TypeScheme)> = Vec::new();
     let mut derived_instance_defs: Vec<InstanceDefInfo> = Vec::new();
 
     for decl in &module.decls {
@@ -2159,7 +2176,6 @@ pub(crate) fn infer_module_inner(
 
                 // Synthesize the method body
                 let syn_span: Span = (0, 0);
-                let qualified_name = format!("{}${}${}", trait_name, target_type_name, method_name);
 
                 let (body, fn_ty) = match trait_name.as_str() {
                     "Eq" => synthesize_eq_body(type_info, &target_type, syn_span),
@@ -2173,19 +2189,10 @@ pub(crate) fn infer_module_inner(
                     _ => vec![],
                 };
 
-                derived_impl_fn_types.push((
-                    qualified_name.clone(),
-                    TypeScheme {
-                        vars: vec![],
-                        ty: fn_ty,
-                    },
-                ));
-                derived_impl_functions.push(TypedFnDecl {
-                    name: qualified_name.clone(),
-                    visibility: Visibility::Pub,
-                    params,
-                    body,
-                });
+                let scheme = TypeScheme {
+                    vars: vec![],
+                    ty: fn_ty,
+                };
 
                 derived_instance_defs.push(InstanceDefInfo {
                     trait_name: trait_name.clone(),
@@ -2193,7 +2200,12 @@ pub(crate) fn infer_module_inner(
                     target_type,
                     type_var_ids: derived_type_var_ids.clone(),
                     constraints: derived_constraints.clone(),
-                    qualified_method_names: vec![(method_name.to_string(), qualified_name)],
+                    methods: vec![typed_ast::InstanceMethod {
+                        name: method_name.to_string(),
+                        params,
+                        body,
+                        scheme,
+                    }],
                     subdict_traits: vec![],
                     is_intrinsic: false,
                 });
@@ -2633,9 +2645,7 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Type-check impl method bodies and produce TypedFnDecls with qualified names
-    let mut impl_functions: Vec<TypedFnDecl> = Vec::new();
-    let mut impl_fn_types: Vec<(String, TypeScheme)> = Vec::new();
+    // Type-check impl method bodies and store on InstanceDefInfo
     let mut instance_defs: Vec<InstanceDefInfo> = Vec::new();
 
     for decl in &module.decls {
@@ -2658,7 +2668,7 @@ pub(crate) fn infer_module_inner(
             let resolved_target = instance.target_type.clone();
             let target_type_name = instance.target_type_name.clone();
 
-            let mut qualified_method_names = Vec::new();
+            let mut instance_methods = Vec::new();
 
             // Detect if all method bodies are __krypton_intrinsic() calls
             let all_intrinsic = methods.iter().all(|m| {
@@ -2667,8 +2677,6 @@ pub(crate) fn infer_module_inner(
             });
 
             for method in methods {
-                let qualified_name = format!("{}${}${}", trait_name, target_type_name, method.name);
-
                 // Find the trait method signature
                 let trait_method = trait_info
                     .methods
@@ -2729,7 +2737,6 @@ pub(crate) fn infer_module_inner(
 
                 // For intrinsic impls, skip body type-checking (bridge bytecode handles these)
                 if all_intrinsic {
-                    qualified_method_names.push((method.name.clone(), qualified_name));
                     continue;
                 }
 
@@ -2784,15 +2791,12 @@ pub(crate) fn infer_module_inner(
                     ty: fn_ty,
                 };
 
-                impl_fn_types.push((qualified_name.clone(), scheme));
-                impl_functions.push(TypedFnDecl {
-                    name: qualified_name.clone(),
-                    visibility: Visibility::Pub,
+                instance_methods.push(typed_ast::InstanceMethod {
+                    name: method.name.clone(),
                     params: method.params.iter().map(|p| p.name.clone()).collect(),
                     body: body_typed,
+                    scheme,
                 });
-
-                qualified_method_names.push((method.name.clone(), qualified_name));
             }
 
             instance_defs.push(InstanceDefInfo {
@@ -2801,7 +2805,7 @@ pub(crate) fn infer_module_inner(
                 target_type: resolved_target,
                 type_var_ids: instance.type_var_ids.clone(),
                 constraints: instance.constraints.clone(),
-                qualified_method_names,
+                methods: instance_methods,
                 subdict_traits: vec![],
                 is_intrinsic: all_intrinsic,
             });
@@ -2814,11 +2818,7 @@ pub(crate) fn infer_module_inner(
         &fn_decls,
         result_schemes,
         fn_bodies,
-        impl_fn_types,
-        impl_functions,
         instance_defs,
-        derived_impl_fn_types,
-        derived_impl_functions,
         derived_instance_defs,
         &fn_constraint_requirements,
         &trait_method_map,

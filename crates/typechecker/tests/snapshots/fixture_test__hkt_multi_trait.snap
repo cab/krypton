@@ -22,5 +22,3 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Box: forall j. fn(j) -> Box[j]
-Functor$Box$fmap: fn(Box[d1], fn(d1) -> f1) -> own Box[f1]
-Container$Box$wrap: fn(x) -> own Box[x]

@@ -23,4 +23,3 @@ EQ: Ordering
 GT: Ordering
 Point: fn(Int, Int) -> Point
 main: fn() -> Bool
-Eq$Point$eq: fn(Point, Point) -> Bool

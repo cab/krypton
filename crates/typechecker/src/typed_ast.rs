@@ -175,13 +175,21 @@ pub struct ExportedTraitMethod {
 }
 
 #[derive(Clone)]
+pub struct InstanceMethod {
+    pub name: String,           // original method name, e.g. "show"
+    pub params: Vec<String>,    // parameter names
+    pub body: TypedExpr,        // typed method body
+    pub scheme: TypeScheme,     // type scheme for the method
+}
+
+#[derive(Clone)]
 pub struct InstanceDefInfo {
     pub trait_name: String,
     pub target_type_name: String,
     pub target_type: Type,
     pub type_var_ids: HashMap<String, u32>,
     pub constraints: Vec<TypeConstraint>,
-    pub qualified_method_names: Vec<(String, String)>, // (method_name, qualified_name)
+    pub methods: Vec<InstanceMethod>,
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
     pub is_intrinsic: bool,                   // true when all method bodies are intrinsic()
 }
@@ -230,6 +238,11 @@ pub struct TypedModule {
     pub exported_trait_defs: Vec<ExportedTraitDef>,
     /// Auto-close info for Resource bindings.
     pub auto_close: AutoCloseInfo,
+}
+
+/// Build the JVM-mangled name for a trait instance method.
+pub fn mangled_method_name(trait_name: &str, target_type_name: &str, method_name: &str) -> String {
+    format!("{}${}${}", trait_name, target_type_name, method_name)
 }
 
 pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {

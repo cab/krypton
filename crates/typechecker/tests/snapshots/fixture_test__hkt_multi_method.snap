@@ -23,4 +23,3 @@ EQ: Ordering
 GT: Ordering
 Box: forall j. fn(j) -> Box[j]
 main: fn() -> Int
-Functor$Box$fmap: fn(Box[m1], fn(m1) -> o1) -> own Box[o1]

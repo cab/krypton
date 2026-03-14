@@ -577,6 +577,19 @@ fn compile_module_inner(
             }
         }
     }
+    // Also scan instance method type schemes for FunN interfaces
+    for instance_def in &typed_module.instance_defs {
+        for method in &instance_def.methods {
+            if let Type::Fn(param_tys, _) = &method.scheme.ty {
+                for pt in param_tys {
+                    if let Type::Fn(inner_params, _) = pt {
+                        let arity = inner_params.len() as u8;
+                        compiler.lambda.ensure_fun_interface(arity, &mut compiler.cp, &mut compiler.types.class_descriptors)?;
+                    }
+                }
+            }
+        }
+    }
 
     // Process trait definitions: generate interface classes
     compiler.traits.trait_method_map = typed_module.trait_method_map.clone();
@@ -749,45 +762,47 @@ fn compile_module_inner(
         let mut return_jvm_types_map: HashMap<String, JvmType> = HashMap::new();
         let mut param_class_names_map: HashMap<String, Vec<Option<String>>> = HashMap::new();
 
-        for (method_name, qualified_name) in &instance_def.qualified_method_names {
-            // Look up the qualified method's type from fn_types
-            if let Some((_, scheme, _)) = typed_module.fn_types.iter().find(|(n, _, _)| n == qualified_name) {
-                if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
-                    let param_jvm: Vec<JvmType> = param_tys.iter()
-                        .map(|t| compiler.type_to_jvm(t))
-                        .collect::<Result<_, _>>()?;
-                    let ret_jvm = compiler.type_to_jvm(ret_ty)?;
-                    compiler
-                        .traits
-                        .impl_dict_requirements
-                        .insert(qualified_name.clone(), dict_requirements.clone());
-                    let fn_constraint_count = if dict_requirements.is_empty() {
-                        typed_module
-                            .fn_constraints
-                            .get(qualified_name)
-                            .map(|constraints| constraints.len())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    let mut all_param_jvm = Vec::new();
-                    for _ in 0..(dict_requirements.len() + fn_constraint_count) {
-                        all_param_jvm.push(JvmType::StructRef(compiler.refs.object_class));
-                    }
-                    all_param_jvm.extend(param_jvm.iter().copied());
-                    let static_desc = compiler.types.build_descriptor(&all_param_jvm, ret_jvm);
-                    // Collect class names for checkcast in bridge methods
-                    let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
-                        match t {
-                            Type::Named(name, _) => Some(qualify_type(name)),
-                            _ => None,
-                        }
-                    }).collect();
-                    param_class_names_map.insert(method_name.clone(), class_names);
-                    param_jvm_types_map.insert(method_name.clone(), param_jvm);
-                    return_jvm_types_map.insert(method_name.clone(), ret_jvm);
-                    method_info.push((method_name.clone(), qualified_name.clone(), param_tys.len(), static_desc));
+        for method in &instance_def.methods {
+            let qualified_name = krypton_typechecker::typed_ast::mangled_method_name(
+                &instance_def.trait_name,
+                &instance_def.target_type_name,
+                &method.name,
+            );
+            if let Type::Fn(param_tys, ret_ty) = &method.scheme.ty {
+                let param_jvm: Vec<JvmType> = param_tys.iter()
+                    .map(|t| compiler.type_to_jvm(t))
+                    .collect::<Result<_, _>>()?;
+                let ret_jvm = compiler.type_to_jvm(ret_ty)?;
+                compiler
+                    .traits
+                    .impl_dict_requirements
+                    .insert(qualified_name.clone(), dict_requirements.clone());
+                let fn_constraint_count = if dict_requirements.is_empty() {
+                    typed_module
+                        .fn_constraints
+                        .get(&qualified_name)
+                        .map(|constraints| constraints.len())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let mut all_param_jvm = Vec::new();
+                for _ in 0..(dict_requirements.len() + fn_constraint_count) {
+                    all_param_jvm.push(JvmType::StructRef(compiler.refs.object_class));
                 }
+                all_param_jvm.extend(param_jvm.iter().copied());
+                let static_desc = compiler.types.build_descriptor(&all_param_jvm, ret_jvm);
+                // Collect class names for checkcast in bridge methods
+                let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
+                    match t {
+                        Type::Named(name, _) => Some(qualify_type(name)),
+                        _ => None,
+                    }
+                }).collect();
+                param_class_names_map.insert(method.name.clone(), class_names);
+                param_jvm_types_map.insert(method.name.clone(), param_jvm);
+                return_jvm_types_map.insert(method.name.clone(), ret_jvm);
+                method_info.push((method.name.clone(), qualified_name.clone(), param_tys.len(), static_desc));
             }
         }
 
@@ -847,6 +862,12 @@ fn compile_module_inner(
         }
         for typed_fn in &typed_module.functions {
             collect_tuple_arities_expr(&typed_fn.body, &mut tuple_arities);
+        }
+        for instance_def in &typed_module.instance_defs {
+            for method in &instance_def.methods {
+                collect_tuple_arities(&method.scheme.ty, &mut tuple_arities);
+                collect_tuple_arities_expr(&method.body, &mut tuple_arities);
+            }
         }
         for arity in tuple_arities {
             let class_name = format!("krypton/runtime/Tuple{arity}");
@@ -956,6 +977,61 @@ fn compile_module_inner(
         }
     }
 
+    // Register instance method functions from instance_defs
+    for instance_def in &typed_module.instance_defs {
+        for method in &instance_def.methods {
+            let qualified_name = krypton_typechecker::typed_ast::mangled_method_name(
+                &instance_def.trait_name,
+                &instance_def.target_type_name,
+                &method.name,
+            );
+            if let Type::Fn(param_tys, ret_ty) = &method.scheme.ty {
+                let impl_dict_count = compiler
+                    .traits
+                    .impl_dict_requirements
+                    .get(&qualified_name)
+                    .map(|requirements| requirements.len())
+                    .unwrap_or(0);
+                let fn_constraint_count = if impl_dict_count == 0 {
+                    compiler
+                        .traits
+                        .fn_constraints
+                        .get(&qualified_name)
+                        .map(|constraints| constraints.len())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let mut all_param_types: Vec<JvmType> = Vec::new();
+                for _ in 0..(impl_dict_count + fn_constraint_count) {
+                    all_param_types.push(JvmType::StructRef(compiler.refs.object_class));
+                }
+                let user_param_types: Vec<JvmType> = param_tys
+                    .iter()
+                    .map(|t| compiler.type_to_jvm(t))
+                    .collect::<Result<_, _>>()?;
+                all_param_types.extend(user_param_types);
+                let return_type = compiler.type_to_jvm(ret_ty.as_ref())?;
+                let descriptor = compiler.types.build_descriptor(&all_param_types, return_type);
+                let method_ref =
+                    compiler.cp.add_method_ref(this_class, &qualified_name, &descriptor)?;
+                compiler.types.functions.insert(
+                    qualified_name.clone(),
+                    FunctionInfo {
+                        method_ref,
+                        param_types: all_param_types,
+                        return_type,
+                        is_void: false,
+                    },
+                );
+                compiler.types.fn_tc_types.insert(
+                    qualified_name,
+                    (param_tys.clone(), ret_ty.as_ref().clone()),
+                );
+            }
+        }
+    }
+
     // Register extern functions so they can be called via invokestatic
     for ext in typed_module.extern_fns.iter().chain(typed_module.imported_extern_fns.iter()) {
         let jvm_class_name = ext.java_class.replace('.', "/");
@@ -1038,6 +1114,28 @@ fn compile_module_inner(
             method.name_index = name_idx;
         }
         extra_methods.push(method);
+    }
+
+    // Compile instance method bodies from instance_defs
+    for instance_def in &typed_module.instance_defs {
+        if instance_def.is_intrinsic {
+            continue;
+        }
+        for method in &instance_def.methods {
+            let qualified_name = krypton_typechecker::typed_ast::mangled_method_name(
+                &instance_def.trait_name,
+                &instance_def.target_type_name,
+                &method.name,
+            );
+            let typed_fn = krypton_typechecker::typed_ast::TypedFnDecl {
+                name: qualified_name,
+                visibility: krypton_parser::ast::Visibility::Pub,
+                params: method.params.clone(),
+                body: method.body.clone(),
+            };
+            let compiled_method = compiler.compile_function(&typed_fn)?;
+            extra_methods.push(compiled_method);
+        }
     }
 
     // Build JVM main(String[])V wrapper (main module only)

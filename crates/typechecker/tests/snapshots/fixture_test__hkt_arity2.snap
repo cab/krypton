@@ -22,4 +22,3 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Pair: forall j k. fn(j, k) -> Pair[j, k]
-Bifunctor$Pair$bimap: fn(Pair[h1, i1], fn(h1) -> l1, fn(i1) -> m1) -> own Pair[l1, m1]

@@ -3,8 +3,8 @@ use krypton_parser::ast::{BinOp, Lit, TypeConstraint, TypeExpr, Variant, Visibil
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
-    AutoCloseInfo, ExternFnInfo, FnOrigin, InstanceDefInfo, TraitDefInfo, TypedExpr, TypedExprKind,
-    TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    AutoCloseInfo, ExternFnInfo, FnOrigin, InstanceDefInfo, InstanceMethod, TraitDefInfo,
+    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme};
 use krypton_modules::module_resolver::CompositeResolver;
@@ -245,20 +245,13 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         )
     };
 
+    let render_int_scheme = TypeScheme::mono(Type::Fn(vec![Type::Int], Box::new(Type::String)));
+    let render_wrap_scheme = TypeScheme {
+        vars: vec![0],
+        ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
+    };
+
     let mut fn_types = vec![
-        (
-            "Render$Int$render".to_string(),
-            TypeScheme::mono(Type::Fn(vec![Type::Int], Box::new(Type::String))),
-            FnOrigin::Regular,
-        ),
-        (
-            "Render$Wrap$render".to_string(),
-            TypeScheme {
-                vars: vec![0],
-                ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
-            },
-            FnOrigin::Regular,
-        ),
         (
             "main".to_string(),
             TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
@@ -266,20 +259,20 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         ),
     ];
 
-    let mut functions = vec![
-        TypedFnDecl {
-            name: "Render$Int$render".to_string(),
-            visibility: Visibility::Pub,
-            params: vec!["x".to_string()],
-            body: string_lit("x"),
-        },
-        TypedFnDecl {
-            name: "Render$Wrap$render".to_string(),
-            visibility: Visibility::Pub,
-            params: vec!["value".to_string()],
-            body: wrap_render_body,
-        },
-    ];
+    let render_int_method = InstanceMethod {
+        name: "render".to_string(),
+        params: vec!["x".to_string()],
+        body: string_lit("x"),
+        scheme: render_int_scheme,
+    };
+    let render_wrap_method = InstanceMethod {
+        name: "render".to_string(),
+        params: vec!["value".to_string()],
+        body: wrap_render_body,
+        scheme: render_wrap_scheme,
+    };
+
+    let mut functions = vec![];
 
     let mut fn_constraints = HashMap::new();
     let mut fn_constraint_requirements = HashMap::new();
@@ -339,10 +332,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 target_type: Type::Int,
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-                qualified_method_names: vec![(
-                    "render".to_string(),
-                    "Render$Int$render".to_string(),
-                )],
+                methods: vec![render_int_method],
                 subdict_traits: vec![],
                 is_intrinsic: false,
             },
@@ -356,10 +346,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                     trait_name: "Render".to_string(),
                     span: (0, 0),
                 }],
-                qualified_method_names: vec![(
-                    "render".to_string(),
-                    "Render$Wrap$render".to_string(),
-                )],
+                methods: vec![render_wrap_method],
                 subdict_traits: vec![],
                 is_intrinsic: false,
             },
