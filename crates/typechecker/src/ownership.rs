@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Decl, Expr, FnDecl, Module, Span, TypeExpr};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
-use crate::types::{Type, TypeScheme};
+use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 /// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
@@ -182,6 +182,43 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
     }
 }
 
+/// Recursively collect quantified type variable IDs from a type.
+fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSet<TypeVarId> {
+    let mut vars = HashSet::new();
+    match ty {
+        Type::Var(id) if quantified.contains(id) => {
+            vars.insert(*id);
+        }
+        Type::App(ctor, args) => {
+            vars.extend(collect_quantified_vars(ctor, quantified));
+            for arg in args {
+                vars.extend(collect_quantified_vars(arg, quantified));
+            }
+        }
+        Type::Named(_, args) => {
+            for arg in args {
+                vars.extend(collect_quantified_vars(arg, quantified));
+            }
+        }
+        Type::Own(inner) => {
+            vars.extend(collect_quantified_vars(inner, quantified));
+        }
+        Type::Fn(params, ret) => {
+            for p in params {
+                vars.extend(collect_quantified_vars(p, quantified));
+            }
+            vars.extend(collect_quantified_vars(ret, quantified));
+        }
+        Type::Tuple(elems) => {
+            for e in elems {
+                vars.extend(collect_quantified_vars(e, quantified));
+            }
+        }
+        _ => {}
+    }
+    vars
+}
+
 /// Compute qualifier requirements for each function's parameters.
 ///
 /// For each function, returns a Vec<ParamQualifier> parallel to its params.
@@ -229,25 +266,22 @@ fn compute_fn_qualifiers(
                 other => other,
             };
 
-            // Check if the inner type is a quantified type variable
-            let is_type_var = matches!(inner, Type::Var(id) if quantified.contains(id));
-
             let param_name = decl
                 .params
                 .get(i)
                 .map(|p| p.name.clone())
                 .unwrap_or_default();
-            if is_type_var {
-                // Check if this type var has a `shared` bound
-                let is_shared = if let Type::Var(id) = inner {
+
+            let found_vars = collect_quantified_vars(inner, &quantified);
+
+            if !found_vars.is_empty() {
+                let is_shared = found_vars.iter().any(|id| {
                     fn_shared.is_some_and(|shared_set| {
                         var_id_to_name
                             .get(id)
                             .is_some_and(|name| shared_set.contains(name))
                     })
-                } else {
-                    false
-                };
+                });
 
                 if is_shared {
                     qualifiers.push((ParamQualifier::Shared, param_name));
@@ -298,7 +332,9 @@ fn param_type_is_affine(ty_expr: &TypeExpr, registry: &TypeRegistry) -> bool {
     match ty_expr {
         TypeExpr::Own { .. } => true,
         TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => has_own_field(name, registry),
-        TypeExpr::App { name, .. } => has_own_field(name, registry),
+        TypeExpr::App { name, args, .. } => {
+            has_own_field(name, registry) || args.iter().any(|a| param_type_is_affine(a, registry))
+        }
         TypeExpr::Tuple { elements, .. } => {
             elements.iter().any(|e| param_type_is_affine(e, registry))
         }
@@ -708,6 +744,12 @@ fn check_fn(
         .filter(|p| is_own_param(p))
         .map(|p| p.name.clone())
         .collect();
+
+    // Affine params (containing own types deeper in the type) also need
+    // consumption tracking to detect double-use (E0101).
+    for name in affine {
+        owned.insert(name.clone());
+    }
 
     if owned.is_empty() && affine.is_empty() && let_own_spans.is_empty() {
         return Ok(());

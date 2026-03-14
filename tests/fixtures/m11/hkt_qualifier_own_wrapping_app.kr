@@ -1,0 +1,2 @@
+# expect: error E0101
+fun dup_container[a[_], z](xs: ~a[z]) -> (a[z], a[z]) = (xs, xs)

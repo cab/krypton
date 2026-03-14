@@ -1,0 +1,2 @@
+# expect: error E0101
+fun apply_twice[a[_], z](f: ~(a[z]) -> a[z], xs: a[z]) -> (a[z], a[z]) = (f(xs), f(xs))

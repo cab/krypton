@@ -1,0 +1,2 @@
+# expect: error E0101
+fun dup_via_fn[a[_], z](xs: a[~z], f: (a[~z]) -> a[~z]) -> (a[~z], a[~z]) = (f(xs), f(xs))
