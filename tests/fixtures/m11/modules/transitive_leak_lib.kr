@@ -1,0 +1,2 @@
+pub fun exported(x: Int) -> Int = x + 1
+pub fun re_exported(x: Int) -> Int = x * 2

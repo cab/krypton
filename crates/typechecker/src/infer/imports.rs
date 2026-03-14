@@ -152,42 +152,54 @@ impl ModuleInferenceState {
             .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
             .collect();
 
-        // Build fn visibility map from parsed imported module
-        let mut fn_vis: HashMap<&str, &Visibility> = imported_module
-            .decls
+        // Extract type signatures from cached module and bind with provenance.
+        let cached = cache.get(path).unwrap();
+        let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
+        let mut qualified_exports: HashMap<String, QualifiedExport> = HashMap::new();
+
+        // Check for explicitly requested names that exist in fn_types but not
+        // in exported_fn_types — these are private/non-exported names.
+        let exported_fn_names: HashSet<&str> = cached
+            .exported_fn_types
             .iter()
-            .filter_map(|d| {
-                if let Decl::DefFn(f) = d {
-                    Some((f.name.as_str(), &f.visibility))
-                } else {
-                    None
-                }
-            })
+            .map(|(n, _, _)| n.as_str())
             .collect();
-
-        // Also include extern method visibility
-        for d in &imported_module.decls {
-            if let Decl::ExternJava { methods, .. } = d {
-                for m in methods {
-                    fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
+        let reexported_fn_names: HashSet<&str> = cached
+            .reexported_fn_types
+            .iter()
+            .map(|(n, _, _)| n.as_str())
+            .collect();
+        // Build set of names importable via type/trait paths (not fn_types)
+        let type_or_trait_names: HashSet<&str> = {
+            let mut s: HashSet<&str> = HashSet::new();
+            for d in &imported_module.decls {
+                if let Decl::DefType(td) = d {
+                    if !matches!(td.visibility, Visibility::Private) {
+                        s.insert(&td.name);
+                    }
+                }
+                if let Decl::DefTrait { name, .. } = d {
+                    s.insert(name);
                 }
             }
-        }
-
-        // Build set of constructor names belonging to non-PubOpen types.
-        let mut opaque_constructors: HashSet<String> = HashSet::new();
-        for sdecl in &imported_module.decls {
-            if let Decl::DefType(td) = sdecl {
-                if !matches!(td.visibility, Visibility::PubOpen) {
-                    opaque_constructors.extend(constructor_names(td));
+            for tn in &cached.reexported_type_names {
+                s.insert(tn);
+            }
+            for td in &cached.exported_trait_defs {
+                s.insert(&td.name);
+                for m in &td.methods {
+                    s.insert(&m.name);
                 }
             }
-        }
-
-        // Check visibility of explicitly requested extern methods
+            s
+        };
         for name in &requested {
-            if let Some(vis) = fn_vis.get(name) {
-                if matches!(vis, Visibility::Private) && requested.contains(name) {
+            if !exported_fn_names.contains(name) && !reexported_fn_names.contains(name)
+                && !type_or_trait_names.contains(name)
+            {
+                // Check if the name exists in fn_types (i.e. it's private, not missing)
+                let exists_in_fn_types = cached.fn_types.iter().any(|(n, _, _)| n.as_str() == *name);
+                if exists_in_fn_types {
                     return Err(spanned(
                         TypeError::PrivateName {
                             name: name.to_string(),
@@ -199,45 +211,41 @@ impl ModuleInferenceState {
             }
         }
 
-        // Extract type signatures from cached module and bind with provenance.
-        let cached = cache.get(path).unwrap();
-        let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
-        let mut qualified_exports: HashMap<String, QualifiedExport> = HashMap::new();
-        let reexported_fn_names: HashSet<&str> = cached
-            .reexported_fn_types
-            .iter()
-            .map(|(n, _, _)| n.as_str())
-            .collect();
-        for (name, scheme, origin) in &cached.fn_types {
-            if opaque_constructors.contains(name) {
-                continue;
+        // Build fn visibility map from parsed imported module (needed for extern method privacy)
+        let mut fn_vis: HashMap<&str, &Visibility> = HashMap::new();
+        for d in &imported_module.decls {
+            if let Decl::ExternJava { methods, .. } = d {
+                for m in methods {
+                    fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
+                }
             }
-            if reexported_fn_names.contains(name.as_str()) {
-                continue;
-            }
-            let vis = fn_vis
-                .get(name.as_str())
-                .copied()
-                .unwrap_or(&Visibility::Pub);
-            if requested.contains(name.as_str()) {
+        }
+
+        // Check visibility of explicitly requested extern methods
+        for name in &requested {
+            if let Some(vis) = fn_vis.get(name) {
                 if matches!(vis, Visibility::Private) {
                     return Err(spanned(
                         TypeError::PrivateName {
-                            name: name.clone(),
+                            name: name.to_string(),
                             module_path: path.to_string(),
                         },
                         span,
                     ));
                 }
+            }
+        }
+
+        for (name, scheme, origin) in &cached.exported_fn_types {
+            if reexported_fn_names.contains(name.as_str()) {
+                continue;
+            }
+            if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
                 self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
                 self.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
                 self.fn_provenance_map.insert(effective_name, (path.to_string(), name.clone()));
             } else if import_all {
-                if matches!(vis, Visibility::Private) {
-                    self.env.bind(name.clone(), scheme.clone());
-                    continue;
-                }
                 let hidden_name = format!("__qual${}${}", qualifier_name, name);
                 qualified_exports.insert(
                     name.clone(),
@@ -253,13 +261,6 @@ impl ModuleInferenceState {
 
         for (name, scheme, origin) in &cached.reexported_fn_types {
             if import_all {
-                let vis = fn_vis
-                    .get(name.as_str())
-                    .copied()
-                    .unwrap_or(&Visibility::Pub);
-                if matches!(vis, Visibility::Private) {
-                    continue;
-                }
                 let hidden_name = format!("__qual${}${}", qualifier_name, name);
                 let original_prov = cached
                     .fn_provenance

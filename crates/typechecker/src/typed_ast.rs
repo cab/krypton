@@ -197,6 +197,9 @@ pub struct ExternFnInfo {
 pub struct TypedModule {
     pub module_path: Option<String>,
     pub fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    /// Public API: only locally-defined pub functions, pub open constructors,
+    /// and trait instance methods. Used by downstream importers.
+    pub exported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,

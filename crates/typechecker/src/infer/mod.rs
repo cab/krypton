@@ -1565,15 +1565,49 @@ impl ModuleInferenceState {
         shared_type_vars: &HashMap<String, HashSet<String>>,
     ) -> Result<TypedModule, SpannedTypeError> {
         let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imported_fn_types;
-        results.extend(constructor_schemes.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
+        results.extend(constructor_schemes.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
         results.extend(
             fn_decls
                 .iter()
                 .enumerate()
                 .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap(), FnOrigin::Regular)),
         );
-        results.extend(impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
-        results.extend(derived_impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
+        results.extend(impl_fn_types.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
+        results.extend(derived_impl_fn_types.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
+
+        // Build exported_fn_types: the public API surface for downstream importers.
+        // Includes pub open constructors, pub local functions, and instance methods.
+        // Does NOT include imported functions.
+        let mut exported_fn_types: Vec<(String, TypeScheme, FnOrigin)> = Vec::new();
+
+        // 1. Constructors for PubOpen types only
+        for (cname, scheme) in &constructor_schemes {
+            let is_pub_open = module.decls.iter().any(|d| {
+                if let Decl::DefType(td) = d {
+                    matches!(td.visibility, Visibility::PubOpen) && constructor_names(td).contains(cname)
+                } else {
+                    false
+                }
+            });
+            if is_pub_open {
+                exported_fn_types.push((cname.clone(), scheme.clone(), FnOrigin::Regular));
+            }
+        }
+
+        // 2. Local pub function declarations
+        for (i, decl) in fn_decls.iter().enumerate() {
+            if matches!(decl.visibility, Visibility::Pub) {
+                exported_fn_types.push((
+                    decl.name.clone(),
+                    result_schemes[i].clone().unwrap(),
+                    FnOrigin::Regular,
+                ));
+            }
+        }
+
+        // 3. Instance method types (always public)
+        exported_fn_types.extend(impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
+        exported_fn_types.extend(derived_impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
 
         let mut functions: Vec<TypedFnDecl> = Vec::new();
         let mut fn_bodies = fn_bodies;
@@ -1762,6 +1796,7 @@ impl ModuleInferenceState {
         Ok(TypedModule {
             module_path,
             fn_types: results,
+            exported_fn_types,
             functions,
             trait_defs,
             instance_defs,

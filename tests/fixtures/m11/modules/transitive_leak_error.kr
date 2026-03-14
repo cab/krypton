@@ -1,0 +1,3 @@
+# expect: error E0503
+import transitive_leak_middle.{exported}
+fun main() -> Int = exported(1)

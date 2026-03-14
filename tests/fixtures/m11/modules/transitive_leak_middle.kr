@@ -1,0 +1,3 @@
+import transitive_leak_lib.{exported}
+pub import transitive_leak_lib.{re_exported}
+pub fun wrapper(x: Int) -> Int = exported(x)

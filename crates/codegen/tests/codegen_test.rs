@@ -325,6 +325,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
     TypedModule {
         module_path: None,
         fn_types,
+        exported_fn_types: vec![],
         functions,
         trait_defs: vec![TraitDefInfo {
             name: "Render".to_string(),
