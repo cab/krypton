@@ -1,0 +1,10 @@
+# expect: ok
+type Choice = A | B
+fun classify(s: String) -> Choice = A
+fun test(val: ~String) -> String {
+    match classify(peek(val)) {
+        A => 0,
+        B => 0,
+    };
+    val
+}

@@ -242,7 +242,10 @@ impl ModuleInferenceState {
             }
             if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                self.imports.bind_import(&mut self.env, effective_name, scheme.clone(), origin.clone(), path.to_string(), name.clone());
+                self.imports.bind_import(&mut self.env, effective_name.clone(), scheme.clone(), origin.clone(), path.to_string(), name.clone());
+                if let Some(quals) = cached.exported_fn_qualifiers.get(name) {
+                    self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
+                }
             } else if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, name);
                 qualified_exports.insert(
@@ -286,7 +289,10 @@ impl ModuleInferenceState {
                     .unwrap_or_else(|| (path.to_string(), name.clone()));
                 self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
                 self.imports.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
-                self.imports.fn_provenance_map.insert(effective_name, original_prov);
+                self.imports.fn_provenance_map.insert(effective_name.clone(), original_prov);
+                if let Some(quals) = cached.exported_fn_qualifiers.get(name) {
+                    self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
+                }
             }
         }
 

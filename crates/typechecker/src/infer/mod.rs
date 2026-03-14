@@ -1393,6 +1393,7 @@ pub(crate) struct ImportContext {
     pub(super) fn_provenance_map: HashMap<String, (String, String)>,
     pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
     pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
+    pub(super) imported_fn_qualifiers: HashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
 }
 
 impl ImportContext {
@@ -1402,6 +1403,7 @@ impl ImportContext {
             fn_provenance_map: HashMap::new(),
             imported_type_info: HashMap::new(),
             imported_fn_constraints: HashMap::new(),
+            imported_fn_qualifiers: HashMap::new(),
         }
     }
 
@@ -1776,7 +1778,7 @@ impl ModuleInferenceState {
             collect_struct_update_info(&func.body, &mut struct_update_info);
         }
 
-        crate::ownership::check_ownership(
+        let fn_qualifiers = crate::ownership::check_ownership(
             module,
             &results,
             &self.registry,
@@ -1784,7 +1786,15 @@ impl ModuleInferenceState {
             &self.lambda_own_captures,
             &struct_update_info,
             &shared_type_vars,
+            &self.imports.imported_fn_qualifiers,
         )?;
+
+        // Filter to exported functions only for cross-module propagation
+        let exported_names: HashSet<&str> = exported_fn_types.iter().map(|(n, _, _)| n.as_str()).collect();
+        let exported_fn_qualifiers: HashMap<_, _> = fn_qualifiers
+            .into_iter()
+            .filter(|(name, _)| exported_names.contains(name.as_str()))
+            .collect();
 
         let auto_close = crate::auto_close::compute_auto_close(&functions, &results, trait_registry)?;
 
@@ -1893,6 +1903,7 @@ impl ModuleInferenceState {
             reexported_type_visibility: self.reexported_type_visibility,
             exported_trait_defs,
             auto_close,
+            exported_fn_qualifiers,
         })
     }
 }

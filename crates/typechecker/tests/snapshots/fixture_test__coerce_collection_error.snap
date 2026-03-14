@@ -11,6 +11,7 @@ div: forall c. fn(c, c) -> c
 neg: forall c. fn(c) -> c
 show: forall c. fn(c) -> String
 close: forall c. fn(own c) -> Unit
+peek: forall d. fn(d) -> d
 println: forall i. fn(i) -> Unit
 Some: forall b. fn(b) -> Option[b]
 None: forall b. Option[b]

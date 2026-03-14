@@ -163,6 +163,11 @@ fn m18_module_fixtures() {
 }
 
 #[test]
+fn m6_fixtures() {
+    run_codegen_fixtures("m6");
+}
+
+#[test]
 fn a_fixtures() {
     run_codegen_fixtures("a");
 }

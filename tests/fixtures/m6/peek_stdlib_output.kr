@@ -1,0 +1,5 @@
+# expect: output "hello"
+fun main() -> Unit {
+    let val: ~String = "hello"
+    println(peek(val))
+}

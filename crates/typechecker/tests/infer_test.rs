@@ -246,6 +246,7 @@ fn infer_forward_reference() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -281,6 +282,7 @@ fn infer_module_basic() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -310,6 +312,7 @@ fn infer_module_forward_ref() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -342,6 +345,7 @@ fn infer_mutual_recursion() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -388,6 +392,7 @@ fn infer_record_constructor() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -420,6 +425,7 @@ fn infer_sum_constructor() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -453,6 +459,7 @@ fn infer_bare_variant() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -496,6 +503,7 @@ fn infer_scc_generalization_order() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -529,6 +537,7 @@ fn infer_field_access() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -561,6 +570,7 @@ fn infer_struct_update() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -623,6 +633,7 @@ fn infer_match_option() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -656,6 +667,7 @@ fn infer_match_literal() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -687,6 +699,7 @@ fn infer_match_variable() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -718,6 +731,7 @@ fn infer_match_nested_constructor() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -761,6 +775,7 @@ fn infer_tuple_in_match() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -797,6 +812,7 @@ fn infer_tuple_polymorphic() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -838,6 +854,7 @@ fn test_exhaustive_complete() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -881,6 +898,7 @@ fn test_exhaustive_wildcard_covers_all() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -924,6 +942,7 @@ fn infer_call_site_coercion_borrow() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -956,6 +975,7 @@ fn infer_call_site_coercion_no_collection() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]
@@ -2115,6 +2135,7 @@ fn lambda_params_inferred_from_higher_order_fn() {
     neg: forall c. fn(c) -> c
     show: forall c. fn(c) -> String
     close: forall c. fn(own c) -> Unit
+    peek: forall d. fn(d) -> d
     println: forall i. fn(i) -> Unit
     Some: forall b. fn(b) -> Option[b]
     None: forall b. Option[b]

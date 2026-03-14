@@ -1,0 +1,5 @@
+# expect: ok
+fun test(val: ~String) -> String {
+    peek(val);
+    val
+}

@@ -3,19 +3,9 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Decl, Expr, FnDecl, Module, Span, TypeExpr};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
+use crate::typed_ast::ParamQualifier;
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
-
-/// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ParamQualifier {
-    /// Used more than once in the body — caller must not pass affine values.
-    RequiresU,
-    /// Used at most once — accepts both affine and unlimited values.
-    Polymorphic,
-    /// Declared `shared` — accepts affine args without consuming them.
-    Shared,
-}
 
 /// Check if a param has an `own` type annotation.
 fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
@@ -352,13 +342,25 @@ pub fn check_ownership(
     lambda_own_captures: &HashMap<Span, String>,
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
-) -> Result<(), SpannedTypeError> {
+    imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
+) -> Result<HashMap<String, Vec<(ParamQualifier, String)>>, SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
             let own_params: Vec<bool> = fn_decl.params.iter().map(is_own_param).collect();
             fn_param_info.insert(fn_decl.name.clone(), own_params);
+        }
+    }
+    // Also populate fn_param_info for imported functions from their TypeScheme,
+    // so the non-consuming borrow bypass works for stdlib/imported functions.
+    for (name, scheme, _) in fn_types {
+        if fn_param_info.contains_key(name) {
+            continue; // local definition takes precedence
+        }
+        if let Type::Fn(params, _) = &scheme.ty {
+            let own_params: Vec<bool> = params.iter().map(|t| matches!(t, Type::Own(_))).collect();
+            fn_param_info.insert(name.clone(), own_params);
         }
     }
 
@@ -373,7 +375,12 @@ pub fn check_ownership(
         .collect();
 
     // Compute qualifier requirements per function
-    let fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types, shared_type_vars);
+    let mut fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types, shared_type_vars);
+
+    // Merge imported qualifiers (local definitions take precedence)
+    for (name, quals) in imported_fn_qualifiers {
+        fn_qualifiers.entry(name.clone()).or_insert_with(|| quals.clone());
+    }
 
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
@@ -390,7 +397,7 @@ pub fn check_ownership(
             )?;
         }
     }
-    Ok(())
+    Ok(fn_qualifiers)
 }
 
 struct OwnershipChecker<'a> {

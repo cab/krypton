@@ -3,6 +3,17 @@ use std::collections::HashMap;
 use crate::types::{Substitution, Type, TypeScheme};
 use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint, TypeExpr, UnaryOp, Variant, Visibility};
 
+/// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamQualifier {
+    /// Used more than once in the body — caller must not pass affine values.
+    RequiresU,
+    /// Used at most once — accepts both affine and unlimited values.
+    Polymorphic,
+    /// Declared `shared` — accepts affine args without consuming them.
+    Shared,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum FnOrigin {
     Regular,
@@ -238,6 +249,9 @@ pub struct TypedModule {
     pub exported_trait_defs: Vec<ExportedTraitDef>,
     /// Auto-close info for Resource bindings.
     pub auto_close: AutoCloseInfo,
+    /// Pre-computed per-param qualifier info for exported functions.
+    /// Downstream modules use this for cross-module ownership checking.
+    pub exported_fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
 }
 
 /// Build the JVM-mangled name for a trait instance method.
