@@ -158,6 +158,11 @@ fn m18_fixtures() {
 }
 
 #[test]
+fn m18_module_fixtures() {
+    run_codegen_fixtures("m18/modules");
+}
+
+#[test]
 fn a_fixtures() {
     run_codegen_fixtures("a");
 }

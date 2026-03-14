@@ -1,0 +1,3 @@
+# expect: error E0003
+import trait_selective_lib.{describe, Widget, MkWidget}
+fun main() = label(MkWidget("x"))

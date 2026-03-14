@@ -64,6 +64,14 @@ impl ModuleInferenceState {
             });
         }
 
+        // Re-exported trait method names (e.g. eq, show, add)
+        for method_name in &cached.reexported_trait_method_names {
+            names.push(ImportName {
+                name: method_name.clone(),
+                alias: None,
+            });
+        }
+
         // Re-exported functions (e.g. println), excluding constructors
         // that will be bound via type processing
         for (name, _) in &cached.reexported_fn_types {
@@ -516,6 +524,15 @@ impl ModuleInferenceState {
                 }
                 self.imported_trait_defs.push(trait_def.clone());
                 self.imported_trait_names.insert(trait_def.name.clone());
+                let visible: HashSet<String> = if import_all {
+                    trait_def.methods.iter().map(|m| m.name.clone()).collect()
+                } else {
+                    trait_def.methods.iter()
+                        .filter(|m| requested.contains(m.name.as_str()))
+                        .map(|m| m.name.clone())
+                        .collect()
+                };
+                self.imported_trait_visible_methods.insert(trait_def.name.clone(), visible);
                 let prov = cached
                     .type_provenance
                     .get(&trait_def.name)
@@ -536,8 +553,11 @@ impl ModuleInferenceState {
                 let found_fn = self.imported_fn_types.iter().any(|(n, _)| n == &effective_name);
                 let found_type = self.imported_type_info.contains_key(&effective_name);
                 let found_trait = self.imported_trait_names.contains(&effective_name);
+                let found_trait_method = self.imported_trait_visible_methods
+                    .values()
+                    .any(|methods| methods.contains(&effective_name));
 
-                if !found_fn && !found_type && !found_trait {
+                if !found_fn && !found_type && !found_trait && !found_trait_method {
                     return Err(spanned(
                         TypeError::PrivateReexport {
                             name: effective_name.clone(),
@@ -568,6 +588,9 @@ impl ModuleInferenceState {
                     {
                         self.reexported_trait_defs.push(td.clone());
                     }
+                }
+                if found_trait_method {
+                    self.reexported_trait_method_names.push(effective_name.clone());
                 }
             }
         }

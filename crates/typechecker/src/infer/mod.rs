@@ -1412,12 +1412,14 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
+    pub(super) imported_trait_visible_methods: HashMap<String, HashSet<String>>,
     pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
     // Re-export state
     pub(super) reexported_fn_types: Vec<(String, TypeScheme)>,
     pub(super) reexported_type_names: Vec<String>,
     pub(super) reexported_type_visibility: HashMap<String, Visibility>,
     pub(super) reexported_trait_defs: Vec<ExportedTraitDef>,
+    pub(super) reexported_trait_method_names: Vec<String>,
     // Prelude tracking
     pub(super) prelude_imported_names: HashSet<String>,
 }
@@ -1453,11 +1455,13 @@ impl ModuleInferenceState {
             imported_fn_constraints: HashMap::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
+            imported_trait_visible_methods: HashMap::new(),
             qualified_modules: HashMap::new(),
             reexported_fn_types: Vec::new(),
             reexported_type_names: Vec::new(),
             reexported_type_visibility: HashMap::new(),
             reexported_trait_defs: Vec::new(),
+            reexported_trait_method_names: Vec::new(),
             prelude_imported_names: HashSet::new(),
         }
     }
@@ -1780,6 +1784,7 @@ impl ModuleInferenceState {
             reexported_type_names: self.reexported_type_names,
             reexported_type_visibility: self.reexported_type_visibility,
             exported_trait_defs,
+            reexported_trait_method_names: self.reexported_trait_method_names,
             auto_close,
         })
     }
@@ -1902,7 +1907,13 @@ pub(crate) fn infer_module_inner(
                 vars: vec![new_tv_id],
                 ty: fn_ty,
             };
-            state.env.bind(method.name.clone(), scheme);
+            let should_bind = state.imported_trait_visible_methods
+                .get(&trait_def.name)
+                .map(|vis| vis.contains(&method.name))
+                .unwrap_or(true); // default true for builtins/prelude
+            if should_bind {
+                state.env.bind(method.name.clone(), scheme);
+            }
 
             trait_methods.push(TraitMethod {
                 name: method.name.clone(),

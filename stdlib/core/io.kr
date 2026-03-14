@@ -1,5 +1,5 @@
 import core/result.{Result, Ok, Err}
-import core/show.{Show}
+import core/show.{show}
 
 # core/io — I/O functions
 extern "krypton.runtime.KryptonIO" {

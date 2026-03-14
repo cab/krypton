@@ -1,0 +1,4 @@
+# expect: output "widget"
+import core/io.{println}
+import trait_selective_lib.{describe, Widget, MkWidget}
+fun main() = println(describe(MkWidget("x")))

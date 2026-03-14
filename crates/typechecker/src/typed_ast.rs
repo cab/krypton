@@ -219,6 +219,8 @@ pub struct TypedModule {
     pub reexported_type_visibility: HashMap<String, Visibility>,
     /// Trait definitions exported for cross-module use.
     pub exported_trait_defs: Vec<ExportedTraitDef>,
+    /// Trait method names explicitly re-exported via `pub import`.
+    pub reexported_trait_method_names: Vec<String>,
     /// Auto-close info for Resource bindings.
     pub auto_close: AutoCloseInfo,
 }

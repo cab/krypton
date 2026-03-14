@@ -120,6 +120,70 @@ fn m18_fixtures() {
 }
 
 #[test]
+fn m18_module_fixtures() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/m18/modules");
+
+    let fixtures = discover_fixtures(&fixture_dir);
+    assert!(
+        !fixtures.is_empty(),
+        "no fixtures found in {}",
+        fixture_dir.display()
+    );
+
+    for fixture_path in fixtures {
+        let fixture = load_fixture(&fixture_path);
+        let name = fixture_path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let resolver =
+            CompositeResolver::with_source_root(fixture_path.parent().unwrap().to_path_buf());
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Error(code) => {
+                    let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
+                    match result {
+                        Ok(ty) => {
+                            panic!("fixture {name}: expected error {code} but inferred: {ty}")
+                        }
+                        Err(actual_code) => {
+                            assert_eq!(
+                                &actual_code, code,
+                                "fixture {name}: expected error {code} but got {actual_code}"
+                            );
+                        }
+                    }
+                }
+                Expectation::Output(_) => {
+                    let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
+                    assert!(
+                        result.is_ok(),
+                        "fixture {name}: expected ok but got error {:?}",
+                        result.err()
+                    );
+                }
+                Expectation::Ok => {
+                    let result = infer_module_snapshot_with_resolver(&fixture.source, &resolver);
+                    assert!(
+                        result.is_ok(),
+                        "fixture {name}: expected ok but got error {:?}",
+                        result.err()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn a_fixtures() {
     run_fixtures("a");
 }

@@ -1,12 +1,12 @@
-pub import core/eq.{Eq}
-pub import core/ord.{Ord}
-pub import core/add.{Add}
-pub import core/sub.{Sub}
-pub import core/mul.{Mul}
-pub import core/div.{Div}
-pub import core/neg.{Neg}
-pub import core/show.{Show}
-pub import core/resource.{Resource}
+pub import core/eq.{Eq, eq}
+pub import core/ord.{Ord, lt}
+pub import core/add.{Add, add}
+pub import core/sub.{Sub, sub}
+pub import core/mul.{Mul, mul}
+pub import core/div.{Div, div}
+pub import core/neg.{Neg, neg}
+pub import core/show.{Show, show}
+pub import core/resource.{Resource, close}
 
 pub import core/option.{Option, Some, None}
 pub import core/result.{Result, Ok, Err}
