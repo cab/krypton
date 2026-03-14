@@ -1387,6 +1387,79 @@ pub fn infer_module_single(
     Ok(modules.remove(0))
 }
 
+/// Grouped import state: the 4 maps that must stay in sync when binding/shadowing imports.
+pub(crate) struct ImportContext {
+    pub(super) imported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    pub(super) fn_provenance_map: HashMap<String, (String, String)>,
+    pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
+    pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
+}
+
+impl ImportContext {
+    fn new() -> Self {
+        ImportContext {
+            imported_fn_types: Vec::new(),
+            fn_provenance_map: HashMap::new(),
+            imported_type_info: HashMap::new(),
+            imported_fn_constraints: HashMap::new(),
+        }
+    }
+
+    /// Atomically bind an imported function: env + fn_types + provenance.
+    fn bind_import(
+        &mut self,
+        env: &mut TypeEnv,
+        name: String,
+        scheme: TypeScheme,
+        origin: FnOrigin,
+        source_module: String,
+        original_name: String,
+    ) {
+        env.bind_with_provenance(name.clone(), scheme.clone(), source_module.clone());
+        self.imported_fn_types.push((name.clone(), scheme, origin));
+        self.fn_provenance_map.insert(name, (source_module, original_name));
+    }
+
+    /// Bind a hidden (qualified) function: fn_types + provenance, no env bind.
+    fn bind_hidden_fn(
+        &mut self,
+        name: String,
+        scheme: TypeScheme,
+        origin: FnOrigin,
+        provenance: (String, String),
+    ) {
+        self.imported_fn_types.push((name.clone(), scheme, origin));
+        self.fn_provenance_map.insert(name, provenance);
+    }
+
+    /// Bind type info for an imported type.
+    fn bind_type_info(&mut self, name: String, source: String, vis: Visibility) {
+        self.imported_type_info.insert(name, (source, vis));
+    }
+
+    /// Bind fn constraints for an imported function.
+    fn bind_fn_constraints(&mut self, name: String, constraints: Vec<(String, usize)>) {
+        self.imported_fn_constraints.insert(name, constraints);
+    }
+
+    /// Remove stale import metadata for a name being locally redefined.
+    /// Clears constraints and provenance but keeps imported_fn_types
+    /// (the entry is still needed in the fn_types output list) and
+    /// does not touch env (the local binding is already in place).
+    fn remove_import_metadata(&mut self, name: &str) {
+        self.imported_fn_constraints.remove(name);
+        self.fn_provenance_map.remove(name);
+    }
+
+    /// Atomically shadow a name across all 4 maps + env.
+    fn shadow(&mut self, env: &mut TypeEnv, name: &str) {
+        env.unbind(name);
+        self.imported_fn_constraints.remove(name);
+        self.imported_fn_types.retain(|(n, _, _)| n != name);
+        self.fn_provenance_map.remove(name);
+    }
+}
+
 /// State accumulated during the bootstrap phases of module inference
 /// (env setup, import processing, extern loading, type registration).
 /// Consumed by `assemble_typed_module` at the end.
@@ -1399,12 +1472,9 @@ pub(crate) struct ModuleInferenceState {
     pub(super) let_own_spans: HashSet<Span>,
     pub(super) lambda_own_captures: HashMap<Span, String>,
     // Import accumulation
-    pub(super) imported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
-    pub(super) fn_provenance_map: HashMap<String, (String, String)>,
+    pub(super) imports: ImportContext,
     pub(super) type_provenance: HashMap<String, String>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
-    pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
-    pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
     pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
@@ -1440,12 +1510,9 @@ impl ModuleInferenceState {
             registry,
             let_own_spans: HashSet::new(),
             lambda_own_captures: HashMap::new(),
-            imported_fn_types: Vec::new(),
-            fn_provenance_map: HashMap::new(),
+            imports: ImportContext::new(),
             type_provenance,
             imported_extern_fns: Vec::new(),
-            imported_type_info: HashMap::new(),
-            imported_fn_constraints: HashMap::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
             qualified_modules: HashMap::new(),
@@ -1486,13 +1553,13 @@ impl ModuleInferenceState {
                 Decl::ExternJava { methods, .. } => {
                     for m in methods {
                         if self.prelude_imported_names.contains(&m.name) {
-                            self.imported_fn_constraints.remove(&m.name);
+                            self.imports.remove_import_metadata(&m.name);
                         }
                     }
                 }
                 Decl::DefFn(f) => {
                     if self.prelude_imported_names.contains(&f.name) {
-                        self.imported_fn_constraints.remove(&f.name);
+                        self.imports.remove_import_metadata(&f.name);
                     }
                 }
                 _ => {}
@@ -1517,11 +1584,11 @@ impl ModuleInferenceState {
                         if let crate::type_registry::TypeKind::Sum { variants } = &existing.kind {
                             for v in variants {
                                 self.env.unbind(&v.name);
-                                self.fn_provenance_map.remove(&v.name);
+                                self.imports.fn_provenance_map.remove(&v.name);
                             }
                         }
                         self.type_provenance.remove(&type_decl.name);
-                        self.imported_type_info.remove(&type_decl.name);
+                        self.imports.imported_type_info.remove(&type_decl.name);
                     }
                 }
 
@@ -1558,7 +1625,7 @@ impl ModuleInferenceState {
         let mut instance_defs = instance_defs;
         instance_defs.extend(derived_instance_defs);
 
-        let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imported_fn_types;
+        let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imports.imported_fn_types;
         results.extend(constructor_schemes.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
         results.extend(
             fn_decls
@@ -1640,7 +1707,7 @@ impl ModuleInferenceState {
                 &current_requirements,
                 &fn_schemes,
                 fn_constraint_requirements,
-                &self.imported_fn_constraints,
+                &self.imports.imported_fn_constraints,
                 trait_registry,
             )?;
         }
@@ -1758,7 +1825,7 @@ impl ModuleInferenceState {
         {
             let existing_type_names: HashSet<String> =
                 sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
-            for (type_name, (source_path, vis)) in &self.imported_type_info {
+            for (type_name, (source_path, vis)) in &self.imports.imported_type_info {
                 if existing_type_names.contains(type_name) || !matches!(vis, Visibility::Pub) {
                     continue;
                 }
@@ -1787,7 +1854,7 @@ impl ModuleInferenceState {
                 }
             })
             .collect();
-        for (type_name, (source_path, _)) in &self.imported_type_info {
+        for (type_name, (source_path, _)) in &self.imports.imported_type_info {
             if !local_type_names.contains(type_name) {
                 self.type_provenance.insert(type_name.clone(), source_path.clone());
             }
@@ -1812,13 +1879,13 @@ impl ModuleInferenceState {
             instance_defs,
             fn_constraints,
             fn_constraint_requirements: fn_constraint_requirements.clone(),
-            imported_fn_constraints: self.imported_fn_constraints,
+            imported_fn_constraints: self.imports.imported_fn_constraints,
             trait_method_map: trait_method_map.clone(),
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
             struct_decls,
             sum_decls,
-            fn_provenance: self.fn_provenance_map,
+            fn_provenance: self.imports.fn_provenance_map,
             type_provenance: self.type_provenance,
             type_visibility,
             reexported_fn_types: self.reexported_fn_types,
@@ -1892,7 +1959,7 @@ pub(crate) fn infer_module_inner(
         for (_, source_path) in &state.type_provenance {
             source_modules.insert(source_path.as_str());
         }
-        for (_, (source_path, _)) in &state.imported_type_info {
+        for (_, (source_path, _)) in &state.imports.imported_type_info {
             source_modules.insert(source_path.as_str());
         }
 
@@ -2631,7 +2698,7 @@ pub(crate) fn infer_module_inner(
 
     // Post-inference instance resolution: check that all trait method calls have instances
     // and check cross-module constraints (e.g., imported `println` requires Show)
-    if !trait_method_map.is_empty() || !state.imported_fn_constraints.is_empty() {
+    if !trait_method_map.is_empty() || !state.imports.imported_fn_constraints.is_empty() {
         for body in fn_bodies.iter() {
             if let Some(body) = body {
                 check_trait_instances(
@@ -2639,7 +2706,7 @@ pub(crate) fn infer_module_inner(
                     &trait_method_map,
                     &trait_registry,
                     &state.subst,
-                    &state.imported_fn_constraints,
+                    &state.imports.imported_fn_constraints,
                 )?;
             }
         }

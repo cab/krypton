@@ -242,9 +242,7 @@ impl ModuleInferenceState {
             }
             if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
-                self.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
-                self.fn_provenance_map.insert(effective_name, (path.to_string(), name.clone()));
+                self.imports.bind_import(&mut self.env, effective_name, scheme.clone(), origin.clone(), path.to_string(), name.clone());
             } else if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, name);
                 qualified_exports.insert(
@@ -254,8 +252,7 @@ impl ModuleInferenceState {
                         scheme: scheme.clone(),
                     },
                 );
-                self.imported_fn_types.push((hidden_name.clone(), scheme.clone(), origin.clone()));
-                self.fn_provenance_map.insert(hidden_name, (path.to_string(), name.clone()));
+                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), origin.clone(), (path.to_string(), name.clone()));
             }
         }
 
@@ -274,8 +271,7 @@ impl ModuleInferenceState {
                         scheme: scheme.clone(),
                     },
                 );
-                self.imported_fn_types.push((hidden_name.clone(), scheme.clone(), origin.clone()));
-                self.fn_provenance_map.insert(hidden_name, original_prov);
+                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), origin.clone(), original_prov);
             }
         }
 
@@ -283,14 +279,14 @@ impl ModuleInferenceState {
         for (name, scheme, origin) in &cached.reexported_fn_types {
             if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
-                self.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
                 let original_prov = cached
                     .fn_provenance
                     .get(name)
                     .cloned()
                     .unwrap_or_else(|| (path.to_string(), name.clone()));
-                self.fn_provenance_map.insert(effective_name, original_prov);
+                self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
+                self.imports.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
+                self.imports.fn_provenance_map.insert(effective_name, original_prov);
             }
         }
 
@@ -329,17 +325,13 @@ impl ModuleInferenceState {
                                 }
                                 if matches!(original_vis, Visibility::Pub) {
                                     for (cname, scheme) in &constructors {
-                                        self.env.bind(cname.clone(), scheme.clone());
-                                        self.imported_fn_types.push((cname.clone(), scheme.clone(), FnOrigin::Regular));
-                                        self.fn_provenance_map.insert(
-                                            cname.clone(),
-                                            (orig_path.clone(), cname.clone()),
-                                        );
+                                        self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), FnOrigin::Regular, orig_path.clone(), cname.clone());
                                     }
                                 }
-                                self.imported_type_info.insert(
+                                self.imports.bind_type_info(
                                     effective_type_name.clone(),
-                                    (orig_path.clone(), original_vis.clone()),
+                                    orig_path.clone(),
+                                    original_vis.clone(),
                                 );
                                 self.type_provenance.insert(td.name.clone(), orig_path.clone());
                             }
@@ -349,9 +341,10 @@ impl ModuleInferenceState {
                     self.registry
                         .register_type_alias(&effective_type_name, reex_type_name)
                         .map_err(|e| spanned(e, span))?;
-                    self.imported_type_info.insert(
+                    self.imports.bind_type_info(
                         effective_type_name.clone(),
-                        (path.to_string(), original_vis.clone()),
+                        path.to_string(),
+                        original_vis.clone(),
                     );
                 }
             }
@@ -397,8 +390,7 @@ impl ModuleInferenceState {
                             .register_type_alias(&effective_type_name, &td.name)
                             .map_err(|e| spanned(e, span))?;
                     }
-                    self.imported_type_info
-                        .insert(effective_type_name.clone(), (path.to_string(), td.visibility.clone()));
+                    self.imports.bind_type_info(effective_type_name.clone(), path.to_string(), td.visibility.clone());
                     self.type_provenance.insert(td.name.clone(), path.to_string());
                 } else if import_all {
                     if matches!(td.visibility, Visibility::Private) {
@@ -423,11 +415,7 @@ impl ModuleInferenceState {
                                         scheme: scheme.clone(),
                                     },
                                 );
-                                self.imported_fn_types.push((hidden_name.clone(), scheme.clone(), FnOrigin::Regular));
-                                self.fn_provenance_map.insert(
-                                    hidden_name,
-                                    (path.to_string(), cname.clone()),
-                                );
+                                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), FnOrigin::Regular, (path.to_string(), cname.clone()));
                                 self.env.bind(cname, scheme);
                             }
                         }
@@ -484,13 +472,13 @@ impl ModuleInferenceState {
         for (name, constraints) in &cached.fn_constraints {
             let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
             if requested.contains(name.as_str()) || import_all {
-                self.imported_fn_constraints.insert(effective_name, constraints.clone());
+                self.imports.bind_fn_constraints(effective_name, constraints.clone());
             }
         }
         for (name, constraints) in &cached.imported_fn_constraints {
             let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
             if requested.contains(name.as_str()) || import_all {
-                self.imported_fn_constraints.insert(effective_name, constraints.clone());
+                self.imports.bind_fn_constraints(effective_name, constraints.clone());
             }
         }
 
@@ -522,16 +510,14 @@ impl ModuleInferenceState {
                 let origin = FnOrigin::TraitMethod { trait_name: trait_def.name.clone() };
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
-                    let already_imported = self.imported_fn_types.iter().any(|(n, _, _)| n == &method.name);
+                    let already_imported = self.imports.imported_fn_types.iter().any(|(n, _, _)| n == &method.name);
                     if is_visible && !already_imported {
                         let fn_ty = Type::Fn(method.param_types.clone(), Box::new(method.return_type.clone()));
                         let scheme = TypeScheme {
                             vars: vec![trait_def.type_var_id],
                             ty: fn_ty,
                         };
-                        self.env.bind_with_provenance(method.name.clone(), scheme.clone(), path.to_string());
-                        self.imported_fn_types.push((method.name.clone(), scheme, origin.clone()));
-                        self.fn_provenance_map.insert(method.name.clone(), (path.to_string(), method.name.clone()));
+                        self.imports.bind_import(&mut self.env, method.name.clone(), scheme, origin.clone(), path.to_string(), method.name.clone());
                     }
                 }
                 let prov = cached
@@ -551,8 +537,8 @@ impl ModuleInferenceState {
                     .as_ref()
                     .unwrap_or(&import_name.name)
                     .clone();
-                let found_fn = self.imported_fn_types.iter().any(|(n, _, _)| n == &effective_name);
-                let found_type = self.imported_type_info.contains_key(&effective_name);
+                let found_fn = self.imports.imported_fn_types.iter().any(|(n, _, _)| n == &effective_name);
+                let found_type = self.imports.imported_type_info.contains_key(&effective_name);
                 let found_trait = self.imported_trait_names.contains(&effective_name);
 
                 if !found_fn && !found_type && !found_trait {
@@ -564,7 +550,7 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    if let Some((_, scheme, origin)) = self.imported_fn_types
+                    if let Some((_, scheme, origin)) = self.imports.imported_fn_types
                         .iter()
                         .find(|(n, _, _)| n == &effective_name)
                     {
@@ -573,7 +559,7 @@ impl ModuleInferenceState {
                 }
                 if found_type {
                     self.reexported_type_names.push(effective_name.clone());
-                    let original_vis = self.imported_type_info
+                    let original_vis = self.imports.imported_type_info
                         .get(&effective_name)
                         .map(|(_, vis)| vis.clone())
                         .unwrap_or(Visibility::Opaque);
