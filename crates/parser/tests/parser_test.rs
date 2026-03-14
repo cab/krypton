@@ -360,7 +360,14 @@ fn test_visibility() {
 
 #[test]
 fn test_pub_open_type() {
-    let (module, errors) = parse("pub open type Color = Red | Green | Blue");
+    let (module, errors) = parse("pub type Color = Red | Green | Blue");
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
+fn test_opaque_type() {
+    let (module, errors) = parse("pub opaque type Opaque = { inner: Int }");
     assert!(errors.is_empty(), "errors: {errors:?}");
     assert_yaml_snapshot!(module);
 }

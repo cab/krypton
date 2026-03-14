@@ -81,7 +81,7 @@ decls:
         - 91
   - DefType:
       name: Color
-      visibility: PubOpen
+      visibility: Pub
       type_params: []
       kind:
         Sum:
@@ -89,19 +89,19 @@ decls:
             - name: Red
               fields: []
               span:
-                - 114
-                - 117
+                - 109
+                - 112
             - name: Green
               fields: []
               span:
+                - 115
                 - 120
-                - 125
             - name: Blue
               fields: []
               span:
-                - 128
-                - 132
+                - 123
+                - 127
       deriving: []
       span:
         - 92
-        - 132
+        - 127

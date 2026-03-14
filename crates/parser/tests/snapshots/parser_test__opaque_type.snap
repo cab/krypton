@@ -1,0 +1,22 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Opaque
+      visibility: Opaque
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - inner
+              - Named:
+                  name: Int
+                  span:
+                    - 34
+                    - 37
+      deriving: []
+      span:
+        - 0
+        - 39

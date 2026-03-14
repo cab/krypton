@@ -50,7 +50,7 @@ pub struct ImportName {
 pub enum Visibility {
     Private,
     Pub,
-    PubOpen,
+    Opaque,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

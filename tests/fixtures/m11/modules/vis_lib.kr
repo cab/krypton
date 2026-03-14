@@ -1,5 +1,5 @@
-pub open type Color = Red | Blue
-pub type Opaque = { inner: Int }
+pub type Color = Red | Blue
+pub opaque type Opaque = { inner: Int }
 type Secret = { value: Int }
 
 pub fun public_fn(x: Int) -> Int = x + 1

@@ -55,7 +55,7 @@ fn test_unit_literal() {
 #[test]
 fn test_surface_keywords() {
     assert_yaml_snapshot!(surface_lex(
-        "fun let if else match type trait impl import use pub open where recur own deriving extern as"
+        "fun let if else match type trait impl import use pub opaque where recur own deriving extern as"
     ));
 }
 

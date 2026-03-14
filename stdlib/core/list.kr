@@ -1,7 +1,7 @@
 import core/option.{Option, Some, None}
 
 # core/list — List type (cons-based linked list)
-pub open type List[a] = Cons(a, List[a]) | Nil
+pub type List[a] = Cons(a, List[a]) | Nil
 
 pub fun length(xs) = match xs {
     Nil => 0,

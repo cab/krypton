@@ -1,4 +1,4 @@
-pub open type Msg = MkMsg(String)
+pub type Msg = MkMsg(String)
 
 pub trait Render[a] {
   fun render(x: a) -> String

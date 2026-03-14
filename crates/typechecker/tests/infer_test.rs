@@ -1560,7 +1560,7 @@ fn infer_module_qualified_nullary_constructor_value_resolves() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("pub open type Option[a] = Some(a) | None".to_string())
+                Some("pub type Option[a] = Some(a) | None".to_string())
             } else {
                 None
             }
@@ -1586,7 +1586,7 @@ fn infer_module_qualified_constructor_call_typechecks() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("pub open type Box[a] = Box(a)".to_string())
+                Some("pub type Box[a] = Box(a)".to_string())
             } else {
                 None
             }
@@ -1624,7 +1624,7 @@ fn infer_module_constructor_alias_resolves() {
     impl ModuleResolver for FakeResolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             if module_path == "mylib" {
-                Some("pub open type Box[a] = Box(a)".to_string())
+                Some("pub type Box[a] = Box(a)".to_string())
             } else {
                 None
             }
@@ -1715,7 +1715,7 @@ fn cross_module_deriving_show() {
     impl ModuleResolver for Resolver {
         fn resolve(&self, path: &str) -> Option<String> {
             match path {
-                "mylib" => Some("pub open type Point = { x: Int, y: Int } deriving (Show)".into()),
+                "mylib" => Some("pub type Point = { x: Int, y: Int } deriving (Show)".into()),
                 _ => StdlibResolver.resolve(path),
             }
         }
@@ -1742,7 +1742,7 @@ fn cross_module_derived_constrained_instance_resolves_when_inner_instance_exists
     impl ModuleResolver for Resolver {
         fn resolve(&self, path: &str) -> Option<String> {
             match path {
-                "mylib" => Some("pub open type Box[a] = Box(a) deriving (Show)".into()),
+                "mylib" => Some("pub type Box[a] = Box(a) deriving (Show)".into()),
                 _ => StdlibResolver.resolve(path),
             }
         }
@@ -1772,7 +1772,7 @@ fn cross_module_derived_constrained_instance_reports_e0301_when_inner_instance_m
     impl ModuleResolver for Resolver {
         fn resolve(&self, path: &str) -> Option<String> {
             match path {
-                "mylib" => Some("pub open type Box[a] = Box(a) deriving (Show)".into()),
+                "mylib" => Some("pub type Box[a] = Box(a) deriving (Show)".into()),
                 _ => StdlibResolver.resolve(path),
             }
         }
@@ -1801,7 +1801,7 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
     impl ModuleResolver for Resolver {
         fn resolve(&self, path: &str) -> Option<String> {
             match path {
-                "mylib" => Some("pub open type Box[a] = Box(a) deriving (Show)".into()),
+                "mylib" => Some("pub type Box[a] = Box(a) deriving (Show)".into()),
                 _ => StdlibResolver.resolve(path),
             }
         }

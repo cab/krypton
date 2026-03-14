@@ -1,1 +1,1 @@
-pub open type Dir = North | South deriving (Eq)
+pub type Dir = North | South deriving (Eq)

@@ -1,4 +1,4 @@
-pub open type Point = MkPoint(Int, Int)
+pub type Point = MkPoint(Int, Int)
 pub trait Printable[a] {
   fun display(x: a) -> String
 }

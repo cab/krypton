@@ -1,1 +1,1 @@
-pub open type Color = Red | Green | Blue deriving (Show)
+pub type Color = Red | Green | Blue deriving (Show)

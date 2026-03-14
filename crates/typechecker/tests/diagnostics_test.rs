@@ -300,7 +300,7 @@ fn module_qualifier_value_diagnostic_noncallable_example_has_no_call_syntax() {
     impl ModuleResolver for Resolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             match module_path {
-                "choices" => Some("pub open type Option[a] = Some(a) | None".to_string()),
+                "choices" => Some("pub type Option[a] = Some(a) | None".to_string()),
                 _ => None,
             }
         }
@@ -333,7 +333,7 @@ fn qualified_export_table_has_no_mangled_names() {
         fn resolve(&self, module_path: &str) -> Option<String> {
             match module_path {
                 "tlib" => Some(
-                    "pub open type Color = Red | Green | Blue deriving (Show)".to_string(),
+                    "pub type Color = Red | Green | Blue deriving (Show)".to_string(),
                 ),
                 _ => None,
             }

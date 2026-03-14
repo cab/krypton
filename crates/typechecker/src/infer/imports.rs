@@ -37,7 +37,7 @@ impl ModuleInferenceState {
             });
         }
 
-        // Build set of constructor names from PubOpen re-exported types,
+        // Build set of constructor names from pub (transparent) re-exported types,
         // so we can exclude them from the re-exported fn list (they come from type processing).
         let mut prelude_constructor_names: HashSet<String> = HashSet::new();
         for type_name in &cached.reexported_type_names {
@@ -45,8 +45,8 @@ impl ModuleInferenceState {
                 .reexported_type_visibility
                 .get(type_name)
                 .cloned()
-                .unwrap_or(Visibility::Pub);
-            if matches!(vis, Visibility::PubOpen) {
+                .unwrap_or(Visibility::Opaque);
+            if matches!(vis, Visibility::Pub) {
                 if let Some(orig_path) = cached.type_provenance.get(type_name) {
                     if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
                         if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
@@ -305,7 +305,7 @@ impl ModuleInferenceState {
                     .reexported_type_visibility
                     .get(reex_type_name)
                     .cloned()
-                    .unwrap_or(Visibility::Pub);
+                    .unwrap_or(Visibility::Opaque);
                 if self.registry.lookup_type(reex_type_name).is_none() {
                     let original_path = cached.type_provenance.get(reex_type_name);
                     if let Some(orig_path) = original_path {
@@ -327,7 +327,7 @@ impl ModuleInferenceState {
                                 if path == "prelude" {
                                     self.registry.set_prelude(&td.name);
                                 }
-                                if matches!(original_vis, Visibility::PubOpen) {
+                                if matches!(original_vis, Visibility::Pub) {
                                     for (cname, scheme) in &constructors {
                                         self.env.bind(cname.clone(), scheme.clone());
                                         self.imported_fn_types.push((cname.clone(), scheme.clone(), FnOrigin::Regular));
@@ -387,7 +387,7 @@ impl ModuleInferenceState {
                         if path == "prelude" {
                             self.registry.set_prelude(&td.name);
                         }
-                        if matches!(td.visibility, Visibility::PubOpen) {
+                        if matches!(td.visibility, Visibility::Pub) {
                             for (cname, scheme) in constructors {
                                 self.env.bind(cname, scheme);
                             }
@@ -412,7 +412,7 @@ impl ModuleInferenceState {
                         if path == "prelude" {
                             self.registry.set_prelude(&td.name);
                         }
-                        if matches!(td.visibility, Visibility::PubOpen) {
+                        if matches!(td.visibility, Visibility::Pub) {
                             for (cname, scheme) in constructors {
                                 let hidden_name =
                                     format!("__qual${}${}", qualifier_name, cname);
@@ -444,7 +444,7 @@ impl ModuleInferenceState {
             }
         }
 
-        // Store qualified module binding *after* type processing so PubOpen constructor
+        // Store qualified module binding *after* type processing so pub (transparent) constructor
         // entries added above are captured in qualified_exports.
         if import_all {
             self.qualified_modules.insert(
@@ -576,7 +576,7 @@ impl ModuleInferenceState {
                     let original_vis = self.imported_type_info
                         .get(&effective_name)
                         .map(|(_, vis)| vis.clone())
-                        .unwrap_or(Visibility::Pub);
+                        .unwrap_or(Visibility::Opaque);
                     self.reexported_type_visibility.insert(effective_name.clone(), original_vis);
                 }
                 if found_trait {

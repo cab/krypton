@@ -1,6 +1,6 @@
 ---
 source: crates/parser/tests/lexer_test.rs
-expression: "surface_lex(\"fun let if else match type trait impl import use pub open where recur own deriving extern as\")"
+expression: "surface_lex(\"fun let if else match type trait impl import use pub opaque where recur own deriving extern as\")"
 ---
 - Fun
 - Let
@@ -13,7 +13,7 @@ expression: "surface_lex(\"fun let if else match type trait impl import use pub 
 - Import
 - Use
 - Pub
-- Open
+- Opaque
 - Where
 - Recur
 - Own

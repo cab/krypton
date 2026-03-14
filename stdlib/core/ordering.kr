@@ -1,2 +1,2 @@
 # core/ordering — Ordering type for comparisons
-pub open type Ordering = LT | EQ | GT
+pub type Ordering = LT | EQ | GT

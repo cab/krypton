@@ -82,7 +82,7 @@ impl<'a> Formatter<'a> {
         match vis {
             Visibility::Private => {}
             Visibility::Pub => self.buf.push_str("pub "),
-            Visibility::PubOpen => self.buf.push_str("pub open "),
+            Visibility::Opaque => self.buf.push_str("pub opaque "),
         }
     }
 

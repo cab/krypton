@@ -896,10 +896,10 @@ where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
     symbol(Token::Pub)
-        .ignore_then(symbol(Token::Open).or_not())
-        .map(|open| {
-            if open.is_some() {
-                Visibility::PubOpen
+        .ignore_then(symbol(Token::Opaque).or_not())
+        .map(|opaque| {
+            if opaque.is_some() {
+                Visibility::Opaque
             } else {
                 Visibility::Pub
             }

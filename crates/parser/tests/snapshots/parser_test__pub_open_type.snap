@@ -5,7 +5,7 @@ expression: module
 decls:
   - DefType:
       name: Color
-      visibility: PubOpen
+      visibility: Pub
       type_params: []
       kind:
         Sum:
@@ -13,19 +13,19 @@ decls:
             - name: Red
               fields: []
               span:
-                - 22
-                - 25
+                - 17
+                - 20
             - name: Green
               fields: []
               span:
+                - 23
                 - 28
-                - 33
             - name: Blue
               fields: []
               span:
-                - 36
-                - 40
+                - 31
+                - 35
       deriving: []
       span:
         - 0
-        - 40
+        - 35

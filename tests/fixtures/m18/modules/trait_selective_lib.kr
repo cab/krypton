@@ -2,7 +2,7 @@ pub trait Describable[a] {
   fun describe(x: a) -> String
   fun label(x: a) -> String
 }
-pub open type Widget = MkWidget(String)
+pub type Widget = MkWidget(String)
 impl Describable[Widget] {
   fun describe(w: Widget) -> String = "widget"
   fun label(w: Widget) -> String = "lbl"

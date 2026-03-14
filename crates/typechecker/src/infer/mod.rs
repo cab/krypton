@@ -1575,15 +1575,15 @@ impl ModuleInferenceState {
         }
 
         // Build exported_fn_types: the public API surface for downstream importers.
-        // Includes pub open constructors, pub local functions, and instance methods.
+        // Includes pub (transparent) constructors, pub local functions, and instance methods.
         // Does NOT include imported functions.
         let mut exported_fn_types: Vec<(String, TypeScheme, FnOrigin)> = Vec::new();
 
-        // 1. Constructors for PubOpen types only
+        // 1. Constructors for pub (transparent) types only
         for (cname, scheme) in &constructor_schemes {
             let is_pub_open = module.decls.iter().any(|d| {
                 if let Decl::DefType(td) = d {
-                    matches!(td.visibility, Visibility::PubOpen) && constructor_names(td).contains(cname)
+                    matches!(td.visibility, Visibility::Pub) && constructor_names(td).contains(cname)
                 } else {
                     false
                 }
@@ -1759,7 +1759,7 @@ impl ModuleInferenceState {
             let existing_type_names: HashSet<String> =
                 sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
             for (type_name, (source_path, vis)) in &self.imported_type_info {
-                if existing_type_names.contains(type_name) || !matches!(vis, Visibility::PubOpen) {
+                if existing_type_names.contains(type_name) || !matches!(vis, Visibility::Pub) {
                     continue;
                 }
                 if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {

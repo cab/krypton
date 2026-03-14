@@ -475,7 +475,12 @@ fn roundtrip_sum_type() {
 
 #[test]
 fn roundtrip_pub_open_type() {
-    assert_surface_roundtrip("pub open type Color = Red | Green | Blue");
+    assert_surface_roundtrip("pub type Color = Red | Green | Blue");
+}
+
+#[test]
+fn roundtrip_opaque_type() {
+    assert_surface_roundtrip("pub opaque type Opaque = { inner: Int }");
 }
 
 #[test]

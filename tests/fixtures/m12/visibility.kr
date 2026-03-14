@@ -1,4 +1,4 @@
 # expect: ok
 pub fun add(a: Int, b: Int) -> Int = a + b
 pub type Point = { x: Int, y: Int }
-pub open type Color = Red | Green | Blue
+pub type Color = Red | Green | Blue
