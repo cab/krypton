@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
 use crate::type_registry::{self};
-use crate::typed_ast::TypedModule;
+use crate::typed_ast::{FnOrigin, TypedModule};
+use crate::types::{Type, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
@@ -64,17 +65,9 @@ impl ModuleInferenceState {
             });
         }
 
-        // Re-exported trait method names (e.g. eq, show, add)
-        for method_name in &cached.reexported_trait_method_names {
-            names.push(ImportName {
-                name: method_name.clone(),
-                alias: None,
-            });
-        }
-
         // Re-exported functions (e.g. println), excluding constructors
         // that will be bound via type processing
-        for (name, _) in &cached.reexported_fn_types {
+        for (name, _, _) in &cached.reexported_fn_types {
             if !prelude_constructor_names.contains(name) {
                 names.push(ImportName {
                     name: name.clone(),
@@ -213,9 +206,9 @@ impl ModuleInferenceState {
         let reexported_fn_names: HashSet<&str> = cached
             .reexported_fn_types
             .iter()
-            .map(|(n, _)| n.as_str())
+            .map(|(n, _, _)| n.as_str())
             .collect();
-        for (name, scheme) in &cached.fn_types {
+        for (name, scheme, origin) in &cached.fn_types {
             if opaque_constructors.contains(name) {
                 continue;
             }
@@ -238,7 +231,7 @@ impl ModuleInferenceState {
                 }
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
                 self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
-                self.imported_fn_types.push((effective_name.clone(), scheme.clone()));
+                self.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
                 self.fn_provenance_map.insert(effective_name, (path.to_string(), name.clone()));
             } else if import_all {
                 if matches!(vis, Visibility::Private) {
@@ -253,12 +246,12 @@ impl ModuleInferenceState {
                         scheme: scheme.clone(),
                     },
                 );
-                self.imported_fn_types.push((hidden_name.clone(), scheme.clone()));
+                self.imported_fn_types.push((hidden_name.clone(), scheme.clone(), origin.clone()));
                 self.fn_provenance_map.insert(hidden_name, (path.to_string(), name.clone()));
             }
         }
 
-        for (name, scheme) in &cached.reexported_fn_types {
+        for (name, scheme, origin) in &cached.reexported_fn_types {
             if import_all {
                 let vis = fn_vis
                     .get(name.as_str())
@@ -280,17 +273,17 @@ impl ModuleInferenceState {
                         scheme: scheme.clone(),
                     },
                 );
-                self.imported_fn_types.push((hidden_name.clone(), scheme.clone()));
+                self.imported_fn_types.push((hidden_name.clone(), scheme.clone(), origin.clone()));
                 self.fn_provenance_map.insert(hidden_name, original_prov);
             }
         }
 
         // Process re-exported functions from the cached module.
-        for (name, scheme) in &cached.reexported_fn_types {
+        for (name, scheme, origin) in &cached.reexported_fn_types {
             if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
                 self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
-                self.imported_fn_types.push((effective_name.clone(), scheme.clone()));
+                self.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
                 let original_prov = cached
                     .fn_provenance
                     .get(name)
@@ -336,7 +329,7 @@ impl ModuleInferenceState {
                                 if matches!(original_vis, Visibility::PubOpen) {
                                     for (cname, scheme) in &constructors {
                                         self.env.bind(cname.clone(), scheme.clone());
-                                        self.imported_fn_types.push((cname.clone(), scheme.clone()));
+                                        self.imported_fn_types.push((cname.clone(), scheme.clone(), FnOrigin::Regular));
                                         self.fn_provenance_map.insert(
                                             cname.clone(),
                                             (orig_path.clone(), cname.clone()),
@@ -429,7 +422,7 @@ impl ModuleInferenceState {
                                         scheme: scheme.clone(),
                                     },
                                 );
-                                self.imported_fn_types.push((hidden_name.clone(), scheme.clone()));
+                                self.imported_fn_types.push((hidden_name.clone(), scheme.clone(), FnOrigin::Regular));
                                 self.fn_provenance_map.insert(
                                     hidden_name,
                                     (path.to_string(), cname.clone()),
@@ -524,15 +517,22 @@ impl ModuleInferenceState {
                 }
                 self.imported_trait_defs.push(trait_def.clone());
                 self.imported_trait_names.insert(trait_def.name.clone());
-                let visible: HashSet<String> = if import_all {
-                    trait_def.methods.iter().map(|m| m.name.clone()).collect()
-                } else {
-                    trait_def.methods.iter()
-                        .filter(|m| requested.contains(m.name.as_str()))
-                        .map(|m| m.name.clone())
-                        .collect()
-                };
-                self.imported_trait_visible_methods.insert(trait_def.name.clone(), visible);
+                // Bind visible trait methods as imported functions (skip if already imported via fn_types)
+                let origin = FnOrigin::TraitMethod { trait_name: trait_def.name.clone() };
+                for method in &trait_def.methods {
+                    let is_visible = import_all || requested.contains(method.name.as_str());
+                    let already_imported = self.imported_fn_types.iter().any(|(n, _, _)| n == &method.name);
+                    if is_visible && !already_imported {
+                        let fn_ty = Type::Fn(method.param_types.clone(), Box::new(method.return_type.clone()));
+                        let scheme = TypeScheme {
+                            vars: vec![trait_def.type_var_id],
+                            ty: fn_ty,
+                        };
+                        self.env.bind_with_provenance(method.name.clone(), scheme.clone(), path.to_string());
+                        self.imported_fn_types.push((method.name.clone(), scheme, origin.clone()));
+                        self.fn_provenance_map.insert(method.name.clone(), (path.to_string(), method.name.clone()));
+                    }
+                }
                 let prov = cached
                     .type_provenance
                     .get(&trait_def.name)
@@ -550,14 +550,11 @@ impl ModuleInferenceState {
                     .as_ref()
                     .unwrap_or(&import_name.name)
                     .clone();
-                let found_fn = self.imported_fn_types.iter().any(|(n, _)| n == &effective_name);
+                let found_fn = self.imported_fn_types.iter().any(|(n, _, _)| n == &effective_name);
                 let found_type = self.imported_type_info.contains_key(&effective_name);
                 let found_trait = self.imported_trait_names.contains(&effective_name);
-                let found_trait_method = self.imported_trait_visible_methods
-                    .values()
-                    .any(|methods| methods.contains(&effective_name));
 
-                if !found_fn && !found_type && !found_trait && !found_trait_method {
+                if !found_fn && !found_type && !found_trait {
                     return Err(spanned(
                         TypeError::PrivateReexport {
                             name: effective_name.clone(),
@@ -566,11 +563,11 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    if let Some((_, scheme)) = self.imported_fn_types
+                    if let Some((_, scheme, origin)) = self.imported_fn_types
                         .iter()
-                        .find(|(n, _)| n == &effective_name)
+                        .find(|(n, _, _)| n == &effective_name)
                     {
-                        self.reexported_fn_types.push((effective_name.clone(), scheme.clone()));
+                        self.reexported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
                     }
                 }
                 if found_type {
@@ -588,9 +585,6 @@ impl ModuleInferenceState {
                     {
                         self.reexported_trait_defs.push(td.clone());
                     }
-                }
-                if found_trait_method {
-                    self.reexported_trait_method_names.push(effective_name.clone());
                 }
             }
         }

@@ -9,8 +9,8 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, TraitDefInfo,
-    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, FnOrigin, InstanceDefInfo,
+    TraitDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
@@ -1404,7 +1404,7 @@ pub(crate) struct ModuleInferenceState {
     pub(super) let_own_spans: HashSet<Span>,
     pub(super) lambda_own_captures: HashMap<Span, String>,
     // Import accumulation
-    pub(super) imported_fn_types: Vec<(String, TypeScheme)>,
+    pub(super) imported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
     pub(super) fn_provenance_map: HashMap<String, (String, String)>,
     pub(super) type_provenance: HashMap<String, String>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
@@ -1412,14 +1412,12 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
-    pub(super) imported_trait_visible_methods: HashMap<String, HashSet<String>>,
     pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
     // Re-export state
-    pub(super) reexported_fn_types: Vec<(String, TypeScheme)>,
+    pub(super) reexported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
     pub(super) reexported_type_names: Vec<String>,
     pub(super) reexported_type_visibility: HashMap<String, Visibility>,
     pub(super) reexported_trait_defs: Vec<ExportedTraitDef>,
-    pub(super) reexported_trait_method_names: Vec<String>,
     // Prelude tracking
     pub(super) prelude_imported_names: HashSet<String>,
 }
@@ -1455,13 +1453,11 @@ impl ModuleInferenceState {
             imported_fn_constraints: HashMap::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
-            imported_trait_visible_methods: HashMap::new(),
             qualified_modules: HashMap::new(),
             reexported_fn_types: Vec::new(),
             reexported_type_names: Vec::new(),
             reexported_type_visibility: HashMap::new(),
             reexported_trait_defs: Vec::new(),
-            reexported_trait_method_names: Vec::new(),
             prelude_imported_names: HashSet::new(),
         }
     }
@@ -1568,16 +1564,16 @@ impl ModuleInferenceState {
         parsed_modules: &HashMap<String, &Module>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
     ) -> Result<TypedModule, SpannedTypeError> {
-        let mut results: Vec<(String, TypeScheme)> = self.imported_fn_types;
-        results.extend(constructor_schemes);
+        let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imported_fn_types;
+        results.extend(constructor_schemes.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
         results.extend(
             fn_decls
                 .iter()
                 .enumerate()
-                .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap())),
+                .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap(), FnOrigin::Regular)),
         );
-        results.extend(impl_fn_types);
-        results.extend(derived_impl_fn_types);
+        results.extend(impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
+        results.extend(derived_impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
 
         let mut functions: Vec<TypedFnDecl> = Vec::new();
         let mut fn_bodies = fn_bodies;
@@ -1594,7 +1590,7 @@ impl ModuleInferenceState {
         functions.extend(impl_functions);
         functions.extend(derived_impl_functions);
 
-        let fn_schemes: HashMap<String, TypeScheme> = results.iter().cloned().collect();
+        let fn_schemes: HashMap<String, TypeScheme> = results.iter().map(|(n, s, _)| (n.clone(), s.clone())).collect();
         for func in &functions {
             let current_requirements = fn_constraint_requirements
                 .get(&func.name)
@@ -1613,7 +1609,7 @@ impl ModuleInferenceState {
         let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
         for func in &functions {
             let mut param_type_var_map: HashMap<TypeVarId, usize> = HashMap::new();
-            if let Some((_, scheme)) = results.iter().find(|(n, _)| n == &func.name) {
+            if let Some((_, scheme, _)) = results.iter().find(|(n, _, _)| n == &func.name) {
                 if let Type::Fn(param_types, _) = &scheme.ty {
                     for (idx, pty) in param_types.iter().enumerate() {
                         for v in free_vars(pty) {
@@ -1784,7 +1780,6 @@ impl ModuleInferenceState {
             reexported_type_names: self.reexported_type_names,
             reexported_type_visibility: self.reexported_type_visibility,
             exported_trait_defs,
-            reexported_trait_method_names: self.reexported_trait_method_names,
             auto_close,
         })
     }
@@ -1900,20 +1895,6 @@ pub(crate) fn infer_module_inner(
                 .map(|t| remap_type_var(t, old_tv_id, new_tv_id))
                 .collect();
             let return_type = remap_type_var(&method.return_type, old_tv_id, new_tv_id);
-
-            // Bind the method as a polymorphic function: forall a. fn(params) -> ret
-            let fn_ty = Type::Fn(param_types.clone(), Box::new(return_type.clone()));
-            let scheme = TypeScheme {
-                vars: vec![new_tv_id],
-                ty: fn_ty,
-            };
-            let should_bind = state.imported_trait_visible_methods
-                .get(&trait_def.name)
-                .map(|vis| vis.contains(&method.name))
-                .unwrap_or(true); // default true for builtins/prelude
-            if should_bind {
-                state.env.bind(method.name.clone(), scheme);
-            }
 
             trait_methods.push(TraitMethod {
                 name: method.name.clone(),

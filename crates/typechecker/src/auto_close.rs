@@ -440,7 +440,7 @@ fn resource_close_self_type(fn_name: &str) -> Option<&str> {
 /// Returns the auto-close info and any diagnostic errors (e.g., branch leaks).
 pub fn compute_auto_close(
     functions: &[TypedFnDecl],
-    fn_types: &[(String, crate::types::TypeScheme)],
+    fn_types: &[(String, crate::types::TypeScheme, crate::typed_ast::FnOrigin)],
     registry: &TraitRegistry,
 ) -> Result<AutoCloseInfo, SpannedTypeError> {
     if registry.lookup_trait("Resource").is_none() {
@@ -454,8 +454,8 @@ pub fn compute_auto_close(
 
         let param_types = fn_types
             .iter()
-            .find(|(name, _)| name == &decl.name)
-            .and_then(|(_, scheme)| {
+            .find(|(name, _, _)| name == &decl.name)
+            .and_then(|(_, scheme, _)| {
                 if let Type::Fn(params, _) = &scheme.ty {
                     Some(params.clone())
                 } else {

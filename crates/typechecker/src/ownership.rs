@@ -226,11 +226,11 @@ fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSe
 /// Params whose type var has a `shared` bound get `Shared` regardless of body usage.
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
-    fn_types: &[(String, TypeScheme)],
+    fn_types: &[(String, TypeScheme, crate::typed_ast::FnOrigin)],
     shared_type_vars: &HashMap<String, HashSet<String>>,
 ) -> HashMap<String, Vec<(ParamQualifier, String)>> {
     let type_map: HashMap<&str, &TypeScheme> =
-        fn_types.iter().map(|(n, s)| (n.as_str(), s)).collect();
+        fn_types.iter().map(|(n, s, _)| (n.as_str(), s)).collect();
 
     let mut result = HashMap::new();
 
@@ -346,7 +346,7 @@ fn param_type_is_affine(ty_expr: &TypeExpr, registry: &TypeRegistry) -> bool {
 /// partial-branch use as E0102, and qualifier mismatches as E0104.
 pub fn check_ownership(
     module: &Module,
-    fn_types: &[(String, TypeScheme)],
+    fn_types: &[(String, TypeScheme, crate::typed_ast::FnOrigin)],
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,

@@ -562,7 +562,7 @@ fn compile_module_inner(
     }
 
     // Pre-scan for function-typed params so we can register FunN interfaces first
-    for (name, scheme) in type_info.iter() {
+    for (name, scheme, _) in type_info.iter() {
         if let Type::Fn(param_tys, _) = &scheme.ty {
             if compiler.types.struct_info.contains_key(name)
                 || compiler.types.variant_to_sum.contains_key(name)
@@ -751,7 +751,7 @@ fn compile_module_inner(
 
         for (method_name, qualified_name) in &instance_def.qualified_method_names {
             // Look up the qualified method's type from fn_types
-            if let Some((_, scheme)) = typed_module.fn_types.iter().find(|(n, _)| n == qualified_name) {
+            if let Some((_, scheme, _)) = typed_module.fn_types.iter().find(|(n, _, _)| n == qualified_name) {
                 if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
                     let param_jvm: Vec<JvmType> = param_tys.iter()
                         .map(|t| compiler.type_to_jvm(t))
@@ -842,7 +842,7 @@ fn compile_module_inner(
     // Scan for tuple arities used in the typed module and register TupleN classes
     {
         let mut tuple_arities = std::collections::HashSet::new();
-        for (_, scheme) in type_info.iter() {
+        for (_, scheme, _) in type_info.iter() {
             collect_tuple_arities(&scheme.ty, &mut tuple_arities);
         }
         for typed_fn in &typed_module.functions {
@@ -891,7 +891,7 @@ fn compile_module_inner(
 
     // Register all functions in the function registry.
     // Skip constructor entries (they're handled as struct/variant constructors).
-    for (name, scheme) in type_info.iter() {
+    for (name, scheme, _) in type_info.iter() {
         if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
             // Skip if this is a struct constructor or variant constructor
             if compiler.types.struct_info.contains_key(name)

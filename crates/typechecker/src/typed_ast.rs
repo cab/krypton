@@ -3,6 +3,12 @@ use std::collections::HashMap;
 use crate::types::{Substitution, Type, TypeScheme};
 use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint, TypeExpr, UnaryOp, Variant, Visibility};
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum FnOrigin {
+    Regular,
+    TraitMethod { trait_name: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct AutoCloseBinding {
     pub name: String,
@@ -190,7 +196,7 @@ pub struct ExternFnInfo {
 
 pub struct TypedModule {
     pub module_path: Option<String>,
-    pub fn_types: Vec<(String, TypeScheme)>,
+    pub fn_types: Vec<(String, TypeScheme, FnOrigin)>,
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
@@ -212,15 +218,13 @@ pub struct TypedModule {
     /// Maps type_name → visibility for types declared in this module.
     pub type_visibility: HashMap<String, Visibility>,
     /// Functions re-exported via `pub use` — these become part of this module's public API.
-    pub reexported_fn_types: Vec<(String, TypeScheme)>,
+    pub reexported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
     /// Type names re-exported via `pub use`.
     pub reexported_type_names: Vec<String>,
     /// Maps re-exported type name → original visibility (preserves pub/pub open distinction).
     pub reexported_type_visibility: HashMap<String, Visibility>,
     /// Trait definitions exported for cross-module use.
     pub exported_trait_defs: Vec<ExportedTraitDef>,
-    /// Trait method names explicitly re-exported via `pub import`.
-    pub reexported_trait_method_names: Vec<String>,
     /// Auto-close info for Resource bindings.
     pub auto_close: AutoCloseInfo,
 }

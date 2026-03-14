@@ -22,7 +22,7 @@ fn infer_module_snapshot_with_resolver(
             let lines: Vec<String> = modules[0]
                 .fn_types
                 .iter()
-                .map(|(name, scheme)| format!("{name}: {scheme}"))
+                .map(|(name, scheme, _)| format!("{name}: {scheme}"))
                 .collect();
             Ok(lines.join("\n"))
         }
