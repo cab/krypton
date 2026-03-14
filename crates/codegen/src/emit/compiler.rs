@@ -2197,9 +2197,17 @@ impl Compiler {
                 let iface_method_ref = dispatch.method_refs[name];
                 let iface_class = dispatch.interface_class;
 
-                // Determine the concrete type from the first arg's type in the typechecker
-                let first_arg_ty = &args[0].ty;
-                let is_type_var = matches!(first_arg_ty, Type::Var(_));
+                // Determine the concrete type for dictionary selection.
+                // For zero-arg trait methods, extract from the return type instead.
+                let dict_ty = if args.is_empty() {
+                    match &func.ty {
+                        Type::Fn(_, ret) => ret.as_ref().clone(),
+                        _ => result_ty.clone(),
+                    }
+                } else {
+                    args[0].ty.clone()
+                };
+                let is_type_var = matches!(&dict_ty, Type::Var(_));
 
                 // Load the dictionary (trait interface reference)
                 if is_type_var && !self.traits.dict_locals.contains_key(&trait_name) {
@@ -2207,7 +2215,7 @@ impl Compiler {
                         "no dict local for trait {trait_name}"
                     )));
                 }
-                self.emit_dict_argument_for_type(&trait_name, first_arg_ty, iface_class)?;
+                self.emit_dict_argument_for_type(&trait_name, &dict_ty, iface_class)?;
 
                 // Compile and box all arguments
                 let arity = args.len();
@@ -2298,12 +2306,13 @@ impl Compiler {
 
         // Push dict args first for constrained functions
         if !explicit_requirements.is_empty() {
-            if let Some((param_patterns, _)) = self.types.fn_tc_types.get(name).cloned() {
+            if let Some((param_patterns, ret_pattern)) = self.types.fn_tc_types.get(name).cloned() {
                 for requirement in &explicit_requirements {
                     let requirement_ty = Self::resolve_function_requirement_type(
                         requirement,
                         &param_patterns,
                         args,
+                        Some((&ret_pattern, &result_ty)),
                     )
                     .ok_or_else(|| {
                         CodegenError::UndefinedVariable(format!(
@@ -2897,6 +2906,7 @@ impl Compiler {
         requirement: &DictRequirement,
         param_types: &[Type],
         args: &[TypedExpr],
+        ret_info: Option<(&Type, &Type)>,
     ) -> Option<Type> {
         match requirement {
             DictRequirement::TypeParam { param_idx, .. } => {
@@ -2907,6 +2917,12 @@ impl Compiler {
                 for (param_ty, arg) in param_types.iter().zip(args.iter()) {
                     if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
                         return None;
+                    }
+                }
+                // For zero-arg functions, also try binding from return type
+                if bindings.get(type_var).is_none() {
+                    if let Some((ret_pattern, ret_actual)) = ret_info {
+                        Self::bind_type_vars(ret_pattern, ret_actual, &mut bindings);
                     }
                 }
                 bindings.get(type_var).cloned()

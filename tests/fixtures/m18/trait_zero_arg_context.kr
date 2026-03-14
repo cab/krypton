@@ -1,0 +1,21 @@
+# expect: output "42\n42"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+trait Default[a] {
+    fun default() -> a
+}
+
+impl Default[Int] {
+    fun default() = 42
+}
+
+fun int_default() -> Int = default()
+
+fun default2[a]() -> a where a: Default = default()
+
+fun main() {
+    println(int_default());
+    println(default2[Int]())
+}

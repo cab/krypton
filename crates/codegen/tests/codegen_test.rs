@@ -973,3 +973,32 @@ fun main() = {
         "expected unconstrained function ref to keep zero-capture path, javap output:\n{test_output}"
     );
 }
+
+#[test]
+fn test_zero_arg_trait_method() {
+    let src = r#"
+trait Default[a] {
+    fun default() -> a
+}
+
+impl Default[Int] {
+    fun default() = 42
+}
+
+fun main() = println(default[Int]())
+"#;
+    assert_eq!(run_program(src), "42");
+
+    // Verify javap output contains the instance class and interface
+    let full_src = format!("{PRINTLN_EXTERN}\n{src}");
+    let (module, errors) = parse(&full_src);
+    assert!(errors.is_empty());
+    let typed_modules =
+        infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let dir = compile_typed_modules(&typed_modules);
+    let javap_out = javap_output(&dir.path().join("Test.class"), false);
+    assert!(
+        javap_out.contains("Default$Int"),
+        "expected Default$Int instance class in javap output:\n{javap_out}"
+    );
+}

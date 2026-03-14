@@ -1,0 +1,25 @@
+# expect: output "42\nMyStruct"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type MyStruct = MyStruct(Int) deriving (Show)
+
+trait Default[a] {
+    fun default() -> a
+}
+
+impl Default[Int] {
+    fun default() = 42
+}
+
+impl Default[MyStruct] {
+    fun default() = MyStruct(10)
+}
+
+fun main() {
+    let my_int: Int = default();
+    let my_struct: MyStruct = default();
+    println(my_int);
+    println(my_struct)
+}

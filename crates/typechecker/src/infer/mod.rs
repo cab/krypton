@@ -969,6 +969,18 @@ fn detect_trait_constraints(
                                     constraints.push((trait_name.clone(), param_idx));
                                 }
                             }
+                        } else {
+                            // Zero-arg trait method: check return type for type variable
+                            let ret_ty = subst.apply(&func.ty);
+                            let concrete_ret = match &ret_ty {
+                                Type::Fn(_, ret) => strip_own(ret),
+                                other => strip_own(other),
+                            };
+                            if let Some(v) = leading_type_var(&concrete_ret) {
+                                if let Some(param_idx) = param_type_var_map.get(&v).copied() {
+                                    constraints.push((trait_name.clone(), param_idx));
+                                }
+                            }
                         }
                     }
                 }
@@ -1061,6 +1073,27 @@ fn check_trait_instances(
                                     TypeError::NoInstance {
                                         trait_name: trait_name.clone(),
                                         ty: format!("{}", concrete_ty),
+                                        required_by: None,
+                                    },
+                                    expr.span,
+                                ));
+                            }
+                        } else {
+                            // Zero-arg trait method: check return type for instance
+                            let ret_ty = subst.apply(&func.ty);
+                            let concrete_ret = match &ret_ty {
+                                Type::Fn(_, ret) => strip_own(ret),
+                                other => strip_own(other),
+                            };
+                            if leading_type_var(&concrete_ret).is_none()
+                                && trait_registry
+                                    .find_instance(trait_name, &concrete_ret)
+                                    .is_none()
+                            {
+                                return Err(spanned(
+                                    TypeError::NoInstance {
+                                        trait_name: trait_name.clone(),
+                                        ty: format!("{}", concrete_ret),
                                         required_by: None,
                                     },
                                     expr.span,

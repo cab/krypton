@@ -1,0 +1,19 @@
+# expect: output "0\n1"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+trait Monoid[a] {
+    fun empty() -> a
+    fun combine(_0: a, _1: a) -> a
+}
+
+impl Monoid[Int] {
+    fun empty() = 0
+    fun combine(x, y) = x + y
+}
+
+fun main() {
+    println(empty[Int]());
+    println(combine(empty[Int](), 1))
+}
