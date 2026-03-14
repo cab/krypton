@@ -673,21 +673,21 @@ fn compile_module_inner(
     // Generate built-in trait instance classes (Add$Int, Sub$Int, Eq$String, etc.)
     {
         let builtin_instances: &[(&str, &str, &str)] = &[
-            ("Add", "Int", "add"),
+            ("Semigroup", "Int", "combine"),
             ("Sub", "Int", "sub"),
             ("Mul", "Int", "mul"),
             ("Div", "Int", "div"),
             ("Neg", "Int", "neg"),
             ("Eq",  "Int", "eq"),
             ("Ord", "Int", "lt"),
-            ("Add", "Float", "add"),
+            ("Semigroup", "Float", "combine"),
             ("Sub", "Float", "sub"),
             ("Mul", "Float", "mul"),
             ("Div", "Float", "div"),
             ("Neg", "Float", "neg"),
             ("Eq",  "Float", "eq"),
             ("Ord", "Float", "lt"),
-            ("Add", "String", "add"),
+            ("Semigroup", "String", "combine"),
             ("Eq",  "String", "eq"),
             ("Eq",  "Bool", "eq"),
         ];

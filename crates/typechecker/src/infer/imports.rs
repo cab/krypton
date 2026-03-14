@@ -57,7 +57,7 @@ impl ModuleInferenceState {
             }
         }
 
-        // Re-exported trait names (e.g. Eq, Show, Add, etc.)
+        // Re-exported trait names (e.g. Eq, Show, Semigroup, etc.)
         for trait_def in &cached.exported_trait_defs {
             names.push(ImportName {
                 name: trait_def.name.clone(),

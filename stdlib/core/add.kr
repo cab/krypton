@@ -1,9 +1,0 @@
-# Compiler intrinsic: primitive instance bodies are replaced by optimized JVM
-# bytecode (ladd, dadd, String.concat) at codegen time. The __krypton_intrinsic()
-# marker tells the compiler to skip body type-checking and use bridge bytecode instead.
-pub trait Add[a] {
-    fun add(self: a, other: a) -> a
-}
-impl Add[Int] { fun add(a: Int, b: Int) -> Int = __krypton_intrinsic() }
-impl Add[Float] { fun add(a: Float, b: Float) -> Float = __krypton_intrinsic() }
-impl Add[String] { fun add(a: String, b: String) -> String = __krypton_intrinsic() }

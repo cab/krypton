@@ -993,7 +993,7 @@ fn build_bridge_bytecode(
 
     match (trait_name, type_name) {
         // Binary arithmetic: Int (Long)
-        ("Add", "Int") | ("Sub", "Int") | ("Mul", "Int") | ("Div", "Int") => {
+        ("Semigroup", "Int") | ("Sub", "Int") | ("Mul", "Int") | ("Div", "Int") => {
             let long_class = cp.add_class("java/lang/Long")?;
             let long_unbox = cp.add_method_ref(long_class, "longValue", "()J")?;
             let long_box = cp.add_method_ref(long_class, "valueOf", "(J)Ljava/lang/Long;")?;
@@ -1007,7 +1007,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Invokevirtual(long_unbox));
             // Operation
             let op = match trait_name {
-                "Add" => Instruction::Ladd,
+                "Semigroup" => Instruction::Ladd,
                 "Sub" => Instruction::Lsub,
                 "Mul" => Instruction::Lmul,
                 "Div" => Instruction::Ldiv,
@@ -1021,7 +1021,7 @@ fn build_bridge_bytecode(
         }
 
         // Binary arithmetic: Float (Double)
-        ("Add", "Float") | ("Sub", "Float") | ("Mul", "Float") | ("Div", "Float") => {
+        ("Semigroup", "Float") | ("Sub", "Float") | ("Mul", "Float") | ("Div", "Float") => {
             let double_class = cp.add_class("java/lang/Double")?;
             let double_unbox = cp.add_method_ref(double_class, "doubleValue", "()D")?;
             let double_box = cp.add_method_ref(double_class, "valueOf", "(D)Ljava/lang/Double;")?;
@@ -1032,7 +1032,7 @@ fn build_bridge_bytecode(
             code.push(Instruction::Checkcast(double_class));
             code.push(Instruction::Invokevirtual(double_unbox));
             let op = match trait_name {
-                "Add" => Instruction::Dadd,
+                "Semigroup" => Instruction::Dadd,
                 "Sub" => Instruction::Dsub,
                 "Mul" => Instruction::Dmul,
                 "Div" => Instruction::Ddiv,
@@ -1204,8 +1204,8 @@ fn build_bridge_bytecode(
             Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
         }
 
-        // Add: String — String.concat
-        ("Add", "String") => {
+        // Semigroup: String — String.concat
+        ("Semigroup", "String") => {
             let string_class = cp.add_class("java/lang/String")?;
             let string_concat = cp.add_method_ref(
                 string_class, "concat", "(Ljava/lang/String;)Ljava/lang/String;",

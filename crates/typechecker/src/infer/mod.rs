@@ -1129,7 +1129,7 @@ fn check_trait_instances(
             TypedExprKind::TypeApp { expr } => work.push(expr),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let trait_name = match op {
-                    BinOp::Add => Some("Add"),
+                    BinOp::Add => Some("Semigroup"),
                     BinOp::Sub => Some("Sub"),
                     BinOp::Mul => Some("Mul"),
                     BinOp::Div => Some("Div"),

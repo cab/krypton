@@ -1,6 +1,6 @@
 pub import core/eq.{Eq, eq}
 pub import core/ord.{Ord, lt}
-pub import core/add.{Add, add}
+pub import core/semigroup.{Semigroup, combine}
 pub import core/sub.{Sub, sub}
 pub import core/mul.{Mul, mul}
 pub import core/div.{Div, div}

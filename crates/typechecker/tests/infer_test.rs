@@ -239,7 +239,7 @@ fn infer_forward_reference() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -274,7 +274,7 @@ fn infer_module_basic() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -303,7 +303,7 @@ fn infer_module_forward_ref() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -335,7 +335,7 @@ fn infer_mutual_recursion() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -381,7 +381,7 @@ fn infer_record_constructor() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -413,7 +413,7 @@ fn infer_sum_constructor() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -446,7 +446,7 @@ fn infer_bare_variant() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -489,7 +489,7 @@ fn infer_scc_generalization_order() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -522,7 +522,7 @@ fn infer_field_access() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -554,7 +554,7 @@ fn infer_struct_update() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -616,7 +616,7 @@ fn infer_match_option() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -649,7 +649,7 @@ fn infer_match_literal() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -680,7 +680,7 @@ fn infer_match_variable() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -711,7 +711,7 @@ fn infer_match_nested_constructor() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -754,7 +754,7 @@ fn infer_tuple_in_match() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -790,7 +790,7 @@ fn infer_tuple_polymorphic() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -831,7 +831,7 @@ fn test_exhaustive_complete() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -874,7 +874,7 @@ fn test_exhaustive_wildcard_covers_all() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -917,7 +917,7 @@ fn infer_call_site_coercion_borrow() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -949,7 +949,7 @@ fn infer_call_site_coercion_no_collection() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c
@@ -2108,7 +2108,7 @@ fn lambda_params_inferred_from_higher_order_fn() {
         @"
     eq: forall c. fn(c, c) -> Bool
     lt: forall d. fn(d, d) -> Bool
-    add: forall c. fn(c, c) -> c
+    combine: forall c. fn(c, c) -> c
     sub: forall c. fn(c, c) -> c
     mul: forall c. fn(c, c) -> c
     div: forall c. fn(c, c) -> c

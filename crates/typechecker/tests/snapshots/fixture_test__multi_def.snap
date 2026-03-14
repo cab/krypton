@@ -4,7 +4,7 @@ expression: snapshot
 ---
 eq: forall c. fn(c, c) -> Bool
 lt: forall d. fn(d, d) -> Bool
-add: forall c. fn(c, c) -> c
+combine: forall c. fn(c, c) -> c
 sub: forall c. fn(c, c) -> c
 mul: forall c. fn(c, c) -> c
 div: forall c. fn(c, c) -> c

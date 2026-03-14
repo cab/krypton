@@ -794,7 +794,7 @@ impl Compiler {
                     _ => {
                         // User-type trait dispatch
                         let (trait_name, method_name) = match op {
-                            BinOp::Add => ("Add", "add"),
+                            BinOp::Add => ("Semigroup", "combine"),
                             BinOp::Sub => ("Sub", "sub"),
                             BinOp::Mul => ("Mul", "mul"),
                             BinOp::Div => ("Div", "div"),

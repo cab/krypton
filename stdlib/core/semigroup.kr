@@ -1,0 +1,9 @@
+# Compiler intrinsic: primitive instance bodies are replaced by optimized JVM
+# bytecode (ladd, dadd, String.concat) at codegen time. The __krypton_intrinsic()
+# marker tells the compiler to skip body type-checking and use bridge bytecode instead.
+pub trait Semigroup[a] {
+    fun combine(self: a, other: a) -> a
+}
+impl Semigroup[Int] { fun combine(a: Int, b: Int) -> Int = __krypton_intrinsic() }
+impl Semigroup[Float] { fun combine(a: Float, b: Float) -> Float = __krypton_intrinsic() }
+impl Semigroup[String] { fun combine(a: String, b: String) -> String = __krypton_intrinsic() }
