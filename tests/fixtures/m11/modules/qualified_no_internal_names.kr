@@ -1,0 +1,8 @@
+# expect: error E0508
+# Verify that internal instance method names are not exposed via qualified access.
+# If they were, the module would have entries like "Show$Color$show" — but since
+# '$' is not valid syntax, we instead verify that only user-declared exports
+# (Red, Green, Blue) are accessible by trying a clearly non-existent name.
+import trait_lib
+
+fun main() = trait_lib.show(trait_lib.Red)

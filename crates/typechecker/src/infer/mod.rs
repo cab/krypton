@@ -53,10 +53,6 @@ fn is_callable_scheme(scheme: &TypeScheme) -> bool {
     }
 }
 
-fn is_user_facing_export_name(name: &str) -> bool {
-    !name.starts_with("__") && !name.contains('$')
-}
-
 pub(super) fn qualifier_suggested_usage(
     qualifier: &str,
     binding: &QualifiedModuleBinding,
@@ -64,7 +60,6 @@ pub(super) fn qualifier_suggested_usage(
     binding
         .exports
         .iter()
-        .filter(|(name, _)| is_user_facing_export_name(name))
         .map(|(name, export)| (name.as_str(), is_callable_scheme(&export.scheme)))
         .min_by_key(|(name, callable)| (!*callable, *name))
         .map(|(name, callable)| {
@@ -1604,10 +1599,6 @@ impl ModuleInferenceState {
                 ));
             }
         }
-
-        // 3. Instance method types (always public)
-        exported_fn_types.extend(impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
-        exported_fn_types.extend(derived_impl_fn_types.into_iter().map(|(n, s)| (n, s, FnOrigin::Regular)));
 
         let mut functions: Vec<TypedFnDecl> = Vec::new();
         let mut fn_bodies = fn_bodies;

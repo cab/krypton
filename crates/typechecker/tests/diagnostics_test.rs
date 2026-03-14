@@ -325,6 +325,31 @@ fn module_qualifier_value_diagnostic_hides_internal_export_names() {
 }
 
 #[test]
+fn qualified_export_table_has_no_mangled_names() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "tlib" => Some(
+                    "pub open type Color = Red | Green | Blue deriving (Show)".to_string(),
+                ),
+                _ => None,
+            }
+        }
+    }
+
+    // Use the module as a value to trigger a diagnostic that lists exports
+    let src = "import tlib\nfun main() -> Int = { let m = tlib; 0 }";
+    let output = render_module_error_with_resolver(src, &Resolver);
+    assert!(
+        !output.contains('$'),
+        "mangled instance method names should not appear in export table:\n{output}"
+    );
+}
+
+#[test]
 fn reserved_name_error() {
     let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
     let output = parse_and_infer_module_error(src);

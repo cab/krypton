@@ -1,0 +1,12 @@
+# expect: output None
+import core/option
+
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+fun main() = {
+  let x = option.None
+  let y = option.Some(42)
+  println(x)
+}
