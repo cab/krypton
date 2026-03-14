@@ -693,6 +693,27 @@ fun main() = {
 }
 
 #[test]
+fn test_lambda_string_param() {
+    let src = r#"
+fun apply(x, f) = f(x)
+fun main() = println(apply("hi", x -> x + "f"))
+"#;
+    assert_eq!(run_program(src), "hif");
+}
+
+#[test]
+fn test_lambda_string_capture() {
+    let src = r#"
+fun main() = {
+    let s = "hello";
+    let f = x -> s + x;
+    println(f(" world"))
+}
+"#;
+    assert_eq!(run_program(src), "hello world");
+}
+
+#[test]
 fn test_variant_constructor_reference() {
     let src = r#"
 type Option[a] = Some(a) | None

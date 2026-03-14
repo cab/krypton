@@ -3191,6 +3191,31 @@ impl Compiler {
             }
         }
 
+        // Cast String-typed (Ref) params from Object to String
+        for (i, p) in params.iter().enumerate() {
+            let actual_type = param_jvm_types[i];
+            if actual_type == JvmType::Ref {
+                let slot = lambda_param_slots[i].0;
+                self.emit(Instruction::Aload(slot as u8));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
+                self.emit(Instruction::Checkcast(self.refs.string_class));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.string_class,
+                });
+                let new_slot = self.next_local;
+                self.next_local += 1;
+                self.emit(Instruction::Astore(new_slot as u8));
+                self.frame.pop_type();
+                self.frame.local_types.push(VerificationType::Object {
+                    cpool_index: self.refs.string_class,
+                });
+                self.locals.insert(p.clone(), (new_slot, actual_type));
+            }
+        }
+
         // Also unbox captured vars if they are primitive types
         for (cap_name, _, cap_type) in &captures {
             let actual_type = *cap_type;
@@ -3247,6 +3272,32 @@ impl Compiler {
                     self.locals
                         .insert(cap_name.clone(), (new_slot, actual_type));
                 }
+            }
+        }
+
+        // Cast String-typed (Ref) captured vars from Object to String
+        for (cap_name, _, cap_type) in &captures {
+            let actual_type = *cap_type;
+            if actual_type == JvmType::Ref {
+                let (slot, _) = self.locals[cap_name];
+                self.emit(Instruction::Aload(slot as u8));
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.object_class,
+                });
+                self.emit(Instruction::Checkcast(self.refs.string_class));
+                self.frame.pop_type();
+                self.frame.push_type(VerificationType::Object {
+                    cpool_index: self.refs.string_class,
+                });
+                let new_slot = self.next_local;
+                self.next_local += 1;
+                self.emit(Instruction::Astore(new_slot as u8));
+                self.frame.pop_type();
+                self.frame.local_types.push(VerificationType::Object {
+                    cpool_index: self.refs.string_class,
+                });
+                self.locals
+                    .insert(cap_name.clone(), (new_slot, actual_type));
             }
         }
 
