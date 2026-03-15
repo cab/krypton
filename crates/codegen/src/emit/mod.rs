@@ -1206,6 +1206,11 @@ fn compile_module_inner(
             }
         }
 
+        // Call KryptonRuntime.awaitAll() so the process stays alive until all actors finish.
+        let runtime_class = compiler.cp.add_class("krypton/runtime/KryptonRuntime")?;
+        let await_ref = compiler.cp.add_method_ref(runtime_class, "awaitAll", "()V")?;
+        compiler.builder.emit(Instruction::Invokestatic(await_ref));
+
         compiler.builder.emit(Instruction::Return);
     }
 
