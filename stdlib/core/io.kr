@@ -10,5 +10,5 @@ extern "krypton.runtime.KryptonIO" {
     pub fun write_file(String, String) -> Result[String, Unit]
 }
 
-pub fun println(x) = raw_println(show(x))
+pub fun println[a](x: a) where a: shared = raw_println(show(x))
 pub fun print(x) = raw_print(show(x))
