@@ -1,0 +1,23 @@
+# expect: output 42
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+import core/actor.{Mailbox, Ref, spawn, send, receive, actor_ref, adapter, mailbox}
+
+type Msg = Get(Ref[Int])
+type MainMsg = Reply(Int)
+
+fun value_actor(mb: Mailbox[Msg]) =
+  match receive(mb) {
+    Get(sender) => send(sender, 42),
+  }
+
+fun main() {
+  let target = spawn(value_actor)
+  let my_mb: Mailbox[MainMsg] = mailbox()
+  let adapted = adapter(actor_ref(my_mb), Reply)
+  send(target, Get(adapted))
+  match receive(my_mb) {
+    Reply(n) => println(n),
+  }
+}
