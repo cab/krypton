@@ -402,6 +402,8 @@ pub(super) struct BytecodeBuilder {
     pub(super) next_local: u16,
     pub(super) fn_params: Vec<(u16, JvmType)>,
     pub(super) fn_return_type: Option<JvmType>,
+    pub(super) recur_target: u16,
+    pub(super) recur_frame_locals: Vec<VerificationType>,
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
     pub(super) nested_ifeq_patches: Vec<usize>,
 }
@@ -416,6 +418,8 @@ impl BytecodeBuilder {
             next_local: 0,
             fn_params: Vec::new(),
             fn_return_type: None,
+            recur_target: 1,
+            recur_frame_locals: Vec::new(),
             local_fn_info: HashMap::new(),
             nested_ifeq_patches: Vec::new(),
         }
@@ -626,6 +630,8 @@ impl BytecodeBuilder {
         self.frame.reset();
         self.fn_params.clear();
         self.fn_return_type = None;
+        self.recur_target = 1;
+        self.recur_frame_locals.clear();
         self.local_fn_info.clear();
     }
 }
@@ -2797,14 +2803,12 @@ impl Compiler {
             self.builder.emit_store(slot, jvm_ty);
         }
 
-        // Record StackMapTable frame at instruction 1 (after Nop) for back-edge.
-        // Must use initial locals (params only) and empty stack.
-        let initial_locals: Vec<VerificationType> = fn_params
-            .iter()
-            .flat_map(|&(_, jvm_ty)| self.builder.jvm_type_to_vtypes(jvm_ty))
-            .collect();
+        // Record StackMapTable frame at recur target for back-edge.
+        // Must use initial locals and empty stack.
+        let recur_target = self.builder.recur_target;
+        let initial_locals: Vec<VerificationType> = self.builder.recur_frame_locals.clone();
         self.builder.frame.frames.insert(
-            1,
+            recur_target,
             (
                 initial_locals
                     .iter()
@@ -2815,12 +2819,20 @@ impl Compiler {
             ),
         );
 
-        // Goto instruction 1 (after Nop at instruction 0)
-        self.builder.emit(Instruction::Goto(1));
+        // Goto recur target (after Nop)
+        self.builder.emit(Instruction::Goto(recur_target));
 
         // Push return type onto stack tracker for consistency with if-else merging.
         // Code after goto is unreachable, but compile_if asserts both branches match.
         self.builder.push_jvm_type(return_type);
+
+        // Record a stack map frame at the (unreachable) instruction after the goto.
+        // The JVM verifier requires a frame at any instruction following an
+        // unconditional branch, even for dead code (e.g. recur as last expr in a Do block).
+        // Must come after push_jvm_type so the frame includes return_type on the stack,
+        // matching what any subsequent dead code (box_if_needed + areturn) expects.
+        let after_goto = self.builder.code.len() as u16;
+        self.builder.frame.record_frame(after_goto);
 
         Ok(return_type)
     }
@@ -3256,8 +3268,22 @@ impl Compiler {
             }
         }
 
+        // Set up recur support for lambda
+        let lambda_fn_params: Vec<(u16, JvmType)> = params.iter()
+            .map(|p| self.builder.locals[p])
+            .collect();
+        self.builder.fn_params = lambda_fn_params;
+        let lambda_return_type = match fn_type {
+            Type::Fn(_, ret) => self.type_to_jvm(ret)?,
+            _ => JvmType::StructRef(self.builder.refs.object_class),
+        };
+        self.builder.fn_return_type = Some(lambda_return_type);
+        self.builder.emit(Instruction::Nop);
+        self.builder.recur_target = self.builder.code.len() as u16;
+        self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
+
         // Compile the body
-        let body_type = self.compile_expr(body, false)?;
+        let body_type = self.compile_expr(body, true)?;
 
         // Box the result if needed
         self.builder.box_if_needed(body_type);
@@ -4291,11 +4317,12 @@ impl Compiler {
         self.builder.fn_return_type = Some(return_type);
 
         // Emit Nop as recur back-edge target at instruction 0.
-        // Recur uses Goto(1) to jump to instruction 1 (after Nop), but we
-        // actually target the Nop itself — no, we target instruction 1.
-        // The Nop ensures the recur target (instruction 1) has byte offset > 0,
+        // Recur uses Goto to jump to instruction after Nop.
+        // The Nop ensures the recur target has byte offset > 0,
         // avoiding conflict with the implicit initial StackMapTable frame.
         self.builder.emit(Instruction::Nop);
+        self.builder.recur_target = self.builder.code.len() as u16;
+        self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
 
         // Compile function body
         let body_type = self.compile_expr(&decl.body, true)?;

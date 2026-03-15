@@ -14,7 +14,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) subst: &'a mut Substitution,
     pub(super) gen: &'a mut TypeVarGen,
     pub(super) registry: Option<&'a TypeRegistry>,
-    pub(super) recur_params: Option<&'a [Type]>,
+    pub(super) recur_params: Option<Vec<Type>>,
     pub(super) let_own_spans: Option<&'a mut HashSet<Span>>,
     pub(super) lambda_own_captures: Option<&'a mut HashMap<Span, String>>,
     pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
@@ -248,6 +248,7 @@ impl<'a> InferenceContext<'a> {
                 let prev_fn_return_type = self.env.fn_return_type.take();
                 self.env.fn_return_type = Some(Type::Var(self.fresh()));
                 let saved_recur = self.recur_params.take();
+                self.recur_params = Some(param_types.clone());
                 let body_typed = self.infer_expr_inner(body, None)?;
                 self.recur_params = saved_recur;
                 self.env.fn_return_type = prev_fn_return_type;
@@ -844,7 +845,7 @@ impl<'a> InferenceContext<'a> {
 
             Expr::Recur { args, span, .. } => {
                 let mut typed_args = Vec::new();
-                match self.recur_params {
+                match &self.recur_params {
                     Some(params) => {
                         if args.len() != params.len() {
                             return Err(super::spanned(
