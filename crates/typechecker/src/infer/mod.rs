@@ -2893,6 +2893,17 @@ pub(crate) fn infer_module_inner(
                     }
                 }
 
+                // Check parameter arity matches trait signature
+                if method.params.len() != concrete_param_types.len() {
+                    return Err(spanned(
+                        TypeError::WrongArity {
+                            expected: concrete_param_types.len(),
+                            actual: method.params.len(),
+                        },
+                        *span,
+                    ));
+                }
+
                 // Validate user-provided type annotations against the trait signature
                 for (i, p) in method.params.iter().enumerate() {
                     if let Some(ref ty_expr) = p.ty {
@@ -2974,6 +2985,13 @@ pub(crate) fn infer_module_inner(
                     .map(|t| state.subst.apply(t))
                     .collect();
                 let final_ret_type = state.subst.apply(&body_typed.ty);
+
+                // Unify inferred return type against trait's expected return type
+                let expected_ret_type = state.subst.apply(
+                    &substitute_type_var(&trait_method.return_type, tv_id, &resolved_target),
+                );
+                unify(&final_ret_type, &expected_ret_type, &mut state.subst)
+                    .map_err(|e| spanned(e, method.span))?;
 
                 let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));
                 let scheme = TypeScheme {
