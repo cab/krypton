@@ -2004,10 +2004,10 @@ impl Compiler {
                     self.builder.box_if_needed(actual_type);
                 } else if matches!(
                     (field_type, actual_type),
-                    (JvmType::StructRef(_), JvmType::StructRef(_))
+                    (JvmType::StructRef(a), JvmType::StructRef(b))
+                    if *a == self.builder.refs.object_class || b == self.builder.refs.object_class
                 ) {
-                    // All StructRef types are Ljava/lang/Object; at JVM level,
-                    // so different StructRef indices are always compatible.
+                    // Erased generic (Object) is compatible with any concrete StructRef
                 } else if *field_type != actual_type {
                     return Err(CodegenError::TypeError(format!(
                         "variant reference `{name}` expected bridge arg type {field_type:?}, got {actual_type:?}"
@@ -3922,10 +3922,14 @@ impl Compiler {
                                 self.builder.emit(Instruction::Pop);
                                 self.builder.frame.pop_type();
                             }
-                            _ => {
-                                // Other sub-patterns: pop the value (not yet handled)
+                            TypedPattern::Wildcard { .. } => {
                                 self.builder.emit(Instruction::Pop);
                                 self.builder.frame.pop_type();
+                            }
+                            _ => {
+                                return Err(CodegenError::TypeError(
+                                    "nested sub-patterns not yet supported in variant match".into()
+                                ));
                             }
                         }
                     }

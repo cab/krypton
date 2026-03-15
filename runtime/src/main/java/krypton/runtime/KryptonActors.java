@@ -46,7 +46,12 @@ public final class KryptonActors {
         Object msg = fn.apply(replyRef);
         raw_send(target, msg);
         Object reply = replyMb.receiveTimeout(timeout);
-        return (reply != null) ? wrapOk(reply) : wrapErr(wrapTimeout());
+        if (reply != null) {
+            return wrapOk(reply);
+        } else {
+            replyMb.close();
+            return wrapErr(wrapTimeout());
+        }
     }
 
     // --- Helpers ---
