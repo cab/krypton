@@ -1,8 +1,8 @@
 # core/actor — Actor primitives
 import core/option.{Option}
 
-pub opaque type Mailbox[m] = { _inner: Object }
-pub opaque type Ref[m] = { _inner: Object }
+extern "krypton.runtime.Mailbox" as Mailbox[m] {}
+extern "krypton.runtime.Ref" as Ref[m] {}
 
 extern "krypton.runtime.KryptonActors" {
     fun raw_spawn(Object) -> Object

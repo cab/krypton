@@ -397,6 +397,10 @@ fn compile_module_inner(
     {
         let jvm_class = java_class.replace('.', "/");
         let class_index = compiler.cp.add_class(&jvm_class)?;
+        compiler
+            .types
+            .class_descriptors
+            .insert(class_index, format!("L{};", jvm_class));
         compiler.types.struct_info.insert(
             krypton_name.clone(),
             StructInfo {
