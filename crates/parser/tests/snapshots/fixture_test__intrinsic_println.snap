@@ -48,6 +48,7 @@ decls:
                 span:
                   - 106
                   - 113
+          is_ufcs: false
           span:
             - 98
             - 114

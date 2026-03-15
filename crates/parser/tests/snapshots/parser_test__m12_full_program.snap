@@ -346,6 +346,7 @@ decls:
                     span:
                       - 394
                       - 399
+              is_ufcs: false
               span:
                 - 383
                 - 402

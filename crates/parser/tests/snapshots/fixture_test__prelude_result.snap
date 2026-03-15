@@ -25,6 +25,7 @@ decls:
                 span:
                   - 82
                   - 84
+          is_ufcs: false
           span:
             - 79
             - 85
@@ -53,6 +54,7 @@ decls:
                 span:
                   - 107
                   - 113
+          is_ufcs: false
           span:
             - 103
             - 114
@@ -77,6 +79,7 @@ decls:
                     - 135
                     - 141
               args: []
+              is_ufcs: false
               span:
                 - 135
                 - 143

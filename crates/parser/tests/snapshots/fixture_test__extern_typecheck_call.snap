@@ -78,6 +78,7 @@ decls:
                       span:
                         - 116
                         - 117
+                is_ufcs: false
                 span:
                   - 112
                   - 118
@@ -87,6 +88,7 @@ decls:
                 span:
                   - 120
                   - 121
+          is_ufcs: false
           span:
             - 108
             - 122
