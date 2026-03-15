@@ -22,8 +22,8 @@ fn infer_module_fn(src: &str, fn_name: &str) -> String {
         Ok(modules) => modules[0]
             .fn_types
             .iter()
-            .find(|(name, _, _)| name == fn_name)
-            .map(|(_, scheme, _)| format!("{scheme}"))
+            .find(|e| e.name == fn_name)
+            .map(|e| format!("{}", e.scheme))
             .unwrap_or_else(|| panic!("function {fn_name} not found in module")),
         Err(e) => format!("TypeError: {}", e.error),
     }
@@ -134,7 +134,7 @@ fn infer_module_types(src: &str) -> String {
         Ok(modules) => modules[0]
             .fn_types
             .iter()
-            .map(|(name, scheme, _)| format!("{}: {}", name, scheme))
+            .map(|e| format!("{}: {}", e.name, e.scheme))
             .collect::<Vec<_>>()
             .join("\n"),
         Err(e) => format!("TypeError: {}", e.error),
@@ -164,8 +164,8 @@ fn infer_module_with_custom_resolver() {
     assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
     let modules = result.unwrap();
     let info = &modules[0];
-    let main_type = info.fn_types.iter().find(|(n, _, _)| n == "main").unwrap();
-    assert_eq!(format!("{}", main_type.1), "fn() -> Int");
+    let main_type = info.fn_types.iter().find(|e| e.name == "main").unwrap();
+    assert_eq!(format!("{}", main_type.scheme), "fn() -> Int");
 }
 
 #[test]
@@ -1314,7 +1314,7 @@ fn infer_module_provenance_on_bindings() {
     // The main module should have `add` in fn_types with provenance
     let main = &modules[0];
     assert!(
-        main.fn_types.iter().any(|(n, _, _)| n == "add"),
+        main.fn_types.iter().any(|e| e.name == "add"),
         "main module should have add in fn_types"
     );
 }
@@ -1423,9 +1423,9 @@ fn infer_module_cross_module_typecheck() {
     let quad_type = main
         .fn_types
         .iter()
-        .find(|(n, _, _)| n == "quadruple")
+        .find(|e| e.name == "quadruple")
         .unwrap();
-    assert_eq!(format!("{}", quad_type.1), "fn(Int) -> Int");
+    assert_eq!(format!("{}", quad_type.scheme), "fn(Int) -> Int");
 }
 
 #[test]
@@ -1632,8 +1632,8 @@ fn infer_module_qualified_constructor_call_typechecks() {
     let main_ty = modules[0]
         .fn_types
         .iter()
-        .find(|(n, _, _)| n == "main")
-        .map(|(_, scheme, _)| format!("{scheme}"))
+        .find(|e| e.name == "main")
+        .map(|e| format!("{}", e.scheme))
         .expect("main not found");
     assert_eq!(main_ty, "fn() -> Box[Int]");
 }
@@ -1688,13 +1688,14 @@ fn infer_module_pub_import_reexport() {
     // Main module should have helper in its fn_types
     let main_mod = &modules[0];
     assert!(
-        main_mod.fn_types.iter().any(|(n, _, _)| n == "helper"),
+        main_mod.fn_types.iter().any(|e| e.name == "helper"),
         "main module should have 'helper' in fn_types"
     );
-    // fn_provenance should point to the original module (lib_a), not the facade
+    // provenance should point to the original module (lib_a), not the facade
+    let helper_entry = main_mod.fn_types.iter().find(|e| e.name == "helper").unwrap();
     assert_eq!(
-        main_mod.fn_provenance.get("helper"),
-        Some(&("lib_a".to_string(), "helper".to_string()))
+        helper_entry.provenance,
+        Some(("lib_a".to_string(), "helper".to_string()))
     );
 }
 

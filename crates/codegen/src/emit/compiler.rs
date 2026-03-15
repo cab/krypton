@@ -62,6 +62,7 @@ pub(super) struct FunctionInfo {
     pub(super) param_types: Vec<JvmType>,
     pub(super) return_type: JvmType,
     pub(super) is_void: bool,
+    pub(super) tc_param_types: Vec<Type>,
 }
 
 /// Info about a struct type for codegen.
@@ -294,11 +295,25 @@ pub(super) struct CodegenTypeInfo {
     pub(super) sum_type_info: HashMap<String, SumTypeInfo>,
     pub(super) variant_to_sum: HashMap<String, String>,
     pub(super) tuple_info: HashMap<usize, TupleInfo>,
-    pub(super) functions: HashMap<String, FunctionInfo>,
+    pub(super) functions: HashMap<String, Vec<FunctionInfo>>,
     pub(super) fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
 
 impl CodegenTypeInfo {
+    /// Get the first (or only) function info for a name.
+    pub(super) fn get_function(&self, name: &str) -> Option<&FunctionInfo> {
+        self.functions.get(name).and_then(|v| v.first())
+    }
+
+    /// Get a function info by matching TC param types (for overload disambiguation).
+    pub(super) fn get_function_by_params(&self, name: &str, param_types: &[Type]) -> Option<&FunctionInfo> {
+        let entries = self.functions.get(name)?;
+        if entries.len() == 1 {
+            return entries.first();
+        }
+        entries.iter().find(|fi| fi.tc_param_types == *param_types)
+    }
+
     pub(super) fn jvm_type_descriptor(&self, ty: JvmType) -> String {
         match ty {
             JvmType::StructRef(idx) => self.class_descriptors[&idx].clone(),
@@ -1770,7 +1785,7 @@ impl Compiler {
             });
         }
 
-        if let Some(info) = self.types.functions.get(name) {
+        if let Some(info) = self.types.get_function(name) {
             let param_types = info.param_types.clone();
             let return_type = info.return_type;
             let is_void = info.is_void;
@@ -2293,11 +2308,19 @@ impl Compiler {
             .cloned()
             .unwrap_or_default();
 
-        // Look up function info (need to clone out to avoid borrow conflict)
+        // Look up function info, disambiguating by TC param types for overloaded names
+        let func_params: Vec<Type> = match &func.ty {
+            Type::Fn(params, _) => params.clone(),
+            Type::Own(inner) => match inner.as_ref() {
+                Type::Fn(params, _) => params.clone(),
+                _ => vec![],
+            },
+            _ => vec![],
+        };
         let info = self
             .types
-            .functions
-            .get(name)
+            .get_function_by_params(name, &func_params)
+            .or_else(|| self.types.get_function(name))
             .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
         let method_ref = info.method_ref;
         let param_types = info.param_types.clone();
@@ -4287,19 +4310,7 @@ impl Compiler {
                 }
             }
 
-            // The nested ifeq needs to jump to the same target as the outer one.
-            // We'll store the nested index and patch it along with the outer.
-            // Actually, we need to store these for patching later.
-            // For now, let's use a simpler approach: store nested ifeq indices
-            // and patch them all to the same target.
-            // We'll store them in temporary storage on the Compiler.
-            // Actually, the simplest approach: the caller (compile_match) will
-            // patch the outer ifeq. We need to also patch nested ones.
-            // Let's patch nested ifeq to point to a shared location.
-            // We'll track these via a vec stored temporarily.
-            // For simplicity, we store the patch index in the outer_ifeq slot
-            // by making the nested check share the same branch target.
-            // We'll record the nested_ifeq_idx for the caller to patch.
+            // Record nested ifeq index so the caller can patch it to the same branch target.
             self.nested_ifeq_patches.push(nested_ifeq_idx);
 
             Ok(())
@@ -4391,8 +4402,7 @@ impl Compiler {
         // Look up the function's type info
         let info = self
             .types
-            .functions
-            .get(&decl.name)
+            .get_function(&decl.name)
             .ok_or_else(|| CodegenError::UndefinedVariable(decl.name.clone()))?;
         let param_types = info.param_types.clone();
         let return_type = info.return_type;

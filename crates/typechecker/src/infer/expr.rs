@@ -20,7 +20,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
     pub(super) type_param_arity: &'a HashMap<String, usize>,
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
-    pub(super) imported_fn_types: &'a [(String, TypeScheme, super::FnOrigin, String)],
+    pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
 }
 
 impl<'a> InferenceContext<'a> {
@@ -53,8 +53,8 @@ impl<'a> InferenceContext<'a> {
     fn find_overloaded_candidates(&self, name: &str) -> Vec<(TypeScheme, FnOrigin, String)> {
         let all: Vec<_> = self.imported_fn_types
             .iter()
-            .filter(|(n, _, _, _)| n == name)
-            .map(|(_, scheme, origin, module)| (scheme.clone(), origin.clone(), module.clone()))
+            .filter(|f| f.name == name)
+            .map(|f| (f.scheme.clone(), f.origin.clone(), f.source_module.clone()))
             .collect();
         // Deduplicate by module — only flag overload if distinct modules
         let mut seen_modules = HashSet::new();

@@ -357,8 +357,8 @@ fn main() {
                 Ok(modules) => {
                     phases.push(("typecheck", t.elapsed()));
                     let info = &modules[0];
-                    for (name, scheme, _) in &info.fn_types {
-                        println!("{} : {}", name, scheme);
+                    for entry in &info.fn_types {
+                        println!("{} : {}", entry.name, entry.scheme);
                     }
                 }
                 Err(e) => {

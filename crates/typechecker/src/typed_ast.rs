@@ -20,6 +20,26 @@ pub enum FnOrigin {
     TraitMethod { trait_name: String },
 }
 
+/// Internal: imported function with full provenance.
+#[derive(Debug, Clone)]
+pub struct ImportedFn {
+    pub name: String,
+    pub scheme: TypeScheme,
+    pub origin: FnOrigin,
+    pub source_module: String,
+    pub original_name: String,
+}
+
+/// Entry in fn_types — local or imported function visible in a module.
+#[derive(Debug, Clone)]
+pub struct FnTypeEntry {
+    pub name: String,
+    pub scheme: TypeScheme,
+    pub origin: FnOrigin,
+    /// Provenance for imported functions (source_module, original_name). None for local.
+    pub provenance: Option<(String, String)>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AutoCloseBinding {
     pub name: String,
@@ -215,7 +235,7 @@ pub struct ExternFnInfo {
 
 pub struct TypedModule {
     pub module_path: Option<String>,
-    pub fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    pub fn_types: Vec<FnTypeEntry>,
     /// Public API: only locally-defined pub functions, pub (transparent) constructors,
     /// and trait instance methods. Used by downstream importers.
     pub exported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
@@ -231,9 +251,6 @@ pub struct TypedModule {
     pub imported_extern_fns: Vec<ExternFnInfo>,
     pub struct_decls: Vec<(String, Vec<(String, TypeExpr)>)>,
     pub sum_decls: Vec<(String, Vec<String>, Vec<Variant>)>,
-    /// Maps local_name → (module_path, original_name) for imported functions.
-    /// Used by codegen to emit cross-module `invokestatic` calls.
-    pub fn_provenance: HashMap<String, (String, String)>,
     /// Maps type_name → source_module_path for types originating from other modules.
     /// Used by codegen to qualify type class names (e.g., `core/list/List`).
     pub type_provenance: HashMap<String, String>,

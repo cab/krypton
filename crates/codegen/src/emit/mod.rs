@@ -562,10 +562,10 @@ fn compile_module_inner(
     }
 
     // Pre-scan for function-typed params so we can register FunN interfaces first
-    for (name, scheme, _) in type_info.iter() {
-        if let Type::Fn(param_tys, _) = &scheme.ty {
-            if compiler.types.struct_info.contains_key(name)
-                || compiler.types.variant_to_sum.contains_key(name)
+    for entry in type_info.iter() {
+        if let Type::Fn(param_tys, _) = &entry.scheme.ty {
+            if compiler.types.struct_info.contains_key(&entry.name)
+                || compiler.types.variant_to_sum.contains_key(&entry.name)
             {
                 continue;
             }
@@ -857,8 +857,8 @@ fn compile_module_inner(
     // Scan for tuple arities used in the typed module and register TupleN classes
     {
         let mut tuple_arities = std::collections::HashSet::new();
-        for (_, scheme, _) in type_info.iter() {
-            collect_tuple_arities(&scheme.ty, &mut tuple_arities);
+        for entry in type_info.iter() {
+            collect_tuple_arities(&entry.scheme.ty, &mut tuple_arities);
         }
         for typed_fn in &typed_module.functions {
             collect_tuple_arities_expr(&typed_fn.body, &mut tuple_arities);
@@ -912,8 +912,9 @@ fn compile_module_inner(
 
     // Register all functions in the function registry.
     // Skip constructor entries (they're handled as struct/variant constructors).
-    for (name, scheme, _) in type_info.iter() {
-        if let Type::Fn(param_tys, ret_ty) = &scheme.ty {
+    for entry in type_info.iter() {
+        if let Type::Fn(param_tys, ret_ty) = &entry.scheme.ty {
+            let name = &entry.name;
             // Skip if this is a struct constructor or variant constructor
             if compiler.types.struct_info.contains_key(name)
                 || compiler.types.variant_to_sum.contains_key(name)
@@ -952,21 +953,21 @@ fn compile_module_inner(
                 name.as_str()
             };
             let descriptor = compiler.types.build_descriptor(&all_param_types, return_type);
-            // For imported functions, target the foreign class
-            let (target_class, target_name) = if let Some((source_module, orig_name)) = typed_module.fn_provenance.get(name) {
+            // For imported functions, target the foreign class using inline provenance
+            let (target_class, target_name) = if let Some((source_module, orig_name)) = &entry.provenance {
                 (compiler.cp.add_class(source_module)?, orig_name.as_str())
             } else {
                 (this_class, jvm_name)
             };
             let method_ref =
                 compiler.cp.add_method_ref(target_class, target_name, &descriptor)?;
-            compiler.types.functions.insert(
-                name.clone(),
+            compiler.types.functions.entry(name.clone()).or_default().push(
                 FunctionInfo {
                     method_ref,
                     param_types: all_param_types,
                     return_type,
                     is_void: false,
+                    tc_param_types: param_tys.clone(),
                 },
             );
             // Store TC types for detecting Fn-typed params in compile_function
@@ -1015,15 +1016,16 @@ fn compile_module_inner(
                 let descriptor = compiler.types.build_descriptor(&all_param_types, return_type);
                 let method_ref =
                     compiler.cp.add_method_ref(this_class, &qualified_name, &descriptor)?;
-                compiler.types.functions.insert(
-                    qualified_name.clone(),
+                // Instance methods use mangled names — always single entry
+                compiler.types.functions.insert(qualified_name.clone(), vec![
                     FunctionInfo {
                         method_ref,
                         param_types: all_param_types,
                         return_type,
                         is_void: false,
+                        tc_param_types: param_tys.clone(),
                     },
-                );
+                ]);
                 compiler.types.fn_tc_types.insert(
                     qualified_name,
                     (param_tys.clone(), ret_ty.as_ref().clone()),
@@ -1093,15 +1095,16 @@ fn compile_module_inner(
         let descriptor = format!("{param_desc}{ret_desc}");
         let method_ref = compiler.cp.add_method_ref(extern_class, &ext.name, &descriptor)?;
 
-        compiler.types.functions.insert(
-            ext.name.clone(),
+        // Extern fns override any prior fn_types registration
+        compiler.types.functions.insert(ext.name.clone(), vec![
             FunctionInfo {
                 method_ref,
                 param_types: param_jvm_types,
                 return_type,
                 is_void,
+                tc_param_types: ext.param_types.clone(),
             },
-        );
+        ]);
     }
 
     // Compile all functions as static methods using typed bodies
@@ -1140,7 +1143,7 @@ fn compile_module_inner(
 
     // Build JVM main(String[])V wrapper (main module only)
     if is_main {
-        let main_info = compiler.types.functions.get("main").ok_or(CodegenError::NoMainFunction)?;
+        let main_info = compiler.types.get_function("main").ok_or(CodegenError::NoMainFunction)?;
         let krypton_main_ref = main_info.method_ref;
         let main_return_type = main_info.return_type;
 

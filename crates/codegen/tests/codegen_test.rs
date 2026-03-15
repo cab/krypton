@@ -3,7 +3,7 @@ use krypton_parser::ast::{BinOp, Lit, TypeConstraint, TypeExpr, Variant, Visibil
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
-    AutoCloseInfo, ExternFnInfo, FnOrigin, InstanceDefInfo, InstanceMethod, TraitDefInfo,
+    AutoCloseInfo, ExternFnInfo, FnOrigin, FnTypeEntry, InstanceDefInfo, InstanceMethod, TraitDefInfo,
     TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme};
@@ -252,11 +252,12 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
     };
 
     let mut fn_types = vec![
-        (
-            "main".to_string(),
-            TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
-            FnOrigin::Regular,
-        ),
+        FnTypeEntry {
+            name: "main".to_string(),
+            scheme: TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
+            origin: FnOrigin::Regular,
+            provenance: None,
+        },
     ];
 
     let render_int_method = InstanceMethod {
@@ -277,14 +278,15 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
     let mut fn_constraints = HashMap::new();
     let mut fn_constraint_requirements = HashMap::new();
     if use_polymorphic_wrapper {
-        fn_types.push((
-            "render_wrap".to_string(),
-            TypeScheme {
+        fn_types.push(FnTypeEntry {
+            name: "render_wrap".to_string(),
+            scheme: TypeScheme {
                 vars: vec![0],
                 ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
             },
-            FnOrigin::Regular,
-        ));
+            origin: FnOrigin::Regular,
+            provenance: None,
+        });
         functions.push(TypedFnDecl {
             name: "render_wrap".to_string(),
             visibility: Visibility::Pub,
@@ -382,7 +384,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 },
             ],
         )],
-        fn_provenance: HashMap::new(),
         type_provenance: HashMap::new(),
         type_visibility: HashMap::new(),
         reexported_fn_types: vec![],

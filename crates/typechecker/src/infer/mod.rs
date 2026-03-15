@@ -1390,8 +1390,7 @@ pub fn infer_module_single(
 
 /// Grouped import state: the 4 maps that must stay in sync when binding/shadowing imports.
 pub(crate) struct ImportContext {
-    pub(super) imported_fn_types: Vec<(String, TypeScheme, FnOrigin, String)>,
-    pub(super) fn_provenance_map: HashMap<String, (String, String)>,
+    pub(super) imported_fn_types: Vec<typed_ast::ImportedFn>,
     pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
     pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) imported_fn_qualifiers: HashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
@@ -1401,7 +1400,6 @@ impl ImportContext {
     fn new() -> Self {
         ImportContext {
             imported_fn_types: Vec::new(),
-            fn_provenance_map: HashMap::new(),
             imported_type_info: HashMap::new(),
             imported_fn_constraints: HashMap::new(),
             imported_fn_qualifiers: HashMap::new(),
@@ -1425,24 +1423,23 @@ impl ImportContext {
     ) -> Result<(), SpannedTypeError> {
         // Explicit import shadows any prelude entry for the same name
         if prelude_imported_names.contains(&name) {
-            self.imported_fn_types.retain(|(n, _, _, _)| n != &name);
+            self.imported_fn_types.retain(|f| f.name != name);
             self.imported_fn_constraints.remove(&name);
-            self.fn_provenance_map.remove(&name);
         }
 
         // Check for same-name + same-first-param from non-prelude imports
         if !prelude_imported_names.contains(&name) {
             let new_first_param = Self::extract_first_param(&scheme);
-            for (existing_name, existing_scheme, _, existing_module) in &self.imported_fn_types {
-                if existing_name == &name
-                    && existing_module != &source_module
-                    && !prelude_imported_names.contains(existing_name)
+            for existing in &self.imported_fn_types {
+                if existing.name == name
+                    && existing.source_module != source_module
+                    && !prelude_imported_names.contains(&existing.name)
                 {
-                    let existing_first = Self::extract_first_param(existing_scheme);
+                    let existing_first = Self::extract_first_param(&existing.scheme);
                     if let (Some(_), Some(_)) = (&new_first_param, &existing_first) {
                         let mut trial_subst = Substitution::new();
                         let new_inst = scheme.instantiate(&mut || gen.fresh());
-                        let old_inst = existing_scheme.instantiate(&mut || gen.fresh());
+                        let old_inst = existing.scheme.instantiate(&mut || gen.fresh());
                         let new_fp = match &new_inst {
                             Type::Fn(params, _) => params.first().cloned(),
                             _ => None,
@@ -1456,7 +1453,7 @@ impl ImportContext {
                                 return Err(spanned(
                                     TypeError::AmbiguousCall {
                                         name: name.clone(),
-                                        modules: vec![existing_module.clone(), source_module.clone()],
+                                        modules: vec![existing.source_module.clone(), source_module.clone()],
                                     },
                                     span,
                                 ));
@@ -1467,8 +1464,13 @@ impl ImportContext {
             }
         }
         env.bind_with_provenance(name.clone(), scheme.clone(), source_module.clone());
-        self.imported_fn_types.push((name.clone(), scheme, origin, source_module.clone()));
-        self.fn_provenance_map.insert(name, (source_module, original_name));
+        self.imported_fn_types.push(typed_ast::ImportedFn {
+            name: name.clone(),
+            scheme,
+            origin,
+            source_module: source_module.clone(),
+            original_name,
+        });
         Ok(())
     }
 
@@ -1488,9 +1490,13 @@ impl ImportContext {
         origin: FnOrigin,
         provenance: (String, String),
     ) {
-        let source_module = provenance.0.clone();
-        self.imported_fn_types.push((name.clone(), scheme, origin, source_module));
-        self.fn_provenance_map.insert(name, provenance);
+        self.imported_fn_types.push(typed_ast::ImportedFn {
+            name,
+            scheme,
+            origin,
+            source_module: provenance.0,
+            original_name: provenance.1,
+        });
     }
 
     /// Bind type info for an imported type.
@@ -1504,20 +1510,18 @@ impl ImportContext {
     }
 
     /// Remove stale import metadata for a name being locally redefined.
-    /// Clears constraints and provenance but keeps imported_fn_types
+    /// Clears constraints but keeps imported_fn_types
     /// (the entry is still needed in the fn_types output list) and
     /// does not touch env (the local binding is already in place).
     fn remove_import_metadata(&mut self, name: &str) {
         self.imported_fn_constraints.remove(name);
-        self.fn_provenance_map.remove(name);
     }
 
-    /// Atomically shadow a name across all 4 maps + env.
+    /// Atomically shadow a name across all maps + env.
     fn shadow(&mut self, env: &mut TypeEnv, name: &str) {
         env.unbind(name);
         self.imported_fn_constraints.remove(name);
-        self.imported_fn_types.retain(|(n, _, _, _)| n != name);
-        self.fn_provenance_map.remove(name);
+        self.imported_fn_types.retain(|f| f.name != name);
     }
 }
 
@@ -1645,7 +1649,6 @@ impl ModuleInferenceState {
                         if let crate::type_registry::TypeKind::Sum { variants } = &existing.kind {
                             for v in variants {
                                 self.env.unbind(&v.name);
-                                self.imports.fn_provenance_map.remove(&v.name);
                             }
                         }
                         self.type_provenance.remove(&type_decl.name);
@@ -1686,22 +1689,42 @@ impl ModuleInferenceState {
         let mut instance_defs = instance_defs;
         instance_defs.extend(derived_instance_defs);
 
-        let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imports.imported_fn_types
+        let mut results: Vec<typed_ast::FnTypeEntry> = self.imports.imported_fn_types
             .into_iter()
-            .map(|(name, scheme, origin, _)| (name, scheme, origin))
+            .map(|f| typed_ast::FnTypeEntry {
+                name: f.name,
+                scheme: f.scheme,
+                origin: f.origin,
+                provenance: Some((f.source_module, f.original_name)),
+            })
             .collect();
-        results.extend(constructor_schemes.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
+        results.extend(constructor_schemes.iter().map(|(n, s)| typed_ast::FnTypeEntry {
+            name: n.clone(),
+            scheme: s.clone(),
+            origin: FnOrigin::Regular,
+            provenance: None,
+        }));
         results.extend(
             fn_decls
                 .iter()
                 .enumerate()
-                .map(|(i, d)| (d.name.clone(), result_schemes[i].clone().unwrap(), FnOrigin::Regular)),
+                .map(|(i, d)| typed_ast::FnTypeEntry {
+                    name: d.name.clone(),
+                    scheme: result_schemes[i].clone().unwrap(),
+                    origin: FnOrigin::Regular,
+                    provenance: None,
+                }),
         );
         // Add instance method types to the flat list for internal analysis passes
         for inst in &instance_defs {
             for m in &inst.methods {
                 let qualified = typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name);
-                results.push((qualified, m.scheme.clone(), FnOrigin::Regular));
+                results.push(typed_ast::FnTypeEntry {
+                    name: qualified,
+                    scheme: m.scheme.clone(),
+                    origin: FnOrigin::Regular,
+                    provenance: None,
+                });
             }
         }
 
@@ -1760,7 +1783,7 @@ impl ModuleInferenceState {
             }
         }
 
-        let fn_schemes: HashMap<String, TypeScheme> = results.iter().map(|(n, s, _)| (n.clone(), s.clone())).collect();
+        let fn_schemes: HashMap<String, TypeScheme> = results.iter().map(|e| (e.name.clone(), e.scheme.clone())).collect();
         for func in &functions {
             let current_requirements = fn_constraint_requirements
                 .get(&func.name)
@@ -1779,8 +1802,8 @@ impl ModuleInferenceState {
         let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
         for func in &functions {
             let mut param_type_var_map: HashMap<TypeVarId, usize> = HashMap::new();
-            if let Some((_, scheme, _)) = results.iter().find(|(n, _, _)| n == &func.name) {
-                if let Type::Fn(param_types, _) = &scheme.ty {
+            if let Some(entry) = results.iter().find(|e| e.name == func.name) {
+                if let Type::Fn(param_types, _) = &entry.scheme.ty {
                     for (idx, pty) in param_types.iter().enumerate() {
                         for v in free_vars(pty) {
                             param_type_var_map.entry(v).or_insert(idx);
@@ -1840,9 +1863,14 @@ impl ModuleInferenceState {
             collect_struct_update_info(&func.body, &mut struct_update_info);
         }
 
+        // Convert FnTypeEntry to tuple format for ownership/auto_close APIs
+        let results_tuples: Vec<(String, TypeScheme, FnOrigin)> = results.iter()
+            .map(|e| (e.name.clone(), e.scheme.clone(), e.origin.clone()))
+            .collect();
+
         let fn_qualifiers = crate::ownership::check_ownership(
             module,
-            &results,
+            &results_tuples,
             &self.registry,
             &self.let_own_spans,
             &self.lambda_own_captures,
@@ -1858,7 +1886,7 @@ impl ModuleInferenceState {
             .filter(|(name, _)| exported_names.contains(name.as_str()))
             .collect();
 
-        let auto_close = crate::auto_close::compute_auto_close(&functions, &results, trait_registry)?;
+        let auto_close = crate::auto_close::compute_auto_close(&functions, &results_tuples, trait_registry)?;
 
         // Strip temporary instance method entries from functions and results —
         // they live on instance_defs now, codegen reads them from there
@@ -1957,7 +1985,6 @@ impl ModuleInferenceState {
             imported_extern_fns: self.imported_extern_fns,
             struct_decls,
             sum_decls,
-            fn_provenance: self.imports.fn_provenance_map,
             type_provenance: self.type_provenance,
             type_visibility,
             reexported_fn_types: self.reexported_fn_types,

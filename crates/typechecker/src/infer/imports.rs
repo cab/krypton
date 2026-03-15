@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
 use crate::type_registry::{self};
-use crate::typed_ast::{FnOrigin, TypedModule};
+use crate::typed_ast::{self as typed_ast, FnOrigin, TypedModule};
 use crate::types::{Type, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -198,7 +198,7 @@ impl ModuleInferenceState {
                 && !type_or_trait_names.contains(name)
             {
                 // Check if the name exists in fn_types (i.e. it's private, not missing)
-                let exists_in_fn_types = cached.fn_types.iter().any(|(n, _, _)| n.as_str() == *name);
+                let exists_in_fn_types = cached.fn_types.iter().any(|e| e.name.as_str() == *name);
                 if exists_in_fn_types {
                     return Err(spanned(
                         TypeError::PrivateName {
@@ -262,10 +262,9 @@ impl ModuleInferenceState {
         for (name, scheme, origin) in &cached.reexported_fn_types {
             if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, name);
-                let original_prov = cached
-                    .fn_provenance
-                    .get(name)
-                    .cloned()
+                let original_prov = cached.fn_types.iter()
+                    .find(|e| e.name == *name)
+                    .and_then(|e| e.provenance.clone())
                     .unwrap_or_else(|| (path.to_string(), name.clone()));
                 qualified_exports.insert(
                     name.clone(),
@@ -282,14 +281,18 @@ impl ModuleInferenceState {
         for (name, scheme, origin) in &cached.reexported_fn_types {
             if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                let original_prov = cached
-                    .fn_provenance
-                    .get(name)
-                    .cloned()
+                let original_prov = cached.fn_types.iter()
+                    .find(|e| e.name == *name)
+                    .and_then(|e| e.provenance.clone())
                     .unwrap_or_else(|| (path.to_string(), name.clone()));
                 self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
-                self.imports.imported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone(), original_prov.0.clone()));
-                self.imports.fn_provenance_map.insert(effective_name.clone(), original_prov);
+                self.imports.imported_fn_types.push(typed_ast::ImportedFn {
+                    name: effective_name.clone(),
+                    scheme: scheme.clone(),
+                    origin: origin.clone(),
+                    source_module: original_prov.0,
+                    original_name: original_prov.1,
+                });
                 if let Some(quals) = cached.exported_fn_qualifiers.get(name) {
                     self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
                 }
@@ -516,7 +519,7 @@ impl ModuleInferenceState {
                 let origin = FnOrigin::TraitMethod { trait_name: trait_def.name.clone() };
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
-                    let already_imported = self.imports.imported_fn_types.iter().any(|(n, _, _, _)| n == &method.name);
+                    let already_imported = self.imports.imported_fn_types.iter().any(|f| f.name == method.name);
                     if is_visible && !already_imported {
                         let fn_ty = Type::Fn(method.param_types.clone(), Box::new(method.return_type.clone()));
                         let scheme = TypeScheme {
@@ -543,7 +546,7 @@ impl ModuleInferenceState {
                     .as_ref()
                     .unwrap_or(&import_name.name)
                     .clone();
-                let found_fn = self.imports.imported_fn_types.iter().any(|(n, _, _, _)| n == &effective_name);
+                let found_fn = self.imports.imported_fn_types.iter().any(|f| f.name == effective_name);
                 let found_type = self.imports.imported_type_info.contains_key(&effective_name);
                 let found_trait = self.imported_trait_names.contains(&effective_name);
 
@@ -556,11 +559,11 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    if let Some((_, scheme, origin, _)) = self.imports.imported_fn_types
+                    if let Some(f) = self.imports.imported_fn_types
                         .iter()
-                        .find(|(n, _, _, _)| n == &effective_name)
+                        .find(|f| f.name == effective_name)
                     {
-                        self.reexported_fn_types.push((effective_name.clone(), scheme.clone(), origin.clone()));
+                        self.reexported_fn_types.push((effective_name.clone(), f.scheme.clone(), f.origin.clone()));
                     }
                 }
                 if found_type {
