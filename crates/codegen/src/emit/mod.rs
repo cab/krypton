@@ -788,7 +788,7 @@ fn compile_module_inner(
                 };
                 let mut all_param_jvm = Vec::new();
                 for _ in 0..(dict_requirements.len() + fn_constraint_count) {
-                    all_param_jvm.push(JvmType::StructRef(compiler.refs.object_class));
+                    all_param_jvm.push(JvmType::StructRef(compiler.builder.refs.object_class));
                 }
                 all_param_jvm.extend(param_jvm.iter().copied());
                 let static_desc = compiler.types.build_descriptor(&all_param_jvm, ret_jvm);
@@ -939,7 +939,7 @@ fn compile_module_inner(
             };
             let mut all_param_types: Vec<JvmType> = Vec::new();
             for _ in 0..(impl_dict_count + fn_constraint_count) {
-                all_param_types.push(JvmType::StructRef(compiler.refs.object_class));
+                all_param_types.push(JvmType::StructRef(compiler.builder.refs.object_class));
             }
             let user_param_types: Vec<JvmType> = param_tys
                 .iter()
@@ -1005,7 +1005,7 @@ fn compile_module_inner(
                 };
                 let mut all_param_types: Vec<JvmType> = Vec::new();
                 for _ in 0..(impl_dict_count + fn_constraint_count) {
-                    all_param_types.push(JvmType::StructRef(compiler.refs.object_class));
+                    all_param_types.push(JvmType::StructRef(compiler.builder.refs.object_class));
                 }
                 let user_param_types: Vec<JvmType> = param_tys
                     .iter()
@@ -1060,7 +1060,7 @@ fn compile_module_inner(
                     param_desc.push_str("Ljava/lang/String;");
                 }
                 Type::Named(_, _) => {
-                    param_jvm_types.push(JvmType::StructRef(compiler.refs.object_class));
+                    param_jvm_types.push(JvmType::StructRef(compiler.builder.refs.object_class));
                     param_desc.push_str("Ljava/lang/Object;");
                 }
                 other => {
@@ -1082,7 +1082,7 @@ fn compile_module_inner(
                 Type::Bool => (JvmType::Int, "Z".to_string()),
                 Type::String => (JvmType::Ref, "Ljava/lang/String;".to_string()),
                 Type::Named(_, _) => {
-                    (JvmType::StructRef(compiler.refs.object_class), "Ljava/lang/Object;".to_string())
+                    (JvmType::StructRef(compiler.builder.refs.object_class), "Ljava/lang/Object;".to_string())
                 }
                 other => {
                     return Err(CodegenError::TypeError(format!(
@@ -1148,29 +1148,29 @@ fn compile_module_inner(
         let main_return_type = main_info.return_type;
 
         compiler.reset_method_state();
-        compiler.next_local = 1; // slot 0 = String[] args
+        compiler.builder.next_local = 1; // slot 0 = String[] args
         let string_arr_class = compiler.cp.add_class("[Ljava/lang/String;")?;
-        compiler.frame.local_types = vec![VerificationType::Object {
+        compiler.builder.frame.local_types = vec![VerificationType::Object {
             cpool_index: string_arr_class,
         }];
 
         // Call krypton_main
-        compiler.emit(Instruction::Invokestatic(krypton_main_ref));
-        compiler.push_jvm_type(main_return_type);
+        compiler.builder.emit(Instruction::Invokestatic(krypton_main_ref));
+        compiler.builder.push_jvm_type(main_return_type);
 
         // Discard the return value
         match main_return_type {
             JvmType::Long | JvmType::Double => {
-                compiler.emit(Instruction::Pop2);
-                compiler.frame.pop_type_n(2);
+                compiler.builder.emit(Instruction::Pop2);
+                compiler.builder.frame.pop_type_n(2);
             }
             JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => {
-                compiler.emit(Instruction::Pop);
-                compiler.frame.pop_type();
+                compiler.builder.emit(Instruction::Pop);
+                compiler.builder.frame.pop_type();
             }
         }
 
-        compiler.emit(Instruction::Return);
+        compiler.builder.emit(Instruction::Return);
     }
 
     // Generate FunN interface class files
