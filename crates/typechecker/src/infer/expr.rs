@@ -684,8 +684,7 @@ impl<'a> InferenceContext<'a> {
                 }
 
                 let resolved_val = self.subst.apply(&val_typed.ty);
-                if matches!(&resolved_val, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)))
-                {
+                if matches!(&resolved_val, Type::Own(_)) {
                     if let Some(ref mut los) = self.let_own_spans {
                         los.insert(*span);
                     }

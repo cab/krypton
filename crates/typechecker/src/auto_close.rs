@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::trait_registry::TraitRegistry;
 use crate::typed_ast::{
     AutoCloseBinding, AutoCloseInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern,
@@ -47,28 +49,28 @@ fn is_owned_resource(ty: &Type, registry: &TraitRegistry) -> Option<String> {
     None
 }
 
-/// Recursively collect all `Var` names with `Type::Own` anywhere in an expression tree.
-/// Used for deep consumption detection in `App` arguments.
-fn collect_consumed_vars(expr: &TypedExpr) -> Vec<String> {
+/// Recursively collect all `Var` names in an expression tree whose spans appear
+/// in the ownership checker's move set — i.e., vars that were actually moved.
+fn collect_moved_vars(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>) -> Vec<String> {
     let mut result = Vec::new();
-    collect_consumed_vars_inner(expr, &mut result);
+    collect_moved_vars_inner(expr, ownership_moves, &mut result);
     result
 }
 
-fn collect_consumed_vars_inner(expr: &TypedExpr, acc: &mut Vec<String>) {
+fn collect_moved_vars_inner(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>, acc: &mut Vec<String>) {
     match &expr.kind {
         TypedExprKind::Var(name) => {
-            if let Type::Own(_) = &expr.ty {
+            if ownership_moves.get(&expr.span).is_some_and(|n| n == name) {
                 acc.push(name.clone());
             }
         }
         TypedExprKind::App { func, args } => {
-            collect_consumed_vars_inner(func, acc);
+            collect_moved_vars_inner(func, ownership_moves, acc);
             for arg in args {
-                collect_consumed_vars_inner(arg, acc);
+                collect_moved_vars_inner(arg, ownership_moves, acc);
             }
         }
-        TypedExprKind::TypeApp { expr } => collect_consumed_vars_inner(expr, acc),
+        TypedExprKind::TypeApp { expr } => collect_moved_vars_inner(expr, ownership_moves, acc),
         _ => {}
     }
 }
@@ -112,14 +114,16 @@ fn collect_resource_bindings_inner(
 
 struct AutoCloseAnalyzer<'a> {
     registry: &'a TraitRegistry,
+    ownership_moves: &'a HashMap<Span, String>,
     info: AutoCloseInfo,
     errors: Vec<SpannedTypeError>,
 }
 
 impl<'a> AutoCloseAnalyzer<'a> {
-    fn new(registry: &'a TraitRegistry) -> Self {
+    fn new(registry: &'a TraitRegistry, ownership_moves: &'a HashMap<Span, String>) -> Self {
         Self {
             registry,
+            ownership_moves,
             info: AutoCloseInfo::default(),
             errors: Vec::new(),
         }
@@ -214,10 +218,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for arg in args {
                     self.walk_expr(arg, live);
                 }
-                // #4: Deep consumption detection — find all Var names with Own type
-                // anywhere in the argument expression tree, not just direct Var args
+                // #4: Deep consumption detection — find all vars that the ownership
+                // checker determined were actually moved in this argument tree
                 for arg in args {
-                    let consumed = collect_consumed_vars(arg);
+                    let consumed = collect_moved_vars(arg, self.ownership_moves);
                     for var_name in consumed {
                         if let Some(pos) = live.iter().position(|(n, _)| n == &var_name) {
                             let (name, type_name) = live.remove(pos);
@@ -450,12 +454,13 @@ pub fn compute_auto_close(
     functions: &[TypedFnDecl],
     fn_types: &[(String, crate::types::TypeScheme, crate::typed_ast::FnOrigin)],
     registry: &TraitRegistry,
+    ownership_moves: &HashMap<Span, String>,
 ) -> Result<AutoCloseInfo, SpannedTypeError> {
     if registry.lookup_trait("Resource").is_none() {
         return Ok(AutoCloseInfo::default());
     }
 
-    let mut analyzer = AutoCloseAnalyzer::new(registry);
+    let mut analyzer = AutoCloseAnalyzer::new(registry, ownership_moves);
 
     for decl in functions {
         let close_self_type = resource_close_self_type(&decl.name);

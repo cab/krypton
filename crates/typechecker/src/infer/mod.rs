@@ -1887,7 +1887,7 @@ impl ModuleInferenceState {
             .map(|e| (e.name.clone(), e.scheme.clone(), e.origin.clone()))
             .collect();
 
-        let fn_qualifiers = crate::ownership::check_ownership(
+        let ownership_result = crate::ownership::check_ownership(
             module,
             &results_tuples,
             &self.registry,
@@ -1900,12 +1900,12 @@ impl ModuleInferenceState {
 
         // Filter to exported functions only for cross-module propagation
         let exported_names: HashSet<&str> = exported_fn_types.iter().map(|(n, _, _)| n.as_str()).collect();
-        let exported_fn_qualifiers: HashMap<_, _> = fn_qualifiers
+        let exported_fn_qualifiers: HashMap<_, _> = ownership_result.fn_qualifiers
             .into_iter()
             .filter(|(name, _)| exported_names.contains(name.as_str()))
             .collect();
 
-        let auto_close = crate::auto_close::compute_auto_close(&functions, &results_tuples, trait_registry)?;
+        let auto_close = crate::auto_close::compute_auto_close(&functions, &results_tuples, trait_registry, &ownership_result.moves)?;
 
         // Strip temporary instance method entries from functions and results —
         // they live on instance_defs now, codegen reads them from there

@@ -332,6 +332,13 @@ fn param_type_is_affine(ty_expr: &TypeExpr, registry: &TypeRegistry) -> bool {
     }
 }
 
+/// Result of ownership checking: qualifier info plus actual move locations.
+pub struct OwnershipResult {
+    pub fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
+    /// Every actual move: var_span → var_name.
+    pub moves: HashMap<Span, String>,
+}
+
 /// Affine verification: track `own` bindings and flag double-use as E0101,
 /// partial-branch use as E0102, and qualifier mismatches as E0104.
 pub fn check_ownership(
@@ -343,7 +350,7 @@ pub fn check_ownership(
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
-) -> Result<HashMap<String, Vec<(ParamQualifier, String)>>, SpannedTypeError> {
+) -> Result<OwnershipResult, SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
     for decl in &module.decls {
@@ -382,10 +389,12 @@ pub fn check_ownership(
         fn_qualifiers.entry(name.clone()).or_insert_with(|| quals.clone());
     }
 
+    let mut all_moves: HashMap<Span, String> = HashMap::new();
+
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
             let affine = build_affine_set(fn_decl, registry);
-            check_fn(
+            let fn_moves = check_fn(
                 fn_decl,
                 &fn_param_info,
                 &affine,
@@ -395,15 +404,21 @@ pub fn check_ownership(
                 struct_update_info,
                 registry,
             )?;
+            all_moves.extend(fn_moves);
         }
     }
-    Ok(fn_qualifiers)
+    Ok(OwnershipResult {
+        fn_qualifiers,
+        moves: all_moves,
+    })
 }
 
 struct OwnershipChecker<'a> {
     owned: &'a mut HashSet<String>,
     consumed: HashMap<String, Span>,
     partially_consumed: HashMap<String, Span>,
+    /// Every actual move: var_span → var_name.
+    moves: HashMap<Span, String>,
     fn_param_info: &'a HashMap<String, Vec<bool>>,
     affine: &'a HashSet<String>,
     fn_qualifiers: &'a HashMap<String, Vec<(ParamQualifier, String)>>,
@@ -460,6 +475,7 @@ impl<'a> OwnershipChecker<'a> {
                 if self.owned.contains(name) {
                     self.check_not_consumed(name, *span, self.own_fn_notes.get(name).cloned())?;
                     self.consumed.insert(name.clone(), *span);
+                    self.moves.insert(*span, name.clone());
                 }
                 Ok(())
             }
@@ -678,6 +694,7 @@ impl<'a> OwnershipChecker<'a> {
                         });
                     }
                     self.consumed.insert(name.clone(), *span);
+                    self.moves.insert(*span, name.clone());
                 }
                 let saved_consumed = std::mem::take(&mut self.consumed);
                 let saved_partial = std::mem::take(&mut self.partially_consumed);
@@ -687,7 +704,16 @@ impl<'a> OwnershipChecker<'a> {
                 result
             }
 
-            Expr::FieldAccess { expr, .. } => self.check_expr(expr),
+            Expr::FieldAccess { expr, .. } => {
+                if let Expr::Var { name, span, .. } = expr.as_ref() {
+                    if self.owned.contains(name) {
+                        self.check_not_consumed(name, *span, None)?;
+                        // Field access is a projection, not a move — don't consume
+                        return Ok(());
+                    }
+                }
+                self.check_expr(expr)
+            }
 
             Expr::StructLit { fields, .. } => self.check_exprs(fields.iter().map(|(_, e)| e)),
 
@@ -744,7 +770,7 @@ fn check_fn(
     lambda_own_captures: &HashMap<Span, String>,
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     registry: &TypeRegistry,
-) -> Result<(), SpannedTypeError> {
+) -> Result<HashMap<Span, String>, SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
         .iter()
@@ -759,7 +785,7 @@ fn check_fn(
     }
 
     if owned.is_empty() && affine.is_empty() && let_own_spans.is_empty() {
-        return Ok(());
+        return Ok(HashMap::new());
     }
 
     let mut own_fn_notes = HashMap::new();
@@ -767,6 +793,7 @@ fn check_fn(
         owned: &mut owned,
         consumed: HashMap::new(),
         partially_consumed: HashMap::new(),
+        moves: HashMap::new(),
         fn_param_info,
         affine,
         fn_qualifiers,
@@ -776,7 +803,8 @@ fn check_fn(
         struct_update_info,
         registry,
     };
-    checker.check_expr(&decl.body)
+    checker.check_expr(&decl.body)?;
+    Ok(checker.moves)
 }
 
 /// Collect free variables in an expression that are in the `owned` set,
