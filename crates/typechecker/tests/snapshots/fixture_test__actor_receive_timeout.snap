@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 63
 expression: snapshot
 ---
 eq: forall c. fn(c, c) -> Bool
@@ -22,7 +23,7 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-receive_timeout: forall z1. fn(Mailbox[z1], Int) -> Option[z1]
+receive_timeout: forall g2. fn(Mailbox[g2], Int) -> Option[g2]
 Ping: Msg
 Pong: Msg
 actor: fn(Mailbox[Msg]) -> Unit

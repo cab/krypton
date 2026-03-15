@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 63
 expression: snapshot
 ---
 eq: forall c. fn(c, c) -> Bool
@@ -22,11 +23,11 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-spawn: forall g1. fn(fn(Mailbox[g1]) -> Unit) -> Ref[g1]
-send: forall m1. fn(Ref[m1], m1) -> Unit
-receive: forall t1. fn(Mailbox[t1]) -> t1
+spawn: forall n1. fn(fn(Mailbox[n1]) -> Unit) -> Ref[n1]
+send: forall t1. fn(Ref[t1], t1) -> Unit
+receive: forall a2. fn(Mailbox[a2]) -> a2
 Inc: CounterMsg
 Dec: CounterMsg
 Get: fn(Ref[Int]) -> CounterMsg
-counter: forall o2. fn(Mailbox[CounterMsg], Int) -> o2
-main: forall r2. fn() -> fn(Mailbox[CounterMsg], Int) -> r2
+counter: forall v2. fn(Mailbox[CounterMsg], Int) -> v2
+main: forall y2. fn() -> fn(Mailbox[CounterMsg], Int) -> y2
