@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen::emit::compile_modules;
-use krypton_parser::parser::parse;
-use krypton_typechecker::infer::infer_module;
 use krypton_modules::module_resolver::CompositeResolver;
+use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_typechecker::infer::infer_module;
 
 fn build_classpath(class_dir: &Path) -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
@@ -19,7 +19,10 @@ fn build_classpath(class_dir: &Path) -> String {
     }
 }
 
-fn run_program_with_resolver(source: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> String {
+fn run_program_with_resolver(
+    source: &str,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+) -> String {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
@@ -78,9 +81,8 @@ fn run_codegen_fixtures(subdir: &str) {
             .to_string_lossy()
             .to_string();
 
-        let resolver = CompositeResolver::with_source_root(
-            fixture_path.parent().unwrap().to_path_buf(),
-        );
+        let resolver =
+            CompositeResolver::with_source_root(fixture_path.parent().unwrap().to_path_buf());
 
         for expectation in &fixture.expectations {
             match expectation {
@@ -102,7 +104,9 @@ fn run_codegen_fixtures(subdir: &str) {
                         Err(e) => panic!("fixture {name}: expected ok but typecheck failed: {e}"),
                     };
                     match compile_modules(&typed_modules, "Test") {
-                        Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => { ran += 1; }
+                        Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
+                            ran += 1;
+                        }
                         Err(e) => {
                             panic!("fixture {name}: expected ok but compile failed: {e}")
                         }
@@ -169,6 +173,11 @@ fn m19_fixtures() {
 #[test]
 fn m6_fixtures() {
     run_codegen_fixtures("m6");
+}
+
+#[test]
+fn m7_fixtures() {
+    run_codegen_fixtures("m7");
 }
 
 #[test]
