@@ -1726,7 +1726,7 @@ fn infer_module_pub_import_reexport_private_error() {
         Err(e) => e,
         Ok(_) => panic!("expected error"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0505");
+    assert_eq!(err.error.error_code().to_string(), "E0510");
 }
 
 #[test]

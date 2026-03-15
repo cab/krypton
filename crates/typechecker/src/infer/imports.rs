@@ -181,6 +181,10 @@ impl ModuleInferenceState {
                 if let Decl::DefTrait { name, .. } = d {
                     s.insert(name);
                 }
+                // Extern java type aliases (e.g. `extern "..." as Ref[m] {}`)
+                if let Decl::ExternJava { alias: Some(name), .. } = d {
+                    s.insert(name);
+                }
             }
             for tn in &cached.reexported_type_names {
                 s.insert(tn);
@@ -193,6 +197,16 @@ impl ModuleInferenceState {
             }
             s
         };
+        // Build fn visibility map from parsed imported module (needed for extern method privacy)
+        let mut fn_vis: HashMap<&str, &Visibility> = HashMap::new();
+        for d in &imported_module.decls {
+            if let Decl::ExternJava { methods, .. } = d {
+                for m in methods {
+                    fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
+                }
+            }
+        }
+
         for name in &requested {
             if !exported_fn_names.contains(name) && !reexported_fn_names.contains(name)
                 && !type_or_trait_names.contains(name)
@@ -208,16 +222,31 @@ impl ModuleInferenceState {
                         span,
                     ));
                 }
-            }
-        }
-
-        // Build fn visibility map from parsed imported module (needed for extern method privacy)
-        let mut fn_vis: HashMap<&str, &Visibility> = HashMap::new();
-        for d in &imported_module.decls {
-            if let Decl::ExternJava { methods, .. } = d {
-                for m in methods {
-                    fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
+                // Check if it's a private type
+                let is_private_type = imported_module.decls.iter().any(|d| {
+                    matches!(d, Decl::DefType(td) if td.name.as_str() == *name && matches!(td.visibility, Visibility::Private))
+                });
+                if is_private_type {
+                    return Err(spanned(
+                        TypeError::PrivateName {
+                            name: name.to_string(),
+                            module_path: path.to_string(),
+                        },
+                        span,
+                    ));
                 }
+                // Extern methods are handled separately below
+                if fn_vis.contains_key(name) {
+                    continue;
+                }
+                // Name truly doesn't exist in the module
+                return Err(spanned(
+                    TypeError::UnknownExport {
+                        name: name.to_string(),
+                        module_path: path.to_string(),
+                    },
+                    span,
+                ));
             }
         }
 

@@ -1,2 +1,2 @@
-# expect: error E0505
-pub import vis_lib.{public_fn, nonexistent_private}
+# expect: error E0503
+pub import vis_lib.{public_fn, private_fn}

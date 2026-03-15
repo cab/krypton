@@ -43,6 +43,7 @@ pub enum TypeErrorCode {
     E0106, // Qualifier bound violation (shared + ~T)
     E0012, // Reserved name
     E0509, // Ambiguous call (multiple same-named imports)
+    E0510, // Unknown export (name does not exist in module)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -84,6 +85,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0106 => write!(f, "E0106"),
             TypeErrorCode::E0012 => write!(f, "E0012"),
             TypeErrorCode::E0509 => write!(f, "E0509"),
+            TypeErrorCode::E0510 => write!(f, "E0510"),
         }
     }
 }
@@ -230,6 +232,10 @@ pub enum TypeError {
         name: String,
         modules: Vec<String>,
     },
+    UnknownExport {
+        name: String,
+        module_path: String,
+    },
 }
 
 impl TypeError {
@@ -279,6 +285,7 @@ impl TypeError {
             TypeError::QualifierBoundViolation { .. } => TypeErrorCode::E0106,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
             TypeError::AmbiguousCall { .. } => TypeErrorCode::E0509,
+            TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
         }
     }
 
@@ -444,6 +451,9 @@ impl TypeError {
                 Some("remove the `~` from the parameter type, or remove the `shared` bound".to_string())
             }
             TypeError::AmbiguousCall { .. } => None,
+            TypeError::UnknownExport { name, module_path } => {
+                Some(format!("module `{}` has no export named `{}`", module_path, name))
+            }
         }
     }
 }
@@ -660,6 +670,9 @@ impl fmt::Display for TypeError {
                     "ambiguous call to `{}`: multiple functions named `{}` are in scope (from modules: {}); use a qualified call or import alias to disambiguate",
                     name, name, modules.join(", ")
                 )
+            }
+            TypeError::UnknownExport { name, module_path } => {
+                write!(f, "unknown export `{}` from module `{}`", name, module_path)
             }
         }
     }

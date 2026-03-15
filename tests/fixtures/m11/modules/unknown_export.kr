@@ -1,0 +1,3 @@
+# expect: error E0510
+import vis_lib.{nonexistent}
+fun main() = nonexistent()
