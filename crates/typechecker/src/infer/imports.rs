@@ -457,10 +457,27 @@ impl ModuleInferenceState {
         for sdecl in &imported_module.decls {
             if let Decl::ExternJava {
                 class_name,
+                alias,
+                type_params,
                 methods,
                 span: ext_span,
             } = sdecl
             {
+                // Register extern java type binding if present
+                if let Some(name) = alias {
+                    if !self.registry.lookup_type(name).is_some() {
+                        let type_param_vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
+                        let _ = self.registry.register_type(crate::type_registry::TypeInfo {
+                            name: name.clone(),
+                            type_params: type_params.clone(),
+                            type_param_vars,
+                            kind: crate::type_registry::TypeKind::Record { fields: vec![] },
+                            is_prelude: false,
+                        });
+                        self.imported_extern_java_types.push((name.clone(), class_name.clone()));
+                    }
+                }
+
                 let mut fns = process_extern_methods(
                     class_name, methods, &mut self.env, &mut self.gen, &self.registry, *ext_span, None,
                     &aliases,
@@ -475,6 +492,14 @@ impl ModuleInferenceState {
         }
         for ext in &cached.imported_extern_fns {
             self.imported_extern_fns.push(ext.clone());
+        }
+
+        // Copy imported extern java types for codegen
+        for entry in &cached.extern_java_types {
+            self.imported_extern_java_types.push(entry.clone());
+        }
+        for entry in &cached.imported_extern_java_types {
+            self.imported_extern_java_types.push(entry.clone());
         }
 
         // Collect fn_constraints from imported module for cross-module constraint checking.

@@ -5,6 +5,8 @@ expression: module
 decls:
   - ExternJava:
       class_name: java.lang.System
+      alias: ~
+      type_params: []
       methods:
         - visibility: Private
           name: gc

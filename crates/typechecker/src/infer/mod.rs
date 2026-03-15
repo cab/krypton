@@ -1540,6 +1540,7 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imports: ImportContext,
     pub(super) type_provenance: HashMap<String, String>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
+    pub(super) imported_extern_java_types: Vec<(String, String)>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
     pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
@@ -1578,6 +1579,7 @@ impl ModuleInferenceState {
             imports: ImportContext::new(),
             type_provenance,
             imported_extern_fns: Vec::new(),
+            imported_extern_java_types: Vec::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
             qualified_modules: HashMap::new(),
@@ -1589,15 +1591,31 @@ impl ModuleInferenceState {
         }
     }
 
-    fn process_local_externs(&mut self, module: &Module) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
+    fn process_local_externs(&mut self, module: &Module) -> Result<(Vec<ExternFnInfo>, Vec<(String, String)>), SpannedTypeError> {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
+        let mut extern_java_types: Vec<(String, String)> = Vec::new();
         for decl in &module.decls {
             if let Decl::ExternJava {
                 class_name,
+                alias,
+                type_params,
                 methods,
                 span,
             } = decl
             {
+                // Register type binding if `as Name[params]` is present
+                if let Some(name) = alias {
+                    let type_param_vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
+                    self.registry.register_type(crate::type_registry::TypeInfo {
+                        name: name.clone(),
+                        type_params: type_params.clone(),
+                        type_param_vars,
+                        kind: crate::type_registry::TypeKind::Record { fields: vec![] },
+                        is_prelude: false,
+                    }).map_err(|e| spanned(e, *span))?;
+                    extern_java_types.push((name.clone(), class_name.clone()));
+                }
+
                 let no_aliases = HashMap::new();
                 let mut fns = process_extern_methods(
                     class_name, methods, &mut self.env, &mut self.gen, &self.registry,
@@ -1606,7 +1624,7 @@ impl ModuleInferenceState {
                 extern_fns.append(&mut fns);
             }
         }
-        Ok(extern_fns)
+        Ok((extern_fns, extern_java_types))
     }
 
     fn cleanup_prelude_shadows(&mut self, module: &Module) {
@@ -1682,6 +1700,7 @@ impl ModuleInferenceState {
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
+        extern_java_types: Vec<(String, String)>,
         constructor_schemes: Vec<(String, TypeScheme)>,
         parsed_modules: &HashMap<String, &Module>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
@@ -1983,6 +2002,8 @@ impl ModuleInferenceState {
             trait_method_map: trait_method_map.clone(),
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
+            extern_java_types,
+            imported_extern_java_types: self.imported_extern_java_types,
             struct_decls,
             sum_decls,
             type_provenance: self.type_provenance,
@@ -2042,7 +2063,7 @@ pub(crate) fn infer_module_inner(
 
     state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let extern_fns = state.process_local_externs(module)?;
+    let (extern_fns, extern_java_types) = state.process_local_externs(module)?;
     state.cleanup_prelude_shadows(module);
     state.preregister_type_names(module);
     let constructor_schemes = state.process_local_type_decls(module)?;
@@ -2994,6 +3015,7 @@ pub(crate) fn infer_module_inner(
         &trait_registry,
         exported_trait_defs,
         extern_fns,
+        extern_java_types,
         constructor_schemes,
         parsed_modules,
         &shared_type_vars,

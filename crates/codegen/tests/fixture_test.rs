@@ -95,15 +95,14 @@ fn run_codegen_fixtures(subdir: &str) {
                 Expectation::Ok => {
                     let (module, errors) = parse(&fixture.source);
                     if !errors.is_empty() {
-                        continue;
+                        panic!("fixture {name}: expected ok but parse errors: {errors:?}");
                     }
                     let typed_modules = match infer_module(&module, &resolver) {
                         Ok(tm) => tm,
-                        Err(_) => continue,
+                        Err(e) => panic!("fixture {name}: expected ok but typecheck failed: {e}"),
                     };
                     match compile_modules(&typed_modules, "Test") {
-                        Ok(_) => { ran += 1; }
-                        Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
+                        Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => { ran += 1; }
                         Err(e) => {
                             panic!("fixture {name}: expected ok but compile failed: {e}")
                         }
@@ -160,6 +159,11 @@ fn m18_fixtures() {
 #[test]
 fn m18_module_fixtures() {
     run_codegen_fixtures("m18/modules");
+}
+
+#[test]
+fn m19_fixtures() {
+    run_codegen_fixtures("m19");
 }
 
 #[test]

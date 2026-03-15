@@ -1,0 +1,9 @@
+# expect: ok
+extern "krypton.runtime.Ref" as Ref[m] {}
+
+extern "krypton.runtime.KryptonActors" {
+    fun raw_send(Ref[Int], Int) -> Unit
+}
+
+fun use_ref(r: Ref[Int]) -> Ref[Int] = r
+fun send_msg(r: Ref[Int], msg: Int) -> Unit = raw_send(r, msg)

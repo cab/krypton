@@ -35,6 +35,8 @@ pub enum Decl {
     },
     ExternJava {
         class_name: String,
+        alias: Option<String>,
+        type_params: Vec<String>,
         methods: Vec<ExternMethod>,
         span: Span,
     },

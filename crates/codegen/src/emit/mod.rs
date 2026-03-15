@@ -21,7 +21,7 @@ use compiler::{
 };
 use class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
-    generate_fun_interface, generate_trait_interface_class, generate_instance_class,
+    generate_trait_interface_class, generate_instance_class,
     generate_builtin_show_instance_class, generate_builtin_trait_instance_class,
     generate_parameterized_instance_class,
 };
@@ -102,7 +102,7 @@ fn jvm_type_to_field_descriptor(ty: JvmType) -> String {
         JvmType::Double => "D".to_string(),
         JvmType::Int => "Z".to_string(),
         JvmType::Ref => "Ljava/lang/String;".to_string(),
-        JvmType::StructRef(_) => unreachable!("StructRef descriptor handled by caller"),
+        JvmType::StructRef(_) => "Ljava/lang/Object;".to_string(),
     }
 }
 
@@ -112,7 +112,7 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
         JvmType::Double => FieldType::Base(ristretto_classfile::BaseType::Double),
         JvmType::Int => FieldType::Base(ristretto_classfile::BaseType::Boolean),
         JvmType::Ref => FieldType::Object("java/lang/String".to_string()),
-        JvmType::StructRef(_) => unreachable!("StructRef field type handled by caller"),
+        JvmType::StructRef(_) => FieldType::Object("java/lang/Object".to_string()),
     }
 }
 
@@ -121,7 +121,7 @@ fn is_intrinsic(name: &str) -> bool {
     matches!(name, "panic" | "__krypton_intrinsic")
 }
 
-fn type_expr_to_jvm_basic(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
+fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmType, CodegenError> {
     match texpr {
         TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => match name.as_str() {
             "Int" => Ok(JvmType::Long),
@@ -129,10 +129,11 @@ fn type_expr_to_jvm_basic(texpr: &TypeExpr) -> Result<JvmType, CodegenError> {
             "Bool" => Ok(JvmType::Int),
             "String" => Ok(JvmType::Ref),
             "Unit" => Ok(JvmType::Int),
-            _ => Err(CodegenError::TypeError(format!(
-                "cannot map type expr to JVM: {name}"
-            ))),
+            // Any other named type (struct, opaque, Object) maps to Object ref
+            _ => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
         },
+        // App types (e.g. Ref[Int], Mailbox[Msg]) are struct references
+        TypeExpr::App { .. } => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
         _ => Err(CodegenError::TypeError(format!(
             "unsupported type expr in struct field: {texpr:?}"
         ))),
@@ -388,6 +389,26 @@ fn compile_module_inner(
             .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
     }
 
+    // Register extern java type bindings in struct_info so type_to_jvm resolves them
+    for (krypton_name, java_class) in typed_module
+        .extern_java_types
+        .iter()
+        .chain(typed_module.imported_extern_java_types.iter())
+    {
+        let jvm_class = java_class.replace('.', "/");
+        let class_index = compiler.cp.add_class(&jvm_class)?;
+        compiler.types.struct_info.insert(
+            krypton_name.clone(),
+            StructInfo {
+                class_index,
+                class_name: jvm_class,
+                fields: vec![],
+                constructor_ref: 0,
+                accessor_refs: HashMap::new(),
+            },
+        );
+    }
+
     // Process struct types: register in compiler, generate class files
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     for (struct_name, ast_fields) in struct_decls {
@@ -475,7 +496,7 @@ fn compile_module_inner(
                     let jt = if is_erased {
                         JvmType::Ref // erased to Object
                     } else {
-                        type_expr_to_jvm_basic(texpr)?
+                        type_expr_to_jvm_basic(texpr, &compiler)?
                     };
                     Ok((field_name, jt, is_erased))
                 })
@@ -1059,9 +1080,14 @@ fn compile_module_inner(
                     param_jvm_types.push(JvmType::Ref);
                     param_desc.push_str("Ljava/lang/String;");
                 }
-                Type::Named(_, _) => {
-                    param_jvm_types.push(JvmType::StructRef(compiler.builder.refs.object_class));
-                    param_desc.push_str("Ljava/lang/Object;");
+                Type::Named(name, _) => {
+                    if let Some(info) = compiler.types.struct_info.get(name) {
+                        param_jvm_types.push(JvmType::StructRef(info.class_index));
+                        param_desc.push_str(&format!("L{};", info.class_name));
+                    } else {
+                        param_jvm_types.push(JvmType::StructRef(compiler.builder.refs.object_class));
+                        param_desc.push_str("Ljava/lang/Object;");
+                    }
                 }
                 other => {
                     return Err(CodegenError::TypeError(format!(
@@ -1081,8 +1107,12 @@ fn compile_module_inner(
                 Type::Float => (JvmType::Double, "D".to_string()),
                 Type::Bool => (JvmType::Int, "Z".to_string()),
                 Type::String => (JvmType::Ref, "Ljava/lang/String;".to_string()),
-                Type::Named(_, _) => {
-                    (JvmType::StructRef(compiler.builder.refs.object_class), "Ljava/lang/Object;".to_string())
+                Type::Named(name, _) => {
+                    if let Some(info) = compiler.types.struct_info.get(name) {
+                        (JvmType::StructRef(info.class_index), format!("L{};", info.class_name))
+                    } else {
+                        (JvmType::StructRef(compiler.builder.refs.object_class), "Ljava/lang/Object;".to_string())
+                    }
                 }
                 other => {
                     return Err(CodegenError::TypeError(format!(
@@ -1173,12 +1203,7 @@ fn compile_module_inner(
         compiler.builder.emit(Instruction::Return);
     }
 
-    // Generate FunN interface class files
-    let fun_arities: Vec<u8> = compiler.lambda.fun_classes.keys().copied().collect();
-    for arity in fun_arities {
-        let fun_bytes = generate_fun_interface(arity)?;
-        result_classes.push((format!("Fun{arity}"), fun_bytes));
-    }
+    // FunN interfaces are provided by the runtime JAR (A-T7), no generation needed.
 
     let class_bytes = compiler.build_class(this_class, object_class, extra_methods, is_main)?;
     result_classes.push((class_name.to_string(), class_bytes));

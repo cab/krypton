@@ -72,9 +72,11 @@ impl<'a> Formatter<'a> {
             Decl::Import { is_pub, path, names, .. } => self.fmt_import(*is_pub, path, names),
             Decl::ExternJava {
                 class_name,
+                alias,
+                type_params,
                 methods,
                 ..
-            } => self.fmt_extern(class_name, methods),
+            } => self.fmt_extern(class_name, alias.as_deref(), type_params, methods),
         }
     }
 
@@ -405,10 +407,20 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn fmt_extern(&mut self, class_name: &str, methods: &[ExternMethod]) {
+    fn fmt_extern(&mut self, class_name: &str, alias: Option<&str>, type_params: &[String], methods: &[ExternMethod]) {
         self.buf.push_str("extern \"");
         self.buf.push_str(class_name);
-        self.buf.push_str("\" {");
+        self.buf.push('"');
+        if let Some(name) = alias {
+            self.buf.push_str(" as ");
+            self.buf.push_str(name);
+            if !type_params.is_empty() {
+                self.buf.push('[');
+                self.buf.push_str(&type_params.join(", "));
+                self.buf.push(']');
+            }
+        }
+        self.buf.push_str(" {");
         self.indent_level += 1;
         for m in methods {
             self.buf.push('\n');

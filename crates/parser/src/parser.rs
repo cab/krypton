@@ -1295,8 +1295,21 @@ where
             span: to_span(e.span()),
         });
 
+    let extern_as_clause = symbol(Token::As)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .then(
+            select! { Token::Ident(s) => s.to_string() }
+                .separated_by(symbol(Token::Comma))
+                .collect::<Vec<_>>()
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+                .or_not()
+                .map(|opt| opt.unwrap_or_default()),
+        )
+        .or_not();
+
     let extern_decl = symbol(Token::Extern)
         .ignore_then(select! { Token::String(s) => s.to_string() })
+        .then(extern_as_clause)
         .then(
             extern_method
                 .separated_by(stmt_sep().or_not())
@@ -1304,10 +1317,18 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
-        .map_with(|(class_name, methods), e| Decl::ExternJava {
-            class_name,
-            methods,
-            span: to_span(e.span()),
+        .map_with(|((class_name, as_clause), methods), e| {
+            let (alias, type_params) = match as_clause {
+                Some((name, params)) => (Some(name), params),
+                None => (None, vec![]),
+            };
+            Decl::ExternJava {
+                class_name,
+                alias,
+                type_params,
+                methods,
+                span: to_span(e.span()),
+            }
         });
 
     // --- Combined ---

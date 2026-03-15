@@ -364,6 +364,8 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             return_type: Type::Unit,
         }],
         imported_extern_fns: vec![],
+        extern_java_types: vec![],
+        imported_extern_java_types: vec![],
         struct_decls: vec![],
         sum_decls: vec![(
             "Wrap".to_string(),
@@ -990,11 +992,11 @@ fun main() = {
     let dir = compile_typed_modules(&typed_modules);
     let test_output = javap_output(&dir.path().join("Test.class"), true);
     assert!(
-        test_output.contains("InvokeDynamic") && test_output.contains("apply:(Ljava/lang/Object;)LFun1;"),
+        test_output.contains("InvokeDynamic") && test_output.contains("apply:(Ljava/lang/Object;)Lkrypton/runtime/Fun1;"),
         "expected constrained function ref to capture a dictionary, javap output:\n{test_output}"
     );
     assert!(
-        test_output.contains("apply:()LFun1;"),
+        test_output.contains("apply:()Lkrypton/runtime/Fun1;"),
         "expected unconstrained function ref to keep zero-capture path, javap output:\n{test_output}"
     );
 }

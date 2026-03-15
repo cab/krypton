@@ -249,6 +249,9 @@ pub struct TypedModule {
     pub trait_method_map: HashMap<String, String>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
+    /// Extern java type bindings: (krypton_name, java_class_dotted).
+    pub extern_java_types: Vec<(String, String)>,
+    pub imported_extern_java_types: Vec<(String, String)>,
     pub struct_decls: Vec<(String, Vec<(String, TypeExpr)>)>,
     pub sum_decls: Vec<(String, Vec<String>, Vec<Variant>)>,
     /// Maps type_name → source_module_path for types originating from other modules.

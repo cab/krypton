@@ -62,10 +62,14 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
         },
         Decl::ExternJava {
             class_name,
+            alias,
+            type_params,
             methods,
             ..
         } => Decl::ExternJava {
             class_name: class_name.clone(),
+            alias: alias.clone(),
+            type_params: type_params.clone(),
             methods: methods
                 .iter()
                 .map(|m| ExternMethod {
