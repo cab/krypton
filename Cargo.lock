@@ -595,6 +595,7 @@ name = "krypton"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "insta",
  "krypton-codegen",
  "krypton-modules",
  "krypton-parser",

@@ -1,0 +1,33 @@
+---
+source: crates/krypton/tests/inspect_test.rs
+assertion_line: 47
+expression: output
+---
+   1 | extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+   2 | 
+   3 | type Handle = MkHandle(String)
+   4 | 
+   5 | impl Resource[Handle] {
+   6 |     fun close(h: ~Handle) -> Unit = println("closed")
+   7 | }
+   8 | 
+   9 | fun fallible() -> Result[String, Int] = Err("fail")
+       # : fn() -> Result[String, Int]
+  10 | 
+  11 | fun work() -> Result[String, Int] = {
+       # : fn() -> Result[String, Int]
+  12 |     let h: ~Handle = MkHandle("test")
+       # h : own Handle
+  13 |     println("opened")
+  14 |     let x = fallible()?;
+       # x : Int
+       ← close(h) inserted [early return]
+  15 |     Ok(x)
+  16 | }
+       ← close(h) inserted [scope exit]
+  17 | 
+  18 | fun main() = match work() {
+       # : fn() -> Unit
+  19 |     Ok(v) => println(v),
+  20 |     Err(e) => println("err"),
+  21 | }

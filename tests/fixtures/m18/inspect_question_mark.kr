@@ -1,0 +1,21 @@
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+
+type Handle = MkHandle(String)
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun fallible() -> Result[String, Int] = Err("fail")
+
+fun work() -> Result[String, Int] = {
+    let h: ~Handle = MkHandle("test")
+    println("opened")
+    let x = fallible()?;
+    Ok(x)
+}
+
+fun main() = match work() {
+    Ok(v) => println(v),
+    Err(e) => println("err"),
+}

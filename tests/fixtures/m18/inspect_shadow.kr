@@ -1,0 +1,16 @@
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Handle = MkHandle(String)
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun main() -> Unit = {
+    let h: ~Handle = MkHandle("1")
+    println("open1")
+    let h: ~Handle = MkHandle("2")
+    println("open2")
+}

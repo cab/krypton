@@ -1,3 +1,5 @@
+mod inspect;
+
 use clap::{Parser, Subcommand, ValueEnum};
 use krypton_modules::module_resolver::CompositeResolver;
 use std::path::PathBuf;
@@ -66,6 +68,10 @@ enum Commands {
     },
     /// Compile and run a file on the JVM
     Run {
+        file: String,
+    },
+    /// Inspect resource ownership: show close and move insertion points
+    Inspect {
         file: String,
     },
 }
@@ -371,6 +377,49 @@ fn main() {
 
             if timings {
                 print_timings(&phases);
+            }
+        }
+        Commands::Inspect { file } => {
+            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", file, e);
+                process::exit(1);
+            });
+
+            let (module, errors) = do_parse(&source);
+            if !errors.is_empty() {
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
+                eprint!("{}", diag);
+                process::exit(1);
+            }
+
+            let file_path = std::path::Path::new(&file);
+            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+            match krypton_typechecker::infer::infer_module(&module, &resolver) {
+                Ok(modules) => {
+                    let info = &modules[0];
+                    let output = inspect::render_inspect(
+                        &source,
+                        &info.auto_close,
+                        &info.functions,
+                        &info.fn_types,
+                    );
+                    print!("{}", output);
+                }
+                Err(e) => {
+                    // AC6: on error, print source with line numbers and show the error
+                    let lines: Vec<&str> = source.lines().collect();
+                    let width = lines.len().to_string().len().max(4);
+                    for (i, line) in lines.iter().enumerate() {
+                        println!("{:>width$} | {}", i + 1, line, width = width);
+                    }
+                    println!();
+                    let diag =
+                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                    eprint!("{}", diag);
+                    process::exit(1);
+                }
             }
         }
     }

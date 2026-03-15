@@ -220,7 +220,15 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     let consumed = collect_consumed_vars(arg);
                     for var_name in consumed {
                         if let Some(pos) = live.iter().position(|(n, _)| n == &var_name) {
-                            live.remove(pos);
+                            let (name, type_name) = live.remove(pos);
+                            self.info
+                                .consumptions
+                                .entry(arg.span)
+                                .or_default()
+                                .push(AutoCloseBinding {
+                                    name,
+                                    type_name,
+                                });
                         }
                     }
                 }
