@@ -415,49 +415,6 @@ pub(super) fn generate_variant_class(
     Ok(buffer)
 }
 
-/// Check if a type expression references any of the given type parameters (directly or in App args).
-
-pub(super) fn generate_fun_interface(arity: u8) -> Result<Vec<u8>, CodegenError> {
-    let class_name = format!("Fun{arity}");
-    let mut cp = ConstantPool::default();
-
-    let this_class = cp.add_class(&class_name)?;
-    let object_class = cp.add_class("java/lang/Object")?;
-
-    // Build apply method descriptor: (Object, ..., Object)Object
-    let mut apply_desc = String::from("(");
-    for _ in 0..arity {
-        apply_desc.push_str("Ljava/lang/Object;");
-    }
-    apply_desc.push_str(")Ljava/lang/Object;");
-
-    let apply_name = cp.add_utf8("apply")?;
-    let apply_desc_idx = cp.add_utf8(&apply_desc)?;
-
-    let apply_method = Method {
-        access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
-        name_index: apply_name,
-        descriptor_index: apply_desc_idx,
-        attributes: vec![],
-    };
-
-    let class_file = ClassFile {
-        version: JAVA_21,
-        access_flags: ClassAccessFlags::PUBLIC
-            | ClassAccessFlags::INTERFACE
-            | ClassAccessFlags::ABSTRACT,
-        constant_pool: cp,
-        this_class,
-        super_class: object_class,
-        methods: vec![apply_method],
-        ..Default::default()
-    };
-
-    let mut buffer = Vec::new();
-    class_file.to_bytes(&mut buffer)?;
-    Ok(buffer)
-}
-
 /// Generate a trait interface class file (e.g., `Eq.class`).
 /// All methods take and return Object (type erasure).
 pub(super) fn generate_trait_interface_class(
