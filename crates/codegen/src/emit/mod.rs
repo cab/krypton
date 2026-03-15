@@ -1,5 +1,6 @@
 mod compiler;
 mod class_gen;
+mod intrinsics;
 
 use std::collections::HashMap;
 
@@ -114,11 +115,6 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
         JvmType::Ref => FieldType::Object("java/lang/String".to_string()),
         JvmType::StructRef(_) => FieldType::Object("java/lang/Object".to_string()),
     }
-}
-
-/// Check if a function name is a compiler intrinsic.
-fn is_intrinsic(name: &str) -> bool {
-    matches!(name, "panic" | "__krypton_intrinsic")
 }
 
 fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmType, CodegenError> {
@@ -669,63 +665,19 @@ fn compile_module_inner(
         });
     }
 
-    // Generate built-in Show instance classes for primitive types
+    // Generate built-in trait instance classes from the intrinsics registry
     {
-        let q_show = qualify_type("Show");
-        let show_primitives = [
-            ("Int", "(J)Ljava/lang/String;", "java/lang/Long", "toString"),
-            ("Float", "(D)Ljava/lang/String;", "java/lang/Double", "toString"),
-            ("Bool", "(Z)Ljava/lang/String;", "java/lang/Boolean", "toString"),
-            ("String", "(Ljava/lang/String;)Ljava/lang/String;", "", ""),
-        ];
+        let registry = intrinsics::IntrinsicRegistry::new();
+        for entry in registry.iter() {
+            if compiler.traits.trait_dispatch.contains_key(entry.trait_name) {
+                let q_trait = qualify_type(entry.trait_name);
+                let class_name = format!("{q_trait}${}", entry.type_name);
 
-        for (type_name, _static_desc, _box_class, _method_name) in &show_primitives {
-            if compiler.traits.trait_dispatch.contains_key("Show") {
-                let show_class_name = format!("{q_show}${type_name}");
-                let show_bytes = generate_builtin_show_instance_class(&show_class_name, type_name, &q_show)?;
-                result_classes.push((show_class_name.clone(), show_bytes));
-
-                let inst_class_idx = compiler.cp.add_class(&show_class_name)?;
-                let inst_desc = format!("L{show_class_name};");
-                compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
-                let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
-                compiler.traits.instance_singletons.insert(
-                    ("Show".to_string(), type_name.to_string()),
-                    InstanceSingletonInfo { instance_field_ref },
-                );
-            }
-        }
-    }
-
-    // Generate built-in trait instance classes (Add$Int, Sub$Int, Eq$String, etc.)
-    {
-        let builtin_instances: &[(&str, &str, &str)] = &[
-            ("Semigroup", "Int", "combine"),
-            ("Sub", "Int", "sub"),
-            ("Mul", "Int", "mul"),
-            ("Div", "Int", "div"),
-            ("Neg", "Int", "neg"),
-            ("Eq",  "Int", "eq"),
-            ("Ord", "Int", "lt"),
-            ("Semigroup", "Float", "combine"),
-            ("Sub", "Float", "sub"),
-            ("Mul", "Float", "mul"),
-            ("Div", "Float", "div"),
-            ("Neg", "Float", "neg"),
-            ("Eq",  "Float", "eq"),
-            ("Ord", "Float", "lt"),
-            ("Semigroup", "String", "combine"),
-            ("Eq",  "String", "eq"),
-            ("Eq",  "Bool", "eq"),
-        ];
-
-        for (trait_name, type_name, method_name) in builtin_instances {
-            if compiler.traits.trait_dispatch.contains_key(*trait_name) {
-                let q_trait = qualify_type(trait_name);
-                let class_name = format!("{q_trait}${type_name}");
-                let bytes = generate_builtin_trait_instance_class(
-                    &class_name, &q_trait, trait_name, method_name, type_name,
-                )?;
+                let bytes = if entry.is_show() {
+                    generate_builtin_show_instance_class(&class_name, &q_trait, entry)?
+                } else {
+                    generate_builtin_trait_instance_class(&class_name, &q_trait, entry)?
+                };
                 result_classes.push((class_name.clone(), bytes));
 
                 let inst_class_idx = compiler.cp.add_class(&class_name)?;
@@ -733,7 +685,7 @@ fn compile_module_inner(
                 compiler.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
                 let instance_field_ref = compiler.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
                 compiler.traits.instance_singletons.insert(
-                    (trait_name.to_string(), type_name.to_string()),
+                    (entry.trait_name.to_string(), entry.type_name.to_string()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             }

@@ -12,7 +12,7 @@ use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags, ReferenceKind,
 };
 
-use super::{is_intrinsic, jvm_type_to_field_descriptor, type_to_jvm_basic, type_to_name, JAVA_21};
+use super::{jvm_type_to_field_descriptor, type_to_jvm_basic, type_to_name, JAVA_21};
 
 /// Tracks the JVM type of a value on the operand stack.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2168,8 +2168,8 @@ impl Compiler {
             }
         };
 
-        // Check if this is an intrinsic function call
-        if is_intrinsic(name) {
+        // Check if this is a call-site intrinsic (panic)
+        if name == "panic" {
             return self.compile_intrinsic(name, args, result_ty);
         }
 
