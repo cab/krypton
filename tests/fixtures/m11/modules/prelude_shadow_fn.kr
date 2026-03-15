@@ -1,0 +1,4 @@
+# expect: ok
+import custom_println.{println}
+
+fun main() = println(42)

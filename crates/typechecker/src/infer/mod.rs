@@ -1423,6 +1423,13 @@ impl ImportContext {
         gen: &mut TypeVarGen,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
+        // Explicit import shadows any prelude entry for the same name
+        if prelude_imported_names.contains(&name) {
+            self.imported_fn_types.retain(|(n, _, _, _)| n != &name);
+            self.imported_fn_constraints.remove(&name);
+            self.fn_provenance_map.remove(&name);
+        }
+
         // Check for same-name + same-first-param from non-prelude imports
         if !prelude_imported_names.contains(&name) {
             let new_first_param = Self::extract_first_param(&scheme);
