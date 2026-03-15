@@ -641,7 +641,24 @@ pub(super) struct Compiler {
     pub(super) auto_close: krypton_typechecker::typed_ast::AutoCloseInfo,
 }
 
+/// Saved outer builder state for nested method compilation.
+pub(super) struct MethodScope {
+    saved: BytecodeBuilder,
+}
+
 impl Compiler {
+    /// Stash the current builder and install a fresh one for compiling a nested method.
+    fn push_method_scope(&mut self) -> MethodScope {
+        let refs = self.builder.refs.clone();
+        let saved = std::mem::replace(&mut self.builder, BytecodeBuilder::new(refs));
+        MethodScope { saved }
+    }
+
+    /// Restore the outer builder after nested method compilation.
+    fn pop_method_scope(&mut self, scope: MethodScope) {
+        self.builder = scope.saved;
+    }
+
     fn is_abstract_type_ctor(ty: &Type) -> bool {
         match ty {
             Type::Var(_) => true,
@@ -1864,8 +1881,7 @@ impl Compiler {
         }
         bridge_desc.push_str(")Ljava/lang/Object;");
 
-        let refs = self.builder.refs.clone();
-        let saved = std::mem::replace(&mut self.builder, BytecodeBuilder::new(refs));
+        let scope = self.push_method_scope();
         self.builder.next_local = (dict_requirements.len() + param_jvm_types.len()) as u16;
 
         for _ in &dict_requirements {
@@ -2020,7 +2036,7 @@ impl Compiler {
             attributes: vec![self.builder.finish_method()],
         });
 
-        self.builder = saved;
+        self.pop_method_scope(scope);
 
         if !dict_requirements.is_empty() {
             let declared_param_types = self
@@ -3056,8 +3072,7 @@ impl Compiler {
         captures.retain(|(name, _, _)| seen.insert(name.clone()));
 
         // Save compiler state for the outer method
-        let refs = self.builder.refs.clone();
-        let saved = std::mem::replace(&mut self.builder, BytecodeBuilder::new(refs));
+        let scope = self.push_method_scope();
 
         // Register captured vars as first params (all boxed to Object)
         for (cap_name, _, cap_type) in &captures {
@@ -3268,7 +3283,7 @@ impl Compiler {
         self.lambda.lambda_methods.push(lambda_method);
 
         // Restore compiler state
-        self.builder = saved;
+        self.pop_method_scope(scope);
 
         // Now set up invokedynamic in the outer method
 
