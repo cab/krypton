@@ -1,0 +1,8 @@
+# expect: ok
+import core/list.{List, Cons, Nil, map}
+
+fun map(x: Int, f: (Int) -> Int) -> Int = f(x)
+
+fun double(x: Int) -> Int = x + x
+
+fun main() = 5.map(x -> double(x))

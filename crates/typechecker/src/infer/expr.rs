@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Expr, Lit, Span, UnaryOp};
 
 use crate::type_registry::{self, TypeRegistry};
-use crate::typed_ast::{TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{FnOrigin, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -20,6 +20,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
     pub(super) type_param_arity: &'a HashMap<String, usize>,
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
+    pub(super) imported_fn_types: &'a [(String, TypeScheme, super::FnOrigin, String)],
 }
 
 impl<'a> InferenceContext<'a> {
@@ -42,6 +43,32 @@ impl<'a> InferenceContext<'a> {
         })?;
         type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg)
             .map_err(|e| super::spanned(e, span))
+    }
+
+    /// Find overloaded candidates for a function name.
+    /// Returns owned entries (scheme, origin, module) for entries from distinct non-prelude modules.
+    /// Returns empty if fewer than 2 distinct modules provide the name (no overload).
+    /// Prelude entries are excluded: if the user explicitly imports a name that the prelude
+    /// also provides, that's a shadow, not an overload.
+    fn find_overloaded_candidates(&self, name: &str) -> Vec<(TypeScheme, FnOrigin, String)> {
+        let all: Vec<_> = self.imported_fn_types
+            .iter()
+            .filter(|(n, _, _, _)| n == name)
+            .map(|(_, scheme, origin, module)| (scheme.clone(), origin.clone(), module.clone()))
+            .collect();
+        // Deduplicate by module — only flag overload if distinct modules
+        let mut seen_modules = HashSet::new();
+        let mut candidates = Vec::new();
+        for (scheme, origin, module) in all {
+            if seen_modules.insert(module.clone()) {
+                candidates.push((scheme, origin, module));
+            }
+        }
+        if candidates.len() > 1 {
+            candidates
+        } else {
+            Vec::new()
+        }
     }
 
     pub fn unwrap_own_fn(&self, ty: &Type) -> Type {
@@ -144,6 +171,18 @@ impl<'a> InferenceContext<'a> {
 
             Expr::Var { name, span, .. } => match self.env.lookup(name) {
                 Some(scheme) => {
+                    // Check for ambiguous overloaded name (bare reference)
+                    let candidates = self.find_overloaded_candidates(name);
+                    if candidates.len() > 1 {
+                        let modules: Vec<String> = candidates.iter().map(|(_, _, m)| m.clone()).collect();
+                        return Err(super::spanned(
+                            TypeError::AmbiguousCall {
+                                name: name.clone(),
+                                modules,
+                            },
+                            *span,
+                        ));
+                    }
                     let scheme = scheme.clone();
                     let ty = scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if !matches!(&ty, Type::Fn(_, _))
@@ -237,7 +276,7 @@ impl<'a> InferenceContext<'a> {
             }
 
             Expr::App {
-                func, args, span, ..
+                func, args, is_ufcs, span, ..
             } => {
                 let qualified_call = match (func.as_ref(), args.first()) {
                     (
@@ -384,6 +423,81 @@ impl<'a> InferenceContext<'a> {
                                     *span,
                                 );
                             }
+                        }
+                    }
+                }
+
+                // UFCS same-name resolution: check for overloaded imported functions
+                if let Expr::Var { name, .. } = func.as_ref() {
+                    let candidates = self.find_overloaded_candidates(name);
+                    if candidates.len() > 1 {
+                        // Check if all candidates are trait methods — if so, skip and let typeclass dispatch handle it
+                        let all_trait_methods = candidates.iter().all(|(_, origin, _)| matches!(origin, FnOrigin::TraitMethod { .. }));
+                        if all_trait_methods {
+                            // Fall through to normal path
+                        } else if !is_ufcs {
+                            // Prefix call with ambiguous name → error
+                            let modules: Vec<String> = candidates.into_iter().map(|(_, _, m)| m).collect();
+                            return Err(super::spanned(
+                                TypeError::AmbiguousCall {
+                                    name: name.clone(),
+                                    modules,
+                                },
+                                *span,
+                            ));
+                        } else {
+                            // UFCS dot-call: resolve by receiver type
+                            let recv_typed = self.infer_expr_inner(&args[0], None)?;
+                            let recv_ty = self.subst.apply(&recv_typed.ty);
+
+                            let mut matches_found: Vec<(usize, Substitution, Type, FnOrigin, String)> = Vec::new();
+                            for (i, (scheme, origin, module)) in candidates.iter().enumerate() {
+                                let mut trial_subst = self.subst.clone();
+                                let trial_ty = scheme.instantiate(&mut || self.gen.fresh());
+                                if let Type::Fn(params, _) = &trial_ty {
+                                    if let Some(first_param) = params.first() {
+                                        if unify(first_param, &recv_ty, &mut trial_subst).is_ok() {
+                                            matches_found.push((i, trial_subst, trial_ty, origin.clone(), module.clone()));
+                                        }
+                                    }
+                                }
+                            }
+
+                            if matches_found.len() == 1 {
+                                let (_, winning_subst, func_ty, origin, _) = matches_found.remove(0);
+                                if matches!(origin, FnOrigin::TraitMethod { .. }) {
+                                    // Single match is a trait method → fall through to normal
+                                    // typeclass dispatch (don't resolve via UFCS)
+                                } else {
+                                    // Single free function match: use this candidate
+                                    *self.subst = winning_subst;
+                                    let func_typed = TypedExpr {
+                                        kind: TypedExprKind::Var(name.clone()),
+                                        ty: func_ty.clone(),
+                                        span: *span,
+                                    };
+                                    // Pass all args (including receiver) — the function type
+                                    // includes the receiver as its first parameter.
+                                    return self.infer_call_args_and_unify(
+                                        func_typed,
+                                        &func_ty,
+                                        args,
+                                        false,
+                                        *span,
+                                    );
+                                }
+                            } else if matches_found.len() > 1 {
+                                // Multiple matches → ambiguous
+                                let modules: Vec<String> = matches_found.into_iter().map(|(_, _, _, _, m)| m).collect();
+                                return Err(super::spanned(
+                                    TypeError::AmbiguousCall {
+                                        name: name.clone(),
+                                        modules,
+                                    },
+                                    *span,
+                                ));
+                            }
+                            // 0 matches: fall through to normal path (will error naturally)
                         }
                     }
                 }

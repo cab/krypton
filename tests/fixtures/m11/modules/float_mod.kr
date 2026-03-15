@@ -1,0 +1,1 @@
+pub fun abs(x: Float) -> Float = if x < 0.0 { 0.0 - x } else { x }

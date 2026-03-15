@@ -1,0 +1,5 @@
+# expect: error E0509
+import int_mod.{abs}
+import float_mod.{abs}
+
+fun main() = abs(-5)

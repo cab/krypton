@@ -675,6 +675,7 @@ pub fn infer_expr(
         type_param_map: &empty_tpm,
         type_param_arity: &empty_tpa,
         qualified_modules: &empty_qm,
+        imported_fn_types: &[],
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -1389,7 +1390,7 @@ pub fn infer_module_single(
 
 /// Grouped import state: the 4 maps that must stay in sync when binding/shadowing imports.
 pub(crate) struct ImportContext {
-    pub(super) imported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    pub(super) imported_fn_types: Vec<(String, TypeScheme, FnOrigin, String)>,
     pub(super) fn_provenance_map: HashMap<String, (String, String)>,
     pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
     pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
@@ -1408,6 +1409,8 @@ impl ImportContext {
     }
 
     /// Atomically bind an imported function: env + fn_types + provenance.
+    /// Returns an error if a same-name, same-first-param import already exists
+    /// from a different (non-prelude) module.
     fn bind_import(
         &mut self,
         env: &mut TypeEnv,
@@ -1416,10 +1419,58 @@ impl ImportContext {
         origin: FnOrigin,
         source_module: String,
         original_name: String,
-    ) {
+        prelude_imported_names: &HashSet<String>,
+        gen: &mut TypeVarGen,
+        span: Span,
+    ) -> Result<(), SpannedTypeError> {
+        // Check for same-name + same-first-param from non-prelude imports
+        if !prelude_imported_names.contains(&name) {
+            let new_first_param = Self::extract_first_param(&scheme);
+            for (existing_name, existing_scheme, _, existing_module) in &self.imported_fn_types {
+                if existing_name == &name
+                    && existing_module != &source_module
+                    && !prelude_imported_names.contains(existing_name)
+                {
+                    let existing_first = Self::extract_first_param(existing_scheme);
+                    if let (Some(_), Some(_)) = (&new_first_param, &existing_first) {
+                        let mut trial_subst = Substitution::new();
+                        let new_inst = scheme.instantiate(&mut || gen.fresh());
+                        let old_inst = existing_scheme.instantiate(&mut || gen.fresh());
+                        let new_fp = match &new_inst {
+                            Type::Fn(params, _) => params.first().cloned(),
+                            _ => None,
+                        };
+                        let old_fp = match &old_inst {
+                            Type::Fn(params, _) => params.first().cloned(),
+                            _ => None,
+                        };
+                        if let (Some(nfp), Some(ofp)) = (new_fp, old_fp) {
+                            if unify(&nfp, &ofp, &mut trial_subst).is_ok() {
+                                return Err(spanned(
+                                    TypeError::AmbiguousCall {
+                                        name: name.clone(),
+                                        modules: vec![existing_module.clone(), source_module.clone()],
+                                    },
+                                    span,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         env.bind_with_provenance(name.clone(), scheme.clone(), source_module.clone());
-        self.imported_fn_types.push((name.clone(), scheme, origin));
+        self.imported_fn_types.push((name.clone(), scheme, origin, source_module.clone()));
         self.fn_provenance_map.insert(name, (source_module, original_name));
+        Ok(())
+    }
+
+    /// Extract the first parameter type from a type scheme (if it's a function type).
+    fn extract_first_param(scheme: &TypeScheme) -> Option<Type> {
+        match &scheme.ty {
+            Type::Fn(params, _) => params.first().cloned(),
+            _ => None,
+        }
     }
 
     /// Bind a hidden (qualified) function: fn_types + provenance, no env bind.
@@ -1430,7 +1481,8 @@ impl ImportContext {
         origin: FnOrigin,
         provenance: (String, String),
     ) {
-        self.imported_fn_types.push((name.clone(), scheme, origin));
+        let source_module = provenance.0.clone();
+        self.imported_fn_types.push((name.clone(), scheme, origin, source_module));
         self.fn_provenance_map.insert(name, provenance);
     }
 
@@ -1457,7 +1509,7 @@ impl ImportContext {
     fn shadow(&mut self, env: &mut TypeEnv, name: &str) {
         env.unbind(name);
         self.imported_fn_constraints.remove(name);
-        self.imported_fn_types.retain(|(n, _, _)| n != name);
+        self.imported_fn_types.retain(|(n, _, _, _)| n != name);
         self.fn_provenance_map.remove(name);
     }
 }
@@ -1627,7 +1679,10 @@ impl ModuleInferenceState {
         let mut instance_defs = instance_defs;
         instance_defs.extend(derived_instance_defs);
 
-        let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imports.imported_fn_types;
+        let mut results: Vec<(String, TypeScheme, FnOrigin)> = self.imports.imported_fn_types
+            .into_iter()
+            .map(|(name, scheme, origin, _)| (name, scheme, origin))
+            .collect();
         results.extend(constructor_schemes.iter().map(|(n, s)| (n.clone(), s.clone(), FnOrigin::Regular)));
         results.extend(
             fn_decls
@@ -2647,6 +2702,7 @@ pub(crate) fn infer_module_inner(
                     type_param_map: &type_param_map,
                     type_param_arity: &type_param_arity,
                     qualified_modules: &state.qualified_modules,
+                    imported_fn_types: &state.imports.imported_fn_types,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
@@ -2848,6 +2904,7 @@ pub(crate) fn infer_module_inner(
                         type_param_map: &impl_method_tpm,
                         type_param_arity: &impl_method_tpa,
                         qualified_modules: &state.qualified_modules,
+                        imported_fn_types: &state.imports.imported_fn_types,
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };

@@ -662,6 +662,7 @@ where
                     Expr::App {
                         func: Box::new(lhs),
                         args,
+                        is_ufcs: false,
                         span: full_span,
                     }
                 }
@@ -703,6 +704,7 @@ where
                     Expr::App {
                         func: Box::new(func),
                         args,
+                        is_ufcs: true,
                         span: full_span,
                     }
                 }

@@ -134,6 +134,7 @@ pub enum Expr {
     App {
         func: Box<Expr>,
         args: Vec<Expr>,
+        is_ufcs: bool,
         span: Span,
     },
     TypeApp {

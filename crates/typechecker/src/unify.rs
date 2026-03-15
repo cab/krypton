@@ -42,6 +42,7 @@ pub enum TypeErrorCode {
     E0105, // Resource branch leak (consumed in some branches but not all)
     E0106, // Qualifier bound violation (shared + ~T)
     E0012, // Reserved name
+    E0509, // Ambiguous call (multiple same-named imports)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -82,6 +83,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0105 => write!(f, "E0105"),
             TypeErrorCode::E0106 => write!(f, "E0106"),
             TypeErrorCode::E0012 => write!(f, "E0012"),
+            TypeErrorCode::E0509 => write!(f, "E0509"),
         }
     }
 }
@@ -224,6 +226,10 @@ pub enum TypeError {
         type_var: String,
         param_name: String,
     },
+    AmbiguousCall {
+        name: String,
+        modules: Vec<String>,
+    },
 }
 
 impl TypeError {
@@ -272,6 +278,7 @@ impl TypeError {
             TypeError::ResourceBranchLeak { .. } => TypeErrorCode::E0105,
             TypeError::QualifierBoundViolation { .. } => TypeErrorCode::E0106,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
+            TypeError::AmbiguousCall { .. } => TypeErrorCode::E0509,
         }
     }
 
@@ -436,6 +443,7 @@ impl TypeError {
             TypeError::QualifierBoundViolation { .. } => {
                 Some("remove the `~` from the parameter type, or remove the `shared` bound".to_string())
             }
+            TypeError::AmbiguousCall { .. } => None,
         }
     }
 }
@@ -644,6 +652,13 @@ impl fmt::Display for TypeError {
                     f,
                     "qualifier bound violation: type variable `{}` is constrained to `shared` but parameter `{}` uses `~{}`",
                     type_var, param_name, type_var
+                )
+            }
+            TypeError::AmbiguousCall { name, modules } => {
+                write!(
+                    f,
+                    "ambiguous call to `{}`: multiple functions named `{}` are in scope (from modules: {}); use a qualified call or import alias to disambiguate",
+                    name, name, modules.join(", ")
                 )
             }
         }

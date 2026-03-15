@@ -196,9 +196,10 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             else_: Box::new(zero_spans_expr(else_)),
             span: (0, 0),
         },
-        Expr::App { func, args, .. } => Expr::App {
+        Expr::App { func, args, is_ufcs, .. } => Expr::App {
             func: Box::new(zero_spans_expr(func)),
             args: args.iter().map(zero_spans_expr).collect(),
+            is_ufcs: *is_ufcs,
             span: (0, 0),
         },
         Expr::TypeApp {

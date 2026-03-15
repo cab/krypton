@@ -1,0 +1,1 @@
+pub fun compute(n: Int) -> Int = n + 2
