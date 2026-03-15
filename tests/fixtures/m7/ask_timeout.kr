@@ -1,0 +1,18 @@
+# expect: output timeout
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+import core/actor.{Mailbox, Ref, spawn, ask, Timeout}
+import core/result.{Result, Ok, Err}
+
+type Msg = Get(Ref[Int])
+
+fun dead_actor(mb: Mailbox[Msg]) = ()
+
+fun main() {
+  let target = spawn(dead_actor)
+  match ask(target, Get, 100) {
+    Ok(n) => println(n),
+    Err(Timeout) => println("timeout"),
+  }
+}

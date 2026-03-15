@@ -1,0 +1,21 @@
+# expect: output 42
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+import core/actor.{Mailbox, Ref, spawn, send, receive, ask, Timeout}
+import core/result.{Result, Ok, Err}
+
+type Msg = Get(Ref[Int])
+
+fun value_actor(mb: Mailbox[Msg]) =
+  match receive(mb) {
+    Get(sender) => send(sender, 42),
+  }
+
+fun main() {
+  let target = spawn(value_actor)
+  match ask(target, Get, 5000) {
+    Ok(n) => println(n),
+    Err(Timeout) => println("timeout"),
+  }
+}

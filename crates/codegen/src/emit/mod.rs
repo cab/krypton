@@ -129,10 +129,12 @@ fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmTy
             "Bool" => Ok(JvmType::Int),
             "String" => Ok(JvmType::Ref),
             "Unit" => Ok(JvmType::Int),
-            // Any other named type (struct, opaque, Object) maps to Object ref
+            // Any other named type (struct, opaque, Object) maps to Object ref.
+            // Variant fields are stored as Ljava/lang/Object; at JVM level
+            // (see jvm_type_to_field_descriptor), so we use object_class here.
             _ => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
         },
-        // App types (e.g. Ref[Int], Mailbox[Msg]) are struct references
+        // App types (e.g. Ref[Int], Mailbox[Msg]) — same as above
         TypeExpr::App { .. } => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
         _ => Err(CodegenError::TypeError(format!(
             "unsupported type expr in struct field: {texpr:?}"

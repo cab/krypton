@@ -257,7 +257,7 @@ impl LambdaState {
         if self.fun_classes.contains_key(&arity) {
             return Ok(());
         }
-        let class_name = format!("Fun{arity}");
+        let class_name = format!("krypton/runtime/Fun{arity}");
         let class_idx = cp.add_class(&class_name)?;
         let class_desc = format!("L{class_name};");
         class_descriptors.insert(class_idx, class_desc);
@@ -780,6 +780,9 @@ impl Compiler {
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
+                if name == "Object" {
+                    return Ok(JvmType::StructRef(self.builder.refs.object_class));
+                }
                 if name == "Vec" {
                     if let Some(info) = &self.vec_info {
                         return Ok(JvmType::StructRef(info.class_index));
@@ -1809,7 +1812,7 @@ impl Compiler {
             arguments: vec![sam_type, bridge_handle, instantiated_type],
         });
 
-        let fun_class_name = format!("Fun{arity}");
+        let fun_class_name = format!("krypton/runtime/Fun{arity}");
         let mut callsite_desc = String::from("(");
         for _ in 0..capture_count {
             callsite_desc.push_str("Ljava/lang/Object;");
@@ -1999,6 +2002,12 @@ impl Compiler {
                 self.load_bridge_arg(i as u16, actual_type);
                 if *is_erased {
                     self.builder.box_if_needed(actual_type);
+                } else if matches!(
+                    (field_type, actual_type),
+                    (JvmType::StructRef(_), JvmType::StructRef(_))
+                ) {
+                    // All StructRef types are Ljava/lang/Object; at JVM level,
+                    // so different StructRef indices are always compatible.
                 } else if *field_type != actual_type {
                     return Err(CodegenError::TypeError(format!(
                         "variant reference `{name}` expected bridge arg type {field_type:?}, got {actual_type:?}"
@@ -3318,7 +3327,7 @@ impl Compiler {
         // 5. Build the call site descriptor
         // If no captures: ()LFunN;
         // If captures: (Object, ...)LFunN;  (one Object per capture)
-        let fun_class_name = format!("Fun{arity}");
+        let fun_class_name = format!("krypton/runtime/Fun{arity}");
         let mut callsite_desc = String::from("(");
         for _ in 0..captures.len() {
             callsite_desc.push_str("Ljava/lang/Object;");
@@ -3568,10 +3577,14 @@ impl Compiler {
             max_next_local = self.builder.next_local;
         }
 
-        // after_match: record frame with pre-match locals (arm-local bindings are out of scope
-        // and different arms may have different types in the same slots)
+        // after_match: record frame with pre-match locals and the match result on stack
+        // (arm-local bindings are out of scope and different arms may have different types)
         let after_match = self.builder.current_offset();
         self.builder.frame.local_types = local_types_at_match.clone();
+        self.builder.frame.stack_types = stack_at_match.clone();
+        if let Some(rt) = result_type {
+            self.builder.push_jvm_type(rt);
+        }
         self.builder.frame.record_frame(after_match);
 
         // Patch all goto instructions
@@ -3858,52 +3871,62 @@ impl Compiler {
                             self.builder.push_jvm_type(*field_jvm_type);
                         }
 
-                        if let TypedPattern::Var {
-                            name: var_name,
-                            ty: var_tc_type,
-                            ..
-                        } = sub_pat
-                        {
-                            // For erased (generic) fields, resolve the actual JVM type
-                            // from the typechecker type on the pattern variable.
-                            let actual_type = if *is_erased {
-                                self.type_to_jvm(var_tc_type)
-                                    .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
-                            } else {
-                                *field_jvm_type
-                            };
+                        match sub_pat {
+                            TypedPattern::Var {
+                                name: var_name,
+                                ty: var_tc_type,
+                                ..
+                            } => {
+                                // For erased (generic) fields, resolve the actual JVM type
+                                // from the typechecker type on the pattern variable.
+                                let actual_type = if *is_erased {
+                                    self.type_to_jvm(var_tc_type)
+                                        .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
+                                } else {
+                                    *field_jvm_type
+                                };
 
-                            // If the field was erased, cast/unbox from Object to the actual type.
-                            if *is_erased {
-                                match actual_type {
-                                    JvmType::StructRef(class_idx)
-                                        if class_idx != self.builder.refs.object_class =>
-                                    {
-                                        // Cast Object to the correct struct class.
-                                        self.builder.frame.pop_type();
-                                        self.builder.frame.push_type(VerificationType::Object {
-                                            cpool_index: self.builder.refs.object_class,
-                                        });
-                                        self.builder.emit(Instruction::Checkcast(class_idx));
-                                        self.builder.frame.pop_type();
-                                        self.builder.frame.push_type(VerificationType::Object {
-                                            cpool_index: class_idx,
-                                        });
+                                // If the field was erased, cast/unbox from Object to the actual type.
+                                if *is_erased {
+                                    match actual_type {
+                                        JvmType::StructRef(class_idx)
+                                            if class_idx != self.builder.refs.object_class =>
+                                        {
+                                            self.builder.frame.pop_type();
+                                            self.builder.frame.push_type(VerificationType::Object {
+                                                cpool_index: self.builder.refs.object_class,
+                                            });
+                                            self.builder.emit(Instruction::Checkcast(class_idx));
+                                            self.builder.frame.pop_type();
+                                            self.builder.frame.push_type(VerificationType::Object {
+                                                cpool_index: class_idx,
+                                            });
+                                        }
+                                        JvmType::Long | JvmType::Double | JvmType::Int => {
+                                            self.builder.frame.pop_type();
+                                            self.builder.frame.push_type(VerificationType::Object {
+                                                cpool_index: self.builder.refs.object_class,
+                                            });
+                                            self.builder.unbox_if_needed(actual_type);
+                                        }
+                                        _ => {}
                                     }
-                                    JvmType::Long | JvmType::Double | JvmType::Int => {
-                                        // Unbox Object to primitive.
-                                        self.builder.frame.pop_type();
-                                        self.builder.frame.push_type(VerificationType::Object {
-                                            cpool_index: self.builder.refs.object_class,
-                                        });
-                                        self.builder.unbox_if_needed(actual_type);
-                                    }
-                                    _ => {}
                                 }
-                            }
 
-                            let var_slot = self.builder.alloc_local(var_name.clone(), actual_type);
-                self.builder.emit_store(var_slot, actual_type);
+                                let var_slot = self.builder.alloc_local(var_name.clone(), actual_type);
+                                self.builder.emit_store(var_slot, actual_type);
+                            }
+                            TypedPattern::Constructor { args: sub_args, .. } if sub_args.is_empty() => {
+                                // Zero-arg constructor pattern (e.g., Timeout) — value already
+                                // verified by type; just pop the extracted field.
+                                self.builder.emit(Instruction::Pop);
+                                self.builder.frame.pop_type();
+                            }
+                            _ => {
+                                // Other sub-patterns: pop the value (not yet handled)
+                                self.builder.emit(Instruction::Pop);
+                                self.builder.frame.pop_type();
+                            }
                         }
                     }
                 }
@@ -4325,7 +4348,6 @@ impl Compiler {
         };
         self.builder.emit(ret_instr);
 
-        // Build the method descriptor string for the constant pool
         let descriptor = self.types.build_descriptor(&param_types, return_type);
         let name_idx = self.cp.add_utf8(&decl.name)?;
         let desc_idx = self.cp.add_utf8(&descriptor)?;

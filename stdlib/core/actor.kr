@@ -1,5 +1,6 @@
 # core/actor — Actor primitives
 import core/option.{Option}
+import core/result.{Result}
 
 extern "krypton.runtime.Mailbox" as Mailbox[m] {}
 extern "krypton.runtime.Ref" as Ref[m] {}
@@ -11,7 +12,12 @@ extern "krypton.runtime.KryptonActors" {
     fun raw_receive_timeout(Object, Int) -> Object
     fun raw_actor_ref(Object) -> Object
     fun raw_mailbox_size(Object) -> Int
+    fun raw_create_mailbox() -> Object
+    fun raw_adapter(Object, Object) -> Object
+    fun raw_ask(Object, Object, Int) -> Object
 }
+
+pub type Timeout = Timeout
 
 pub fun spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m] = raw_spawn(f)
 pub fun send[m](r: Ref[m], msg: m) -> Unit = raw_send(r, msg)
@@ -19,3 +25,6 @@ pub fun receive[m](mb: Mailbox[m]) -> m = raw_receive(mb)
 pub fun receive_timeout[m](mb: Mailbox[m], ms: Int) -> Option[m] = raw_receive_timeout(mb, ms)
 pub fun actor_ref[m](mb: Mailbox[m]) -> Ref[m] = raw_actor_ref(mb)
 pub fun mailbox_size[m](mb: Mailbox[m]) -> Int = raw_mailbox_size(mb)
+pub fun mailbox[m]() -> Mailbox[m] = raw_create_mailbox()
+pub fun adapter[m, r](ref: Ref[m], wrapper: (r) -> m) -> Ref[r] = raw_adapter(ref, wrapper)
+pub fun ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Result[Timeout, r] = raw_ask(target, wrapper, timeout)

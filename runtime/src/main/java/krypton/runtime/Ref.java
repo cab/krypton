@@ -1,13 +1,18 @@
 package krypton.runtime;
 
 public final class Ref<M> {
-    private final Mailbox<M> mailbox;
+    private final Fun1 sendFn;
 
+    @SuppressWarnings("unchecked")
     Ref(Mailbox<M> mailbox) {
-        this.mailbox = mailbox;
+        this.sendFn = msg -> { mailbox.enqueue((M) msg); return null; };
+    }
+
+    Ref(Fun1 sendFn) {
+        this.sendFn = sendFn;
     }
 
     public void send(M msg) {
-        mailbox.enqueue(msg);
+        sendFn.apply(msg);
     }
 }
