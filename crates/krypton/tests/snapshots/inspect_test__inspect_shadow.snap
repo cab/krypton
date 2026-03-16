@@ -1,26 +1,22 @@
 ---
 source: crates/krypton/tests/inspect_test.rs
-assertion_line: 41
 expression: output
 ---
-   1 | extern "krypton.runtime.KryptonIO" {
-   2 |     fun println(Object) -> Unit
-   3 | }
-   4 | 
-   5 | type Handle = MkHandle(String)
-   6 | 
-   7 | impl Resource[Handle] {
-   8 |     fun close(h: ~Handle) -> Unit = println("closed")
-   9 | }
-  10 | 
-  11 | fun main() -> Unit = {
-       # : fn() -> Unit
-  12 |     let h: ~Handle = MkHandle("1")
-       # h : own Handle
-  13 |     println("open1")
-  14 |     let h: ~Handle = MkHandle("2")
-       # h : own Handle
-       ← close(h) inserted [shadow]
-  15 |     println("open2")
-  16 | }
-       ← close(h) inserted [scope exit]
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Handle = MkHandle(String)
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun main() -> Unit {
+    let h: ~Handle = MkHandle("1")
+    println("open1")
+    # close(h) [shadow]
+    let h: ~Handle = MkHandle("2")
+    println("open2")
+    # close(h) [scope exit]
+}

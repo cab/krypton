@@ -14,6 +14,17 @@ pub fn pretty_print(module: &Module) -> String {
     pretty_print_with(module, &PrettyConfig::default())
 }
 
+pub fn pretty_print_decl(decl: &Decl) -> String {
+    let config = PrettyConfig::default();
+    let mut f = Formatter {
+        config: &config,
+        indent_level: 0,
+        buf: String::new(),
+    };
+    f.fmt_decl(decl);
+    f.buf
+}
+
 pub fn pretty_print_with(module: &Module, config: &PrettyConfig) -> String {
     let mut f = Formatter {
         config,

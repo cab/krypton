@@ -400,10 +400,11 @@ fn main() {
                 Ok(modules) => {
                     let info = &modules[0];
                     let output = inspect::render_inspect(
-                        &source,
+                        &module,
                         &info.auto_close,
                         &info.functions,
                         &info.fn_types,
+                        &info.instance_defs,
                     );
                     print!("{}", output);
                 }

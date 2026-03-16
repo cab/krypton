@@ -1,277 +1,846 @@
+use krypton_parser::ast::{Decl, Module, TypeExpr};
 use krypton_typechecker::typed_ast::{
-    AutoCloseInfo, FnTypeEntry, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern,
+    AutoCloseInfo, FnTypeEntry, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl,
+    TypedPattern,
 };
+use krypton_typechecker::types::Type;
 
-/// Annotation to attach below a source line.
-enum Annotation {
-    /// Function type: `# : fn(Int) -> String`
-    FnType(String),
-    /// Let binding type: `# name : own Handle`
-    LetType(String, String),
-    /// Auto-close insertion: `# <- close(var) inserted [reason]`
-    Close(String, String),
-    /// Move/consumption: `# ^ move: var`
-    Move(String),
-}
-
-/// Byte offset → line number (0-based).
-fn offset_to_line(line_starts: &[usize], offset: usize) -> usize {
-    match line_starts.binary_search(&offset) {
-        Ok(i) => i,
-        Err(i) => i.saturating_sub(1),
-    }
-}
-
-/// Build a mapping from byte offset to line number.
-fn build_line_starts(source: &str) -> Vec<usize> {
-    let mut starts = vec![0];
-    for (i, ch) in source.char_indices() {
-        if ch == '\n' {
-            starts.push(i + 1);
+/// Convert a Type to Krypton source syntax.
+/// Differences from Display: `own X` → `~X`, `fn(X) -> Y` → `(X) -> Y`
+fn type_to_source(ty: &Type) -> String {
+    match ty {
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Var(id) => var_name(*id),
+        Type::Own(inner) => format!("~{}", type_to_source(inner)),
+        Type::Fn(params, ret) => {
+            let ps: Vec<String> = params.iter().map(|p| type_to_source(p)).collect();
+            format!("({}) -> {}", ps.join(", "), type_to_source(ret))
+        }
+        Type::Named(name, args) => {
+            if args.is_empty() {
+                name.clone()
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| type_to_source(a)).collect();
+                format!("{}[{}]", name, as_.join(", "))
+            }
+        }
+        Type::App(ctor, args) => {
+            let base = type_to_source(ctor);
+            if args.is_empty() {
+                base
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| type_to_source(a)).collect();
+                format!("{}[{}]", base, as_.join(", "))
+            }
+        }
+        Type::Tuple(elems) => {
+            let es: Vec<String> = elems.iter().map(|e| type_to_source(e)).collect();
+            format!("({})", es.join(", "))
         }
     }
-    starts
 }
 
-/// Collect let-binding type annotations from a typed expression tree.
-fn collect_let_types(expr: &TypedExpr, line_starts: &[usize], annotations: &mut Vec<(usize, Annotation)>) {
-    let mut work: Vec<&TypedExpr> = vec![expr];
-    while let Some(expr) = work.pop() {
+fn var_name(id: u32) -> String {
+    let letter = (b'a' + (id % 26) as u8) as char;
+    let suffix = id / 26;
+    if suffix == 0 {
+        letter.to_string()
+    } else {
+        format!("{}{}", letter, suffix)
+    }
+}
+
+struct TypedFormatter<'a> {
+    indent_level: usize,
+    buf: String,
+    auto_close: &'a AutoCloseInfo,
+}
+
+impl<'a> TypedFormatter<'a> {
+    fn indent(&mut self) {
+        for _ in 0..self.indent_level * 4 {
+            self.buf.push(' ');
+        }
+    }
+
+    fn push_indent_comment(&mut self, text: &str) {
+        self.indent();
+        self.buf.push_str("# ");
+        self.buf.push_str(text);
+        self.buf.push('\n');
+    }
+
+    /// Emit close comments for a given span key and close type.
+    fn emit_close_comments_for_span(&mut self, span: &(usize, usize), reason: &str) {
+        // shadow_closes
+        if reason == "shadow" {
+            if let Some(binding) = self.auto_close.shadow_closes.get(span) {
+                self.push_indent_comment(&format!("close({}) [shadow]", binding.name));
+            }
+        }
+        // early_returns
+        if reason == "early return" {
+            if let Some(bindings) = self.auto_close.early_returns.get(span) {
+                for binding in bindings {
+                    self.push_indent_comment(&format!("close({}) [early return]", binding.name));
+                }
+            }
+        }
+        // recur_closes
+        if reason == "recur" {
+            if let Some(bindings) = self.auto_close.recur_closes.get(span) {
+                for binding in bindings {
+                    self.push_indent_comment(&format!("close({}) [recur]", binding.name));
+                }
+            }
+        }
+    }
+
+    fn emit_move_comments_for_span(&mut self, span: &(usize, usize)) {
+        if let Some(bindings) = self.auto_close.consumptions.get(span) {
+            for binding in bindings {
+                self.push_indent_comment(&format!("move: {}", binding.name));
+            }
+        }
+    }
+
+    fn fmt_fn_decl(
+        &mut self,
+        typed_fn: &TypedFnDecl,
+        fn_type: &Type,
+    ) {
+        let (param_types, ret_type) = match fn_type {
+            Type::Fn(params, ret) => (params.clone(), type_to_source(ret)),
+            _ => (vec![], type_to_source(fn_type)),
+        };
+
+        self.buf.push_str("fun ");
+        self.buf.push_str(&typed_fn.name);
+        self.buf.push('(');
+        for (i, param_name) in typed_fn.params.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            self.buf.push_str(param_name);
+            if let Some(ty) = param_types.get(i) {
+                self.buf.push_str(": ");
+                self.buf.push_str(&type_to_source(ty));
+            }
+        }
+        self.buf.push_str(") -> ");
+        self.buf.push_str(&ret_type);
+
+        // Body
+        match &typed_fn.body.kind {
+            TypedExprKind::Do(exprs) => {
+                self.buf.push_str(" {\n");
+                self.indent_level += 1;
+                self.fmt_block_stmts(exprs, &typed_fn.name);
+                // Scope exit closes before closing brace
+                if let Some(bindings) = self.auto_close.fn_exits.get(&typed_fn.name) {
+                    for binding in bindings {
+                        self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
+                    }
+                }
+                self.indent_level -= 1;
+                self.indent();
+                self.buf.push('}');
+            }
+            _ => {
+                self.buf.push_str(" = ");
+                self.fmt_expr(&typed_fn.body);
+            }
+        }
+    }
+
+    /// Format an impl method with types from the TypedAST.
+    fn fmt_impl_method(
+        &mut self,
+        display_name: &str,
+        typed_fn: &TypedFnDecl,
+        fn_type: &Type,
+    ) {
+        let (param_types, ret_type) = match fn_type {
+            Type::Fn(params, ret) => (params.clone(), type_to_source(ret)),
+            _ => (vec![], type_to_source(fn_type)),
+        };
+
+        self.buf.push_str("fun ");
+        self.buf.push_str(display_name);
+        self.buf.push('(');
+        for (i, param_name) in typed_fn.params.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            self.buf.push_str(param_name);
+            if let Some(ty) = param_types.get(i) {
+                self.buf.push_str(": ");
+                self.buf.push_str(&type_to_source(ty));
+            }
+        }
+        self.buf.push_str(") -> ");
+        self.buf.push_str(&ret_type);
+
+        match &typed_fn.body.kind {
+            TypedExprKind::Do(exprs) => {
+                self.buf.push_str(" {\n");
+                self.indent_level += 1;
+                self.fmt_block_stmts(exprs, &typed_fn.name);
+                self.indent_level -= 1;
+                self.indent();
+                self.buf.push('}');
+            }
+            _ => {
+                self.buf.push_str(" = ");
+                self.fmt_expr(&typed_fn.body);
+            }
+        }
+    }
+
+    /// Emit early return close comments for any QuestionMark nested in a value expr.
+    fn emit_early_return_closes_in_value(&mut self, expr: &TypedExpr) {
         match &expr.kind {
+            TypedExprKind::QuestionMark { .. } => {
+                self.emit_close_comments_for_span(&expr.span, "early return");
+            }
+            TypedExprKind::App { func, args } => {
+                self.emit_early_return_closes_in_value(func);
+                for arg in args {
+                    self.emit_early_return_closes_in_value(arg);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn fmt_block_stmts(&mut self, exprs: &[TypedExpr], fn_name: &str) {
+        for (i, expr) in exprs.iter().enumerate() {
+            let is_last = i == exprs.len() - 1;
+
+            // Check for shadow closes on Let expressions
+            if matches!(&expr.kind, TypedExprKind::Let { .. } | TypedExprKind::LetPattern { .. }) {
+                self.emit_close_comments_for_span(&expr.span, "shadow");
+            }
+
+            // Check for early return closes on expressions with ? in their value
+            match &expr.kind {
+                TypedExprKind::Let { value, .. } | TypedExprKind::LetPattern { value, .. } => {
+                    self.emit_early_return_closes_in_value(value);
+                }
+                TypedExprKind::QuestionMark { .. } => {
+                    self.emit_close_comments_for_span(&expr.span, "early return");
+                }
+                _ => {}
+            }
+
+            self.indent();
+            self.fmt_stmt(expr, fn_name);
+
+            // Semicolons between statements (not after last)
+            if !is_last {
+                // Don't add semicolons after let statements — they end at the newline
+                match &expr.kind {
+                    TypedExprKind::Let { body: None, .. }
+                    | TypedExprKind::LetPattern { body: None, .. } => {}
+                    _ => {}
+                }
+            }
+            self.buf.push('\n');
+
+            // Move comments after consuming expressions
+            self.emit_move_comments_for_span(&expr.span);
+
+            // Check inner expressions for moves too
+            self.emit_nested_moves(expr);
+        }
+    }
+
+    fn emit_nested_moves(&mut self, expr: &TypedExpr) {
+        match &expr.kind {
+            TypedExprKind::App { func, args } => {
+                self.emit_move_comments_for_span(&func.span);
+                for arg in args {
+                    self.emit_move_comments_for_span(&arg.span);
+                    self.emit_nested_moves(arg);
+                }
+            }
+            TypedExprKind::Let { value, .. } | TypedExprKind::LetPattern { value, .. } => {
+                self.emit_move_comments_for_span(&value.span);
+                self.emit_nested_moves(value);
+            }
+            _ => {}
+        }
+    }
+
+    fn fmt_stmt(&mut self, expr: &TypedExpr, fn_name: &str) {
+        match &expr.kind {
+            TypedExprKind::Let { name, value, body: None } => {
+                self.buf.push_str("let ");
+                self.buf.push_str(name);
+                self.buf.push_str(": ");
+                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(" = ");
+                self.fmt_expr(value);
+            }
+            TypedExprKind::Let { name, value, body: Some(body) } => {
+                self.buf.push_str("let ");
+                self.buf.push_str(name);
+                self.buf.push_str(": ");
+                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(" = ");
+                self.fmt_expr(value);
+                self.buf.push('\n');
+                self.emit_move_comments_for_span(&value.span);
+                self.emit_nested_moves(value);
+                self.indent();
+                self.fmt_stmt(body, fn_name);
+            }
+            TypedExprKind::LetPattern { pattern, value, body: None } => {
+                self.buf.push_str("let ");
+                self.fmt_typed_pattern(pattern);
+                self.buf.push_str(": ");
+                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(" = ");
+                self.fmt_expr(value);
+            }
+            TypedExprKind::LetPattern { pattern, value, body: Some(body) } => {
+                self.buf.push_str("let ");
+                self.fmt_typed_pattern(pattern);
+                self.buf.push_str(": ");
+                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(" = ");
+                self.fmt_expr(value);
+                self.buf.push('\n');
+                self.emit_move_comments_for_span(&value.span);
+                self.emit_nested_moves(value);
+                self.indent();
+                self.fmt_stmt(body, fn_name);
+            }
+            _ => self.fmt_expr(expr),
+        }
+    }
+
+    fn fmt_expr(&mut self, expr: &TypedExpr) {
+        self.fmt_expr_prec(expr, 0);
+    }
+
+    fn fmt_expr_prec(&mut self, expr: &TypedExpr, parent_prec: u8) {
+        match &expr.kind {
+            TypedExprKind::Lit(lit) => self.fmt_lit(lit),
+            TypedExprKind::Var(name) => self.buf.push_str(name),
+            TypedExprKind::App { func, args } => {
+                self.fmt_expr_prec(func, 7);
+                self.buf.push('(');
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(arg);
+                }
+                self.buf.push(')');
+            }
+            TypedExprKind::TypeApp { expr } => {
+                self.fmt_expr_prec(expr, parent_prec);
+            }
+            TypedExprKind::If { cond, then_, else_ } => {
+                self.buf.push_str("if ");
+                self.fmt_expr(cond);
+                self.buf.push_str(" { ");
+                self.fmt_expr(then_);
+                self.buf.push_str(" }");
+                if !matches!(&else_.kind, TypedExprKind::Lit(krypton_parser::ast::Lit::Unit)) {
+                    self.buf.push_str(" else { ");
+                    self.fmt_expr(else_);
+                    self.buf.push_str(" }");
+                }
+            }
             TypedExprKind::Let { name, value, body } => {
-                let line = offset_to_line(line_starts, expr.span.0);
-                let ty_str = format!("{}", value.ty);
-                annotations.push((line, Annotation::LetType(name.clone(), ty_str)));
-                work.push(value);
-                if let Some(body) = body {
-                    work.push(body);
+                // Let appearing as expression (not as statement in Do block)
+                match body {
+                    Some(body_expr) => {
+                        self.buf.push_str("{ let ");
+                        self.buf.push_str(name);
+                        self.buf.push_str(": ");
+                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                        self.buf.push_str("; ");
+                        self.fmt_expr(body_expr);
+                        self.buf.push_str(" }");
+                    }
+                    None => {
+                        self.buf.push_str("let ");
+                        self.buf.push_str(name);
+                        self.buf.push_str(": ");
+                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                    }
                 }
             }
             TypedExprKind::LetPattern { pattern, value, body } => {
-                collect_pattern_types(pattern, line_starts, annotations, expr.span.0);
-                work.push(value);
-                if let Some(body) = body {
-                    work.push(body);
+                match body {
+                    Some(body_expr) => {
+                        self.buf.push_str("{ let ");
+                        self.fmt_typed_pattern(pattern);
+                        self.buf.push_str(": ");
+                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                        self.buf.push_str("; ");
+                        self.fmt_expr(body_expr);
+                        self.buf.push_str(" }");
+                    }
+                    None => {
+                        self.buf.push_str("let ");
+                        self.fmt_typed_pattern(pattern);
+                        self.buf.push_str(": ");
+                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(value);
+                    }
                 }
             }
-            TypedExprKind::App { func, args } => {
-                work.push(func);
-                work.extend(args.iter());
+            TypedExprKind::Do(exprs) => {
+                self.buf.push_str("{\n");
+                self.indent_level += 1;
+                self.fmt_block_stmts(exprs, "");
+                self.indent_level -= 1;
+                self.indent();
+                self.buf.push('}');
             }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
-            TypedExprKind::If { cond, then_, else_ } => {
-                work.push(cond);
-                work.push(then_);
-                work.push(else_);
-            }
-            TypedExprKind::Do(exprs) => work.extend(exprs.iter()),
             TypedExprKind::Match { scrutinee, arms } => {
-                work.push(scrutinee);
+                self.buf.push_str("match ");
+                self.fmt_expr(scrutinee);
+                self.buf.push_str(" {\n");
+                self.indent_level += 1;
                 for arm in arms {
-                    work.push(&arm.body);
+                    self.indent();
+                    self.fmt_typed_pattern(&arm.pattern);
+                    self.buf.push_str(" => ");
+                    self.fmt_expr(&arm.body);
+                    self.buf.push_str(",\n");
+                }
+                self.indent_level -= 1;
+                self.indent();
+                self.buf.push('}');
+            }
+            TypedExprKind::Lambda { params, body } => {
+                if params.is_empty() {
+                    self.buf.push_str("() -> ");
+                    self.fmt_expr(body);
+                } else {
+                    // Extract param types from the lambda's own type
+                    let param_types = match &expr.ty {
+                        Type::Fn(pts, _) => Some(pts.clone()),
+                        _ => None,
+                    };
+                    if params.len() == 1 && param_types.is_none() {
+                        self.buf.push_str(&params[0]);
+                        self.buf.push_str(" -> ");
+                        self.fmt_expr(body);
+                    } else {
+                        self.buf.push('(');
+                        for (i, p) in params.iter().enumerate() {
+                            if i > 0 {
+                                self.buf.push_str(", ");
+                            }
+                            self.buf.push_str(p);
+                            if let Some(ref pts) = param_types {
+                                if let Some(ty) = pts.get(i) {
+                                    self.buf.push_str(": ");
+                                    self.buf.push_str(&type_to_source(ty));
+                                }
+                            }
+                        }
+                        self.buf.push_str(") -> ");
+                        self.fmt_expr(body);
+                    }
                 }
             }
-            TypedExprKind::Lambda { body, .. } => work.push(body),
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                work.push(lhs);
-                work.push(rhs);
+            TypedExprKind::FieldAccess { expr: inner, field } => {
+                self.fmt_expr_prec(inner, 7);
+                self.buf.push('.');
+                self.buf.push_str(field);
             }
-            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
-            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
-            TypedExprKind::Recur(args) | TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
-                work.extend(args.iter());
-            }
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields {
-                    work.push(e);
+            TypedExprKind::BinaryOp { op, lhs, rhs } => {
+                let prec = binop_precedence(op);
+                let need_parens = prec < parent_prec;
+                if need_parens {
+                    self.buf.push('(');
                 }
+                self.fmt_expr_prec(lhs, prec);
+                self.buf.push(' ');
+                self.buf.push_str(binop_str(op));
+                self.buf.push(' ');
+                let right_prec = if is_left_assoc(op) || is_non_assoc(op) {
+                    prec + 1
+                } else {
+                    prec
+                };
+                self.fmt_expr_prec(rhs, right_prec);
+                if need_parens {
+                    self.buf.push(')');
+                }
+            }
+            TypedExprKind::UnaryOp { op, operand } => {
+                let prec = 6;
+                let need_parens = prec < parent_prec;
+                if need_parens {
+                    self.buf.push('(');
+                }
+                match op {
+                    krypton_parser::ast::UnaryOp::Neg => self.buf.push('-'),
+                    krypton_parser::ast::UnaryOp::Not => self.buf.push('!'),
+                }
+                self.fmt_expr_prec(operand, prec);
+                if need_parens {
+                    self.buf.push(')');
+                }
+            }
+            TypedExprKind::QuestionMark { expr: inner, .. } => {
+                self.fmt_expr_prec(inner, 7);
+                self.buf.push('?');
+            }
+            TypedExprKind::Recur(args) => {
+                // Emit recur closes before the recur call
+                self.emit_close_comments_for_span(&expr.span, "recur");
+                self.buf.push_str("recur(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(arg);
+                }
+                self.buf.push(')');
+            }
+            TypedExprKind::Tuple(elems) => {
+                self.buf.push('(');
+                for (i, e) in elems.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(e);
+                }
+                self.buf.push(')');
+            }
+            TypedExprKind::VecLit(elems) => {
+                self.buf.push('[');
+                for (i, e) in elems.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_expr(e);
+                }
+                self.buf.push(']');
+            }
+            TypedExprKind::StructLit { name, fields } => {
+                self.buf.push_str(name);
+                self.buf.push_str(" { ");
+                for (i, (fname, fval)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    if is_punnable_typed(fname, fval) {
+                        self.buf.push_str(fname);
+                    } else {
+                        self.buf.push_str(fname);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(fval);
+                    }
+                }
+                self.buf.push_str(" }");
             }
             TypedExprKind::StructUpdate { base, fields } => {
-                work.push(base);
-                for (_, e) in fields {
-                    work.push(e);
+                self.buf.push_str("{ ");
+                self.fmt_expr(base);
+                self.buf.push_str(" | ");
+                for (i, (fname, fval)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    if is_punnable_typed(fname, fval) {
+                        self.buf.push_str(fname);
+                    } else {
+                        self.buf.push_str(fname);
+                        self.buf.push_str(" = ");
+                        self.fmt_expr(fval);
+                    }
+                }
+                self.buf.push_str(" }");
+            }
+        }
+    }
+
+    fn fmt_lit(&mut self, lit: &krypton_parser::ast::Lit) {
+        use krypton_parser::ast::Lit;
+        match lit {
+            Lit::Int(n) => self.buf.push_str(&n.to_string()),
+            Lit::Float(f) => {
+                let s = f.to_string();
+                if s.contains('.') {
+                    self.buf.push_str(&s);
+                } else {
+                    self.buf.push_str(&format!("{s}.0"));
                 }
             }
-            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
-            TypedExprKind::Var(_) | TypedExprKind::Lit(_) => {}
+            Lit::Bool(b) => self.buf.push_str(&b.to_string()),
+            Lit::String(s) => {
+                self.buf.push('"');
+                self.buf
+                    .push_str(&s.replace('\\', "\\\\").replace('"', "\\\""));
+                self.buf.push('"');
+            }
+            Lit::Unit => self.buf.push_str("()"),
+        }
+    }
+
+    fn fmt_typed_pattern(&mut self, pat: &TypedPattern) {
+        match pat {
+            TypedPattern::Wildcard { .. } => self.buf.push('_'),
+            TypedPattern::Var { name, .. } => self.buf.push_str(name),
+            TypedPattern::Constructor { name, args, .. } => {
+                self.buf.push_str(name);
+                if !args.is_empty() {
+                    self.buf.push('(');
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.buf.push_str(", ");
+                        }
+                        self.fmt_typed_pattern(arg);
+                    }
+                    self.buf.push(')');
+                }
+            }
+            TypedPattern::Lit { value, .. } => self.fmt_lit(value),
+            TypedPattern::Tuple { elements, .. } => {
+                self.buf.push('(');
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.fmt_typed_pattern(e);
+                }
+                self.buf.push(')');
+            }
+            TypedPattern::StructPat {
+                name,
+                fields,
+                rest,
+                ..
+            } => {
+                self.buf.push_str(name);
+                self.buf.push_str(" { ");
+                for (i, (fname, fpat)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    if matches!(fpat, TypedPattern::Var { name: vname, span: (0, 0), .. } if vname == fname)
+                    {
+                        self.buf.push_str(fname);
+                    } else {
+                        self.buf.push_str(fname);
+                        self.buf.push_str(": ");
+                        self.fmt_typed_pattern(fpat);
+                    }
+                }
+                if *rest {
+                    if !fields.is_empty() {
+                        self.buf.push_str(", ");
+                    }
+                    self.buf.push_str("..");
+                }
+                self.buf.push_str(" }");
+            }
         }
     }
 }
 
-/// Collect type annotations from destructured pattern bindings.
-fn collect_pattern_types(
-    pattern: &TypedPattern,
-    line_starts: &[usize],
-    annotations: &mut Vec<(usize, Annotation)>,
-    span_start: usize,
-) {
-    match pattern {
-        TypedPattern::Var { name, ty, .. } => {
-            let line = offset_to_line(line_starts, span_start);
-            annotations.push((line, Annotation::LetType(name.clone(), format!("{}", ty))));
-        }
-        TypedPattern::Constructor { args, .. } => {
-            for arg in args {
-                collect_pattern_types(arg, line_starts, annotations, span_start);
-            }
-        }
-        TypedPattern::Tuple { elements, .. } => {
-            for elem in elements {
-                collect_pattern_types(elem, line_starts, annotations, span_start);
-            }
-        }
-        TypedPattern::StructPat { fields, .. } => {
-            for (_, field_pat) in fields {
-                collect_pattern_types(field_pat, line_starts, annotations, span_start);
-            }
-        }
-        TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+fn is_punnable_typed(field_name: &str, val: &TypedExpr) -> bool {
+    matches!(&val.kind, TypedExprKind::Var(name) if name == field_name && val.span == (0, 0))
+}
+
+fn binop_precedence(op: &krypton_parser::ast::BinOp) -> u8 {
+    use krypton_parser::ast::BinOp;
+    match op {
+        BinOp::Or => 1,
+        BinOp::And => 2,
+        BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => 3,
+        BinOp::Add | BinOp::Sub => 4,
+        BinOp::Mul | BinOp::Div => 5,
     }
 }
 
-/// Find the line of the last token in a function body.
-fn fn_body_last_line(expr: &TypedExpr, line_starts: &[usize]) -> usize {
-    offset_to_line(line_starts, expr.span.1.saturating_sub(1))
+fn is_left_assoc(op: &krypton_parser::ast::BinOp) -> bool {
+    use krypton_parser::ast::BinOp;
+    matches!(
+        op,
+        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Or | BinOp::And
+    )
 }
 
-/// Render annotated source output for the inspect command.
+fn is_non_assoc(op: &krypton_parser::ast::BinOp) -> bool {
+    use krypton_parser::ast::BinOp;
+    matches!(
+        op,
+        BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge
+    )
+}
+
+fn binop_str(op: &krypton_parser::ast::BinOp) -> &'static str {
+    use krypton_parser::ast::BinOp;
+    match op {
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Eq => "==",
+        BinOp::Neq => "!=",
+        BinOp::Lt => "<",
+        BinOp::Gt => ">",
+        BinOp::Le => "<=",
+        BinOp::Ge => ">=",
+        BinOp::And => "&&",
+        BinOp::Or => "||",
+    }
+}
+
+/// Format a parser TypeExpr to source syntax.
+fn fmt_type_expr_source(ty: &TypeExpr) -> String {
+    match ty {
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => name.clone(),
+        TypeExpr::App { name, args, .. } => {
+            let as_: Vec<String> = args.iter().map(|a| fmt_type_expr_source(a)).collect();
+            format!("{}[{}]", name, as_.join(", "))
+        }
+        TypeExpr::Fn { params, ret, .. } => {
+            let ps: Vec<String> = params.iter().map(|p| fmt_type_expr_source(p)).collect();
+            format!("({}) -> {}", ps.join(", "), fmt_type_expr_source(ret))
+        }
+        TypeExpr::Own { inner, .. } => format!("~{}", fmt_type_expr_source(inner)),
+        TypeExpr::Tuple { elements, .. } => {
+            let es: Vec<String> = elements.iter().map(|e| fmt_type_expr_source(e)).collect();
+            format!("({})", es.join(", "))
+        }
+    }
+}
+
+/// Extract the base type name from a TypeExpr (for mangled name lookup).
+fn type_expr_base_name(ty: &TypeExpr) -> &str {
+    match ty {
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::App { name, .. } => name,
+        TypeExpr::Own { inner, .. } => type_expr_base_name(inner),
+        _ => "",
+    }
+}
+
+/// Render fully-expanded inspect output from the TypedAST.
 pub fn render_inspect(
-    source: &str,
+    module: &Module,
     auto_close: &AutoCloseInfo,
     functions: &[TypedFnDecl],
     fn_types: &[FnTypeEntry],
+    instance_defs: &[InstanceDefInfo],
 ) -> String {
-    let lines: Vec<&str> = source.lines().collect();
-    let line_starts = build_line_starts(source);
-
-    // Collect all annotations keyed by line number.
-    // Use Vec to allow multiple annotations per line, with ordering.
-    let mut annotations: Vec<(usize, Annotation)> = Vec::new();
-
-    // 1. Function type annotations — placed on the `fun` declaration line
-    for decl in functions {
-        let fn_line = offset_to_line(&line_starts, decl.body.span.0);
-        // Find the actual `fun` line — walk backwards from body to find the fun keyword
-        // Use the fn_types entry to get the type scheme
-        if let Some(entry) = fn_types.iter().find(|e| e.name == decl.name) {
-            // Find the fun keyword line by looking at the source before the body
-            let fun_line = find_fun_line(&lines, &decl.name, fn_line);
-            annotations.push((fun_line, Annotation::FnType(format!("{}", entry.scheme))));
-        }
-
-        // 2. Let binding types from the function body
-        collect_let_types(&decl.body, &line_starts, &mut annotations);
-    }
-
-    // 3. Auto-close annotations
-
-    // fn_exits: close at end of function
-    for (fn_name, bindings) in &auto_close.fn_exits {
-        if let Some(decl) = functions.iter().find(|d| &d.name == fn_name) {
-            let last_line = fn_body_last_line(&decl.body, &line_starts);
-            for binding in bindings {
-                annotations.push((
-                    last_line,
-                    Annotation::Close(binding.name.clone(), "scope exit".to_string()),
-                ));
-            }
-        }
-    }
-
-    // shadow_closes: close at shadow point (the let that shadows)
-    for (span, binding) in &auto_close.shadow_closes {
-        let line = offset_to_line(&line_starts, span.0);
-        annotations.push((
-            line,
-            Annotation::Close(binding.name.clone(), "shadow".to_string()),
-        ));
-    }
-
-    // early_returns: close before ? early return
-    for (span, bindings) in &auto_close.early_returns {
-        let line = offset_to_line(&line_starts, span.0);
-        for binding in bindings {
-            annotations.push((
-                line,
-                Annotation::Close(binding.name.clone(), "early return".to_string()),
-            ));
-        }
-    }
-
-    // recur_closes: close before recur
-    for (span, bindings) in &auto_close.recur_closes {
-        let line = offset_to_line(&line_starts, span.0);
-        for binding in bindings {
-            annotations.push((
-                line,
-                Annotation::Close(binding.name.clone(), "recur".to_string()),
-            ));
-        }
-    }
-
-    // consumptions: move annotations
-    for (span, bindings) in &auto_close.consumptions {
-        let line = offset_to_line(&line_starts, span.0);
-        for binding in bindings {
-            annotations.push((line, Annotation::Move(binding.name.clone())));
-        }
-    }
-
-    // Sort annotations by line number for stable output
-    annotations.sort_by_key(|(line, _)| *line);
-
-    // Render output
     let mut output = String::new();
-    let width = lines.len().to_string().len().max(4);
 
-    for (i, line_text) in lines.iter().enumerate() {
-        output.push_str(&format!("{:>width$} | {}\n", i + 1, line_text, width = width));
-
-        // Append annotations for this line
-        let indent = " ".repeat(width + 3);
-        for (line_num, ann) in &annotations {
-            if *line_num != i {
-                continue;
+    for (i, decl) in module.decls.iter().enumerate() {
+        if i > 0 {
+            output.push('\n');
+        }
+        match decl {
+            Decl::DefFn(f) => {
+                // Find the matching TypedFnDecl and FnTypeEntry
+                if let Some(typed_fn) = functions.iter().find(|tf| tf.name == f.name) {
+                    if let Some(entry) = fn_types.iter().find(|e| e.name == f.name) {
+                        let mut formatter = TypedFormatter {
+                            indent_level: 0,
+                            buf: String::new(),
+                            auto_close,
+                        };
+                        formatter.fmt_fn_decl(typed_fn, &entry.scheme.ty);
+                        output.push_str(&formatter.buf);
+                    } else {
+                        output.push_str(&krypton_parser::pretty::pretty_print_decl(decl));
+                    }
+                } else {
+                    output.push_str(&krypton_parser::pretty::pretty_print_decl(decl));
+                }
             }
-            match ann {
-                Annotation::FnType(ty) => {
-                    output.push_str(&format!("{}# : {}\n", indent, ty));
+            Decl::DefImpl {
+                trait_name,
+                target_type,
+                type_constraints,
+                methods,
+                ..
+            } => {
+                let target_name = type_expr_base_name(target_type);
+                // Print impl header using pretty printer's type formatting
+                output.push_str("impl ");
+                output.push_str(trait_name);
+                output.push('[');
+                output.push_str(&fmt_type_expr_source(target_type));
+                output.push(']');
+                if !type_constraints.is_empty() {
+                    output.push_str(" where ");
+                    for (i, c) in type_constraints.iter().enumerate() {
+                        if i > 0 {
+                            output.push_str(", ");
+                        }
+                        output.push_str(&c.type_var);
+                        output.push_str(": ");
+                        output.push_str(&c.trait_name);
+                    }
                 }
-                Annotation::LetType(name, ty) => {
-                    output.push_str(&format!("{}# {} : {}\n", indent, name, ty));
-                }
-                Annotation::Close(var, reason) => {
-                    output.push_str(&format!(
-                        "{}\u{2190} close({}) inserted [{}]\n",
-                        indent, var, reason
+                output.push_str(" {\n");
+                // Find the matching InstanceDefInfo
+                let inst = instance_defs.iter().find(|i| {
+                    i.trait_name == *trait_name && i.target_type_name == target_name
+                });
+                for m in methods {
+                    if let Some(inst) = inst {
+                        if let Some(im) = inst.methods.iter().find(|im| im.name == m.name) {
+                            let mut formatter = TypedFormatter {
+                                indent_level: 1,
+                                buf: String::new(),
+                                auto_close,
+                            };
+                            formatter.indent();
+                            let typed_fn = TypedFnDecl {
+                                name: m.name.clone(),
+                                visibility: krypton_parser::ast::Visibility::Private,
+                                params: im.params.clone(),
+                                body: im.body.clone(),
+                            };
+                            formatter.fmt_impl_method(&m.name, &typed_fn, &im.scheme.ty);
+                            output.push_str(&formatter.buf);
+                            output.push('\n');
+                            continue;
+                        }
+                    }
+                    output.push_str("    ");
+                    output.push_str(&krypton_parser::pretty::pretty_print_decl(
+                        &Decl::DefFn(m.clone()),
                     ));
+                    output.push('\n');
                 }
-                Annotation::Move(var) => {
-                    output.push_str(&format!(
-                        "{}\u{2191} move: {}\n",
-                        indent, var
-                    ));
-                }
+                output.push('}');
+            }
+            _ => {
+                output.push_str(&krypton_parser::pretty::pretty_print_decl(decl));
             }
         }
+        output.push('\n');
+    }
+
+    // Remove trailing newline for consistency
+    if output.ends_with('\n') {
+        output.pop();
     }
 
     output
-}
-
-/// Find the line containing `fun <name>` at or before `max_line`.
-fn find_fun_line(lines: &[&str], name: &str, max_line: usize) -> usize {
-    // For trait instance methods like `Resource$Handle$close`, look for the original method name
-    let search_name = if let Some(pos) = name.rfind('$') {
-        &name[pos + 1..]
-    } else {
-        name
-    };
-    let pattern = format!("fun {}", search_name);
-    for i in (0..=max_line.min(lines.len().saturating_sub(1))).rev() {
-        if lines[i].contains(&pattern) {
-            return i;
-        }
-    }
-    max_line
 }
