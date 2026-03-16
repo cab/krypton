@@ -1,3 +1,5 @@
+//! Lambda/closure compilation and function reference emission.
+
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};

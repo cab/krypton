@@ -1,3 +1,5 @@
+//! Pattern matching compilation (match expressions and let-destructuring).
+
 use krypton_typechecker::typed_ast::{TypedExpr, TypedMatchArm, TypedPattern};
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Instruction, VerificationType};

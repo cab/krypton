@@ -1,3 +1,5 @@
+//! Module compilation pipeline and JVM type mapping.
+
 mod builder;
 mod calls;
 mod class_gen;
@@ -163,88 +165,6 @@ fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool 
     }
 }
 
-/// Recursively collect all tuple arities from a Type.
-fn collect_tuple_arities(ty: &Type, arities: &mut std::collections::HashSet<usize>) {
-    match ty {
-        Type::Tuple(elems) => {
-            arities.insert(elems.len());
-            for e in elems {
-                collect_tuple_arities(e, arities);
-            }
-        }
-        Type::Fn(params, ret) => {
-            for p in params {
-                collect_tuple_arities(p, arities);
-            }
-            collect_tuple_arities(ret, arities);
-        }
-        Type::Named(_, args) => {
-            for a in args {
-                collect_tuple_arities(a, arities);
-            }
-        }
-        Type::Own(inner) => collect_tuple_arities(inner, arities),
-        _ => {}
-    }
-}
-
-/// Iteratively collect all tuple arities from a TypedExpr tree.
-fn collect_tuple_arities_expr(expr: &krypton_typechecker::typed_ast::TypedExpr, arities: &mut std::collections::HashSet<usize>) {
-    use krypton_typechecker::typed_ast::TypedExprKind;
-    let mut work: Vec<&krypton_typechecker::typed_ast::TypedExpr> = Vec::with_capacity(16);
-    work.push(expr);
-    while let Some(expr) = work.pop() {
-        collect_tuple_arities(&expr.ty, arities);
-        match &expr.kind {
-            TypedExprKind::Tuple(elems) => {
-                arities.insert(elems.len());
-                for e in elems { work.push(e); }
-            }
-            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
-                work.push(value);
-                if let Some(b) = body { work.push(b); }
-            }
-            TypedExprKind::App { func, args } => {
-                work.push(func);
-                for a in args { work.push(a); }
-            }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
-            TypedExprKind::If { cond, then_, else_ } => {
-                work.push(cond);
-                work.push(then_);
-                work.push(else_);
-            }
-            TypedExprKind::Do(exprs) => {
-                for e in exprs { work.push(e); }
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                work.push(scrutinee);
-                for arm in arms { work.push(&arm.body); }
-            }
-            TypedExprKind::Lambda { body, .. } => work.push(body),
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                work.push(lhs);
-                work.push(rhs);
-            }
-            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
-            TypedExprKind::FieldAccess { expr, .. } | TypedExprKind::QuestionMark { expr, .. } => {
-                work.push(expr);
-            }
-            TypedExprKind::StructUpdate { base, fields } => {
-                work.push(base);
-                for (_, e) in fields { work.push(e); }
-            }
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields { work.push(e); }
-            }
-            TypedExprKind::Recur(args) | TypedExprKind::VecLit(args) => {
-                for a in args { work.push(a); }
-            }
-            _ => {}
-        }
-    }
-}
-
 /// Compile a library module (no main function required).
 fn compile_library_module(
     typed_module: &TypedModule,
@@ -326,20 +246,11 @@ fn compile_module_inner(
         return Err(CodegenError::NoMainFunction);
     }
 
-    let (mut compiler, this_class, object_class) = Compiler::new(class_name)?;
+    let mut compiler = Compiler::new(class_name)?;
     compiler.auto_close = typed_module.auto_close.clone();
     compiler.types
         .class_descriptors
-        .insert(object_class, "Ljava/lang/Object;".to_string());
-
-    let qualify_type = |bare_name: &str| -> String {
-        let source = typed_module.type_provenance.get(bare_name).map(String::as_str)
-            .or_else(|| typed_module.module_path.as_deref());
-        match source {
-            Some(mod_path) => format!("{mod_path}/{bare_name}"),
-            None => bare_name.to_string(),
-        }
-    };
+        .insert(compiler.builder.refs.object_class, "Ljava/lang/Object;".to_string());
 
     // Build field type registry for struct field resolution
     let mut field_type_registry = type_registry::TypeRegistry::new();
@@ -377,20 +288,20 @@ fn compile_module_inner(
     // Phase 1: Register types
     compiler.register_extern_types(typed_module)?;
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
-    result_classes.extend(compiler.register_structs(typed_module, &qualify_type, &field_type_registry)?);
-    result_classes.extend(compiler.register_sum_types(typed_module, &qualify_type)?);
+    result_classes.extend(compiler.register_structs(typed_module, &field_type_registry)?);
+    result_classes.extend(compiler.register_sum_types(typed_module)?);
 
     // Phase 2: Register FunN interfaces, traits, and instances
     compiler.register_fun_interfaces(typed_module)?;
-    result_classes.extend(compiler.register_traits(typed_module, &qualify_type)?);
-    result_classes.extend(compiler.register_builtin_instances(&qualify_type)?);
+    result_classes.extend(compiler.register_traits(typed_module)?);
+    result_classes.extend(compiler.register_builtin_instances(typed_module)?);
     compiler.register_imported_instances(imported_instances)?;
-    result_classes.extend(compiler.register_instance_defs(typed_module, class_name, &qualify_type)?);
+    result_classes.extend(compiler.register_instance_defs(typed_module, class_name)?);
 
     // Phase 3: Register tuples, vec, and functions
     compiler.register_tuples(typed_module)?;
     compiler.register_vec()?;
-    compiler.register_functions(typed_module, this_class)?;
+    compiler.register_functions(typed_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies and build class
     let extra_methods = compiler.compile_function_bodies(typed_module)?;
@@ -398,7 +309,7 @@ fn compile_module_inner(
         compiler.emit_main_wrapper()?;
     }
 
-    let class_bytes = compiler.build_class(this_class, object_class, extra_methods, is_main)?;
+    let class_bytes = compiler.build_class(extra_methods, is_main)?;
     result_classes.push((class_name.to_string(), class_bytes));
 
     Ok(result_classes)

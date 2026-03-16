@@ -1,3 +1,5 @@
+//! Bytecode emission infrastructure (instruction buffer, stack frame tracking, local allocation).
+
 use std::collections::{BTreeMap, HashMap};
 
 use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
@@ -25,6 +27,7 @@ pub(super) struct CpoolRefs {
     pub(super) object_class: u16,
     pub(super) string_concat: u16,
     pub(super) string_equals: u16,
+    pub(super) string_arr_class: u16,
     // Intrinsic support
     pub(super) runtime_exception_class: u16,
     pub(super) runtime_exception_init: u16,

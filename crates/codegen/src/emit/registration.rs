@@ -1,3 +1,5 @@
+//! Module registration phases (types, traits, instances, functions).
+
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
@@ -6,9 +8,11 @@ use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 use ristretto_classfile::Method;
 
+use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
+
 use super::{
     jvm_type_to_field_descriptor, type_expr_to_jvm, type_expr_to_jvm_basic,
-    type_expr_uses_type_params, collect_tuple_arities, collect_tuple_arities_expr,
+    type_expr_uses_type_params, qualify_type_for,
     ImportedInstanceInfo, dict_requirements_for_instance,
 };
 use super::class_gen::{
@@ -55,12 +59,11 @@ impl Compiler {
     pub(super) fn register_structs(
         &mut self,
         typed_module: &TypedModule,
-        qualify_type: &dyn Fn(&str) -> String,
         field_type_registry: &type_registry::TypeRegistry,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         for (struct_name, ast_fields) in &typed_module.struct_decls {
-            let qualified = qualify_type(struct_name);
+            let qualified = qualify_type_for(typed_module, struct_name);
 
             let jvm_fields: Vec<(String, JvmType)> = ast_fields
                 .iter()
@@ -114,11 +117,10 @@ impl Compiler {
     pub(super) fn register_sum_types(
         &mut self,
         typed_module: &TypedModule,
-        qualify_type: &dyn Fn(&str) -> String,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         for (sum_name, type_params, variants) in &typed_module.sum_decls {
-            let qualified_sum = qualify_type(sum_name);
+            let qualified_sum = qualify_type_for(typed_module, sum_name);
 
             let interface_class_index = self.cp.add_class(&qualified_sum)?;
             let interface_desc = format!("L{qualified_sum};");
@@ -260,7 +262,6 @@ impl Compiler {
     pub(super) fn register_traits(
         &mut self,
         typed_module: &TypedModule,
-        qualify_type: &dyn Fn(&str) -> String,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
@@ -283,7 +284,7 @@ impl Compiler {
         }
 
         for trait_def in &typed_module.trait_defs {
-            let qualified_trait = qualify_type(&trait_def.name);
+            let qualified_trait = qualify_type_for(typed_module, &trait_def.name);
 
             if !trait_def.is_imported {
                 let interface_bytes = generate_trait_interface_class(&qualified_trait, &trait_def.methods)?;
@@ -314,13 +315,13 @@ impl Compiler {
 
     pub(super) fn register_builtin_instances(
         &mut self,
-        qualify_type: &dyn Fn(&str) -> String,
+        typed_module: &TypedModule,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         let registry = intrinsics::IntrinsicRegistry::new();
         for entry in registry.iter() {
             if self.traits.trait_dispatch.contains_key(entry.trait_name) {
-                let q_trait = qualify_type(entry.trait_name);
+                let q_trait = qualify_type_for(typed_module, entry.trait_name);
                 let class_name = format!("{q_trait}${}", entry.type_name);
 
                 let bytes = if entry.is_show() {
@@ -378,14 +379,13 @@ impl Compiler {
         &mut self,
         typed_module: &TypedModule,
         class_name: &str,
-        qualify_type: &dyn Fn(&str) -> String,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         for instance_def in &typed_module.instance_defs {
             if instance_def.is_intrinsic {
                 continue;
             }
-            let q_trait = qualify_type(&instance_def.trait_name);
+            let q_trait = qualify_type_for(typed_module, &instance_def.trait_name);
             let instance_class_name = format!("{}${}", q_trait, instance_def.target_type_name);
             let dict_requirements = dict_requirements_for_instance(
                 &instance_def.type_var_ids,
@@ -429,7 +429,7 @@ impl Compiler {
                     let static_desc = self.types.build_descriptor(&all_param_jvm, ret_jvm);
                     let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
                         match t {
-                            Type::Named(name, _) => Some(qualify_type(name)),
+                            Type::Named(name, _) => Some(qualify_type_for(typed_module, name)),
                             _ => None,
                         }
                     }).collect();
@@ -796,9 +796,8 @@ impl Compiler {
 
         self.reset_method_state();
         self.builder.next_local = 1; // slot 0 = String[] args
-        let string_arr_class = self.cp.add_class("[Ljava/lang/String;")?;
         self.builder.frame.local_types = vec![VerificationType::Object {
-            cpool_index: string_arr_class,
+            cpool_index: self.builder.refs.string_arr_class,
         }];
 
         // Boot the actor runtime before calling user code
@@ -829,5 +828,86 @@ impl Compiler {
 
         self.builder.emit(Instruction::Return);
         Ok(())
+    }
+}
+
+/// Recursively collect all tuple arities from a Type.
+fn collect_tuple_arities(ty: &Type, arities: &mut std::collections::HashSet<usize>) {
+    match ty {
+        Type::Tuple(elems) => {
+            arities.insert(elems.len());
+            for e in elems {
+                collect_tuple_arities(e, arities);
+            }
+        }
+        Type::Fn(params, ret) => {
+            for p in params {
+                collect_tuple_arities(p, arities);
+            }
+            collect_tuple_arities(ret, arities);
+        }
+        Type::Named(_, args) => {
+            for a in args {
+                collect_tuple_arities(a, arities);
+            }
+        }
+        Type::Own(inner) => collect_tuple_arities(inner, arities),
+        _ => {}
+    }
+}
+
+/// Iteratively collect all tuple arities from a TypedExpr tree.
+fn collect_tuple_arities_expr(expr: &TypedExpr, arities: &mut std::collections::HashSet<usize>) {
+    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
+    work.push(expr);
+    while let Some(expr) = work.pop() {
+        collect_tuple_arities(&expr.ty, arities);
+        match &expr.kind {
+            TypedExprKind::Tuple(elems) => {
+                arities.insert(elems.len());
+                for e in elems { work.push(e); }
+            }
+            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
+                work.push(value);
+                if let Some(b) = body { work.push(b); }
+            }
+            TypedExprKind::App { func, args } => {
+                work.push(func);
+                for a in args { work.push(a); }
+            }
+            TypedExprKind::TypeApp { expr } => work.push(expr),
+            TypedExprKind::If { cond, then_, else_ } => {
+                work.push(cond);
+                work.push(then_);
+                work.push(else_);
+            }
+            TypedExprKind::Do(exprs) => {
+                for e in exprs { work.push(e); }
+            }
+            TypedExprKind::Match { scrutinee, arms } => {
+                work.push(scrutinee);
+                for arm in arms { work.push(&arm.body); }
+            }
+            TypedExprKind::Lambda { body, .. } => work.push(body),
+            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+                work.push(lhs);
+                work.push(rhs);
+            }
+            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::FieldAccess { expr, .. } | TypedExprKind::QuestionMark { expr, .. } => {
+                work.push(expr);
+            }
+            TypedExprKind::StructUpdate { base, fields } => {
+                work.push(base);
+                for (_, e) in fields { work.push(e); }
+            }
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields { work.push(e); }
+            }
+            TypedExprKind::Recur(args) | TypedExprKind::VecLit(args) => {
+                for a in args { work.push(a); }
+            }
+            _ => {}
+        }
     }
 }

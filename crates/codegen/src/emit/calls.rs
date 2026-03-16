@@ -1,8 +1,13 @@
+//! Function call resolution, dict/trait dispatch, and call emission.
+
+use std::collections::HashMap;
+
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
-use krypton_typechecker::types::Type;
+use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
-use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType};
+use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo};
+use super::type_to_name;
 
 /// Resolved calling convention for a function application.
 pub(super) enum CallTarget {
@@ -41,32 +46,6 @@ pub(super) enum CallTarget {
 }
 
 impl Compiler {
-    pub(super) fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
-        // Check if this is a nullary variant constructor
-        if let Some(sum_name) = self.types.variant_to_sum.get(name).cloned() {
-            let sum_info = &self.types.sum_type_info[&sum_name];
-            let vi = &sum_info.variants[name];
-            if vi.fields.is_empty() {
-                let singleton_field_ref = vi.singleton_field_ref.unwrap();
-                let interface_class_index = sum_info.interface_class_index;
-                self.builder.emit(Instruction::Getstatic(singleton_field_ref));
-                let result_type = JvmType::StructRef(interface_class_index);
-                self.builder.push_jvm_type(result_type);
-                return Ok(result_type);
-            }
-        }
-
-        let (slot, ty) = self
-            .builder.locals
-            .get(name)
-            .copied()
-            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
-
-        self.builder.emit_load(slot, ty);
-
-        Ok(ty)
-    }
-
     pub(super) fn compile_intrinsic(
         &mut self,
         name: &str,
@@ -478,5 +457,222 @@ impl Compiler {
                 }
             }
         }
+    }
+
+    // --- Dict / trait resolution helpers ---
+
+    pub(super) fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) -> bool {
+        match (pattern, actual) {
+            (Type::Var(id), ty) => {
+                bindings.insert(*id, ty.clone());
+                true
+            }
+            (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
+                p_name == a_name
+                    && p_args.len() == a_args.len()
+                    && p_args
+                        .iter()
+                        .zip(a_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
+                        })
+            }
+            (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
+                Self::bind_type_vars(p_ctor, a_ctor, bindings)
+                    && p_args.len() == a_args.len()
+                    && p_args
+                        .iter()
+                        .zip(a_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
+                        })
+            }
+            (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
+                p_args.len() == a_args.len()
+                    && Self::bind_type_vars(
+                        p_ctor,
+                        &Type::Named(a_name.clone(), Vec::new()),
+                        bindings,
+                    )
+                    && p_args
+                        .iter()
+                        .zip(a_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
+                        })
+            }
+            (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
+            (ty, Type::Own(actual_inner)) => Self::bind_type_vars(ty, actual_inner, bindings),
+            (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
+                p_elems.len() == a_elems.len()
+                    && p_elems
+                        .iter()
+                        .zip(a_elems.iter())
+                        .all(|(pattern_elem, actual_elem)| {
+                            Self::bind_type_vars(pattern_elem, actual_elem, bindings)
+                        })
+            }
+            _ => pattern == actual,
+        }
+    }
+
+    pub(super) fn extract_type_arg(ty: &Type, param_idx: usize) -> Option<Type> {
+        match ty {
+            Type::Named(_, args) => args.get(param_idx).cloned(),
+            Type::Own(inner) => Self::extract_type_arg(inner, param_idx),
+            _ => None,
+        }
+    }
+
+    pub(super) fn resolve_dict_requirement_type(
+        requirement: &DictRequirement,
+        instance_info: &ParameterizedInstanceInfo,
+        concrete_ty: &Type,
+    ) -> Option<Type> {
+        match requirement {
+            DictRequirement::TypeParam { param_idx, .. } => {
+                Self::extract_type_arg(concrete_ty, *param_idx)
+            }
+            DictRequirement::Constraint { type_var, .. } => {
+                let mut bindings = HashMap::new();
+                if Self::bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
+                    bindings.get(type_var).cloned()
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub(super) fn resolve_function_requirement_type(
+        requirement: &DictRequirement,
+        param_types: &[Type],
+        args: &[TypedExpr],
+        ret_info: Option<(&Type, &Type)>,
+    ) -> Option<Type> {
+        match requirement {
+            DictRequirement::TypeParam { param_idx, .. } => {
+                args.get(*param_idx).map(|arg| arg.ty.clone())
+            }
+            DictRequirement::Constraint { type_var, .. } => {
+                let mut bindings = HashMap::new();
+                for (param_ty, arg) in param_types.iter().zip(args.iter()) {
+                    if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
+                        return None;
+                    }
+                }
+                // For zero-arg functions, also try binding from return type
+                if bindings.get(type_var).is_none() {
+                    if let Some((ret_pattern, ret_actual)) = ret_info {
+                        Self::bind_type_vars(ret_pattern, ret_actual, &mut bindings);
+                    }
+                }
+                bindings.get(type_var).cloned()
+            }
+        }
+    }
+
+    pub(super) fn resolve_function_ref_requirement_type(
+        requirement: &DictRequirement,
+        declared_param_types: &[Type],
+        actual_param_types: &[Type],
+    ) -> Option<Type> {
+        match requirement {
+            DictRequirement::TypeParam { param_idx, .. } => {
+                actual_param_types.get(*param_idx).cloned()
+            }
+            DictRequirement::Constraint { type_var, .. } => {
+                let mut bindings = HashMap::new();
+                for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
+                    if !Self::bind_type_vars(declared, actual, &mut bindings) {
+                        return None;
+                    }
+                }
+                bindings.get(type_var).cloned()
+            }
+        }
+    }
+
+    pub(super) fn emit_dict_argument_for_type(
+        &mut self,
+        trait_name: &str,
+        ty: &Type,
+        pushed_class: u16,
+    ) -> Result<(), CodegenError> {
+        if matches!(ty, Type::Var(_))
+            || matches!(ty, Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor))
+        {
+            if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
+                self.builder.emit(Instruction::Aload(dict_slot as u8));
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: pushed_class,
+                });
+                return Ok(());
+            }
+        }
+
+        let type_name = type_to_name(ty);
+        if let Some(singleton) = self
+            .traits
+            .instance_singletons
+            .get(&(trait_name.to_string(), type_name.clone()))
+        {
+            self.builder.emit(Instruction::Getstatic(singleton.instance_field_ref));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: pushed_class,
+            });
+            return Ok(());
+        }
+
+        if let Some(instance_info) = self
+            .traits
+            .parameterized_instances
+            .get(&(trait_name.to_string(), type_name))
+            .cloned()
+        {
+            let inst_class = self.cp.add_class(&instance_info.class_name)?;
+            self.types
+                .class_descriptors
+                .insert(inst_class, format!("L{};", instance_info.class_name));
+            let mut init_desc = String::from("(");
+            for _ in &instance_info.requirements {
+                init_desc.push_str("Ljava/lang/Object;");
+            }
+            init_desc.push_str(")V");
+            let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+            self.builder.emit(Instruction::New(inst_class));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: inst_class,
+            });
+            self.builder.emit(Instruction::Dup);
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: inst_class,
+            });
+            for requirement in &instance_info.requirements {
+                let requirement_ty =
+                    Self::resolve_dict_requirement_type(requirement, &instance_info, ty)
+                        .ok_or_else(|| {
+                            CodegenError::UndefinedVariable(format!(
+                                "could not resolve dictionary requirement {} for {ty}",
+                                requirement.trait_name()
+                            ))
+                        })?;
+                self.emit_dict_argument_for_type(
+                    requirement.trait_name(),
+                    &requirement_ty,
+                    self.builder.refs.object_class,
+                )?;
+            }
+            self.builder.emit(Instruction::Invokespecial(init_ref));
+            for _ in &instance_info.requirements {
+                self.builder.frame.pop_type();
+            }
+            self.builder.frame.pop_type();
+            return Ok(());
+        }
+
+        Err(CodegenError::UndefinedVariable(format!(
+            "no instance of {trait_name} for {ty}"
+        )))
     }
 }

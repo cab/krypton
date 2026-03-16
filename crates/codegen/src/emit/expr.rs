@@ -1,3 +1,5 @@
+//! Expression compilers (literals, operators, control flow, data structures).
+
 use std::collections::HashMap;
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
@@ -9,6 +11,32 @@ use super::compiler::{Compiler, CodegenError, JvmType};
 use super::type_to_name;
 
 impl Compiler {
+    pub(super) fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
+        // Check if this is a nullary variant constructor
+        if let Some(sum_name) = self.types.variant_to_sum.get(name).cloned() {
+            let sum_info = &self.types.sum_type_info[&sum_name];
+            let vi = &sum_info.variants[name];
+            if vi.fields.is_empty() {
+                let singleton_field_ref = vi.singleton_field_ref.unwrap();
+                let interface_class_index = sum_info.interface_class_index;
+                self.builder.emit(Instruction::Getstatic(singleton_field_ref));
+                let result_type = JvmType::StructRef(interface_class_index);
+                self.builder.push_jvm_type(result_type);
+                return Ok(result_type);
+            }
+        }
+
+        let (slot, ty) = self
+            .builder.locals
+            .get(name)
+            .copied()
+            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
+
+        self.builder.emit_load(slot, ty);
+
+        Ok(ty)
+    }
+
     pub(super) fn compile_lit(&mut self, lit: &Lit) -> Result<JvmType, CodegenError> {
         match lit {
             Lit::Int(n) => {
