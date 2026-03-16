@@ -547,13 +547,13 @@ fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut 
 }
 
 fn reserve_gen_for_env_schemes(env: &TypeEnv, gen: &mut TypeVarGen) {
-    let mut next_reserved = 0;
+    let mut next_reserved = 0u32;
     env.for_each_scheme(|scheme| {
         for var in &scheme.vars {
-            next_reserved = next_reserved.max(*var + 1);
+            next_reserved = next_reserved.max(var.raw() + 1);
         }
         for var in free_vars(&scheme.ty) {
-            next_reserved = next_reserved.max(var + 1);
+            next_reserved = next_reserved.max(var.raw() + 1);
         }
     });
     gen.reserve_at_least(next_reserved);
@@ -581,7 +581,7 @@ pub(super) fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> Span
 }
 
 /// Recursively replace Type::Var(old_id) with Type::Var(new_id) in a type tree.
-fn remap_type_var(ty: &Type, old_id: u32, new_id: u32) -> Type {
+fn remap_type_var(ty: &Type, old_id: TypeVarId, new_id: TypeVarId) -> Type {
     match ty {
         Type::Var(id) if *id == old_id => Type::Var(new_id),
         Type::Fn(params, ret) => Type::Fn(

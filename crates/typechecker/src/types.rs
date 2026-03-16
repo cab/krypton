@@ -1,17 +1,36 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-/// Type variable identifier.
-pub type TypeVarId = u32;
+/// Type variable identifier (newtype wrapper for type safety).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TypeVarId(u32);
 
-/// Convert a type variable ID to a display name: 0→a, 1→b, ..., 25→z, 26→a1, etc.
-fn var_name(id: TypeVarId) -> String {
-    let letter = (b'a' + (id % 26) as u8) as char;
-    let suffix = id / 26;
-    if suffix == 0 {
-        letter.to_string()
-    } else {
-        format!("{}{}", letter, suffix)
+impl fmt::Display for TypeVarId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.display_name())
+    }
+}
+
+impl TypeVarId {
+    /// Construct from a raw index (for tests and cross-crate interop).
+    pub fn from_raw(id: u32) -> Self {
+        TypeVarId(id)
+    }
+
+    /// Return the underlying index.
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
+    /// Human-readable name: 0→a, 1→b, ..., 25→z, 26→a1, etc.
+    pub fn display_name(self) -> String {
+        let letter = (b'a' + (self.0 % 26) as u8) as char;
+        let suffix = self.0 / 26;
+        if suffix == 0 {
+            letter.to_string()
+        } else {
+            format!("{}{}", letter, suffix)
+        }
     }
 }
 
@@ -60,7 +79,7 @@ impl fmt::Display for Type {
                 }
                 write!(f, ") -> {}", ret)
             }
-            Type::Var(id) => write!(f, "{}", var_name(*id)),
+            Type::Var(id) => write!(f, "{}", id.display_name()),
             Type::Named(name, args) => {
                 write!(f, "{}", name)?;
                 if !args.is_empty() {
@@ -140,7 +159,7 @@ impl fmt::Display for TypeScheme {
         } else {
             write!(f, "forall")?;
             for &v in &self.vars {
-                write!(f, " {}", var_name(v))?;
+                write!(f, " {}", v.display_name())?;
             }
             write!(f, ". {}", self.ty)
         }
@@ -357,7 +376,7 @@ impl Default for TypeEnv {
 
 /// Fresh type variable generator.
 pub struct TypeVarGen {
-    next: TypeVarId,
+    next: u32,
 }
 
 impl TypeVarGen {
@@ -366,12 +385,12 @@ impl TypeVarGen {
     }
 
     pub fn fresh(&mut self) -> TypeVarId {
-        let id = self.next;
+        let id = TypeVarId(self.next);
         self.next += 1;
         id
     }
 
-    pub fn reserve_at_least(&mut self, next: TypeVarId) {
+    pub fn reserve_at_least(&mut self, next: u32) {
         self.next = self.next.max(next);
     }
 }
@@ -387,11 +406,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn var_name_letters() {
-        assert_eq!(var_name(0), "a");
-        assert_eq!(var_name(1), "b");
-        assert_eq!(var_name(25), "z");
-        assert_eq!(var_name(26), "a1");
-        assert_eq!(var_name(27), "b1");
+    fn display_name_letters() {
+        assert_eq!(TypeVarId(0).display_name(), "a");
+        assert_eq!(TypeVarId(1).display_name(), "b");
+        assert_eq!(TypeVarId(25).display_name(), "z");
+        assert_eq!(TypeVarId(26).display_name(), "a1");
+        assert_eq!(TypeVarId(27).display_name(), "b1");
     }
 }

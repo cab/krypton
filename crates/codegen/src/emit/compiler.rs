@@ -4,7 +4,7 @@ use krypton_parser::ast::{BinOp, Lit, UnaryOp};
 use krypton_typechecker::typed_ast::{
     TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedPattern,
 };
-use krypton_typechecker::types::Type;
+use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{
     Attribute, BootstrapMethod, Instruction, StackFrame, VerificationType,
 };
@@ -364,7 +364,7 @@ pub(super) enum DictRequirement {
     },
     Constraint {
         trait_name: String,
-        type_var: u32,
+        type_var: TypeVarId,
     },
 }
 
@@ -2913,7 +2913,7 @@ impl Compiler {
         Ok(return_type)
     }
 
-    fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<u32, Type>) -> bool {
+    fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) -> bool {
         match (pattern, actual) {
             (Type::Var(id), ty) => {
                 bindings.insert(*id, ty.clone());

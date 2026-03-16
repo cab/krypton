@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use krypton_parser::ast::TypeExpr;
 use krypton_typechecker::typed_ast::TypedModule;
 use krypton_typechecker::type_registry;
-use krypton_typechecker::types::Type;
+use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method,
@@ -38,7 +38,7 @@ struct ImportedInstanceInfo {
 }
 
 fn dict_requirements_for_instance(
-    type_var_ids: &HashMap<String, u32>,
+    type_var_ids: &HashMap<String, TypeVarId>,
     constraints: &[krypton_parser::ast::TypeConstraint],
     subdict_traits: &[(String, usize)],
 ) -> Vec<DictRequirement> {

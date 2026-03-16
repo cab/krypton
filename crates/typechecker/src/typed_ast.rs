@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::types::{Substitution, Type, TypeScheme};
+use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
 use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint, TypeExpr, UnaryOp, Variant, Visibility};
 
 /// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
@@ -193,7 +193,7 @@ pub struct ExportedTraitDef {
     pub visibility: Visibility,
     pub name: String,
     pub type_var: String,
-    pub type_var_id: u32,
+    pub type_var_id: TypeVarId,
     /// 0 = kind *, 1 = * -> *, etc.
     pub type_var_arity: usize,
     pub superclasses: Vec<String>,
@@ -220,7 +220,7 @@ pub struct InstanceDefInfo {
     pub trait_name: String,
     pub target_type_name: String,
     pub target_type: Type,
-    pub type_var_ids: HashMap<String, u32>,
+    pub type_var_ids: HashMap<String, TypeVarId>,
     pub constraints: Vec<TypeConstraint>,
     pub methods: Vec<InstanceMethod>,
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
@@ -245,7 +245,7 @@ pub struct TypedModule {
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
     pub fn_constraints: HashMap<String, Vec<(String, usize)>>,
-    pub fn_constraint_requirements: HashMap<String, Vec<(String, u32)>>,
+    pub fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
     /// Constraints inherited from imported modules (e.g., `println` requires `Show`).
     pub imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub trait_method_map: HashMap<String, String>,

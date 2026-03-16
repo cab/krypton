@@ -14,7 +14,7 @@ fn type_to_source(ty: &Type) -> String {
         Type::Bool => "Bool".to_string(),
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
-        Type::Var(id) => var_name(*id),
+        Type::Var(id) => id.display_name(),
         Type::Own(inner) => format!("~{}", type_to_source(inner)),
         Type::Fn(params, ret) => {
             let ps: Vec<String> = params.iter().map(|p| type_to_source(p)).collect();
@@ -41,16 +41,6 @@ fn type_to_source(ty: &Type) -> String {
             let es: Vec<String> = elems.iter().map(|e| type_to_source(e)).collect();
             format!("({})", es.join(", "))
         }
-    }
-}
-
-fn var_name(id: u32) -> String {
-    let letter = (b'a' + (id % 26) as u8) as char;
-    let suffix = id / 26;
-    if suffix == 0 {
-        letter.to_string()
-    } else {
-        format!("{}{}", letter, suffix)
     }
 }
 

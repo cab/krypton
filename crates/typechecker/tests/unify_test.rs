@@ -1,4 +1,4 @@
-use krypton_typechecker::types::{Substitution, Type, TypeVarGen};
+use krypton_typechecker::types::{Substitution, Type, TypeVarGen, TypeVarId};
 use krypton_typechecker::unify::{unify, TypeError};
 
 fn fresh_var(gen: &mut TypeVarGen) -> Type {
@@ -57,7 +57,7 @@ fn unify_infinite_type_fails() {
 
     let list_a = Type::Named("List".into(), vec![a.clone()]);
     let err = unify(&a, &list_a, &mut subst).unwrap_err();
-    assert!(matches!(err, TypeError::InfiniteType { var: 0, .. }));
+    assert!(matches!(err, TypeError::InfiniteType { var, .. } if var == TypeVarId::from_raw(0)));
 }
 
 #[test]

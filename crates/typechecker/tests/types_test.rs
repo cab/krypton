@@ -1,5 +1,9 @@
 use krypton_typechecker::types::*;
 
+fn tv(n: u32) -> TypeVarId {
+    TypeVarId::from_raw(n)
+}
+
 // ── 1a. Types construct, substitute, and pretty-print ──
 
 #[test]
@@ -19,8 +23,8 @@ fn display_fn_type() {
 
 #[test]
 fn display_var() {
-    assert_eq!(Type::Var(0).to_string(), "a");
-    assert_eq!(Type::Var(1).to_string(), "b");
+    assert_eq!(Type::Var(tv(0)).to_string(), "a");
+    assert_eq!(Type::Var(tv(1)).to_string(), "b");
 }
 
 #[test]
@@ -59,7 +63,7 @@ fn display_all_types_snapshot() {
             "Fn",
             Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::Bool)),
         ),
-        ("Var", Type::Var(0)),
+        ("Var", Type::Var(tv(0))),
         ("Named", Type::Named("List".into(), vec![Type::Int])),
         ("Own", Type::Own(Box::new(Type::Int))),
         ("Tuple", Type::Tuple(vec![Type::Int, Type::Bool])),
@@ -86,8 +90,8 @@ fn display_all_types_snapshot() {
 #[test]
 fn substitute_fn_type() {
     // Fn([Var(a)], Var(a)) with {a -> Int} → Fn([Int], Int)
-    let ty = Type::Fn(vec![Type::Var(0)], Box::new(Type::Var(0)));
-    let sub = Substitution::bind(0, Type::Int);
+    let ty = Type::Fn(vec![Type::Var(tv(0))], Box::new(Type::Var(tv(0))));
+    let sub = Substitution::bind(tv(0), Type::Int);
     let result = sub.apply(&ty);
     assert_eq!(result, Type::Fn(vec![Type::Int], Box::new(Type::Int)));
     assert_eq!(result.to_string(), "fn(Int) -> Int");
@@ -98,37 +102,37 @@ fn substitute_fn_type() {
 #[test]
 fn empty_substitution_is_identity() {
     let sub = Substitution::new();
-    let ty = Type::Var(0);
-    assert_eq!(sub.apply(&ty), Type::Var(0));
+    let ty = Type::Var(tv(0));
+    assert_eq!(sub.apply(&ty), Type::Var(tv(0)));
 
-    let complex = Type::Fn(vec![Type::Var(0)], Box::new(Type::Int));
+    let complex = Type::Fn(vec![Type::Var(tv(0))], Box::new(Type::Int));
     assert_eq!(sub.apply(&complex), complex);
 }
 
 #[test]
 fn single_binding() {
-    let sub = Substitution::bind(0, Type::Int);
-    assert_eq!(sub.apply(&Type::Var(0)), Type::Int);
+    let sub = Substitution::bind(tv(0), Type::Int);
+    assert_eq!(sub.apply(&Type::Var(tv(0))), Type::Int);
 }
 
 #[test]
 fn substitution_composition() {
     // {a -> Var(b)} then {b -> Int} composed = {a -> Int, b -> Int}
-    let s1 = Substitution::bind(0, Type::Var(1)); // a -> b
-    let s2 = Substitution::bind(1, Type::Int); // b -> Int
+    let s1 = Substitution::bind(tv(0), Type::Var(tv(1))); // a -> b
+    let s2 = Substitution::bind(tv(1), Type::Int); // b -> Int
     let composed = s2.compose(&s1);
 
-    assert_eq!(composed.apply(&Type::Var(0)), Type::Int);
-    assert_eq!(composed.apply(&Type::Var(1)), Type::Int);
+    assert_eq!(composed.apply(&Type::Var(tv(0))), Type::Int);
+    assert_eq!(composed.apply(&Type::Var(tv(1))), Type::Int);
 }
 
 #[test]
 fn composed_equals_sequential() {
-    let s1 = Substitution::bind(0, Type::Var(1)); // a -> b
-    let s2 = Substitution::bind(1, Type::Int); // b -> Int
+    let s1 = Substitution::bind(tv(0), Type::Var(tv(1))); // a -> b
+    let s2 = Substitution::bind(tv(1), Type::Int); // b -> Int
     let composed = s2.compose(&s1);
 
-    let ty = Type::Fn(vec![Type::Var(0)], Box::new(Type::Var(1)));
+    let ty = Type::Fn(vec![Type::Var(tv(0))], Box::new(Type::Var(tv(1))));
     // Sequential: apply s1 first, then s2
     let sequential = s2.apply(&s1.apply(&ty));
     let via_composed = composed.apply(&ty);
@@ -137,16 +141,16 @@ fn composed_equals_sequential() {
 
 #[test]
 fn substitution_into_named() {
-    let ty = Type::Named("List".into(), vec![Type::Var(0)]);
-    let sub = Substitution::bind(0, Type::Int);
+    let ty = Type::Named("List".into(), vec![Type::Var(tv(0))]);
+    let sub = Substitution::bind(tv(0), Type::Int);
     let result = sub.apply(&ty);
     assert_eq!(result, Type::Named("List".into(), vec![Type::Int]));
 }
 
 #[test]
 fn substitution_ignores_unrelated_vars() {
-    let sub = Substitution::bind(0, Type::Int);
-    assert_eq!(sub.apply(&Type::Var(1)), Type::Var(1));
+    let sub = Substitution::bind(tv(0), Type::Int);
+    assert_eq!(sub.apply(&Type::Var(tv(1))), Type::Var(tv(1)));
     assert_eq!(sub.apply(&Type::Bool), Type::Bool);
 }
 
@@ -197,8 +201,8 @@ fn type_scheme_mono_display() {
 #[test]
 fn type_scheme_poly_display() {
     let scheme = TypeScheme {
-        vars: vec![0, 1],
-        ty: Type::Fn(vec![Type::Var(0)], Box::new(Type::Var(1))),
+        vars: vec![tv(0), tv(1)],
+        ty: Type::Fn(vec![Type::Var(tv(0))], Box::new(Type::Var(tv(1)))),
     };
     insta::assert_snapshot!(scheme.to_string(), @"forall a b. fn(a) -> b");
 }
@@ -206,8 +210,8 @@ fn type_scheme_poly_display() {
 #[test]
 fn type_scheme_instantiate() {
     let scheme = TypeScheme {
-        vars: vec![0, 1],
-        ty: Type::Fn(vec![Type::Var(0)], Box::new(Type::Var(1))),
+        vars: vec![tv(0), tv(1)],
+        ty: Type::Fn(vec![Type::Var(tv(0))], Box::new(Type::Var(tv(1)))),
     };
     let mut gen = TypeVarGen::new();
     // Skip 0 and 1 so fresh vars are 2 and 3
@@ -216,7 +220,7 @@ fn type_scheme_instantiate() {
     let instantiated = scheme.instantiate(&mut || gen.fresh());
     assert_eq!(
         instantiated,
-        Type::Fn(vec![Type::Var(2)], Box::new(Type::Var(3)))
+        Type::Fn(vec![Type::Var(tv(2))], Box::new(Type::Var(tv(3))))
     );
 }
 
@@ -225,9 +229,9 @@ fn type_scheme_instantiate() {
 #[test]
 fn type_var_gen_sequential() {
     let mut gen = TypeVarGen::new();
-    assert_eq!(gen.fresh(), 0);
-    assert_eq!(gen.fresh(), 1);
-    assert_eq!(gen.fresh(), 2);
+    assert_eq!(gen.fresh(), tv(0));
+    assert_eq!(gen.fresh(), tv(1));
+    assert_eq!(gen.fresh(), tv(2));
 }
 
 // ── apply_scheme ──
@@ -235,16 +239,16 @@ fn type_var_gen_sequential() {
 #[test]
 fn apply_scheme_respects_quantified_vars() {
     let scheme = TypeScheme {
-        vars: vec![0],
-        ty: Type::Fn(vec![Type::Var(0), Type::Var(1)], Box::new(Type::Var(0))),
+        vars: vec![tv(0)],
+        ty: Type::Fn(vec![Type::Var(tv(0)), Type::Var(tv(1))], Box::new(Type::Var(tv(0)))),
     };
     // Substituting {0 -> Int, 1 -> Bool}: var 0 is quantified so should NOT be substituted
-    let s1 = Substitution::bind(0, Type::Int);
-    let s2 = Substitution::bind(1, Type::Bool);
+    let s1 = Substitution::bind(tv(0), Type::Int);
+    let s2 = Substitution::bind(tv(1), Type::Bool);
     let sub = s1.compose(&s2);
     let result = sub.apply_scheme(&scheme);
     assert_eq!(
         result.ty,
-        Type::Fn(vec![Type::Var(0), Type::Bool], Box::new(Type::Var(0)))
+        Type::Fn(vec![Type::Var(tv(0)), Type::Bool], Box::new(Type::Var(tv(0))))
     );
 }
