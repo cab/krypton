@@ -1,0 +1,15 @@
+# expect: output "Pos(1, 2)\ntrue\n3"
+# Exercises cross-module type qualification: user struct, prelude types, trait methods
+
+type Pos = { x: Int, y: Int } deriving (Show)
+
+fun main() -> Unit = {
+  let p = Pos(1, 2)
+  println(show(p))
+  println(eq(1, 1))
+  let xs = Cons(1, Cons(2, Cons(3, Nil)))
+  match xs {
+    Cons(_, Cons(_, Cons(n, Nil))) => println(n),
+    _ => println(0),
+  }
+}
