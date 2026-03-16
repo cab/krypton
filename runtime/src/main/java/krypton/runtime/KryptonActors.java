@@ -6,7 +6,7 @@ public final class KryptonActors {
     public static Object raw_spawn(Object actorFn) {
         Mailbox<Object> mailbox = new Mailbox<>();
         Fun1 fn = (Fun1) actorFn;
-        return KryptonRuntime.spawn(mailbox, () -> fn.apply(mailbox));
+        return KryptonRuntime.instance().spawn(mailbox, () -> fn.apply(mailbox));
     }
 
     public static void raw_send(Object ref, Object msg) {
@@ -47,6 +47,7 @@ public final class KryptonActors {
         raw_send(target, msg);
         Object reply = replyMb.receiveTimeout(timeout);
         if (reply != null) {
+            replyMb.close();
             return wrapOk(reply);
         } else {
             replyMb.close();

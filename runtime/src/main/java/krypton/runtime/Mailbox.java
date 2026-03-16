@@ -1,61 +1,39 @@
 package krypton.runtime;
 
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 
 public final class Mailbox<M> {
-    private final ConcurrentLinkedQueue<M> queue = new ConcurrentLinkedQueue<>();
-    private final ReentrantLock lock = new ReentrantLock();
-    private final Condition notEmpty = lock.newCondition();
+    private final LinkedTransferQueue<M> queue = new LinkedTransferQueue<>();
     private volatile boolean closed = false;
 
     void enqueue(M msg) {
         if (closed) return;
-        queue.add(msg);
-        lock.lock();
-        try {
-            notEmpty.signal();
-        } finally {
-            lock.unlock();
-        }
+        queue.put(msg);
     }
 
     public M receive() {
-        lock.lock();
         try {
-            M msg;
-            while ((msg = queue.poll()) == null) {
-                if (closed) return null;
-                notEmpty.await();
+            while (!closed) {
+                M msg = queue.poll(100, TimeUnit.MILLISECONDS);
+                if (msg != null) return msg;
             }
-            return msg;
+            return queue.poll(); // drain any remaining
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
-        } finally {
-            lock.unlock();
         }
     }
 
     public M receiveTimeout(long millis) {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
-        lock.lock();
         try {
-            M msg;
-            while ((msg = queue.poll()) == null) {
-                if (closed) return null;
-                long remaining = deadline - System.nanoTime();
-                if (remaining <= 0) return null;
-                notEmpty.await(remaining, TimeUnit.NANOSECONDS);
-            }
-            return msg;
+            M msg = queue.poll(millis, TimeUnit.MILLISECONDS);
+            if (msg != null) return msg;
+            if (closed) return null;
+            return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
-        } finally {
-            lock.unlock();
         }
     }
 
@@ -69,11 +47,5 @@ public final class Mailbox<M> {
 
     void close() {
         closed = true;
-        lock.lock();
-        try {
-            notEmpty.signalAll();
-        } finally {
-            lock.unlock();
-        }
     }
 }

@@ -11,7 +11,14 @@ class KryptonRuntimeTest {
     }
 
     @Test
-    void initDoesNotThrow() {
-        assertDoesNotThrow(KryptonRuntime::init);
+    void bootCreatesInstance() {
+        KryptonRuntime.boot();
+        assertNotNull(KryptonRuntime.instance());
+    }
+
+    @Test
+    void constructorCreatesIndependentInstance() {
+        KryptonRuntime rt = new KryptonRuntime();
+        assertEquals(0, rt.actorCount());
     }
 }

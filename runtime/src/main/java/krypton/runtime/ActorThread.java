@@ -9,20 +9,23 @@ public final class ActorThread {
     private final Thread virtualThread;
     private final Mailbox<?> mailbox;
     private volatile boolean alive = true;
+    private volatile Throwable crashReason;
 
     ActorThread(Runnable body, Mailbox<?> mailbox, KryptonRuntime runtime) {
         this.actorId = ID_COUNTER.getAndIncrement();
         this.mailbox = mailbox;
-        runtime.incrementActorCount();
         runtime.trackActor(this);
         this.virtualThread = Thread.ofVirtual()
                 .name("krypton-actor-" + actorId)
                 .start(() -> {
                     try {
                         body.run();
+                    } catch (Throwable t) {
+                        crashReason = t;
+                        System.err.println("[krypton] actor-" + actorId + " crashed: " + t.getMessage());
                     } finally {
-                        alive = false;
                         mailbox.close();
+                        alive = false;
                         runtime.notifyActorDone(this);
                     }
                 });
@@ -34,6 +37,10 @@ public final class ActorThread {
 
     public long actorId() {
         return actorId;
+    }
+
+    public Throwable crashReason() {
+        return crashReason;
     }
 
     Thread thread() {

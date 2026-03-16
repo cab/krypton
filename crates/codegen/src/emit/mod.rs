@@ -1142,6 +1142,11 @@ fn compile_module_inner(
             cpool_index: string_arr_class,
         }];
 
+        // Boot the actor runtime before calling user code
+        let runtime_class_boot = compiler.cp.add_class("krypton/runtime/KryptonRuntime")?;
+        let boot_ref = compiler.cp.add_method_ref(runtime_class_boot, "boot", "()V")?;
+        compiler.builder.emit(Instruction::Invokestatic(boot_ref));
+
         // Call krypton_main
         compiler.builder.emit(Instruction::Invokestatic(krypton_main_ref));
         compiler.builder.push_jvm_type(main_return_type);
@@ -1160,7 +1165,7 @@ fn compile_module_inner(
 
         // Call KryptonRuntime.awaitAll() so the process stays alive until all actors finish.
         let runtime_class = compiler.cp.add_class("krypton/runtime/KryptonRuntime")?;
-        let await_ref = compiler.cp.add_method_ref(runtime_class, "awaitAll", "()V")?;
+        let await_ref = compiler.cp.add_method_ref(runtime_class, "awaitAllActors", "()V")?;
         compiler.builder.emit(Instruction::Invokestatic(await_ref));
 
         compiler.builder.emit(Instruction::Return);
