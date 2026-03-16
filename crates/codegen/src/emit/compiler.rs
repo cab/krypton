@@ -688,6 +688,14 @@ pub(super) struct MethodScope {
     saved: BytecodeBuilder,
 }
 
+/// Controls whether `compile_pattern` emits instanceof/ifeq guards.
+enum PatternMode {
+    /// Emit instanceof/ifeq guards AND bind variables. Returns ifeq patch index.
+    CheckAndBind,
+    /// Bind variables only (no guards). For last arm / irrefutable patterns.
+    BindOnly,
+}
+
 impl Compiler {
     /// Stash the current builder and install a fresh one for compiling a nested method.
     fn push_method_scope(&mut self) -> MethodScope {
@@ -3595,25 +3603,20 @@ impl Compiler {
                 self.builder.frame.record_frame(arm_start);
             }
 
-            // Compile pattern check (if not wildcard/var on last arm)
+            // Compile pattern: CheckAndBind emits guards, BindOnly (last arm) skips them
             self.builder.nested_ifeq_patches.clear();
-            let next_arm_patch = if !is_last {
-                self.compile_pattern_check(
-                    &arm.pattern,
-                    scrutinee_slot,
-                    scrutinee_type,
-                    &scrutinee.ty,
-                )?
+            let mode = if !is_last {
+                PatternMode::CheckAndBind
             } else {
-                // Last arm: bind pattern variables but no branch check
-                self.compile_pattern_bind(
-                    &arm.pattern,
-                    scrutinee_slot,
-                    scrutinee_type,
-                    &scrutinee.ty,
-                )?;
-                None
+                PatternMode::BindOnly
             };
+            let next_arm_patch = self.compile_pattern(
+                &arm.pattern,
+                scrutinee_slot,
+                scrutinee_type,
+                &scrutinee.ty,
+                mode,
+            )?;
             let nested_patches = std::mem::take(&mut self.builder.nested_ifeq_patches);
 
             // Compile arm body
@@ -3701,18 +3704,26 @@ impl Compiler {
         Ok(result_type.unwrap_or(JvmType::Int))
     }
 
-    /// Compile pattern check: emits instanceof + ifeq for constructor patterns,
-    /// binds variables, and returns the index of the ifeq to patch (if any).
-    fn compile_pattern_check(
+    /// Compile a pattern: optionally emit guards, extract fields, and bind variables.
+    fn compile_pattern(
         &mut self,
         pattern: &TypedPattern,
         scrutinee_slot: u16,
         scrutinee_type: JvmType,
         scrutinee_tc_type: &Type,
+        mode: PatternMode,
     ) -> Result<Option<usize>, CodegenError> {
         match pattern {
+            TypedPattern::Wildcard { .. } => Ok(None),
+            TypedPattern::Var { name, .. } => {
+                self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
+                self.builder.push_jvm_type(scrutinee_type);
+                let var_slot = self.builder.alloc_anonymous_local(scrutinee_type);
+                self.builder.emit_store(var_slot, scrutinee_type);
+                self.builder.locals.insert(name.clone(), (var_slot, scrutinee_type));
+                Ok(None)
+            }
             TypedPattern::Constructor { name, args, .. } => {
-                // Look up variant info
                 let sum_name = self
                     .types
                     .variant_to_sum
@@ -3725,216 +3736,22 @@ impl Compiler {
                 let fields = vi.fields.clone();
                 let field_refs = vi.field_refs.clone();
 
-                // instanceof check
-                self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                self.builder.push_jvm_type(scrutinee_type);
-                self.builder.emit(Instruction::Instanceof(variant_class_index));
-                self.builder.pop_jvm_type(scrutinee_type);
-                self.builder.frame.push_type(VerificationType::Integer);
-
-                // ifeq placeholder → next arm
-                let ifeq_idx = self.builder.emit_placeholder(Instruction::Ifeq(0)); // placeholder
-                self.builder.frame.pop_type(); // consume int from instanceof
-
-                // If has sub-patterns, checkcast and extract fields
-                if !args.is_empty() {
-                    // checkcast and store cast ref in a local
+                // instanceof + ifeq guard (CheckAndBind only)
+                let ifeq_idx = if matches!(mode, PatternMode::CheckAndBind) {
                     self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
                     self.builder.push_jvm_type(scrutinee_type);
-                    self.builder.emit(Instruction::Checkcast(variant_class_index));
+                    self.builder.emit(Instruction::Instanceof(variant_class_index));
                     self.builder.pop_jvm_type(scrutinee_type);
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: variant_class_index,
-                    });
+                    self.builder.frame.push_type(VerificationType::Integer);
 
-                    let cast_slot = self.builder.next_local;
-                    self.builder.next_local += 1;
-                    self.builder.emit(Instruction::Astore(cast_slot as u8));
+                    let idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
                     self.builder.frame.pop_type();
-                    self.builder.frame.local_types.push(VerificationType::Object {
-                        cpool_index: variant_class_index,
-                    });
-
-                    for (j, sub_pat) in args.iter().enumerate() {
-                        if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
-                            continue;
-                        }
-                        let (_fname, field_jvm_type, is_erased) = &fields[j];
-                        let field_ref = field_refs[j];
-
-                        // Load cast ref, getfield
-                        self.builder.emit(Instruction::Aload(cast_slot as u8));
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: variant_class_index,
-                        });
-                        self.builder.emit(Instruction::Getfield(field_ref));
-                        self.builder.frame.pop_type(); // pop cast ref
-                        if *is_erased {
-                            self.builder.frame.push_type(VerificationType::Object {
-                                cpool_index: self.builder.refs.string_class,
-                            });
-                        } else {
-                            self.builder.push_jvm_type(*field_jvm_type);
-                        }
-
-                        match sub_pat {
-                            TypedPattern::Var { name: var_name, .. } => {
-                                // Erased fields stay as Object refs — no unboxing here.
-                                // Unboxing happens at monomorphic call sites.
-                                let actual_type = if *is_erased {
-                                    JvmType::StructRef(self.builder.refs.object_class)
-                                } else {
-                                    *field_jvm_type
-                                };
-                                let var_slot = self.builder.alloc_local(var_name.clone(), actual_type);
-                self.builder.emit_store(var_slot, actual_type);
-                            }
-                            TypedPattern::Constructor { .. } => {
-                                // Nested constructor pattern: store field value in local,
-                                // then recursively check
-                                let nested_type = if *is_erased {
-                                    // Erased field that is a nested sum type — keep as ref
-                                    JvmType::StructRef(self.get_pattern_class_index(sub_pat)?)
-                                } else {
-                                    *field_jvm_type
-                                };
-                                let nested_slot = self.builder.next_local;
-                                self.builder.next_local += 1;
-                                self.builder.emit(Instruction::Astore(nested_slot as u8));
-                                self.builder.frame.pop_type(); // pop the field value (object ref)
-                                self.builder.frame.local_types.push(VerificationType::Object {
-                                    cpool_index: match nested_type {
-                                        JvmType::StructRef(idx) => idx,
-                                        _ => self.builder.refs.string_class,
-                                    },
-                                });
-                                // Recursively compile the nested pattern check
-                                // but share the same ifeq target (next arm)
-                                self.compile_nested_pattern(
-                                    sub_pat,
-                                    nested_slot,
-                                    nested_type,
-                                    ifeq_idx,
-                                )?;
-                            }
-                            TypedPattern::Wildcard { .. } => {
-                                // Already handled above, but just in case
-                                self.builder.frame.pop_type();
-                                self.builder.emit(Instruction::Pop);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-
-                Ok(Some(ifeq_idx))
-            }
-            TypedPattern::Wildcard { .. } => {
-                // Always matches, no check needed
-                Ok(None)
-            }
-            TypedPattern::Var { name, .. } => {
-                // Always matches, bind the scrutinee
-                self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                self.builder.push_jvm_type(scrutinee_type);
-                let var_slot = self.builder.alloc_anonymous_local(scrutinee_type);
-        self.builder.emit_store(var_slot, scrutinee_type);
-                self.builder.locals.insert(name.clone(), (var_slot, scrutinee_type));
-                Ok(None)
-            }
-            TypedPattern::Tuple { elements, .. } => {
-                // Tuples are irrefutable — instanceof check then bind fields
-                let elem_types = match scrutinee_tc_type {
-                    Type::Tuple(elems) => elems,
-                    _ => {
-                        return Err(CodegenError::TypeError(
-                            "expected tuple type for tuple pattern".into(),
-                        ))
-                    }
+                    Some(idx)
+                } else {
+                    None
                 };
-                let arity = elements.len();
-                let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"))
-                })?;
-                let tuple_class = tuple_info.class_index;
-                let field_refs: Vec<u16> = tuple_info.field_refs.clone();
 
-                // instanceof check
-                self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                self.builder.push_jvm_type(scrutinee_type);
-                self.builder.emit(Instruction::Instanceof(tuple_class));
-                self.builder.pop_jvm_type(scrutinee_type);
-                self.builder.frame.push_type(VerificationType::Integer);
-
-                let ifeq_idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
-                self.builder.frame.pop_type();
-
-                // Extract and bind fields
-                for (i, sub_pat) in elements.iter().enumerate() {
-                    if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
-                        continue;
-                    }
-                    let field_ref = field_refs[i];
-                    let elem_ty = &elem_types[i];
-                    let elem_jvm_type = self.type_to_jvm(elem_ty)?;
-
-                    self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: tuple_class,
-                    });
-                    self.builder.emit(Instruction::Getfield(field_ref));
-                    self.builder.frame.pop_type();
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: self.builder.refs.object_class,
-                    });
-                    self.builder.unbox_if_needed(elem_jvm_type);
-
-                    if let TypedPattern::Var { name: var_name, .. } = sub_pat {
-                        let var_slot = self.builder.alloc_local(var_name.clone(), elem_jvm_type);
-                self.builder.emit_store(var_slot, elem_jvm_type);
-                    }
-                }
-
-                Ok(Some(ifeq_idx))
-            }
-            _ => Err(CodegenError::UnsupportedExpr(format!(
-                "unsupported pattern in check: {pattern:?}"
-            ))),
-        }
-    }
-
-    /// Bind pattern variables without emitting checks (for last arm / wildcard).
-    fn compile_pattern_bind(
-        &mut self,
-        pattern: &TypedPattern,
-        scrutinee_slot: u16,
-        scrutinee_type: JvmType,
-        scrutinee_tc_type: &Type,
-    ) -> Result<(), CodegenError> {
-        match pattern {
-            TypedPattern::Wildcard { .. } => Ok(()),
-            TypedPattern::Var { name, .. } => {
-                self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                self.builder.push_jvm_type(scrutinee_type);
-                let var_slot = self.builder.alloc_anonymous_local(scrutinee_type);
-        self.builder.emit_store(var_slot, scrutinee_type);
-                self.builder.locals.insert(name.clone(), (var_slot, scrutinee_type));
-                Ok(())
-            }
-            TypedPattern::Constructor { name, args, .. } => {
-                // Last arm constructor — still need to extract fields
-                let sum_name = self
-                    .types
-                    .variant_to_sum
-                    .get(name)
-                    .cloned()
-                    .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}")))?;
-                let sum_info = &self.types.sum_type_info[&sum_name];
-                let vi = &sum_info.variants[name];
-                let variant_class_index = vi.class_index;
-                let fields = vi.fields.clone();
-                let field_refs = vi.field_refs.clone();
-
+                // Extract fields if there are sub-patterns
                 if !args.is_empty() {
                     self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
                     self.builder.push_jvm_type(scrutinee_type);
@@ -3979,8 +3796,8 @@ impl Compiler {
                                 ty: var_tc_type,
                                 ..
                             } => {
-                                // For erased (generic) fields, resolve the actual JVM type
-                                // from the typechecker type on the pattern variable.
+                                // For erased fields, resolve actual type from the pattern
+                                // variable's typechecker type and emit cast/unbox.
                                 let actual_type = if *is_erased {
                                     self.type_to_jvm(var_tc_type)
                                         .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
@@ -3988,7 +3805,6 @@ impl Compiler {
                                     *field_jvm_type
                                 };
 
-                                // If the field was erased, cast/unbox from Object to the actual type.
                                 if *is_erased {
                                     match actual_type {
                                         JvmType::StructRef(class_idx)
@@ -4018,25 +3834,50 @@ impl Compiler {
                                 let var_slot = self.builder.alloc_local(var_name.clone(), actual_type);
                                 self.builder.emit_store(var_slot, actual_type);
                             }
-                            TypedPattern::Constructor { args: sub_args, .. } if sub_args.is_empty() => {
-                                // Zero-arg constructor pattern (e.g., Timeout) — value already
-                                // verified by type; just pop the extracted field.
+                            TypedPattern::Constructor { args: sub_args, .. }
+                                if sub_args.is_empty() =>
+                            {
+                                // Zero-arg constructor sub-pattern — just pop
                                 self.builder.emit(Instruction::Pop);
                                 self.builder.frame.pop_type();
+                            }
+                            TypedPattern::Constructor { .. } => {
+                                // Nested constructor: store in local, recurse with CheckAndBind
+                                let nested_type = if *is_erased {
+                                    JvmType::StructRef(self.get_pattern_class_index(sub_pat)?)
+                                } else {
+                                    *field_jvm_type
+                                };
+                                let nested_slot = self.builder.next_local;
+                                self.builder.next_local += 1;
+                                self.builder.emit(Instruction::Astore(nested_slot as u8));
+                                self.builder.frame.pop_type();
+                                self.builder.frame.local_types.push(VerificationType::Object {
+                                    cpool_index: match nested_type {
+                                        JvmType::StructRef(idx) => idx,
+                                        _ => self.builder.refs.string_class,
+                                    },
+                                });
+                                if let Some(nested_ifeq) = self.compile_pattern(
+                                    sub_pat,
+                                    nested_slot,
+                                    nested_type,
+                                    scrutinee_tc_type,
+                                    PatternMode::CheckAndBind,
+                                )? {
+                                    self.builder.nested_ifeq_patches.push(nested_ifeq);
+                                }
                             }
                             TypedPattern::Wildcard { .. } => {
                                 self.builder.emit(Instruction::Pop);
                                 self.builder.frame.pop_type();
                             }
-                            _ => {
-                                return Err(CodegenError::TypeError(
-                                    "nested sub-patterns not yet supported in variant match".into()
-                                ));
-                            }
+                            _ => {}
                         }
                     }
                 }
-                Ok(())
+
+                Ok(ifeq_idx)
             }
             TypedPattern::Tuple { elements, .. } => {
                 let elem_types = match scrutinee_tc_type {
@@ -4054,6 +3895,22 @@ impl Compiler {
                 let tuple_class = tuple_info.class_index;
                 let field_refs: Vec<u16> = tuple_info.field_refs.clone();
 
+                // instanceof + ifeq guard (CheckAndBind only)
+                let ifeq_idx = if matches!(mode, PatternMode::CheckAndBind) {
+                    self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
+                    self.builder.push_jvm_type(scrutinee_type);
+                    self.builder.emit(Instruction::Instanceof(tuple_class));
+                    self.builder.pop_jvm_type(scrutinee_type);
+                    self.builder.frame.push_type(VerificationType::Integer);
+
+                    let idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
+                    self.builder.frame.pop_type();
+                    Some(idx)
+                } else {
+                    None
+                };
+
+                // Extract and bind fields
                 for (i, sub_pat) in elements.iter().enumerate() {
                     if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                         continue;
@@ -4075,13 +3932,14 @@ impl Compiler {
 
                     if let TypedPattern::Var { name: var_name, .. } = sub_pat {
                         let var_slot = self.builder.alloc_local(var_name.clone(), elem_jvm_type);
-                self.builder.emit_store(var_slot, elem_jvm_type);
+                        self.builder.emit_store(var_slot, elem_jvm_type);
                     }
                 }
-                Ok(())
+
+                Ok(ifeq_idx)
             }
             _ => Err(CodegenError::UnsupportedExpr(format!(
-                "unsupported pattern in bind: {pattern:?}"
+                "unsupported pattern: {pattern:?}"
             ))),
         }
     }
@@ -4103,134 +3961,6 @@ impl Compiler {
         }
     }
 
-    /// Compile a nested constructor pattern within an already-matched outer pattern.
-    fn compile_nested_pattern(
-        &mut self,
-        pattern: &TypedPattern,
-        scrutinee_slot: u16,
-        scrutinee_type: JvmType,
-        _outer_ifeq_idx: usize,
-    ) -> Result<(), CodegenError> {
-        if let TypedPattern::Constructor { name, args, .. } = pattern {
-            let sum_name = self
-                .types
-                .variant_to_sum
-                .get(name)
-                .cloned()
-                .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}")))?;
-            let sum_info = &self.types.sum_type_info[&sum_name];
-            let vi = &sum_info.variants[name];
-            let variant_class_index = vi.class_index;
-            let fields = vi.fields.clone();
-            let field_refs = vi.field_refs.clone();
-
-            // instanceof check
-            self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-            self.builder.frame.push_type(VerificationType::Object {
-                cpool_index: match scrutinee_type {
-                    JvmType::StructRef(idx) => idx,
-                    _ => self.builder.refs.string_class,
-                },
-            });
-            self.builder.emit(Instruction::Instanceof(variant_class_index));
-            self.builder.frame.pop_type();
-            self.builder.frame.push_type(VerificationType::Integer);
-
-            // ifeq → same outer target (we'll add a new ifeq that also jumps to next arm)
-            let nested_ifeq_idx = self.builder.emit_placeholder(Instruction::Ifeq(0)); // placeholder — will share target with outer
-            self.builder.frame.pop_type();
-
-            // Extract fields if needed
-            if !args.is_empty() {
-                self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: match scrutinee_type {
-                        JvmType::StructRef(idx) => idx,
-                        _ => self.builder.refs.string_class,
-                    },
-                });
-                self.builder.emit(Instruction::Checkcast(variant_class_index));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: variant_class_index,
-                });
-
-                let cast_slot = self.builder.next_local;
-                self.builder.next_local += 1;
-                self.builder.emit(Instruction::Astore(cast_slot as u8));
-                self.builder.frame.pop_type();
-                self.builder.frame.local_types.push(VerificationType::Object {
-                    cpool_index: variant_class_index,
-                });
-
-                for (j, sub_pat) in args.iter().enumerate() {
-                    if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
-                        continue;
-                    }
-                    let (_fname, field_jvm_type, is_erased) = &fields[j];
-                    let field_ref = field_refs[j];
-
-                    self.builder.emit(Instruction::Aload(cast_slot as u8));
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: variant_class_index,
-                    });
-                    self.builder.emit(Instruction::Getfield(field_ref));
-                    self.builder.frame.pop_type();
-                    if *is_erased {
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: self.builder.refs.string_class,
-                        });
-                    } else {
-                        self.builder.push_jvm_type(*field_jvm_type);
-                    }
-
-                    match sub_pat {
-                        TypedPattern::Var { name: var_name, .. } => {
-                            let actual_type = if *is_erased {
-                                JvmType::StructRef(self.builder.refs.object_class)
-                            } else {
-                                *field_jvm_type
-                            };
-                            let var_slot = self.builder.alloc_local(var_name.clone(), actual_type);
-                self.builder.emit_store(var_slot, actual_type);
-                        }
-                        TypedPattern::Constructor { .. } => {
-                            // Deeper nesting
-                            let nested_type = if *is_erased {
-                                JvmType::StructRef(self.get_pattern_class_index(sub_pat)?)
-                            } else {
-                                *field_jvm_type
-                            };
-                            let nested_slot = self.builder.next_local;
-                            self.builder.next_local += 1;
-                            self.builder.emit(Instruction::Astore(nested_slot as u8));
-                            self.builder.frame.pop_type();
-                            self.builder.frame.local_types.push(VerificationType::Object {
-                                cpool_index: match nested_type {
-                                    JvmType::StructRef(idx) => idx,
-                                    _ => self.builder.refs.string_class,
-                                },
-                            });
-                            self.compile_nested_pattern(
-                                sub_pat,
-                                nested_slot,
-                                nested_type,
-                                _outer_ifeq_idx,
-                            )?;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            // Record nested ifeq index so the caller can patch it to the same branch target.
-            self.builder.nested_ifeq_patches.push(nested_ifeq_idx);
-
-            Ok(())
-        } else {
-            Ok(())
-        }
-    }
 
     fn compile_do(&mut self, exprs: &[TypedExpr], in_tail: bool) -> Result<JvmType, CodegenError> {
         let mut last_type = JvmType::Int;
