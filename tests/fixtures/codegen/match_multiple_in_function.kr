@@ -1,0 +1,36 @@
+# BL-2: VerifyError when multiple match expressions appear in the same
+# function body due to stackmap frame local slot mismatch.
+#
+# After compile_match, next_local is set to the high-water mark but
+# frame.local_types is reset to the pre-match snapshot. A second match
+# then allocates locals at mismatched slot indices, producing incorrect
+# StackMapTable frames and a JVM VerifyError.
+# expect: output "1\n2\n3\n4"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Option[a] = Some(a) | None
+
+fun main() = {
+    let a = match Some(1) {
+        Some(x) => x,
+        None => 0,
+    }
+    println(a)
+    let b = match Some(2) {
+        Some(x) => x,
+        None => 0,
+    }
+    println(b)
+    let c = match Some(3) {
+        Some(x) => x,
+        None => 0,
+    }
+    println(c)
+    let d = match Some(4) {
+        Some(x) => x,
+        None => 0,
+    }
+    println(d)
+}

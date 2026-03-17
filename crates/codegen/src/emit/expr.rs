@@ -513,10 +513,15 @@ impl Compiler {
         let _else_type = self.compile_expr(else_, in_tail)?;
         let else_next_local = self.builder.next_local;
 
-        // Restore locals for merge point (else-branch locals are out of scope)
+        // Restore locals for merge point (else-branch locals are out of scope);
+        // record high-water mark so max_locals covers branch-local slots.
+        let branch_hwm = then_next_local.max(else_next_local);
         self.builder.locals = locals_at_branch;
         self.builder.frame.local_types = local_types_at_branch;
-        self.builder.next_local = then_next_local.max(else_next_local);
+        self.builder.next_local = next_local_at_branch;
+        if branch_hwm > self.builder.max_locals_hwm {
+            self.builder.max_locals_hwm = branch_hwm;
+        }
 
         let after_else = self.builder.current_offset();
 

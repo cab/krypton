@@ -153,6 +153,7 @@ pub(super) struct BytecodeBuilder {
     pub(super) frame: FrameState,
     pub(super) locals: HashMap<String, (u16, JvmType)>,
     pub(super) next_local: u16,
+    pub(super) max_locals_hwm: u16,
     pub(super) fn_params: Vec<(u16, JvmType)>,
     pub(super) fn_return_type: Option<JvmType>,
     pub(super) recur_target: u16,
@@ -169,6 +170,7 @@ impl BytecodeBuilder {
             frame: FrameState::default(),
             locals: HashMap::new(),
             next_local: 0,
+            max_locals_hwm: 0,
             fn_params: Vec::new(),
             fn_return_type: None,
             recur_target: 1,
@@ -368,7 +370,7 @@ impl BytecodeBuilder {
         Attribute::Code {
             name_index: self.refs.code_utf8,
             max_stack: self.frame.max_stack(),
-            max_locals: self.next_local,
+            max_locals: self.max_locals_hwm.max(self.next_local),
             code: std::mem::take(&mut self.code),
             exception_table: vec![],
             attributes: code_attributes,
@@ -380,6 +382,7 @@ impl BytecodeBuilder {
         self.code.clear();
         self.locals.clear();
         self.next_local = 0;
+        self.max_locals_hwm = 0;
         self.frame.reset();
         self.fn_params.clear();
         self.fn_return_type = None;

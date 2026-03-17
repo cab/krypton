@@ -224,8 +224,12 @@ impl Compiler {
             // Compile arm body
             let arm_type = self.compile_expr(&arm.body, in_tail)?;
 
-            // Normalize arm result type to match function return type
-            let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
+            // Normalize arm result type to match function return type (tail only)
+            let target_type = if in_tail {
+                self.builder.fn_return_type.unwrap_or(arm_type)
+            } else {
+                arm_type
+            };
             if result_type.is_none() {
                 result_type = Some(target_type);
             }
@@ -299,9 +303,13 @@ impl Compiler {
             self.builder.patch(goto_idx, Instruction::Goto(after_match));
         }
 
-        // Restore locals scope but keep high-water mark for max_locals
+        // Restore locals scope and next_local to pre-match state;
+        // record high-water mark so max_locals covers arm-local slots.
         self.builder.locals = locals_at_match;
-        self.builder.next_local = max_next_local;
+        self.builder.next_local = next_local_at_match;
+        if max_next_local > self.builder.max_locals_hwm {
+            self.builder.max_locals_hwm = max_next_local;
+        }
 
         Ok(result_type.unwrap_or(JvmType::Int))
     }
