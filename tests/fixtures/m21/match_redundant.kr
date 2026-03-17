@@ -1,0 +1,7 @@
+# expect: error E0013
+type Option[a] = Some(a) | None
+fun test(opt) = match opt {
+    Some(x) => x,
+    None => 0,
+    Some(y) => y,
+}

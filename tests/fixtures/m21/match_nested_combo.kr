@@ -1,0 +1,6 @@
+# expect: error E0006
+type Option[a] = Some(a) | None
+fun test(opt) = match opt {
+    Some(true) => 1,
+    None => 2,
+}

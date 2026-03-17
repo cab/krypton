@@ -1,11 +1,433 @@
 use std::collections::HashSet;
 
-use krypton_parser::ast::Span;
+use krypton_parser::ast::{Lit, Span};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::{TypedMatchArm, TypedPattern};
 use crate::types::Type;
 use crate::unify::{SpannedTypeError, TypeError};
+
+/// Maximum constructor expansion depth. Beyond this, types are treated as
+/// infinite (like Int/String). This bounds recursion for recursive types
+/// like List where Cons(a, List[a]) would otherwise expand forever.
+/// This is the same approach used by GHC and rustc.
+const MAX_DEPTH: usize = 20;
+
+/// A constructor in the pattern matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Con {
+    Variant(String),
+    BoolLit(bool),
+    Literal(String),
+    Tuple(usize),
+    Record(String),
+}
+
+/// Internal pattern representation for the matrix algorithm.
+#[derive(Clone, Debug)]
+enum Pat {
+    Con(Con, Vec<Pat>),
+    Wild,
+}
+
+/// Convert a TypedPattern into our internal Pat representation.
+fn convert(pat: &TypedPattern) -> Pat {
+    match pat {
+        TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => Pat::Wild,
+        TypedPattern::Constructor { name, args, .. } => {
+            Pat::Con(Con::Variant(name.clone()), args.iter().map(convert).collect())
+        }
+        TypedPattern::Lit { value, .. } => match value {
+            Lit::Bool(b) => Pat::Con(Con::BoolLit(*b), vec![]),
+            Lit::Int(n) => Pat::Con(Con::Literal(n.to_string()), vec![]),
+            Lit::Float(f) => Pat::Con(Con::Literal(f.to_string()), vec![]),
+            Lit::String(s) => Pat::Con(Con::Literal(s.clone()), vec![]),
+            Lit::Unit => Pat::Con(Con::Tuple(0), vec![]),
+        },
+        TypedPattern::Tuple { elements, .. } => {
+            Pat::Con(Con::Tuple(elements.len()), elements.iter().map(convert).collect())
+        }
+        TypedPattern::StructPat {
+            name,
+            fields,
+            ..
+        } => {
+            let sub_pats: Vec<Pat> = fields.iter().map(|(_, p)| convert(p)).collect();
+            Pat::Con(Con::Record(name.clone()), sub_pats)
+        }
+    }
+}
+
+/// Enumerate all constructors for a type. Returns None when the constructor
+/// set cannot be enumerated (Int/String have infinitely many values).
+/// When `depth >= MAX_DEPTH`, returns None to bound recursion on recursive
+/// types like List where Cons would otherwise expand forever.
+fn all_constructors(ty: &Type, registry: &TypeRegistry, depth: usize) -> Option<Vec<Con>> {
+    if depth >= MAX_DEPTH {
+        return None;
+    }
+    match ty {
+        Type::Bool => Some(vec![Con::BoolLit(true), Con::BoolLit(false)]),
+        Type::Named(name, _) => {
+            let info = registry.lookup_type(name)?;
+            match &info.kind {
+                TypeKind::Sum { variants } => {
+                    Some(variants.iter().map(|v| Con::Variant(v.name.clone())).collect())
+                }
+                TypeKind::Record { .. } => Some(vec![Con::Record(name.clone())]),
+            }
+        }
+        Type::Tuple(elems) => Some(vec![Con::Tuple(elems.len())]),
+        Type::Unit => Some(vec![Con::Tuple(0)]),
+        Type::Int | Type::Float | Type::String => None,
+        _ => None,
+    }
+}
+
+/// Return the number of sub-patterns a constructor carries.
+fn constructor_arity(con: &Con, ty: &Type, registry: &TypeRegistry) -> usize {
+    match con {
+        Con::BoolLit(_) | Con::Literal(_) => 0,
+        Con::Tuple(n) => *n,
+        Con::Variant(name) => {
+            if let Type::Named(type_name, _) = ty {
+                if let Some(info) = registry.lookup_type(type_name) {
+                    if let TypeKind::Sum { variants } = &info.kind {
+                        for v in variants {
+                            if &v.name == name {
+                                return v.fields.len();
+                            }
+                        }
+                    }
+                }
+            }
+            0
+        }
+        Con::Record(name) => {
+            if let Some(info) = registry.lookup_type(name) {
+                if let TypeKind::Record { fields } = &info.kind {
+                    return fields.len();
+                }
+            }
+            0
+        }
+    }
+}
+
+/// Return the types of sub-patterns for a constructor applied to a scrutinee type.
+fn sub_types(con: &Con, ty: &Type, registry: &TypeRegistry) -> Vec<Type> {
+    match con {
+        Con::BoolLit(_) | Con::Literal(_) => vec![],
+        Con::Tuple(_) => {
+            if let Type::Tuple(elems) = ty {
+                elems.clone()
+            } else {
+                vec![]
+            }
+        }
+        Con::Variant(name) => {
+            if let Type::Named(type_name, type_args) = ty {
+                if let Some(info) = registry.lookup_type(type_name) {
+                    if let TypeKind::Sum { variants } = &info.kind {
+                        for v in variants {
+                            if &v.name == name {
+                                return v
+                                    .fields
+                                    .iter()
+                                    .map(|f| substitute_type_params(f, &info.type_param_vars, type_args))
+                                    .collect();
+                            }
+                        }
+                    }
+                }
+            }
+            vec![]
+        }
+        Con::Record(name) => {
+            if let Some(info) = registry.lookup_type(name) {
+                if let TypeKind::Record { fields } = &info.kind {
+                    if let Type::Named(_, type_args) = ty {
+                        return fields
+                            .iter()
+                            .map(|(_, f)| substitute_type_params(f, &info.type_param_vars, type_args))
+                            .collect();
+                    }
+                    return fields.iter().map(|(_, f)| f.clone()).collect();
+                }
+            }
+            vec![]
+        }
+    }
+}
+
+/// Simple type parameter substitution: replace Var(id) with concrete type args.
+fn substitute_type_params(
+    ty: &Type,
+    param_vars: &[crate::types::TypeVarId],
+    type_args: &[Type],
+) -> Type {
+    match ty {
+        Type::Var(id) => {
+            for (i, pv) in param_vars.iter().enumerate() {
+                if pv == id {
+                    if let Some(arg) = type_args.get(i) {
+                        return arg.clone();
+                    }
+                }
+            }
+            ty.clone()
+        }
+        Type::Named(n, args) => Type::Named(
+            n.clone(),
+            args.iter()
+                .map(|a| substitute_type_params(a, param_vars, type_args))
+                .collect(),
+        ),
+        Type::Tuple(elems) => Type::Tuple(
+            elems
+                .iter()
+                .map(|e| substitute_type_params(e, param_vars, type_args))
+                .collect(),
+        ),
+        Type::Fn(params, ret) => Type::Fn(
+            params
+                .iter()
+                .map(|p| substitute_type_params(p, param_vars, type_args))
+                .collect(),
+            Box::new(substitute_type_params(ret, param_vars, type_args)),
+        ),
+        Type::Own(inner) => {
+            Type::Own(Box::new(substitute_type_params(inner, param_vars, type_args)))
+        }
+        _ => ty.clone(),
+    }
+}
+
+/// Specialize the matrix by a constructor: keep rows whose first column matches `con`,
+/// expanding sub-patterns; drop rows that don't match (unless wildcard).
+fn specialize(matrix: &[Vec<Pat>], con: &Con, arity: usize) -> Vec<Vec<Pat>> {
+    let mut result = Vec::new();
+    for row in matrix {
+        if row.is_empty() {
+            continue;
+        }
+        match &row[0] {
+            Pat::Con(c, subs) if c == con => {
+                let mut new_row: Vec<Pat> = subs.clone();
+                while new_row.len() < arity {
+                    new_row.push(Pat::Wild);
+                }
+                new_row.extend_from_slice(&row[1..]);
+                result.push(new_row);
+            }
+            Pat::Wild => {
+                let mut new_row: Vec<Pat> = vec![Pat::Wild; arity];
+                new_row.extend_from_slice(&row[1..]);
+                result.push(new_row);
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
+/// Default matrix: rows where first column is Wild, with column 0 removed.
+fn default_matrix(matrix: &[Vec<Pat>]) -> Vec<Vec<Pat>> {
+    let mut result = Vec::new();
+    for row in matrix {
+        if row.is_empty() {
+            continue;
+        }
+        if matches!(&row[0], Pat::Wild) {
+            result.push(row[1..].to_vec());
+        }
+    }
+    result
+}
+
+/// Collect the set of head constructors from column 0 of the matrix.
+fn head_constructors(matrix: &[Vec<Pat>]) -> Vec<Con> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    for row in matrix {
+        if row.is_empty() {
+            continue;
+        }
+        if let Pat::Con(c, _) = &row[0] {
+            if seen.insert(c.clone()) {
+                result.push(c.clone());
+            }
+        }
+    }
+    result
+}
+
+/// Core usefulness check: is `pattern_vec` useful with respect to `matrix`?
+/// The `depth` parameter limits constructor expansion for recursive types.
+fn is_useful(
+    matrix: &[Vec<Pat>],
+    pattern_vec: &[Pat],
+    type_stack: &[Type],
+    registry: &TypeRegistry,
+    depth: usize,
+) -> bool {
+    if pattern_vec.is_empty() {
+        return matrix.is_empty();
+    }
+
+    let ty = &type_stack[0];
+
+    match &pattern_vec[0] {
+        Pat::Con(con, subs) => {
+            let arity = constructor_arity(con, ty, registry);
+            let spec_matrix = specialize(matrix, con, arity);
+            let mut new_pat: Vec<Pat> = subs.clone();
+            while new_pat.len() < arity {
+                new_pat.push(Pat::Wild);
+            }
+            new_pat.extend_from_slice(&pattern_vec[1..]);
+            let mut new_types = sub_types(con, ty, registry);
+            new_types.extend_from_slice(&type_stack[1..]);
+            is_useful(&spec_matrix, &new_pat, &new_types, registry, depth + 1)
+        }
+        Pat::Wild => {
+            let heads = head_constructors(matrix);
+            if let Some(all_cons) = all_constructors(ty, registry, depth) {
+                let head_set: HashSet<Con> = heads.into_iter().collect();
+                let is_complete = all_cons.iter().all(|c| head_set.contains(c));
+                if is_complete {
+                    for con in &all_cons {
+                        let arity = constructor_arity(con, ty, registry);
+                        let spec_matrix = specialize(matrix, con, arity);
+                        let mut new_pat: Vec<Pat> = vec![Pat::Wild; arity];
+                        new_pat.extend_from_slice(&pattern_vec[1..]);
+                        let mut new_types = sub_types(con, ty, registry);
+                        new_types.extend_from_slice(&type_stack[1..]);
+                        if is_useful(&spec_matrix, &new_pat, &new_types, registry, depth + 1) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+            // Incomplete or infinite: use default matrix
+            let def = default_matrix(matrix);
+            is_useful(&def, &pattern_vec[1..], &type_stack[1..], registry, depth + 1)
+        }
+    }
+}
+
+/// Witness generation: find a pattern vector that is not covered by the matrix.
+/// Returns None if the matrix is exhaustive.
+fn witness(
+    matrix: &[Vec<Pat>],
+    type_stack: &[Type],
+    registry: &TypeRegistry,
+    depth: usize,
+) -> Option<Vec<Pat>> {
+    if type_stack.is_empty() {
+        return if matrix.is_empty() {
+            Some(vec![])
+        } else {
+            None
+        };
+    }
+
+    let ty = &type_stack[0];
+    let heads = head_constructors(matrix);
+
+    if let Some(all_cons) = all_constructors(ty, registry, depth) {
+        let head_set: HashSet<Con> = heads.into_iter().collect();
+        let is_complete = all_cons.iter().all(|c| head_set.contains(c));
+
+        if is_complete {
+            for con in &all_cons {
+                let arity = constructor_arity(con, ty, registry);
+                let spec_matrix = specialize(matrix, con, arity);
+                let mut new_types = sub_types(con, ty, registry);
+                new_types.extend_from_slice(&type_stack[1..]);
+                if let Some(mut w) = witness(&spec_matrix, &new_types, registry, depth + 1) {
+                    let rest: Vec<Pat> = w.split_off(arity);
+                    let sub_pats = w;
+                    let mut result = vec![Pat::Con(con.clone(), sub_pats)];
+                    result.extend(rest);
+                    return Some(result);
+                }
+            }
+            None
+        } else {
+            // Find a missing constructor
+            let missing_con = all_cons.iter().find(|c| !head_set.contains(c));
+            if let Some(con) = missing_con {
+                let arity = constructor_arity(con, ty, registry);
+                let spec_matrix = specialize(matrix, con, arity);
+                let mut new_types = sub_types(con, ty, registry);
+                new_types.extend_from_slice(&type_stack[1..]);
+                if let Some(mut w) = witness(&spec_matrix, &new_types, registry, depth + 1) {
+                    let rest: Vec<Pat> = w.split_off(arity);
+                    let sub_pats = w;
+                    let mut result = vec![Pat::Con(con.clone(), sub_pats)];
+                    result.extend(rest);
+                    return Some(result);
+                }
+                None
+            } else {
+                // No constructors known — use default matrix
+                let def = default_matrix(matrix);
+                if let Some(mut w) = witness(&def, &type_stack[1..], registry, depth + 1) {
+                    let mut result = vec![Pat::Wild];
+                    result.append(&mut w);
+                    Some(result)
+                } else {
+                    None
+                }
+            }
+        }
+    } else {
+        // Non-enumerable type or depth exceeded — use default matrix
+        let def = default_matrix(matrix);
+        if let Some(mut w) = witness(&def, &type_stack[1..], registry, depth + 1) {
+            let mut result = vec![Pat::Wild];
+            result.append(&mut w);
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
+
+/// Format a witness pattern for error messages.
+fn format_pat(pat: &Pat) -> String {
+    match pat {
+        Pat::Wild => "_".to_string(),
+        Pat::Con(con, subs) => match con {
+            Con::Variant(name) => {
+                if subs.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}({})", name, subs.iter().map(format_pat).collect::<Vec<_>>().join(", "))
+                }
+            }
+            Con::BoolLit(b) => b.to_string(),
+            Con::Literal(s) => s.clone(),
+            Con::Tuple(n) => {
+                if *n == 0 {
+                    "()".to_string()
+                } else {
+                    format!("({})", subs.iter().map(format_pat).collect::<Vec<_>>().join(", "))
+                }
+            }
+            Con::Record(name) => {
+                format!("{} {{ .. }}", name)
+            }
+        },
+    }
+}
+
+/// Format witness patterns into missing pattern strings.
+fn format_witness(witness: &[Pat]) -> Vec<String> {
+    witness.iter().map(format_pat).collect()
+}
 
 pub fn check_exhaustiveness(
     scrutinee_ty: &Type,
@@ -13,137 +435,45 @@ pub fn check_exhaustiveness(
     registry: Option<&TypeRegistry>,
     span: Span,
 ) -> Result<(), SpannedTypeError> {
-    let patterns: Vec<&TypedPattern> = arms.iter().map(|a| &a.pattern).collect();
-    check_patterns_exhaustive(scrutinee_ty, &patterns, registry, span)
-}
+    let registry = match registry {
+        Some(r) => r,
+        None => return Ok(()),
+    };
 
-fn check_patterns_exhaustive(
-    scrutinee_ty: &Type,
-    patterns: &[&TypedPattern],
-    registry: Option<&TypeRegistry>,
-    span: Span,
-) -> Result<(), SpannedTypeError> {
-    // If any pattern is a wildcard/var at top level, it's exhaustive
-    for pat in patterns {
-        if is_catch_all(pat) {
-            return Ok(());
-        }
-    }
+    let pats: Vec<Vec<Pat>> = arms.iter().map(|a| vec![convert(&a.pattern)]).collect();
+    let types = vec![scrutinee_ty.clone()];
 
-    // Resolve the scrutinee type
-    match scrutinee_ty {
-        Type::Named(name, _) => {
-            let registry = match registry {
-                Some(r) => r,
-                None => return Ok(()), // no registry, can't check
+    // Redundancy: check each arm against prior arms
+    for i in 0..pats.len() {
+        let prior = &pats[..i];
+        if !is_useful(prior, &pats[i], &types, registry, 0) {
+            let arm_span = match &arms[i].pattern {
+                TypedPattern::Wildcard { span, .. } => *span,
+                TypedPattern::Var { span, .. } => *span,
+                TypedPattern::Constructor { span, .. } => *span,
+                TypedPattern::Lit { span, .. } => *span,
+                TypedPattern::Tuple { span, .. } => *span,
+                TypedPattern::StructPat { span, .. } => *span,
             };
-            let type_info = match registry.lookup_type(name) {
-                Some(info) => info,
-                None => return Ok(()), // unknown type, skip
-            };
-            match &type_info.kind {
-                TypeKind::Sum { variants } => {
-                    let all_variants: Vec<&str> =
-                        variants.iter().map(|v| v.name.as_str()).collect();
-
-                    // Collect which variants are matched
-                    let matched: HashSet<&str> = patterns
-                        .iter()
-                        .filter_map(|pat| constructor_name(pat))
-                        .collect();
-
-                    let missing: Vec<String> = all_variants
-                        .iter()
-                        .filter(|v| !matched.contains(*v))
-                        .map(|v| v.to_string())
-                        .collect();
-
-                    if !missing.is_empty() {
-                        return Err(SpannedTypeError {
-                            error: TypeError::NonExhaustive { missing },
-                            span,
-                            note: None,
-                            secondary_span: None,
-                        });
-                    }
-
-                    // For each matched variant, check nested sub-patterns
-                    for variant_info in variants {
-                        if variant_info.fields.is_empty() {
-                            continue;
-                        }
-                        // Collect sub-patterns for this variant
-                        let sub_patterns: Vec<&[TypedPattern]> = patterns
-                            .iter()
-                            .filter_map(|pat| match pat {
-                                TypedPattern::Constructor { name, args, .. }
-                                    if name == &variant_info.name =>
-                                {
-                                    Some(args.as_slice())
-                                }
-                                _ => None,
-                            })
-                            .collect();
-
-                        if sub_patterns.is_empty() {
-                            continue;
-                        }
-
-                        // Check each field position for exhaustiveness
-                        for (i, field_ty) in variant_info.fields.iter().enumerate() {
-                            let field_pats: Vec<&TypedPattern> =
-                                sub_patterns.iter().filter_map(|pats| pats.get(i)).collect();
-
-                            check_patterns_exhaustive(field_ty, &field_pats, Some(registry), span)?;
-                        }
-                    }
-
-                    Ok(())
-                }
-                TypeKind::Record { .. } => {
-                    // Single constructor — any arm matches
-                    if patterns.is_empty() {
-                        Err(SpannedTypeError {
-                            error: TypeError::NonExhaustive {
-                                missing: vec![name.clone()],
-                            },
-                            span,
-                            note: None,
-                            secondary_span: None,
-                        })
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
-        }
-        // For primitive types (Int, String, Bool, etc.), require a catch-all
-        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit => {
-            // We already checked for catch-all above, so if we're here it's missing
-            Err(SpannedTypeError {
-                error: TypeError::NonExhaustive {
-                    missing: vec!["_".to_string()],
-                },
-                span,
-                note: None,
+            return Err(SpannedTypeError {
+                error: TypeError::RedundantPattern,
+                span: arm_span,
+                note: Some("this arm can never be reached".to_string()),
                 secondary_span: None,
-            })
+            });
         }
-        // Type variables, functions, etc. — skip checking
-        _ => Ok(()),
     }
-}
 
-fn is_catch_all(pattern: &TypedPattern) -> bool {
-    matches!(
-        pattern,
-        TypedPattern::Wildcard { .. } | TypedPattern::Var { .. }
-    )
-}
-
-fn constructor_name(pattern: &TypedPattern) -> Option<&str> {
-    match pattern {
-        TypedPattern::Constructor { name, .. } => Some(name.as_str()),
-        _ => None,
+    // Exhaustiveness: check if wildcard is useful against all arms
+    if let Some(w) = witness(&pats, &types, registry, 0) {
+        let missing = format_witness(&w);
+        return Err(SpannedTypeError {
+            error: TypeError::NonExhaustive { missing },
+            span,
+            note: None,
+            secondary_span: None,
+        });
     }
+
+    Ok(())
 }

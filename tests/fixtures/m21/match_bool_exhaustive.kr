@@ -1,0 +1,7 @@
+# expect: ok
+type Pair = MkPair(Bool, Bool)
+fun test(p) = match p {
+    MkPair(true, _) => 1,
+    MkPair(false, true) => 2,
+    MkPair(false, false) => 3,
+}

@@ -44,6 +44,7 @@ pub enum TypeErrorCode {
     E0012, // Reserved name
     E0509, // Ambiguous call (multiple same-named imports)
     E0510, // Unknown export (name does not exist in module)
+    E0013, // Redundant match arm
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -86,6 +87,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0012 => write!(f, "E0012"),
             TypeErrorCode::E0509 => write!(f, "E0509"),
             TypeErrorCode::E0510 => write!(f, "E0510"),
+            TypeErrorCode::E0013 => write!(f, "E0013"),
         }
     }
 }
@@ -236,6 +238,7 @@ pub enum TypeError {
         name: String,
         module_path: String,
     },
+    RedundantPattern,
 }
 
 impl TypeError {
@@ -286,6 +289,7 @@ impl TypeError {
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
             TypeError::AmbiguousCall { .. } => TypeErrorCode::E0509,
             TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
+            TypeError::RedundantPattern => TypeErrorCode::E0013,
         }
     }
 
@@ -453,6 +457,9 @@ impl TypeError {
             TypeError::AmbiguousCall { .. } => None,
             TypeError::UnknownExport { name, module_path } => {
                 Some(format!("module `{}` has no export named `{}`", module_path, name))
+            }
+            TypeError::RedundantPattern => {
+                Some("this arm can never be reached".to_string())
             }
         }
     }
@@ -673,6 +680,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownExport { name, module_path } => {
                 write!(f, "unknown export `{}` from module `{}`", name, module_path)
+            }
+            TypeError::RedundantPattern => {
+                write!(f, "redundant match arm: pattern is already covered")
             }
         }
     }

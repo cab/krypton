@@ -1,0 +1,6 @@
+# expect: error E0006
+type Pair = MkPair(Bool, Bool)
+fun test(p) = match p {
+    MkPair(true, _) => 1,
+    MkPair(_, true) => 2,
+}

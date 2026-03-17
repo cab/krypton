@@ -194,6 +194,11 @@ fn m18_module_fixtures() {
 }
 
 #[test]
+fn m21_fixtures() {
+    run_fixtures("m21");
+}
+
+#[test]
 fn a_fixtures() {
     run_fixtures("a");
 }
