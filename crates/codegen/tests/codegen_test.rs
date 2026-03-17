@@ -358,6 +358,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         fn_constraints,
         fn_constraint_requirements,
         imported_fn_constraints: HashMap::new(),
+        imported_fn_constraint_requirements: HashMap::new(),
         trait_method_map: HashMap::from([("render".to_string(), "Render".to_string())]),
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),

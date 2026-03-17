@@ -104,6 +104,10 @@ pub(super) struct CodegenTypeInfo {
     pub(super) tuple_info: HashMap<usize, TupleInfo>,
     pub(super) functions: HashMap<String, Vec<FunctionInfo>>,
     pub(super) fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
+    /// Cross-module sum type references: bare_name → class_index.
+    /// These only carry the class index (no variant info) since the defining
+    /// module emits the actual bytecode.
+    pub(super) extern_sum_class_indices: HashMap<String, u16>,
 }
 
 impl CodegenTypeInfo {
@@ -309,6 +313,7 @@ impl Compiler {
                 sum_type_info: HashMap::new(),
                 variant_to_sum: HashMap::new(),
                 tuple_info: HashMap::new(),
+                extern_sum_class_indices: HashMap::new(),
                 functions: HashMap::new(),
                 fn_tc_types: HashMap::new(),
             },
@@ -344,6 +349,8 @@ impl Compiler {
                     Ok(JvmType::StructRef(info.class_index))
                 } else if let Some(info) = self.types.sum_type_info.get(name) {
                     Ok(JvmType::StructRef(info.interface_class_index))
+                } else if let Some(&class_index) = self.types.extern_sum_class_indices.get(name) {
+                    Ok(JvmType::StructRef(class_index))
                 } else {
                     Err(CodegenError::TypeError(format!(
                         "unknown named type: {name}"

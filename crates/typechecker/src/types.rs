@@ -142,6 +142,28 @@ impl TypeScheme {
     }
 }
 
+impl TypeScheme {
+    /// Renormalize type variables to start from 0, making schemes independent of
+    /// the global TypeVarGen counter. Returns the renormalized scheme and the
+    /// old→new variable mapping (for updating related data structures).
+    pub fn renormalize(&self) -> (TypeScheme, Vec<(TypeVarId, TypeVarId)>) {
+        if self.vars.is_empty() {
+            return (self.clone(), vec![]);
+        }
+        let mut gen = TypeVarGen::new();
+        let mut mapping = Vec::new();
+        let mut subst = Substitution::new();
+        for &old_var in &self.vars {
+            let new_var = gen.fresh();
+            mapping.push((old_var, new_var));
+            subst.insert(old_var, Type::Var(new_var));
+        }
+        let new_ty = subst.apply(&self.ty);
+        let new_vars = mapping.iter().map(|&(_, new)| new).collect();
+        (TypeScheme { vars: new_vars, ty: new_ty }, mapping)
+    }
+}
+
 impl fmt::Display for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.vars.is_empty() {

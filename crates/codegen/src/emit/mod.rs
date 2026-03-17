@@ -24,7 +24,7 @@ use ristretto_classfile::{
 
 pub use compiler::{CodegenError, JvmType};
 
-use compiler::{Compiler, DictRequirement, SumTypeInfo};
+use compiler::{Compiler, DictRequirement};
 
 /// Java 21 class file version (major 65).
 const JAVA_21: Version = Version::Java21 { minor: 0 };
@@ -219,11 +219,30 @@ pub fn compile_modules(
     }
 
     // Build global sum type map: bare_name → qualified_name (for cross-module references)
+    // Detect collisions when two different library modules define the same bare name.
     let mut global_sum_types: HashMap<String, String> = HashMap::new();
     for module in typed_modules {
         for (sum_name, _, _) in &module.sum_decls {
             let qualified = qualify_type_for(module, sum_name);
-            global_sum_types.entry(sum_name.clone()).or_insert(qualified);
+            match global_sum_types.entry(sum_name.clone()) {
+                std::collections::hash_map::Entry::Occupied(e) => {
+                    // Only error when two distinct qualified names collide
+                    // (bare == qualified means it's the main module, which shadows imports)
+                    let existing = e.get();
+                    if existing != &qualified
+                        && existing != sum_name
+                        && qualified != *sum_name
+                    {
+                        return Err(CodegenError::TypeError(format!(
+                            "sum type name collision: '{}' defined as both '{}' and '{}'",
+                            sum_name, existing, qualified
+                        )));
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(qualified);
+                }
+            }
         }
     }
 
@@ -308,13 +327,7 @@ fn compile_module_inner(
             let class_index = compiler.cp.add_class(qualified_name)?;
             let desc = format!("L{qualified_name};");
             compiler.types.class_descriptors.insert(class_index, desc);
-            compiler.types.sum_type_info.insert(
-                bare_name.clone(),
-                SumTypeInfo {
-                    interface_class_index: class_index,
-                    variants: HashMap::new(),
-                },
-            );
+            compiler.types.extern_sum_class_indices.insert(bare_name.clone(), class_index);
         }
     }
 

@@ -446,13 +446,33 @@ impl Compiler {
         let mut seen = std::collections::HashSet::new();
         captures.retain(|(name, _, _)| seen.insert(name.clone()));
 
+        // Capture dict locals (trait dicts from `where` clauses) that the lambda body needs.
+        // These are stored in traits.dict_locals, not builder.locals, so collect_captures misses them.
+        let dict_captures: Vec<(String, u16)> = self
+            .traits
+            .dict_locals
+            .iter()
+            .map(|(name, &slot)| (name.clone(), slot))
+            .collect();
+
         // Save compiler state for the outer method
+        let saved_dict_locals = self.traits.dict_locals.clone();
         let scope = self.push_method_scope();
 
         // Register captured vars as first params (all boxed to Object)
         for (cap_name, _, cap_type) in &captures {
             let slot = self.builder.next_local;
             self.builder.locals.insert(cap_name.clone(), (slot, *cap_type));
+            self.builder.frame.local_types.push(VerificationType::Object {
+                cpool_index: self.builder.refs.object_class,
+            });
+            self.builder.next_local += 1;
+        }
+
+        // Register captured dict locals and remap dict_locals to new slots in the lambda method
+        for (dict_name, _) in &dict_captures {
+            let slot = self.builder.next_local;
+            self.traits.dict_locals.insert(dict_name.clone(), slot);
             self.builder.frame.local_types.push(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,
             });
@@ -638,8 +658,8 @@ impl Compiler {
         let lambda_name = format!("lambda${}", self.lambda.lambda_counter);
         self.lambda.lambda_counter += 1;
 
-        // Descriptor: all Object params (captures + lambda params) -> Object
-        let total_params = captures.len() + params.len();
+        // Descriptor: all Object params (captures + dict_captures + lambda params) -> Object
+        let total_params = captures.len() + dict_captures.len() + params.len();
         let mut lambda_desc = String::from("(");
         for _ in 0..total_params {
             lambda_desc.push_str("Ljava/lang/Object;");
@@ -662,6 +682,7 @@ impl Compiler {
 
         // Restore compiler state
         self.pop_method_scope(scope);
+        self.traits.dict_locals = saved_dict_locals;
 
         // Now set up invokedynamic in the outer method
 
@@ -694,9 +715,10 @@ impl Compiler {
         });
 
         // 5. Build the call site descriptor
+        let total_captures = captures.len() + dict_captures.len();
         let fun_class_name = format!("krypton/runtime/Fun{arity}");
         let mut callsite_desc = String::from("(");
-        for _ in 0..captures.len() {
+        for _ in 0..total_captures {
             callsite_desc.push_str("Ljava/lang/Object;");
         }
         callsite_desc.push_str(&format!(")L{fun_class_name};"));
@@ -710,12 +732,19 @@ impl Compiler {
             self.builder.emit_load(*cap_slot, *cap_type);
             self.builder.box_if_needed(*cap_type);
         }
+        // Push captured dict locals onto stack
+        for (_dict_name, dict_slot) in &dict_captures {
+            self.builder.emit(Instruction::Aload(*dict_slot as u8));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.object_class,
+            });
+        }
 
         // 7. Emit invokedynamic
         self.builder.emit(Instruction::Invokedynamic(indy_idx));
 
         // Pop capture args from stack
-        for _ in 0..captures.len() {
+        for _ in 0..total_captures {
             self.builder.frame.pop_type(); // each boxed capture is a single Object ref
         }
 
