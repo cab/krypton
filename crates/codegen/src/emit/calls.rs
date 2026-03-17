@@ -93,6 +93,29 @@ impl Compiler {
                     )))
                 }
             }
+            "is_null" => {
+                // Compile arg — should be Object reference from extern Java call
+                self.compile_expr(&args[0], false)?;
+                // Ifnonnull: if NOT null, jump to false branch
+                let false_label = self.builder.emit_placeholder(Instruction::Ifnonnull(0));
+                self.builder.frame.pop_type();
+                // null case: push true
+                self.builder.emit(Instruction::Iconst_1);
+                self.builder.frame.push_type(VerificationType::Integer);
+                let end_label = self.builder.emit_placeholder(Instruction::Goto(0));
+                self.builder.frame.pop_type();
+                // not-null case
+                let false_pos = self.builder.code.len();
+                self.builder.frame.record_frame(false_pos as u16);
+                self.builder.emit(Instruction::Iconst_0);
+                self.builder.frame.push_type(VerificationType::Integer);
+                let end_pos = self.builder.code.len();
+                self.builder.frame.record_frame(end_pos as u16);
+                // Patch jumps
+                self.builder.patch(false_label, Instruction::Ifnonnull(false_pos as u16));
+                self.builder.patch(end_label, Instruction::Goto(end_pos as u16));
+                Ok(JvmType::Int) // Bool = Int on JVM
+            }
             _ => Err(CodegenError::UnsupportedExpr(format!(
                 "unknown intrinsic: {name}"
             ))),
@@ -135,7 +158,7 @@ impl Compiler {
         let name = Self::extract_call_name(func)?;
 
         // Intrinsic
-        if name == "panic" || name == "trait_dict" {
+        if name == "panic" || name == "trait_dict" || name == "is_null" {
             return Ok((name.to_string(), CallTarget::Intrinsic));
         }
 

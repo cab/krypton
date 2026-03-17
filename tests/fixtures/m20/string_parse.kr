@@ -1,0 +1,9 @@
+# expect: ok
+# expect: output "Some(42)\nNone\nSome(3.14)\nNone"
+import core/string.{parse_int, parse_float}
+fun main() = {
+  println(parse_int("42"))
+  println(parse_int("abc"))
+  println(parse_float("3.14"))
+  println(parse_float("xyz"))
+}

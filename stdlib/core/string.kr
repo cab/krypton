@@ -1,8 +1,55 @@
 # core/string — String utility functions
+import core/option.{Option, Some, None}
+import core/list.{List, Cons, Nil, fold}
+
 extern "krypton.runtime.KryptonString" {
     pub fun split(String, String) -> Vec[String]
     pub fun concat(String, String) -> String
     pub fun trim(String) -> String
     pub fun substring(String, Int, Int) -> String
     pub fun length(String) -> Int
+    fun parseIntSafe(String) -> Object
+    fun parseFloatSafe(String) -> Object
+    fun containsStr(String, String) -> Bool
+    fun startsWith(String, String) -> Bool
+    fun endsWith(String, String) -> Bool
+    fun indexOf(String, String) -> Int
+    fun toLower(String) -> String
+    fun toUpper(String) -> String
+    fun replaceStr(String, String, String) -> String
+    fun charAt(String, Int) -> Object
+}
+
+pub fun parse_int(s: String) -> Option[Int] = {
+    let result = parseIntSafe(s)
+    if is_null(result) { None } else { Some(result) }
+}
+
+pub fun parse_float(s: String) -> Option[Float] = {
+    let result = parseFloatSafe(s)
+    if is_null(result) { None } else { Some(result) }
+}
+
+pub fun contains(s: String, substr: String) -> Bool = containsStr(s, substr)
+pub fun starts_with(s: String, prefix: String) -> Bool = startsWith(s, prefix)
+pub fun ends_with(s: String, suffix: String) -> Bool = endsWith(s, suffix)
+
+pub fun index_of(s: String, substr: String) -> Option[Int] = {
+    let i = indexOf(s, substr)
+    if i >= 0 { Some(i) } else { None }
+}
+
+pub fun to_lower(s: String) -> String = toLower(s)
+pub fun to_upper(s: String) -> String = toUpper(s)
+pub fun replace(s: String, from: String, to: String) -> String = replaceStr(s, from, to)
+
+pub fun join(parts: List[String], sep: String) -> String =
+    match parts {
+        Nil => "",
+        Cons(first, rest) => fold(rest, first, (acc, s) -> concat(concat(acc, sep), s)),
+    }
+
+pub fun char_at(s: String, index: Int) -> Option[String] = {
+    let result = charAt(s, index)
+    if is_null(result) { None } else { Some(result) }
 }

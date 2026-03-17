@@ -34,5 +34,15 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 ty: Type::Fn(vec![], Box::new(Type::Var(b))),
             },
         );
+
+        // is_null: forall a. fn(a) -> Bool  (only available in core/ modules)
+        let a = gen.fresh();
+        env.bind(
+            "is_null".to_string(),
+            TypeScheme {
+                vars: vec![a],
+                ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Bool)),
+            },
+        );
     }
 }

@@ -1,0 +1,20 @@
+# expect: ok
+# expect: output "true\nfalse\ntrue\ntrue\nfalse\nhello world\nHELLO WORLD\nhello earth\nSome(6)\nNone\nhello, world\nSome(e)\nNone"
+import core/string.{contains, starts_with, ends_with, to_lower, to_upper, replace, index_of, join, char_at}
+import core/list.{List, Cons, Nil}
+fun main() = {
+  println(contains("hello world", "world"))
+  println(contains("hello world", "xyz"))
+  println(starts_with("hello world", "hello"))
+  println(ends_with("hello world", "world"))
+  println(ends_with("hello world", "hello"))
+  println(to_lower("Hello World"))
+  println(to_upper("hello world"))
+  println(replace("hello world", "world", "earth"))
+  println(index_of("hello world", "world"))
+  println(index_of("hello world", "xyz"))
+  let parts: List[String] = Cons("hello", Cons("world", Nil))
+  println(join(parts, ", "))
+  println(char_at("hello", 1))
+  println(char_at("hello", 10))
+}
