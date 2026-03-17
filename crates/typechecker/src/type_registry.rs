@@ -23,6 +23,15 @@ pub struct VariantInfo {
     pub fields: Vec<Type>,
 }
 
+/// Controls which types are considered in scope during type resolution.
+#[derive(Clone, Copy)]
+pub enum ResolutionContext {
+    /// User-written type annotation — only explicitly imported/declared types accepted.
+    UserAnnotation,
+    /// Internal type declaration processing — any registered/forward-declared type accepted.
+    InternalDecl,
+}
+
 pub struct TypeRegistry {
     types: HashMap<String, TypeInfo>,
     aliases: HashMap<String, String>,
@@ -102,10 +111,6 @@ impl TypeRegistry {
             });
         }
         self.aliases.insert(alias.to_string(), target.to_string());
-        // Propagate visibility: if the target is user-visible, the alias is too
-        if self.user_visible.contains(target) {
-            self.user_visible.insert(alias.to_string());
-        }
         Ok(())
     }
 
@@ -118,14 +123,16 @@ impl TypeRegistry {
     }
 
     /// Mark a type name as visible to user-written type annotations.
+    /// Canonicalizes the name so callers don't need to double-mark aliases.
     pub fn mark_user_visible(&mut self, name: &str) {
-        self.user_visible.insert(name.to_string());
+        let canonical = self.canonical_name(name).to_string();
+        self.user_visible.insert(canonical);
     }
 
     /// Check if a type name is visible to user-written type annotations.
     pub fn is_user_visible(&self, name: &str) -> bool {
         let canonical = self.canonical_name(name);
-        self.user_visible.contains(canonical) || self.user_visible.contains(name)
+        self.user_visible.contains(canonical)
     }
 
     pub fn lookup_type(&self, name: &str) -> Option<&TypeInfo> {
@@ -179,43 +186,42 @@ impl TypeRegistry {
 /// Resolve an AST `TypeExpr` to an internal `Type`, using the type parameter
 /// mapping for type variables and the registry for named types.
 ///
-/// `user_annotation` controls which types are considered in scope:
+/// `context` controls which types are considered in scope:
 ///
-/// - `true`: Only types explicitly imported or declared by the user are accepted
-///   (checks `is_user_visible`). Used for user-written type annotations like
-///   `fun wrap(x: Int) -> Option[Int]`. This enforces BL-1: importing only
-///   constructors (`import core/option.{Some, None}`) does not make the parent
-///   type (`Option`) available in annotations.
+/// - `UserAnnotation`: Only types explicitly imported or declared by the user
+///   are accepted (checks `is_user_visible`). Used for user-written type
+///   annotations like `fun wrap(x: Int) -> Option[Int]`. This enforces BL-1:
+///   importing only constructors (`import core/option.{Some, None}`) does not
+///   make the parent type (`Option`) available in annotations.
 ///
-/// - `false`: Any registered or forward-declared type is accepted (checks
-///   `is_known`). Used internally when processing type declarations, where
-///   self-referential types need to resolve before they're fully registered.
-///   For example, `type List[a] = Cons(a, List[a]) | Nil` — while processing
-///   the `Cons` variant, `List` is only forward-declared via `register_name`
-///   and not yet in `user_visible`. Using `true` here would break all
-///   recursive type definitions.
+/// - `InternalDecl`: Any registered or forward-declared type is accepted
+///   (checks `is_known`). Used internally when processing type declarations,
+///   where self-referential types need to resolve before they're fully
+///   registered. For example, `type List[a] = Cons(a, List[a]) | Nil` — while
+///   processing the `Cons` variant, `List` is only forward-declared via
+///   `register_name` and not yet in `user_visible`.
 pub fn resolve_type_expr(
     texpr: &TypeExpr,
     type_param_map: &HashMap<String, TypeVarId>,
     type_param_arity: &HashMap<String, usize>,
     registry: &TypeRegistry,
-    user_annotation: bool,
+    context: ResolutionContext,
 ) -> Result<Type, TypeError> {
     match texpr {
         TypeExpr::Named { name, .. } => {
-            resolve_named(name, type_param_map, type_param_arity, registry, user_annotation)
+            resolve_named(name, type_param_map, type_param_arity, registry, context)
         }
         TypeExpr::Var { name, .. } => {
             if let Some(&var_id) = type_param_map.get(name) {
                 Ok(Type::Var(var_id))
             } else {
-                resolve_named(name, type_param_map, type_param_arity, registry, user_annotation)
+                resolve_named(name, type_param_map, type_param_arity, registry, context)
             }
         }
         TypeExpr::App { name, args, .. } => {
             let mut resolved_args = Vec::new();
             for a in args {
-                resolved_args.push(resolve_type_expr(a, type_param_map, type_param_arity, registry, user_annotation)?);
+                resolved_args.push(resolve_type_expr(a, type_param_map, type_param_arity, registry, context)?);
             }
             // If the name is a type parameter (HKT variable), produce Type::App
             if let Some(&var_id) = type_param_map.get(name) {
@@ -231,7 +237,7 @@ pub fn resolve_type_expr(
                 return Ok(Type::App(Box::new(Type::Var(var_id)), resolved_args));
             }
             // Validate the type name
-            resolve_named(name, type_param_map, type_param_arity, registry, user_annotation)?;
+            resolve_named(name, type_param_map, type_param_arity, registry, context)?;
             // Kind check: verify arity matches
             let expected = registry.expected_arity(name);
             if let Some(expected) = expected {
@@ -251,9 +257,9 @@ pub fn resolve_type_expr(
         TypeExpr::Fn { params, ret, .. } => {
             let mut param_types = Vec::new();
             for p in params {
-                param_types.push(resolve_type_expr(p, type_param_map, type_param_arity, registry, user_annotation)?);
+                param_types.push(resolve_type_expr(p, type_param_map, type_param_arity, registry, context)?);
             }
-            let ret_type = resolve_type_expr(ret, type_param_map, type_param_arity, registry, user_annotation)?;
+            let ret_type = resolve_type_expr(ret, type_param_map, type_param_arity, registry, context)?;
             Ok(Type::Fn(param_types, Box::new(ret_type)))
         }
         TypeExpr::Own { inner, .. } => Ok(Type::Own(Box::new(resolve_type_expr(
@@ -261,12 +267,12 @@ pub fn resolve_type_expr(
             type_param_map,
             type_param_arity,
             registry,
-            user_annotation,
+            context,
         )?))),
         TypeExpr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
-                elem_types.push(resolve_type_expr(e, type_param_map, type_param_arity, registry, user_annotation)?);
+                elem_types.push(resolve_type_expr(e, type_param_map, type_param_arity, registry, context)?);
             }
             Ok(Type::Tuple(elem_types))
         }
@@ -278,7 +284,7 @@ fn resolve_named(
     type_param_map: &HashMap<String, TypeVarId>,
     _type_param_arity: &HashMap<String, usize>,
     registry: &TypeRegistry,
-    user_annotation: bool,
+    context: ResolutionContext,
 ) -> Result<Type, TypeError> {
     // Check if it's a type parameter first
     if let Some(&var_id) = type_param_map.get(name) {
@@ -293,10 +299,9 @@ fn resolve_named(
         "Unit" => Ok(Type::Unit),
         "Object" => Ok(Type::Named("Object".to_string(), Vec::new())),
         _ => {
-            let is_available = if user_annotation {
-                registry.is_user_visible(name)
-            } else {
-                registry.is_known(name)
+            let is_available = match context {
+                ResolutionContext::UserAnnotation => registry.is_user_visible(name),
+                ResolutionContext::InternalDecl => registry.is_known(name),
             };
             if is_available {
                 Ok(Type::Named(
@@ -317,10 +322,9 @@ fn resolve_named(
                         capitalized.as_str(),
                         "Int" | "Float" | "Bool" | "String" | "Unit"
                     );
-                    let suggestion_available = if user_annotation {
-                        registry.is_user_visible(&capitalized)
-                    } else {
-                        registry.is_known(&capitalized)
+                    let suggestion_available = match context {
+                        ResolutionContext::UserAnnotation => registry.is_user_visible(&capitalized),
+                        ResolutionContext::InternalDecl => registry.is_known(&capitalized),
                     };
                     if is_builtin || suggestion_available {
                         Some(capitalized)
@@ -365,7 +369,7 @@ pub fn process_type_decl(
         TypeDeclKind::Record { fields } => {
             let mut resolved_fields: Vec<(String, Type)> = Vec::new();
             for (name, texpr) in fields {
-                let ty = resolve_type_expr(texpr, &type_param_map, &type_param_arity, registry, false)?;
+                let ty = resolve_type_expr(texpr, &type_param_map, &type_param_arity, registry, ResolutionContext::InternalDecl)?;
                 resolved_fields.push((name.clone(), ty));
             }
 
@@ -394,7 +398,7 @@ pub fn process_type_decl(
                         &type_param_map,
                         &type_param_arity,
                         registry,
-                        false,
+                        ResolutionContext::InternalDecl,
                     )?);
                 }
 

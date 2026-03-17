@@ -336,7 +336,7 @@ impl ModuleInferenceState {
                     .cloned()
                     .unwrap_or_else(|| reex_type_name.clone());
                 // Re-exported type explicitly requested — mark user-visible
-                self.registry.mark_user_visible(&effective_type_name);
+                // mark_user_visible canonicalizes internally, so one call suffices
                 self.registry.mark_user_visible(reex_type_name);
                 let original_vis = cached
                     .reexported_type_visibility
@@ -432,7 +432,7 @@ impl ModuleInferenceState {
                             .map_err(|e| spanned(e, span))?;
                     }
                     // Branch A: type explicitly requested — mark user-visible
-                    self.registry.mark_user_visible(&effective_type_name);
+                    // mark_user_visible canonicalizes internally, so one call suffices
                     self.registry.mark_user_visible(&td.name);
                     self.imports.bind_type_info(effective_type_name.clone(), path.to_string(), td.visibility.clone());
                     self.type_provenance.insert(td.name.clone(), path.to_string());

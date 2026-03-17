@@ -7,7 +7,7 @@ use krypton_parser::ast::{
 
 use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
-use crate::type_registry::{self, TypeRegistry};
+use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
     self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, FnOrigin, InstanceDefInfo,
     TraitDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
@@ -1260,7 +1260,7 @@ fn process_extern_methods(
         let mut param_types = Vec::new();
         for ty_expr in &method.param_types {
             let resolved =
-                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, true)
+                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
                 .map_err(|e| spanned(e, span))?;
             if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                 let fresh = gen.fresh();
@@ -1272,7 +1272,7 @@ fn process_extern_methods(
         }
 
         let return_type =
-            type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, true)
+            type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
                 .map_err(|e| spanned(e, span))?;
         let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
         {
@@ -1298,7 +1298,7 @@ fn process_extern_methods(
         let mut concrete_params = Vec::new();
         for ty_expr in &method.param_types {
             concrete_params.push(
-                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, true)
+                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
                     .map_err(|e| spanned(e, span))?,
             );
         }
@@ -2215,7 +2215,7 @@ pub(crate) fn infer_module_inner(
                                 &method_type_param_map,
                                 &method_type_param_arity,
                                 &state.registry,
-                                true,
+                                ResolutionContext::UserAnnotation,
                             )
                             .map_err(|e| spanned(e, method.span))?,
                         );
@@ -2229,7 +2229,7 @@ pub(crate) fn infer_module_inner(
                         &method_type_param_map,
                         &method_type_param_arity,
                         &state.registry,
-                        true,
+                        ResolutionContext::UserAnnotation,
                     )
                         .map_err(|e| spanned(e, method.span))?
                 } else {
@@ -2460,7 +2460,7 @@ pub(crate) fn infer_module_inner(
                     &type_param_map,
                     &type_param_arity,
                     &state.registry,
-                    true,
+                    ResolutionContext::UserAnnotation,
                 )
                     .map_err(|e| spanned(e, *span))?;
 
@@ -2749,7 +2749,7 @@ pub(crate) fn infer_module_inner(
                             &type_param_map,
                             &type_param_arity,
                             &state.registry,
-                            true,
+                            ResolutionContext::UserAnnotation,
                         )
                         .map_err(|e| spanned(e, decl.span))?;
                     unify(&ptv, &annotated_ty, &mut state.subst).map_err(|e| spanned(e, decl.span))?;
@@ -2766,7 +2766,7 @@ pub(crate) fn infer_module_inner(
                         &type_param_map,
                         &type_param_arity,
                         &state.registry,
-                        true,
+                        ResolutionContext::UserAnnotation,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
                 state.env.fn_return_type = Some(resolved_ret);
@@ -2810,7 +2810,7 @@ pub(crate) fn infer_module_inner(
                         &type_param_map,
                         &type_param_arity,
                         &state.registry,
-                        true,
+                        ResolutionContext::UserAnnotation,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
                 // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
@@ -2963,7 +2963,7 @@ pub(crate) fn infer_module_inner(
                                 &impl_method_tpm,
                                 &impl_method_tpa,
                                 &state.registry,
-                                true,
+                                ResolutionContext::UserAnnotation,
                             )
                             .map_err(|e| spanned(e, p.span))?;
                             unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
@@ -2980,7 +2980,7 @@ pub(crate) fn infer_module_inner(
                             &impl_method_tpm,
                             &impl_method_tpa,
                             &state.registry,
-                            true,
+                            ResolutionContext::UserAnnotation,
                         )
                         .map_err(|e| spanned(e, method.span))?;
                     unify(&annotated_ret, &concrete_ret, &mut state.subst)

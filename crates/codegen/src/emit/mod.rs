@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::TypeExpr;
 use krypton_typechecker::typed_ast::TypedModule;
-use krypton_typechecker::type_registry;
+use krypton_typechecker::type_registry::{self, ResolutionContext};
 use krypton_typechecker::types::{Type, TypeVarGen, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
@@ -148,7 +148,7 @@ fn type_expr_to_jvm(
         &HashMap::new(),
         &HashMap::new(),
         type_registry_ref,
-        false,
+        ResolutionContext::InternalDecl,
     )
     .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
     compiler.type_to_jvm(&resolved)
@@ -295,7 +295,7 @@ fn compile_module_inner(
                     &HashMap::new(),
                     &HashMap::new(),
                     &field_type_registry,
-                    false,
+                    ResolutionContext::InternalDecl,
                 )
             })
             .collect::<Result<Vec<_>, _>>()

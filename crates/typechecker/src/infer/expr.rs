@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Expr, Lit, Span, UnaryOp};
 
-use crate::type_registry::{self, TypeRegistry};
+use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{FnOrigin, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{unify, SpannedTypeError, TypeError};
@@ -43,7 +43,7 @@ impl<'a> InferenceContext<'a> {
                 span,
             )
         })?;
-        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg, true)
+        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg, ResolutionContext::UserAnnotation)
             .map_err(|e| super::spanned(e, span))
     }
 
@@ -414,7 +414,7 @@ impl<'a> InferenceContext<'a> {
                                             self.type_param_map,
                                             self.type_param_arity,
                                             reg,
-                                            true,
+                                            ResolutionContext::UserAnnotation,
                                         )
                                         .map_err(|e| super::spanned(e, *span))
                                     })
@@ -715,7 +715,7 @@ impl<'a> InferenceContext<'a> {
                                 self.type_param_map,
                                 self.type_param_arity,
                                 reg,
-                                true,
+                                ResolutionContext::UserAnnotation,
                             )
                             .map_err(|e| super::spanned(e, *span))
                         })
