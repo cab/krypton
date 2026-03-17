@@ -45,9 +45,9 @@ impl TypeRegistry {
         }
     }
 
-    /// Register built-in types (Int, Float, Bool, String, Unit, Object) so that
+    /// Register built-in types (Int, Float, Bool, String, Unit, Vec) so that
     /// arity checks can find them in the registry instead of a separate function.
-    pub fn register_builtins(&mut self) {
+    pub fn register_builtins(&mut self, gen: &mut TypeVarGen) {
         for name in &["Int", "Float", "Bool", "String", "Unit"] {
             self.types.entry(name.to_string()).or_insert(TypeInfo {
                 name: name.to_string(),
@@ -57,6 +57,15 @@ impl TypeRegistry {
                 is_prelude: true,
             });
         }
+        // Vec[a] — registered as a builtin so orphan checks and arity checks work.
+        // The real implementation lives in stdlib/core/vec.kr (future M11-T29).
+        self.types.entry("Vec".to_string()).or_insert(TypeInfo {
+            name: "Vec".to_string(),
+            type_params: vec!["a".to_string()],
+            type_param_vars: vec![gen.fresh()],
+            kind: TypeKind::Record { fields: vec![] },
+            is_prelude: true,
+        });
     }
 
     pub fn register_type(&mut self, info: TypeInfo) -> Result<(), TypeError> {

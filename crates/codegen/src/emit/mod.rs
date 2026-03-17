@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use krypton_parser::ast::TypeExpr;
 use krypton_typechecker::typed_ast::TypedModule;
 use krypton_typechecker::type_registry;
-use krypton_typechecker::types::{Type, TypeVarId};
+use krypton_typechecker::types::{Type, TypeVarGen, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method,
@@ -284,7 +284,7 @@ fn compile_module_inner(
 
     // Build field type registry for struct field resolution
     let mut field_type_registry = type_registry::TypeRegistry::new();
-    field_type_registry.register_builtins();
+    field_type_registry.register_builtins(&mut TypeVarGen::new());
     for (struct_name, ast_fields) in &typed_module.struct_decls {
         let resolved_fields = ast_fields
             .iter()

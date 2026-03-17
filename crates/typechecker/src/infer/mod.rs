@@ -1558,16 +1558,14 @@ impl ModuleInferenceState {
         let mut env = TypeEnv::new();
         let mut gen = TypeVarGen::new();
         let mut registry = TypeRegistry::new();
-        registry.register_builtins();
+        registry.register_builtins(&mut gen);
 
         crate::intrinsics::register_intrinsics(&mut env, &mut gen, is_core_module);
 
         let mut type_provenance: HashMap<String, String> = HashMap::new();
-        for name in &["Int", "Float", "Bool", "String", "Unit"] {
+        for name in &["Int", "Float", "Bool", "String", "Unit", "Vec"] {
             type_provenance.insert(name.to_string(), "core".to_string());
         }
-
-        registry.register_name("Vec");
 
         ModuleInferenceState {
             env,
@@ -2909,9 +2907,11 @@ pub(crate) fn infer_module_inner(
                     substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
 
                 // Build type_param_map for impl method annotations
-                // (needed for type vars in HKT method annotations like `Box[a]`)
-                let mut impl_method_tpm = HashMap::new();
+                // Start with impl-level type vars (e.g., `a` from `impl Trait[Vec[a]]`)
+                let mut impl_method_tpm: HashMap<String, TypeVarId> =
+                    instance.type_var_ids.clone();
                 let mut impl_method_tpa = HashMap::new();
+                // Then add method-level type params (for HKT annotations like `Box[a]`)
                 for tv_param in &method.type_params {
                     if !impl_method_tpm.contains_key(&tv_param.name) {
                         impl_method_tpm.insert(tv_param.name.clone(), state.gen.fresh());

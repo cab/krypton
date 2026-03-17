@@ -1,0 +1,7 @@
+# expect: ok
+trait MyTrait[a] {
+  fun check(x: a) -> String
+}
+impl MyTrait[Vec[a]] where a: MyTrait {
+  fun check(xs: Vec[a]) -> String = "vec"
+}
