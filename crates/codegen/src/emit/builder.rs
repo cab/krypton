@@ -116,7 +116,7 @@ impl FrameState {
         }
     }
 
-    fn build_stack_map_frames(&self) -> Vec<StackFrame> {
+    fn build_stack_map_frames(&self, byte_offsets: Option<&[u16]>) -> Vec<StackFrame> {
         let mut frames = Vec::new();
         let mut prev_offset: Option<u16> = None;
 
@@ -127,11 +127,18 @@ impl FrameState {
             };
             prev_offset = Some(instr_idx);
 
+            let mut locals = locals.clone();
+            let mut stack = stack.clone();
+            if let Some(offsets) = byte_offsets {
+                fixup_uninitialized_offsets(&mut locals, offsets);
+                fixup_uninitialized_offsets(&mut stack, offsets);
+            }
+
             frames.push(StackFrame::FullFrame {
                 frame_type: 255,
                 offset_delta,
-                locals: locals.clone(),
-                stack: stack.clone(),
+                locals,
+                stack,
             });
         }
 
@@ -144,6 +151,26 @@ impl FrameState {
         self.frames.clear();
         self.max_stack_depth = 0;
     }
+}
+
+/// Convert instruction-index-based `Uninitialized { offset }` values to byte offsets.
+fn fixup_uninitialized_offsets(types: &mut [VerificationType], byte_offsets: &[u16]) {
+    for vt in types.iter_mut() {
+        if let VerificationType::Uninitialized { offset } = vt {
+            *offset = byte_offsets[*offset as usize];
+        }
+    }
+}
+
+/// Compute a mapping from instruction index to byte offset.
+fn compute_byte_offsets(code: &[Instruction]) -> Vec<u16> {
+    let mut offsets = Vec::with_capacity(code.len());
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    for instr in code {
+        offsets.push(cursor.position() as u16);
+        instr.to_bytes(&mut cursor).expect("instruction serialization");
+    }
+    offsets
 }
 
 /// Per-method bytecode emission state, extracted from Compiler.
@@ -316,12 +343,15 @@ impl BytecodeBuilder {
         slot
     }
 
-    /// Emit New + Dup for a class, pushing two UninitializedThis entries.
+    /// Emit New + Dup for a class, pushing two Uninitialized { offset } entries.
+    /// The offset is the instruction index of the `New` instruction; it gets
+    /// converted to a byte offset in `finish_method` before serialization.
     pub(super) fn emit_new_dup(&mut self, class_index: u16) {
+        let new_offset = self.code.len() as u16;
         self.emit(Instruction::New(class_index));
-        self.frame.push_type(VerificationType::UninitializedThis);
+        self.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
         self.emit(Instruction::Dup);
-        self.frame.push_type(VerificationType::UninitializedThis);
+        self.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
     }
 
     /// Emit a placeholder instruction (e.g. Goto(0) or Ifeq(0)), returning its index for later patching.
@@ -352,8 +382,11 @@ impl BytecodeBuilder {
     }
 
     /// Build StackMapTable code attributes for the current method.
+    /// Computes byte offsets from the instruction vec and fixes up any
+    /// `Uninitialized { offset }` values from instruction indices to byte offsets.
     pub(super) fn build_code_attributes(&self) -> Vec<Attribute> {
-        let stack_map_frames = self.frame.build_stack_map_frames();
+        let byte_offsets = compute_byte_offsets(&self.code);
+        let stack_map_frames = self.frame.build_stack_map_frames(Some(&byte_offsets));
         if stack_map_frames.is_empty() {
             vec![]
         } else {

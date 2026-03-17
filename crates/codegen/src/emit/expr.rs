@@ -392,11 +392,45 @@ impl Compiler {
         self.builder.frame.pop_type_n(4);
         self.builder.frame.push_type(VerificationType::Integer);
 
-        let branch_idx = self.builder.current_offset();
-        let false_target = branch_idx + 3;
-        let after_target = branch_idx + 4;
+        // Emit branch with placeholder target
+        let branch_placeholder = self.builder.emit_placeholder(match op {
+            BinOp::Eq => Instruction::Ifne(0),
+            BinOp::Neq => Instruction::Ifeq(0),
+            BinOp::Lt => Instruction::Ifge(0),
+            BinOp::Gt => Instruction::Ifle(0),
+            BinOp::Le => Instruction::Ifgt(0),
+            BinOp::Ge => Instruction::Iflt(0),
+            _ => unreachable!(),
+        });
 
-        let branch = match op {
+        // Ifxx consumes the int
+        self.builder.frame.pop_type();
+
+        // Save stack state for the false path (after branch consumes int)
+        let stack_at_false = self.builder.frame.stack_types.clone();
+
+        // True path: push 1
+        self.builder.emit(Instruction::Iconst_1);
+        self.builder.frame.push_type(VerificationType::Integer);
+
+        let stack_after = self.builder.frame.stack_types.clone();
+
+        let goto_placeholder = self.builder.emit_placeholder(Instruction::Goto(0));
+
+        // False path target
+        let false_target = self.builder.current_offset();
+        self.builder.frame.stack_types = stack_at_false;
+        self.builder.record_frame_at(false_target);
+
+        self.builder.emit(Instruction::Iconst_0);
+        self.builder.frame.push_type(VerificationType::Integer);
+
+        // After target (merge point)
+        let after_target = self.builder.current_offset();
+        self.builder.record_frame_at(after_target);
+
+        // Patch branch and goto with actual targets
+        self.builder.patch(branch_placeholder as usize, match op {
             BinOp::Eq => Instruction::Ifne(false_target),
             BinOp::Neq => Instruction::Ifeq(false_target),
             BinOp::Lt => Instruction::Ifge(false_target),
@@ -404,30 +438,8 @@ impl Compiler {
             BinOp::Le => Instruction::Ifgt(false_target),
             BinOp::Ge => Instruction::Iflt(false_target),
             _ => unreachable!(),
-        };
-        self.builder.emit(branch);
-
-        // Ifxx consumes the int
-        self.builder.frame.pop_type();
-
-        // Record frame at false_target (stack state after Ifxx consumes int)
-        let stack_at_false = self.builder.frame.stack_types.clone();
-        self.builder.frame.record_frame(false_target);
-
-        // True path: push 1
-        self.builder.emit(Instruction::Iconst_1);
-        self.builder.frame.push_type(VerificationType::Integer);
-
-        // Record frame at after_target (stack has Integer on top)
-        self.builder.frame.record_frame(after_target);
-        let stack_after = self.builder.frame.stack_types.clone();
-
-        self.builder.emit(Instruction::Goto(after_target));
-
-        // False path: restore stack to state at false_target
-        self.builder.frame.stack_types = stack_at_false;
-        self.builder.emit(Instruction::Iconst_0);
-        self.builder.frame.push_type(VerificationType::Integer);
+        });
+        self.builder.patch(goto_placeholder, Instruction::Goto(after_target));
 
         // After both paths merge, stack should match
         debug_assert_eq!(self.builder.frame.stack_types, stack_after);
@@ -672,10 +684,11 @@ impl Compiler {
         };
 
         // new KryptonArray(capacity)
+        let new_offset = self.builder.current_offset();
         self.builder.emit(Instruction::New(info.class_index));
-        self.builder.frame.push_type(VerificationType::UninitializedThis);
+        self.builder.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
         self.builder.emit(Instruction::Dup);
-        self.builder.frame.push_type(VerificationType::UninitializedThis);
+        self.builder.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
         self.emit_int_const(elems.len() as i32);
         self.builder.frame.push_type(VerificationType::Integer);
         self.builder.emit(Instruction::Invokespecial(info.init_ref));

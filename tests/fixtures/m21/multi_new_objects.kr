@@ -1,0 +1,15 @@
+# expect: output "10\n20\n30\n40"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Point = { x: Int, y: Int }
+
+fun main() {
+    let a = Point(10, 20);
+    let b = Point(30, 40);
+    println(a.x);
+    println(a.y);
+    println(b.x);
+    println(b.y)
+}

@@ -1,0 +1,17 @@
+# expect: output "100\n42"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Wrapper = { value: Int }
+
+fun pick(x: Int) -> Wrapper {
+    if x > 0 { Wrapper(100) } else { Wrapper(42) }
+}
+
+fun main() {
+    let a = pick(1);
+    let b = pick(-1);
+    println(a.value);
+    println(b.value)
+}

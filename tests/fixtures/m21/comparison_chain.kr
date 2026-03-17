@@ -1,0 +1,13 @@
+# expect: output "true\nfalse\ntrue\nfalse\ntrue\nfalse"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun main() {
+    println(10 < 20);
+    println(10 > 20);
+    println(10 <= 20);
+    println(10 >= 20);
+    println(10 == 10);
+    println(10 != 10)
+}
