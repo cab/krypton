@@ -359,3 +359,80 @@ fn reserved_name_error() {
         "expected 'reserved compiler name' in:\n{output}"
     );
 }
+
+#[test]
+fn import_ctor_no_parent_type_in_annotation() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "shapes" => Some("pub type Shape = Circle(Float) | Square(Float)".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    // Import only constructors — Shape should NOT be available in annotations
+    let src = "import shapes.{Circle, Square}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
+    let output = render_module_error_with_resolver(src, &Resolver);
+    assert!(
+        output.contains("E0011"),
+        "expected E0011 (unknown type) for Shape when only constructors imported:\n{output}"
+    );
+}
+
+#[test]
+fn import_ctor_expr_ok() {
+    use krypton_modules::module_resolver::ModuleResolver;
+    use krypton_parser::parser::parse;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "shapes" => Some("pub type Shape = Circle(Float) | Square(Float)".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    // Import only constructors — using them in expressions (no annotation) should work
+    let src = "import shapes.{Circle}\nfun wrap(x) = Circle(x)\nfun main() -> Int = 0";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &Resolver);
+    assert!(
+        result.is_ok(),
+        "importing constructors and using them in expressions should succeed: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn import_type_explicitly_allows_annotation() {
+    use krypton_modules::module_resolver::ModuleResolver;
+    use krypton_parser::parser::parse;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "shapes" => Some("pub type Shape = Circle(Float) | Square(Float)".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    // Import the type explicitly — Shape should be available in annotations
+    let src = "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &Resolver);
+    assert!(
+        result.is_ok(),
+        "explicitly importing a type should allow it in annotations: {:?}",
+        result.err()
+    );
+}

@@ -43,7 +43,7 @@ impl<'a> InferenceContext<'a> {
                 span,
             )
         })?;
-        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg)
+        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg, true)
             .map_err(|e| super::spanned(e, span))
     }
 
@@ -414,6 +414,7 @@ impl<'a> InferenceContext<'a> {
                                             self.type_param_map,
                                             self.type_param_arity,
                                             reg,
+                                            true,
                                         )
                                         .map_err(|e| super::spanned(e, *span))
                                     })
@@ -714,6 +715,7 @@ impl<'a> InferenceContext<'a> {
                                 self.type_param_map,
                                 self.type_param_arity,
                                 reg,
+                                true,
                             )
                             .map_err(|e| super::spanned(e, *span))
                         })

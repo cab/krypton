@@ -335,6 +335,9 @@ impl ModuleInferenceState {
                     .get(reex_type_name)
                     .cloned()
                     .unwrap_or_else(|| reex_type_name.clone());
+                // Re-exported type explicitly requested — mark user-visible
+                self.registry.mark_user_visible(&effective_type_name);
+                self.registry.mark_user_visible(reex_type_name);
                 let original_vis = cached
                     .reexported_type_visibility
                     .get(reex_type_name)
@@ -428,12 +431,17 @@ impl ModuleInferenceState {
                             .register_type_alias(&effective_type_name, &td.name)
                             .map_err(|e| spanned(e, span))?;
                     }
+                    // Branch A: type explicitly requested — mark user-visible
+                    self.registry.mark_user_visible(&effective_type_name);
+                    self.registry.mark_user_visible(&td.name);
                     self.imports.bind_type_info(effective_type_name.clone(), path.to_string(), td.visibility.clone());
                     self.type_provenance.insert(td.name.clone(), path.to_string());
                 } else if import_all {
                     if matches!(td.visibility, Visibility::Private) {
                         continue;
                     }
+                    // Branch B: import_all — mark user-visible
+                    self.registry.mark_user_visible(&td.name);
                     if self.registry.lookup_type(&td.name).is_none() {
                         self.registry.register_name(&td.name);
                         let constructors =
@@ -509,6 +517,10 @@ impl ModuleInferenceState {
                             is_prelude: false,
                         });
                         self.imported_extern_java_types.push((name.clone(), class_name.clone()));
+                    }
+                    // Mark user-visible if explicitly requested or import_all
+                    if requested.contains(name.as_str()) || import_all {
+                        self.registry.mark_user_visible(name);
                     }
                     // Track visibility so pub re-exports can find this type
                     let vis = cached.type_visibility.get(name).cloned().unwrap_or(Visibility::Private);
