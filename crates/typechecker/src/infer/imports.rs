@@ -466,6 +466,10 @@ impl ModuleInferenceState {
                     for (cname, scheme) in constructors {
                         self.env.bind(cname, scheme);
                     }
+                    // Track the parent type so codegen can resolve it
+                    // (importing constructors implicitly depends on the type)
+                    self.imports.bind_type_info(td.name.clone(), path.to_string(), td.visibility.clone());
+                    self.type_provenance.insert(td.name.clone(), path.to_string());
                 }
             }
         }
@@ -490,6 +494,7 @@ impl ModuleInferenceState {
                 type_params,
                 methods,
                 span: ext_span,
+                ..
             } = sdecl
             {
                 // Register extern java type binding if present
@@ -505,6 +510,9 @@ impl ModuleInferenceState {
                         });
                         self.imported_extern_java_types.push((name.clone(), class_name.clone()));
                     }
+                    // Track visibility so pub re-exports can find this type
+                    let vis = cached.type_visibility.get(name).cloned().unwrap_or(Visibility::Private);
+                    self.imports.bind_type_info(name.clone(), path.to_string(), vis);
                 }
 
                 let mut fns = process_extern_methods(
@@ -542,6 +550,26 @@ impl ModuleInferenceState {
             let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
             if requested.contains(name.as_str()) || import_all {
                 self.imports.bind_fn_constraints(effective_name, constraints.clone());
+            }
+        }
+
+        // Propagate fn_constraint_requirements (TypeVarId-based) for cross-module codegen.
+        // This handles functions where the constrained type var is nested in param types
+        // (e.g. `put(m: Map[k,v], key: k, value: v) where k: Eq + Hash`).
+        for (name, requirements) in &cached.fn_constraint_requirements {
+            let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
+            if requested.contains(name.as_str()) || import_all {
+                self.imported_fn_constraint_requirements
+                    .entry(effective_name)
+                    .or_insert_with(|| requirements.clone());
+            }
+        }
+        for (name, requirements) in &cached.imported_fn_constraint_requirements {
+            let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
+            if requested.contains(name.as_str()) || import_all {
+                self.imported_fn_constraint_requirements
+                    .entry(effective_name)
+                    .or_insert_with(|| requirements.clone());
             }
         }
 

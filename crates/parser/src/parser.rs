@@ -1296,7 +1296,8 @@ where
         });
 
     let extern_as_clause = symbol(Token::As)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .ignore_then(symbol(Token::Pub).or_not())
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(
             select! { Token::Ident(s) => s.to_string() }
                 .separated_by(symbol(Token::Comma))
@@ -1318,13 +1319,17 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(|((class_name, as_clause), methods), e| {
-            let (alias, type_params) = match as_clause {
-                Some((name, params)) => (Some(name), params),
-                None => (None, vec![]),
+            let (alias, alias_visibility, type_params) = match as_clause {
+                Some(((is_pub, name), params)) => {
+                    let vis = if is_pub.is_some() { Visibility::Pub } else { Visibility::Private };
+                    (Some(name), Some(vis), params)
+                }
+                None => (None, None, vec![]),
             };
             Decl::ExternJava {
                 class_name,
                 alias,
+                alias_visibility,
                 type_params,
                 methods,
                 span: to_span(e.span()),

@@ -15,4 +15,6 @@ pub import core/result.{Result, Ok, Err}
 pub import core/list.{List, Cons, Nil}
 pub import core/ordering.{Ordering, LT, EQ, GT}
 
+pub import core/map.{Map}
+
 pub import core/io.{println}

@@ -23,4 +23,7 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-main: fn() -> Int
+empty: forall a3 b3. fn() -> Map[a3, b3]
+put: forall f3 g3. fn(Map[f3, g3], f3, g3) -> Map[f3, g3]
+get: forall q3 r3. fn(Map[q3, r3], q3) -> Option[r3]
+main: fn() -> Unit

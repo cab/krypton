@@ -84,10 +84,11 @@ impl<'a> Formatter<'a> {
             Decl::ExternJava {
                 class_name,
                 alias,
+                alias_visibility,
                 type_params,
                 methods,
                 ..
-            } => self.fmt_extern(class_name, alias.as_deref(), type_params, methods),
+            } => self.fmt_extern(class_name, alias.as_deref(), alias_visibility.as_ref(), type_params, methods),
         }
     }
 
@@ -418,12 +419,15 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn fmt_extern(&mut self, class_name: &str, alias: Option<&str>, type_params: &[String], methods: &[ExternMethod]) {
+    fn fmt_extern(&mut self, class_name: &str, alias: Option<&str>, alias_visibility: Option<&Visibility>, type_params: &[String], methods: &[ExternMethod]) {
         self.buf.push_str("extern \"");
         self.buf.push_str(class_name);
         self.buf.push('"');
         if let Some(name) = alias {
             self.buf.push_str(" as ");
+            if matches!(alias_visibility, Some(Visibility::Pub)) {
+                self.buf.push_str("pub ");
+            }
             self.buf.push_str(name);
             if !type_params.is_empty() {
                 self.buf.push('[');

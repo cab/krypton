@@ -1,0 +1,10 @@
+# expect: ok
+# expect: output "42"
+import core/map.{empty, put, get}
+fun main() = {
+  let m = put(empty(), "key", 42)
+  match get(m, "key") {
+    Some(v) => println(v),
+    None => println(0)
+  }
+}

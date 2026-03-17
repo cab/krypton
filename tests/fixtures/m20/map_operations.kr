@@ -1,0 +1,10 @@
+# expect: ok
+# expect: output "true\nfalse\n2"
+import core/map.{empty, put, delete, contains, size}
+fun main() = {
+  let m = put(put(empty(), "a", 10), "b", 11)
+  println(contains(m, "a"))
+  let m2 = delete(m, "a")
+  println(contains(m2, "a"))
+  println(size(m))
+}

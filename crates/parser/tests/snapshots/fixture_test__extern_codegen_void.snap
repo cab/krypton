@@ -6,6 +6,7 @@ decls:
   - ExternJava:
       class_name: java.lang.System
       alias: ~
+      alias_visibility: ~
       type_params: []
       methods:
         - visibility: Private

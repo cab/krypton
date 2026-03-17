@@ -17,6 +17,7 @@ pub struct ResolvedModule {
 #[derive(Debug)]
 pub struct ModuleGraph {
     pub modules: Vec<ResolvedModule>,
+    pub prelude_tree_paths: HashSet<String>,
 }
 
 /// Errors that can occur during module graph resolution.
@@ -47,6 +48,8 @@ pub fn build_module_graph(
     // Auto-add prelude and its transitive deps (uses stdlib resolver internally)
     visit_prelude_tree("prelude", resolver, &mut visited, &mut stack, &mut stack_set, &mut result)?;
 
+    let prelude_tree_paths: HashSet<String> = result.iter().map(|m| m.path.clone()).collect();
+
     // Walk root imports with proper span tracking for error messages
     for decl in &root.decls {
         if let Decl::Import { path, span, .. } = decl {
@@ -54,7 +57,7 @@ pub fn build_module_graph(
         }
     }
 
-    Ok(ModuleGraph { modules: result })
+    Ok(ModuleGraph { modules: result, prelude_tree_paths })
 }
 
 /// DFS visit a prelude-tree module (stdlib fallback, zero spans for errors).

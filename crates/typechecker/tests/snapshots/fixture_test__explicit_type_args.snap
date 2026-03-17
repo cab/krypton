@@ -10,6 +10,7 @@ mul: forall c. fn(c, c) -> c
 div: forall c. fn(c, c) -> c
 neg: forall c. fn(c) -> c
 show: forall c. fn(c) -> String
+hash: forall c. fn(c) -> Int
 close: forall c. fn(own c) -> Unit
 peek: forall d. fn(d) -> d
 println: forall i. fn(i) -> Unit
@@ -25,7 +26,7 @@ GT: Ordering
 Cons: forall d. fn(d, List[d]) -> List[d]
 Nil: forall d. List[d]
 map: forall s u. fn(List[s], fn(s) -> u) -> List[u]
-identity: forall f1. fn(f1) -> f1
+identity: forall g1. fn(g1) -> g1
 stringify: fn(Int) -> String
 call_site: fn() -> Int
 standalone: fn() -> Int

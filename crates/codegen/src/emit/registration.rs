@@ -282,6 +282,19 @@ impl Compiler {
         for (name, constraints) in &typed_module.imported_fn_constraints {
             self.traits.fn_constraints.entry(name.clone()).or_insert_with(|| constraints.clone());
         }
+        // Load imported fn_constraint_requirements into impl_dict_requirements
+        // for cross-module functions with nested type var constraints.
+        for (name, requirements) in &typed_module.imported_fn_constraint_requirements {
+            self.traits.impl_dict_requirements.entry(name.clone()).or_insert_with(|| {
+                requirements
+                    .iter()
+                    .map(|(trait_name, type_var)| DictRequirement::Constraint {
+                        trait_name: trait_name.clone(),
+                        type_var: *type_var,
+                    })
+                    .collect()
+            });
+        }
 
         for trait_def in &typed_module.trait_defs {
             let qualified_trait = qualify_type_for(typed_module, &trait_def.name);

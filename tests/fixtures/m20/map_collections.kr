@@ -1,0 +1,11 @@
+# expect: ok
+# expect: output "3\n3"
+import core/map.{empty, put, merge, size, from_list}
+fun main() = {
+  let m1 = put(put(empty(), "a", 1), "b", 2)
+  let m2 = put(empty(), "c", 3)
+  let merged = merge(m1, m2)
+  println(size(merged))
+  let m3 = from_list(Cons(("x", 10), Cons(("y", 20), Cons(("z", 30), Nil))))
+  println(size(m3))
+}

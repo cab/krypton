@@ -10,6 +10,7 @@ mul: forall c. fn(c, c) -> c
 div: forall c. fn(c, c) -> c
 neg: forall c. fn(c) -> c
 show: forall c. fn(c) -> String
+hash: forall c. fn(c) -> Int
 close: forall c. fn(own c) -> Unit
 peek: forall d. fn(d) -> d
 println: forall i. fn(i) -> Unit
@@ -22,5 +23,5 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-handle: forall y. fn(Result[y, own Int]) -> Int
+handle: forall z. fn(Result[z, own Int]) -> Int
 main: fn() -> Int

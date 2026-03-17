@@ -1340,13 +1340,14 @@ pub fn infer_module(
                 &mut cache,
                 &parsed_modules,
                 Some(resolved.path.clone()),
+                &graph.prelude_tree_paths,
             )?;
             cache.insert(resolved.path.clone(), typed);
         }
     }
 
     // Type-check the root module
-    let main = infer_module_inner(module, &mut cache, &parsed_modules, None)?;
+    let main = infer_module_inner(module, &mut cache, &parsed_modules, None, &graph.prelude_tree_paths)?;
 
     let mut result = vec![main];
     // Collect cached imported modules (stable ordering by path)
@@ -1537,6 +1538,7 @@ pub(crate) struct ModuleInferenceState {
     // Import accumulation
     pub(super) imports: ImportContext,
     pub(super) type_provenance: HashMap<String, String>,
+    pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
     pub(super) imported_extern_java_types: Vec<(String, String)>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
@@ -1576,6 +1578,7 @@ impl ModuleInferenceState {
             lambda_own_captures: HashMap::new(),
             imports: ImportContext::new(),
             type_provenance,
+            imported_fn_constraint_requirements: HashMap::new(),
             imported_extern_fns: Vec::new(),
             imported_extern_java_types: Vec::new(),
             imported_trait_defs: Vec::new(),
@@ -1599,6 +1602,7 @@ impl ModuleInferenceState {
                 type_params,
                 methods,
                 span,
+                ..
             } = decl
             {
                 // Register type binding if `as Name[params]` is present
@@ -1982,6 +1986,9 @@ impl ModuleInferenceState {
             if let Decl::DefType(td) = decl {
                 type_visibility.insert(td.name.clone(), td.visibility.clone());
             }
+            if let Decl::ExternJava { alias: Some(name), alias_visibility, .. } = decl {
+                type_visibility.insert(name.clone(), alias_visibility.clone().unwrap_or(Visibility::Private));
+            }
         }
 
         let mut exported_trait_defs = exported_trait_defs;
@@ -1997,6 +2004,7 @@ impl ModuleInferenceState {
             fn_constraints,
             fn_constraint_requirements: fn_constraint_requirements.clone(),
             imported_fn_constraints: self.imports.imported_fn_constraints,
+            imported_fn_constraint_requirements: self.imported_fn_constraint_requirements,
             trait_method_map: trait_method_map.clone(),
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
@@ -2043,13 +2051,11 @@ pub(crate) fn infer_module_inner(
     cache: &mut HashMap<String, TypedModule>,
     parsed_modules: &HashMap<String, &Module>,
     module_path: Option<String>,
+    prelude_tree_paths: &HashSet<String>,
 ) -> Result<TypedModule, SpannedTypeError> {
     let is_core_module = module_path.as_ref().is_some_and(|p| p.starts_with("core/"));
-    let is_prelude_tree = module_path.as_ref().is_some_and(|p| {
-        krypton_modules::stdlib_loader::PRELUDE_MODULES
-            .iter()
-            .any(|m| m == p)
-    });
+    let is_prelude_tree = module_path.as_ref()
+        .is_some_and(|p| prelude_tree_paths.contains(p));
 
     let mut state = ModuleInferenceState::new(is_core_module);
 
@@ -2080,6 +2086,14 @@ pub(crate) fn infer_module_inner(
         }
         for (_, (source_path, _)) in &state.imports.imported_type_info {
             source_modules.insert(source_path.as_str());
+        }
+
+        // Prelude-tree modules need instances from all already-compiled siblings
+        // (e.g. core/vec needs Sub[Int], Ord[Int] from core/int via core/sub, core/ord)
+        if is_prelude_tree {
+            for path in prelude_tree_paths {
+                source_modules.insert(path.as_str());
+            }
         }
 
         let mut seen_instances: HashSet<(String, String)> = HashSet::new();
@@ -2815,6 +2829,18 @@ pub(crate) fn infer_module_inner(
             let scheme = generalize(&final_ty, &empty_env, &state.subst);
             state.env.bind(fn_decls[idx].name.clone(), scheme.clone());
             result_schemes[idx] = Some(scheme);
+        }
+    }
+
+    // Normalize fn_constraint_requirements: apply the substitution to TypeVarIds so they
+    // match the TypeVarIds in the generalized type schemes. During inference, unification
+    // may map the original type_param_map TypeVarIds to different variables.
+    for requirements in fn_constraint_requirements.values_mut() {
+        for (_, type_var) in requirements.iter_mut() {
+            let resolved = state.subst.apply(&Type::Var(*type_var));
+            if let Type::Var(new_id) = resolved {
+                *type_var = new_id;
+            }
         }
     }
 

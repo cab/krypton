@@ -1,4 +1,7 @@
 import core/list.{Cons, Nil, List}
+import core/option.{Some, None}
+import core/sub.{sub}
+import core/ord.{lt}
 
 # core/vec — Vec type (backed by KryptonArray)
 extern "krypton.runtime.KryptonArray" {

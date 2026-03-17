@@ -24,7 +24,7 @@ use ristretto_classfile::{
 
 pub use compiler::{CodegenError, JvmType};
 
-use compiler::{Compiler, DictRequirement};
+use compiler::{Compiler, DictRequirement, SumTypeInfo};
 
 /// Java 21 class file version (major 65).
 const JAVA_21: Version = Version::Java21 { minor: 0 };
@@ -169,9 +169,10 @@ fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool 
 fn compile_library_module(
     typed_module: &TypedModule,
     class_name: &str,
+    global_sum_types: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let empty_map = HashMap::new();
-    compile_module_inner(typed_module, class_name, false, &empty_map)
+    compile_module_inner(typed_module, class_name, false, &empty_map, global_sum_types)
 }
 
 /// Qualify a type name from a module's perspective, using its type_provenance and module_path.
@@ -217,10 +218,19 @@ pub fn compile_modules(
         }
     }
 
+    // Build global sum type map: bare_name → qualified_name (for cross-module references)
+    let mut global_sum_types: HashMap<String, String> = HashMap::new();
+    for module in typed_modules {
+        for (sum_name, _, _) in &module.sum_decls {
+            let qualified = qualify_type_for(module, sum_name);
+            global_sum_types.entry(sum_name.clone()).or_insert(qualified);
+        }
+    }
+
     // Compile all library modules
     for module in typed_modules {
         if let Some(path) = &module.module_path {
-            let classes = compile_library_module(module, path)?;
+            let classes = compile_library_module(module, path, &global_sum_types)?;
             all_classes.extend(classes);
         }
     }
@@ -228,7 +238,7 @@ pub fn compile_modules(
     // Compile main module with instance map
     for module in typed_modules {
         if module.module_path.is_none() {
-            let classes = compile_module_inner(module, main_class_name, true, &instance_class_map)?;
+            let classes = compile_module_inner(module, main_class_name, true, &instance_class_map, &global_sum_types)?;
             all_classes.extend(classes);
         }
     }
@@ -241,6 +251,7 @@ fn compile_module_inner(
     class_name: &str,
     is_main: bool,
     imported_instances: &HashMap<(String, String), ImportedInstanceInfo>,
+    global_sum_types: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     if is_main && !typed_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction);
@@ -290,6 +301,22 @@ fn compile_module_inner(
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     result_classes.extend(compiler.register_structs(typed_module, &field_type_registry)?);
     result_classes.extend(compiler.register_sum_types(typed_module)?);
+
+    // Register cross-module sum type references (class index only, no bytecode)
+    for (bare_name, qualified_name) in global_sum_types {
+        if !compiler.types.sum_type_info.contains_key(bare_name) {
+            let class_index = compiler.cp.add_class(qualified_name)?;
+            let desc = format!("L{qualified_name};");
+            compiler.types.class_descriptors.insert(class_index, desc);
+            compiler.types.sum_type_info.insert(
+                bare_name.clone(),
+                SumTypeInfo {
+                    interface_class_index: class_index,
+                    variants: HashMap::new(),
+                },
+            );
+        }
+    }
 
     // Phase 2: Register FunN interfaces, traits, and instances
     compiler.register_fun_interfaces(typed_module)?;
