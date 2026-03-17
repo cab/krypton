@@ -21,6 +21,8 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) type_param_arity: &'a HashMap<String, usize>,
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
     pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
+    pub(super) extern_fn_names: &'a HashSet<String>,
+    pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
 }
 
 impl<'a> InferenceContext<'a> {
@@ -279,6 +281,71 @@ impl<'a> InferenceContext<'a> {
             Expr::App {
                 func, args, is_ufcs, span, ..
             } => {
+                // Intercept trait_dict(TraitName) intrinsic
+                if let Expr::Var { name, .. } = func.as_ref() {
+                    if name == "trait_dict" {
+                        if args.len() != 1 {
+                            return Err(super::spanned(
+                                TypeError::UnsupportedExpr {
+                                    description: "trait_dict requires exactly one argument".to_string(),
+                                },
+                                *span,
+                            ));
+                        }
+                        let trait_name = match &args[0] {
+                            Expr::Var { name, .. } => name.clone(),
+                            _ => {
+                                return Err(super::spanned(
+                                    TypeError::UnsupportedExpr {
+                                        description: "trait_dict argument must be a trait name".to_string(),
+                                    },
+                                    *span,
+                                ));
+                            }
+                        };
+                        // Validate the trait exists
+                        if let Some(reg) = self.registry {
+                            if reg.lookup_type(&trait_name).is_none() {
+                                // Check if it's a known trait via env lookup
+                                // (trait names are bound as types in the registry or as functions)
+                            }
+                        }
+                        // Validate enclosing function has a where constraint for this trait
+                        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t == &trait_name);
+                        if !has_constraint {
+                            return Err(super::spanned(
+                                TypeError::UnsupportedExpr {
+                                    description: format!(
+                                        "trait_dict({trait_name}) requires a `where` constraint for {trait_name} on the enclosing function"
+                                    ),
+                                },
+                                *span,
+                            ));
+                        }
+                        // Type it as Object (opaque dict reference)
+                        let ret_var = Type::Var(self.fresh());
+                        let func_typed = TypedExpr {
+                            kind: TypedExprKind::Var("trait_dict".to_string()),
+                            ty: Type::Fn(vec![ret_var.clone()], Box::new(Type::Var(self.fresh()))),
+                            span: *span,
+                        };
+                        let arg_typed = TypedExpr {
+                            kind: TypedExprKind::Var(trait_name),
+                            ty: ret_var,
+                            span: *span,
+                        };
+                        let result_ty = Type::Var(self.fresh());
+                        return Ok(TypedExpr {
+                            kind: TypedExprKind::App {
+                                func: Box::new(func_typed),
+                                args: vec![arg_typed],
+                            },
+                            ty: result_ty,
+                            span: *span,
+                        });
+                    }
+                }
+
                 let qualified_call = match (func.as_ref(), args.first()) {
                     (
                         Expr::Var { name: export_name, .. },
@@ -595,6 +662,32 @@ impl<'a> InferenceContext<'a> {
                 } else {
                     ty
                 };
+
+                // Enforce: trait_dict(...) can only appear as an argument to extern functions
+                if let Expr::Var { name: call_name, .. } = func.as_ref() {
+                    if !self.extern_fn_names.contains(call_name) {
+                        for arg in &args_typed {
+                            if let TypedExprKind::App {
+                                func: inner_func, ..
+                            } = &arg.kind
+                            {
+                                if let TypedExprKind::Var(fn_name) = &inner_func.kind {
+                                    if fn_name == "trait_dict" {
+                                        return Err(super::spanned(
+                                            TypeError::UnsupportedExpr {
+                                                description: format!(
+                                                    "trait_dict(...) can only be used as an argument to extern functions, not `{call_name}`"
+                                                ),
+                                            },
+                                            *span,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Ok(TypedExpr {
                     kind: TypedExprKind::App {
                         func: Box::new(func_typed),

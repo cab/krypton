@@ -64,11 +64,9 @@ public class KryptonMap {
 
     public static Object staticPut(Object map, Object key, Object value, Object eqFn, Object hashFn) {
         KryptonMap m = ((KryptonMap) map).copy();
-        // Lazily set eq/hash fns from the first put
-        if (m.eqFn == null) {
-            m.eqFn = (Fun2) eqFn;
-            m.hashFn = (Fun1) hashFn;
-        }
+        // Set eq/hash fns from the dict singletons (or lambdas for backwards compat)
+        m.eqFn = (Fun2) eqFn;
+        m.hashFn = (Fun1) hashFn;
         m.data.put(m.wrap(key), value);
         return m;
     }

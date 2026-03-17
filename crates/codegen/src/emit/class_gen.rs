@@ -386,6 +386,7 @@ pub(super) fn generate_variant_class(
 
 /// Generate a trait interface class file (e.g., `Eq.class`).
 /// All methods take and return Object (type erasure).
+/// Single-method traits also extend FunN so dict singletons can be used as lambdas.
 pub(super) fn generate_trait_interface_class(
     name: &str,
     methods: &[(String, usize)], // (method_name, param_count)
@@ -394,7 +395,18 @@ pub(super) fn generate_trait_interface_class(
 
     let this_class = cp.add_class(name)?;
     let object_class = cp.add_class("java/lang/Object")?;
+    let code_utf8 = cp.add_utf8("Code")?;
 
+    // For single-method traits, extend FunN so instances are usable as lambdas
+    let mut interfaces = Vec::new();
+    if methods.len() == 1 {
+        let param_count = methods[0].1;
+        let fun_class_name = format!("krypton/runtime/Fun{param_count}");
+        let fun_class = cp.add_class(&fun_class_name)?;
+        interfaces.push(fun_class);
+    }
+
+    let mut iface_method_refs = Vec::new();
     let mut jvm_methods = Vec::new();
     for (method_name, param_count) in methods {
         let mut desc = String::from("(");
@@ -406,11 +418,49 @@ pub(super) fn generate_trait_interface_class(
         let name_idx = cp.add_utf8(method_name)?;
         let desc_idx = cp.add_utf8(&desc)?;
 
+        let method_ref = cp.add_interface_method_ref(this_class, method_name, &desc)?;
+        iface_method_refs.push((method_ref, *param_count));
+
         jvm_methods.push(Method {
             access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
             name_index: name_idx,
             descriptor_index: desc_idx,
             attributes: vec![],
+        });
+    }
+
+    // For single-method traits, generate a default `apply` bridge method
+    if methods.len() == 1 {
+        let (method_ref, param_count) = iface_method_refs[0];
+        let mut apply_desc = String::from("(");
+        for _ in 0..param_count {
+            apply_desc.push_str("Ljava/lang/Object;");
+        }
+        apply_desc.push_str(")Ljava/lang/Object;");
+
+        let apply_name = cp.add_utf8("apply")?;
+        let apply_desc_idx = cp.add_utf8(&apply_desc)?;
+
+        // Bridge bytecode: aload_0 (this), aload_1..N (args), invokeinterface trait.method, areturn
+        let mut bridge_code = vec![Instruction::Aload_0];
+        for i in 1..=(param_count as u8) {
+            bridge_code.push(Instruction::Aload(i));
+        }
+        bridge_code.push(Instruction::Invokeinterface(method_ref, (param_count + 1) as u8));
+        bridge_code.push(Instruction::Areturn);
+
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: apply_name,
+            descriptor_index: apply_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: (param_count + 1) as u16,
+                max_locals: (param_count + 1) as u16,
+                code: bridge_code,
+                exception_table: vec![],
+                attributes: vec![],
+            }],
         });
     }
 
@@ -422,6 +472,7 @@ pub(super) fn generate_trait_interface_class(
         constant_pool: cp,
         this_class,
         super_class: object_class,
+        interfaces,
         methods: jvm_methods,
         ..Default::default()
     };

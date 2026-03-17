@@ -662,6 +662,7 @@ pub fn infer_expr(
     let empty_tpm = HashMap::new();
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
+    let empty_efn = HashSet::new();
     let mut ctx = InferenceContext {
         env,
         subst,
@@ -674,6 +675,8 @@ pub fn infer_expr(
         type_param_arity: &empty_tpa,
         qualified_modules: &empty_qm,
         imported_fn_types: &[],
+        extern_fn_names: &empty_efn,
+        enclosing_fn_constraints: &[],
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -2655,6 +2658,13 @@ pub(crate) fn infer_module_inner(
     let adj = scc::build_dependency_graph(&fn_decls);
     let sccs = scc::tarjan_scc(&adj);
 
+    // Build extern function name set for trait_dict validation
+    let extern_fn_names: HashSet<String> = extern_fns
+        .iter()
+        .map(|ef| ef.name.clone())
+        .chain(state.imported_extern_fns.iter().map(|ef| ef.name.clone()))
+        .collect();
+
     // Store results indexed by declaration order
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
@@ -2758,6 +2768,10 @@ pub(crate) fn infer_module_inner(
             }
 
             let body_typed = {
+                let empty_constraints = Vec::new();
+                let enclosing_constraints = fn_constraint_requirements
+                    .get(&decl.name)
+                    .unwrap_or(&empty_constraints);
                 let mut ctx = InferenceContext {
                     env: &mut state.env,
                     subst: &mut state.subst,
@@ -2770,6 +2784,8 @@ pub(crate) fn infer_module_inner(
                     type_param_arity: &type_param_arity,
                     qualified_modules: &state.qualified_modules,
                     imported_fn_types: &state.imports.imported_fn_types,
+                    extern_fn_names: &extern_fn_names,
+                    enclosing_fn_constraints: enclosing_constraints,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
@@ -2985,6 +3001,7 @@ pub(crate) fn infer_module_inner(
                 state.env.fn_return_type = Some(concrete_ret_type);
 
                 let body_typed = {
+                    let empty_efn = HashSet::new();
                     let mut ctx = InferenceContext {
                         env: &mut state.env,
                         subst: &mut state.subst,
@@ -2997,6 +3014,8 @@ pub(crate) fn infer_module_inner(
                         type_param_arity: &impl_method_tpa,
                         qualified_modules: &state.qualified_modules,
                         imported_fn_types: &state.imports.imported_fn_types,
+                        extern_fn_names: &empty_efn,
+                        enclosing_fn_constraints: &[],
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };

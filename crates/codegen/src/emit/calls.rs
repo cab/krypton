@@ -70,6 +70,29 @@ impl Compiler {
                 self.builder.push_jvm_type(jvm_ret);
                 Ok(jvm_ret)
             }
+            "trait_dict" => {
+                // trait_dict(TraitName) — load the dict for the named trait from locals
+                let trait_name = match &args[0].kind {
+                    TypedExprKind::Var(name) => name.clone(),
+                    _ => {
+                        return Err(CodegenError::UnsupportedExpr(
+                            "trait_dict argument must be a trait name".to_string(),
+                        ));
+                    }
+                };
+                let object_class = self.builder.refs.object_class;
+                if let Some(&dict_slot) = self.traits.dict_locals.get(&trait_name) {
+                    self.builder.emit(Instruction::Aload(dict_slot as u8));
+                    self.builder.frame.push_type(VerificationType::Object {
+                        cpool_index: object_class,
+                    });
+                    Ok(JvmType::StructRef(object_class))
+                } else {
+                    Err(CodegenError::UndefinedVariable(format!(
+                        "no dict local for trait_dict({trait_name})"
+                    )))
+                }
+            }
             _ => Err(CodegenError::UnsupportedExpr(format!(
                 "unknown intrinsic: {name}"
             ))),
@@ -112,7 +135,7 @@ impl Compiler {
         let name = Self::extract_call_name(func)?;
 
         // Intrinsic
-        if name == "panic" {
+        if name == "panic" || name == "trait_dict" {
             return Ok((name.to_string(), CallTarget::Intrinsic));
         }
 

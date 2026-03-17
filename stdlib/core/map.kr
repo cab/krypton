@@ -1,8 +1,8 @@
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
 import core/vec.{to_list as vec_to_list}
-import core/eq.{Eq, eq}
-import core/hash.{Hash, hash}
+import core/eq.{Eq}
+import core/hash.{Hash}
 
 extern "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 
@@ -24,10 +24,13 @@ extern "krypton.runtime.KryptonArray" {
     fun staticGet(Object, Int) -> Object
 }
 
+# empty() intentionally has no `where k: Eq + Hash` constraint.
+# Let-polymorphism means `let m = empty()` generalizes the return type,
+# making dict resolution impossible at the call site. Dicts flow through put() instead.
 pub fun empty[k, v]() -> Map[k, v] = staticEmpty()
 
 pub fun put[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash =
-    staticPut(m, key, value, (a, b) -> eq(a, b), (a) -> hash(a))
+    staticPut(m, key, value, trait_dict(Eq), trait_dict(Hash))
 
 pub fun get[k, v](m: Map[k, v], key: k) -> Option[v] where k: Eq + Hash =
     if staticContainsKey(m, key) { Some(staticGetUnsafe(m, key)) } else { None }

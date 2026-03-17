@@ -11,6 +11,19 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
         },
     );
 
+    // trait_dict: forall a b. fn(a) -> b  (pseudo-intrinsic for explicit dict references)
+    {
+        let a = gen.fresh();
+        let b = gen.fresh();
+        env.bind(
+            "trait_dict".to_string(),
+            TypeScheme {
+                vars: vec![a, b],
+                ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
+            },
+        );
+    }
+
     // __krypton_intrinsic: forall b. fn() -> b  (only available in core/ modules)
     if is_core_module {
         let b = gen.fresh();

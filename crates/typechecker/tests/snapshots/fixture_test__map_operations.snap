@@ -2,30 +2,30 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-eq: forall d. fn(d, d) -> Bool
-lt: forall e. fn(e, e) -> Bool
-combine: forall d. fn(d, d) -> d
-sub: forall d. fn(d, d) -> d
-mul: forall d. fn(d, d) -> d
-div: forall d. fn(d, d) -> d
-neg: forall d. fn(d) -> d
-show: forall d. fn(d) -> String
-hash: forall d. fn(d) -> Int
-close: forall d. fn(own d) -> Unit
-peek: forall e. fn(e) -> e
-println: forall j. fn(j) -> Unit
-Some: forall c. fn(c) -> Option[c]
-None: forall c. Option[c]
-Ok: forall d e. fn(e) -> Result[d, e]
-Err: forall d e. fn(d) -> Result[d, e]
-Cons: forall f. fn(f, List[f]) -> List[f]
-Nil: forall f. List[f]
+eq: forall f. fn(f, f) -> Bool
+lt: forall g. fn(g, g) -> Bool
+combine: forall f. fn(f, f) -> f
+sub: forall f. fn(f, f) -> f
+mul: forall f. fn(f, f) -> f
+div: forall f. fn(f, f) -> f
+neg: forall f. fn(f) -> f
+show: forall f. fn(f) -> String
+hash: forall f. fn(f) -> Int
+close: forall f. fn(own f) -> Unit
+peek: forall g. fn(g) -> g
+println: forall l. fn(l) -> Unit
+Some: forall e. fn(e) -> Option[e]
+None: forall e. Option[e]
+Ok: forall f g. fn(g) -> Result[f, g]
+Err: forall f g. fn(f) -> Result[f, g]
+Cons: forall h. fn(h, List[h]) -> List[h]
+Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-empty: forall d3 e3. fn() -> Map[d3, e3]
-put: forall i3 j3. fn(Map[i3, j3], i3, j3) -> Map[i3, j3]
-delete: forall t4 u4. fn(Map[t4, u4], t4) -> Map[t4, u4]
-contains: forall c5 d5. fn(Map[c5, d5], c5) -> Bool
-size: forall a8 b8. fn(Map[a8, b8]) -> Int
+empty: forall f3 g3. fn() -> Map[f3, g3]
+put: forall k3 l3. fn(Map[k3, l3], k3, l3) -> Map[k3, l3]
+delete: forall s4 t4. fn(Map[s4, t4], s4) -> Map[s4, t4]
+contains: forall b5 c5. fn(Map[b5, c5], b5) -> Bool
+size: forall z7 a8. fn(Map[z7, a8]) -> Int
 main: fn() -> Unit

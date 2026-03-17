@@ -1,0 +1,13 @@
+# expect: ok
+# expect: output "42\ntrue\n2"
+import core/map.{empty, put, get, from_list, contains, size}
+fun main() = {
+  let m = put(put(empty(), "a", 42), "b", 99)
+  match get(m, "a") {
+    Some(v) => println(v),
+    None => println(0)
+  }
+  println(contains(m, "b"))
+  let m2 = from_list(Cons(("hello", 1), Cons(("world", 2), Nil)))
+  println(size(m2))
+}

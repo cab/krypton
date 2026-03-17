@@ -23,5 +23,10 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-identity: forall x. fn(x) -> x
-use_it: fn(own String) -> Unit
+empty: forall f3 g3. fn() -> Map[f3, g3]
+put: forall k3 l3. fn(Map[k3, l3], k3, l3) -> Map[k3, l3]
+get: forall d4 e4. fn(Map[d4, e4], d4) -> Option[e4]
+contains: forall b5 c5. fn(Map[b5, c5], b5) -> Bool
+from_list: forall s7 t7. fn(List[(s7, t7)]) -> Map[s7, t7]
+size: forall z7 a8. fn(Map[z7, a8]) -> Int
+main: fn() -> Unit
