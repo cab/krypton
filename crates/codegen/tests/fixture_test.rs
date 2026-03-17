@@ -22,12 +22,15 @@ fn build_classpath(class_dir: &Path) -> String {
 fn run_program_with_resolver(
     source: &str,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    fixture_name: &str,
 ) -> String {
     let (module, errors) = parse(source);
-    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    assert!(errors.is_empty(), "fixture {fixture_name}: parse errors: {errors:?}");
 
-    let typed_modules = infer_module(&module, resolver).expect("type check should succeed");
-    let classes = compile_modules(&typed_modules, "Test").expect("compile_modules should succeed");
+    let typed_modules = infer_module(&module, resolver)
+        .unwrap_or_else(|e| panic!("fixture {fixture_name}: type check failed: {e}"));
+    let classes = compile_modules(&typed_modules, "Test")
+        .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -49,7 +52,7 @@ fn run_program_with_resolver(
 
     assert!(
         output.status.success(),
-        "java exited with {}\nstderr: {}",
+        "fixture {fixture_name}: java exited with {}\nstderr: {}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
@@ -73,6 +76,7 @@ fn run_codegen_fixtures(subdir: &str) {
     );
 
     let mut ran = 0;
+    let mut failures: Vec<String> = Vec::new();
     for fixture_path in fixtures {
         let fixture = load_fixture(&fixture_path);
         let name = fixture_path
@@ -87,30 +91,34 @@ fn run_codegen_fixtures(subdir: &str) {
         for expectation in &fixture.expectations {
             match expectation {
                 Expectation::Output(expected) => {
-                    let actual = run_program_with_resolver(&fixture.source, &resolver);
-                    assert_eq!(
-                        actual, *expected,
-                        "fixture {name}: expected output {expected:?} but got {actual:?}"
-                    );
+                    let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
+                    if actual != *expected {
+                        failures.push(format!(
+                            "{name}: expected output {expected:?} but got {actual:?}"
+                        ));
+                    }
                     ran += 1;
                 }
                 Expectation::Ok => {
                     let (module, errors) = parse(&fixture.source);
                     if !errors.is_empty() {
-                        panic!("fixture {name}: expected ok but parse errors: {errors:?}");
+                        failures.push(format!("{name}: expected ok but parse errors: {errors:?}"));
+                        continue;
                     }
                     let typed_modules = match infer_module(&module, &resolver) {
                         Ok(tm) => tm,
-                        Err(e) => panic!("fixture {name}: expected ok but typecheck failed: {e}"),
+                        Err(e) => {
+                            failures.push(format!("{name}: expected ok but typecheck failed: {e}"));
+                            continue;
+                        }
                     };
                     match compile_modules(&typed_modules, "Test") {
-                        Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {
-                            ran += 1;
-                        }
+                        Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
                         Err(e) => {
-                            panic!("fixture {name}: expected ok but compile failed: {e}")
+                            failures.push(format!("{name}: expected ok but compile failed: {e}"));
                         }
                     }
+                    ran += 1;
                 }
                 Expectation::Error(_) => {}
             }
@@ -118,6 +126,13 @@ fn run_codegen_fixtures(subdir: &str) {
     }
 
     assert!(ran > 0, "no output/ok fixtures were found to run {subdir}");
+    if !failures.is_empty() {
+        panic!(
+            "{} fixture(s) failed:\n  {}",
+            failures.len(),
+            failures.join("\n  ")
+        );
+    }
 }
 
 #[test]
