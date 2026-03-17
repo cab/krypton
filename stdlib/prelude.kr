@@ -6,6 +6,7 @@ pub import core/mul.{Mul, mul}
 pub import core/div.{Div, div}
 pub import core/neg.{Neg, neg}
 pub import core/show.{Show, show}
+pub import core/hash.{Hash, hash}
 pub import core/resource.{Resource, close}
 pub import core/peek.{peek}
 

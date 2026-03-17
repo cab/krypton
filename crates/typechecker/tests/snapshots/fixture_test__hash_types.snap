@@ -23,11 +23,4 @@ Nil: forall e. List[e]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-spawn: forall o1. fn(fn(Mailbox[o1]) -> Unit) -> Ref[o1]
-send: forall u1. fn(Ref[u1], u1) -> Unit
-receive: forall b2. fn(Mailbox[b2]) -> b2
-Inc: CounterMsg
-Dec: CounterMsg
-Get: fn(Ref[Int]) -> CounterMsg
-counter: forall x2. fn(Mailbox[CounterMsg], Int) -> x2
-main: forall a3. fn() -> fn(Mailbox[CounterMsg], Int) -> a3
+main: fn() -> Unit

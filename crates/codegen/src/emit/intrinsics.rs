@@ -40,6 +40,15 @@ pub enum IntrinsicOp {
     },
     /// Show identity (String → String)
     ShowIdentity,
+    /// Hash via BoxClass.hashCode(primitive) → int → long
+    HashVia {
+        box_class: &'static str,
+        unbox_method: &'static str,
+        unbox_desc: &'static str,
+        hash_desc: &'static str,
+    },
+    /// Hash for String: String.hashCode() → int → long
+    HashString,
 }
 
 /// A single intrinsic entry: maps (trait, type) to an operation.
@@ -54,11 +63,15 @@ pub struct IntrinsicEntry {
 
 impl IntrinsicEntry {
     pub fn is_unary(&self) -> bool {
-        matches!(self.op, IntrinsicOp::UnaryArith(_))
+        matches!(self.op, IntrinsicOp::UnaryArith(_) | IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString)
     }
 
     pub fn is_show(&self) -> bool {
         matches!(self.op, IntrinsicOp::ShowVia { .. } | IntrinsicOp::ShowIdentity)
+    }
+
+    pub fn is_hash(&self) -> bool {
+        matches!(self.op, IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString)
     }
 }
 
@@ -194,6 +207,45 @@ impl IntrinsicRegistry {
                 trait_name: "Show", type_name: "String", method_name: "show",
                 jvm_type: PrimitiveJvm::Ref,
                 op: IntrinsicOp::ShowIdentity,
+            },
+            // Hash Int
+            IntrinsicEntry {
+                trait_name: "Hash", type_name: "Int", method_name: "hash",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::HashVia {
+                    box_class: "java/lang/Long",
+                    unbox_method: "longValue",
+                    unbox_desc: "()J",
+                    hash_desc: "(J)I",
+                },
+            },
+            // Hash Float
+            IntrinsicEntry {
+                trait_name: "Hash", type_name: "Float", method_name: "hash",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::HashVia {
+                    box_class: "java/lang/Double",
+                    unbox_method: "doubleValue",
+                    unbox_desc: "()D",
+                    hash_desc: "(D)I",
+                },
+            },
+            // Hash Bool
+            IntrinsicEntry {
+                trait_name: "Hash", type_name: "Bool", method_name: "hash",
+                jvm_type: PrimitiveJvm::Int,
+                op: IntrinsicOp::HashVia {
+                    box_class: "java/lang/Boolean",
+                    unbox_method: "booleanValue",
+                    unbox_desc: "()Z",
+                    hash_desc: "(Z)I",
+                },
+            },
+            // Hash String
+            IntrinsicEntry {
+                trait_name: "Hash", type_name: "String", method_name: "hash",
+                jvm_type: PrimitiveJvm::Ref,
+                op: IntrinsicOp::HashString,
             },
         ];
 
@@ -467,6 +519,36 @@ pub fn build_bridge_bytecode(
             code.push(Instruction::Checkcast(string_class));
             code.push(Instruction::Areturn);
             Ok((code, 4, 2, vec![]))
+        }
+
+        IntrinsicOp::HashVia { box_class, unbox_method, unbox_desc, hash_desc } => {
+            let box_cls = cp.add_class(box_class)?;
+            let unbox_ref = cp.add_method_ref(box_cls, unbox_method, unbox_desc)?;
+            let hash_ref = cp.add_method_ref(box_cls, "hashCode", hash_desc)?;
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_valueof = cp.add_method_ref(long_class, "valueOf", "(J)Ljava/lang/Long;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(box_cls));
+            code.push(Instruction::Invokevirtual(unbox_ref));
+            code.push(Instruction::Invokestatic(hash_ref));
+            code.push(Instruction::I2l);
+            code.push(Instruction::Invokestatic(long_valueof));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 2, vec![]))
+        }
+
+        IntrinsicOp::HashString => {
+            let string_class = cp.add_class("java/lang/String")?;
+            let hash_ref = cp.add_method_ref(string_class, "hashCode", "()I")?;
+            let long_class = cp.add_class("java/lang/Long")?;
+            let long_valueof = cp.add_method_ref(long_class, "valueOf", "(J)Ljava/lang/Long;")?;
+            code.push(Instruction::Aload(1));
+            code.push(Instruction::Checkcast(string_class));
+            code.push(Instruction::Invokevirtual(hash_ref));
+            code.push(Instruction::I2l);
+            code.push(Instruction::Invokestatic(long_valueof));
+            code.push(Instruction::Areturn);
+            Ok((code, 2, 2, vec![]))
         }
     }
 }

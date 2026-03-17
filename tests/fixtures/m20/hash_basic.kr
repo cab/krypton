@@ -1,0 +1,6 @@
+# expect: ok
+# expect: output "true"
+fun main() = {
+  let h = hash(42)
+  println(h == hash(42))
+}

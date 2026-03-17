@@ -2343,6 +2343,7 @@ pub(crate) fn infer_module_inner(
                 let method_name = match trait_name.as_str() {
                     "Eq" => "eq",
                     "Show" => "show",
+                    "Hash" => "hash",
                     _ => continue,
                 };
 
@@ -2366,12 +2367,13 @@ pub(crate) fn infer_module_inner(
                 let (body, fn_ty) = match trait_name.as_str() {
                     "Eq" => synthesize_eq_body(type_info, &target_type, syn_span),
                     "Show" => synthesize_show_body(type_info, &target_type, syn_span),
+                    "Hash" => synthesize_hash_body(type_info, &target_type, syn_span),
                     _ => continue,
                 };
 
                 let params = match trait_name.as_str() {
                     "Eq" => vec!["__a".to_string(), "__b".to_string()],
-                    "Show" => vec!["__a".to_string()],
+                    "Show" | "Hash" => vec!["__a".to_string()],
                     _ => vec![],
                 };
 
@@ -3371,5 +3373,145 @@ fn synthesize_show_body(
     };
 
     let fn_ty = Type::Fn(vec![target_type.clone()], Box::new(Type::String));
+    (body, fn_ty)
+}
+
+fn synthesize_hash_body(
+    type_info: &crate::type_registry::TypeInfo,
+    target_type: &Type,
+    span: Span,
+) -> (TypedExpr, Type) {
+    let param_a = TypedExpr {
+        kind: TypedExprKind::Var("__a".to_string()),
+        ty: target_type.clone(),
+        span,
+    };
+
+    let int_lit = |n: i64| -> TypedExpr {
+        TypedExpr {
+            kind: TypedExprKind::Lit(Lit::Int(n)),
+            ty: Type::Int,
+            span,
+        }
+    };
+
+    let hash_call = |expr: TypedExpr| -> TypedExpr {
+        let arg_ty = expr.ty.clone();
+        TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(TypedExpr {
+                    kind: TypedExprKind::Var("hash".to_string()),
+                    ty: Type::Fn(vec![arg_ty], Box::new(Type::Int)),
+                    span,
+                }),
+                args: vec![expr],
+            },
+            ty: Type::Int,
+            span,
+        }
+    };
+
+    // 31 * acc + hash(field)
+    let combine_hash = |acc: TypedExpr, field_hash: TypedExpr| -> TypedExpr {
+        let mul = TypedExpr {
+            kind: TypedExprKind::BinaryOp {
+                op: BinOp::Mul,
+                lhs: Box::new(int_lit(31)),
+                rhs: Box::new(acc),
+            },
+            ty: Type::Int,
+            span,
+        };
+        TypedExpr {
+            kind: TypedExprKind::BinaryOp {
+                op: BinOp::Add,
+                lhs: Box::new(mul),
+                rhs: Box::new(field_hash),
+            },
+            ty: Type::Int,
+            span,
+        }
+    };
+
+    let body = match &type_info.kind {
+        crate::type_registry::TypeKind::Record { fields } => {
+            if fields.is_empty() {
+                int_lit(0)
+            } else {
+                let mut result = {
+                    let (field_name, field_ty) = &fields[0];
+                    let field_access = TypedExpr {
+                        kind: TypedExprKind::FieldAccess {
+                            expr: Box::new(param_a.clone()),
+                            field: field_name.clone(),
+                        },
+                        ty: field_ty.clone(),
+                        span,
+                    };
+                    hash_call(field_access)
+                };
+                for (field_name, field_ty) in &fields[1..] {
+                    let field_access = TypedExpr {
+                        kind: TypedExprKind::FieldAccess {
+                            expr: Box::new(param_a.clone()),
+                            field: field_name.clone(),
+                        },
+                        ty: field_ty.clone(),
+                        span,
+                    };
+                    result = combine_hash(result, hash_call(field_access));
+                }
+                result
+            }
+        }
+        crate::type_registry::TypeKind::Sum { variants } => {
+            let arms: Vec<TypedMatchArm> = variants
+                .iter()
+                .enumerate()
+                .map(|(idx, variant)| {
+                    let bindings: Vec<String> = (0..variant.fields.len())
+                        .map(|i| format!("__x{}", i))
+                        .collect();
+                    let pattern = TypedPattern::Constructor {
+                        name: variant.name.clone(),
+                        args: bindings
+                            .iter()
+                            .zip(variant.fields.iter())
+                            .map(|(n, ft)| TypedPattern::Var {
+                                name: n.clone(),
+                                ty: ft.clone(),
+                                span,
+                            })
+                            .collect(),
+                        ty: target_type.clone(),
+                        span,
+                    };
+
+                    let mut result = hash_call(int_lit(idx as i64));
+                    for (i, ft) in variant.fields.iter().enumerate() {
+                        let var_expr = TypedExpr {
+                            kind: TypedExprKind::Var(format!("__x{}", i)),
+                            ty: ft.clone(),
+                            span,
+                        };
+                        result = combine_hash(result, hash_call(var_expr));
+                    }
+
+                    TypedMatchArm { pattern, body: result }
+                })
+                .collect();
+
+            TypedExpr {
+                kind: TypedExprKind::Match {
+                    scrutinee: Box::new(param_a),
+                    arms,
+                },
+                ty: Type::Int,
+                span,
+            }
+        }
+    };
+
+    let fn_ty = Type::Fn(vec![target_type.clone()], Box::new(Type::Int));
     (body, fn_ty)
 }

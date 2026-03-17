@@ -1,0 +1,10 @@
+# Compiler intrinsic: primitive instance bodies are replaced by optimized JVM
+# bytecode at codegen time. The __krypton_intrinsic() marker tells the compiler
+# to skip body type-checking and use bridge bytecode instead.
+pub trait Hash[a] {
+    fun hash(x: a) -> Int
+}
+impl Hash[Int] { fun hash(x: Int) -> Int = __krypton_intrinsic() }
+impl Hash[Float] { fun hash(x: Float) -> Int = __krypton_intrinsic() }
+impl Hash[String] { fun hash(x: String) -> Int = __krypton_intrinsic() }
+impl Hash[Bool] { fun hash(x: Bool) -> Int = __krypton_intrinsic() }

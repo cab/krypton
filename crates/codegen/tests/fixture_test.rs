@@ -184,3 +184,8 @@ fn m7_fixtures() {
 fn a_fixtures() {
     run_codegen_fixtures("a");
 }
+
+#[test]
+fn m20_fixtures() {
+    run_codegen_fixtures("m20");
+}

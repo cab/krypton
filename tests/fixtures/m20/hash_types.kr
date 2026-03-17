@@ -1,0 +1,8 @@
+# expect: ok
+# expect: output "true\ntrue\ntrue\ntrue"
+fun main() = {
+  println(hash(42) == hash(42))
+  println(hash(3.14) == hash(3.14))
+  println(hash("hello") == hash("hello"))
+  println(hash(true) == hash(true))
+}
