@@ -547,16 +547,14 @@ fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut 
 }
 
 fn reserve_gen_for_env_schemes(env: &TypeEnv, gen: &mut TypeVarGen) {
-    let mut next_reserved = 0u32;
     env.for_each_scheme(|scheme| {
-        for var in &scheme.vars {
-            next_reserved = next_reserved.max(var.raw() + 1);
+        for &var in &scheme.vars {
+            gen.reserve_past(var);
         }
         for var in free_vars(&scheme.ty) {
-            next_reserved = next_reserved.max(var.raw() + 1);
+            gen.reserve_past(var);
         }
     });
-    gen.reserve_at_least(next_reserved);
 }
 
 /// Generalize a type into a type scheme by quantifying over variables

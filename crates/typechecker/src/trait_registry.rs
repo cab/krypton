@@ -319,7 +319,7 @@ fn split_instance_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
 #[cfg(test)]
 mod tests {
     use super::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
-    use crate::types::{Type, TypeVarId};
+    use crate::types::{Type, TypeVarGen};
     use krypton_parser::ast::TypeConstraint;
     use std::collections::HashMap;
 
@@ -328,10 +328,11 @@ mod tests {
     }
 
     fn trait_info_with_arity(name: &str, type_var_arity: usize) -> TraitInfo {
+        let var_a = TypeVarGen::new().fresh();
         TraitInfo {
             name: name.to_string(),
             type_var: "a".to_string(),
-            type_var_id: TypeVarId::from_raw(0),
+            type_var_id: var_a,
             type_var_arity,
             superclasses: vec![],
             methods: Vec::<TraitMethod>::new(),
@@ -345,11 +346,12 @@ mod tests {
         target_type_name: &str,
         constraints: Vec<TypeConstraint>,
     ) -> InstanceInfo {
+        let var_a = TypeVarGen::new().fresh();
         InstanceInfo {
             trait_name: trait_name.to_string(),
             target_type,
             target_type_name: target_type_name.to_string(),
-            type_var_ids: HashMap::from([(String::from("a"), TypeVarId::from_raw(0))]),
+            type_var_ids: HashMap::from([(String::from("a"), var_a)]),
             constraints,
             methods: vec![],
             span: (0, 0),
@@ -359,6 +361,7 @@ mod tests {
 
     #[test]
     fn constrained_instance_matches_only_when_bounds_are_satisfied() {
+        let var_a = TypeVarGen::new().fresh();
         let mut registry = TraitRegistry::new();
         registry.register_trait(trait_info("Show")).unwrap();
         registry
@@ -367,7 +370,7 @@ mod tests {
         registry
             .register_instance(instance(
                 "Show",
-                Type::Named("Option".to_string(), vec![Type::Var(TypeVarId::from_raw(0))]),
+                Type::Named("Option".to_string(), vec![Type::Var(var_a)]),
                 "Option",
                 vec![TypeConstraint {
                     type_var: "a".to_string(),
@@ -389,12 +392,13 @@ mod tests {
 
     #[test]
     fn constrained_instance_cycle_returns_none() {
+        let var_a = TypeVarGen::new().fresh();
         let mut registry = TraitRegistry::new();
         registry.register_trait(trait_info("Show")).unwrap();
         registry
             .register_instance(instance(
                 "Show",
-                Type::Var(TypeVarId::from_raw(0)),
+                Type::Var(var_a),
                 "Loop",
                 vec![TypeConstraint {
                     type_var: "a".to_string(),
@@ -472,7 +476,7 @@ mod tests {
                 trait_name: "Traversable".to_string(),
                 target_type: Type::Named("List".to_string(), vec![]),
                 target_type_name: "List".to_string(),
-                type_var_ids: HashMap::from([(String::from("f"), TypeVarId::from_raw(0))]),
+                type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
                 constraints: vec![
                     TypeConstraint {
                         type_var: "f".to_string(),
@@ -498,6 +502,7 @@ mod tests {
 
     #[test]
     fn constrained_hkt_instance_binds_partially_applied_constructor_arguments() {
+        let var_e = TypeVarGen::new().fresh();
         let mut registry = TraitRegistry::new();
         registry
             .register_trait(trait_info("Show"))
@@ -511,9 +516,9 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: "Functor".to_string(),
-                target_type: Type::Named("Result".to_string(), vec![Type::Var(TypeVarId::from_raw(0))]),
+                target_type: Type::Named("Result".to_string(), vec![Type::Var(var_e)]),
                 target_type_name: "Result".to_string(),
-                type_var_ids: HashMap::from([(String::from("e"), TypeVarId::from_raw(0))]),
+                type_var_ids: HashMap::from([(String::from("e"), var_e)]),
                 constraints: vec![TypeConstraint {
                     type_var: "e".to_string(),
                     trait_name: "Show".to_string(),

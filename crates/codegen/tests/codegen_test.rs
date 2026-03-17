@@ -6,7 +6,8 @@ use krypton_typechecker::typed_ast::{
     AutoCloseInfo, ExternFnInfo, FnOrigin, FnTypeEntry, InstanceDefInfo, InstanceMethod, TraitDefInfo,
     TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
-use krypton_typechecker::types::{Type, TypeScheme, TypeVarId};
+use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
+
 use krypton_modules::module_resolver::CompositeResolver;
 use std::collections::HashMap;
 use std::io::Write;
@@ -171,7 +172,8 @@ fn wrap_expr(inner: TypedExpr) -> TypedExpr {
 }
 
 fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) -> TypedModule {
-    let a_ty = Type::Var(TypeVarId::from_raw(0));
+    let var_a = TypeVarGen::new().fresh();
+    let a_ty = Type::Var(var_a);
     let wrap_a_ty = wrap_type(a_ty.clone());
     let wrap_int_ty = if nested {
         wrap_type(wrap_type(Type::Int))
@@ -247,7 +249,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
 
     let render_int_scheme = TypeScheme::mono(Type::Fn(vec![Type::Int], Box::new(Type::String)));
     let render_wrap_scheme = TypeScheme {
-        vars: vec![TypeVarId::from_raw(0)],
+        vars: vec![var_a],
         ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
     };
 
@@ -281,7 +283,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         fn_types.push(FnTypeEntry {
             name: "render_wrap".to_string(),
             scheme: TypeScheme {
-                vars: vec![TypeVarId::from_raw(0)],
+                vars: vec![var_a],
                 ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
             },
             origin: FnOrigin::Regular,
@@ -299,7 +301,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             ),
         });
         fn_constraints.insert("render_wrap".to_string(), vec![("Render".to_string(), 0)]);
-        fn_constraint_requirements.insert("render_wrap".to_string(), vec![("Render".to_string(), TypeVarId::from_raw(0))]);
+        fn_constraint_requirements.insert("render_wrap".to_string(), vec![("Render".to_string(), var_a)]);
     }
 
     functions.push(TypedFnDecl {
@@ -342,7 +344,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 trait_name: "Render".to_string(),
                 target_type_name: "Wrap".to_string(),
                 target_type: wrap_a_ty.clone(),
-                type_var_ids: HashMap::from([("a".to_string(), TypeVarId::from_raw(0))]),
+                type_var_ids: HashMap::from([("a".to_string(), var_a)]),
                 constraints: vec![TypeConstraint {
                     type_var: "a".to_string(),
                     trait_name: "Render".to_string(),

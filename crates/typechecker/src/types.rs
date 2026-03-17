@@ -12,16 +12,6 @@ impl fmt::Display for TypeVarId {
 }
 
 impl TypeVarId {
-    /// Construct from a raw index (for tests and cross-crate interop).
-    pub fn from_raw(id: u32) -> Self {
-        TypeVarId(id)
-    }
-
-    /// Return the underlying index.
-    pub fn raw(self) -> u32 {
-        self.0
-    }
-
     /// Human-readable name: 0→a, 1→b, ..., 25→z, 26→a1, etc.
     pub fn display_name(self) -> String {
         let letter = (b'a' + (self.0 % 26) as u8) as char;
@@ -390,8 +380,9 @@ impl TypeVarGen {
         id
     }
 
-    pub fn reserve_at_least(&mut self, next: u32) {
-        self.next = self.next.max(next);
+    /// Ensure the next generated ID is strictly greater than `id`.
+    pub fn reserve_past(&mut self, id: TypeVarId) {
+        self.next = self.next.max(id.0 + 1);
     }
 }
 
