@@ -1,0 +1,27 @@
+---
+source: crates/typechecker/tests/fixture_test.rs
+expression: snapshot
+---
+eq: forall g. fn(g, g) -> Bool
+lt: forall h. fn(h, h) -> Bool
+combine: forall g. fn(g, g) -> g
+sub: forall g. fn(g, g) -> g
+mul: forall g. fn(g, g) -> g
+div: forall g. fn(g, g) -> g
+neg: forall g. fn(g) -> g
+show: forall g. fn(g) -> String
+hash: forall g. fn(g) -> Int
+close: forall g. fn(~g) -> Unit
+peek: forall h. fn(h) -> h
+println: forall m. fn(m) -> Unit
+Some: forall e. fn(e) -> Option[e]
+None: forall e. Option[e]
+Ok: forall f g. fn(g) -> Result[f, g]
+Err: forall f g. fn(f) -> Result[f, g]
+Cons: forall h. fn(h, List[h]) -> List[h]
+Nil: forall h. List[h]
+LT: Ordering
+EQ: Ordering
+GT: Ordering
+consume: fn(~String) -> String
+test: fn(~String) -> String

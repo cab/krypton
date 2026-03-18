@@ -1,0 +1,10 @@
+# expect: error E0001
+# Polymorphic ~T param, var later constrained to non-owned (the hole)
+fun consume[T](x: ~T) -> T = x
+fun borrow(x: String) -> String = x
+
+fun test(a) {
+    let x = consume(a)
+    let y = borrow(a)
+    y
+}

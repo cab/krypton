@@ -7,6 +7,27 @@ use crate::typed_ast::ParamQualifier;
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
+/// Check if a param type from a function's type scheme requires ownership
+/// for non-function types.  Returns `true` when the param is `Own(inner)`
+/// and `inner` is NOT `Fn(_, _)`.
+///
+/// `~fn(...)` params are exempt: ownership on functions tracks closure
+/// affinity (single-use due to captured owned values), not value ownership.
+/// The `~fn → fn` direction is already rejected by unification (no symmetric
+/// coercion for functions), and `fn → ~fn` coercion is handled by
+/// `coerce_own_args`.  This guard is for data types only.
+fn param_requires_own(param_ty: &Type) -> bool {
+    matches!(param_ty, Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)))
+}
+
+/// Strip one layer of `Own` for error reporting (e.g. `Own(String)` → `String`).
+fn strip_own_shallow(ty: &Type) -> Type {
+    match ty {
+        Type::Own(inner) => inner.as_ref().clone(),
+        other => other.clone(),
+    }
+}
+
 /// Check if a param has an `own` type annotation.
 fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
     matches!(&param.ty, Some(TypeExpr::Own { .. }))
@@ -382,6 +403,14 @@ pub fn check_ownership(
         })
         .collect();
 
+    // Build map: fn_name -> param types from type scheme (for fabrication checks)
+    let mut fn_scheme_params: HashMap<String, Vec<Type>> = HashMap::new();
+    for (name, scheme, _) in fn_types {
+        if let Type::Fn(params, _) = &scheme.ty {
+            fn_scheme_params.insert(name.clone(), params.clone());
+        }
+    }
+
     // Compute qualifier requirements per function
     let mut fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types, shared_type_vars);
 
@@ -404,6 +433,7 @@ pub fn check_ownership(
                 lambda_own_captures,
                 struct_update_info,
                 registry,
+                &fn_scheme_params,
             )?;
             all_moves.extend(fn_moves);
         }
@@ -420,7 +450,10 @@ struct OwnershipChecker<'a> {
     partially_consumed: HashMap<String, Span>,
     /// Every actual move: var_span → var_name.
     moves: HashMap<Span, String>,
+    /// Parameter names of the enclosing function (for diagnostic hints).
+    enclosing_param_names: &'a HashSet<String>,
     fn_param_info: &'a HashMap<String, Vec<bool>>,
+    fn_scheme_params: &'a HashMap<String, Vec<Type>>,
     affine: &'a HashSet<String>,
     fn_qualifiers: &'a HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &'a HashSet<Span>,
@@ -431,6 +464,38 @@ struct OwnershipChecker<'a> {
 }
 
 impl<'a> OwnershipChecker<'a> {
+    /// Does this expression intrinsically produce an owned value?
+    ///
+    /// Uses the ownership pass's `owned` set for variables, syntactic checks
+    /// for literals/constructors/aggregates, and the callee's declared return
+    /// type for function calls.  Does NOT use resolved types from inference
+    /// (those have an `Own` leak through Var binding during unification).
+    fn is_owned_expr(&self, expr: &Expr) -> bool {
+        match expr {
+            // Literals create fresh owned values.
+            Expr::Lit { .. } => true,
+            // Variables: only if tracked as owned.
+            Expr::Var { name, .. } => self.owned.contains(name),
+            // Struct literals, tuples, and list literals create fresh values.
+            Expr::StructLit { .. }
+            | Expr::StructUpdate { .. }
+            | Expr::Tuple { .. }
+            | Expr::List { .. } => true,
+            // Constructor calls produce owned values.
+            Expr::App { func, .. } => {
+                if let Some(name) = callee_var_name(func) {
+                    self.registry.is_constructor(name)
+                } else {
+                    false
+                }
+            }
+            // Lambda expressions create fresh closures.
+            Expr::Lambda { .. } => true,
+            // Conservative: other expression forms are not guaranteed owned.
+            _ => false,
+        }
+    }
+
     /// Check that an owned variable hasn't been consumed or partially consumed.
     fn check_not_consumed(&self, name: &str, span: Span, note: Option<String>) -> Result<(), SpannedTypeError> {
         if let Some(&first_span) = self.consumed.get(name) {
@@ -537,7 +602,67 @@ impl<'a> OwnershipChecker<'a> {
                         self.check_expr(arg)?;
                     }
                 }
-                let _ = span;
+                // Fabrication guard: reject bare T arg for ~T param.
+                // Uses fn_param_info (AST-level ~ annotations for local fns,
+                // scheme-level for imports) to identify which params require
+                // ownership.  Does NOT use resolved types from inference — those
+                // have an Own leak through Var binding during unification.
+                if let Some(callee_name) = callee_var_name(func) {
+                    if !self.registry.is_constructor(callee_name) {
+                        if let Some(own_flags) = self.fn_param_info.get(callee_name) {
+                            // Also grab scheme params for ~fn exemption + error message
+                            let scheme_params = self.fn_scheme_params.get(callee_name);
+                            for (i, arg) in args.iter().enumerate() {
+                                if i < own_flags.len() && own_flags[i] {
+                                    // Check ~fn exemption via scheme param type
+                                    let exempt = scheme_params
+                                        .and_then(|p| p.get(i))
+                                        .is_some_and(|ty| !param_requires_own(ty));
+                                    if !exempt && !self.is_owned_expr(arg) {
+                                        // Build descriptive error types.  For concrete
+                                        // scheme params like Own(String), use as-is.
+                                        // For generic params like Own(Var(_)), display
+                                        // as own T / T since the raw var id is meaningless.
+                                        let (expected, actual) = match scheme_params.and_then(|p| p.get(i)) {
+                                            Some(Type::Own(inner)) if !matches!(inner.as_ref(), Type::Var(_)) => {
+                                                (Type::Own(inner.clone()), *inner.clone())
+                                            }
+                                            _ => {
+                                                let t = Type::Named("T".into(), vec![]);
+                                                (Type::Own(Box::new(t.clone())), t)
+                                            }
+                                        };
+                                        let note = match arg {
+                                            Expr::Var { name: arg_name, .. } => {
+                                                let mut msg = format!(
+                                                    "`{}` requires an owned argument, but `{}` is not owned",
+                                                    callee_name, arg_name
+                                                );
+                                                if self.enclosing_param_names.contains(arg_name) {
+                                                    msg.push_str(&format!(
+                                                        " — add `~` to its declaration (e.g. `{}: ~T`)",
+                                                        arg_name
+                                                    ));
+                                                }
+                                                msg
+                                            }
+                                            _ => format!(
+                                                "`{}` requires an owned argument at position {}",
+                                                callee_name, i + 1
+                                            ),
+                                        };
+                                        return Err(SpannedTypeError {
+                                            error: TypeError::Mismatch { expected, actual },
+                                            span: *span,
+                                            note: Some(note),
+                                            secondary_span: None,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 Ok(())
             }
 
@@ -545,12 +670,33 @@ impl<'a> OwnershipChecker<'a> {
 
             Expr::Let {
                 name,
+                ty: ty_ann,
                 value,
                 body,
                 span,
-                ..
             } => {
                 self.check_expr(value)?;
+                // Fabrication guard: `let x: ~T = non_owned_val`
+                // Exempt ~fn(...) annotations (closure affinity, not value ownership).
+                if let Some(TypeExpr::Own { inner, .. }) = ty_ann.as_ref() {
+                    if !matches!(inner.as_ref(), TypeExpr::Fn { .. }) {
+                        if !self.is_owned_expr(value) {
+                            let t = Type::Named("T".into(), vec![]);
+                            return Err(SpannedTypeError {
+                                error: TypeError::Mismatch {
+                                    expected: Type::Own(Box::new(t.clone())),
+                                    actual: t,
+                                },
+                                span: *span,
+                                note: Some(format!(
+                                    "annotation `~` on `{}` requires an owned value",
+                                    name
+                                )),
+                                secondary_span: None,
+                            });
+                        }
+                    }
+                }
                 let is_own_let = self.let_own_spans.contains(span);
                 if is_own_let {
                     self.owned.insert(name.clone());
@@ -559,7 +705,7 @@ impl<'a> OwnershipChecker<'a> {
                             self.own_fn_notes.insert(
                                 name.clone(),
                                 format!(
-                                    "closure is single-use because it captures own value `{}`",
+                                    "closure is single-use because it captures `~` value `{}`",
                                     cap_name
                                 ),
                             );
@@ -577,8 +723,25 @@ impl<'a> OwnershipChecker<'a> {
                 Ok(())
             }
 
-            Expr::LetPattern { value, body, .. } => {
+            Expr::LetPattern { ty: ty_ann, value, body, span, .. } => {
                 self.check_expr(value)?;
+                // Fabrication guard for let-pattern annotations
+                if let Some(TypeExpr::Own { inner, .. }) = ty_ann.as_ref() {
+                    if !matches!(inner.as_ref(), TypeExpr::Fn { .. }) {
+                        if !self.is_owned_expr(value) {
+                            let t = Type::Named("T".into(), vec![]);
+                            return Err(SpannedTypeError {
+                                error: TypeError::Mismatch {
+                                    expected: Type::Own(Box::new(t.clone())),
+                                    actual: t,
+                                },
+                                span: *span,
+                                note: Some("annotation `~` requires an owned value".into()),
+                                secondary_span: None,
+                            });
+                        }
+                    }
+                }
                 if let Some(body) = body {
                     self.check_expr(body)?;
                 }
@@ -771,6 +934,7 @@ fn check_fn(
     lambda_own_captures: &HashMap<Span, String>,
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     registry: &TypeRegistry,
+    fn_scheme_params: &HashMap<String, Vec<Type>>,
 ) -> Result<HashMap<Span, String>, SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
@@ -785,17 +949,19 @@ fn check_fn(
         owned.insert(name.clone());
     }
 
-    if owned.is_empty() && affine.is_empty() && let_own_spans.is_empty() {
-        return Ok(HashMap::new());
-    }
+    // Note: we don't short-circuit when owned/affine/let_own_spans are all empty,
+    // because fabrication checks run for every call site regardless.
 
+    let enclosing_param_names: HashSet<String> = decl.params.iter().map(|p| p.name.clone()).collect();
     let mut own_fn_notes = HashMap::new();
     let mut checker = OwnershipChecker {
         owned: &mut owned,
         consumed: HashMap::new(),
         partially_consumed: HashMap::new(),
         moves: HashMap::new(),
+        enclosing_param_names: &enclosing_param_names,
         fn_param_info,
+        fn_scheme_params,
         affine,
         fn_qualifiers,
         let_own_spans,

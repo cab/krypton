@@ -3059,11 +3059,16 @@ pub(crate) fn infer_module_inner(
                 let has_own_annotation = decl.params.get(i).and_then(|p| p.ty.as_ref()).map_or(false, |ty_expr| {
                     matches!(ty_expr, krypton_parser::ast::TypeExpr::Own { .. })
                 });
-                if has_own_annotation {
+                let ty = if has_own_annotation {
                     resolved
                 } else {
                     strip_own(&resolved)
-                }
+                };
+                debug_assert!(
+                    !matches!(&ty, Type::Own(ref inner) if matches!(inner.as_ref(), Type::Own(_))),
+                    "Own(Own(_)) should never arise — parser rejects ~~T and no codepath double-wraps"
+                );
+                ty
             }).collect();
             let body_ty = state.subst.apply(&body_typed.ty);
 

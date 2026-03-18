@@ -1,0 +1,6 @@
+# expect: ok
+# let x: ~T = owned_val
+fun test() -> String {
+    let x: ~String = "hello"
+    x
+}

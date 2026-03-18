@@ -1,0 +1,7 @@
+# expect: ok
+# fn coerces to ~fn param
+fun call_once(f: ~() -> String) -> String = f()
+
+fun make_fn() -> String = "hello"
+
+fun test() -> String = call_once(make_fn)

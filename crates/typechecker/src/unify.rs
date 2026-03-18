@@ -320,16 +320,16 @@ impl TypeError {
                         if matches!(inner_e.as_ref(), Type::Fn(_, _))
                             && matches!(actual, Type::Fn(_, _)) =>
                     {
-                        Some("a single-use closure (`own fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
+                        Some("a single-use closure (`~fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
                     }
                     (_, Type::Own(inner_a))
                         if matches!(inner_a.as_ref(), Type::Fn(_, _))
                             && matches!(expected, Type::Fn(_, _)) =>
                     {
-                        Some("a single-use closure (`own fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
+                        Some("a single-use closure (`~fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
                     }
                     (Type::Own(_), _) | (_, Type::Own(_)) => {
-                        Some("an `own` value must be passed to a parameter that accepts ownership".to_string())
+                        Some("a `~` (owned) value must be passed to a parameter that requires ownership".to_string())
                     }
                     _ => None,
                 }
@@ -371,7 +371,7 @@ impl TypeError {
                 Some(format!("`{}` was already consumed before the closure was created", name))
             }
             TypeError::QualifierMismatch { callee, param, .. } => {
-                Some(format!("`{callee}` uses parameter `{param}` more than once, so it cannot accept `own` values. Consider cloning first, or use a function that consumes its argument at most once."))
+                Some(format!("`{callee}` uses parameter `{param}` more than once, so it cannot accept `~` (owned) values. Consider cloning first, or use a function that consumes its argument at most once."))
             }
             TypeError::UnsupportedExpr { .. } => None,
             TypeError::NoInstance { required_by: Some(bound), .. } => {
@@ -544,7 +544,7 @@ impl fmt::Display for TypeError {
                 write!(f, "capture of moved value: `{}`", name)
             }
             TypeError::QualifierMismatch { name, callee, .. } => {
-                write!(f, "cannot pass `{name}` to `{callee}`: `{callee}` uses its argument multiple times, but `{name}` is single-use (`own`)")
+                write!(f, "cannot pass `{name}` to `{callee}`: `{callee}` uses its argument multiple times, but `{name}` is single-use (`~`)")
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
@@ -875,8 +875,9 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         // the linearity checker.
         //
         // Fabrication guard (`T → own T`) is enforced separately at call
-        // sites and let annotations in `infer.rs`, so this symmetric rule
-        // does not weaken ownership guarantees.
+        // sites and let annotations in `ownership.rs` (post-inference, with
+        // fully resolved types), so this symmetric rule does not weaken
+        // ownership guarantees.
         (Type::Own(inner), other) | (other, Type::Own(inner))
             if !matches!(inner.as_ref(), Type::Fn(_, _)) =>
         {

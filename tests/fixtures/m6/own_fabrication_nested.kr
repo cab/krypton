@@ -1,0 +1,6 @@
+# expect: error E0001
+# ~List[T] param with List[T] arg
+type Box = { value: Int }
+fun consume(x: ~List[Box]) -> List[Box] = x
+
+fun test(xs: List[Box]) -> List[Box] = consume(xs)

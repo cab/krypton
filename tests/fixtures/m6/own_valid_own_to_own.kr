@@ -1,0 +1,5 @@
+# expect: ok
+# ~T arg to ~T param
+fun consume(buf: ~String) -> String = buf
+
+fun test(x: ~String) -> String = consume(x)

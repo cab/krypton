@@ -1,0 +1,9 @@
+# expect: ok
+# Literal/constructor passed to ~T param
+fun consume(buf: ~Int) -> Int = buf
+
+type Box = { value: Int }
+fun consume_box(b: ~Box) -> Box = b
+
+fun test_lit() -> Int = consume(42)
+fun test_ctor() -> Box = consume_box(Box { value = 1 })
