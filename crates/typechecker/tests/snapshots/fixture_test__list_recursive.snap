@@ -11,7 +11,7 @@ div: forall g. fn(g, g) -> g
 neg: forall g. fn(g) -> g
 show: forall g. fn(g) -> String
 hash: forall g. fn(g) -> Int
-close: forall g. fn(own g) -> Unit
+close: forall g. fn(~g) -> Unit
 peek: forall h. fn(h) -> h
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
@@ -25,4 +25,4 @@ EQ: Ordering
 GT: Ordering
 Cons: forall n. fn(n, List[n]) -> List[n]
 Nil: forall n. List[n]
-length: forall d1. fn(List[d1]) -> own Int
+length: forall d1. fn(List[d1]) -> ~Int

@@ -11,7 +11,7 @@ div: forall g. fn(g, g) -> g
 neg: forall g. fn(g) -> g
 show: forall g. fn(g) -> String
 hash: forall g. fn(g) -> Int
-close: forall g. fn(own g) -> Unit
+close: forall g. fn(~g) -> Unit
 peek: forall h. fn(h) -> h
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
@@ -23,6 +23,6 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-ok_val: forall z. fn() -> Result[z, own Int]
-err_val: forall f1. fn() -> Result[own String, f1]
+ok_val: forall z. fn() -> Result[z, ~Int]
+err_val: forall f1. fn() -> Result[~String, f1]
 main: fn() -> Int

@@ -41,7 +41,7 @@ fn display_named_no_args() {
 #[test]
 fn display_own() {
     let ty = Type::Own(Box::new(Type::Int));
-    assert_eq!(ty.to_string(), "own Int");
+    assert_eq!(ty.to_string(), "~Int");
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn display_all_types_snapshot() {
     Fn: fn(Int, Int) -> Bool
     Var: a
     Named: List[Int]
-    Own: own Int
+    Own: ~Int
     Tuple: (Int, Bool)
     ");
 }

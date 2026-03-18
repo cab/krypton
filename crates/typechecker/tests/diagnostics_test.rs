@@ -108,7 +108,7 @@ fn own_t_vs_t_help_text() {
     let src = "fun bad(x: String) -> ~String = x";
     let output = render_module_error(src);
     assert!(
-        output.contains("own"),
+        output.contains("ownership"),
         "expected ownership help text in:\n{output}"
     );
 }
@@ -117,7 +117,7 @@ fn own_t_vs_t_help_text() {
 fn no_own_mismatch_no_help() {
     let output = render_error("if true { 1 } else { \"hi\" }");
     assert!(
-        !output.contains("single-use closure") && !output.contains("own"),
+        !output.contains("single-use closure") && !output.contains("ownership"),
         "expected no ownership help text in:\n{output}"
     );
 }
@@ -127,7 +127,7 @@ fn own_fn_capture_note_e0101() {
     let src = "fun consume(buf: ~String) -> String = buf\nfun bad(x: ~String) -> String = { let f = () -> consume(x); f(); f() }";
     let output = render_module_error(src);
     assert!(
-        output.contains("captures own value `x`"),
+        output.contains("captures `~` value `x`"),
         "expected own capture note in:\n{output}"
     );
 }
@@ -137,7 +137,7 @@ fn own_fn_capture_note_e0001() {
     let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() -> x)";
     let output = render_module_error(src);
     assert!(
-        output.contains("captures own value `x`"),
+        output.contains("captures `~` value `x`"),
         "expected own capture note in:\n{output}"
     );
 }
@@ -147,7 +147,7 @@ fn own_fn_capture_note_correct_name() {
     let src = "fun consume(buf: ~String) -> String = buf\nfun bad(a: String, b: ~String) -> String = { let f = () -> consume(b); f(); f() }";
     let output = render_module_error(src);
     assert!(
-        output.contains("captures own value `b`"),
+        output.contains("captures `~` value `b`"),
         "expected own capture note mentioning `b` in:\n{output}"
     );
 }

@@ -44,17 +44,17 @@ fn infer(src: &str) -> String {
 
 #[test]
 fn infer_int_literal() {
-    insta::assert_snapshot!(infer("42"), @"own Int");
+    insta::assert_snapshot!(infer("42"), @"~Int");
 }
 
 #[test]
 fn infer_bool_literal() {
-    insta::assert_snapshot!(infer("true"), @"own Bool");
+    insta::assert_snapshot!(infer("true"), @"~Bool");
 }
 
 #[test]
 fn infer_string_literal() {
-    insta::assert_snapshot!(infer("\"hello\""), @"own String");
+    insta::assert_snapshot!(infer("\"hello\""), @"~String");
 }
 
 #[test]
@@ -64,17 +64,17 @@ fn infer_identity_lambda() {
 
 #[test]
 fn infer_const_lambda() {
-    insta::assert_snapshot!(infer("x -> 42"), @"forall a. fn(a) -> own Int");
+    insta::assert_snapshot!(infer("x -> 42"), @"forall a. fn(a) -> ~Int");
 }
 
 #[test]
 fn infer_let_id_applied() {
-    insta::assert_snapshot!(infer("{ let id = x -> x; id(42) }"), @"own Int");
+    insta::assert_snapshot!(infer("{ let id = x -> x; id(42) }"), @"~Int");
 }
 
 #[test]
 fn infer_if_int() {
-    insta::assert_snapshot!(infer("if true { 1 } else { 2 }"), @"own Int");
+    insta::assert_snapshot!(infer("if true { 1 } else { 2 }"), @"~Int");
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn infer_application() {
 
 #[test]
 fn infer_do_block() {
-    insta::assert_snapshot!(infer("{ 1; 2; 3 }"), @"own Int");
+    insta::assert_snapshot!(infer("{ 1; 2; 3 }"), @"~Int");
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn infer_nested_let() {
 
 #[test]
 fn infer_let_polymorphism() {
-    insta::assert_snapshot!(infer("{ let id = x -> x; let a = id(1); id(true) }"), @"own Bool");
+    insta::assert_snapshot!(infer("{ let id = x -> x; let a = id(1); id(true) }"), @"~Bool");
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn infer_undefined_variable() {
 
 #[test]
 fn infer_shadowing() {
-    insta::assert_snapshot!(infer("{ let x = 1; let x = true; x }"), @"own Bool");
+    insta::assert_snapshot!(infer("{ let x = 1; let x = true; x }"), @"~Bool");
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn infer_forward_reference() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -283,7 +283,7 @@ fn infer_module_basic() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -314,7 +314,7 @@ fn infer_module_forward_ref() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -348,7 +348,7 @@ fn infer_mutual_recursion() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -361,7 +361,7 @@ fn infer_mutual_recursion() {
     EQ: Ordering
     GT: Ordering
     is_even: fn(Int) -> Bool
-    is_odd: fn(Int) -> own Bool
+    is_odd: fn(Int) -> ~Bool
     "
     );
 }
@@ -396,7 +396,7 @@ fn infer_record_constructor() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -430,7 +430,7 @@ fn infer_sum_constructor() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -465,7 +465,7 @@ fn infer_bare_variant() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -510,7 +510,7 @@ fn infer_scc_generalization_order() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -545,7 +545,7 @@ fn infer_field_access() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -579,7 +579,7 @@ fn infer_struct_update() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -643,7 +643,7 @@ fn infer_match_option() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -678,7 +678,7 @@ fn infer_match_literal() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -711,7 +711,7 @@ fn infer_match_variable() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -744,7 +744,7 @@ fn infer_match_nested_constructor() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -765,12 +765,12 @@ fn infer_match_nested_constructor() {
 
 #[test]
 fn infer_tuple_creation() {
-    insta::assert_snapshot!(infer("(1, \"hi\")"), @"(own Int, own String)");
+    insta::assert_snapshot!(infer("(1, \"hi\")"), @"(~Int, ~String)");
 }
 
 #[test]
 fn infer_tuple_nested() {
-    insta::assert_snapshot!(infer("(1, (true, \"x\"))"), @"(own Int, (own Bool, own String))");
+    insta::assert_snapshot!(infer("(1, (true, \"x\"))"), @"(~Int, (~Bool, ~String))");
 }
 
 #[test]
@@ -789,7 +789,7 @@ fn infer_tuple_in_match() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -808,7 +808,7 @@ fn infer_tuple_in_match() {
 
 #[test]
 fn infer_let_destructure_tuple() {
-    insta::assert_snapshot!(infer("{ let (a, b) = (1, \"hi\"); a }"), @"own Int");
+    insta::assert_snapshot!(infer("{ let (a, b) = (1, \"hi\"); a }"), @"~Int");
 }
 
 #[test]
@@ -827,7 +827,7 @@ fn infer_tuple_polymorphic() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -870,7 +870,7 @@ fn test_exhaustive_complete() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -884,7 +884,7 @@ fn test_exhaustive_complete() {
     GT: Ordering
     Some: forall n. fn(n) -> Option[n]
     None: forall n. Option[n]
-    unwrap: fn(Option[own Int]) -> Int
+    unwrap: fn(Option[~Int]) -> Int
     "
     );
 }
@@ -915,7 +915,7 @@ fn test_exhaustive_wildcard_covers_all() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -960,7 +960,7 @@ fn infer_call_site_coercion_borrow() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -973,7 +973,7 @@ fn infer_call_site_coercion_borrow() {
     EQ: Ordering
     GT: Ordering
     len: fn(String) -> Int
-    test: fn(own String) -> Int
+    test: fn(~String) -> Int
     "
     );
 }
@@ -994,7 +994,7 @@ fn infer_call_site_coercion_no_collection() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -1008,7 +1008,7 @@ fn infer_call_site_coercion_no_collection() {
     GT: Ordering
     Cons: fn(String, MyList) -> MyList
     Nil: MyList
-    test: fn(own String) -> MyList
+    test: fn(~String) -> MyList
     "
     );
 }
@@ -1035,7 +1035,7 @@ fn explicit_type_param_generalized() {
     // fun view[t](x: ~t) -> t should produce forall t. fn(own t) -> t
     insta::assert_snapshot!(
         infer_module_fn("fun view[t](x: ~t) -> t = x", "view"),
-        @"forall y. fn(own y) -> y"
+        @"forall y. fn(~y) -> y"
     );
 }
 
@@ -2156,7 +2156,7 @@ fn lambda_params_inferred_from_higher_order_fn() {
     neg: forall g. fn(g) -> g
     show: forall g. fn(g) -> String
     hash: forall g. fn(g) -> Int
-    close: forall g. fn(own g) -> Unit
+    close: forall g. fn(~g) -> Unit
     peek: forall h. fn(h) -> h
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]

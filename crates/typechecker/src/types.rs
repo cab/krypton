@@ -103,7 +103,7 @@ impl fmt::Display for Type {
                 }
                 Ok(())
             }
-            Type::Own(inner) => write!(f, "own {}", inner),
+            Type::Own(inner) => write!(f, "~{}", inner),
             Type::Tuple(elems) => {
                 write!(f, "(")?;
                 for (i, e) in elems.iter().enumerate() {

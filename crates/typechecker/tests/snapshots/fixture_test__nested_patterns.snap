@@ -11,7 +11,7 @@ div: forall g. fn(g, g) -> g
 neg: forall g. fn(g) -> g
 show: forall g. fn(g) -> String
 hash: forall g. fn(g) -> Int
-close: forall g. fn(own g) -> Unit
+close: forall g. fn(~g) -> Unit
 peek: forall h. fn(h) -> h
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
@@ -27,5 +27,5 @@ Some: forall n. fn(n) -> Option[n]
 None: forall n. Option[n]
 Cons: forall o. fn(o, List[o]) -> List[o]
 Nil: forall o. List[o]
-unwrap_nested: fn(Option[Option[own Int]]) -> Int
+unwrap_nested: fn(Option[Option[~Int]]) -> Int
 first_two: fn(List[Int]) -> Int
