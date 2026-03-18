@@ -333,7 +333,7 @@ impl<'a> TypedFormatter<'a> {
                 }
                 self.buf.push(')');
             }
-            TypedExprKind::TypeApp { expr } => {
+            TypedExprKind::TypeApp { expr, .. } => {
                 self.fmt_expr_prec(expr, parent_prec);
             }
             TypedExprKind::If { cond, then_, else_ } => {

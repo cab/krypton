@@ -113,6 +113,7 @@ pub enum TypedExprKind {
     },
     TypeApp {
         expr: Box<TypedExpr>,
+        type_args: Vec<Type>,
     },
     If {
         cond: Box<TypedExpr>,
@@ -324,7 +325,7 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
                 work.push(func);
                 work.extend(args.iter_mut());
             }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
+            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::If { cond, then_, else_ } => {
                 work.push(cond);
                 work.push(then_);

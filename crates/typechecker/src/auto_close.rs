@@ -70,7 +70,7 @@ fn collect_moved_vars_inner(expr: &TypedExpr, ownership_moves: &HashMap<Span, St
                 collect_moved_vars_inner(arg, ownership_moves, acc);
             }
         }
-        TypedExprKind::TypeApp { expr } => collect_moved_vars_inner(expr, ownership_moves, acc),
+        TypedExprKind::TypeApp { expr, .. } => collect_moved_vars_inner(expr, ownership_moves, acc),
         _ => {}
     }
 }
@@ -238,7 +238,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
-            TypedExprKind::TypeApp { expr } => {
+            TypedExprKind::TypeApp { expr, .. } => {
                 self.walk_expr(expr, live);
             }
 

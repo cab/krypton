@@ -911,7 +911,7 @@ fn collect_tuple_arities_expr(expr: &TypedExpr, arities: &mut std::collections::
                 work.push(func);
                 for a in args { work.push(a); }
             }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
+            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::If { cond, then_, else_ } => {
                 work.push(cond);
                 work.push(then_);

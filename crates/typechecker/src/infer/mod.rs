@@ -179,7 +179,7 @@ fn match_type_with_bindings(
 fn bare_function_ref_name(expr: &TypedExpr) -> Option<&str> {
     match &expr.kind {
         TypedExprKind::Var(name) => Some(name.as_str()),
-        TypedExprKind::TypeApp { expr } => bare_function_ref_name(expr),
+        TypedExprKind::TypeApp { expr, .. } => bare_function_ref_name(expr),
         _ => None,
     }
 }
@@ -1001,7 +1001,7 @@ fn collect_struct_update_info(
                     work.push(a);
                 }
             }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
+            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::If { cond, then_, else_ } => {
                 work.push(cond);
                 work.push(then_);
@@ -1102,7 +1102,7 @@ fn leading_type_var(ty: &Type) -> Option<TypeVarId> {
 fn typed_callee_var_name(expr: &TypedExpr) -> Option<&str> {
     match &expr.kind {
         TypedExprKind::Var(name) => Some(name.as_str()),
-        TypedExprKind::TypeApp { expr } => typed_callee_var_name(expr),
+        TypedExprKind::TypeApp { expr, .. } => typed_callee_var_name(expr),
         _ => None,
     }
 }
@@ -1150,7 +1150,7 @@ fn detect_trait_constraints(
                     work.push(a);
                 }
             }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
+            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::Lambda { body, .. } => work.push(body),
             TypedExprKind::If { cond, then_, else_ } => {
                 work.push(cond);
@@ -1238,21 +1238,35 @@ fn check_trait_instances(
                                 ));
                             }
                         } else {
-                            // Zero-arg trait method: check return type for instance
-                            let ret_ty = subst.apply(&func.ty);
-                            let concrete_ret = match &ret_ty {
-                                Type::Fn(_, ret) => strip_own(ret),
-                                other => strip_own(other),
+                            // Zero-arg trait method: prefer explicit type_args from TypeApp
+                            let instance_ty = if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
+                                if !type_args.is_empty() {
+                                    Some(type_args[0].clone())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
                             };
-                            if leading_type_var(&concrete_ret).is_none()
+                            let concrete_ty = if let Some(ty) = instance_ty {
+                                strip_own(&ty).clone()
+                            } else {
+                                // Fallback: use return type (works when trait var IS the return type)
+                                let ret_ty = subst.apply(&func.ty);
+                                match &ret_ty {
+                                    Type::Fn(_, ret) => strip_own(ret).clone(),
+                                    other => strip_own(other).clone(),
+                                }
+                            };
+                            if leading_type_var(&concrete_ty).is_none()
                                 && trait_registry
-                                    .find_instance(trait_name, &concrete_ret)
+                                    .find_instance(trait_name, &concrete_ty)
                                     .is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,
                                     trait_name,
-                                    &concrete_ret,
+                                    &concrete_ty,
                                     expr.span,
                                 ));
                             }
@@ -1286,7 +1300,7 @@ fn check_trait_instances(
                     work.push(a);
                 }
             }
-            TypedExprKind::TypeApp { expr } => work.push(expr),
+            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let trait_name = match op {
                     BinOp::Add => Some("Semigroup"),

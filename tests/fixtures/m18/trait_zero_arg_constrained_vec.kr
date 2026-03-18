@@ -1,0 +1,20 @@
+# expect: output "yo"
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+trait Test[e] {
+    fun name() -> String
+}
+
+impl[a] Test[Vec[a]] where a: Test {
+    fun name() = name[a]()
+}
+
+impl Test[Int] {
+    fun name() = "yo"
+}
+
+fun main() = {
+    println(name[Vec[Int]]())
+}

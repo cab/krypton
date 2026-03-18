@@ -752,7 +752,7 @@ impl Compiler {
                         work.push((a, Rc::clone(&param_names)));
                     }
                 }
-                TypedExprKind::TypeApp { expr } => {
+                TypedExprKind::TypeApp { expr, .. } => {
                     work.push((expr, param_names));
                 }
                 TypedExprKind::Match { scrutinee, arms } => {

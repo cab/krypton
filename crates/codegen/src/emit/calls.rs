@@ -213,7 +213,7 @@ impl Compiler {
     pub(super) fn extract_call_name<'a>(func: &'a TypedExpr) -> Result<&'a str, CodegenError> {
         match &func.kind {
             TypedExprKind::Var(name) => Ok(name.as_str()),
-            TypedExprKind::TypeApp { expr } => match &expr.kind {
+            TypedExprKind::TypeApp { expr, .. } => match &expr.kind {
                 TypedExprKind::Var(name) => Ok(name.as_str()),
                 other => Err(CodegenError::UnsupportedExpr(format!(
                     "non-variable function call: {other:?}"
@@ -277,9 +277,20 @@ impl Compiler {
         if let Some(trait_name) = self.traits.trait_method_map.get(name) {
             if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
                 let dict_ty = if args.is_empty() {
-                    match &func.ty {
-                        Type::Fn(_, ret) => ret.as_ref().clone(),
-                        _ => result_ty.clone(),
+                    if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
+                        if !type_args.is_empty() {
+                            type_args[0].clone()
+                        } else {
+                            match &func.ty {
+                                Type::Fn(_, ret) => ret.as_ref().clone(),
+                                _ => result_ty.clone(),
+                            }
+                        }
+                    } else {
+                        match &func.ty {
+                            Type::Fn(_, ret) => ret.as_ref().clone(),
+                            _ => result_ty.clone(),
+                        }
                     }
                 } else {
                     args[0].ty.clone()
@@ -722,6 +733,10 @@ impl Compiler {
                 self.builder.frame.push_type(VerificationType::Object {
                     cpool_index: pushed_class,
                 });
+                // Dict locals are declared as Object; cast to the interface type
+                if pushed_class != self.builder.refs.object_class {
+                    self.builder.emit(Instruction::Checkcast(pushed_class));
+                }
                 return Ok(());
             }
         }

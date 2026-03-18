@@ -755,6 +755,7 @@ impl<'a> InferenceContext<'a> {
                 Ok(TypedExpr {
                     kind: TypedExprKind::TypeApp {
                         expr: Box::new(expr_typed),
+                        type_args: explicit_types,
                     },
                     ty: specialized_ty,
                     span: *span,

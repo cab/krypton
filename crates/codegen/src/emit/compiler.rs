@@ -436,7 +436,7 @@ impl Compiler {
             }
             TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
             TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
-            TypedExprKind::TypeApp { expr: inner } => {
+            TypedExprKind::TypeApp { expr: inner, .. } => {
                 if let TypedExprKind::Var(name) = &inner.kind {
                     let fn_type = match &expr.ty {
                         Type::Own(inner) => inner.as_ref(),
