@@ -258,8 +258,8 @@ fn infer_forward_reference() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    f: fn(own Int) -> Int
-    g: fn(own Int) -> Int
+    f: fn(Int) -> Int
+    g: fn(Int) -> Int
     "
     );
 }
@@ -326,8 +326,8 @@ fn infer_module_forward_ref() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    f: fn(own Int) -> Int
-    g: fn(own Int) -> Int
+    f: fn(Int) -> Int
+    g: fn(Int) -> Int
     "
     );
 }
@@ -360,7 +360,7 @@ fn infer_mutual_recursion() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    is_even: fn(own Int) -> Bool
+    is_even: fn(Int) -> Bool
     is_odd: fn(Int) -> own Bool
     "
     );

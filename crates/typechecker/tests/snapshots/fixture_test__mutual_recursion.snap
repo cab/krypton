@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 63
 expression: snapshot
 ---
 eq: forall g. fn(g, g) -> Bool
@@ -23,5 +24,5 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-is_even: fn(own Int) -> Bool
+is_even: fn(Int) -> Bool
 is_odd: fn(Int) -> own Bool

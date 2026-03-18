@@ -864,9 +864,9 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         // silently coerce to `fn(…)` — that distinction is load-bearing for
         // the linearity checker.
         //
-        // Fabrication guard (`T → own T` at return sites) is enforced
-        // separately in `infer.rs` before calling `unify`, so this symmetric
-        // rule does not weaken ownership guarantees.
+        // Fabrication guard (`T → own T`) is enforced separately at call
+        // sites and let annotations in `infer.rs`, so this symmetric rule
+        // does not weaken ownership guarantees.
         (Type::Own(inner), other) | (other, Type::Own(inner))
             if !matches!(inner.as_ref(), Type::Fn(_, _)) =>
         {

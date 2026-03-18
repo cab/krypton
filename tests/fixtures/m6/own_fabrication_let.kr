@@ -1,0 +1,8 @@
+# expect: error E0001
+# let x: ~T = non_owned_val should be rejected (ownership fabrication)
+fun borrow(s: String) -> String = s
+
+fun test(x: String) -> String {
+    let y: ~String = borrow(x)
+    y
+}

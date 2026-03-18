@@ -23,4 +23,4 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-countdown: fn(own Int) -> Int
+countdown: fn(Int) -> Int

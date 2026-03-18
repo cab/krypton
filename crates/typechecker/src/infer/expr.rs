@@ -128,9 +128,43 @@ impl<'a> InferenceContext<'a> {
         } else {
             super::coerce_own_args(func_ty, &arg_types, self.subst)
         };
-        let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
+        let expected_fn = Type::Fn(coerced_args.clone(), Box::new(ret_var.clone()));
         let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(func_ty));
         self.unify_spanned(&unwrapped_func_ty, &expected_fn, span)?;
+
+        // Fabrication guard: reject bare T arg for ~T param.
+        // Check the RAW (pre-substitution) func_ty to find params that are
+        // syntactically Own — these come from explicit `~T` annotations.
+        // Params that resolve to Own only through Var binding (e.g. from `n == 0`)
+        // are not checked, since that Own was absorbed from literals, not declared.
+        if !is_constructor {
+            let raw_params = match func_ty {
+                Type::Fn(params, _) => Some(params.as_slice()),
+                Type::Own(inner) => match inner.as_ref() {
+                    Type::Fn(params, _) => Some(params.as_slice()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(params) = raw_params {
+                for (param, arg) in params.iter().zip(coerced_args.iter()) {
+                    if matches!(param, Type::Own(_)) {
+                        let rp = self.subst.apply(param);
+                        let ra = self.subst.apply(arg);
+                        if let Type::Own(inner) = &rp {
+                            if !matches!(inner.as_ref(), Type::Fn(_, _))
+                                && !matches!(ra, Type::Own(_) | Type::Var(_))
+                            {
+                                return Err(super::spanned(TypeError::Mismatch {
+                                    expected: rp, actual: ra
+                                }, span));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let ty = self.subst.apply(&ret_var);
         Ok(TypedExpr {
             kind: TypedExprKind::App {
@@ -636,7 +670,7 @@ impl<'a> InferenceContext<'a> {
                 } else {
                     super::coerce_own_args(&func_typed.ty, &arg_types, self.subst)
                 };
-                let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
+                let expected_fn = Type::Fn(coerced_args.clone(), Box::new(ret_var.clone()));
                 let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(&func_typed.ty));
                 unify(&unwrapped_func_ty, &expected_fn, self.subst).map_err(|e| {
                     let mut err = super::spanned(e, *span);
@@ -657,6 +691,37 @@ impl<'a> InferenceContext<'a> {
                     }
                     err
                 })?;
+
+                // Fabrication guard: reject bare T arg for ~T param.
+                // Use raw (pre-substitution) func type to find syntactically Own params.
+                if !is_constructor {
+                    let raw_params = match &func_typed.ty {
+                        Type::Fn(params, _) => Some(params.as_slice()),
+                        Type::Own(inner) => match inner.as_ref() {
+                            Type::Fn(params, _) => Some(params.as_slice()),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(params) = raw_params {
+                        for (param, arg) in params.iter().zip(coerced_args.iter()) {
+                            if matches!(param, Type::Own(_)) {
+                                let rp = self.subst.apply(param);
+                                let ra = self.subst.apply(arg);
+                                if let Type::Own(inner) = &rp {
+                                    if !matches!(inner.as_ref(), Type::Fn(_, _))
+                                        && !matches!(ra, Type::Own(_) | Type::Var(_))
+                                    {
+                                        return Err(super::spanned(TypeError::Mismatch {
+                                            expected: rp, actual: ra
+                                        }, *span));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let ty = self.subst.apply(&ret_var);
                 let ty = if is_constructor {
                     Type::Own(Box::new(ty))
@@ -775,6 +840,17 @@ impl<'a> InferenceContext<'a> {
                 if let Some(ty_expr) = ty_ann {
                     if self.registry.is_some() {
                         let annotated_ty = self.resolve_type_expr_spanned(ty_expr, *span)?;
+                        // Fabrication guard: bare T cannot be annotated as ~T
+                        if let Type::Own(ref inner) = annotated_ty {
+                            if !matches!(inner.as_ref(), Type::Fn(_, _))
+                                && !matches!(self.subst.apply(&val_typed.ty), Type::Own(_) | Type::Var(_))
+                            {
+                                return Err(super::spanned(TypeError::Mismatch {
+                                    expected: annotated_ty.clone(),
+                                    actual: val_typed.ty.clone(),
+                                }, *span));
+                            }
+                        }
                         self.unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
                     }
                 }
@@ -1114,6 +1190,17 @@ impl<'a> InferenceContext<'a> {
                 if let Some(ty_expr) = ty_ann {
                     if self.registry.is_some() {
                         let annotated_ty = self.resolve_type_expr_spanned(ty_expr, *span)?;
+                        // Fabrication guard: bare T cannot be annotated as ~T
+                        if let Type::Own(ref inner) = annotated_ty {
+                            if !matches!(inner.as_ref(), Type::Fn(_, _))
+                                && !matches!(self.subst.apply(&val_typed.ty), Type::Own(_) | Type::Var(_))
+                            {
+                                return Err(super::spanned(TypeError::Mismatch {
+                                    expected: annotated_ty.clone(),
+                                    actual: val_typed.ty.clone(),
+                                }, *span));
+                            }
+                        }
                         self.unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
                     }
                 }

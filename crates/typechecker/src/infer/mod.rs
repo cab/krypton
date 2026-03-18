@@ -3023,7 +3023,21 @@ pub(crate) fn infer_module_inner(
             state.env.fn_return_type = prev_fn_return_type;
             state.env.pop_scope();
 
-            let param_types: Vec<Type> = param_types.iter().map(|t| state.subst.apply(t)).collect();
+            let param_types: Vec<Type> = param_types.iter().enumerate().map(|(i, t)| {
+                let resolved = state.subst.apply(t);
+                // Strip Own from params that don't have an explicit ~T annotation.
+                // Own can leak into param types through Var binding (e.g. `x * 2`
+                // binds x's type var to Own(Int)). Only preserve Own for params
+                // explicitly declared as ~T.
+                let has_own_annotation = decl.params.get(i).and_then(|p| p.ty.as_ref()).map_or(false, |ty_expr| {
+                    matches!(ty_expr, krypton_parser::ast::TypeExpr::Own { .. })
+                });
+                if has_own_annotation {
+                    resolved
+                } else {
+                    strip_own(&resolved)
+                }
+            }).collect();
             let body_ty = state.subst.apply(&body_typed.ty);
 
             // Enforce return type annotation if present
