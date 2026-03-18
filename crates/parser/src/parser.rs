@@ -114,8 +114,13 @@ where
                 }
             });
 
+        // Wildcard: _ in type position (for partial application in impl heads)
+        let wildcard_type = symbol(Token::Underscore).map_with(|_, e| TypeExpr::Wildcard {
+            span: to_span(e.span()),
+        });
+
         // Base type (without generic application)
-        let base_type = choice((own_type, paren_type, named_or_var));
+        let base_type = choice((own_type, paren_type, wildcard_type, named_or_var));
 
         // Generic application: Name[args]
         base_type.clone().then(
@@ -1194,7 +1199,8 @@ where
     let impl_constraints = where_clause_parser();
 
     let impl_decl = symbol(Token::Impl)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .ignore_then(fn_type_params.clone())
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(
             ty.clone()
                 .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
@@ -1207,9 +1213,10 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
-        .map_with(|(((trait_name, target_type), type_constraints), methods), e| Decl::DefImpl {
+        .map_with(|((((type_params, trait_name), target_type), type_constraints), methods), e| Decl::DefImpl {
             trait_name,
             target_type,
+            type_params,
             type_constraints,
             methods,
             span: to_span(e.span()),

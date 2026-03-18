@@ -1,0 +1,11 @@
+# expect: error E0512
+type Result[e, a] = Ok(a) | Err(e)
+type Option[a] = Some(a) | None
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+impl[e] Functor[Result[e, Option[_]]] {
+  fun fmap[a, b](fa: Result[e, Option[a]], g: (a) -> b) -> Result[e, Option[b]] =
+    match fa { Ok(v) => Ok(Some(g(v))), Err(err) => Err(err) }
+}

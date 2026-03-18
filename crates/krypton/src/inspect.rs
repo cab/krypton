@@ -716,6 +716,7 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
             let es: Vec<String> = elements.iter().map(|e| fmt_type_expr_source(e)).collect();
             format!("({})", es.join(", "))
         }
+        TypeExpr::Wildcard { .. } => "_".to_string(),
     }
 }
 

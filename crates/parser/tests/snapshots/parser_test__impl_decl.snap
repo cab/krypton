@@ -34,6 +34,7 @@ decls:
           span:
             - 41
             - 46
+      type_params: []
       type_constraints: []
       methods:
         - name: eq

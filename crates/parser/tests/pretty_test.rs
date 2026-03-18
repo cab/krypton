@@ -37,12 +37,18 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
         Decl::DefImpl {
             trait_name,
             target_type,
+            type_params,
             type_constraints,
             methods,
             ..
         } => Decl::DefImpl {
             trait_name: trait_name.clone(),
             target_type: zero_spans_type_expr(target_type),
+            type_params: type_params.iter().map(|tp| TypeParam {
+                name: tp.name.clone(),
+                arity: tp.arity,
+                span: (0, 0),
+            }).collect(),
             type_constraints: type_constraints
                 .iter()
                 .map(|c| TypeConstraint {
@@ -344,6 +350,9 @@ fn zero_spans_type_expr(ty: &TypeExpr) -> TypeExpr {
         },
         TypeExpr::Tuple { elements, .. } => TypeExpr::Tuple {
             elements: elements.iter().map(zero_spans_type_expr).collect(),
+            span: (0, 0),
+        },
+        TypeExpr::Wildcard { .. } => TypeExpr::Wildcard {
             span: (0, 0),
         },
     }

@@ -23,6 +23,7 @@ pub enum Decl {
     DefImpl {
         trait_name: String,
         target_type: TypeExpr,
+        type_params: Vec<TypeParam>,
         type_constraints: Vec<TypeConstraint>,
         methods: Vec<FnDecl>,
         span: Span,
@@ -309,6 +310,9 @@ pub enum TypeExpr {
     },
     Tuple {
         elements: Vec<TypeExpr>,
+        span: Span,
+    },
+    Wildcard {
         span: Span,
     },
 }

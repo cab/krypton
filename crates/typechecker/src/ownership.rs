@@ -329,6 +329,7 @@ fn param_type_is_affine(ty_expr: &TypeExpr, registry: &TypeRegistry) -> bool {
             elements.iter().any(|e| param_type_is_affine(e, registry))
         }
         TypeExpr::Fn { .. } => false,
+        TypeExpr::Wildcard { .. } => false,
     }
 }
 

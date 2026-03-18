@@ -543,6 +543,150 @@ fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut 
             }
         }
         krypton_parser::ast::TypeExpr::Named { .. } => {}
+        krypton_parser::ast::TypeExpr::Wildcard { .. } => {}
+    }
+}
+
+/// Validate wildcards in an impl target type expression.
+/// Returns the count of wildcards at the outermost App level.
+/// Errors if wildcards are nested or appear outside an App.
+fn validate_impl_wildcards(texpr: &krypton_parser::ast::TypeExpr) -> Result<usize, TypeError> {
+    match texpr {
+        krypton_parser::ast::TypeExpr::App { args, .. } => {
+            let mut wildcard_count = 0;
+            for arg in args {
+                match arg {
+                    krypton_parser::ast::TypeExpr::Wildcard { .. } => {
+                        wildcard_count += 1;
+                    }
+                    other => {
+                        // Check for nested wildcards
+                        if contains_wildcard(other) {
+                            let span = wildcard_span(other).unwrap_or((0, 0));
+                            return Err(TypeError::NestedWildcard { span });
+                        }
+                    }
+                }
+            }
+            Ok(wildcard_count)
+        }
+        krypton_parser::ast::TypeExpr::Wildcard { span } => {
+            Err(TypeError::WildcardNotAllowed { span: *span })
+        }
+        _ => Ok(0),
+    }
+}
+
+fn contains_wildcard(texpr: &krypton_parser::ast::TypeExpr) -> bool {
+    match texpr {
+        krypton_parser::ast::TypeExpr::Wildcard { .. } => true,
+        krypton_parser::ast::TypeExpr::App { args, .. } => args.iter().any(contains_wildcard),
+        krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
+            params.iter().any(contains_wildcard) || contains_wildcard(ret)
+        }
+        krypton_parser::ast::TypeExpr::Own { inner, .. } => contains_wildcard(inner),
+        krypton_parser::ast::TypeExpr::Tuple { elements, .. } => elements.iter().any(contains_wildcard),
+        krypton_parser::ast::TypeExpr::Named { .. } | krypton_parser::ast::TypeExpr::Var { .. } => false,
+    }
+}
+
+fn wildcard_span(texpr: &krypton_parser::ast::TypeExpr) -> Option<krypton_parser::ast::Span> {
+    match texpr {
+        krypton_parser::ast::TypeExpr::Wildcard { span } => Some(*span),
+        krypton_parser::ast::TypeExpr::App { args, .. } => args.iter().find_map(wildcard_span),
+        krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
+            params.iter().find_map(wildcard_span).or_else(|| wildcard_span(ret))
+        }
+        krypton_parser::ast::TypeExpr::Own { inner, .. } => wildcard_span(inner),
+        krypton_parser::ast::TypeExpr::Tuple { elements, .. } => elements.iter().find_map(wildcard_span),
+        _ => None,
+    }
+}
+
+/// Resolve an impl target type expression, handling wildcards by generating
+/// fresh anonymous type variables for each `_`.
+fn resolve_impl_target(
+    texpr: &krypton_parser::ast::TypeExpr,
+    type_param_map: &HashMap<String, TypeVarId>,
+    type_param_arity: &HashMap<String, usize>,
+    registry: &type_registry::TypeRegistry,
+    gen: &mut TypeVarGen,
+) -> Result<Type, TypeError> {
+    match texpr {
+        krypton_parser::ast::TypeExpr::App { name, args, .. } => {
+            let mut resolved_args = Vec::new();
+            for a in args {
+                match a {
+                    krypton_parser::ast::TypeExpr::Wildcard { .. } => {
+                        // Generate a fresh anonymous type variable
+                        resolved_args.push(Type::Var(gen.fresh()));
+                    }
+                    other => {
+                        resolved_args.push(type_registry::resolve_type_expr(
+                            other,
+                            type_param_map,
+                            type_param_arity,
+                            registry,
+                            type_registry::ResolutionContext::UserAnnotation,
+                        )?);
+                    }
+                }
+            }
+            // If name is a type parameter (HKT variable), produce Type::App
+            if let Some(&var_id) = type_param_map.get(name) {
+                return Ok(Type::App(Box::new(Type::Var(var_id)), resolved_args));
+            }
+            // Validate the type name
+            type_registry::resolve_type_expr(
+                &krypton_parser::ast::TypeExpr::Named { name: name.clone(), span: (0, 0) },
+                type_param_map,
+                type_param_arity,
+                registry,
+                type_registry::ResolutionContext::UserAnnotation,
+            )?;
+            // Kind check: verify arity matches
+            let expected = registry.expected_arity(name);
+            if let Some(expected) = expected {
+                if expected != resolved_args.len() {
+                    return Err(TypeError::KindMismatch {
+                        type_name: name.clone(),
+                        expected_arity: expected,
+                        actual_arity: resolved_args.len(),
+                    });
+                }
+            }
+            Ok(Type::Named(
+                registry.canonical_name(name).to_string(),
+                resolved_args,
+            ))
+        }
+        // No wildcards: delegate to normal resolution
+        other => type_registry::resolve_type_expr(
+            other,
+            type_param_map,
+            type_param_arity,
+            registry,
+            type_registry::ResolutionContext::UserAnnotation,
+        ),
+    }
+}
+
+/// Strip type arguments from a Named type that are anonymous (not in type_var_ids).
+/// Used for HKT partial application: Named("Result", [Var(e), Var(anon)]) becomes
+/// Named("Result", [Var(e)]) when anon is not a tracked type var.
+fn strip_anon_type_args(ty: &Type, type_var_ids: &HashMap<String, TypeVarId>) -> Type {
+    let known_var_ids: std::collections::HashSet<TypeVarId> = type_var_ids.values().copied().collect();
+    match ty {
+        Type::Named(name, args) => {
+            let kept: Vec<Type> = args.iter().filter(|arg| {
+                match arg {
+                    Type::Var(id) => known_var_ids.contains(id),
+                    _ => true,
+                }
+            }).cloned().collect();
+            Type::Named(name.clone(), kept)
+        }
+        _ => ty.clone(),
     }
 }
 
@@ -1932,7 +2076,7 @@ impl ModuleInferenceState {
             .iter()
             .filter_map(|decl| match decl {
                 Decl::DefType(td) => match &td.kind {
-                    TypeDeclKind::Record { fields } => Some((td.name.clone(), fields.clone())),
+                    TypeDeclKind::Record { fields } => Some((td.name.clone(), td.type_params.clone(), fields.clone())),
                     _ => None,
                 },
                 _ => None,
@@ -2446,23 +2590,48 @@ pub(crate) fn infer_module_inner(
         if let Decl::DefImpl {
             trait_name,
             target_type,
+            type_params,
             type_constraints,
             methods,
             span,
             ..
         } = decl
         {
-            let mut impl_type_param_names = HashSet::new();
-            collect_type_expr_var_names(target_type, &mut impl_type_param_names);
-            for constraint in type_constraints {
-                impl_type_param_names.insert(constraint.type_var.clone());
-            }
-            let type_param_map: HashMap<String, TypeVarId> = impl_type_param_names
-                .into_iter()
-                .map(|name| (name, state.gen.fresh()))
-                .collect();
+            // Validate wildcards in the impl target
+            let wildcard_count = validate_impl_wildcards(target_type)
+                .map_err(|e| spanned(e, *span))?;
+
+            // Build type_param_map: use explicit type_params if provided,
+            // otherwise collect free vars from the target type
+            let type_param_map: HashMap<String, TypeVarId> = if !type_params.is_empty() {
+                type_params
+                    .iter()
+                    .map(|tp| (tp.name.clone(), state.gen.fresh()))
+                    .collect()
+            } else {
+                let mut impl_type_param_names = HashSet::new();
+                collect_type_expr_var_names(target_type, &mut impl_type_param_names);
+                for constraint in type_constraints {
+                    impl_type_param_names.insert(constraint.type_var.clone());
+                }
+                impl_type_param_names
+                    .into_iter()
+                    .map(|name| (name, state.gen.fresh()))
+                    .collect()
+            };
             let type_param_arity: HashMap<String, usize> = HashMap::new();
-            let resolved_target =
+
+            // Resolve the target type, handling wildcards
+            let resolved_target = if wildcard_count > 0 {
+                resolve_impl_target(
+                    target_type,
+                    &type_param_map,
+                    &type_param_arity,
+                    &state.registry,
+                    &mut state.gen,
+                )
+                    .map_err(|e| spanned(e, *span))?
+            } else {
                 type_registry::resolve_type_expr(
                     target_type,
                     &type_param_map,
@@ -2470,7 +2639,8 @@ pub(crate) fn infer_module_inner(
                     &state.registry,
                     ResolutionContext::UserAnnotation,
                 )
-                    .map_err(|e| spanned(e, *span))?;
+                    .map_err(|e| spanned(e, *span))?
+            };
 
             // Orphan check: type must be known, and either the type or the trait must be locally defined
             let target_name = match &resolved_target {
@@ -2516,16 +2686,31 @@ pub(crate) fn infer_module_inner(
             if let Some(trait_info) = trait_registry.lookup_trait(trait_name) {
                 let expected_arity = trait_info.type_var_arity;
                 if expected_arity > 0 {
-                    let actual_arity = state.registry.expected_arity(&target_name).unwrap_or(0);
-                    if actual_arity != expected_arity {
-                        return Err(spanned(
-                            TypeError::KindMismatch {
-                                type_name: target_name.clone(),
-                                expected_arity,
-                                actual_arity,
-                            },
-                            *span,
-                        ));
+                    if wildcard_count > 0 {
+                        // With wildcards: wildcard_count must equal trait arity
+                        if wildcard_count != expected_arity {
+                            return Err(spanned(
+                                TypeError::KindMismatch {
+                                    type_name: target_name.clone(),
+                                    expected_arity,
+                                    actual_arity: wildcard_count,
+                                },
+                                *span,
+                            ));
+                        }
+                    } else {
+                        // Without wildcards: bare constructor path (existing logic)
+                        let actual_arity = state.registry.expected_arity(&target_name).unwrap_or(0);
+                        if actual_arity != expected_arity {
+                            return Err(spanned(
+                                TypeError::KindMismatch {
+                                    type_name: target_name.clone(),
+                                    expected_arity,
+                                    actual_arity,
+                                },
+                                *span,
+                            ));
+                        }
                     }
                 }
 
@@ -2561,7 +2746,7 @@ pub(crate) fn infer_module_inner(
 
             // Use canonical name for concrete types (distinct JVM artifacts),
             // head name for parameterized types (used as HashMap key for dispatch).
-            let target_type_name = if type_param_map.is_empty() {
+            let target_type_name = if type_param_map.is_empty() && wildcard_count == 0 {
                 type_to_canonical_name(&resolved_target)
             } else {
                 target_name.clone()
@@ -2917,7 +3102,14 @@ pub(crate) fn infer_module_inner(
             let instance = trait_registry
                 .find_instance_by_trait_and_span(trait_name, *span)
                 .unwrap();
-            let resolved_target = instance.target_type.clone();
+            // For HKT partial application, strip anonymous type var args from the
+            // target type so it acts as a partial constructor for substitution.
+            // e.g., Named("Result", [Var(e), Var(anon)]) → Named("Result", [Var(e)])
+            let resolved_target = if trait_info.type_var_arity > 0 {
+                strip_anon_type_args(&instance.target_type, &instance.type_var_ids)
+            } else {
+                instance.target_type.clone()
+            };
             let target_type_name = instance.target_type_name.clone();
 
             let mut instance_methods = Vec::new();

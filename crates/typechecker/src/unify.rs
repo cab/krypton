@@ -45,6 +45,8 @@ pub enum TypeErrorCode {
     E0509, // Ambiguous call (multiple same-named imports)
     E0510, // Unknown export (name does not exist in module)
     E0013, // Redundant match arm
+    E0511, // Wildcard not allowed in this position
+    E0512, // Nested wildcard in impl head
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -88,6 +90,8 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0509 => write!(f, "E0509"),
             TypeErrorCode::E0510 => write!(f, "E0510"),
             TypeErrorCode::E0013 => write!(f, "E0013"),
+            TypeErrorCode::E0511 => write!(f, "E0511"),
+            TypeErrorCode::E0512 => write!(f, "E0512"),
         }
     }
 }
@@ -239,6 +243,12 @@ pub enum TypeError {
         module_path: String,
     },
     RedundantPattern,
+    WildcardNotAllowed {
+        span: Span,
+    },
+    NestedWildcard {
+        span: Span,
+    },
 }
 
 impl TypeError {
@@ -290,6 +300,8 @@ impl TypeError {
             TypeError::AmbiguousCall { .. } => TypeErrorCode::E0509,
             TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
             TypeError::RedundantPattern => TypeErrorCode::E0013,
+            TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
+            TypeError::NestedWildcard { .. } => TypeErrorCode::E0512,
         }
     }
 
@@ -460,6 +472,12 @@ impl TypeError {
             }
             TypeError::RedundantPattern => {
                 Some("this arm can never be reached".to_string())
+            }
+            TypeError::WildcardNotAllowed { .. } => {
+                Some("type wildcards `_` are only allowed in impl heads for partial application".to_string())
+            }
+            TypeError::NestedWildcard { .. } => {
+                Some("wildcards must appear at the outermost type application level, not nested inside type arguments".to_string())
             }
         }
     }
@@ -683,6 +701,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::RedundantPattern => {
                 write!(f, "redundant match arm: pattern is already covered")
+            }
+            TypeError::WildcardNotAllowed { .. } => {
+                write!(f, "type wildcard `_` is not allowed in this position")
+            }
+            TypeError::NestedWildcard { .. } => {
+                write!(f, "nested wildcard `_` in impl head is not allowed")
             }
         }
     }

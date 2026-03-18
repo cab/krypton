@@ -76,10 +76,11 @@ impl<'a> Formatter<'a> {
             Decl::DefImpl {
                 trait_name,
                 target_type,
+                type_params,
                 type_constraints,
                 methods,
                 ..
-            } => self.fmt_impl(trait_name, target_type, type_constraints, methods),
+            } => self.fmt_impl(trait_name, target_type, type_params, type_constraints, methods),
             Decl::Import { is_pub, path, names, .. } => self.fmt_import(*is_pub, path, names),
             Decl::ExternJava {
                 class_name,
@@ -199,6 +200,9 @@ impl<'a> Formatter<'a> {
                     self.fmt_type_expr(e);
                 }
                 self.buf.push(')');
+            }
+            TypeExpr::Wildcard { .. } => {
+                self.buf.push('_');
             }
         }
     }
@@ -341,10 +345,15 @@ impl<'a> Formatter<'a> {
         &mut self,
         trait_name: &str,
         target_type: &TypeExpr,
+        type_params: &[TypeParam],
         constraints: &[TypeConstraint],
         methods: &[FnDecl],
     ) {
-        self.buf.push_str("impl ");
+        self.buf.push_str("impl");
+        if !type_params.is_empty() {
+            self.fmt_type_params(type_params);
+        }
+        self.buf.push(' ');
         self.buf.push_str(trait_name);
         self.buf.push('[');
         self.fmt_type_expr(target_type);

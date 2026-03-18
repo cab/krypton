@@ -276,6 +276,9 @@ pub fn resolve_type_expr(
             }
             Ok(Type::Tuple(elem_types))
         }
+        TypeExpr::Wildcard { span } => {
+            Err(TypeError::WildcardNotAllowed { span: *span })
+        }
     }
 }
 

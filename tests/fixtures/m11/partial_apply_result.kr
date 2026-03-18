@@ -1,0 +1,13 @@
+# expect: ok
+type Result[e, a] = Ok(a) | Err(e)
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+impl[e] Functor[Result[e, _]] {
+  fun fmap[a, b](fa: Result[e, a], g: (a) -> b) -> Result[e, b] =
+    match fa {
+      Ok(v) => Ok(g(v)),
+      Err(err) => Err(err),
+    }
+}

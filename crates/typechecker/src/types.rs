@@ -47,6 +47,11 @@ pub enum Type {
 pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
     match ctor {
         Type::Named(name, ctor_args) if ctor_args.is_empty() => Type::Named(name, args),
+        // Partial application: Named("Result", [e]) applied to [a] → Named("Result", [e, a])
+        Type::Named(name, mut ctor_args) => {
+            ctor_args.extend(args);
+            Type::Named(name, ctor_args)
+        }
         _ => Type::App(Box::new(ctor), args),
     }
 }

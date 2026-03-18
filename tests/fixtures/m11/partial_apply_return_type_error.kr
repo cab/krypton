@@ -1,0 +1,3 @@
+# expect: error E0511
+type Result[e, a] = Ok(a) | Err(e)
+fun bad() -> Result[_] = Ok(1)

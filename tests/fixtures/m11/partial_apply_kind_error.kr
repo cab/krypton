@@ -1,0 +1,10 @@
+# expect: error E0507
+type Result[e, a] = Ok(a) | Err(e)
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+impl Functor[Result[_, _]] {
+  fun fmap[a, b](fa: Result[a, a], g: (a) -> b) -> Result[b, b] =
+    match fa { Ok(v) => Ok(g(v)), Err(e) => Err(g(e)) }
+}

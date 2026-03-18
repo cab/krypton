@@ -1,0 +1,9 @@
+# expect: ok
+trait Contravariant[f[_]] {
+  fun contramap[a, b](fa: f[a], g: (b) -> a) -> f[b]
+}
+type Predicate[a, b] = { check: (a) -> b }
+impl[b] Contravariant[Predicate[_, b]] {
+  fun contramap[a, c](fa: Predicate[a, b], g: (c) -> a) -> Predicate[c, b] =
+    Predicate { check = (x) -> (fa.check)(g(x)) }
+}
