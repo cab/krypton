@@ -47,6 +47,7 @@ pub enum TypeErrorCode {
     E0013, // Redundant match arm
     E0511, // Wildcard not allowed in this position
     E0512, // Nested wildcard in impl head
+    E0307, // Unknown trait
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -92,6 +93,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0013 => write!(f, "E0013"),
             TypeErrorCode::E0511 => write!(f, "E0511"),
             TypeErrorCode::E0512 => write!(f, "E0512"),
+            TypeErrorCode::E0307 => write!(f, "E0307"),
         }
     }
 }
@@ -249,6 +251,9 @@ pub enum TypeError {
     NestedWildcard {
         span: Span,
     },
+    UnknownTrait {
+        name: String,
+    },
 }
 
 impl TypeError {
@@ -302,6 +307,7 @@ impl TypeError {
             TypeError::RedundantPattern => TypeErrorCode::E0013,
             TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
             TypeError::NestedWildcard { .. } => TypeErrorCode::E0512,
+            TypeError::UnknownTrait { .. } => TypeErrorCode::E0307,
         }
     }
 
@@ -479,6 +485,7 @@ impl TypeError {
             TypeError::NestedWildcard { .. } => {
                 Some("wildcards must appear at the outermost type application level, not nested inside type arguments".to_string())
             }
+            TypeError::UnknownTrait { .. } => None,
         }
     }
 }
@@ -707,6 +714,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::NestedWildcard { .. } => {
                 write!(f, "nested wildcard `_` in impl head is not allowed")
+            }
+            TypeError::UnknownTrait { name } => {
+                write!(f, "unknown trait `{}`", name)
             }
         }
     }

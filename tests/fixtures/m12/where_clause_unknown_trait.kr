@@ -1,0 +1,2 @@
+# expect: error E0307
+fun f[a](x: a) where a: Shaared = x

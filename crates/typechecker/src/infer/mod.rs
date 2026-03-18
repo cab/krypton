@@ -2706,6 +2706,20 @@ pub(crate) fn infer_module_inner(
                 }
             };
 
+            // Validate trait names in where-clause constraints
+            for constraint in type_constraints {
+                if constraint.trait_name != "shared" {
+                    if trait_registry.lookup_trait(&constraint.trait_name).is_none() {
+                        return Err(spanned(
+                            TypeError::UnknownTrait {
+                                name: constraint.trait_name.clone(),
+                            },
+                            constraint.span,
+                        ));
+                    }
+                }
+            }
+
             // Kind-arity check: verify the impl target has the right arity for the trait
             if let Some(trait_info) = trait_registry.lookup_trait(trait_name) {
                 let expected_arity = trait_info.type_var_arity;
@@ -2940,6 +2954,19 @@ pub(crate) fn infer_module_inner(
                                     decl.span,
                                 ));
                             }
+                        }
+                    }
+                }
+
+                for constraint in &decl.constraints {
+                    if constraint.trait_name != "shared" {
+                        if trait_registry.lookup_trait(&constraint.trait_name).is_none() {
+                            return Err(spanned(
+                                TypeError::UnknownTrait {
+                                    name: constraint.trait_name.clone(),
+                                },
+                                constraint.span,
+                            ));
                         }
                     }
                 }

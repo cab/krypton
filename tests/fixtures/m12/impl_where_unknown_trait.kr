@@ -1,0 +1,8 @@
+# expect: error E0307
+trait MyTrait[a] {
+    fun doIt(x: a) -> String
+}
+
+impl[a] MyTrait[List[a]] where a: Shw {
+    fun doIt(x: List[a]) -> String = "list"
+}
