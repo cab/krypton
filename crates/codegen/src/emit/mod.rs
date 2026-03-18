@@ -87,7 +87,7 @@ fn jvm_type_to_field_descriptor(ty: JvmType) -> String {
         JvmType::Long => "J".to_string(),
         JvmType::Double => "D".to_string(),
         JvmType::Int => "Z".to_string(),
-        JvmType::StructRef(_) => "Ljava/lang/Object;".to_string(),
+        JvmType::StructRef(_) => unreachable!("StructRef must be resolved via class_descriptors"),
     }
 }
 
@@ -96,7 +96,7 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
         JvmType::Long => FieldType::Base(ristretto_classfile::BaseType::Long),
         JvmType::Double => FieldType::Base(ristretto_classfile::BaseType::Double),
         JvmType::Int => FieldType::Base(ristretto_classfile::BaseType::Boolean),
-        JvmType::StructRef(_) => FieldType::Object("java/lang/Object".to_string()),
+        JvmType::StructRef(_) => unreachable!("StructRef must be resolved via class_descriptors"),
     }
 }
 
@@ -319,6 +319,7 @@ fn compile_module_inner(
 
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
     compiler.register_fun_interfaces(typed_module)?;
+    // Vec's class descriptor must exist before instances referencing Vec[T] are registered.
     compiler.register_vec()?;
     result_classes.extend(compiler.register_traits(typed_module)?);
     result_classes.extend(compiler.register_builtin_instances(typed_module)?);

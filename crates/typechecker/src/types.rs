@@ -414,6 +414,20 @@ impl Default for TypeVarGen {
     }
 }
 
+impl Type {
+    /// Strip `Own` wrappers recursively, including inside `Named` type args.
+    pub fn strip_own(&self) -> Type {
+        match self {
+            Type::Own(inner) => inner.strip_own(),
+            Type::Named(name, args) => Type::Named(
+                name.clone(),
+                args.iter().map(|a| a.strip_own()).collect(),
+            ),
+            other => other.clone(),
+        }
+    }
+}
+
 /// Canonical name for JVM artifact naming (class names, method names).
 /// Not used for HashMap keys — those use `(String, Type)` tuples directly.
 pub fn type_to_canonical_name(ty: &Type) -> String {

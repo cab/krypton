@@ -1,0 +1,17 @@
+# expect: ok
+# expect: output "ints\nstrings"
+trait Tag[a] {
+  fun tag(x: a) -> String
+}
+impl Tag[Vec[Int]] {
+  fun tag(x: Vec[Int]) -> String = "ints"
+}
+impl Tag[Vec[String]] {
+  fun tag(x: Vec[String]) -> String = "strings"
+}
+fun main() -> Unit = {
+  let vi = [1, 2, 3]
+  let vs = ["a", "b", "c"]
+  println(tag(vi))
+  println(tag(vs))
+}

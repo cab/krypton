@@ -9,14 +9,6 @@ use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{Compiler, CodegenError, JvmType};
 
-/// Strip `Own` wrapper from a type for instance lookup.
-fn strip_own(ty: &Type) -> Type {
-    match ty {
-        Type::Own(inner) => strip_own(inner),
-        other => other.clone(),
-    }
-}
-
 impl Compiler {
     pub(super) fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
         // Check if this is a nullary variant constructor
@@ -214,7 +206,7 @@ impl Compiler {
         rhs: &TypedExpr,
         result_jvm: JvmType,
     ) -> Result<JvmType, CodegenError> {
-        let lookup_type = strip_own(&lhs.ty);
+        let lookup_type = lhs.ty.strip_own();
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
             CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
@@ -271,7 +263,7 @@ impl Compiler {
         operand: &TypedExpr,
         result_jvm: JvmType,
     ) -> Result<JvmType, CodegenError> {
-        let lookup_type = strip_own(&operand.ty);
+        let lookup_type = operand.ty.strip_own();
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
             CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))

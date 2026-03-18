@@ -34,7 +34,7 @@ fn name_to_builtin_type(name: &str) -> Type {
         "Bool" => Type::Bool,
         "String" => Type::String,
         "Unit" => Type::Unit,
-        other => Type::Named(other.to_string(), vec![]),
+        other => unreachable!("unexpected builtin type name: {other}"),
     }
 }
 
@@ -472,7 +472,7 @@ impl Compiler {
                 }
             }
 
-            if dict_requirements.is_empty() {
+            if instance_def.type_var_ids.is_empty() {
                 let instance_bytes = generate_instance_class(
                     &instance_class_name,
                     &q_trait,

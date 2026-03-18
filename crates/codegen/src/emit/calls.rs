@@ -8,28 +8,18 @@ use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo};
 
-/// Strip `Own` wrappers (recursively through type args) for instance lookup.
-fn strip_own(ty: &Type) -> Type {
-    match ty {
-        Type::Own(inner) => strip_own(inner),
-        Type::Named(name, args) => Type::Named(
-            name.clone(),
-            args.iter().map(strip_own).collect(),
-        ),
-        other => other.clone(),
-    }
-}
-
 /// Extract head type constructor name for parameterized instance lookup.
-fn head_type_name(ty: &Type) -> String {
+fn head_type_name(ty: &Type) -> Result<String, CodegenError> {
     match ty {
         Type::Own(inner) => head_type_name(inner),
-        Type::Named(name, _) => name.clone(),
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::String => "String".to_string(),
-        other => format!("{other:?}"),
+        Type::Named(name, _) => Ok(name.clone()),
+        Type::Int => Ok("Int".to_string()),
+        Type::Float => Ok("Float".to_string()),
+        Type::Bool => Ok("Bool".to_string()),
+        Type::String => Ok("String".to_string()),
+        other => Err(CodegenError::TypeError(format!(
+            "cannot extract head type name from {other:?}"
+        ))),
     }
 }
 
@@ -673,10 +663,10 @@ impl Compiler {
             }
         }
 
-        let lookup_type = strip_own(ty);
+        let lookup_type = ty.strip_own();
         // Try full type first (concrete instances), then head-only (HKT instances like Functor[Box])
         let singleton_key = (trait_name.to_string(), lookup_type.clone());
-        let head_key = (trait_name.to_string(), Type::Named(head_type_name(ty), vec![]));
+        let head_key = (trait_name.to_string(), Type::Named(head_type_name(ty)?, vec![]));
         if let Some(singleton) = self
             .traits
             .instance_singletons
@@ -690,7 +680,7 @@ impl Compiler {
             return Ok(());
         }
 
-        let head_name = head_type_name(ty);
+        let head_name = head_type_name(ty)?;
         if let Some(instance_info) = self
             .traits
             .parameterized_instances

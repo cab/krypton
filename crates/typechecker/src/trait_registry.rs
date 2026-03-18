@@ -69,7 +69,7 @@ impl TraitRegistry {
         // Check for duplicate (trait, type) pairs
         for existing in &self.instances {
             if existing.trait_name == info.trait_name
-                && existing.target_type == info.target_type
+                && existing.target_type_name == info.target_type_name
             {
                 return Err(TypeError::OrphanInstance {
                     trait_name: info.trait_name.clone(),
