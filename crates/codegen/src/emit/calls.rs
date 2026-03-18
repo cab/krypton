@@ -142,8 +142,73 @@ impl Compiler {
         args: &[TypedExpr],
         result_ty: &Type,
     ) -> Result<JvmType, CodegenError> {
+        // If the callee is not a simple Var (e.g. a FieldAccess), compile it
+        // as an expression call — evaluate the callee, then invokeinterface.
+        if matches!(&func.kind, TypedExprKind::FieldAccess { .. }) {
+            return self.compile_expr_call(func, args);
+        }
         let (name, target) = self.resolve_call(func, args, result_ty)?;
         self.emit_call(target, &name, func, args, result_ty)
+    }
+
+    /// Compile a call where the callee is an arbitrary expression (not a named function).
+    /// Evaluates the callee onto the stack, then uses invokeinterface FunN.apply.
+    fn compile_expr_call(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+    ) -> Result<JvmType, CodegenError> {
+        // Determine arity and return type from the callee's type
+        let (param_types, ret_ty) = match &func.ty {
+            Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+            Type::Own(inner) => match inner.as_ref() {
+                Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+                other => return Err(CodegenError::TypeError(format!(
+                    "expression call on non-function type: {other:?}"
+                ))),
+            },
+            other => return Err(CodegenError::TypeError(format!(
+                "expression call on non-function type: {other:?}"
+            ))),
+        };
+        let arity = param_types.len() as u8;
+        let ret_jvm = self.type_to_jvm(&ret_ty)?;
+
+        // Ensure the FunN interface exists for this arity
+        self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
+        let fun_class = self.lambda.fun_classes[&arity];
+        let apply_ref = self.lambda.fun_apply_refs[&arity];
+
+        // Compile the callee expression — puts function object on stack
+        let callee_jvm = self.compile_expr(func, false)?;
+
+        // If the callee came back as Object (erased), checkcast to FunN
+        if let JvmType::StructRef(idx) = callee_jvm {
+            if idx != fun_class {
+                self.builder.emit(Instruction::Checkcast(fun_class));
+                self.builder.frame.pop_type();
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: fun_class,
+                });
+            }
+        }
+
+        // Compile and box each argument
+        for arg in args {
+            let arg_type = self.compile_expr(arg, false)?;
+            self.builder.box_if_needed(arg_type);
+        }
+
+        // invokeinterface FunN.apply(args)
+        self.builder.emit(Instruction::Invokeinterface(apply_ref, arity + 1));
+        for _ in 0..arity {
+            self.builder.frame.pop_type();
+        }
+        self.builder.pop_jvm_type(JvmType::StructRef(fun_class));
+
+        // Coerce the Object return to the expected type
+        self.coerce_interface_return(ret_jvm);
+        Ok(ret_jvm)
     }
 
     /// Extract the function name from a call expression.

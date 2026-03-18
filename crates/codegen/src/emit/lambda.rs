@@ -441,6 +441,8 @@ impl Compiler {
 
         // Save compiler state for the outer method
         let saved_dict_locals = self.traits.dict_locals.clone();
+        // Save local_fn_info for captured function-typed variables before scope swap
+        let saved_local_fn_info = self.builder.local_fn_info.clone();
         let scope = self.push_method_scope();
 
         // Register captured vars as first params (all boxed to Object)
@@ -451,6 +453,10 @@ impl Compiler {
                 cpool_index: self.builder.refs.object_class,
             });
             self.builder.next_local += 1;
+            // Propagate local_fn_info for function-typed captures so higher-order calls work
+            if let Some(fn_info) = saved_local_fn_info.get(cap_name) {
+                self.builder.local_fn_info.insert(cap_name.clone(), fn_info.clone());
+            }
         }
 
         // Register captured dict locals and remap dict_locals to new slots in the lambda method
