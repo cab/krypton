@@ -102,7 +102,7 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
 
 fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmType, CodegenError> {
     match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => match name.as_str() {
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::Qualified { name, .. } => match name.as_str() {
             "Int" => Ok(JvmType::Long),
             "Float" => Ok(JvmType::Double),
             "Bool" => Ok(JvmType::Int),
@@ -149,7 +149,7 @@ fn type_expr_to_jvm_with_params(
 
 fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool {
     match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::Qualified { name, .. } => {
             type_params.contains(name)
         }
         TypeExpr::App { args, .. } => {

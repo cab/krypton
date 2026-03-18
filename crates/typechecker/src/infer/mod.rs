@@ -540,7 +540,7 @@ fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut 
                 collect_type_expr_var_names(element, out);
             }
         }
-        krypton_parser::ast::TypeExpr::Named { .. } => {}
+        krypton_parser::ast::TypeExpr::Named { .. } | krypton_parser::ast::TypeExpr::Qualified { .. } => {}
         krypton_parser::ast::TypeExpr::Wildcard { .. } => {}
     }
 }
@@ -584,7 +584,7 @@ fn contains_wildcard(texpr: &krypton_parser::ast::TypeExpr) -> bool {
         }
         krypton_parser::ast::TypeExpr::Own { inner, .. } => contains_wildcard(inner),
         krypton_parser::ast::TypeExpr::Tuple { elements, .. } => elements.iter().any(contains_wildcard),
-        krypton_parser::ast::TypeExpr::Named { .. } | krypton_parser::ast::TypeExpr::Var { .. } => false,
+        krypton_parser::ast::TypeExpr::Named { .. } | krypton_parser::ast::TypeExpr::Var { .. } | krypton_parser::ast::TypeExpr::Qualified { .. } => false,
     }
 }
 

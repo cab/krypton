@@ -352,6 +352,11 @@ fn zero_spans_type_expr(ty: &TypeExpr) -> TypeExpr {
             elements: elements.iter().map(zero_spans_type_expr).collect(),
             span: (0, 0),
         },
+        TypeExpr::Qualified { module, name, .. } => TypeExpr::Qualified {
+            module: module.clone(),
+            name: name.clone(),
+            span: (0, 0),
+        },
         TypeExpr::Wildcard { .. } => TypeExpr::Wildcard {
             span: (0, 0),
         },

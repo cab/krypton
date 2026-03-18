@@ -165,6 +165,11 @@ impl<'a> Formatter<'a> {
             TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => {
                 self.buf.push_str(name);
             }
+            TypeExpr::Qualified { module, name, .. } => {
+                self.buf.push_str(module);
+                self.buf.push('.');
+                self.buf.push_str(name);
+            }
             TypeExpr::App { name, args, .. } => {
                 self.buf.push_str(name);
                 self.buf.push('[');

@@ -294,6 +294,11 @@ pub enum TypeExpr {
         name: String,
         span: Span,
     },
+    Qualified {
+        module: String,
+        name: String,
+        span: Span,
+    },
     App {
         name: String,
         args: Vec<TypeExpr>,

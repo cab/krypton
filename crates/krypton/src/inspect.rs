@@ -703,6 +703,7 @@ fn binop_str(op: &krypton_parser::ast::BinOp) -> &'static str {
 fn fmt_type_expr_source(ty: &TypeExpr) -> String {
     match ty {
         TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => name.clone(),
+        TypeExpr::Qualified { module, name, .. } => format!("{module}.{name}"),
         TypeExpr::App { name, args, .. } => {
             let as_: Vec<String> = args.iter().map(|a| fmt_type_expr_source(a)).collect();
             format!("{}[{}]", name, as_.join(", "))
@@ -723,7 +724,7 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
 /// Extract the base type name from a TypeExpr (for mangled name lookup).
 fn type_expr_base_name(ty: &TypeExpr) -> &str {
     match ty {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::App { name, .. } => name,
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::App { name, .. } | TypeExpr::Qualified { name, .. } => name,
         TypeExpr::Own { inner, .. } => type_expr_base_name(inner),
         _ => "",
     }

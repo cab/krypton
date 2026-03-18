@@ -62,10 +62,22 @@ where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
     recursive(|ty| {
-        // Named/Var: bare ident
+        // Named/Var/Qualified: bare ident, or module.Type
         let named_or_var =
-            select! { Token::Ident(s) => s.to_string() }.map_with(|name, e| {
-                if is_uppercase(&name) {
+            select! { Token::Ident(s) => s.to_string() }
+            .then(
+                symbol(Token::Dot)
+                    .ignore_then(select! { Token::Ident(s) => s.to_string() })
+                    .or_not(),
+            )
+            .map_with(|(name, qualified), e| {
+                if let Some(member) = qualified {
+                    TypeExpr::Qualified {
+                        module: name,
+                        name: member,
+                        span: to_span(e.span()),
+                    }
+                } else if is_uppercase(&name) {
                     TypeExpr::Named {
                         name,
                         span: to_span(e.span()),
@@ -133,7 +145,7 @@ where
         ).map_with(|(base, args), e| {
             match args {
                 Some(args) => {
-                    if let TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } = base {
+                    if let TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::Qualified { name, .. } = base {
                         TypeExpr::App {
                             name,
                             args,
@@ -1228,7 +1240,6 @@ where
     // Import path segments: accept idents and keywords that might be valid module names
     let path_segment = select! {
         Token::Ident(s) => s.to_string(),
-        Token::List => "list".to_string(),
         Token::Type => "type".to_string(),
         Token::Match => "match".to_string(),
         Token::If => "if".to_string(),

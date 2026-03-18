@@ -342,7 +342,7 @@ fn build_affine_set(decl: &FnDecl, registry: &TypeRegistry) -> HashSet<String> {
 fn param_type_is_affine(ty_expr: &TypeExpr, registry: &TypeRegistry) -> bool {
     match ty_expr {
         TypeExpr::Own { .. } => true,
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => has_own_field(name, registry),
+        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::Qualified { name, .. } => has_own_field(name, registry),
         TypeExpr::App { name, args, .. } => {
             has_own_field(name, registry) || args.iter().any(|a| param_type_is_affine(a, registry))
         }

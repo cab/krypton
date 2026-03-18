@@ -208,7 +208,7 @@ pub fn resolve_type_expr(
     context: ResolutionContext,
 ) -> Result<Type, TypeError> {
     match texpr {
-        TypeExpr::Named { name, .. } => {
+        TypeExpr::Named { name, .. } | TypeExpr::Qualified { name, .. } => {
             resolve_named(name, type_param_map, type_param_arity, registry, context)
         }
         TypeExpr::Var { name, .. } => {
