@@ -127,9 +127,18 @@ fn type_expr_to_jvm(
     texpr: &TypeExpr,
     type_registry_ref: &type_registry::TypeRegistry,
 ) -> Result<JvmType, CodegenError> {
+    type_expr_to_jvm_with_params(compiler, texpr, type_registry_ref, &HashMap::new())
+}
+
+fn type_expr_to_jvm_with_params(
+    compiler: &Compiler,
+    texpr: &TypeExpr,
+    type_registry_ref: &type_registry::TypeRegistry,
+    type_param_map: &HashMap<String, krypton_typechecker::types::TypeVarId>,
+) -> Result<JvmType, CodegenError> {
     let resolved = type_registry::resolve_type_expr(
         texpr,
-        &HashMap::new(),
+        type_param_map,
         &HashMap::new(),
         type_registry_ref,
         ResolutionContext::InternalDecl,
@@ -270,13 +279,20 @@ fn compile_module_inner(
     // Build field type registry for struct field resolution
     let mut field_type_registry = type_registry::TypeRegistry::new();
     field_type_registry.register_builtins(&mut TypeVarGen::new());
-    for (struct_name, ast_fields) in &typed_module.struct_decls {
+    for (struct_name, type_params, ast_fields) in &typed_module.struct_decls {
+        // Build type param map so parameterized records (e.g., Predicate[a, b])
+        // can resolve their field types
+        let mut gen = TypeVarGen::new();
+        let type_param_map: HashMap<String, krypton_typechecker::types::TypeVarId> = type_params
+            .iter()
+            .map(|name| (name.clone(), gen.fresh()))
+            .collect();
         let resolved_fields = ast_fields
             .iter()
             .map(|(_, texpr)| {
                 type_registry::resolve_type_expr(
                     texpr,
-                    &HashMap::new(),
+                    &type_param_map,
                     &HashMap::new(),
                     &field_type_registry,
                     ResolutionContext::InternalDecl,

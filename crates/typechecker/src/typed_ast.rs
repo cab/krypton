@@ -260,7 +260,7 @@ pub struct TypedModule {
     /// Extern java type bindings: (krypton_name, java_class_dotted).
     pub extern_java_types: Vec<(String, String)>,
     pub imported_extern_java_types: Vec<(String, String)>,
-    pub struct_decls: Vec<(String, Vec<(String, TypeExpr)>)>,
+    pub struct_decls: Vec<(String, Vec<String>, Vec<(String, TypeExpr)>)>,
     pub sum_decls: Vec<(String, Vec<String>, Vec<Variant>)>,
     /// Maps type_name → source_module_path for types originating from other modules.
     /// Used by codegen to qualify type class names (e.g., `core/list/List`).
