@@ -23,4 +23,15 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-main: fn() -> Bool
+contains: fn(String, String) -> Bool
+starts_with: fn(String, String) -> Bool
+ends_with: fn(String, String) -> Bool
+index_of: fn(String, String) -> Option[Int]
+to_lower: fn(String) -> String
+to_upper: fn(String) -> String
+replace: fn(String, String, String) -> String
+join: fn(List[String], String) -> String
+char_at: fn(String, Int) -> Option[String]
+Cons: forall h. fn(h, List[h]) -> List[h]
+Nil: forall h. List[h]
+main: fn() -> Unit

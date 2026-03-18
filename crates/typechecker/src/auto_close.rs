@@ -435,18 +435,6 @@ impl<'a> AutoCloseAnalyzer<'a> {
     }
 }
 
-/// If this function is a Resource close impl (e.g., `Resource$Handle$close`),
-/// return the target type name (e.g., `"Handle"`). This parameter must not be
-/// auto-closed to avoid infinite recursion.
-fn resource_close_self_type(fn_name: &str) -> Option<&str> {
-    let rest = fn_name.strip_prefix("Resource$")?;
-    let type_name = rest.strip_suffix("$close")?;
-    if type_name.is_empty() {
-        None
-    } else {
-        Some(type_name)
-    }
-}
 
 /// Compute auto-close information for all functions in the module.
 /// Returns the auto-close info and any diagnostic errors (e.g., branch leaks).
@@ -463,8 +451,6 @@ pub fn compute_auto_close(
     let mut analyzer = AutoCloseAnalyzer::new(registry, ownership_moves);
 
     for decl in functions {
-        let close_self_type = resource_close_self_type(&decl.name);
-
         let param_types = fn_types
             .iter()
             .find(|(name, _, _)| name == &decl.name)
@@ -476,7 +462,7 @@ pub fn compute_auto_close(
                 }
             })
             .unwrap_or_default();
-        analyzer.analyze_function(decl, &param_types, close_self_type);
+        analyzer.analyze_function(decl, &param_types, decl.close_self_type.as_deref());
     }
 
     // Return first error if any

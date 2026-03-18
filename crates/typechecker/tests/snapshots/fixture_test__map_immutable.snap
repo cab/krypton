@@ -2,18 +2,18 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-eq: forall f. fn(f, f) -> Bool
-lt: forall g. fn(g, g) -> Bool
-combine: forall f. fn(f, f) -> f
-sub: forall f. fn(f, f) -> f
-mul: forall f. fn(f, f) -> f
-div: forall f. fn(f, f) -> f
-neg: forall f. fn(f) -> f
-show: forall f. fn(f) -> String
-hash: forall f. fn(f) -> Int
-close: forall f. fn(own f) -> Unit
-peek: forall g. fn(g) -> g
-println: forall l. fn(l) -> Unit
+eq: forall g. fn(g, g) -> Bool
+lt: forall h. fn(h, h) -> Bool
+combine: forall g. fn(g, g) -> g
+sub: forall g. fn(g, g) -> g
+mul: forall g. fn(g, g) -> g
+div: forall g. fn(g, g) -> g
+neg: forall g. fn(g) -> g
+show: forall g. fn(g) -> String
+hash: forall g. fn(g) -> Int
+close: forall g. fn(own g) -> Unit
+peek: forall h. fn(h) -> h
+println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
 None: forall e. Option[e]
 Ok: forall f g. fn(g) -> Result[f, g]
@@ -23,7 +23,7 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-empty: forall f3 g3. fn() -> Map[f3, g3]
-put: forall k3 l3. fn(Map[k3, l3], k3, l3) -> Map[k3, l3]
-contains: forall b5 c5. fn(Map[b5, c5], b5) -> Bool
+empty: forall g3 h3. fn() -> Map[g3, h3]
+put: forall l3 m3. fn(Map[l3, m3], l3, m3) -> Map[l3, m3]
+contains: forall c5 d5. fn(Map[c5, d5], c5) -> Bool
 main: fn() -> Unit

@@ -805,6 +805,7 @@ pub fn render_inspect(
                                 visibility: krypton_parser::ast::Visibility::Private,
                                 params: im.params.clone(),
                                 body: im.body.clone(),
+                                close_self_type: None,
                             };
                             formatter.fmt_impl_method(&m.name, &typed_fn, &im.scheme.ty);
                             output.push_str(&formatter.buf);

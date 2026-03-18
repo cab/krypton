@@ -12,7 +12,7 @@ use crate::typed_ast::{
     self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, FnOrigin, InstanceDefInfo,
     TraitDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
-use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
+use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
 fn find_type_decl<'a>(decls: &'a [Decl], name: &str) -> Option<&'a TypeDecl> {
@@ -1792,17 +1792,24 @@ impl ModuleInferenceState {
                 visibility: decl.visibility.clone(),
                 params: decl.params.iter().map(|p| p.name.clone()).collect(),
                 body,
+                close_self_type: None,
             });
         }
         // Build temporary flat list of instance method bodies for internal analysis passes
         for inst in &instance_defs {
             for m in &inst.methods {
                 let qualified = typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name);
+                let close_self_type = if inst.trait_name == "Resource" && m.name == "close" {
+                    Some(inst.target_type_name.clone())
+                } else {
+                    None
+                };
                 functions.push(TypedFnDecl {
                     name: qualified,
                     visibility: Visibility::Pub,
                     params: m.params.clone(),
                     body: m.body.clone(),
+                    close_self_type,
                 });
             }
         }
@@ -2099,11 +2106,11 @@ pub(crate) fn infer_module_inner(
             }
         }
 
-        let mut seen_instances: HashSet<(String, String)> = HashSet::new();
+        let mut seen_instances: HashSet<(String, Type)> = HashSet::new();
         for module_path in &source_modules {
             if let Some(cached_module) = cache.get(*module_path) {
                 for inst in &cached_module.instance_defs {
-                    let key = (inst.trait_name.clone(), inst.target_type_name.clone());
+                    let key = (inst.trait_name.clone(), inst.target_type.clone());
                     if seen_instances.insert(key) {
                         let instance = InstanceInfo {
                             trait_name: inst.trait_name.clone(),
@@ -2356,6 +2363,7 @@ pub(crate) fn infer_module_inner(
                     .map(|&v| Type::Var(v))
                     .collect();
                 let target_type = Type::Named(type_decl.name.clone(), type_args);
+                // Parameterized types keep head name only; canonical name is for concrete types
                 let target_type_name = type_decl.name.clone();
 
                 // Register the instance
@@ -2551,10 +2559,17 @@ pub(crate) fn infer_module_inner(
 
             let method_names: Vec<String> = methods.iter().map(|m| m.name.clone()).collect();
 
+            // Use canonical name for concrete types (distinct JVM artifacts),
+            // head name for parameterized types (used as HashMap key for dispatch).
+            let target_type_name = if type_param_map.is_empty() {
+                type_to_canonical_name(&resolved_target)
+            } else {
+                target_name.clone()
+            };
             let instance = InstanceInfo {
                 trait_name: trait_name.clone(),
                 target_type: resolved_target,
-                target_type_name: target_name,
+                target_type_name,
                 type_var_ids: type_param_map.clone(),
                 constraints: type_constraints.clone(),
                 methods: method_names,

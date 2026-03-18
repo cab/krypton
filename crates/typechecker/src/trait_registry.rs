@@ -69,7 +69,7 @@ impl TraitRegistry {
         // Check for duplicate (trait, type) pairs
         for existing in &self.instances {
             if existing.trait_name == info.trait_name
-                && existing.target_type_name == info.target_type_name
+                && existing.target_type == info.target_type
             {
                 return Err(TypeError::OrphanInstance {
                     trait_name: info.trait_name.clone(),
@@ -539,5 +539,39 @@ mod tests {
 
         assert!(registry.find_instance("Functor", &result_int_string).is_some());
         assert!(registry.find_instance("Functor", &result_blob_string).is_none());
+    }
+
+    #[test]
+    fn full_type_instance_resolution_distinguishes_applied_types() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Test")).unwrap();
+
+        // Register (Test, Vec[Int]) and (Test, Vec[String]) — both should succeed
+        registry
+            .register_instance(instance(
+                "Test",
+                Type::Named("Vec".to_string(), vec![Type::Int]),
+                "Vec$Int",
+                vec![],
+            ))
+            .unwrap();
+        registry
+            .register_instance(instance(
+                "Test",
+                Type::Named("Vec".to_string(), vec![Type::String]),
+                "Vec$String",
+                vec![],
+            ))
+            .unwrap();
+
+        // Duplicate (Test, Vec[Int]) should fail
+        assert!(registry
+            .register_instance(instance(
+                "Test",
+                Type::Named("Vec".to_string(), vec![Type::Int]),
+                "Vec$Int",
+                vec![],
+            ))
+            .is_err());
     }
 }

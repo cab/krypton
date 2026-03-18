@@ -23,4 +23,6 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-main: fn() -> Bool
+parse_int: fn(String) -> Option[Int]
+parse_float: fn(String) -> Option[Float]
+main: fn() -> Unit

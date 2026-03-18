@@ -180,6 +180,9 @@ pub struct TypedFnDecl {
     pub visibility: Visibility,
     pub params: Vec<String>,
     pub body: TypedExpr,
+    /// For Resource close impl methods, the target type name (e.g., "Handle").
+    /// Used by auto-close to skip the self parameter and avoid infinite recursion.
+    pub close_self_type: Option<String>,
 }
 
 pub struct TraitDefInfo {
@@ -281,7 +284,7 @@ pub struct TypedModule {
 
 /// Build the JVM-mangled name for a trait instance method.
 pub fn mangled_method_name(trait_name: &str, target_type_name: &str, method_name: &str) -> String {
-    format!("{}${}${}", trait_name, target_type_name, method_name)
+    format!("{}$${}$${}", trait_name, target_type_name, method_name)
 }
 
 pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {

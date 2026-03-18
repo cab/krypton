@@ -157,7 +157,7 @@ pub(super) struct InstanceSingletonInfo {
 /// Trait dispatch state for codegen.
 pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<String, TraitDispatchInfo>,
-    pub(super) instance_singletons: HashMap<(String, String), InstanceSingletonInfo>,
+    pub(super) instance_singletons: HashMap<(String, Type), InstanceSingletonInfo>,
     pub(super) trait_method_map: HashMap<String, String>,
     pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,

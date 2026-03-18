@@ -25,7 +25,7 @@ impl TypeVarId {
 }
 
 /// Core type representation for the krypton type system.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,
     Float,
@@ -411,6 +411,26 @@ impl TypeVarGen {
 impl Default for TypeVarGen {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Canonical name for JVM artifact naming (class names, method names).
+/// Not used for HashMap keys — those use `(String, Type)` tuples directly.
+pub fn type_to_canonical_name(ty: &Type) -> String {
+    match ty {
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Named(name, args) if args.is_empty() => name.clone(),
+        Type::Named(name, args) => {
+            let arg_strs: Vec<String> = args.iter().map(type_to_canonical_name).collect();
+            format!("{}${}", name, arg_strs.join("$"))
+        }
+        Type::Own(inner) => type_to_canonical_name(inner),
+        Type::Var(_) => "T".to_string(),
+        other => format!("{other:?}"),
     }
 }
 

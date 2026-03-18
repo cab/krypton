@@ -8,7 +8,14 @@ use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{Compiler, CodegenError, JvmType};
-use super::type_to_name;
+
+/// Strip `Own` wrapper from a type for instance lookup.
+fn strip_own(ty: &Type) -> Type {
+    match ty {
+        Type::Own(inner) => strip_own(inner),
+        other => other.clone(),
+    }
+}
 
 impl Compiler {
     pub(super) fn compile_var(&mut self, name: &str) -> Result<JvmType, CodegenError> {
@@ -207,7 +214,7 @@ impl Compiler {
         rhs: &TypedExpr,
         result_jvm: JvmType,
     ) -> Result<JvmType, CodegenError> {
-        let type_name = type_to_name(&lhs.ty);
+        let lookup_type = strip_own(&lhs.ty);
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
             CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
@@ -220,10 +227,10 @@ impl Compiler {
         let singleton = self
             .traits
             .instance_singletons
-            .get(&(trait_name.to_string(), type_name.clone()))
+            .get(&(trait_name.to_string(), lookup_type.clone()))
             .ok_or_else(|| {
                 CodegenError::UndefinedVariable(format!(
-                    "no instance of {trait_name} for {type_name}"
+                    "no instance of {trait_name} for {}", lhs.ty
                 ))
             })?;
         let field_ref = singleton.instance_field_ref;
@@ -264,7 +271,7 @@ impl Compiler {
         operand: &TypedExpr,
         result_jvm: JvmType,
     ) -> Result<JvmType, CodegenError> {
-        let type_name = type_to_name(&operand.ty);
+        let lookup_type = strip_own(&operand.ty);
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
             CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
@@ -277,10 +284,10 @@ impl Compiler {
         let singleton = self
             .traits
             .instance_singletons
-            .get(&(trait_name.to_string(), type_name.clone()))
+            .get(&(trait_name.to_string(), lookup_type.clone()))
             .ok_or_else(|| {
                 CodegenError::UndefinedVariable(format!(
-                    "no instance of {trait_name} for {type_name}"
+                    "no instance of {trait_name} for {}", operand.ty
                 ))
             })?;
         let field_ref = singleton.instance_field_ref;
@@ -1096,7 +1103,7 @@ impl Compiler {
         &mut self,
         binding: &krypton_typechecker::typed_ast::AutoCloseBinding,
     ) -> Result<(), CodegenError> {
-        let key = ("Resource".to_string(), binding.type_name.clone());
+        let key = ("Resource".to_string(), Type::Named(binding.type_name.clone(), vec![]));
         let singleton = self.traits.instance_singletons.get(&key).ok_or_else(|| {
             CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name))
         })?;

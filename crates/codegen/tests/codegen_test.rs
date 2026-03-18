@@ -299,6 +299,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 vec![var_expr("value", wrap_a_ty.clone())],
                 Type::String,
             ),
+            close_self_type: None,
         });
         fn_constraints.insert("render_wrap".to_string(), vec![("Render".to_string(), 0)]);
         fn_constraint_requirements.insert("render_wrap".to_string(), vec![("Render".to_string(), var_a)]);
@@ -317,6 +318,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             vec![rendered_main_value],
             Type::Unit,
         ),
+        close_self_type: None,
     });
 
     TypedModule {
@@ -913,7 +915,7 @@ fn test_constrained_instance_dictionary_forwarding_from_polymorphic_context() {
 fn test_constrained_instance_class_captures_dictionary_parameter() {
     let module = build_constrained_render_module(false, false);
     let dir = compile_typed_modules(&[module]);
-    let class_output = javap_output(&dir.path().join("Render$Wrap.class"), false);
+    let class_output = javap_output(&dir.path().join("Render$$Wrap.class"), false);
     assert!(
         class_output.contains("java.lang.Object dict0;"),
         "expected constrained instance to store dictionary field, javap output:\n{class_output}"
@@ -921,7 +923,7 @@ fn test_constrained_instance_class_captures_dictionary_parameter() {
 
     let test_output = javap_output(&dir.path().join("Test.class"), true);
     assert!(
-        test_output.contains("Method Render$Wrap.\"<init>\":(Ljava/lang/Object;)V"),
+        test_output.contains("Method Render$$Wrap.\"<init>\":(Ljava/lang/Object;)V"),
         "expected constrained instance construction with dictionary arg, javap output:\n{test_output}"
     );
 }
@@ -1028,7 +1030,7 @@ fun main() = println(default[Int]())
     let dir = compile_typed_modules(&typed_modules);
     let javap_out = javap_output(&dir.path().join("Test.class"), false);
     assert!(
-        javap_out.contains("Default$Int"),
-        "expected Default$Int instance class in javap output:\n{javap_out}"
+        javap_out.contains("Default$$Int"),
+        "expected Default$$Int instance class in javap output:\n{javap_out}"
     );
 }

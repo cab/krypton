@@ -70,19 +70,6 @@ fn dict_requirements_for_instance(
 }
 
 
-/// Extract the type name from a Type for instance lookup.
-fn type_to_name(ty: &Type) -> String {
-    match ty {
-        Type::Named(name, _) => name.clone(),
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::String => "String".to_string(),
-        Type::Own(inner) => type_to_name(inner),
-        other => format!("{other:?}"),
-    }
-}
-
 fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
     match ty {
         Type::Int => Ok(JvmType::Long),
@@ -202,7 +189,7 @@ pub fn compile_modules(
                 let builtin_types = ["Int", "Float", "Bool", "String"];
                 if builtin_types.contains(&inst.target_type_name.as_str()) { continue; }
                 let q_trait = qualify_type_for(module, &inst.trait_name);
-                let class_name = format!("{}${}", q_trait, inst.target_type_name);
+                let class_name = format!("{}$${}", q_trait, inst.target_type_name);
                 instance_class_map.insert(
                     (inst.trait_name.clone(), inst.target_type_name.clone()),
                     ImportedInstanceInfo {
@@ -333,16 +320,16 @@ fn compile_module_inner(
         }
     }
 
-    // Phase 2: Register FunN interfaces, traits, and instances
+    // Phase 2: Register FunN interfaces, Vec, traits, and instances
     compiler.register_fun_interfaces(typed_module)?;
+    compiler.register_vec()?;
     result_classes.extend(compiler.register_traits(typed_module)?);
     result_classes.extend(compiler.register_builtin_instances(typed_module)?);
     compiler.register_imported_instances(imported_instances)?;
     result_classes.extend(compiler.register_instance_defs(typed_module, class_name)?);
 
-    // Phase 3: Register tuples, vec, and functions
+    // Phase 3: Register tuples and functions
     compiler.register_tuples(typed_module)?;
-    compiler.register_vec()?;
     compiler.register_functions(typed_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies and build class
