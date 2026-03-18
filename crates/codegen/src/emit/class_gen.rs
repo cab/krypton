@@ -610,14 +610,12 @@ pub(super) fn generate_instance_class(
                     bridge_code.push(Instruction::Checkcast(bool_box_class));
                     bridge_code.push(Instruction::Invokevirtual(_bool_unbox));
                 }
-                JvmType::StructRef(_) => {
-                    // Checkcast Object → concrete struct type if we know the class name
+                JvmType::StructRef(_) | JvmType::Ref => {
                     if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
                         let cast_class = cp.add_class(cn)?;
                         bridge_code.push(Instruction::Checkcast(cast_class));
                     }
                 }
-                _ => {}
             }
             slot += 1;
         }
@@ -1044,13 +1042,12 @@ pub(super) fn generate_parameterized_instance_class(
                     bridge_code.push(Instruction::Checkcast(bool_box_class));
                     bridge_code.push(Instruction::Invokevirtual(bool_unbox));
                 }
-                JvmType::StructRef(_) => {
+                JvmType::StructRef(_) | JvmType::Ref => {
                     if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
                         let cast_class = cp.add_class(cn)?;
                         bridge_code.push(Instruction::Checkcast(cast_class));
                     }
                 }
-                _ => {}
             }
             slot += 1;
         }

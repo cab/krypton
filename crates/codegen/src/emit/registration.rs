@@ -27,6 +27,17 @@ use super::compiler::{
 };
 use super::intrinsics;
 
+fn name_to_builtin_type(name: &str) -> Type {
+    match name {
+        "Int" => Type::Int,
+        "Float" => Type::Float,
+        "Bool" => Type::Bool,
+        "String" => Type::String,
+        "Unit" => Type::Unit,
+        other => Type::Named(other.to_string(), vec![]),
+    }
+}
+
 impl Compiler {
     pub(super) fn register_extern_types(
         &mut self,
@@ -335,7 +346,7 @@ impl Compiler {
         for entry in registry.iter() {
             if self.traits.trait_dispatch.contains_key(entry.trait_name) {
                 let q_trait = qualify_type_for(typed_module, entry.trait_name);
-                let class_name = format!("{q_trait}${}", entry.type_name);
+                let class_name = format!("{q_trait}$${}", entry.type_name);
 
                 let bytes = if entry.is_show() {
                     generate_builtin_show_instance_class(&class_name, &q_trait, entry)?
@@ -348,8 +359,9 @@ impl Compiler {
                 let inst_desc = format!("L{class_name};");
                 self.types.class_descriptors.insert(inst_class_idx, inst_desc.clone());
                 let instance_field_ref = self.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
+                let builtin_type = name_to_builtin_type(entry.type_name);
                 self.traits.instance_singletons.insert(
-                    (entry.trait_name.to_string(), entry.type_name.to_string()),
+                    (entry.trait_name.to_string(), builtin_type),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             }
@@ -371,7 +383,7 @@ impl Compiler {
                 let instance_field_ref =
                     self.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
                 self.traits.instance_singletons.insert(
-                    (trait_name.clone(), type_name.clone()),
+                    (trait_name.clone(), imported_instance.target_type.clone()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
@@ -399,7 +411,7 @@ impl Compiler {
                 continue;
             }
             let q_trait = qualify_type_for(typed_module, &instance_def.trait_name);
-            let instance_class_name = format!("{}${}", q_trait, instance_def.target_type_name);
+            let instance_class_name = format!("{}$${}", q_trait, instance_def.target_type_name);
             let dict_requirements = dict_requirements_for_instance(
                 &instance_def.type_var_ids,
                 &instance_def.constraints,
@@ -440,9 +452,17 @@ impl Compiler {
                     }
                     all_param_jvm.extend(param_jvm.iter().copied());
                     let static_desc = self.types.build_descriptor(&all_param_jvm, ret_jvm);
-                    let class_names: Vec<Option<String>> = param_tys.iter().map(|t| {
-                        match t {
-                            Type::Named(name, _) => Some(qualify_type_for(typed_module, name)),
+                    let class_names: Vec<Option<String>> = param_jvm.iter().map(|jt| {
+                        match jt {
+                            JvmType::StructRef(idx) => {
+                                self.types.class_descriptors.get(idx).map(|desc| {
+                                    desc.strip_prefix('L')
+                                        .and_then(|s| s.strip_suffix(';'))
+                                        .unwrap_or(desc)
+                                        .to_string()
+                                })
+                            }
+                            JvmType::Ref => Some("java/lang/String".to_string()),
                             _ => None,
                         }
                     }).collect();
@@ -471,7 +491,7 @@ impl Compiler {
                 let instance_field_ref = self.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
 
                 self.traits.instance_singletons.insert(
-                    (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
+                    (instance_def.trait_name.clone(), instance_def.target_type.clone()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
@@ -793,6 +813,7 @@ impl Compiler {
                     visibility: krypton_parser::ast::Visibility::Pub,
                     params: method.params.clone(),
                     body: method.body.clone(),
+                    close_self_type: None,
                 };
                 let compiled_method = self.compile_function(&typed_fn)?;
                 extra_methods.push(compiled_method);
