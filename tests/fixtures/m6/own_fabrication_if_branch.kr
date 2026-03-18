@@ -1,0 +1,7 @@
+# expect: error E0001
+fun consume(buf: ~String) -> String = buf
+
+fun borrow(s: String) -> String = s
+
+fun test(x: ~String, y: String) -> String =
+    consume(if true { x } else { y })

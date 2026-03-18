@@ -1,0 +1,8 @@
+# expect: ok
+fun consume(buf: ~String) -> String = buf
+
+fun test() -> String =
+    consume({
+        let _ = 1
+        "hello"
+    })

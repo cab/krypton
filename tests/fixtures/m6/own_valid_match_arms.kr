@@ -1,0 +1,11 @@
+# expect: ok
+type Color = Red | Green | Blue
+
+fun consume(buf: ~String) -> String = buf
+
+fun test(c: Color) -> String =
+    consume(match c {
+        Red => "red",
+        Green => "green",
+        Blue => "blue",
+    })

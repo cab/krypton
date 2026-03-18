@@ -1,0 +1,8 @@
+# expect: error E0001
+# let-pattern with ~T annotation on non-owned value should be rejected
+fun pair(x: String, y: String) -> (String, String) = (x, y)
+
+fun test(x: String, y: String) -> Int {
+    let (a, b): ~(String, String) = pair(x, y)
+    42
+}

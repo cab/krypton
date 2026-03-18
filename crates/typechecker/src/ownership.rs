@@ -491,6 +491,22 @@ impl<'a> OwnershipChecker<'a> {
             }
             // Lambda expressions create fresh closures.
             Expr::Lambda { .. } => true,
+            // If: owned when both branches are owned.
+            Expr::If { then_, else_, .. } => {
+                self.is_owned_expr(then_) && self.is_owned_expr(else_)
+            }
+            // Match: owned when all arms produce owned values.
+            Expr::Match { arms, .. } => {
+                !arms.is_empty() && arms.iter().all(|arm| self.is_owned_expr(&arm.body))
+            }
+            // Block: owned when the last expression is owned.
+            Expr::Do { exprs, .. } => {
+                exprs.last().is_some_and(|last| self.is_owned_expr(last))
+            }
+            // Let-in: owned when the body is owned.
+            Expr::Let { body, .. } | Expr::LetPattern { body, .. } => {
+                body.as_ref().is_some_and(|b| self.is_owned_expr(b))
+            }
             // Conservative: other expression forms are not guaranteed owned.
             _ => false,
         }

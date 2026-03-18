@@ -1,0 +1,5 @@
+# expect: ok
+fun consume(buf: ~String) -> String = buf
+
+fun test(x: ~String, y: ~String) -> String =
+    consume(if true { x } else { y })
