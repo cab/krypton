@@ -276,9 +276,10 @@ fn compile_module_inner(
         .class_descriptors
         .insert(compiler.builder.refs.object_class, "Ljava/lang/Object;".to_string());
 
-    // Build field type registry for struct field resolution
+    // Build field type registry and type param maps for struct field resolution
     let mut field_type_registry = type_registry::TypeRegistry::new();
     field_type_registry.register_builtins(&mut TypeVarGen::new());
+    let mut struct_type_param_maps: HashMap<String, HashMap<String, krypton_typechecker::types::TypeVarId>> = HashMap::new();
     for (struct_name, type_params, ast_fields) in &typed_module.struct_decls {
         // Build type param map so parameterized records (e.g., Predicate[a, b])
         // can resolve their field types
@@ -300,6 +301,7 @@ fn compile_module_inner(
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+        struct_type_param_maps.insert(struct_name.clone(), type_param_map);
         field_type_registry
             .register_type(type_registry::TypeInfo {
                 name: struct_name.clone(),
@@ -320,7 +322,7 @@ fn compile_module_inner(
     // Phase 1: Register types
     compiler.register_extern_types(typed_module)?;
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
-    result_classes.extend(compiler.register_structs(typed_module, &field_type_registry)?);
+    result_classes.extend(compiler.register_structs(typed_module, &field_type_registry, &struct_type_param_maps)?);
     result_classes.extend(compiler.register_sum_types(typed_module)?);
 
     // Register cross-module sum type references (class index only, no bytecode)

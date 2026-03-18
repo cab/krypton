@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
 use krypton_typechecker::type_registry;
-use krypton_typechecker::types::{Type, TypeVarGen};
+use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 use ristretto_classfile::Method;
 
@@ -71,17 +71,14 @@ impl Compiler {
         &mut self,
         typed_module: &TypedModule,
         field_type_registry: &type_registry::TypeRegistry,
+        struct_type_param_maps: &HashMap<String, HashMap<String, TypeVarId>>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
-        for (struct_name, type_params, ast_fields) in &typed_module.struct_decls {
+        let empty_map = HashMap::new();
+        for (struct_name, _type_params, ast_fields) in &typed_module.struct_decls {
             let qualified = qualify_type_for(typed_module, struct_name);
 
-            // Build type param map so parameterized records resolve correctly
-            let mut gen = TypeVarGen::new();
-            let type_param_map: HashMap<String, krypton_typechecker::types::TypeVarId> = type_params
-                .iter()
-                .map(|name| (name.clone(), gen.fresh()))
-                .collect();
+            let type_param_map = struct_type_param_maps.get(struct_name).unwrap_or(&empty_map);
             let jvm_fields: Vec<(String, JvmType)> = ast_fields
                 .iter()
                 .map(|(fname, texpr)| {

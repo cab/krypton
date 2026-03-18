@@ -142,13 +142,12 @@ impl Compiler {
         args: &[TypedExpr],
         result_ty: &Type,
     ) -> Result<JvmType, CodegenError> {
-        // If the callee is not a simple Var (e.g. a FieldAccess), compile it
-        // as an expression call — evaluate the callee, then invokeinterface.
-        if matches!(&func.kind, TypedExprKind::FieldAccess { .. }) {
-            return self.compile_expr_call(func, args);
+        if Self::extract_call_name(func).is_ok() {
+            let (name, target) = self.resolve_call(func, args, result_ty)?;
+            self.emit_call(target, &name, func, args, result_ty)
+        } else {
+            self.compile_expr_call(func, args)
         }
-        let (name, target) = self.resolve_call(func, args, result_ty)?;
-        self.emit_call(target, &name, func, args, result_ty)
     }
 
     /// Compile a call where the callee is an arbitrary expression (not a named function).
@@ -159,10 +158,10 @@ impl Compiler {
         args: &[TypedExpr],
     ) -> Result<JvmType, CodegenError> {
         // Determine arity and return type from the callee's type
-        let (param_types, ret_ty) = match &func.ty {
-            Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+        let (arity, ret_ty) = match &func.ty {
+            Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
             Type::Own(inner) => match inner.as_ref() {
-                Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+                Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
                 other => return Err(CodegenError::TypeError(format!(
                     "expression call on non-function type: {other:?}"
                 ))),
@@ -171,7 +170,6 @@ impl Compiler {
                 "expression call on non-function type: {other:?}"
             ))),
         };
-        let arity = param_types.len() as u8;
         let ret_jvm = self.type_to_jvm(&ret_ty)?;
 
         // Ensure the FunN interface exists for this arity
