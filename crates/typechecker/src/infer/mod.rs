@@ -841,6 +841,7 @@ pub fn infer_expr(
         imported_fn_types: &[],
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
+        call_resolved_params: None,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -1706,6 +1707,7 @@ pub(crate) struct ModuleInferenceState {
     pub(super) registry: TypeRegistry,
     pub(super) let_own_spans: HashSet<Span>,
     pub(super) lambda_own_captures: HashMap<Span, String>,
+    pub(super) call_resolved_params: HashMap<Span, (Vec<Type>, Vec<Type>)>,
     // Import accumulation
     pub(super) imports: ImportContext,
     pub(super) type_provenance: HashMap<String, String>,
@@ -1745,6 +1747,7 @@ impl ModuleInferenceState {
             registry,
             let_own_spans: HashSet::new(),
             lambda_own_captures: HashMap::new(),
+            call_resolved_params: HashMap::new(),
             imports: ImportContext::new(),
             type_provenance,
             imported_fn_constraint_requirements: HashMap::new(),
@@ -2076,6 +2079,7 @@ impl ModuleInferenceState {
             &struct_update_info,
             &shared_type_vars,
             &self.imports.imported_fn_qualifiers,
+            &self.call_resolved_params,
         )?;
 
         // Filter to exported functions only for cross-module propagation
@@ -3044,6 +3048,7 @@ pub(crate) fn infer_module_inner(
                     imported_fn_types: &state.imports.imported_fn_types,
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
+                    call_resolved_params: Some(&mut state.call_resolved_params),
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
@@ -3303,6 +3308,7 @@ pub(crate) fn infer_module_inner(
                         imported_fn_types: &state.imports.imported_fn_types,
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &[],
+                        call_resolved_params: Some(&mut state.call_resolved_params),
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };

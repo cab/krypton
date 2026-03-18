@@ -372,6 +372,7 @@ pub fn check_ownership(
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
+    call_resolved_params: &HashMap<Span, (Vec<Type>, Vec<Type>)>,
 ) -> Result<OwnershipResult, SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
@@ -434,6 +435,7 @@ pub fn check_ownership(
                 struct_update_info,
                 registry,
                 &fn_scheme_params,
+                call_resolved_params,
             )?;
             all_moves.extend(fn_moves);
         }
@@ -461,6 +463,7 @@ struct OwnershipChecker<'a> {
     own_fn_notes: &'a mut HashMap<String, String>,
     struct_update_info: &'a HashMap<Span, (String, HashSet<String>)>,
     registry: &'a TypeRegistry,
+    call_resolved_params: &'a HashMap<Span, (Vec<Type>, Vec<Type>)>,
 }
 
 impl<'a> OwnershipChecker<'a> {
@@ -474,8 +477,8 @@ impl<'a> OwnershipChecker<'a> {
         match expr {
             // Literals create fresh owned values.
             Expr::Lit { .. } => true,
-            // Variables: only if tracked as owned.
-            Expr::Var { name, .. } => self.owned.contains(name),
+            // Variables: owned if tracked as owned, or if a nullary constructor.
+            Expr::Var { name, .. } => self.owned.contains(name) || self.registry.is_constructor(name),
             // Struct literals, tuples, and list literals create fresh values.
             Expr::StructLit { .. }
             | Expr::StructUpdate { .. }
@@ -620,27 +623,83 @@ impl<'a> OwnershipChecker<'a> {
                 }
                 // Fabrication guard: reject bare T arg for ~T param.
                 // Uses fn_param_info (AST-level ~ annotations for local fns,
-                // scheme-level for imports) to identify which params require
-                // ownership.  Does NOT use resolved types from inference — those
-                // have an Own leak through Var binding during unification.
+                // scheme-level for imports) to identify direct ~ params.
+                // Also checks resolved types from inference for ownership
+                // requirements that enter through generic instantiation
+                // (e.g. T = ~Int when a lambda binds the type variable).
                 if let Some(callee_name) = callee_var_name(func) {
                     if !self.registry.is_constructor(callee_name) {
-                        if let Some(own_flags) = self.fn_param_info.get(callee_name) {
-                            // Also grab scheme params for ~fn exemption + error message
-                            let scheme_params = self.fn_scheme_params.get(callee_name);
-                            for (i, arg) in args.iter().enumerate() {
-                                if i < own_flags.len() && own_flags[i] {
-                                    // Check ~fn exemption via scheme param type
-                                    let exempt = scheme_params
-                                        .and_then(|p| p.get(i))
-                                        .is_some_and(|ty| !param_requires_own(ty));
-                                    if !exempt && !self.is_owned_expr(arg) {
-                                        // Build descriptive error types.  For concrete
-                                        // scheme params like Own(String), use as-is.
-                                        // For generic params like Own(Var(_)), display
-                                        // as own T / T since the raw var id is meaningless.
-                                        let (expected, actual) = match scheme_params.and_then(|p| p.get(i)) {
-                                            Some(Type::Own(inner)) if !matches!(inner.as_ref(), Type::Var(_)) => {
+                        let own_flags = self.fn_param_info.get(callee_name);
+                        // Also grab scheme params for ~fn exemption + error message
+                        let scheme_params = self.fn_scheme_params.get(callee_name);
+                        let call_info = self.call_resolved_params.get(span);
+                        for (i, arg) in args.iter().enumerate() {
+                            let flagged = own_flags.is_some_and(|f| i < f.len() && f[i]);
+                            if flagged {
+                                // Check ~fn exemption via scheme param type
+                                let exempt = scheme_params
+                                    .and_then(|p| p.get(i))
+                                    .is_some_and(|ty| !param_requires_own(ty));
+                                if !exempt && !self.is_owned_expr(arg) {
+                                    // Build descriptive error types.  For concrete
+                                    // scheme params like Own(String), use as-is.
+                                    // For generic params like Own(Var(_)), display
+                                    // as own T / T since the raw var id is meaningless.
+                                    let (expected, actual) = match scheme_params.and_then(|p| p.get(i)) {
+                                        Some(Type::Own(inner)) if !matches!(inner.as_ref(), Type::Var(_)) => {
+                                            (Type::Own(inner.clone()), *inner.clone())
+                                        }
+                                        _ => {
+                                            let t = Type::Named("T".into(), vec![]);
+                                            (Type::Own(Box::new(t.clone())), t)
+                                        }
+                                    };
+                                    let note = match arg {
+                                        Expr::Var { name: arg_name, .. } => {
+                                            let mut msg = format!(
+                                                "`{}` requires an owned argument, but `{}` is not owned",
+                                                callee_name, arg_name
+                                            );
+                                            if self.enclosing_param_names.contains(arg_name) {
+                                                msg.push_str(&format!(
+                                                    " — add `~` to its declaration (e.g. `{}: ~T`)",
+                                                    arg_name
+                                                ));
+                                            }
+                                            msg
+                                        }
+                                        _ => format!(
+                                            "`{}` requires an owned argument at position {}",
+                                            callee_name, i + 1
+                                        ),
+                                    };
+                                    return Err(SpannedTypeError {
+                                        error: TypeError::Mismatch { expected, actual },
+                                        span: *span,
+                                        note: Some(note),
+                                        secondary_span: None,
+                                    });
+                                }
+                            } else if let Some((resolved, inferred_args)) = call_info {
+                                // Generic instantiation check: ~ entered through
+                                // type variable binding (e.g. T = ~Int).
+                                // Only flag when:
+                                // 1. The scheme param is a bare type variable
+                                // 2. The resolved type requires Own
+                                // 3. The argument's inferred type does NOT have Own
+                                //    (if it did, Own came from the arg, not a constraint)
+                                // 4. The expression is not syntactically owned
+                                let scheme_param_is_var = scheme_params
+                                    .and_then(|p| p.get(i))
+                                    .is_some_and(|ty| matches!(ty, Type::Var(_)));
+                                let arg_type_has_own = inferred_args
+                                    .get(i)
+                                    .is_some_and(|ty| matches!(ty, Type::Own(_)));
+                                if scheme_param_is_var && !arg_type_has_own {
+                                if let Some(resolved_ty) = resolved.get(i) {
+                                    if param_requires_own(resolved_ty) && !self.is_owned_expr(arg) {
+                                        let (expected, actual) = match resolved_ty {
+                                            Type::Own(inner) if !matches!(inner.as_ref(), Type::Var(_)) => {
                                                 (Type::Own(inner.clone()), *inner.clone())
                                             }
                                             _ => {
@@ -650,20 +709,13 @@ impl<'a> OwnershipChecker<'a> {
                                         };
                                         let note = match arg {
                                             Expr::Var { name: arg_name, .. } => {
-                                                let mut msg = format!(
-                                                    "`{}` requires an owned argument, but `{}` is not owned",
+                                                format!(
+                                                    "`{}` requires an owned argument (via generic instantiation), but `{}` is not owned",
                                                     callee_name, arg_name
-                                                );
-                                                if self.enclosing_param_names.contains(arg_name) {
-                                                    msg.push_str(&format!(
-                                                        " — add `~` to its declaration (e.g. `{}: ~T`)",
-                                                        arg_name
-                                                    ));
-                                                }
-                                                msg
+                                                )
                                             }
                                             _ => format!(
-                                                "`{}` requires an owned argument at position {}",
+                                                "`{}` requires an owned argument at position {} (via generic instantiation)",
                                                 callee_name, i + 1
                                             ),
                                         };
@@ -674,6 +726,7 @@ impl<'a> OwnershipChecker<'a> {
                                             secondary_span: None,
                                         });
                                     }
+                                }
                                 }
                             }
                         }
@@ -951,6 +1004,7 @@ fn check_fn(
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     registry: &TypeRegistry,
     fn_scheme_params: &HashMap<String, Vec<Type>>,
+    call_resolved_params: &HashMap<Span, (Vec<Type>, Vec<Type>)>,
 ) -> Result<HashMap<Span, String>, SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
@@ -985,6 +1039,7 @@ fn check_fn(
         own_fn_notes: &mut own_fn_notes,
         struct_update_info,
         registry,
+        call_resolved_params,
     };
     checker.check_expr(&decl.body)?;
     Ok(checker.moves)

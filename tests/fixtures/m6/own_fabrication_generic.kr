@@ -1,0 +1,10 @@
+# expect: error E0001
+# Ownership enters through generic instantiation — must be rejected
+fun ok[T](f: (T) -> String, s: T) -> String = f(s)
+fun borrow(x: Int) -> Int = x
+
+fun test() -> String {
+    let s = borrow(1)
+    let lam: (~Int) -> String = a -> "hi"
+    ok(lam, s)
+}

@@ -23,6 +23,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
+    pub(super) call_resolved_params: Option<&'a mut HashMap<Span, (Vec<Type>, Vec<Type>)>>,
 }
 
 impl<'a> InferenceContext<'a> {
@@ -131,6 +132,16 @@ impl<'a> InferenceContext<'a> {
         let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
         let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(func_ty));
         self.unify_spanned(&unwrapped_func_ty, &expected_fn, span)?;
+
+        // Record resolved param types + arg types for generic ownership checks.
+        if let Some(ref fparams) = func_param_types {
+            if let Some(ref mut crp) = self.call_resolved_params {
+                let resolved: Vec<Type> = fparams.iter()
+                    .map(|p| self.subst.apply(p))
+                    .collect();
+                crp.insert(span, (resolved, arg_types.clone()));
+            }
+        }
 
         let ty = self.subst.apply(&ret_var);
         Ok(TypedExpr {
@@ -658,6 +669,16 @@ impl<'a> InferenceContext<'a> {
                     }
                     err
                 })?;
+
+                // Record resolved param types + arg types for generic ownership checks.
+                if let Some(ref fparams) = func_param_types {
+                    if let Some(ref mut crp) = self.call_resolved_params {
+                        let resolved: Vec<Type> = fparams.iter()
+                            .map(|p| self.subst.apply(p))
+                            .collect();
+                        crp.insert(*span, (resolved, arg_types.clone()));
+                    }
+                }
 
                 let ty = self.subst.apply(&ret_var);
                 let ty = if is_constructor {
