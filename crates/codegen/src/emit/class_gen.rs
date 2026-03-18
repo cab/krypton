@@ -78,7 +78,7 @@ pub(super) fn generate_struct_class(
             JvmType::Long => Instruction::Lload(param_slot as u8),
             JvmType::Double => Instruction::Dload(param_slot as u8),
             JvmType::Int => Instruction::Iload(param_slot as u8),
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
+            JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
         };
         ctor_code.push(load);
         ctor_code.push(Instruction::Putfield(field_refs[i]));
@@ -118,7 +118,7 @@ pub(super) fn generate_struct_class(
             JvmType::Long => Instruction::Lreturn,
             JvmType::Double => Instruction::Dreturn,
             JvmType::Int => Instruction::Ireturn,
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Areturn,
+            JvmType::StructRef(_) => Instruction::Areturn,
         };
 
         methods.push(Method {
@@ -203,6 +203,7 @@ pub(super) fn generate_variant_class(
     interface_name: &str,
     display_name: &str,
     fields: &[(String, JvmType, bool)], // (name, jvm_type, is_erased)
+    class_descriptors: &HashMap<u16, String>,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
 
@@ -219,7 +220,13 @@ pub(super) fn generate_variant_class(
         if *is_erased {
             ctor_desc.push_str("Ljava/lang/Object;");
         } else {
-            ctor_desc.push_str(&jvm_type_to_field_descriptor(*jt));
+            let desc = match jt {
+                JvmType::StructRef(idx) => class_descriptors.get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| jvm_type_to_field_descriptor(*jt)),
+                _ => jvm_type_to_field_descriptor(*jt),
+            };
+            ctor_desc.push_str(&desc);
         }
     }
     ctor_desc.push_str(")V");
@@ -232,7 +239,12 @@ pub(super) fn generate_variant_class(
         let fdesc = if *is_erased {
             "Ljava/lang/Object;".to_string()
         } else {
-            jvm_type_to_field_descriptor(*jt)
+            match jt {
+                JvmType::StructRef(idx) => class_descriptors.get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| jvm_type_to_field_descriptor(*jt)),
+                _ => jvm_type_to_field_descriptor(*jt),
+            }
         };
         let field_ref = cp.add_field_ref(this_class, fname, &fdesc)?;
         field_refs.push(field_ref);
@@ -242,7 +254,12 @@ pub(super) fn generate_variant_class(
         let field_type = if *is_erased {
             FieldType::Object("java/lang/Object".to_string())
         } else {
-            jvm_type_to_base_field_type(*jt)
+            match jt {
+                JvmType::StructRef(_) => {
+                    FieldType::Object(fdesc[1..fdesc.len()-1].to_string())
+                }
+                _ => jvm_type_to_base_field_type(*jt),
+            }
         };
         jvm_fields.push(Field {
             access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::FINAL,
@@ -271,7 +288,7 @@ pub(super) fn generate_variant_class(
                 JvmType::Long => Instruction::Lload(param_slot as u8),
                 JvmType::Double => Instruction::Dload(param_slot as u8),
                 JvmType::Int => Instruction::Iload(param_slot as u8),
-                JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
+                JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
             };
             ctor_code.push(load);
             param_slot += match jt {
@@ -610,7 +627,7 @@ pub(super) fn generate_instance_class(
                     bridge_code.push(Instruction::Checkcast(bool_box_class));
                     bridge_code.push(Instruction::Invokevirtual(_bool_unbox));
                 }
-                JvmType::StructRef(_) | JvmType::Ref => {
+                JvmType::StructRef(_) => {
                     if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
                         let cast_class = cp.add_class(cn)?;
                         bridge_code.push(Instruction::Checkcast(cast_class));
@@ -1042,7 +1059,7 @@ pub(super) fn generate_parameterized_instance_class(
                     bridge_code.push(Instruction::Checkcast(bool_box_class));
                     bridge_code.push(Instruction::Invokevirtual(bool_unbox));
                 }
-                JvmType::StructRef(_) | JvmType::Ref => {
+                JvmType::StructRef(_) => {
                     if let Some(Some(cn)) = class_names_for_method.get(param_idx) {
                         let cast_class = cp.add_class(cn)?;
                         bridge_code.push(Instruction::Checkcast(cast_class));

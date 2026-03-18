@@ -17,7 +17,6 @@ pub enum JvmType {
     Long,
     Double,
     Int,
-    Ref,
     StructRef(u16), // cpool class index for struct type
 }
 
@@ -309,7 +308,11 @@ impl Compiler {
             },
             types: CodegenTypeInfo {
                 struct_info: HashMap::new(),
-                class_descriptors: HashMap::new(),
+                class_descriptors: {
+                    let mut cd = HashMap::new();
+                    cd.insert(string_class, "Ljava/lang/String;".to_string());
+                    cd
+                },
                 sum_type_info: HashMap::new(),
                 variant_to_sum: HashMap::new(),
                 tuple_info: HashMap::new(),
@@ -376,6 +379,7 @@ impl Compiler {
                     )))
                 }
             }
+            Type::String => Ok(JvmType::StructRef(self.builder.refs.string_class)),
             Type::Own(inner) => self.type_to_jvm(inner),
             Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor) => {
                 Ok(JvmType::StructRef(self.builder.refs.object_class))
@@ -578,23 +582,22 @@ impl Compiler {
 
         // If body type is Object but return type is primitive, unbox
         if matches!(body_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && !matches!(return_type, JvmType::StructRef(_) | JvmType::Ref)
+            && !matches!(return_type, JvmType::StructRef(_))
         {
             self.builder.unbox_if_needed(return_type);
         }
         // If body type is primitive but return type is Object, box
         else if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && !matches!(body_type, JvmType::StructRef(_) | JvmType::Ref)
+            && !matches!(body_type, JvmType::StructRef(_))
         {
             self.builder.box_if_needed(body_type);
         }
         // If body type is Object but return type is a specific reference type, checkcast
         else if matches!(body_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && matches!(return_type, JvmType::Ref | JvmType::StructRef(_))
+            && matches!(return_type, JvmType::StructRef(_))
             && !matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
         {
             let cast_class = match return_type {
-                JvmType::Ref => self.builder.refs.string_class,
                 JvmType::StructRef(idx) => idx,
                 _ => unreachable!(),
             };
@@ -624,7 +627,7 @@ impl Compiler {
             JvmType::Long => Instruction::Lreturn,
             JvmType::Double => Instruction::Dreturn,
             JvmType::Int => Instruction::Ireturn,
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Areturn,
+            JvmType::StructRef(_) => Instruction::Areturn,
         };
         self.builder.emit(ret_instr);
 

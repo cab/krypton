@@ -293,16 +293,8 @@ impl Compiler {
         });
         // Unbox primitives
         self.builder.unbox_if_needed(expected_ret);
-        // Checkcast for Ref/StructRef
+        // Checkcast for StructRef
         match expected_ret {
-            JvmType::Ref => {
-                self.builder
-                    .emit(Instruction::Checkcast(self.builder.refs.string_class));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.string_class,
-                });
-            }
             JvmType::StructRef(idx) if idx != self.builder.refs.object_class => {
                 self.builder.emit(Instruction::Checkcast(idx));
                 self.builder.frame.pop_type();
@@ -493,7 +485,7 @@ impl Compiler {
                     let expected = param_types[i + dict_offset];
                     if let JvmType::StructRef(idx) = expected {
                         if idx == self.builder.refs.object_class
-                            && !matches!(arg_type, JvmType::StructRef(_) | JvmType::Ref)
+                            && !matches!(arg_type, JvmType::StructRef(_))
                         {
                             self.builder.box_if_needed(arg_type);
                         } else if idx != self.builder.refs.object_class {

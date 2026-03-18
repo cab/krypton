@@ -11,7 +11,7 @@ use ristretto_classfile::Method;
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
 
 use super::{
-    jvm_type_to_field_descriptor, type_expr_to_jvm, type_expr_to_jvm_basic,
+    type_expr_to_jvm, type_expr_to_jvm_basic,
     type_expr_uses_type_params, qualify_type_for,
     ImportedInstanceInfo, dict_requirements_for_instance,
 };
@@ -151,7 +151,7 @@ impl Compiler {
                         let field_name = format!("field{i}");
                         let is_erased = type_expr_uses_type_params(texpr, type_params);
                         let jt = if is_erased {
-                            JvmType::Ref
+                            JvmType::StructRef(self.builder.refs.object_class)
                         } else {
                             type_expr_to_jvm_basic(texpr, self)?
                         };
@@ -171,7 +171,7 @@ impl Compiler {
                     if *is_erased {
                         ctor_desc.push_str("Ljava/lang/Object;");
                     } else {
-                        ctor_desc.push_str(&jvm_type_to_field_descriptor(*jt));
+                        ctor_desc.push_str(&self.types.jvm_type_descriptor(*jt));
                     }
                 }
                 ctor_desc.push_str(")V");
@@ -187,7 +187,7 @@ impl Compiler {
                     let fdesc = if *is_erased {
                         "Ljava/lang/Object;".to_string()
                     } else {
-                        jvm_type_to_field_descriptor(*jt)
+                        self.types.jvm_type_descriptor(*jt)
                     };
                     let fr = self.cp.add_field_ref(variant_class_index, fname, &fdesc)?;
                     main_field_refs.push(fr);
@@ -217,7 +217,7 @@ impl Compiler {
                 );
 
                 let variant_bytes =
-                    generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields)?;
+                    generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields, &self.types.class_descriptors)?;
                 result_classes.push((qualified_variant.clone(), variant_bytes));
             }
 
@@ -462,7 +462,6 @@ impl Compiler {
                                         .to_string()
                                 })
                             }
-                            JvmType::Ref => Some("java/lang/String".to_string()),
                             _ => None,
                         }
                     }).collect();
@@ -722,7 +721,7 @@ impl Compiler {
                         param_desc.push('Z');
                     }
                     Type::String => {
-                        param_jvm_types.push(JvmType::Ref);
+                        param_jvm_types.push(JvmType::StructRef(self.builder.refs.string_class));
                         param_desc.push_str("Ljava/lang/String;");
                     }
                     Type::Named(name, _) => {
@@ -751,7 +750,7 @@ impl Compiler {
                     Type::Int => (JvmType::Long, "J".to_string()),
                     Type::Float => (JvmType::Double, "D".to_string()),
                     Type::Bool => (JvmType::Int, "Z".to_string()),
-                    Type::String => (JvmType::Ref, "Ljava/lang/String;".to_string()),
+                    Type::String => (JvmType::StructRef(self.builder.refs.string_class), "Ljava/lang/String;".to_string()),
                     Type::Named(name, _) => {
                         if let Some(info) = self.types.struct_info.get(name) {
                             (JvmType::StructRef(info.class_index), format!("L{};", info.class_name))
@@ -849,7 +848,7 @@ impl Compiler {
                 self.builder.emit(Instruction::Pop2);
                 self.builder.frame.pop_type_n(2);
             }
-            JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => {
+            JvmType::Int | JvmType::StructRef(_) => {
                 self.builder.emit(Instruction::Pop);
                 self.builder.frame.pop_type();
             }

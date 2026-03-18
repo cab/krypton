@@ -110,13 +110,6 @@ impl Compiler {
                             self.builder.frame
                                 .push_type(VerificationType::Object { cpool_index: idx });
                         }
-                        JvmType::Ref => {
-                            self.builder.emit(Instruction::Checkcast(self.builder.refs.string_class));
-                            self.builder.frame.pop_type();
-                            self.builder.frame.push_type(VerificationType::Object {
-                                cpool_index: self.builder.refs.string_class,
-                            });
-                        }
                         _ => self.builder.unbox_if_needed(elem_jvm_type),
                     }
 
@@ -235,7 +228,7 @@ impl Compiler {
             }
             // Box primitive to Object if needed
             if matches!(target_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                && !matches!(arm_type, JvmType::StructRef(_) | JvmType::Ref)
+                && !matches!(arm_type, JvmType::StructRef(_))
             {
                 self.builder.box_if_needed(arm_type);
                 // Fix stack type to match target (Object)
@@ -245,18 +238,17 @@ impl Compiler {
                 });
             }
             // Unbox Object to primitive if needed
-            else if !matches!(target_type, JvmType::StructRef(_) | JvmType::Ref)
+            else if !matches!(target_type, JvmType::StructRef(_))
                 && matches!(arm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
             {
                 self.builder.unbox_if_needed(target_type);
             }
             // Checkcast Object to specific ref type if needed
-            else if matches!(target_type, JvmType::Ref | JvmType::StructRef(_))
+            else if matches!(target_type, JvmType::StructRef(_))
                 && !matches!(target_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
                 && matches!(arm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
             {
                 let cast_class = match target_type {
-                    JvmType::Ref => self.builder.refs.string_class,
                     JvmType::StructRef(idx) => idx,
                     _ => unreachable!(),
                 };

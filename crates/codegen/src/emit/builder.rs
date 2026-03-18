@@ -90,20 +90,17 @@ impl FrameState {
         );
     }
 
-    fn jvm_type_to_vtypes(&self, ty: JvmType, string_class: u16) -> Vec<VerificationType> {
+    fn jvm_type_to_vtypes(&self, ty: JvmType) -> Vec<VerificationType> {
         match ty {
             JvmType::Long => vec![VerificationType::Long, VerificationType::Top],
             JvmType::Double => vec![VerificationType::Double, VerificationType::Top],
             JvmType::Int => vec![VerificationType::Integer],
-            JvmType::Ref => vec![VerificationType::Object {
-                cpool_index: string_class,
-            }],
             JvmType::StructRef(idx) => vec![VerificationType::Object { cpool_index: idx }],
         }
     }
 
-    fn push_jvm_type(&mut self, ty: JvmType, string_class: u16) {
-        for vt in self.jvm_type_to_vtypes(ty, string_class) {
+    fn push_jvm_type(&mut self, ty: JvmType) {
+        for vt in self.jvm_type_to_vtypes(ty) {
             self.stack_types.push(vt);
         }
         self.update_max_depth();
@@ -112,7 +109,7 @@ impl FrameState {
     fn pop_jvm_type(&mut self, ty: JvmType) {
         match ty {
             JvmType::Long | JvmType::Double => self.pop_type_n(2),
-            JvmType::Int | JvmType::Ref | JvmType::StructRef(_) => self.pop_type(),
+            JvmType::Int | JvmType::StructRef(_) => self.pop_type(),
         }
     }
 
@@ -212,7 +209,7 @@ impl BytecodeBuilder {
     }
 
     pub(super) fn push_jvm_type(&mut self, ty: JvmType) {
-        self.frame.push_jvm_type(ty, self.refs.string_class);
+        self.frame.push_jvm_type(ty);
     }
 
     pub(super) fn pop_jvm_type(&mut self, ty: JvmType) {
@@ -220,7 +217,7 @@ impl BytecodeBuilder {
     }
 
     pub(super) fn jvm_type_to_vtypes(&self, ty: JvmType) -> Vec<VerificationType> {
-        self.frame.jvm_type_to_vtypes(ty, self.refs.string_class)
+        self.frame.jvm_type_to_vtypes(ty)
     }
 
     /// Box a primitive value on the stack if needed for erased type params.
@@ -232,7 +229,7 @@ impl BytecodeBuilder {
                 self.frame.push_type(VerificationType::Object {
                     cpool_index: self.refs.long_box_class,
                 });
-                JvmType::Ref
+                JvmType::StructRef(self.refs.long_box_class)
             }
             JvmType::Double => {
                 self.frame.pop_type_n(2); // Double + Top
@@ -240,7 +237,7 @@ impl BytecodeBuilder {
                 self.frame.push_type(VerificationType::Object {
                     cpool_index: self.refs.double_box_class,
                 });
-                JvmType::Ref
+                JvmType::StructRef(self.refs.double_box_class)
             }
             JvmType::Int => {
                 self.frame.pop_type(); // Integer
@@ -248,7 +245,7 @@ impl BytecodeBuilder {
                 self.frame.push_type(VerificationType::Object {
                     cpool_index: self.refs.bool_box_class,
                 });
-                JvmType::Ref
+                JvmType::StructRef(self.refs.bool_box_class)
             }
             _ => actual_type, // already a reference type
         }
@@ -297,7 +294,7 @@ impl BytecodeBuilder {
             JvmType::Long => Instruction::Lload(slot as u8),
             JvmType::Double => Instruction::Dload(slot as u8),
             JvmType::Int => Instruction::Iload(slot as u8),
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Aload(slot as u8),
+            JvmType::StructRef(_) => Instruction::Aload(slot as u8),
         };
         self.emit(instr);
         self.push_jvm_type(ty);
@@ -309,7 +306,7 @@ impl BytecodeBuilder {
             JvmType::Long => Instruction::Lstore(slot as u8),
             JvmType::Double => Instruction::Dstore(slot as u8),
             JvmType::Int => Instruction::Istore(slot as u8),
-            JvmType::Ref | JvmType::StructRef(_) => Instruction::Astore(slot as u8),
+            JvmType::StructRef(_) => Instruction::Astore(slot as u8),
         };
         self.emit(instr);
         self.pop_jvm_type(ty);

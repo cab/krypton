@@ -75,7 +75,6 @@ fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
         Type::Int => Ok(JvmType::Long),
         Type::Float => Ok(JvmType::Double),
         Type::Bool => Ok(JvmType::Int),
-        Type::String => Ok(JvmType::Ref),
         Type::Unit => Ok(JvmType::Int),
         other => Err(CodegenError::TypeError(format!(
             "cannot map type to JVM: {other:?}"
@@ -88,7 +87,6 @@ fn jvm_type_to_field_descriptor(ty: JvmType) -> String {
         JvmType::Long => "J".to_string(),
         JvmType::Double => "D".to_string(),
         JvmType::Int => "Z".to_string(),
-        JvmType::Ref => "Ljava/lang/String;".to_string(),
         JvmType::StructRef(_) => "Ljava/lang/Object;".to_string(),
     }
 }
@@ -98,7 +96,6 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
         JvmType::Long => FieldType::Base(ristretto_classfile::BaseType::Long),
         JvmType::Double => FieldType::Base(ristretto_classfile::BaseType::Double),
         JvmType::Int => FieldType::Base(ristretto_classfile::BaseType::Boolean),
-        JvmType::Ref => FieldType::Object("java/lang/String".to_string()),
         JvmType::StructRef(_) => FieldType::Object("java/lang/Object".to_string()),
     }
 }
@@ -109,7 +106,7 @@ fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmTy
             "Int" => Ok(JvmType::Long),
             "Float" => Ok(JvmType::Double),
             "Bool" => Ok(JvmType::Int),
-            "String" => Ok(JvmType::Ref),
+            "String" => Ok(JvmType::StructRef(compiler.builder.refs.string_class)),
             "Unit" => Ok(JvmType::Int),
             // Any other named type (struct, opaque, Object) maps to Object ref.
             // Variant fields are stored as Ljava/lang/Object; at JVM level

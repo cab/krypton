@@ -88,13 +88,6 @@ impl Compiler {
         });
         match actual_type {
             JvmType::Long | JvmType::Double | JvmType::Int => self.builder.unbox_if_needed(actual_type),
-            JvmType::Ref => {
-                self.builder.emit(Instruction::Checkcast(self.builder.refs.string_class));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.string_class,
-                });
-            }
             JvmType::StructRef(idx) if idx != self.builder.refs.object_class => {
                 self.builder.emit(Instruction::Checkcast(idx));
                 self.builder.frame.pop_type();
@@ -247,7 +240,7 @@ impl Compiler {
                 let expected_type = param_types[dict_requirements.len() + i];
                 if let JvmType::StructRef(idx) = expected_type {
                     if idx == self.builder.refs.object_class
-                        && !matches!(actual_type, JvmType::StructRef(_) | JvmType::Ref)
+                        && !matches!(actual_type, JvmType::StructRef(_))
                     {
                         self.builder.box_if_needed(actual_type);
                     }
@@ -269,15 +262,6 @@ impl Compiler {
                         if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class) =>
                     {
                         self.builder.unbox_if_needed(ret_jvm);
-                    }
-                    JvmType::Ref
-                        if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class) =>
-                    {
-                        self.builder.emit(Instruction::Checkcast(self.builder.refs.string_class));
-                        self.builder.frame.pop_type();
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: self.builder.refs.string_class,
-                        });
                     }
                     JvmType::StructRef(idx)
                         if idx != self.builder.refs.object_class
@@ -354,7 +338,7 @@ impl Compiler {
         }
 
         let bridge_result = self.builder.box_if_needed(ret_jvm);
-        debug_assert!(matches!(bridge_result, JvmType::Ref | JvmType::StructRef(_)));
+        debug_assert!(matches!(bridge_result, JvmType::StructRef(_)));
         self.builder.emit(Instruction::Areturn);
 
         let bridge_name_idx = self.cp.add_utf8(&bridge_name)?;
@@ -537,31 +521,6 @@ impl Compiler {
             }
         }
 
-        // Cast String-typed (Ref) params from Object to String
-        for (i, p) in params.iter().enumerate() {
-            let actual_type = param_jvm_types[i];
-            if actual_type == JvmType::Ref {
-                let slot = lambda_param_slots[i].0;
-                self.builder.emit(Instruction::Aload(slot as u8));
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.object_class,
-                });
-                self.builder.emit(Instruction::Checkcast(self.builder.refs.string_class));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.string_class,
-                });
-                let new_slot = self.builder.next_local;
-                self.builder.next_local += 1;
-                self.builder.emit(Instruction::Astore(new_slot as u8));
-                self.builder.frame.pop_type();
-                self.builder.frame.local_types.push(VerificationType::Object {
-                    cpool_index: self.builder.refs.string_class,
-                });
-                self.builder.locals.insert(p.clone(), (new_slot, actual_type));
-            }
-        }
-
         // Also unbox captured vars if they are primitive types
         for (cap_name, _, cap_type) in &captures {
             let actual_type = *cap_type;
@@ -602,32 +561,6 @@ impl Compiler {
                     self.builder.locals
                         .insert(cap_name.clone(), (new_slot, actual_type));
                 }
-            }
-        }
-
-        // Cast String-typed (Ref) captured vars from Object to String
-        for (cap_name, _, cap_type) in &captures {
-            let actual_type = *cap_type;
-            if actual_type == JvmType::Ref {
-                let (slot, _) = self.builder.locals[cap_name];
-                self.builder.emit(Instruction::Aload(slot as u8));
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.object_class,
-                });
-                self.builder.emit(Instruction::Checkcast(self.builder.refs.string_class));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.string_class,
-                });
-                let new_slot = self.builder.next_local;
-                self.builder.next_local += 1;
-                self.builder.emit(Instruction::Astore(new_slot as u8));
-                self.builder.frame.pop_type();
-                self.builder.frame.local_types.push(VerificationType::Object {
-                    cpool_index: self.builder.refs.string_class,
-                });
-                self.builder.locals
-                    .insert(cap_name.clone(), (new_slot, actual_type));
             }
         }
 

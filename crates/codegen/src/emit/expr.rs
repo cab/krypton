@@ -83,7 +83,7 @@ impl Compiler {
                 self.builder.frame.push_type(VerificationType::Object {
                     cpool_index: self.builder.refs.string_class,
                 });
-                Ok(JvmType::Ref)
+                Ok(JvmType::StructRef(self.builder.refs.string_class))
             }
             Lit::Unit => {
                 self.builder.emit(Instruction::Iconst_0);
@@ -135,13 +135,13 @@ impl Compiler {
                         self.builder.frame.push_double_type();
                         Ok(JvmType::Double)
                     }
-                    JvmType::Ref if matches!(op, BinOp::Add) => {
+                    JvmType::StructRef(idx) if idx == self.builder.refs.string_class && matches!(op, BinOp::Add) => {
                         // String concat: invokevirtual String.concat
                         self.compile_expr(lhs, false)?;
                         self.compile_expr(rhs, false)?;
                         self.builder.emit(Instruction::Invokevirtual(self.builder.refs.string_concat));
                         self.builder.frame.pop_type(); // pop rhs string
-                        Ok(JvmType::Ref)
+                        Ok(JvmType::StructRef(self.builder.refs.string_class))
                     }
                     _ => {
                         // User-type trait dispatch
@@ -324,7 +324,7 @@ impl Compiler {
         let operand_jvm = self.type_to_jvm(&lhs.ty)?;
 
         // String equality: use String.equals
-        if operand_jvm == JvmType::Ref && matches!(op, BinOp::Eq | BinOp::Neq) {
+        if operand_jvm == JvmType::StructRef(self.builder.refs.string_class) && matches!(op, BinOp::Eq | BinOp::Neq) {
             self.compile_expr(lhs, false)?;
             self.compile_expr(rhs, false)?;
             self.builder.emit(Instruction::Invokevirtual(self.builder.refs.string_equals));
