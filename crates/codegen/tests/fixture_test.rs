@@ -29,7 +29,7 @@ fn run_program_with_resolver(
 
     let typed_modules = infer_module(&module, resolver)
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: type check failed: {e}"));
-    let classes = compile_modules(&typed_modules, "Test")
+    let classes = compile_modules(&typed_modules, "Kr$Test")
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
     let dir = tempfile::tempdir().unwrap();
@@ -46,7 +46,7 @@ fn run_program_with_resolver(
     let output = Command::new("java")
         .arg("-cp")
         .arg(&classpath)
-        .arg("Test")
+        .arg("Kr$Test")
         .output()
         .expect("java command should run");
 
@@ -112,7 +112,7 @@ fn run_codegen_fixtures(subdir: &str) {
                             continue;
                         }
                     };
-                    match compile_modules(&typed_modules, "Test") {
+                    match compile_modules(&typed_modules, "Kr$Test") {
                         Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
                         Err(e) => {
                             failures.push(format!("{name}: expected ok but compile failed: {e}"));
