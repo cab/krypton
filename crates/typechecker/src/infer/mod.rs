@@ -307,12 +307,10 @@ fn check_constrained_function_refs(
                                 .find_instance(requirement.trait_name(), &requirement_ty)
                                 .is_none()
                             {
-                                return Err(spanned(
-                                    TypeError::NoInstance {
-                                        trait_name: requirement.trait_name().to_string(),
-                                        ty: format!("{requirement_ty}"),
-                                        required_by: None,
-                                    },
+                                return Err(no_instance_error(
+                                    trait_registry,
+                                    requirement.trait_name(),
+                                    &requirement_ty,
                                     expr.span,
                                 ));
                             }
@@ -720,6 +718,28 @@ pub(super) fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> Span
         note: None,
         secondary_span: None,
     }
+}
+
+/// Construct a NoInstance error with diagnostic note when a near-miss instance exists.
+fn no_instance_error(
+    trait_registry: &TraitRegistry,
+    trait_name: &str,
+    ty: &Type,
+    span: Span,
+) -> SpannedTypeError {
+    let display_ty = ty.strip_own();
+    let mut err = spanned(
+        TypeError::NoInstance {
+            trait_name: trait_name.to_string(),
+            ty: format!("{display_ty}"),
+            required_by: None,
+        },
+        span,
+    );
+    if let Some(diag) = trait_registry.diagnose_missing_instance(trait_name, ty) {
+        err.note = Some(diag.to_note());
+    }
+    err
 }
 
 /// Recursively replace Type::Var(old_id) with Type::Var(new_id) in a type tree.
@@ -1210,12 +1230,10 @@ fn check_trait_instances(
                                     .find_instance(trait_name, &concrete_ty)
                                     .is_none()
                             {
-                                return Err(spanned(
-                                    TypeError::NoInstance {
-                                        trait_name: trait_name.clone(),
-                                        ty: format!("{}", concrete_ty),
-                                        required_by: None,
-                                    },
+                                return Err(no_instance_error(
+                                    trait_registry,
+                                    trait_name,
+                                    &concrete_ty,
                                     expr.span,
                                 ));
                             }
@@ -1231,12 +1249,10 @@ fn check_trait_instances(
                                     .find_instance(trait_name, &concrete_ret)
                                     .is_none()
                             {
-                                return Err(spanned(
-                                    TypeError::NoInstance {
-                                        trait_name: trait_name.clone(),
-                                        ty: format!("{}", concrete_ret),
-                                        required_by: None,
-                                    },
+                                return Err(no_instance_error(
+                                    trait_registry,
+                                    trait_name,
+                                    &concrete_ret,
                                     expr.span,
                                 ));
                             }
@@ -1253,12 +1269,10 @@ fn check_trait_instances(
                                         .find_instance(trait_name, &concrete_ty)
                                         .is_none()
                                     {
-                                        return Err(spanned(
-                                            TypeError::NoInstance {
-                                                trait_name: trait_name.clone(),
-                                                ty: format!("{}", concrete_ty),
-                                                required_by: None,
-                                            },
+                                        return Err(no_instance_error(
+                                            trait_registry,
+                                            trait_name,
+                                            &concrete_ty,
                                             expr.span,
                                         ));
                                     }
@@ -1290,12 +1304,10 @@ fn check_trait_instances(
                             .find_instance(trait_name, &operand_ty)
                             .is_none()
                     {
-                        return Err(spanned(
-                            TypeError::NoInstance {
-                                trait_name: trait_name.to_string(),
-                                ty: format!("{}", operand_ty),
-                                required_by: None,
-                            },
+                        return Err(no_instance_error(
+                            trait_registry,
+                            trait_name,
+                            &operand_ty,
                             expr.span,
                         ));
                     }
@@ -1315,12 +1327,10 @@ fn check_trait_instances(
                             .find_instance(trait_name, &operand_ty)
                             .is_none()
                     {
-                        return Err(spanned(
-                            TypeError::NoInstance {
-                                trait_name: trait_name.to_string(),
-                                ty: format!("{}", operand_ty),
-                                required_by: None,
-                            },
+                        return Err(no_instance_error(
+                            trait_registry,
+                            trait_name,
+                            &operand_ty,
                             expr.span,
                         ));
                     }

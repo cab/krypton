@@ -229,6 +229,187 @@ impl TraitRegistry {
     pub fn instances(&self) -> &[InstanceInfo] {
         &self.instances
     }
+
+    /// When `find_instance` returns None, explain why by finding instances that
+    /// structurally match but have failing `where` constraints.
+    /// Called only on the error path — zero impact on the happy path.
+    pub fn diagnose_missing_instance(&self, trait_name: &str, ty: &Type) -> Option<InstanceDiagnostic> {
+        let trait_info = self.traits.get(trait_name);
+
+        // HK trait path (arity > 0)
+        if let Some(info) = trait_info {
+            if info.type_var_arity > 0 {
+                for inst in &self.instances {
+                    if inst.trait_name != trait_name || inst.constraints.is_empty() {
+                        continue;
+                    }
+
+                    let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty) else {
+                        continue;
+                    };
+                    let Some((inst_ctor, inst_bound_args)) =
+                        split_instance_type_constructor(&inst.target_type)
+                    else {
+                        continue;
+                    };
+
+                    let actual_len = actual_bound_args.len();
+                    let inst_len = inst_bound_args.len();
+                    if actual_ctor != inst_ctor
+                        || (actual_len != inst_len && actual_len != inst_len + info.type_var_arity)
+                    {
+                        continue;
+                    }
+
+                    let mut bindings = HashMap::new();
+                    if !inst_bound_args
+                        .iter()
+                        .zip(actual_bound_args.iter())
+                        .all(|(pattern_arg, actual_arg)| {
+                            types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
+                        })
+                    {
+                        continue;
+                    }
+
+                    let ctor_binding =
+                        Type::Named(actual_ctor.clone(), actual_bound_args[..inst_len].to_vec());
+
+                    let unsatisfied: Vec<UnsatisfiedBound> = inst
+                        .constraints
+                        .iter()
+                        .filter_map(|constraint| {
+                            let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                                return None;
+                            };
+                            let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
+                            if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
+                                Some(UnsatisfiedBound {
+                                    trait_name: constraint.trait_name.clone(),
+                                    ty: format!("{}", bound_ty.strip_own()),
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    if !unsatisfied.is_empty() {
+                        return Some(InstanceDiagnostic {
+                            instance_type: instance_type_display(inst),
+                            unsatisfied,
+                        });
+                    }
+                }
+                return None;
+            }
+        }
+
+        // Regular (non-HK) path
+        for inst in &self.instances {
+            if inst.trait_name != trait_name || inst.constraints.is_empty() {
+                continue;
+            }
+
+            let mut bindings = HashMap::new();
+            if !types_match_with_bindings(&inst.target_type, ty, &mut bindings) {
+                continue;
+            }
+
+            let unsatisfied: Vec<UnsatisfiedBound> = inst
+                .constraints
+                .iter()
+                .filter_map(|constraint| {
+                    let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                        return None;
+                    };
+                    let Some(bound_ty) = bindings.get(type_var_id) else {
+                        return None;
+                    };
+                    if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
+                        Some(UnsatisfiedBound {
+                            trait_name: constraint.trait_name.clone(),
+                            ty: format!("{}", bound_ty.strip_own()),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !unsatisfied.is_empty() {
+                return Some(InstanceDiagnostic {
+                    instance_type: instance_type_display(inst),
+                    unsatisfied,
+                });
+            }
+        }
+
+        None
+    }
+}
+
+/// Format a type, substituting TypeVarIds back to their user-written names.
+fn format_type_with_names(ty: &Type, id_to_name: &HashMap<TypeVarId, &str>) -> String {
+    match ty {
+        Type::Var(id) => {
+            if let Some(name) = id_to_name.get(id) {
+                name.to_string()
+            } else {
+                format!("{ty}")
+            }
+        }
+        Type::Named(name, args) if args.is_empty() => name.clone(),
+        Type::Named(name, args) => {
+            let arg_strs: Vec<String> = args.iter().map(|a| format_type_with_names(a, id_to_name)).collect();
+            format!("{name}[{}]", arg_strs.join(", "))
+        }
+        Type::Own(inner) => format!("own {}", format_type_with_names(inner, id_to_name)),
+        Type::App(ctor, args) => {
+            let ctor_str = format_type_with_names(ctor, id_to_name);
+            let arg_strs: Vec<String> = args.iter().map(|a| format_type_with_names(a, id_to_name)).collect();
+            format!("{ctor_str}[{}]", arg_strs.join(", "))
+        }
+        _ => format!("{ty}"),
+    }
+}
+
+fn instance_type_display(inst: &InstanceInfo) -> String {
+    let id_to_name: HashMap<TypeVarId, &str> = inst
+        .type_var_ids
+        .iter()
+        .map(|(name, id)| (*id, name.as_str()))
+        .collect();
+    format_type_with_names(&inst.target_type, &id_to_name)
+}
+
+/// Describes why a conditional instance failed to match.
+pub struct InstanceDiagnostic {
+    /// The instance pattern, e.g. "Vec[a]"
+    pub instance_type: String,
+    /// Unsatisfied constraints with their concrete types
+    pub unsatisfied: Vec<UnsatisfiedBound>,
+}
+
+pub struct UnsatisfiedBound {
+    pub trait_name: String,
+    /// The concrete type that didn't implement the trait
+    pub ty: String,
+}
+
+impl InstanceDiagnostic {
+    pub fn to_note(&self) -> String {
+        let failures: Vec<String> = self
+            .unsatisfied
+            .iter()
+            .map(|u| format!("`{}` is not implemented for `{}`", u.trait_name, u.ty))
+            .collect();
+        format!(
+            "an impl for `{}` exists, but {}",
+            self.instance_type,
+            failures.join(" and "),
+        )
+    }
 }
 
 fn types_match_with_bindings(
@@ -573,5 +754,107 @@ mod tests {
                 vec![],
             ))
             .is_err());
+    }
+
+    #[test]
+    fn diagnose_single_constraint_failure() {
+        let var_a = TypeVarGen::new().fresh();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Test")).unwrap();
+        // No instance of Test for String
+        registry
+            .register_instance(instance(
+                "Test",
+                Type::Named("Vec".to_string(), vec![Type::Var(var_a)]),
+                "Vec",
+                vec![TypeConstraint {
+                    type_var: "a".to_string(),
+                    trait_name: "Test".to_string(),
+                    span: (0, 0),
+                }],
+            ))
+            .unwrap();
+
+        let vec_string = Type::Named("Vec".to_string(), vec![Type::String]);
+        let diag = registry.diagnose_missing_instance("Test", &vec_string);
+        assert!(diag.is_some());
+        let diag = diag.unwrap();
+        assert_eq!(diag.unsatisfied.len(), 1);
+        assert_eq!(diag.unsatisfied[0].trait_name, "Test");
+        assert_eq!(diag.unsatisfied[0].ty, "String");
+        assert!(diag.to_note().contains("an impl for"));
+        assert!(diag.to_note().contains("`Test` is not implemented for `String`"));
+    }
+
+    #[test]
+    fn diagnose_multiple_constraint_failures() {
+        let mut gen = TypeVarGen::new();
+        let var_k = gen.fresh();
+        let var_v = gen.fresh();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Show")).unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: "Show".to_string(),
+                target_type: Type::Named(
+                    "Map".to_string(),
+                    vec![Type::Var(var_k), Type::Var(var_v)],
+                ),
+                target_type_name: "Map".to_string(),
+                type_var_ids: HashMap::from([
+                    (String::from("k"), var_k),
+                    (String::from("v"), var_v),
+                ]),
+                constraints: vec![
+                    TypeConstraint {
+                        type_var: "k".to_string(),
+                        trait_name: "Show".to_string(),
+                        span: (0, 0),
+                    },
+                    TypeConstraint {
+                        type_var: "v".to_string(),
+                        trait_name: "Show".to_string(),
+                        span: (0, 0),
+                    },
+                ],
+                methods: vec![],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+
+        let map_blob_opaque = Type::Named(
+            "Map".to_string(),
+            vec![
+                Type::Named("Blob".to_string(), vec![]),
+                Type::Named("Opaque".to_string(), vec![]),
+            ],
+        );
+        let diag = registry
+            .diagnose_missing_instance("Show", &map_blob_opaque)
+            .unwrap();
+        assert_eq!(diag.unsatisfied.len(), 2);
+        let note = diag.to_note();
+        assert!(note.contains("`Show` is not implemented for `Blob`"));
+        assert!(note.contains("`Show` is not implemented for `Opaque`"));
+    }
+
+    #[test]
+    fn diagnose_no_candidate_returns_none() {
+        let registry = TraitRegistry::new();
+        let result = registry.diagnose_missing_instance("Show", &Type::Int);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn diagnose_unconditional_instance_returns_none() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Show")).unwrap();
+        registry
+            .register_instance(instance("Show", Type::Int, "Int", vec![]))
+            .unwrap();
+        // Int has Show unconditionally, so diagnosis returns None
+        let result = registry.diagnose_missing_instance("Show", &Type::Int);
+        assert!(result.is_none());
     }
 }
