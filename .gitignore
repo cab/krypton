@@ -1,2 +1,19 @@
-chumsky-0.12
 /target
+chumsky-0.12
+
+# Tool/IDE config
+.claude/
+.codex/
+.gradle/
+
+# Build artifacts
+build/
+
+# Local scratch/temp
+tmp/
+thoughts/
+spec/
+
+# Snapshot pending files
+*.snap.new
+*.pending-snap
