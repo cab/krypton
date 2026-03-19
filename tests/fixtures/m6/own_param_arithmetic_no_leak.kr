@@ -1,0 +1,2 @@
+# expect: ok
+fun double(x) = x * 2

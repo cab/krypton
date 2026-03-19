@@ -56,6 +56,17 @@ impl<'a> InferenceContext<'a> {
         join_types(a, b, self.subst).map_err(|e| super::spanned(e, span))
     }
 
+    /// Given a list of branch types (already joined), resolve the final type:
+    /// preserves Own only if ALL branches are Own.
+    fn resolve_join_ownership(&self, branch_types: &[Type]) -> Type {
+        let all_own = branch_types.iter().all(|t| {
+            let resolved = self.subst.apply(t);
+            matches!(&resolved, Type::Own(_))
+        });
+        let resolved = self.subst.apply(&branch_types[0]);
+        if all_own { resolved } else { super::strip_own(&resolved) }
+    }
+
     pub fn resolve_type_expr_spanned(
         &self,
         ty_expr: &krypton_parser::ast::TypeExpr,
@@ -119,6 +130,7 @@ impl<'a> InferenceContext<'a> {
 
     /// Shared tail for qualified-call paths: infer args with lambda expected-type
     /// propagation, coerce own args, unify, and build `TypedExpr::App`.
+    // TODO: consolidate with Expr::App per-arg coerce_unify logic
     fn infer_call_args_and_unify(
         &mut self,
         func_typed: TypedExpr,
@@ -947,10 +959,7 @@ impl<'a> InferenceContext<'a> {
                 let then_typed = self.infer_expr_inner(then_, None)?;
                 let else_typed = self.infer_expr_inner(else_, None)?;
                 self.join_types_spanned(&then_typed.ty, &else_typed.ty, *span)?;
-                let then_resolved = self.subst.apply(&then_typed.ty);
-                let else_resolved = self.subst.apply(&else_typed.ty);
-                let both_own = matches!(&then_resolved, Type::Own(_)) && matches!(&else_resolved, Type::Own(_));
-                let ty = if both_own { then_resolved } else { super::strip_own(&then_resolved) };
+                let ty = self.resolve_join_ownership(&[then_typed.ty.clone(), else_typed.ty.clone()]);
                 Ok(TypedExpr {
                     kind: TypedExprKind::If {
                         cond: Box::new(cond_typed),
@@ -1194,7 +1203,7 @@ impl<'a> InferenceContext<'a> {
                     other => other.clone(),
                 };
                 let mut result_ty: Option<Type> = None;
-                let mut all_own = true;
+                let mut branch_types = Vec::new();
                 let mut typed_arms = Vec::new();
                 for arm in arms {
                     self.env.push_scope();
@@ -1206,13 +1215,12 @@ impl<'a> InferenceContext<'a> {
                             result_ty = Some(body_typed.ty.clone());
                         }
                         Some(prev) => {
-                            self.join_types_spanned(prev, &body_typed.ty, *span)?;
+                            let prev_resolved = self.subst.apply(prev);
+                            self.join_types_spanned(&prev_resolved, &body_typed.ty, *span)?;
+                            result_ty = Some(prev_resolved);
                         }
                     }
-                    let resolved_arm = self.subst.apply(&body_typed.ty);
-                    if !matches!(&resolved_arm, Type::Own(_)) {
-                        all_own = false;
-                    }
+                    branch_types.push(body_typed.ty.clone());
                     self.env.pop_scope();
                     typed_arms.push(TypedMatchArm {
                         pattern: typed_pattern,
@@ -1221,8 +1229,11 @@ impl<'a> InferenceContext<'a> {
                 }
                 let match_ty = self.subst.apply(&match_ty);
                 crate::exhaustiveness::check_exhaustiveness(&match_ty, &typed_arms, self.registry, *span)?;
-                let resolved = self.subst.apply(result_ty.as_ref().unwrap_or(&Type::Unit));
-                let ty = if all_own { resolved } else { super::strip_own(&resolved) };
+                let ty = if branch_types.is_empty() {
+                    Type::Unit
+                } else {
+                    self.resolve_join_ownership(&branch_types)
+                };
                 Ok(TypedExpr {
                     kind: TypedExprKind::Match {
                         scrutinee: Box::new(scrutinee_typed),

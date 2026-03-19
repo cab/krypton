@@ -950,7 +950,7 @@ pub fn coerce_unify(actual: &Type, expected: &Type, subst: &mut Substitution) ->
     // Var on expected side: strip Own, then bind.
     // This prevents literals from poisoning type variables with Own.
     if let Type::Var(b) = &expected {
-        if !subst.get(*b).is_some() {
+        if subst.get(*b).is_none() {
             let stripped = strip_own_shallow(&actual);
             // After stripping, if the result is the same var, it's identity (e.g., ~T → T)
             if let Type::Var(s) = &stripped {
@@ -972,7 +972,7 @@ pub fn coerce_unify(actual: &Type, expected: &Type, subst: &mut Substitution) ->
 
     // Var on actual side: standard HM binding via unify
     if let Type::Var(a) = &actual {
-        if !subst.get(*a).is_some() {
+        if subst.get(*a).is_none() {
             if occurs_in(*a, &expected, subst) {
                 return Err(TypeError::InfiniteType {
                     var: *a,

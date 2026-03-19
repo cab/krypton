@@ -1,5 +1,5 @@
 use krypton_typechecker::types::{Substitution, Type, TypeVarGen};
-use krypton_typechecker::unify::{unify, TypeError};
+use krypton_typechecker::unify::{coerce_unify, join_types, unify, TypeError};
 
 fn fresh_var(gen: &mut TypeVarGen) -> Type {
     Type::Var(gen.fresh())
@@ -163,4 +163,95 @@ fn unify_transitive_vars() {
     assert!(unify(&a, &b, &mut subst).is_ok());
     assert!(unify(&b, &Type::Int, &mut subst).is_ok());
     assert_eq!(subst.apply(&a), Type::Int);
+}
+
+// --- coerce_unify tests ---
+
+#[test]
+fn coerce_own_to_var_strips_own() {
+    let mut gen = TypeVarGen::new();
+    let a = fresh_var(&mut gen);
+    let mut subst = Substitution::new();
+    // coerce_unify(Own(Int), Var(a)) → a = Int (strips Own)
+    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst).is_ok());
+    assert_eq!(subst.apply(&a), Type::Int);
+}
+
+#[test]
+fn coerce_bare_to_own_fails() {
+    let mut subst = Substitution::new();
+    // coerce_unify(Int, Own(Int)) → OwnershipMismatch (fabrication rejected)
+    let err = coerce_unify(&Type::Int, &Type::Own(Box::new(Type::Int)), &mut subst).unwrap_err();
+    assert!(matches!(err, TypeError::OwnershipMismatch { .. }));
+}
+
+#[test]
+fn coerce_own_to_bare_ok() {
+    let mut subst = Substitution::new();
+    // coerce_unify(Own(Int), Int) → OK (drop ownership)
+    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst).is_ok());
+}
+
+#[test]
+fn coerce_own_to_own_ok() {
+    let mut subst = Substitution::new();
+    // coerce_unify(Own(Int), Own(Int)) → OK
+    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Own(Box::new(Type::Int)), &mut subst).is_ok());
+}
+
+#[test]
+fn coerce_fn_to_own_fn_ok() {
+    let mut subst = Substitution::new();
+    let bare_fn = Type::Fn(vec![], Box::new(Type::Int));
+    let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
+    // fn → ~fn coercion is OK
+    assert!(coerce_unify(&bare_fn, &own_fn, &mut subst).is_ok());
+}
+
+#[test]
+fn coerce_own_fn_to_bare_fn_fails() {
+    let mut subst = Substitution::new();
+    let bare_fn = Type::Fn(vec![], Box::new(Type::Int));
+    let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
+    // ~fn → fn rejected
+    let err = coerce_unify(&own_fn, &bare_fn, &mut subst).unwrap_err();
+    assert!(matches!(err, TypeError::Mismatch { .. }));
+}
+
+#[test]
+fn coerce_fn_param_contravariant_preserves_own() {
+    let mut gen = TypeVarGen::new();
+    let a = fresh_var(&mut gen);
+    let mut subst = Substitution::new();
+    // coerce_unify(Fn([Own(Int)], Int), Fn([Var(a)], Int))
+    // Fn params are contravariant: coerce_unify(pb, pa) → coerce_unify(Var(a), Own(Int))
+    // Var(a) is on actual side, so it binds to Own(Int) without stripping.
+    let fn_own_param = Type::Fn(vec![Type::Own(Box::new(Type::Int))], Box::new(Type::Int));
+    let fn_var_param = Type::Fn(vec![a.clone()], Box::new(Type::Int));
+    assert!(coerce_unify(&fn_own_param, &fn_var_param, &mut subst).is_ok());
+    // Contravariant: Var on actual side preserves Own
+    assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
+}
+
+// --- join_types tests ---
+
+#[test]
+fn join_own_own_preserves() {
+    let mut subst = Substitution::new();
+    // join_types(Own(Int), Own(Int)) → OK (preserves structure)
+    assert!(join_types(&Type::Own(Box::new(Type::Int)), &Type::Own(Box::new(Type::Int)), &mut subst).is_ok());
+}
+
+#[test]
+fn join_own_bare_strips() {
+    let mut subst = Substitution::new();
+    // join_types(Own(Int), Int) → OK (strips to common)
+    assert!(join_types(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst).is_ok());
+}
+
+#[test]
+fn join_bare_bare_ok() {
+    let mut subst = Substitution::new();
+    // join_types(Int, Int) → OK
+    assert!(join_types(&Type::Int, &Type::Int, &mut subst).is_ok());
 }

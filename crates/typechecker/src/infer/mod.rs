@@ -3014,8 +3014,15 @@ pub(crate) fn infer_module_inner(
             state.env.fn_return_type = prev_fn_return_type;
             state.env.pop_scope();
 
-            let param_types: Vec<Type> = param_types.iter().map(|t| {
-                state.subst.apply(t)
+            let param_types: Vec<Type> = param_types.iter().enumerate().map(|(i, t)| {
+                let resolved = state.subst.apply(t);
+                debug_assert!(
+                    !matches!(&resolved, Type::Own(ref inner) if matches!(inner.as_ref(), Type::Own(_))),
+                    "Own(Own(_)) should never arise — parser rejects ~~T and no codepath double-wraps: param '{}': {:?}",
+                    decl.params.get(i).map(|p| p.name.as_str()).unwrap_or("?"),
+                    resolved,
+                );
+                resolved
             }).collect();
             let body_ty = state.subst.apply(&body_typed.ty);
 
