@@ -217,8 +217,8 @@ impl Compiler {
         let iface_class = dispatch.interface_class;
 
         // If the operand type is a type variable, load dict from function's dict locals
-        if matches!(&lookup_type, Type::Var(_)) {
-            if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
+        if let Type::Var(var_id) = &lookup_type {
+            if let Some(dict_slot) = self.traits.get_dict_local(trait_name, *var_id) {
                 self.builder.emit(Instruction::Aload(dict_slot as u8));
                 self.builder.frame.push_type(VerificationType::Object {
                     cpool_index: iface_class,

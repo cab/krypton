@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
-use krypton_typechecker::types::Type;
+use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{BootstrapMethod, Instruction, VerificationType};
 use ristretto_classfile::{ConstantPool, Method, MethodAccessFlags, ReferenceKind};
 
@@ -432,11 +432,11 @@ impl Compiler {
 
         // Capture dict locals (trait dicts from `where` clauses) that the lambda body needs.
         // These are stored in traits.dict_locals, not builder.locals, so collect_captures misses them.
-        let dict_captures: Vec<(String, u16)> = self
+        let dict_captures: Vec<((String, TypeVarId), u16)> = self
             .traits
             .dict_locals
             .iter()
-            .map(|(name, &slot)| (name.clone(), slot))
+            .map(|(key, &slot)| (key.clone(), slot))
             .collect();
 
         // Save compiler state for the outer method
@@ -460,9 +460,9 @@ impl Compiler {
         }
 
         // Register captured dict locals and remap dict_locals to new slots in the lambda method
-        for (dict_name, _) in &dict_captures {
+        for (dict_key, _) in &dict_captures {
             let slot = self.builder.next_local;
-            self.traits.dict_locals.insert(dict_name.clone(), slot);
+            self.traits.dict_locals.insert(dict_key.clone(), slot);
             self.builder.frame.local_types.push(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,
             });
@@ -672,7 +672,7 @@ impl Compiler {
             self.builder.box_if_needed(*cap_type);
         }
         // Push captured dict locals onto stack
-        for (_dict_name, dict_slot) in &dict_captures {
+        for (_dict_key, dict_slot) in &dict_captures {
             self.builder.emit(Instruction::Aload(*dict_slot as u8));
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,

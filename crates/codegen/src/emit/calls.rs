@@ -95,7 +95,7 @@ impl Compiler {
                     }
                 };
                 let object_class = self.builder.refs.object_class;
-                if let Some(&dict_slot) = self.traits.dict_locals.get(&trait_name) {
+                if let Some(dict_slot) = self.traits.get_dict_local_by_trait(&trait_name) {
                     self.builder.emit(Instruction::Aload(dict_slot as u8));
                     self.builder.frame.push_type(VerificationType::Object {
                         cpool_index: object_class,
@@ -296,7 +296,7 @@ impl Compiler {
                     args[0].ty.clone()
                 };
                 let is_type_var = matches!(&dict_ty, Type::Var(_));
-                if is_type_var && !self.traits.dict_locals.contains_key(trait_name) {
+                if is_type_var && !self.traits.has_dict_for_trait(trait_name) {
                     return Err(CodegenError::UndefinedVariable(format!(
                         "no dict local for trait {trait_name}"
                     )));
@@ -736,7 +736,18 @@ impl Compiler {
         if matches!(ty, Type::Var(_))
             || matches!(ty, Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor))
         {
-            if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
+            let var_id = match ty {
+                Type::Var(id) => Some(*id),
+                Type::App(ctor, _) => match ctor.as_ref() {
+                    Type::Var(id) => Some(*id),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let dict_slot = var_id
+                .and_then(|id| self.traits.get_dict_local(trait_name, id))
+                .or_else(|| self.traits.get_dict_local_by_trait(trait_name));
+            if let Some(dict_slot) = dict_slot {
                 self.builder.emit(Instruction::Aload(dict_slot as u8));
                 self.builder.frame.push_type(VerificationType::Object {
                     cpool_index: pushed_class,

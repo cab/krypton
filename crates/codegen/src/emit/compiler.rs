@@ -160,8 +160,28 @@ pub(super) struct TraitState {
     pub(super) trait_method_map: HashMap<String, String>,
     pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
-    pub(super) dict_locals: HashMap<String, u16>,
+    pub(super) dict_locals: HashMap<(String, TypeVarId), u16>,
     pub(super) parameterized_instances: HashMap<(String, String), ParameterizedInstanceInfo>,
+}
+
+impl TraitState {
+    /// Look up a dict local by trait name and type variable ID.
+    pub(super) fn get_dict_local(&self, trait_name: &str, var_id: TypeVarId) -> Option<u16> {
+        self.dict_locals.get(&(trait_name.to_string(), var_id)).copied()
+    }
+
+    /// Look up a dict local by trait name only (for single-constraint lookups like trait_dict).
+    /// Returns the first match if multiple exist.
+    pub(super) fn get_dict_local_by_trait(&self, trait_name: &str) -> Option<u16> {
+        self.dict_locals.iter()
+            .find(|((tn, _), _)| tn == trait_name)
+            .map(|(_, &slot)| slot)
+    }
+
+    /// Check if any dict local exists for the given trait name.
+    pub(super) fn has_dict_for_trait(&self, trait_name: &str) -> bool {
+        self.dict_locals.keys().any(|(tn, _)| tn == trait_name)
+    }
 }
 
 #[derive(Clone)]
@@ -182,6 +202,32 @@ impl DictRequirement {
             DictRequirement::TypeParam { trait_name, .. }
             | DictRequirement::Constraint { trait_name, .. } => trait_name,
         }
+    }
+
+    /// Get the TypeVarId for this requirement, deriving it from fn_tc_types for TypeParam variants.
+    pub(super) fn type_var_id(&self, fn_tc_types: Option<&(Vec<Type>, Type)>) -> Option<TypeVarId> {
+        match self {
+            DictRequirement::Constraint { type_var, .. } => Some(*type_var),
+            DictRequirement::TypeParam { param_idx, .. } => {
+                fn_tc_types.and_then(|(param_types, _)| {
+                    param_types.get(*param_idx).and_then(extract_first_type_var)
+                })
+            }
+        }
+    }
+}
+
+/// Extract the first TypeVarId from a type (recursing through Own/App wrappers).
+fn extract_first_type_var(ty: &Type) -> Option<TypeVarId> {
+    match ty {
+        Type::Var(id) => Some(*id),
+        Type::Own(inner) => extract_first_type_var(inner),
+        Type::App(ctor, _) => extract_first_type_var(ctor),
+        Type::Named(_, args) => args.iter().find_map(extract_first_type_var),
+        Type::Tuple(elems) => elems.iter().find_map(extract_first_type_var),
+        Type::Fn(params, ret) => params.iter().find_map(extract_first_type_var)
+            .or_else(|| extract_first_type_var(ret)),
+        _ => None,
     }
 }
 
@@ -522,13 +568,16 @@ impl Compiler {
                 .collect()
         };
         let num_dict_params = dict_requirements.len();
+        let fn_tc = self.types.fn_tc_types.get(&decl.name);
         let mut fn_params = Vec::new();
         for requirement in &dict_requirements {
             let slot = self.builder.next_local;
             let jvm_ty = JvmType::StructRef(self.builder.refs.object_class);
-            self.traits
-                .dict_locals
-                .insert(requirement.trait_name().to_string(), slot);
+            if let Some(var_id) = requirement.type_var_id(fn_tc) {
+                self.traits
+                    .dict_locals
+                    .insert((requirement.trait_name().to_string(), var_id), slot);
+            }
             fn_params.push((slot, jvm_ty));
             self.builder.next_local += 1;
             self.builder.frame.local_types.push(VerificationType::Object {

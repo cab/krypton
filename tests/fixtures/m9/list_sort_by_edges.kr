@@ -1,0 +1,24 @@
+# expect: output "empty\n42\n1"
+import core/list.{sort_by, length}
+import core/io.{println}
+
+fun main() = {
+    # Empty list
+    let empty: List[Int] = sort_by(Nil, x -> x)
+    match empty {
+        Nil => println("empty"),
+        _ => println("fail"),
+    }
+    # Single element
+    let single = sort_by(Cons(42, Nil), x -> x)
+    match single {
+        Cons(h, Nil) => println(h),
+        _ => println("fail"),
+    }
+    # Duplicates - verify sorted order
+    let dups = sort_by(Cons(3, Cons(1, Cons(2, Cons(1, Nil)))), x -> x)
+    match dups {
+        Cons(h, _) => println(h),
+        Nil => println("fail"),
+    }
+}

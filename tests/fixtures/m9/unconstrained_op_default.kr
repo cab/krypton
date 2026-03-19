@@ -1,0 +1,8 @@
+# expect: output "3"
+# Operators on unconstrained type variables default to Int.
+# This documents the current behavior for regression tracking.
+import core/io.{println}
+
+fun add_ints(a, b) = a + b
+
+fun main() = println(show(add_ints(1, 2)))

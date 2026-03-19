@@ -1,0 +1,12 @@
+# expect: output "true"
+import core/io.{println}
+import core/ord.{Ord}
+import core/show.{Show}
+
+fun both_less[a, b](x: a, y: a, p: b, q: b) -> Bool where a: Ord, b: Ord = {
+    let r1 = x < y
+    let r2 = p < q
+    r1 && r2
+}
+
+fun main() = println(show(both_less(1, 2, 3.0, 4.0)))
