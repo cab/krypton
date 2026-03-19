@@ -16,6 +16,7 @@ peek: forall h. fn(h) -> h
 last: forall q3. fn(List[q3]) -> Option[q3]
 sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
 filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
 to_list: forall f7. fn(Vec[f7]) -> List[f7]
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]

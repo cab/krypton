@@ -12,7 +12,7 @@ pub import core/peek.{peek}
 
 pub import core/option.{Option, Some, None}
 pub import core/result.{Result, Ok, Err}
-pub import core/list.{List, Cons, Nil, last, sort_by, filter}
+pub import core/list.{List, Cons, Nil, last, sort_by, filter, fold, map}
 pub import core/vec.{to_list}
 pub import core/ordering.{Ordering, LT, EQ, GT}
 
