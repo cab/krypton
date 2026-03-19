@@ -4,7 +4,7 @@ use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
 use crate::type_registry::{self};
 use crate::typed_ast::{self as typed_ast, FnOrigin, TypedModule};
-use crate::types::{Type, TypeScheme};
+use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
@@ -271,7 +271,7 @@ impl ModuleInferenceState {
             }
             if requested.contains(name.as_str()) {
                 let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                self.imports.bind_import(&mut self.env, effective_name.clone(), scheme.clone(), origin.clone(), path.to_string(), name.clone(), &self.prelude_imported_names, &mut self.gen, span)?;
+                self.imports.bind_import(&mut self.env, effective_name.clone(), scheme.clone(), origin.clone(), path.to_string(), name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                 if let Some(quals) = cached.exported_fn_qualifiers.get(name) {
                     self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
                 }
@@ -366,7 +366,7 @@ impl ModuleInferenceState {
                                 }
                                 if matches!(original_vis, Visibility::Pub) {
                                     for (cname, scheme) in &constructors {
-                                        self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), FnOrigin::Regular, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span)?;
+                                        self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), FnOrigin::Regular, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                                     }
                                 }
                                 self.imports.bind_type_info(
@@ -506,18 +506,23 @@ impl ModuleInferenceState {
             } = sdecl
             {
                 // Register extern java type binding if present
+                let mut tp_map: Option<HashMap<String, TypeVarId>> = None;
+                let mut tp_arity: Option<HashMap<String, usize>> = None;
                 if let Some(name) = alias {
-                    if !self.registry.lookup_type(name).is_some() {
-                        let type_param_vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
+                    let type_param_vars = if let Some(existing) = self.registry.lookup_type(name) {
+                        existing.type_param_vars.clone()
+                    } else {
+                        let vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
                         let _ = self.registry.register_type(crate::type_registry::TypeInfo {
                             name: name.clone(),
                             type_params: type_params.clone(),
-                            type_param_vars,
+                            type_param_vars: vars.clone(),
                             kind: crate::type_registry::TypeKind::Record { fields: vec![] },
                             is_prelude: false,
                         });
                         self.imported_extern_java_types.push((name.clone(), class_name.clone()));
-                    }
+                        vars
+                    };
                     // Mark user-visible if explicitly requested or import_all
                     if requested.contains(name.as_str()) || import_all {
                         self.registry.mark_user_visible(name);
@@ -525,11 +530,23 @@ impl ModuleInferenceState {
                     // Track visibility so pub re-exports can find this type
                     let vis = cached.type_visibility.get(name).cloned().unwrap_or(Visibility::Private);
                     self.imports.bind_type_info(name.clone(), path.to_string(), vis);
+
+                    // Build type_param_map for method resolution
+                    if !type_params.is_empty() {
+                        let mut map = HashMap::new();
+                        let mut arity = HashMap::new();
+                        for (param_name, &var) in type_params.iter().zip(type_param_vars.iter()) {
+                            map.insert(param_name.clone(), var);
+                        }
+                        arity.insert(name.clone(), type_params.len());
+                        tp_map = Some(map);
+                        tp_arity = Some(arity);
+                    }
                 }
 
                 let mut fns = process_extern_methods(
                     class_name, methods, &mut self.env, &mut self.gen, &self.registry, *ext_span, None,
-                    &aliases,
+                    &aliases, tp_map.as_ref(), tp_arity.as_ref(),
                 )?;
                 self.imported_extern_fns.append(&mut fns);
             }
@@ -620,7 +637,7 @@ impl ModuleInferenceState {
                             vars: vec![trait_def.type_var_id],
                             ty: fn_ty,
                         };
-                        self.imports.bind_import(&mut self.env, method.name.clone(), scheme, origin.clone(), path.to_string(), method.name.clone(), &self.prelude_imported_names, &mut self.gen, span)?;
+                        self.imports.bind_import(&mut self.env, method.name.clone(), scheme, origin.clone(), path.to_string(), method.name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                     }
                 }
                 let prov = cached

@@ -16,7 +16,7 @@ peek: forall h. fn(h) -> h
 last: forall q3. fn(List[q3]) -> Option[q3]
 sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
 filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+to_list: forall f7. fn(Vec[f7]) -> List[f7]
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
 None: forall e. Option[e]
@@ -27,6 +27,6 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Some: forall w5. fn(w5) -> Option[w5]
-None: forall w5. Option[w5]
-unwrap_or: forall j6. fn(Option[j6], j6) -> j6
+Some: forall g7. fn(g7) -> Option[g7]
+None: forall g7. Option[g7]
+unwrap_or: forall t7. fn(Option[t7], t7) -> t7

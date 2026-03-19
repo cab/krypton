@@ -16,7 +16,7 @@ peek: forall h. fn(h) -> h
 last: forall q3. fn(List[q3]) -> Option[q3]
 sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
 filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+to_list: forall f7. fn(Vec[f7]) -> List[f7]
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
 None: forall e. Option[e]
@@ -27,11 +27,11 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-spawn: forall b7. fn(fn(Mailbox[b7]) -> Unit) -> Ref[b7]
-send: forall h7. fn(Ref[h7], h7) -> Unit
-receive: forall s7. fn(Mailbox[s7]) -> s7
+spawn: forall l8. fn(fn(Mailbox[l8]) -> Unit) -> Ref[l8]
+send: forall r8. fn(Ref[r8], r8) -> Unit
+receive: forall c9. fn(Mailbox[c9]) -> c9
 Inc: CounterMsg
 Dec: CounterMsg
 Get: fn(Ref[Int]) -> CounterMsg
-counter: forall n8. fn(Mailbox[CounterMsg], Int) -> n8
-main: forall q8. fn() -> fn(Mailbox[CounterMsg], Int) -> q8
+counter: forall x9. fn(Mailbox[CounterMsg], Int) -> x9
+main: forall a10. fn() -> fn(Mailbox[CounterMsg], Int) -> a10

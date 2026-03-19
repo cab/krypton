@@ -16,7 +16,7 @@ peek: forall h. fn(h) -> h
 last: forall q3. fn(List[q3]) -> Option[q3]
 sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
 filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+to_list: forall f7. fn(Vec[f7]) -> List[f7]
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
 None: forall e. Option[e]
@@ -27,7 +27,7 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-empty: forall g3 h3. fn() -> Map[g3, h3]
-put: forall l3 m3. fn(Map[l3, m3], l3, m3) -> Map[l3, m3]
-get: forall e4 r4. fn(Map[e4, r4], e4) -> Option[r4]
+empty: forall n8 o8. fn() -> Map[n8, o8]
+put: forall s8 t8. fn(Map[s8, t8], s8, t8) -> Map[s8, t8]
+get: forall l9 y9. fn(Map[l9, y9], l9) -> Option[y9]
 main: fn() -> Unit

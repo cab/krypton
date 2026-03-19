@@ -727,10 +727,16 @@ impl Compiler {
                         param_jvm_types.push(JvmType::StructRef(self.builder.refs.string_class));
                         param_desc.push_str("Ljava/lang/String;");
                     }
-                    Type::Named(name, _) => {
-                        if let Some(info) = self.types.struct_info.get(name) {
-                            param_jvm_types.push(JvmType::StructRef(info.class_index));
-                            param_desc.push_str(&format!("L{};", info.class_name));
+                    Type::Named(name, args) => {
+                        // Types with type args use Object (JVM erasure)
+                        if args.is_empty() {
+                            if let Some(info) = self.types.struct_info.get(name) {
+                                param_jvm_types.push(JvmType::StructRef(info.class_index));
+                                param_desc.push_str(&format!("L{};", info.class_name));
+                            } else {
+                                param_jvm_types.push(JvmType::StructRef(self.builder.refs.object_class));
+                                param_desc.push_str("Ljava/lang/Object;");
+                            }
                         } else {
                             param_jvm_types.push(JvmType::StructRef(self.builder.refs.object_class));
                             param_desc.push_str("Ljava/lang/Object;");
@@ -754,9 +760,13 @@ impl Compiler {
                     Type::Float => (JvmType::Double, "D".to_string()),
                     Type::Bool => (JvmType::Int, "Z".to_string()),
                     Type::String => (JvmType::StructRef(self.builder.refs.string_class), "Ljava/lang/String;".to_string()),
-                    Type::Named(name, _) => {
-                        if let Some(info) = self.types.struct_info.get(name) {
-                            (JvmType::StructRef(info.class_index), format!("L{};", info.class_name))
+                    Type::Named(name, args) => {
+                        if args.is_empty() {
+                            if let Some(info) = self.types.struct_info.get(name) {
+                                (JvmType::StructRef(info.class_index), format!("L{};", info.class_name))
+                            } else {
+                                (JvmType::StructRef(self.builder.refs.object_class), "Ljava/lang/Object;".to_string())
+                            }
                         } else {
                             (JvmType::StructRef(self.builder.refs.object_class), "Ljava/lang/Object;".to_string())
                         }

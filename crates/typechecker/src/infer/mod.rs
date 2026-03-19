@@ -1376,9 +1376,18 @@ fn process_extern_methods(
     span: Span,
     name_filter: Option<&HashSet<&str>>,
     aliases: &HashMap<String, String>,
+    type_param_map: Option<&HashMap<String, TypeVarId>>,
+    type_param_arity: Option<&HashMap<String, usize>>,
 ) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
     let empty_map = HashMap::new();
     let empty_arity = HashMap::new();
+    let resolve_map = type_param_map.unwrap_or(&empty_map);
+    let resolve_arity = type_param_arity.unwrap_or(&empty_arity);
+    // Collect type param vars for scheme quantification
+    let base_scheme_vars: Vec<TypeVarId> = type_param_map
+        .map(|m| m.values().copied().collect())
+        .unwrap_or_default();
+    let has_type_params = type_param_map.is_some();
     let mut extern_fns = Vec::new();
     for method in methods {
         let bind_name = aliases.get(&method.name).unwrap_or(&method.name);
@@ -1388,13 +1397,13 @@ fn process_extern_methods(
             }
         }
 
-        let mut scheme_vars = Vec::new();
+        let mut scheme_vars = base_scheme_vars.clone();
         let mut param_types = Vec::new();
         for ty_expr in &method.param_types {
             let resolved =
-                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
+                type_registry::resolve_type_expr(ty_expr, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation)
                 .map_err(|e| spanned(e, span))?;
-            if matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
+            if !has_type_params && matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                 let fresh = gen.fresh();
                 scheme_vars.push(fresh);
                 param_types.push(Type::Var(fresh));
@@ -1404,9 +1413,9 @@ fn process_extern_methods(
         }
 
         let return_type =
-            type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
+            type_registry::resolve_type_expr(&method.return_type, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation)
                 .map_err(|e| spanned(e, span))?;
-        let ret = if matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
+        let ret = if !has_type_params && matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
         {
             let fresh = gen.fresh();
             scheme_vars.push(fresh);
@@ -1426,19 +1435,24 @@ fn process_extern_methods(
         };
         env.bind(bind_name.clone(), scheme);
 
-        // Store concrete types for codegen (Object stays as-is)
+        // Store concrete types for codegen — resolve without type param map so
+        // erased positions stay as Object (JVM erasure). Bare type params like `a`
+        // won't resolve and fall back to Object.
         let mut concrete_params = Vec::new();
         for ty_expr in &method.param_types {
             concrete_params.push(
                 type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
-                    .map_err(|e| spanned(e, span))?,
+                    .unwrap_or_else(|_| Type::Named("Object".to_string(), vec![]))
             );
         }
+        let codegen_return =
+            type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
+                .unwrap_or_else(|_| Type::Named("Object".to_string(), vec![]));
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),
             java_class: class_name.to_string(),
             param_types: concrete_params,
-            return_type,
+            return_type: codegen_return,
         });
     }
     Ok(extern_fns)
@@ -1554,11 +1568,13 @@ impl ImportContext {
         prelude_imported_names: &HashSet<String>,
         gen: &mut TypeVarGen,
         span: Span,
+        imported_fn_constraint_requirements: &mut HashMap<String, Vec<(String, TypeVarId)>>,
     ) -> Result<(), SpannedTypeError> {
         // Explicit import shadows any prelude entry for the same name
         if prelude_imported_names.contains(&name) {
             self.imported_fn_types.retain(|f| f.name != name);
             self.imported_fn_constraints.remove(&name);
+            imported_fn_constraint_requirements.remove(&name);
         }
 
         // Check for same-name + same-first-param from non-prelude imports
@@ -1739,23 +1755,44 @@ impl ModuleInferenceState {
             } = decl
             {
                 // Register type binding if `as Name[params]` is present
+                let mut tp_map: Option<HashMap<String, TypeVarId>> = None;
+                let mut tp_arity: Option<HashMap<String, usize>> = None;
                 if let Some(name) = alias {
-                    let type_param_vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
-                    self.registry.register_type(crate::type_registry::TypeInfo {
-                        name: name.clone(),
-                        type_params: type_params.clone(),
-                        type_param_vars,
-                        kind: crate::type_registry::TypeKind::Record { fields: vec![] },
-                        is_prelude: false,
-                    }).map_err(|e| spanned(e, *span))?;
+                    // Check if already registered (e.g. Vec is a builtin)
+                    let type_param_vars = if let Some(existing) = self.registry.lookup_type(name) {
+                        existing.type_param_vars.clone()
+                    } else {
+                        let vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
+                        self.registry.register_type(crate::type_registry::TypeInfo {
+                            name: name.clone(),
+                            type_params: type_params.clone(),
+                            type_param_vars: vars.clone(),
+                            kind: crate::type_registry::TypeKind::Record { fields: vec![] },
+                            is_prelude: false,
+                        }).map_err(|e| spanned(e, *span))?;
+                        vars
+                    };
                     self.registry.mark_user_visible(name);
                     extern_java_types.push((name.clone(), class_name.clone()));
+
+                    // Build type_param_map for method resolution
+                    if !type_params.is_empty() {
+                        let mut map = HashMap::new();
+                        let mut arity = HashMap::new();
+                        for (param_name, &var) in type_params.iter().zip(type_param_vars.iter()) {
+                            map.insert(param_name.clone(), var);
+                        }
+                        arity.insert(name.clone(), type_params.len());
+                        tp_map = Some(map);
+                        tp_arity = Some(arity);
+                    }
                 }
 
                 let no_aliases = HashMap::new();
                 let mut fns = process_extern_methods(
                     class_name, methods, &mut self.env, &mut self.gen, &self.registry,
                     *span, None, &no_aliases,
+                    tp_map.as_ref(), tp_arity.as_ref(),
                 )?;
                 extern_fns.append(&mut fns);
             }

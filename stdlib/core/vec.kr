@@ -1,12 +1,15 @@
-import core/list.{Cons, Nil, List}
-import core/option.{Some, None}
+import core/list.{Cons, Nil, List, length as list_length, filter as list_filter, sort_by as list_sort_by}
+import core/option.{Option, Some, None}
 import core/sub.{sub}
-import core/ord.{lt}
+import core/ord.{Ord, lt}
 
 # core/vec — Vec type (backed by KryptonArray)
-extern "krypton.runtime.KryptonArray" {
-    fun staticLength(Object) -> Int
-    fun staticGet(Object, Int) -> Object
+extern "krypton.runtime.KryptonArray" as Vec[a] {
+    fun staticLength(Vec[a]) -> Int
+    fun staticGet(Vec[a], Int) -> a
+    fun staticNew(Int) -> Vec[a]
+    fun staticSet(Vec[a], Int, a) -> Unit
+    fun staticFreeze(Vec[a]) -> Vec[a]
 }
 
 pub fun len(xs) = staticLength(xs)
@@ -22,4 +25,27 @@ pub fun nth(xs, index) = if index < 0 {
 }
 
 fun vec_from_vec_go(xs, i, acc)  = if i < 0 { acc } else { vec_from_vec_go(xs, i - 1, Cons(staticGet(xs, i), acc)) }
-pub fun to_list[a](xs: Vec[a]) = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
+pub fun to_list(xs) = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
+
+fun from_list_go(lst, arr, i) = match lst {
+    Nil => staticFreeze(arr),
+    Cons(h, rest) => {
+        staticSet(arr, i, h);
+        from_list_go(rest, arr, i + 1)
+    },
+}
+
+fun from_list(lst) = {
+    let n = list_length(lst);
+    let arr = staticNew(n);
+    from_list_go(lst, arr, 0)
+}
+
+pub fun last(xs) = {
+    let n = staticLength(xs);
+    if n < 1 { None } else { Some(staticGet(xs, n - 1)) }
+}
+
+pub fun filter(xs, f) = from_list(list_filter(to_list(xs), f))
+
+pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord = from_list(list_sort_by(to_list(xs), key))
