@@ -460,6 +460,7 @@ pub fn check_exhaustiveness(
                 span: arm_span,
                 note: Some("this arm can never be reached".to_string()),
                 secondary_span: None,
+                source_file: None,
             });
         }
     }
@@ -472,6 +473,7 @@ pub fn check_exhaustiveness(
             span,
             note: None,
             secondary_span: None,
+            source_file: None,
         });
     }
 

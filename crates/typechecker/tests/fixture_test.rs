@@ -26,7 +26,13 @@ fn infer_module_snapshot_with_resolver(
                 .collect();
             Ok(lines.join("\n"))
         }
-        Err(e) => Err(e.error.error_code().to_string()),
+        Err(e) => {
+            let code = match &e {
+                infer::InferError::TypeError { error, .. } => error.error.error_code().to_string(),
+                infer::InferError::ModuleParseError { .. } => "E0506".to_string(),
+            };
+            Err(code)
+        }
     }
 }
 

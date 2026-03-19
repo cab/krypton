@@ -1,50 +1,91 @@
 use ariadne::{sources, Color, Config, IndexType, Label, Report, ReportKind};
 
+use crate::infer::InferError;
 use crate::unify::SpannedTypeError;
 
-/// Render type errors as ariadne diagnostics, returning the rendered string.
-pub fn render_type_errors(filename: &str, source: &str, errors: &[SpannedTypeError]) -> String {
-    let mut output = Vec::new();
-    let fname = filename.to_string();
-    let src = source.to_string();
-
-    for err in errors {
-        let (start, end) = err.span;
-        let code = err.error.error_code();
-        let message = err.error.to_string();
-
-        let mut report = Report::build(ReportKind::Error, (fname.clone(), start..end))
-            .with_config(Config::new().with_index_type(IndexType::Byte))
-            .with_code(code.to_string())
-            .with_message(&message)
-            .with_label(
-                Label::new((fname.clone(), start..end))
-                    .with_message(format!("{}: {}", code, &message))
-                    .with_color(Color::Red),
-            );
-
-        if let Some((sec_span, sec_msg)) = &err.secondary_span {
-            let (sec_start, sec_end) = *sec_span;
-            report = report.with_label(
-                Label::new((fname.clone(), sec_start..sec_end))
-                    .with_message(sec_msg)
-                    .with_color(Color::Blue),
-            );
+/// Render an `InferError` as a diagnostic string.
+///
+/// For type errors, renders via ariadne against the correct file.
+/// For module parse errors, delegates to the parser's own diagnostic renderer.
+pub fn render_infer_error(filename: &str, source: &str, err: &InferError) -> String {
+    match err {
+        InferError::TypeError { error, error_source } => {
+            render_type_error_with_source(filename, source, error, error_source.as_ref())
         }
-
-        if let Some(help) = err.error.help() {
-            report = report.with_help(help);
+        InferError::ModuleParseError { path, source: mod_source, errors } => {
+            krypton_parser::diagnostics::render_errors(path, mod_source, errors)
         }
-
-        if let Some(note) = &err.note {
-            report = report.with_note(note);
-        }
-
-        report
-            .finish()
-            .write(sources([(fname.clone(), src.clone())]), &mut output)
-            .unwrap();
     }
+}
+
+/// Render type errors against the root file (used by tests that construct SpannedTypeError directly).
+pub fn render_type_errors(filename: &str, source: &str, errors: &[SpannedTypeError]) -> String {
+    let mut output = String::new();
+    for err in errors {
+        output.push_str(&render_type_error_with_source(filename, source, err, None));
+    }
+    output
+}
+
+/// Render a single type error as an ariadne diagnostic.
+///
+/// If `error_source` is provided, renders against that module's file/source
+/// instead of the root file.
+fn render_type_error_with_source(
+    filename: &str,
+    source: &str,
+    err: &SpannedTypeError,
+    error_source: Option<&(String, String)>,
+) -> String {
+    let mut output = Vec::new();
+
+    let (start, end) = err.span;
+    let code = err.error.error_code();
+    let message = err.error.to_string();
+
+    // Use the module's filename/source if the error originated in a module
+    let (err_file, err_src) = match error_source {
+        Some((path, src)) => (path.as_str(), src.as_str()),
+        None => (filename, source),
+    };
+
+    let mut report = Report::build(ReportKind::Error, (err_file.to_string(), start..end))
+        .with_config(Config::new().with_index_type(IndexType::Byte))
+        .with_code(code.to_string())
+        .with_message(&message)
+        .with_label(
+            Label::new((err_file.to_string(), start..end))
+                .with_message(format!("{}: {}", code, &message))
+                .with_color(Color::Red),
+        );
+
+    if let Some((sec_span, sec_msg)) = &err.secondary_span {
+        let (sec_start, sec_end) = *sec_span;
+        report = report.with_label(
+            Label::new((err_file.to_string(), sec_start..sec_end))
+                .with_message(sec_msg)
+                .with_color(Color::Blue),
+        );
+    }
+
+    if let Some(help) = err.error.help() {
+        report = report.with_help(help);
+    }
+
+    if let Some(note) = &err.note {
+        report = report.with_note(note);
+    }
+
+    // Build source table — include both root and module source if different
+    let mut all_sources = vec![(err_file.to_string(), err_src.to_string())];
+    if err_file != filename {
+        all_sources.push((filename.to_string(), source.to_string()));
+    }
+
+    report
+        .finish()
+        .write(sources(all_sources), &mut output)
+        .unwrap();
 
     String::from_utf8(output).unwrap()
 }

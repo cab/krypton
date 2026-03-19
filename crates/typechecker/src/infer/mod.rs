@@ -15,6 +15,35 @@ use crate::typed_ast::{
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
 
+/// Error from `infer_module`, bundling the error with enough context
+/// to render diagnostics against the correct file.
+#[derive(Debug)]
+pub enum InferError {
+    /// A type error, possibly from an imported module.
+    TypeError {
+        error: SpannedTypeError,
+        /// (module_path, source_text) for the module where the error originated.
+        /// `None` means the error is in the root/user file.
+        error_source: Option<(String, String)>,
+    },
+    /// Parse errors in an imported module — rendered via the parser's own diagnostics.
+    ModuleParseError {
+        path: String,
+        source: String,
+        errors: Vec<krypton_parser::diagnostics::ParseError>,
+    },
+}
+
+impl InferError {
+    /// Get the `SpannedTypeError` if this is a type error, or `None` for parse errors.
+    pub fn type_error(&self) -> Option<&SpannedTypeError> {
+        match self {
+            InferError::TypeError { error, .. } => Some(error),
+            InferError::ModuleParseError { .. } => None,
+        }
+    }
+}
+
 fn find_type_decl<'a>(decls: &'a [Decl], name: &str) -> Option<&'a TypeDecl> {
     decls.iter().find_map(|d| match d {
         Decl::DefType(td) if td.name == name => Some(td),
@@ -681,6 +710,7 @@ pub(super) fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> Span
         span,
         note: None,
         secondary_span: None,
+        source_file: None,
     }
 }
 
@@ -1491,11 +1521,22 @@ fn process_extern_methods(
 pub fn infer_module(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
-) -> Result<Vec<TypedModule>, SpannedTypeError> {
+) -> Result<Vec<TypedModule>, InferError> {
     use krypton_modules::module_graph;
+    use krypton_modules::stdlib_loader::StdlibLoader;
 
     // Build the module graph (resolves, parses, toposorts all imports + prelude)
-    let graph = module_graph::build_module_graph(module, resolver).map_err(map_graph_error)?;
+    let graph = module_graph::build_module_graph(module, resolver).map_err(|e| {
+        match e {
+            module_graph::ModuleGraphError::ParseError { path, source, errors } => {
+                InferError::ModuleParseError { path, source, errors }
+            }
+            other => InferError::TypeError {
+                error: map_graph_error(other),
+                error_source: None,
+            },
+        }
+    })?;
 
     // Build parsed module lookup for import binding (borrows from graph)
     let mut parsed_modules: HashMap<String, &Module> = HashMap::new();
@@ -1511,13 +1552,24 @@ pub fn infer_module(
                 &parsed_modules,
                 Some(resolved.path.clone()),
                 &graph.prelude_tree_paths,
-            )?;
+            ).map_err(|mut e| {
+                if e.source_file.is_none() {
+                    e.source_file = Some(resolved.path.clone());
+                }
+                // Re-resolve source for the failing module (error path only)
+                let source_text = StdlibLoader::get_source(&resolved.path)
+                    .map(|s| s.to_string())
+                    .or_else(|| resolver.resolve(&resolved.path));
+                let error_source = source_text.map(|s| (resolved.path.clone(), s));
+                InferError::TypeError { error: e, error_source }
+            })?;
             cache.insert(resolved.path.clone(), typed);
         }
     }
 
     // Type-check the root module
-    let main = infer_module_inner(module, &mut cache, &parsed_modules, None, &graph.prelude_tree_paths)?;
+    let main = infer_module_inner(module, &mut cache, &parsed_modules, None, &graph.prelude_tree_paths)
+        .map_err(|e| InferError::TypeError { error: e, error_source: None })?;
 
     let mut result = vec![main];
     // Collect cached imported modules (stable ordering by path)
@@ -1529,7 +1581,8 @@ pub fn infer_module(
     Ok(result)
 }
 
-/// Convert a `ModuleGraphError` into a `SpannedTypeError`.
+/// Convert a non-parse `ModuleGraphError` into a `SpannedTypeError`.
+/// ParseError is handled separately as `InferError::ModuleParseError`.
 fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> SpannedTypeError {
     use krypton_modules::module_graph::ModuleGraphError;
     match e {
@@ -1542,8 +1595,8 @@ fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> Spanne
         ModuleGraphError::BareImport { path, span } => {
             spanned(TypeError::BareImport { path }, span)
         }
-        ModuleGraphError::ParseError { path, errors } => {
-            spanned(TypeError::ModuleParseError { path, errors }, (0, 0))
+        ModuleGraphError::ParseError { .. } => {
+            unreachable!("ParseError is handled directly as InferError::ModuleParseError")
         }
     }
 }
@@ -1552,7 +1605,7 @@ fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> Spanne
 pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
-) -> Result<TypedModule, SpannedTypeError> {
+) -> Result<TypedModule, InferError> {
     let mut modules = infer_module(module, resolver)?;
     Ok(modules.remove(0))
 }
@@ -2869,6 +2922,7 @@ pub(crate) fn infer_module_inner(
                         span: f.span,
                         note: None,
                         secondary_span: Some((*method_span, "trait method defined here".into())),
+                        source_file: None,
                     });
                 }
                 // Second pass: check built-in traits (no secondary span)
@@ -2883,6 +2937,7 @@ pub(crate) fn infer_module_inner(
                             span: f.span,
                             note: None,
                             secondary_span: None,
+                            source_file: None,
                         });
                     }
                 }

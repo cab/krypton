@@ -744,6 +744,8 @@ pub struct SpannedTypeError {
     pub span: Span,
     pub note: Option<String>,
     pub secondary_span: Option<(Span, String)>,
+    /// The module path where this error originated (None = root/user file).
+    pub source_file: Option<String>,
 }
 
 impl fmt::Display for SpannedTypeError {

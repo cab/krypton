@@ -163,7 +163,7 @@ fn graph_parse_error_in_import() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        ModuleGraphError::ParseError { path, errors } => {
+        ModuleGraphError::ParseError { path, errors, .. } => {
             assert_eq!(path, "bad");
             assert!(!errors.is_empty(), "should have parse error details");
         }

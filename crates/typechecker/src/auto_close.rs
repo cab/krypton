@@ -285,6 +285,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                             span: expr.span,
                             note: None,
                             secondary_span: None,
+                            source_file: None,
                         });
                     }
                 }
@@ -324,6 +325,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                             span: expr.span,
                             note: None,
                             secondary_span: None,
+                            source_file: None,
                         });
                     }
                 }

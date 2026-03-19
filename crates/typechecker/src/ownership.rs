@@ -496,6 +496,7 @@ impl<'a> OwnershipChecker<'a> {
                 span,
                 note,
                 secondary_span: Some((first_span, "first use here".into())),
+                source_file: None,
             });
         }
         if let Some(&branch_span) = self.partially_consumed.get(name) {
@@ -504,6 +505,7 @@ impl<'a> OwnershipChecker<'a> {
                 span,
                 note: None,
                 secondary_span: Some((branch_span, "consumed here".into())),
+                source_file: None,
             });
         }
         Ok(())
@@ -568,6 +570,7 @@ impl<'a> OwnershipChecker<'a> {
                                                 span: *arg_span,
                                                 note: None,
                                                 secondary_span: None,
+                                                source_file: None,
                                             });
                                         }
                                         ParamQualifier::Shared | ParamQualifier::Polymorphic => {
@@ -624,6 +627,7 @@ impl<'a> OwnershipChecker<'a> {
                                     name
                                 )),
                                 secondary_span: None,
+                                source_file: None,
                             });
                         }
                     }
@@ -669,6 +673,7 @@ impl<'a> OwnershipChecker<'a> {
                                 span: *span,
                                 note: Some("annotation `~` requires an owned value".into()),
                                 secondary_span: None,
+                                source_file: None,
                             });
                         }
                     }
@@ -786,6 +791,7 @@ impl<'a> OwnershipChecker<'a> {
                             span: *span,
                             note: None,
                             secondary_span: Some((first_span, "consumed here".into())),
+                            source_file: None,
                         });
                     }
                     self.consumed.insert(name.clone(), *span);

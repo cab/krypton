@@ -28,7 +28,7 @@ fn run_program_with_resolver(
     assert!(errors.is_empty(), "fixture {fixture_name}: parse errors: {errors:?}");
 
     let typed_modules = infer_module(&module, resolver)
-        .unwrap_or_else(|e| panic!("fixture {fixture_name}: type check failed: {e}"));
+        .unwrap_or_else(|e| panic!("fixture {fixture_name}: type check failed: {e:?}"));
     let classes = compile_modules(&typed_modules, "Kr$Test")
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
@@ -108,7 +108,7 @@ fn run_codegen_fixtures(subdir: &str) {
                     let typed_modules = match infer_module(&module, &resolver) {
                         Ok(tm) => tm,
                         Err(e) => {
-                            failures.push(format!("{name}: expected ok but typecheck failed: {e}"));
+                            failures.push(format!("{name}: expected ok but typecheck failed: {e:?}"));
                             continue;
                         }
                     };

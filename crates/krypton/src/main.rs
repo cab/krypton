@@ -173,7 +173,7 @@ fn main() {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
-                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                        krypton_typechecker::diagnostics::render_infer_error(&file, &source, &e);
                     eprint!("{}", diag);
                     process::exit(1);
                 }
@@ -269,7 +269,7 @@ fn main() {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
-                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                        krypton_typechecker::diagnostics::render_infer_error(&file, &source, &e);
                     eprint!("{}", diag);
                     process::exit(1);
                 }
@@ -369,7 +369,7 @@ fn main() {
                 }
                 Err(e) => {
                     let diag =
-                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                        krypton_typechecker::diagnostics::render_infer_error(&file, &source, &e);
                     eprint!("{}", diag);
                     process::exit(1);
                 }
@@ -417,7 +417,7 @@ fn main() {
                     }
                     println!();
                     let diag =
-                        krypton_typechecker::diagnostics::render_type_errors(&file, &source, &[e]);
+                        krypton_typechecker::diagnostics::render_infer_error(&file, &source, &e);
                     eprint!("{}", diag);
                     process::exit(1);
                 }

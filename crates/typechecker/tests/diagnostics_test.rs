@@ -1,7 +1,7 @@
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
-use krypton_typechecker::diagnostics::render_type_errors;
-use krypton_typechecker::infer;
+use krypton_typechecker::diagnostics::{render_infer_error, render_type_errors};
+use krypton_typechecker::infer::{self, InferError};
 
 fn parse_and_infer_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
@@ -10,7 +10,7 @@ fn parse_and_infer_module_error(src: &str) -> String {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
-    let rendered = render_type_errors("test.kr", src, &[err]);
+    let rendered = render_infer_error("test.kr", src, &err);
     strip_ansi_escapes(rendered)
 }
 
@@ -71,7 +71,7 @@ fn render_fixture_error(fixture: &str) -> String {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
-    let rendered = render_type_errors(fixture, &src, &[err]);
+    let rendered = render_infer_error(fixture, &src, &err);
     strip_ansi_escapes(rendered)
 }
 
@@ -85,7 +85,7 @@ fn render_module_error_with_resolver(
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
-    let rendered = render_type_errors("test.kr", src, &[err]);
+    let rendered = render_infer_error("test.kr", src, &err);
     strip_ansi_escapes(rendered)
 }
 
@@ -434,5 +434,88 @@ fn import_type_explicitly_allows_annotation() {
         result.is_ok(),
         "explicitly importing a type should allow it in annotations: {:?}",
         result.err()
+    );
+}
+
+#[test]
+fn parse_error_in_imported_module() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct BadParseResolver;
+    impl ModuleResolver for BadParseResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "bad" => Some("fun f( = 42".to_string()), // syntax error
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import bad.{f}\nfun main() -> Int = f()";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let err = match infer::infer_module(&module, &BadParseResolver) {
+        Ok(_) => panic!("expected a parse error from bad module"),
+        Err(e) => e,
+    };
+    // Should be a ModuleParseError variant pointing at "bad"
+    match &err {
+        InferError::ModuleParseError { path, .. } => {
+            assert_eq!(path, "bad", "expected path 'bad', got '{path}'");
+        }
+        other => panic!("expected ModuleParseError, got: {other:?}"),
+    }
+    // Render and verify it references the module file with correct source
+    let output = strip_ansi_escapes(render_infer_error("test.kr", src, &err));
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("bad"),
+        "rendered diagnostic should reference 'bad':\n{output}"
+    );
+}
+
+#[test]
+fn type_error_in_imported_module() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct BadTypeResolver;
+    impl ModuleResolver for BadTypeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "badmod" => Some("pub fun f() -> Int = \"nope\"".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import badmod.{f}\nfun main() -> Int = f()";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let err = match infer::infer_module(&module, &BadTypeResolver) {
+        Ok(_) => panic!("expected a type error from badmod"),
+        Err(e) => e,
+    };
+    // Should be a TypeError with error_source pointing at badmod
+    match &err {
+        InferError::TypeError { error, error_source } => {
+            assert_eq!(
+                error.source_file.as_deref(),
+                Some("badmod"),
+                "expected source_file 'badmod', got: {:?}",
+                error.source_file
+            );
+            assert!(
+                error_source.is_some(),
+                "error_source should contain badmod's source"
+            );
+        }
+        other => panic!("expected TypeError, got: {other:?}"),
+    }
+    // Render and verify it references the module file
+    let output = strip_ansi_escapes(render_infer_error("test.kr", src, &err));
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("badmod"),
+        "rendered diagnostic should reference 'badmod':\n{output}"
     );
 }

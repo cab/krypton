@@ -25,7 +25,10 @@ fn infer_module_fn(src: &str, fn_name: &str) -> String {
             .find(|e| e.name == fn_name)
             .map(|e| format!("{}", e.scheme))
             .unwrap_or_else(|| panic!("function {fn_name} not found in module")),
-        Err(e) => format!("TypeError: {}", e.error),
+        Err(e) => match e.type_error() {
+            Some(te) => format!("TypeError: {}", te.error),
+            None => format!("InferError: {e:?}"),
+        },
     }
 }
 
@@ -137,7 +140,10 @@ fn infer_module_types(src: &str) -> String {
             .map(|e| format!("{}: {}", e.name, e.scheme))
             .collect::<Vec<_>>()
             .join("\n"),
-        Err(e) => format!("TypeError: {}", e.error),
+        Err(e) => match e.type_error() {
+            Some(te) => format!("TypeError: {}", te.error),
+            None => format!("InferError: {e:?}"),
+        },
     }
 }
 
@@ -1163,7 +1169,7 @@ fn explicit_hkt_type_param_wrong_arity_is_error() {
     let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
     assert!(result.is_err(), "expected kind mismatch");
     let err = result.err().unwrap();
-    assert_eq!(err.error.error_code().to_string(), "E0507");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0507");
 }
 
 #[test]
@@ -1210,7 +1216,7 @@ fn explicit_type_args_call_site_mismatch_is_error() {
     let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
     assert!(result.is_err(), "expected mismatch error");
     let err = result.err().unwrap();
-    assert_eq!(err.error.error_code().to_string(), "E0001");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0001");
 }
 
 #[test]
@@ -1223,7 +1229,7 @@ fn explicit_type_args_wrong_count_is_error() {
     let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
     assert!(result.is_err(), "expected wrong arity error");
     let err = result.err().unwrap();
-    assert_eq!(err.error.error_code().to_string(), "E0005");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0005");
 }
 
 #[test]
@@ -1255,8 +1261,8 @@ fn constrained_polymorphic_function_reference_is_rejected() {
     let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
     assert!(result.is_err(), "expected constrained polymorphic ref to fail");
     let err = result.err().unwrap();
-    assert_eq!(err.error.error_code().to_string(), "E0001");
-    let message = err.error.to_string();
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0001");
+    let message = err.type_error().unwrap().error.to_string();
     assert!(
         message.contains("first-class constrained polymorphic function values"),
         "unexpected error message: {message}"
@@ -1478,7 +1484,7 @@ fn infer_module_circular_import_detected() {
         Err(e) => e,
         Ok(_) => panic!("expected circular import error"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0502");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0502");
 }
 
 #[test]
@@ -1554,7 +1560,7 @@ fn infer_module_private_by_default() {
         Err(e) => e,
         Ok(_) => panic!("expected error"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0503");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0503");
 
     // Importing only the public function should succeed
     let src2 = r#"
@@ -1617,7 +1623,7 @@ fn infer_module_import_alias_binds_only_alias() {
         Err(err) => err,
         Ok(_) => panic!("expected alias-only import to reject original name"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0003");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0003");
 }
 
 #[test]
@@ -1644,7 +1650,7 @@ fn infer_module_missing_qualified_export_errors_clearly() {
         Err(err) => err,
         Ok(_) => panic!("expected missing qualified export to fail"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0508");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0508");
 }
 
 #[test]
@@ -1671,7 +1677,7 @@ fn infer_module_qualifier_used_as_value_errors_clearly() {
         Err(err) => err,
         Ok(_) => panic!("expected module qualifier value use to fail"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0504");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0504");
 }
 
 #[test]
@@ -1757,7 +1763,7 @@ fn infer_module_constructor_alias_resolves() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &FakeResolver);
-    assert!(result.is_ok(), "constructor alias should resolve: {:?}", result.err().map(|e| e.error.error_code().to_string()));
+    assert!(result.is_ok(), "constructor alias should resolve: {:?}", result.err().map(|e| e.type_error().map(|te| te.error.error_code().to_string())));
 }
 
 #[test]
@@ -1826,7 +1832,7 @@ fn infer_module_pub_import_reexport_private_error() {
         Err(e) => e,
         Ok(_) => panic!("expected error"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0510");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0510");
 }
 
 #[test]
@@ -1912,7 +1918,7 @@ fn cross_module_derived_constrained_instance_reports_e0301_when_inner_instance_m
         Ok(_) => panic!("expected E0301"),
         Err(err) => err,
     };
-    assert_eq!(err.error.error_code().to_string(), "E0301");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0301");
 }
 
 #[test]
@@ -1984,14 +1990,14 @@ fn empty_impl_is_rejected() {
         Ok(_) => panic!("expected E0306"),
         Err(err) => err,
     };
-    assert_eq!(err.error.error_code().to_string(), "E0306");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0306");
     assert!(
-        err.error
+        err.type_error().unwrap().error
             .help()
             .unwrap_or_default()
             .contains("missing method(s): show"),
         "unexpected help text: {:?}",
-        err.error.help()
+        err.type_error().unwrap().error.help()
     );
 }
 
@@ -2034,7 +2040,7 @@ fn infer_module_private_trait() {
         Err(e) => e,
         Ok(_) => panic!("expected error"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0503");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0503");
 
     // Wildcard import should silently skip private traits
     let src2 = r#"
@@ -2078,7 +2084,10 @@ fn infer_module_parse_error_produces_e0506() {
         Err(e) => e,
         Ok(_) => panic!("expected error"),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0506");
+    assert!(
+        matches!(err, infer::InferError::ModuleParseError { ref path, .. } if path == "broken"),
+        "expected ModuleParseError for 'broken', got: {err:?}"
+    );
 }
 
 #[test]
@@ -2170,7 +2179,7 @@ fn reserved_name_krypton_intrinsic_rejected() {
         Err(e) => e,
         Ok(_) => unreachable!(),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0012");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0012");
 }
 
 #[test]
@@ -2183,7 +2192,7 @@ fn reserved_name_krypton_prefix_rejected() {
         Err(e) => e,
         Ok(_) => unreachable!(),
     };
-    assert_eq!(err.error.error_code().to_string(), "E0012");
+    assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0012");
 }
 
 #[test]

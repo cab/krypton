@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use krypton_parser::ast::{Decl, Module, Span};
+use krypton_parser::diagnostics::ParseError;
 
 use crate::module_resolver::ModuleResolver;
 use crate::stdlib_loader::StdlibLoader;
@@ -26,7 +27,7 @@ pub enum ModuleGraphError {
     CircularImport { cycle: Vec<String>, span: Span },
     UnknownModule { path: String, span: Span },
     BareImport { path: String, span: Span },
-    ParseError { path: String, errors: Vec<String> },
+    ParseError { path: String, source: String, errors: Vec<ParseError> },
 }
 
 /// Build a topologically-sorted module graph from a root module.
@@ -101,7 +102,8 @@ fn visit_prelude_tree(
     if !parse_errors.is_empty() {
         return Err(ModuleGraphError::ParseError {
             path: path.to_string(),
-            errors: parse_errors.iter().map(|e| format!("{e:?}")).collect(),
+            source,
+            errors: parse_errors,
         });
     }
 
@@ -158,7 +160,8 @@ fn visit_user_module(
     if !parse_errors.is_empty() {
         return Err(ModuleGraphError::ParseError {
             path: path.to_string(),
-            errors: parse_errors.iter().map(|e| format!("{e:?}")).collect(),
+            source,
+            errors: parse_errors,
         });
     }
 
