@@ -59,4 +59,17 @@ public class KryptonArray {
     public static Object staticGet(Object arr, long index) {
         return ((KryptonArray) arr).get((int) index);
     }
+
+    public static Object staticNew(long capacity) {
+        return new KryptonArray((int) capacity);
+    }
+
+    public static void staticSet(Object arr, long index, Object value) {
+        ((KryptonArray) arr).set((int) index, value);
+    }
+
+    public static Object staticFreeze(Object arr) {
+        ((KryptonArray) arr).freeze();
+        return arr;
+    }
 }
