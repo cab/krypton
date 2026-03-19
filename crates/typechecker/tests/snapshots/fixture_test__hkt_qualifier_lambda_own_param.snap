@@ -13,6 +13,10 @@ show: forall g. fn(g) -> String
 hash: forall g. fn(g) -> Int
 close: forall g. fn(~g) -> Unit
 peek: forall h. fn(h) -> h
+last: forall y3. fn(List[y3]) -> ~Option[y3]
+sort_by: forall v5 c6. fn(List[c6], fn(c6) -> v5) -> List[c6]
+filter: forall j1. fn(List[j1], fn(j1) -> Bool) -> List[j1]
+to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
 println: forall m. fn(m) -> Unit
 Some: forall e. fn(e) -> Option[e]
 None: forall e. Option[e]
@@ -23,4 +27,4 @@ Nil: forall h. List[h]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-consume_once: forall y z. fn(y[~z], fn(y[~z]) -> y[~z]) -> y[~z]
+consume_once: forall o6 p6. fn(o6[~p6], fn(o6[~p6]) -> o6[~p6]) -> o6[~p6]

@@ -41,6 +41,12 @@ pub fun tail(xs) = match xs {
     Nil => None,
 }
 
+pub fun last(xs) = match xs {
+    Cons(last, Nil) => Some(last),
+    Cons(_, rest) => last(rest),
+    Nil => None,
+}
+
 fun split(xs) = match xs {
     Nil => (Nil, Nil),
     Cons(a, Nil) => (Cons(a, Nil), Nil),
