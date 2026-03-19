@@ -1,0 +1,128 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Krypton",
+  "scopeName": "source.krypton",
+  "fileTypes": ["kr"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#constant" },
+    { "include": "#keyword-control" },
+    { "include": "#keyword-declaration" },
+    { "include": "#operator-ownership" },
+    { "include": "#operator-multi" },
+    { "include": "#operator-single" },
+    { "include": "#fun-definition" },
+    { "include": "#type-generic" },
+    { "include": "#type-name" },
+    { "include": "#wildcard" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.krypton",
+      "match": "#.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.krypton",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.krypton",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.krypton",
+      "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
+    },
+    "constant": {
+      "name": "constant.language.krypton",
+      "match": "\\b(?:true|false)\\b"
+    },
+    "keyword-control": {
+      "name": "keyword.control.krypton",
+      "match": "\\b(?:if|else|match|recur|do)\\b"
+    },
+    "keyword-declaration": {
+      "name": "keyword.other.krypton",
+      "match": "\\b(?:fun|def|fn|let|type|trait|impl|import|use|pub|opaque|where|own|deriving|extern|as|shared|self|tuple)\\b"
+    },
+    "operator-ownership": {
+      "name": "keyword.operator.ownership.krypton",
+      "match": "~"
+    },
+    "operator-multi": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.krypton",
+          "match": "==|!=|<=|>="
+        },
+        {
+          "name": "keyword.operator.arrow.krypton",
+          "match": "=>|->"
+        },
+        {
+          "name": "keyword.operator.logical.krypton",
+          "match": "&&|\\|\\|"
+        },
+        {
+          "name": "keyword.operator.range.krypton",
+          "match": "\\.\\."
+        }
+      ]
+    },
+    "operator-single": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.krypton",
+          "match": "[+\\-*/]"
+        },
+        {
+          "name": "keyword.operator.comparison.krypton",
+          "match": "[<>]"
+        },
+        {
+          "name": "keyword.operator.krypton",
+          "match": "[!?|]"
+        }
+      ]
+    },
+    "fun-definition": {
+      "match": "\\b(fun)\\s+([a-z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.other.krypton" },
+        "2": { "name": "entity.name.function.krypton" }
+      }
+    },
+    "type-generic": {
+      "begin": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(\\[)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.type.krypton" },
+        "2": { "name": "punctuation.bracket.square.krypton" }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": { "name": "punctuation.bracket.square.krypton" }
+      },
+      "patterns": [
+        { "include": "#type-generic" },
+        { "include": "#type-name" },
+        { "include": "#operator-ownership" },
+        { "include": "#wildcard" },
+        { "include": "#comment" },
+        { "include": "#keyword-declaration" }
+      ]
+    },
+    "type-name": {
+      "name": "entity.name.type.krypton",
+      "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+    },
+    "wildcard": {
+      "name": "variable.language.wildcard.krypton",
+      "match": "\\b_\\b"
+    }
+  }
+}

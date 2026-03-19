@@ -1,0 +1,26 @@
+{
+  "name": "krypton-syntax",
+  "displayName": "Krypton Syntax",
+  "description": "Syntax highlighting for Krypton (.kr) files",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "krypton",
+        "aliases": ["Krypton", "krypton"],
+        "extensions": [".kr"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "krypton",
+        "scopeName": "source.krypton",
+        "path": "./krypton.tmLanguage.json"
+      }
+    ]
+  }
+}
