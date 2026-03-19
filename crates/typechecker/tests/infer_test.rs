@@ -251,7 +251,7 @@ fn infer_forward_reference() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -292,7 +292,7 @@ fn infer_module_basic() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -327,7 +327,7 @@ fn infer_module_forward_ref() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -365,7 +365,7 @@ fn infer_mutual_recursion() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -417,7 +417,7 @@ fn infer_record_constructor() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -455,7 +455,7 @@ fn infer_sum_constructor() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -466,9 +466,9 @@ fn infer_sum_constructor() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall w5. fn(w5) -> Option[w5]
-    None: forall w5. Option[w5]
-    wrap: forall i6. fn(i6) -> Option[i6]
+    Some: forall g7. fn(g7) -> Option[g7]
+    None: forall g7. Option[g7]
+    wrap: forall s7. fn(s7) -> Option[s7]
     "
     );
 }
@@ -494,7 +494,7 @@ fn infer_bare_variant() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -505,9 +505,9 @@ fn infer_bare_variant() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall w5. fn(w5) -> Option[w5]
-    None: forall w5. Option[w5]
-    none: forall j6. fn() -> Option[j6]
+    Some: forall g7. fn(g7) -> Option[g7]
+    None: forall g7. Option[g7]
+    none: forall t7. fn() -> Option[t7]
     "
     );
 }
@@ -543,7 +543,7 @@ fn infer_scc_generalization_order() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -554,9 +554,9 @@ fn infer_scc_generalization_order() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    id: forall h6. fn(h6) -> h6
-    f: forall n6. fn(n6) -> n6
-    g: forall s6. fn(s6) -> s6
+    id: forall r7. fn(r7) -> r7
+    f: forall x7. fn(x7) -> x7
+    g: forall c8. fn(c8) -> c8
     "
     );
 }
@@ -582,7 +582,7 @@ fn infer_field_access() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -620,7 +620,7 @@ fn infer_struct_update() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -688,7 +688,7 @@ fn infer_match_option() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -699,9 +699,9 @@ fn infer_match_option() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall w5. fn(w5) -> Option[w5]
-    None: forall w5. Option[w5]
-    unwrap_or: forall j6. fn(Option[j6], j6) -> j6
+    Some: forall g7. fn(g7) -> Option[g7]
+    None: forall g7. Option[g7]
+    unwrap_or: forall t7. fn(Option[t7], t7) -> t7
     "
     );
 }
@@ -727,7 +727,7 @@ fn infer_match_literal() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -764,7 +764,7 @@ fn infer_match_variable() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -775,7 +775,7 @@ fn infer_match_variable() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    identity: forall h6. fn(h6) -> h6
+    identity: forall r7. fn(r7) -> r7
     "
     );
 }
@@ -801,7 +801,7 @@ fn infer_match_nested_constructor() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -812,8 +812,8 @@ fn infer_match_nested_constructor() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Cons: forall w5. fn(w5, List[w5]) -> List[w5]
-    Nil: forall w5. List[w5]
+    Cons: forall g7. fn(g7, List[g7]) -> List[g7]
+    Nil: forall g7. List[g7]
     sum2: fn(List[Int]) -> Int
     "
     );
@@ -850,7 +850,7 @@ fn infer_tuple_in_match() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -861,7 +861,7 @@ fn infer_tuple_in_match() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    first: forall j6 k6. fn((j6, k6)) -> j6
+    first: forall t7 u7. fn((t7, u7)) -> t7
     "
     );
 }
@@ -892,7 +892,7 @@ fn infer_tuple_polymorphic() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -903,7 +903,7 @@ fn infer_tuple_polymorphic() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    swap: forall j6 k6. fn((j6, k6)) -> (k6, j6)
+    swap: forall t7 u7. fn((t7, u7)) -> (u7, t7)
     "
     );
 }
@@ -914,7 +914,7 @@ fn infer_match_wrong_constructor() {
         infer_module_types(
             "type Color = Red | Green | Blue\ntype Option[a] = Some(a) | None\nfun bad(c) = match Red { Some(x) => x, _ => 0 }"
         ),
-        @"TypeError: type mismatch: expected Color, found Option[k6]"
+        @"TypeError: type mismatch: expected Color, found Option[u7]"
     );
 }
 
@@ -939,7 +939,7 @@ fn test_exhaustive_complete() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -950,8 +950,8 @@ fn test_exhaustive_complete() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall w5. fn(w5) -> Option[w5]
-    None: forall w5. Option[w5]
+    Some: forall g7. fn(g7) -> Option[g7]
+    None: forall g7. Option[g7]
     unwrap: fn(Option[Int]) -> Int
     "
     );
@@ -988,7 +988,7 @@ fn test_exhaustive_wildcard_covers_all() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -999,9 +999,9 @@ fn test_exhaustive_wildcard_covers_all() {
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall w5. fn(w5) -> Option[w5]
-    None: forall w5. Option[w5]
-    test: forall i6. fn(i6) -> Int
+    Some: forall g7. fn(g7) -> Option[g7]
+    None: forall g7. Option[g7]
+    test: forall s7. fn(s7) -> Int
     "
     );
 }
@@ -1037,7 +1037,7 @@ fn infer_call_site_coercion_borrow() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -1075,7 +1075,7 @@ fn infer_call_site_coercion_no_collection() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
@@ -1115,7 +1115,7 @@ fn explicit_type_param_generalized() {
     // fun view[t](x: ~t) -> t should produce forall t. fn(own t) -> t
     insta::assert_snapshot!(
         infer_module_fn("fun view[t](x: ~t) -> t = x", "view"),
-        @"forall h6. fn(~h6) -> h6"
+        @"forall r7. fn(~r7) -> r7"
     );
 }
 
@@ -1124,7 +1124,7 @@ fn explicit_type_param_identity() {
     // fun id[a](x: a) -> a should produce forall a. fn(a) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall h6. fn(h6) -> h6"
+        @"forall r7. fn(r7) -> r7"
     );
 }
 
@@ -1133,7 +1133,7 @@ fn explicit_type_param_multiple() {
     // fun const[a, b](x: a, y: b) -> a should produce forall a b. fn(a, b) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun const_[a, b](x: a, y: b) -> a = x", "const_"),
-        @"forall h6 i6. fn(h6, i6) -> h6"
+        @"forall r7 s7. fn(r7, s7) -> r7"
     );
 }
 
@@ -1153,7 +1153,7 @@ fn explicit_hkt_type_param_generalized() {
 
         fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x -> x)
     "#;
-    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall l6 m6. fn(l6[m6]) -> l6[m6]");
+    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall v7 w7. fn(v7[w7]) -> v7[w7]");
 }
 
 #[test]
@@ -1187,7 +1187,7 @@ fn no_type_params_still_generalizes() {
     // Unannotated identity should still generalize via HM
     insta::assert_snapshot!(
         infer_module_fn("fun id(x) = x", "id"),
-        @"forall h6. fn(h6) -> h6"
+        @"forall r7. fn(r7) -> r7"
     );
 }
 
@@ -1317,7 +1317,7 @@ fn typo_in_type_name() {
 fn type_param_not_unknown() {
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall h6. fn(h6) -> h6"
+        @"forall r7. fn(r7) -> r7"
     );
 }
 
@@ -2241,7 +2241,7 @@ fn lambda_params_inferred_from_higher_order_fn() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    to_list: forall r1 y1. fn(Vec[r1]) -> List[y1]
+    to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
     None: forall e. Option[e]
