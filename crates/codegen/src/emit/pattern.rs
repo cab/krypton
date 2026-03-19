@@ -436,15 +436,35 @@ impl Compiler {
                                 let var_slot = self.builder.alloc_local(var_name.clone(), actual_type);
                                 self.builder.emit_store(var_slot, actual_type);
                             }
-                            TypedPattern::Constructor { args: sub_args, .. }
+                            TypedPattern::Constructor { name: sub_name, args: sub_args, .. }
                                 if sub_args.is_empty() =>
                             {
-                                // Zero-arg constructor sub-pattern — just pop
-                                self.builder.emit(Instruction::Pop);
-                                self.builder.frame.pop_type();
+                                // Zero-arg constructor sub-pattern: check instanceof then pop
+                                if matches!(mode, PatternMode::CheckAndBind) {
+                                    let sub_sum_name = self
+                                        .types
+                                        .variant_to_sum
+                                        .get(sub_name)
+                                        .cloned()
+                                        .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {sub_name}")))?;
+                                    let sub_sum_info = &self.types.sum_type_info[&sub_sum_name];
+                                    let sub_vi = &sub_sum_info.variants[sub_name];
+                                    let sub_class_index = sub_vi.class_index;
+
+                                    // instanceof check on the value already on stack
+                                    self.builder.emit(Instruction::Instanceof(sub_class_index));
+                                    self.builder.frame.pop_type();
+                                    self.builder.frame.push_type(VerificationType::Integer);
+                                    let nested_ifeq = self.builder.emit_placeholder(Instruction::Ifeq(0));
+                                    self.builder.frame.pop_type();
+                                    self.builder.nested_ifeq_patches.push(nested_ifeq);
+                                } else {
+                                    self.builder.emit(Instruction::Pop);
+                                    self.builder.frame.pop_type();
+                                }
                             }
                             TypedPattern::Constructor { .. } => {
-                                // Nested constructor: store in local, recurse with CheckAndBind
+                                // Nested constructor: store in local, recurse with same mode
                                 let nested_type = if *is_erased {
                                     JvmType::StructRef(self.get_pattern_class_index(sub_pat)?)
                                 } else {
@@ -460,12 +480,17 @@ impl Compiler {
                                         _ => self.builder.refs.string_class,
                                     },
                                 });
+                                let nested_mode = if matches!(mode, PatternMode::BindOnly) {
+                                    PatternMode::BindOnly
+                                } else {
+                                    PatternMode::CheckAndBind
+                                };
                                 if let Some(nested_ifeq) = self.compile_pattern(
                                     sub_pat,
                                     nested_slot,
                                     nested_type,
                                     scrutinee_tc_type,
-                                    PatternMode::CheckAndBind,
+                                    nested_mode,
                                 )? {
                                     self.builder.nested_ifeq_patches.push(nested_ifeq);
                                 }

@@ -629,7 +629,7 @@ where
             .clone()
             .separated_by(symbol(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
+            .delimited_by(just(Token::LParen).then_ignore(ignored_newlines()), closing_symbol(Token::RParen))
             .map_with(|args, e| Postfix::Call(args, e.span()));
 
         let type_args_postfix = ty
@@ -637,7 +637,7 @@ where
             .separated_by(symbol(Token::Comma))
             .at_least(1)
             .collect::<Vec<_>>()
-            .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+            .delimited_by(just(Token::LBracket).then_ignore(ignored_newlines()), closing_symbol(Token::RBracket))
             .map_with(|type_args, e| Postfix::TypeArgs(type_args, e.span()));
 
         // Dot access: .ident or .ident(args)
