@@ -638,6 +638,14 @@ impl Compiler {
                             Self::bind_type_vars(pattern_elem, actual_elem, bindings)
                         })
             }
+            (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
+                p_params.len() == a_params.len()
+                    && p_params
+                        .iter()
+                        .zip(a_params.iter())
+                        .all(|(p, a)| Self::bind_type_vars(p, a, bindings))
+                    && Self::bind_type_vars(p_ret, a_ret, bindings)
+            }
             _ => pattern == actual,
         }
     }

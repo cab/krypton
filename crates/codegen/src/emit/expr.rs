@@ -216,22 +216,36 @@ impl Compiler {
         })?;
         let iface_class = dispatch.interface_class;
 
-        let singleton = self
-            .traits
-            .instance_singletons
-            .get(&(trait_name.to_string(), lookup_type.clone()))
-            .ok_or_else(|| {
-                CodegenError::UndefinedVariable(format!(
-                    "no instance of {trait_name} for {}", lhs.ty
-                ))
-            })?;
-        let field_ref = singleton.instance_field_ref;
+        // If the operand type is a type variable, load dict from function's dict locals
+        if matches!(&lookup_type, Type::Var(_)) {
+            if let Some(&dict_slot) = self.traits.dict_locals.get(trait_name) {
+                self.builder.emit(Instruction::Aload(dict_slot as u8));
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: iface_class,
+                });
+            } else {
+                return Err(CodegenError::UndefinedVariable(format!(
+                    "no dict local for {trait_name} (type var {})", lhs.ty
+                )));
+            }
+        } else {
+            let singleton = self
+                .traits
+                .instance_singletons
+                .get(&(trait_name.to_string(), lookup_type.clone()))
+                .ok_or_else(|| {
+                    CodegenError::UndefinedVariable(format!(
+                        "no instance of {trait_name} for {}", lhs.ty
+                    ))
+                })?;
+            let field_ref = singleton.instance_field_ref;
 
-        // Load singleton instance
-        self.builder.emit(Instruction::Getstatic(field_ref));
-        self.builder.frame.push_type(VerificationType::Object {
-            cpool_index: iface_class,
-        });
+            // Load singleton instance
+            self.builder.emit(Instruction::Getstatic(field_ref));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: iface_class,
+            });
+        }
 
         // Compile and box lhs
         let lhs_jvm = self.compile_expr(lhs, false)?;

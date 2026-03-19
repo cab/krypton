@@ -27,6 +27,24 @@ pub(crate) struct InferenceContext<'a> {
 }
 
 impl<'a> InferenceContext<'a> {
+    fn is_type_var_constrained(&self, ty: &Type, trait_name: &str) -> bool {
+        if let Type::Var(_) = ty {
+            let resolved = self.subst.apply(ty);
+            if let Type::Var(resolved_id) = resolved {
+                return self.enclosing_fn_constraints.iter().any(|(t, v)| {
+                    if t != trait_name { return false; }
+                    // Resolve the constraint's type var through substitution too,
+                    // since unification may have mapped it to a different var.
+                    match self.subst.apply(&Type::Var(*v)) {
+                        Type::Var(constraint_id) => constraint_id == resolved_id,
+                        _ => false,
+                    }
+                });
+            }
+        }
+        false
+    }
+
     pub fn unify_spanned(&mut self, t1: &Type, t2: &Type, span: Span) -> Result<(), SpannedTypeError> {
         unify(t1, t2, self.subst).map_err(|e| super::spanned(e, span))
     }
@@ -794,15 +812,21 @@ impl<'a> InferenceContext<'a> {
             } => {
                 let val_typed = self.infer_expr_inner(value, None)?;
 
-                // If there's a type annotation, resolve it and unify with the inferred type
-                if let Some(ty_expr) = ty_ann {
+                // If there's a type annotation, resolve and unify. Use the annotation
+                // type for the binding so that `: Int` (no ~) drops ownership.
+                let binding_ty = if let Some(ty_expr) = ty_ann {
                     if self.registry.is_some() {
                         let annotated_ty = self.resolve_type_expr_spanned(ty_expr, *span)?;
                         self.unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
+                        annotated_ty
+                    } else {
+                        val_typed.ty.clone()
                     }
-                }
+                } else {
+                    val_typed.ty.clone()
+                };
 
-                let resolved_val = self.subst.apply(&val_typed.ty);
+                let resolved_val = self.subst.apply(&binding_ty);
                 if matches!(&resolved_val, Type::Own(_)) {
                     if let Some(ref mut los) = self.let_own_spans {
                         los.insert(*span);
@@ -810,7 +834,7 @@ impl<'a> InferenceContext<'a> {
                 }
                 match body {
                     Some(body) => {
-                        let scheme = super::generalize(&val_typed.ty, self.env, self.subst);
+                        let scheme = super::generalize(&binding_ty, self.env, self.subst);
                         self.env.push_scope();
                         self.env.bind(name.clone(), scheme);
                         let body_typed = self.infer_expr_inner(body, None)?;
@@ -827,7 +851,7 @@ impl<'a> InferenceContext<'a> {
                         })
                     }
                     None => {
-                        let scheme = super::generalize(&val_typed.ty, self.env, self.subst);
+                        let scheme = super::generalize(&binding_ty, self.env, self.subst);
                         self.env.bind(name.clone(), scheme);
                         Ok(TypedExpr {
                             kind: TypedExprKind::Let {
@@ -898,8 +922,15 @@ impl<'a> InferenceContext<'a> {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                         self.unify_spanned(&lhs_typed.ty, &rhs_typed.ty, *span)?;
                         let resolved = super::strip_own(&self.subst.apply(&lhs_typed.ty));
+                        let trait_name = match op {
+                            BinOp::Add => "Semigroup",
+                            BinOp::Sub => "Sub",
+                            BinOp::Mul => "Mul",
+                            BinOp::Div => "Div",
+                            _ => unreachable!(),
+                        };
                         match &resolved {
-                            Type::Var(_) => {
+                            Type::Var(_) if !self.is_type_var_constrained(&resolved, trait_name) => {
                                 self.unify_spanned(&resolved, &Type::Int, *span)?;
                                 Type::Int
                             }
@@ -909,8 +940,14 @@ impl<'a> InferenceContext<'a> {
                     BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                         self.unify_spanned(&lhs_typed.ty, &rhs_typed.ty, *span)?;
                         let resolved = super::strip_own(&self.subst.apply(&lhs_typed.ty));
+                        let trait_name = match op {
+                            BinOp::Eq | BinOp::Neq => "Eq",
+                            _ => "Ord",
+                        };
                         if let Type::Var(_) = &resolved {
-                            self.unify_spanned(&resolved, &Type::Int, *span)?;
+                            if !self.is_type_var_constrained(&resolved, trait_name) {
+                                self.unify_spanned(&resolved, &Type::Int, *span)?;
+                            }
                         }
                         Type::Bool
                     }
@@ -1133,19 +1170,26 @@ impl<'a> InferenceContext<'a> {
             } => {
                 let val_typed = self.infer_expr_inner(value, None)?;
 
-                // If there's a type annotation, resolve it and unify with the inferred type
-                if let Some(ty_expr) = ty_ann {
+                // If there's a type annotation, resolve and unify. Use the annotation
+                // type for the binding so that `: Int` (no ~) drops ownership.
+                let binding_ty = if let Some(ty_expr) = ty_ann {
                     if self.registry.is_some() {
                         let annotated_ty = self.resolve_type_expr_spanned(ty_expr, *span)?;
                         self.unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
+                        annotated_ty
+                    } else {
+                        self.subst.apply(&val_typed.ty)
                     }
-                }
+                } else {
+                    self.subst.apply(&val_typed.ty)
+                };
+
                 match body {
                     Some(body) => {
                         self.env.push_scope();
                         let typed_pattern = self.check_pattern(
                             pattern,
-                            &self.subst.apply(&val_typed.ty),
+                            &binding_ty,
                             *span,
                         )?;
                         let body_typed = self.infer_expr_inner(body, None)?;
@@ -1164,7 +1208,7 @@ impl<'a> InferenceContext<'a> {
                     None => {
                         let typed_pattern = self.check_pattern(
                             pattern,
-                            &self.subst.apply(&val_typed.ty),
+                            &binding_ty,
                             *span,
                         )?;
                         Ok(TypedExpr {
