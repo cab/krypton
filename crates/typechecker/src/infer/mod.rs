@@ -1365,6 +1365,21 @@ fn check_trait_instances(
     Ok(())
 }
 
+/// Build the type_param_map and arity map from parallel slices of names and vars.
+fn build_type_param_map(
+    type_params: &[String],
+    type_param_vars: &[TypeVarId],
+    type_name: &str,
+) -> (HashMap<String, TypeVarId>, HashMap<String, usize>) {
+    let mut map = HashMap::new();
+    let mut arity = HashMap::new();
+    for (param_name, &var) in type_params.iter().zip(type_param_vars.iter()) {
+        map.insert(param_name.clone(), var);
+    }
+    arity.insert(type_name.to_string(), type_params.len());
+    (map, arity)
+}
+
 /// Process extern methods from an `extern "class" { ... }` block, binding their
 /// types into the environment and returning `ExternFnInfo` entries for codegen.
 fn process_extern_methods(
@@ -1378,15 +1393,17 @@ fn process_extern_methods(
     aliases: &HashMap<String, String>,
     type_param_map: Option<&HashMap<String, TypeVarId>>,
     type_param_arity: Option<&HashMap<String, usize>>,
+    type_param_names: Option<&[String]>,
 ) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
     let empty_map = HashMap::new();
     let empty_arity = HashMap::new();
     let resolve_map = type_param_map.unwrap_or(&empty_map);
     let resolve_arity = type_param_arity.unwrap_or(&empty_arity);
-    // Collect type param vars for scheme quantification
-    let base_scheme_vars: Vec<TypeVarId> = type_param_map
-        .map(|m| m.values().copied().collect())
-        .unwrap_or_default();
+    // Collect type param vars for scheme quantification in declaration order
+    let base_scheme_vars: Vec<TypeVarId> = match (type_param_names, type_param_map) {
+        (Some(names), Some(map)) => names.iter().filter_map(|n| map.get(n).copied()).collect(),
+        _ => vec![],
+    };
     let has_type_params = type_param_map.is_some();
     let mut extern_fns = Vec::new();
     for method in methods {
@@ -1440,14 +1457,18 @@ fn process_extern_methods(
         // won't resolve and fall back to Object.
         let mut concrete_params = Vec::new();
         for ty_expr in &method.param_types {
-            concrete_params.push(
-                type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
-                    .unwrap_or_else(|_| Type::Named("Object".to_string(), vec![]))
-            );
+            let resolved = match type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation) {
+                Ok(ty) => ty,
+                Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
+                Err(e) => return Err(spanned(e, span)),
+            };
+            concrete_params.push(resolved);
         }
-        let codegen_return =
-            type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation)
-                .unwrap_or_else(|_| Type::Named("Object".to_string(), vec![]));
+        let codegen_return = match type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation) {
+            Ok(ty) => ty,
+            Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
+            Err(e) => return Err(spanned(e, span)),
+        };
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),
             java_class: class_name.to_string(),
@@ -1777,22 +1798,19 @@ impl ModuleInferenceState {
 
                     // Build type_param_map for method resolution
                     if !type_params.is_empty() {
-                        let mut map = HashMap::new();
-                        let mut arity = HashMap::new();
-                        for (param_name, &var) in type_params.iter().zip(type_param_vars.iter()) {
-                            map.insert(param_name.clone(), var);
-                        }
-                        arity.insert(name.clone(), type_params.len());
+                        let (map, arity) = build_type_param_map(type_params, &type_param_vars, name);
                         tp_map = Some(map);
                         tp_arity = Some(arity);
                     }
                 }
 
                 let no_aliases = HashMap::new();
+                let tp_names = type_params.as_slice();
                 let mut fns = process_extern_methods(
                     class_name, methods, &mut self.env, &mut self.gen, &self.registry,
                     *span, None, &no_aliases,
                     tp_map.as_ref(), tp_arity.as_ref(),
+                    if tp_map.is_some() { Some(tp_names) } else { None },
                 )?;
                 extern_fns.append(&mut fns);
             }

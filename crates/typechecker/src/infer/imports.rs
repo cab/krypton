@@ -8,8 +8,8 @@ use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
-    constructor_names, find_type_decl, process_extern_methods, spanned, ModuleInferenceState,
-    QualifiedExport, QualifiedModuleBinding,
+    build_type_param_map, constructor_names, find_type_decl, process_extern_methods, spanned,
+    ModuleInferenceState, QualifiedExport, QualifiedModuleBinding,
 };
 
 impl ModuleInferenceState {
@@ -533,20 +533,17 @@ impl ModuleInferenceState {
 
                     // Build type_param_map for method resolution
                     if !type_params.is_empty() {
-                        let mut map = HashMap::new();
-                        let mut arity = HashMap::new();
-                        for (param_name, &var) in type_params.iter().zip(type_param_vars.iter()) {
-                            map.insert(param_name.clone(), var);
-                        }
-                        arity.insert(name.clone(), type_params.len());
+                        let (map, arity) = build_type_param_map(type_params, &type_param_vars, name);
                         tp_map = Some(map);
                         tp_arity = Some(arity);
                     }
                 }
 
+                let tp_names = type_params.as_slice();
                 let mut fns = process_extern_methods(
                     class_name, methods, &mut self.env, &mut self.gen, &self.registry, *ext_span, None,
                     &aliases, tp_map.as_ref(), tp_arity.as_ref(),
+                    if tp_map.is_some() { Some(tp_names) } else { None },
                 )?;
                 self.imported_extern_fns.append(&mut fns);
             }

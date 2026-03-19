@@ -38,6 +38,25 @@ fn name_to_builtin_type(name: &str) -> Type {
     }
 }
 
+/// Map a `Type::Named` to its JVM type and descriptor fragment.
+/// Types with type args use Object (JVM erasure).
+fn jvm_type_for_named(
+    name: &str,
+    args: &[Type],
+    struct_info: &HashMap<String, StructInfo>,
+    object_class: u16,
+) -> (JvmType, String) {
+    if args.is_empty() {
+        if let Some(info) = struct_info.get(name) {
+            (JvmType::StructRef(info.class_index), format!("L{};", info.class_name))
+        } else {
+            (JvmType::StructRef(object_class), "Ljava/lang/Object;".to_string())
+        }
+    } else {
+        (JvmType::StructRef(object_class), "Ljava/lang/Object;".to_string())
+    }
+}
+
 impl Compiler {
     pub(super) fn register_extern_types(
         &mut self,
@@ -728,19 +747,9 @@ impl Compiler {
                         param_desc.push_str("Ljava/lang/String;");
                     }
                     Type::Named(name, args) => {
-                        // Types with type args use Object (JVM erasure)
-                        if args.is_empty() {
-                            if let Some(info) = self.types.struct_info.get(name) {
-                                param_jvm_types.push(JvmType::StructRef(info.class_index));
-                                param_desc.push_str(&format!("L{};", info.class_name));
-                            } else {
-                                param_jvm_types.push(JvmType::StructRef(self.builder.refs.object_class));
-                                param_desc.push_str("Ljava/lang/Object;");
-                            }
-                        } else {
-                            param_jvm_types.push(JvmType::StructRef(self.builder.refs.object_class));
-                            param_desc.push_str("Ljava/lang/Object;");
-                        }
+                        let (jvm, desc) = jvm_type_for_named(name, args, &self.types.struct_info, self.builder.refs.object_class);
+                        param_jvm_types.push(jvm);
+                        param_desc.push_str(&desc);
                     }
                     other => {
                         return Err(CodegenError::TypeError(format!(
@@ -761,15 +770,8 @@ impl Compiler {
                     Type::Bool => (JvmType::Int, "Z".to_string()),
                     Type::String => (JvmType::StructRef(self.builder.refs.string_class), "Ljava/lang/String;".to_string()),
                     Type::Named(name, args) => {
-                        if args.is_empty() {
-                            if let Some(info) = self.types.struct_info.get(name) {
-                                (JvmType::StructRef(info.class_index), format!("L{};", info.class_name))
-                            } else {
-                                (JvmType::StructRef(self.builder.refs.object_class), "Ljava/lang/Object;".to_string())
-                            }
-                        } else {
-                            (JvmType::StructRef(self.builder.refs.object_class), "Ljava/lang/Object;".to_string())
-                        }
+                        let (jvm, desc) = jvm_type_for_named(name, args, &self.types.struct_info, self.builder.refs.object_class);
+                        (jvm, desc)
                     }
                     other => {
                         return Err(CodegenError::TypeError(format!(
