@@ -23,6 +23,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
+    pub(super) shadowed_prelude_fns: &'a [(String, String)],
 }
 
 impl<'a> InferenceContext<'a> {
@@ -755,6 +756,16 @@ impl<'a> InferenceContext<'a> {
                                                 }
                                             }
                                         }
+                                    }
+                                    if err.note.is_none() && *is_ufcs && !self.shadowed_prelude_fns.is_empty() {
+                                        let shadows: Vec<String> = self.shadowed_prelude_fns.iter()
+                                            .map(|(name, module)| format!("`{name}` from {module}"))
+                                            .collect();
+                                        err.note = Some(format!(
+                                            "{} {} shadowed by an explicit import — this may affect the types flowing through the method chain",
+                                            shadows.join(", "),
+                                            if shadows.len() == 1 { "is" } else { "are" },
+                                        ));
                                     }
                                 }
                                 err

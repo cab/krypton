@@ -835,6 +835,7 @@ pub fn infer_expr(
         imported_fn_types: &[],
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
+        shadowed_prelude_fns: &[],
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -1616,6 +1617,8 @@ pub(crate) struct ImportContext {
     pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
     pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) imported_fn_qualifiers: HashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
+    /// Prelude functions that were shadowed by explicit imports: (name, source_module)
+    pub(super) shadowed_prelude_fns: Vec<(String, String)>,
 }
 
 impl ImportContext {
@@ -1625,6 +1628,7 @@ impl ImportContext {
             imported_type_info: HashMap::new(),
             imported_fn_constraints: HashMap::new(),
             imported_fn_qualifiers: HashMap::new(),
+            shadowed_prelude_fns: Vec::new(),
         }
     }
 
@@ -1646,6 +1650,10 @@ impl ImportContext {
     ) -> Result<(), SpannedTypeError> {
         // Explicit import shadows any prelude entry for the same name
         if prelude_imported_names.contains(&name) {
+            // Record shadowed prelude functions before removing
+            for f in self.imported_fn_types.iter().filter(|f| f.name == name) {
+                self.shadowed_prelude_fns.push((f.name.clone(), f.source_module.clone()));
+            }
             self.imported_fn_types.retain(|f| f.name != name);
             self.imported_fn_constraints.remove(&name);
             imported_fn_constraint_requirements.remove(&name);
@@ -3118,6 +3126,7 @@ pub(crate) fn infer_module_inner(
                     imported_fn_types: &state.imports.imported_fn_types,
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
+                    shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
@@ -3355,6 +3364,7 @@ pub(crate) fn infer_module_inner(
                         imported_fn_types: &state.imports.imported_fn_types,
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &[],
+                        shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };

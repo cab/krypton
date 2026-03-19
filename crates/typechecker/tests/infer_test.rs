@@ -257,6 +257,8 @@ fn infer_forward_reference() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -298,6 +300,8 @@ fn infer_module_basic() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -333,6 +337,8 @@ fn infer_module_forward_ref() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -371,6 +377,8 @@ fn infer_mutual_recursion() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -423,6 +431,8 @@ fn infer_record_constructor() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -461,6 +471,8 @@ fn infer_sum_constructor() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -500,6 +512,8 @@ fn infer_bare_variant() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -549,6 +563,8 @@ fn infer_scc_generalization_order() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -588,6 +604,8 @@ fn infer_field_access() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -626,6 +644,8 @@ fn infer_struct_update() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -694,6 +714,8 @@ fn infer_match_option() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -733,6 +755,8 @@ fn infer_match_literal() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -770,6 +794,8 @@ fn infer_match_variable() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -807,6 +833,8 @@ fn infer_match_nested_constructor() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -856,6 +884,8 @@ fn infer_tuple_in_match() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -898,6 +928,8 @@ fn infer_tuple_polymorphic() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -945,6 +977,8 @@ fn test_exhaustive_complete() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -994,6 +1028,8 @@ fn test_exhaustive_wildcard_covers_all() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -1043,6 +1079,8 @@ fn infer_call_site_coercion_borrow() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -1081,6 +1119,8 @@ fn infer_call_site_coercion_no_collection() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -2250,6 +2290,8 @@ fn lambda_params_inferred_from_higher_order_fn() {
     last: forall q3. fn(List[q3]) -> Option[q3]
     sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
     filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
+    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
+    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
     to_list: forall f7. fn(Vec[f7]) -> List[f7]
     println: forall m. fn(m) -> Unit
     Some: forall e. fn(e) -> Option[e]
@@ -2265,5 +2307,35 @@ fn lambda_params_inferred_from_higher_order_fn() {
     apply: fn(Player, fn(Player) -> Int) -> Int
     get_score: fn(Player) -> Int
     "
+    );
+}
+
+#[test]
+fn shadowed_prelude_fn_note_on_ufcs_mismatch() {
+    // Importing filter from core/vec shadows prelude's core/list.filter.
+    // Chaining .filter(...).map(...) should fail (Vec vs List) with a note about shadowing.
+    let src = r#"
+        import core/vec.{filter}
+        fun main() = {
+            let xs = Cons(1, Cons(2, Nil))
+            xs.filter(x -> eq(x, 1)).map(x -> x + 1)
+        }
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only());
+    let err = match result {
+        Err(e) => e,
+        Ok(_) => panic!("should fail with type mismatch"),
+    };
+    let te = err.type_error().expect("should be a type error");
+    let note = te.note.as_ref().expect("should have a note about shadowing");
+    assert!(
+        note.contains("shadowed"),
+        "note should mention shadowing, got: {note}"
+    );
+    assert!(
+        note.contains("filter"),
+        "note should mention the shadowed function name, got: {note}"
     );
 }
