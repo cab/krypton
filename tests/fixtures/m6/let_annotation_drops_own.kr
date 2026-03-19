@@ -1,0 +1,9 @@
+# expect: ok
+# let x: Int = 2 drops ownership — x is not owned
+fun id(s: Int) -> Int = s
+
+fun test() -> Int {
+    let s: Int = 2
+    id(s);
+    id(s)
+}

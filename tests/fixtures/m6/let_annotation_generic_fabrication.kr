@@ -1,0 +1,8 @@
+# expect: error E0001
+# let s: Int = 2 with annotation should not satisfy ~Int through generics
+fun ok[T](f: (T) -> String, s: T) -> String = f(s)
+fun test(a) {
+    let s: Int = 2
+    let lam: (~Int) -> String = a -> "hi"
+    ok(lam, s)
+}

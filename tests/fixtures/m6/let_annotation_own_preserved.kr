@@ -1,0 +1,8 @@
+# expect: ok
+# let x: ~Int = 2 preserves ownership
+fun consume(x: ~Int) -> Int = x
+
+fun test() -> Int {
+    let s: ~Int = 2
+    consume(s)
+}
