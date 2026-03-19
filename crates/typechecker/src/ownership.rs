@@ -7,27 +7,6 @@ use crate::typed_ast::ParamQualifier;
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
-/// Check if a param type from a function's type scheme requires ownership
-/// for non-function types.  Returns `true` when the param is `Own(inner)`
-/// and `inner` is NOT `Fn(_, _)`.
-///
-/// `~fn(...)` params are exempt: ownership on functions tracks closure
-/// affinity (single-use due to captured owned values), not value ownership.
-/// The `~fn → fn` direction is already rejected by unification (no symmetric
-/// coercion for functions), and `fn → ~fn` coercion is handled by
-/// `coerce_own_args`.  This guard is for data types only.
-fn param_requires_own(param_ty: &Type) -> bool {
-    matches!(param_ty, Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)))
-}
-
-/// Strip one layer of `Own` for error reporting (e.g. `Own(String)` → `String`).
-fn strip_own_shallow(ty: &Type) -> Type {
-    match ty {
-        Type::Own(inner) => inner.as_ref().clone(),
-        other => other.clone(),
-    }
-}
-
 /// Check if a param has an `own` type annotation.
 fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
     matches!(&param.ty, Some(TypeExpr::Own { .. }))
@@ -372,7 +351,6 @@ pub fn check_ownership(
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
-    call_resolved_params: &HashMap<Span, (Vec<Type>, Vec<Type>)>,
 ) -> Result<OwnershipResult, SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
@@ -435,7 +413,6 @@ pub fn check_ownership(
                 struct_update_info,
                 registry,
                 &fn_scheme_params,
-                call_resolved_params,
             )?;
             all_moves.extend(fn_moves);
         }
@@ -452,10 +429,7 @@ struct OwnershipChecker<'a> {
     partially_consumed: HashMap<String, Span>,
     /// Every actual move: var_span → var_name.
     moves: HashMap<Span, String>,
-    /// Parameter names of the enclosing function (for diagnostic hints).
-    enclosing_param_names: &'a HashSet<String>,
     fn_param_info: &'a HashMap<String, Vec<bool>>,
-    fn_scheme_params: &'a HashMap<String, Vec<Type>>,
     affine: &'a HashSet<String>,
     fn_qualifiers: &'a HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &'a HashSet<Span>,
@@ -463,7 +437,6 @@ struct OwnershipChecker<'a> {
     own_fn_notes: &'a mut HashMap<String, String>,
     struct_update_info: &'a HashMap<Span, (String, HashSet<String>)>,
     registry: &'a TypeRegistry,
-    call_resolved_params: &'a HashMap<Span, (Vec<Type>, Vec<Type>)>,
 }
 
 impl<'a> OwnershipChecker<'a> {
@@ -566,7 +539,7 @@ impl<'a> OwnershipChecker<'a> {
             }
 
             Expr::App {
-                func, args, span, ..
+                func, args, span: _, ..
             } => {
                 self.check_expr(func)?;
                 let callee_params = callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
@@ -619,117 +592,6 @@ impl<'a> OwnershipChecker<'a> {
                         }
                     } else {
                         self.check_expr(arg)?;
-                    }
-                }
-                // Fabrication guard: reject bare T arg for ~T param.
-                // Uses fn_param_info (AST-level ~ annotations for local fns,
-                // scheme-level for imports) to identify direct ~ params.
-                // Also checks resolved types from inference for ownership
-                // requirements that enter through generic instantiation
-                // (e.g. T = ~Int when a lambda binds the type variable).
-                if let Some(callee_name) = callee_var_name(func) {
-                    if !self.registry.is_constructor(callee_name) {
-                        let own_flags = self.fn_param_info.get(callee_name);
-                        // Also grab scheme params for ~fn exemption + error message
-                        let scheme_params = self.fn_scheme_params.get(callee_name);
-                        let call_info = self.call_resolved_params.get(span);
-                        for (i, arg) in args.iter().enumerate() {
-                            let flagged = own_flags.is_some_and(|f| i < f.len() && f[i]);
-                            if flagged {
-                                // Check ~fn exemption via scheme param type
-                                let exempt = scheme_params
-                                    .and_then(|p| p.get(i))
-                                    .is_some_and(|ty| !param_requires_own(ty));
-                                if !exempt && !self.is_owned_expr(arg) {
-                                    // Build descriptive error types.  For concrete
-                                    // scheme params like Own(String), use as-is.
-                                    // For generic params like Own(Var(_)), display
-                                    // as own T / T since the raw var id is meaningless.
-                                    let (expected, actual) = match scheme_params.and_then(|p| p.get(i)) {
-                                        Some(Type::Own(inner)) if !matches!(inner.as_ref(), Type::Var(_)) => {
-                                            (Type::Own(inner.clone()), *inner.clone())
-                                        }
-                                        _ => {
-                                            let t = Type::Named("T".into(), vec![]);
-                                            (Type::Own(Box::new(t.clone())), t)
-                                        }
-                                    };
-                                    let note = match arg {
-                                        Expr::Var { name: arg_name, .. } => {
-                                            let mut msg = format!(
-                                                "`{}` requires an owned argument, but `{}` is not owned",
-                                                callee_name, arg_name
-                                            );
-                                            if self.enclosing_param_names.contains(arg_name) {
-                                                msg.push_str(&format!(
-                                                    " — add `~` to its declaration (e.g. `{}: ~T`)",
-                                                    arg_name
-                                                ));
-                                            }
-                                            msg
-                                        }
-                                        _ => format!(
-                                            "`{}` requires an owned argument at position {}",
-                                            callee_name, i + 1
-                                        ),
-                                    };
-                                    return Err(SpannedTypeError {
-                                        error: TypeError::Mismatch { expected, actual },
-                                        span: *span,
-                                        note: Some(note),
-                                        secondary_span: None,
-                                    });
-                                }
-                            } else if let Some((resolved, inferred_args)) = call_info {
-                                // Generic instantiation check: ~ entered through
-                                // type variable binding (e.g. T = ~Int).
-                                // Only flag when:
-                                // 1. The scheme param is a bare type variable
-                                // 2. The resolved type requires Own
-                                // 3. The argument's inferred type does NOT have Own
-                                //    (if it did, Own came from the arg, not a constraint)
-                                // 4. The expression is not syntactically owned
-                                let scheme_param_is_var = scheme_params
-                                    .and_then(|p| p.get(i))
-                                    .is_some_and(|ty| matches!(ty, Type::Var(_)));
-                                let arg_type_has_own = inferred_args
-                                    .get(i)
-                                    .is_some_and(|ty| matches!(ty, Type::Own(_)));
-                                if scheme_param_is_var && !arg_type_has_own {
-                                if let Some(resolved_ty) = resolved.get(i) {
-                                    if param_requires_own(resolved_ty) && !self.is_owned_expr(arg) {
-                                        let (expected, actual) = match resolved_ty {
-                                            Type::Own(inner) if !matches!(inner.as_ref(), Type::Var(_)) => {
-                                                (Type::Own(inner.clone()), *inner.clone())
-                                            }
-                                            _ => {
-                                                let t = Type::Named("T".into(), vec![]);
-                                                (Type::Own(Box::new(t.clone())), t)
-                                            }
-                                        };
-                                        let note = match arg {
-                                            Expr::Var { name: arg_name, .. } => {
-                                                format!(
-                                                    "`{}` requires an owned argument (via generic instantiation), but `{}` is not owned",
-                                                    callee_name, arg_name
-                                                )
-                                            }
-                                            _ => format!(
-                                                "`{}` requires an owned argument at position {} (via generic instantiation)",
-                                                callee_name, i + 1
-                                            ),
-                                        };
-                                        return Err(SpannedTypeError {
-                                            error: TypeError::Mismatch { expected, actual },
-                                            span: *span,
-                                            note: Some(note),
-                                            secondary_span: None,
-                                        });
-                                    }
-                                }
-                                }
-                            }
-                        }
                     }
                 }
                 Ok(())
@@ -1004,7 +866,6 @@ fn check_fn(
     struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
     registry: &TypeRegistry,
     fn_scheme_params: &HashMap<String, Vec<Type>>,
-    call_resolved_params: &HashMap<Span, (Vec<Type>, Vec<Type>)>,
 ) -> Result<HashMap<Span, String>, SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
@@ -1012,6 +873,17 @@ fn check_fn(
         .filter(|p| is_own_param(p))
         .map(|p| p.name.clone())
         .collect();
+
+    // Also track params whose resolved type is Own (inferred ownership).
+    // With coerce_unify stripping Own at Var-binding sites, Own only appears
+    // in resolved param types when legitimately required (e.g. passed to ~T param).
+    if let Some(scheme_params) = fn_scheme_params.get(decl.name.as_str()) {
+        for (param, scheme_ty) in decl.params.iter().zip(scheme_params.iter()) {
+            if matches!(scheme_ty, Type::Own(_)) {
+                owned.insert(param.name.clone());
+            }
+        }
+    }
 
     // Affine params (containing own types deeper in the type) also need
     // consumption tracking to detect double-use (E0101).
@@ -1022,16 +894,13 @@ fn check_fn(
     // Note: we don't short-circuit when owned/affine/let_own_spans are all empty,
     // because fabrication checks run for every call site regardless.
 
-    let enclosing_param_names: HashSet<String> = decl.params.iter().map(|p| p.name.clone()).collect();
     let mut own_fn_notes = HashMap::new();
     let mut checker = OwnershipChecker {
         owned: &mut owned,
         consumed: HashMap::new(),
         partially_consumed: HashMap::new(),
         moves: HashMap::new(),
-        enclosing_param_names: &enclosing_param_names,
         fn_param_info,
-        fn_scheme_params,
         affine,
         fn_qualifiers,
         let_own_spans,
@@ -1039,7 +908,6 @@ fn check_fn(
         own_fn_notes: &mut own_fn_notes,
         struct_update_info,
         registry,
-        call_resolved_params,
     };
     checker.check_expr(&decl.body)?;
     Ok(checker.moves)

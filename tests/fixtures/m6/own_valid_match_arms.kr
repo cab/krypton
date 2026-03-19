@@ -1,4 +1,5 @@
 # expect: ok
+# All-owned match arms preserve ownership through pair-wise joining
 type Color = Red | Green | Blue
 
 fun consume(buf: ~String) -> String = buf

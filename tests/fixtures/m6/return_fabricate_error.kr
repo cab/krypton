@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 fun f(x: String) -> ~String = x
 
 fun main() = f("hello")

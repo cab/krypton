@@ -150,6 +150,10 @@ pub enum TypeError {
         callee: String,
         param: String,
     },
+    OwnershipMismatch {
+        expected: Type,
+        actual: Type,
+    },
     UnsupportedExpr {
         description: String,
     },
@@ -274,6 +278,7 @@ impl TypeError {
             TypeError::MovedInBranch { .. } => TypeErrorCode::E0102,
             TypeError::CapturedMoved { .. } => TypeErrorCode::E0103,
             TypeError::QualifierMismatch { .. } => TypeErrorCode::E0104,
+            TypeError::OwnershipMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
             TypeError::NoInstance {
                 required_by: None, ..
@@ -372,6 +377,13 @@ impl TypeError {
             }
             TypeError::QualifierMismatch { callee, param, .. } => {
                 Some(format!("`{callee}` uses parameter `{param}` more than once, so it cannot accept `~` (owned) values. Consider cloning first, or use a function that consumes its argument at most once."))
+            }
+            TypeError::OwnershipMismatch { expected, .. } => {
+                if let Type::Own(_) = expected {
+                    Some("a `~` (owned) value must be passed to a parameter that requires ownership".to_string())
+                } else {
+                    None
+                }
             }
             TypeError::UnsupportedExpr { .. } => None,
             TypeError::NoInstance { required_by: Some(bound), .. } => {
@@ -545,6 +557,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::QualifierMismatch { name, callee, .. } => {
                 write!(f, "cannot pass `{name}` to `{callee}`: `{callee}` uses its argument multiple times, but `{name}` is single-use (`~`)")
+            }
+            TypeError::OwnershipMismatch { expected, actual } => {
+                write!(f, "ownership mismatch: expected `{expected}`, found `{actual}`")
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
@@ -861,28 +876,6 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
 
         // Own types
         (Type::Own(a), Type::Own(b)) => unify(a, b, subst),
-        // own T ↔ T coercion for non-function types.
-        //
-        // Design note: Literals and constructors produce `own T` to indicate
-        // freshly-created, owned values.  Rather than strip `Own` at every
-        // consumption site (binary ops, if-branches, generic args, …) we let
-        // unification treat `own T` and `T` as equivalent for non-function
-        // types.  This mirrors the `linear ≤ unrestricted` subtyping found
-        // in Linear Haskell and Clean's uniqueness types.
-        //
-        // Function types are excluded: `own fn(…)` (affine closure) must NOT
-        // silently coerce to `fn(…)` — that distinction is load-bearing for
-        // the linearity checker.
-        //
-        // Fabrication guard (`T → own T`) is enforced separately at call
-        // sites and let annotations in `ownership.rs` (post-inference, with
-        // fully resolved types), so this symmetric rule does not weaken
-        // ownership guarantees.
-        (Type::Own(inner), other) | (other, Type::Own(inner))
-            if !matches!(inner.as_ref(), Type::Fn(_, _)) =>
-        {
-            unify(inner, &other, subst)
-        }
 
         // Type constructor application (HKT)
         (Type::App(ctor1, args1), Type::App(ctor2, args2)) => {
@@ -934,5 +927,222 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
             expected: t1,
             actual: t2,
         }),
+    }
+}
+
+/// Directional coercion: allows Own(T) → T (drop ownership) but not T → Own(T) (fabrication).
+/// Used at value-flow sites: arg→param, value→annotation, body→return.
+///
+/// Key rule: when expected is an unbound Var, strip Own before binding.
+/// This means `fold(list, 0, f)` works (B = Int, not Own(Int)), but
+/// `identity(owned_val)` returns T not ~T. Use explicit type app for the latter.
+pub fn coerce_unify(actual: &Type, expected: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
+    let actual = walk(actual, subst);
+    let expected = walk(expected, subst);
+
+    // Same type variables — identity
+    if let (Type::Var(a), Type::Var(b)) = (&actual, &expected) {
+        if a == b {
+            return Ok(());
+        }
+    }
+
+    // Var on expected side: strip Own, then bind.
+    // This prevents literals from poisoning type variables with Own.
+    if let Type::Var(b) = &expected {
+        if !subst.get(*b).is_some() {
+            let stripped = strip_own_shallow(&actual);
+            // After stripping, if the result is the same var, it's identity (e.g., ~T → T)
+            if let Type::Var(s) = &stripped {
+                if s == b {
+                    return Ok(());
+                }
+            }
+            if occurs_in(*b, &stripped, subst) {
+                return Err(TypeError::InfiniteType {
+                    var: *b,
+                    ty: stripped,
+                });
+            }
+            subst.insert(*b, stripped);
+            return Ok(());
+        }
+        // b is bound — walk resolved it above, fall through to structural cases
+    }
+
+    // Var on actual side: standard HM binding via unify
+    if let Type::Var(a) = &actual {
+        if !subst.get(*a).is_some() {
+            if occurs_in(*a, &expected, subst) {
+                return Err(TypeError::InfiniteType {
+                    var: *a,
+                    ty: expected,
+                });
+            }
+            subst.insert(*a, expected);
+            return Ok(());
+        }
+    }
+
+    // Both Own: recurse on inner
+    if let (Type::Own(a_inner), Type::Own(e_inner)) = (&actual, &expected) {
+        return coerce_unify(a_inner, e_inner, subst);
+    }
+
+    // Own(T) → T: drop ownership (data types only, not fn)
+    if let Type::Own(inner) = &actual {
+        if !matches!(inner.as_ref(), Type::Fn(_, _)) {
+            return coerce_unify(inner, &expected, subst);
+        }
+    }
+
+    // fn → ~fn: multi-use function satisfies single-use requirement
+    if let Type::Fn(..) = &actual {
+        if let Type::Own(inner) = &expected {
+            if let Type::Fn(..) = inner.as_ref() {
+                return coerce_unify(&actual, inner, subst);
+            }
+        }
+    }
+
+    // Fn: contravariant params, covariant return
+    if let (Type::Fn(params_a, ret_a), Type::Fn(params_b, ret_b)) = (&actual, &expected) {
+        if params_a.len() != params_b.len() {
+            return Err(TypeError::WrongArity {
+                expected: params_b.len(),
+                actual: params_a.len(),
+            });
+        }
+        for (pa, pb) in params_a.iter().zip(params_b.iter()) {
+            coerce_unify(pb, pa, subst)?; // FLIP: contravariant
+        }
+        return coerce_unify(ret_a, ret_b, subst); // covariant
+    }
+
+    // Named types: covariant (functional language, no mutation)
+    if let (Type::Named(n1, args1), Type::Named(n2, args2)) = (&actual, &expected) {
+        if n1 == n2 {
+            if args1.len() != args2.len() {
+                return Err(TypeError::WrongArity {
+                    expected: args2.len(),
+                    actual: args1.len(),
+                });
+            }
+            for (a, e) in args1.iter().zip(args2.iter()) {
+                coerce_unify(a, e, subst)?;
+            }
+            return Ok(());
+        }
+    }
+
+    // Tuple: covariant
+    if let (Type::Tuple(elems_a), Type::Tuple(elems_b)) = (&actual, &expected) {
+        if elems_a.len() != elems_b.len() {
+            return Err(TypeError::WrongArity {
+                expected: elems_b.len(),
+                actual: elems_a.len(),
+            });
+        }
+        for (a, b) in elems_a.iter().zip(elems_b.iter()) {
+            coerce_unify(a, b, subst)?;
+        }
+        return Ok(());
+    }
+
+    // T → ~T fabrication: ownership-specific error (E0104)
+    if let Type::Own(inner) = &expected {
+        if !matches!(inner.as_ref(), Type::Fn(_, _)) {
+            return Err(TypeError::OwnershipMismatch {
+                expected: expected.clone(),
+                actual: actual.clone(),
+            });
+        }
+    }
+
+    // Everything else: delegate to plain unify.
+    // Pass expected first so Mismatch { expected, actual } labels are correct.
+    unify(&expected, &actual, subst)
+}
+
+/// Join two peer types at a join site (if-branches, match arms, binop operands, list elements).
+/// Strips Own from either side to find the common supertype:
+///   join(Own(T), Own(T)) = unify inner, both Own → result can be Own
+///   join(Own(T), T) = strip Own, unify → result is T
+pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
+    let a = walk(a, subst);
+    let b = walk(b, subst);
+
+    // Both Own: join inner types
+    if let (Type::Own(a_inner), Type::Own(b_inner)) = (&a, &b) {
+        return join_types(a_inner, b_inner, subst);
+    }
+
+    // One Own, one bare (non-fn): strip Own, join inner with bare.
+    // This strips ownership from literals at join sites (e.g., match { Some(x) => x, None => 0 })
+    // so that type vars are bound to bare types, not Own types.
+    if let Type::Own(a_inner) = &a {
+        if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
+            return join_types(a_inner, &b, subst);
+        }
+    }
+    if let Type::Own(b_inner) = &b {
+        if !matches!(b_inner.as_ref(), Type::Fn(_, _)) {
+            return join_types(&a, b_inner, subst);
+        }
+    }
+
+    // Fn types: join params and return element-wise
+    if let (Type::Fn(params_a, ret_a), Type::Fn(params_b, ret_b)) = (&a, &b) {
+        if params_a.len() != params_b.len() {
+            return Err(TypeError::WrongArity {
+                expected: params_a.len(),
+                actual: params_b.len(),
+            });
+        }
+        for (pa, pb) in params_a.iter().zip(params_b.iter()) {
+            join_types(pa, pb, subst)?;
+        }
+        return join_types(ret_a, ret_b, subst);
+    }
+
+    // Tuple: join element-wise
+    if let (Type::Tuple(elems_a), Type::Tuple(elems_b)) = (&a, &b) {
+        if elems_a.len() != elems_b.len() {
+            return Err(TypeError::WrongArity {
+                expected: elems_a.len(),
+                actual: elems_b.len(),
+            });
+        }
+        for (ea, eb) in elems_a.iter().zip(elems_b.iter()) {
+            join_types(ea, eb, subst)?;
+        }
+        return Ok(());
+    }
+
+    // Named types: join args element-wise
+    if let (Type::Named(n1, args1), Type::Named(n2, args2)) = (&a, &b) {
+        if n1 == n2 {
+            if args1.len() != args2.len() {
+                return Err(TypeError::WrongArity {
+                    expected: args1.len(),
+                    actual: args2.len(),
+                });
+            }
+            for (a1, a2) in args1.iter().zip(args2.iter()) {
+                join_types(a1, a2, subst)?;
+            }
+            return Ok(());
+        }
+    }
+
+    // No Own involved: regular unify
+    unify(&a, &b, subst)
+}
+
+/// Strip one level of Own for non-function types. Used by coerce_unify's Var rule.
+fn strip_own_shallow(ty: &Type) -> Type {
+    match ty {
+        Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => *inner.clone(),
+        other => other.clone(),
     }
 }

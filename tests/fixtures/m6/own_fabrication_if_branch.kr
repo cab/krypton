@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 fun consume(buf: ~String) -> String = buf
 
 fun borrow(s: String) -> String = s

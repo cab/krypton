@@ -118,9 +118,10 @@ fn unify_own_same() {
 #[test]
 fn unify_own_vs_bare_succeeds_for_non_fn() {
     let mut subst = Substitution::new();
-    // own T ↔ T coercion for non-function types
+    // Symmetric rule removed: own T vs T now fails in unify (handled by coerce_unify)
     let t1 = Type::Own(Box::new(Type::Int));
-    unify(&t1, &Type::Int, &mut subst).unwrap();
+    let err = unify(&t1, &Type::Int, &mut subst).unwrap_err();
+    assert!(matches!(err, TypeError::Mismatch { .. }));
     // own fn(...) vs fn(...) should still fail
     let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
     let bare_fn = Type::Fn(vec![], Box::new(Type::Int));

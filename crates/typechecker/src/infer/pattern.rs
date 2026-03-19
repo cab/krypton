@@ -306,7 +306,7 @@ impl<'a> InferenceContext<'a> {
                                 Some((_, expected_ty)) => {
                                     let expected = super::instantiate_field_type(expected_ty, info, type_args);
                                     let field_typed = self.infer_expr_inner(field_expr, None)?;
-                                    self.unify_spanned(&field_typed.ty, &expected, span)?;
+                                    self.coerce_unify_spanned(&field_typed.ty, &expected, span)?;
                                     typed_fields.push((field_name.clone(), field_typed));
                                 }
                                 None => {

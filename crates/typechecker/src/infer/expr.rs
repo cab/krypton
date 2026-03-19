@@ -5,7 +5,7 @@ use krypton_parser::ast::{BinOp, Expr, Lit, Span, UnaryOp};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{FnOrigin, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
-use crate::unify::{unify, SpannedTypeError, TypeError};
+use crate::unify::{coerce_unify, join_types, unify, SpannedTypeError, TypeError};
 
 use super::QualifiedModuleBinding;
 
@@ -23,7 +23,6 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
-    pub(super) call_resolved_params: Option<&'a mut HashMap<Span, (Vec<Type>, Vec<Type>)>>,
 }
 
 impl<'a> InferenceContext<'a> {
@@ -47,6 +46,14 @@ impl<'a> InferenceContext<'a> {
 
     pub fn unify_spanned(&mut self, t1: &Type, t2: &Type, span: Span) -> Result<(), SpannedTypeError> {
         unify(t1, t2, self.subst).map_err(|e| super::spanned(e, span))
+    }
+
+    pub fn coerce_unify_spanned(&mut self, actual: &Type, expected: &Type, span: Span) -> Result<(), SpannedTypeError> {
+        coerce_unify(actual, expected, self.subst).map_err(|e| super::spanned(e, span))
+    }
+
+    pub fn join_types_spanned(&mut self, a: &Type, b: &Type, span: Span) -> Result<(), SpannedTypeError> {
+        join_types(a, b, self.subst).map_err(|e| super::spanned(e, span))
     }
 
     pub fn resolve_type_expr_spanned(
@@ -142,22 +149,54 @@ impl<'a> InferenceContext<'a> {
         }
 
         let ret_var = Type::Var(self.fresh());
-        let coerced_args = if is_constructor {
-            arg_types.clone()
-        } else {
-            super::coerce_own_args(func_ty, &arg_types, self.subst)
-        };
-        let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
-        let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(func_ty));
-        self.unify_spanned(&unwrapped_func_ty, &expected_fn, span)?;
 
-        // Record resolved param types + arg types for generic ownership checks.
-        if let Some(ref fparams) = func_param_types {
-            if let Some(ref mut crp) = self.call_resolved_params {
-                let resolved: Vec<Type> = fparams.iter()
-                    .map(|p| self.subst.apply(p))
-                    .collect();
-                crp.insert(span, (resolved, arg_types.clone()));
+        // Resolve function type and extract params + return for per-arg coerce_unify
+        let resolved_func = self.subst.apply(func_ty);
+        let unwrapped = self.unwrap_own_fn(&resolved_func);
+        match &unwrapped {
+            Type::Fn(param_types, ret_type) => {
+                if param_types.len() != arg_types.len() {
+                    return Err(super::spanned(
+                        TypeError::WrongArity {
+                            expected: param_types.len(),
+                            actual: arg_types.len(),
+                        },
+                        span,
+                    ));
+                }
+                // Per-arg coerce_unify: directional, catches fabrication structurally
+                let callee_name = match &func_typed.kind {
+                    TypedExprKind::Var(name) => Some(name.as_str()),
+                    _ => None,
+                };
+                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
+                    coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
+                        let mut err = super::spanned(e, span);
+                        if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
+                            if let Some(cname) = callee_name {
+                                let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
+                                    format!("`{cname}` requires an owned argument, but `{arg_name}` is not owned")
+                                } else {
+                                    format!("`{cname}` requires an owned argument at position {}", i + 1)
+                                };
+                                err.note = Some(note);
+                            }
+                        }
+                        err
+                    })?;
+                }
+                // Propagate return type — plain unify preserves Own from resolved type
+                unify(ret_type, &ret_var, self.subst)
+                    .map_err(|e| super::spanned(e, span))?;
+            }
+            _ => {
+                // Function type not yet resolved — fall back to building expected Fn and unifying.
+                // Strip Own from arg types to avoid baking ownership into the function's type
+                // variable (ownership is handled by coerce_unify at resolved call sites).
+                let stripped_args: Vec<Type> = arg_types.iter().map(|t| super::strip_own(t)).collect();
+                let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
+                unify(&unwrapped, &expected_fn, self.subst)
+                    .map_err(|e| super::spanned(e, span))?;
             }
         }
 
@@ -644,15 +683,10 @@ impl<'a> InferenceContext<'a> {
                     if !matches!(a, Expr::Lambda { .. }) {
                         if let Some(ref fparams) = func_param_types {
                             if let Some(expected_param_ty) = fparams.get(i) {
-                                let _ = unify(expected_param_ty, &a_ty, self.subst);
+                                let _ = coerce_unify(&a_ty, expected_param_ty, self.subst);
                             }
                         }
                     }
-                }
-
-                if super::is_concrete_non_function(&func_typed.ty, self.subst) {
-                    let actual = self.subst.apply(&func_typed.ty);
-                    return Err(super::spanned(TypeError::NotAFunction { actual }, *span));
                 }
 
                 let ret_var = Type::Var(self.fresh());
@@ -661,40 +695,75 @@ impl<'a> InferenceContext<'a> {
                 } else {
                     false
                 };
-                let coerced_args = if is_constructor {
-                    arg_types.clone()
-                } else {
-                    super::coerce_own_args(&func_typed.ty, &arg_types, self.subst)
-                };
-                let expected_fn = Type::Fn(coerced_args, Box::new(ret_var.clone()));
-                let unwrapped_func_ty = self.unwrap_own_fn(&self.subst.apply(&func_typed.ty));
-                unify(&unwrapped_func_ty, &expected_fn, self.subst).map_err(|e| {
-                    let mut err = super::spanned(e, *span);
-                    if matches!(&err.error, TypeError::Mismatch { .. }) {
-                        if let Some(ref captures) = self.lambda_own_captures {
-                            for arg in args.iter() {
-                                if let Expr::Lambda { span: lspan, .. } = arg {
-                                    if let Some(cap_name) = captures.get(lspan) {
-                                        err.note = Some(format!(
-                                            "closure is single-use because it captures `~` value `{}`",
-                                            cap_name
-                                        ));
-                                        break;
+
+                // Resolve function type and extract params + return for per-arg coerce_unify
+                let resolved_func = self.subst.apply(&func_typed.ty);
+                let unwrapped = self.unwrap_own_fn(&resolved_func);
+                match &unwrapped {
+                    Type::Fn(param_types, ret_type) => {
+                        if param_types.len() != arg_types.len() {
+                            return Err(super::spanned(
+                                TypeError::WrongArity {
+                                    expected: param_types.len(),
+                                    actual: arg_types.len(),
+                                },
+                                *span,
+                            ));
+                        }
+                        // Per-arg coerce_unify: directional, catches fabrication structurally
+                        let callee_name = if let Expr::Var { name, .. } = func.as_ref() {
+                            Some(name.as_str())
+                        } else {
+                            None
+                        };
+                        for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
+                            coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
+                                let mut err = super::spanned(e, *span);
+                                // Add ownership-specific notes
+                                if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
+                                    if let Some(cname) = callee_name {
+                                        let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
+                                            format!("`{cname}` requires an owned argument, but `{arg_name}` is not owned")
+                                        } else {
+                                            format!("`{cname}` requires an owned argument at position {}", i + 1)
+                                        };
+                                        err.note = Some(note);
                                     }
                                 }
-                            }
+                                if matches!(&err.error, TypeError::Mismatch { .. }) {
+                                    if let Some(ref captures) = self.lambda_own_captures {
+                                        for arg in args.iter() {
+                                            if let Expr::Lambda { span: lspan, .. } = arg {
+                                                if let Some(cap_name) = captures.get(lspan) {
+                                                    err.note = Some(format!(
+                                                        "closure is single-use because it captures `~` value `{}`",
+                                                        cap_name
+                                                    ));
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                err
+                            })?;
                         }
+                        // Propagate return type — plain unify preserves Own from resolved type
+                        unify(ret_type, &ret_var, self.subst)
+                            .map_err(|e| super::spanned(e, *span))?;
                     }
-                    err
-                })?;
-
-                // Record resolved param types + arg types for generic ownership checks.
-                if let Some(ref fparams) = func_param_types {
-                    if let Some(ref mut crp) = self.call_resolved_params {
-                        let resolved: Vec<Type> = fparams.iter()
-                            .map(|p| self.subst.apply(p))
-                            .collect();
-                        crp.insert(*span, (resolved, arg_types.clone()));
+                    _ => {
+                        if super::is_concrete_non_function(&func_typed.ty, self.subst) {
+                            let actual = self.subst.apply(&func_typed.ty);
+                            return Err(super::spanned(TypeError::NotAFunction { actual }, *span));
+                        }
+                        // Function type not yet resolved — fall back to building expected Fn and unifying.
+                        // Strip Own from arg types to avoid baking ownership into the function's type
+                        // variable (ownership is handled by coerce_unify at resolved call sites).
+                        let stripped_args: Vec<Type> = arg_types.iter().map(|t| super::strip_own(t)).collect();
+                        let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
+                        unify(&unwrapped, &expected_fn, self.subst)
+                            .map_err(|e| super::spanned(e, *span))?;
                     }
                 }
 
@@ -817,7 +886,7 @@ impl<'a> InferenceContext<'a> {
                 let binding_ty = if let Some(ty_expr) = ty_ann {
                     if self.registry.is_some() {
                         let annotated_ty = self.resolve_type_expr_spanned(ty_expr, *span)?;
-                        self.unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
+                        self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
                         annotated_ty
                     } else {
                         val_typed.ty.clone()
@@ -874,11 +943,14 @@ impl<'a> InferenceContext<'a> {
                 ..
             } => {
                 let cond_typed = self.infer_expr_inner(cond, None)?;
-                self.unify_spanned(&cond_typed.ty, &Type::Bool, *span)?;
+                self.coerce_unify_spanned(&cond_typed.ty, &Type::Bool, *span)?;
                 let then_typed = self.infer_expr_inner(then_, None)?;
                 let else_typed = self.infer_expr_inner(else_, None)?;
-                self.unify_spanned(&then_typed.ty, &else_typed.ty, *span)?;
-                let ty = self.subst.apply(&then_typed.ty);
+                self.join_types_spanned(&then_typed.ty, &else_typed.ty, *span)?;
+                let then_resolved = self.subst.apply(&then_typed.ty);
+                let else_resolved = self.subst.apply(&else_typed.ty);
+                let both_own = matches!(&then_resolved, Type::Own(_)) && matches!(&else_resolved, Type::Own(_));
+                let ty = if both_own { then_resolved } else { super::strip_own(&then_resolved) };
                 Ok(TypedExpr {
                     kind: TypedExprKind::If {
                         cond: Box::new(cond_typed),
@@ -920,7 +992,7 @@ impl<'a> InferenceContext<'a> {
                 let rhs_typed = self.infer_expr_inner(rhs, None)?;
                 let ty = match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                        self.unify_spanned(&lhs_typed.ty, &rhs_typed.ty, *span)?;
+                        self.join_types_spanned(&lhs_typed.ty, &rhs_typed.ty, *span)?;
                         let resolved = super::strip_own(&self.subst.apply(&lhs_typed.ty));
                         let trait_name = match op {
                             BinOp::Add => "Semigroup",
@@ -938,7 +1010,7 @@ impl<'a> InferenceContext<'a> {
                         }
                     }
                     BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                        self.unify_spanned(&lhs_typed.ty, &rhs_typed.ty, *span)?;
+                        self.join_types_spanned(&lhs_typed.ty, &rhs_typed.ty, *span)?;
                         let resolved = super::strip_own(&self.subst.apply(&lhs_typed.ty));
                         let trait_name = match op {
                             BinOp::Eq | BinOp::Neq => "Eq",
@@ -952,8 +1024,8 @@ impl<'a> InferenceContext<'a> {
                         Type::Bool
                     }
                     BinOp::And | BinOp::Or => {
-                        self.unify_spanned(&lhs_typed.ty, &Type::Bool, *span)?;
-                        self.unify_spanned(&rhs_typed.ty, &Type::Bool, *span)?;
+                        self.coerce_unify_spanned(&lhs_typed.ty, &Type::Bool, *span)?;
+                        self.coerce_unify_spanned(&rhs_typed.ty, &Type::Bool, *span)?;
                         Type::Bool
                     }
                 };
@@ -984,7 +1056,7 @@ impl<'a> InferenceContext<'a> {
                         }
                     }
                     UnaryOp::Not => {
-                        self.unify_spanned(&operand_typed.ty, &Type::Bool, *span)?;
+                        self.coerce_unify_spanned(&operand_typed.ty, &Type::Bool, *span)?;
                         Type::Bool
                     }
                 };
@@ -1014,7 +1086,7 @@ impl<'a> InferenceContext<'a> {
                         let params_owned: Vec<Type> = params.to_vec();
                         for (a, p) in args.iter().zip(params_owned.iter()) {
                             let a_typed = self.infer_expr_inner(a, None)?;
-                            self.unify_spanned(&a_typed.ty, p, *span)?;
+                            self.coerce_unify_spanned(&a_typed.ty, p, *span)?;
                             typed_args.push(a_typed);
                         }
                     }
@@ -1121,14 +1193,26 @@ impl<'a> InferenceContext<'a> {
                     Type::Own(inner) => inner.as_ref().clone(),
                     other => other.clone(),
                 };
-                let result_ty = Type::Var(self.fresh());
+                let mut result_ty: Option<Type> = None;
+                let mut all_own = true;
                 let mut typed_arms = Vec::new();
                 for arm in arms {
                     self.env.push_scope();
                     let typed_pattern =
                         self.check_pattern(&arm.pattern, &match_ty, *span)?;
                     let body_typed = self.infer_expr_inner(&arm.body, None)?;
-                    self.unify_spanned(&result_ty, &body_typed.ty, *span)?;
+                    match &result_ty {
+                        None => {
+                            result_ty = Some(body_typed.ty.clone());
+                        }
+                        Some(prev) => {
+                            self.join_types_spanned(prev, &body_typed.ty, *span)?;
+                        }
+                    }
+                    let resolved_arm = self.subst.apply(&body_typed.ty);
+                    if !matches!(&resolved_arm, Type::Own(_)) {
+                        all_own = false;
+                    }
                     self.env.pop_scope();
                     typed_arms.push(TypedMatchArm {
                         pattern: typed_pattern,
@@ -1137,7 +1221,8 @@ impl<'a> InferenceContext<'a> {
                 }
                 let match_ty = self.subst.apply(&match_ty);
                 crate::exhaustiveness::check_exhaustiveness(&match_ty, &typed_arms, self.registry, *span)?;
-                let ty = self.subst.apply(&result_ty);
+                let resolved = self.subst.apply(result_ty.as_ref().unwrap_or(&Type::Unit));
+                let ty = if all_own { resolved } else { super::strip_own(&resolved) };
                 Ok(TypedExpr {
                     kind: TypedExprKind::Match {
                         scrutinee: Box::new(scrutinee_typed),
@@ -1175,7 +1260,7 @@ impl<'a> InferenceContext<'a> {
                 let binding_ty = if let Some(ty_expr) = ty_ann {
                     if self.registry.is_some() {
                         let annotated_ty = self.resolve_type_expr_spanned(ty_expr, *span)?;
-                        self.unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
+                        self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, *span)?;
                         annotated_ty
                     } else {
                         self.subst.apply(&val_typed.ty)
@@ -1265,7 +1350,7 @@ impl<'a> InferenceContext<'a> {
                                     let expected =
                                         super::instantiate_field_type(expected_ty, info, &fresh_args);
                                     let field_typed = self.infer_expr_inner(field_expr, None)?;
-                                    self.unify_spanned(&field_typed.ty, &expected, *span)?;
+                                    self.coerce_unify_spanned(&field_typed.ty, &expected, *span)?;
                                     typed_fields.push((field_name.clone(), field_typed));
                                 }
                                 None => {
@@ -1304,7 +1389,7 @@ impl<'a> InferenceContext<'a> {
                 let mut typed_elems = Vec::new();
                 for elem in elements {
                     let typed = self.infer_expr_inner(elem, None)?;
-                    self.unify_spanned(&self.subst.apply(&typed.ty), &self.subst.apply(&elem_var), *span)?;
+                    self.join_types_spanned(&self.subst.apply(&typed.ty), &self.subst.apply(&elem_var), *span)?;
                     typed_elems.push(typed);
                 }
                 let resolved_elem = self.subst.apply(&elem_var);

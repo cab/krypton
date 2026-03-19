@@ -1,0 +1,4 @@
+# expect: ok
+# Mixed ownership in if-branches — result is non-owned
+fun test(x: ~String, y: String) -> String =
+    if true { x } else { y }

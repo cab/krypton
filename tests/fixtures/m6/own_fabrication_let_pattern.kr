@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # let-pattern with ~T annotation on non-owned value should be rejected
 fun pair(x: String, y: String) -> (String, String) = (x, y)
 

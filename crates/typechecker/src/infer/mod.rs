@@ -13,7 +13,7 @@ use crate::typed_ast::{
     TraitDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
-use crate::unify::{unify, SpannedTypeError, TypeError};
+use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
 
 fn find_type_decl<'a>(decls: &'a [Decl], name: &str) -> Option<&'a TypeDecl> {
     decls.iter().find_map(|d| match d {
@@ -91,42 +91,6 @@ pub(super) fn strip_own(ty: &Type) -> Type {
     match ty {
         Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => *inner.clone(),
         other => other.clone(),
-    }
-}
-
-/// Attempt call-site own→T coercion: if an arg is `Own(inner)` and the
-/// corresponding param is a concrete non-Own, non-Var type, strip the Own wrapper.
-pub(super) fn coerce_own_args(func_ty: &Type, arg_types: &[Type], subst: &Substitution) -> Vec<Type> {
-    let walked = subst.apply(func_ty);
-    if let Type::Fn(param_types, _) = &walked {
-        arg_types
-            .iter()
-            .enumerate()
-            .map(|(i, arg)| {
-                let resolved_arg = subst.apply(arg);
-                if let Some(param) = param_types.get(i) {
-                    let resolved_param = subst.apply(param);
-                    // Allow fn() → own fn(): wrap bare Fn arg with Own when param expects Own(Fn(...))
-                    if matches!(&resolved_arg, Type::Fn(_, _))
-                        && matches!(&resolved_param, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)))
-                    {
-                        return Type::Own(Box::new(resolved_arg));
-                    }
-                    // Strip Own wrapper for non-function types (existing behavior),
-                    // but keep Own(Fn(..)) intact so own fn() → fn() fails at unification.
-                    if let Type::Own(inner) = &resolved_arg {
-                        if !matches!(inner.as_ref(), Type::Fn(_, _))
-                            && !matches!(resolved_param, Type::Own(_) | Type::Var(_))
-                        {
-                            return *inner.clone();
-                        }
-                    }
-                }
-                arg.clone()
-            })
-            .collect()
-    } else {
-        arg_types.to_vec()
     }
 }
 
@@ -841,7 +805,6 @@ pub fn infer_expr(
         imported_fn_types: &[],
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
-        call_resolved_params: None,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -1707,7 +1670,6 @@ pub(crate) struct ModuleInferenceState {
     pub(super) registry: TypeRegistry,
     pub(super) let_own_spans: HashSet<Span>,
     pub(super) lambda_own_captures: HashMap<Span, String>,
-    pub(super) call_resolved_params: HashMap<Span, (Vec<Type>, Vec<Type>)>,
     // Import accumulation
     pub(super) imports: ImportContext,
     pub(super) type_provenance: HashMap<String, String>,
@@ -1747,7 +1709,6 @@ impl ModuleInferenceState {
             registry,
             let_own_spans: HashSet::new(),
             lambda_own_captures: HashMap::new(),
-            call_resolved_params: HashMap::new(),
             imports: ImportContext::new(),
             type_provenance,
             imported_fn_constraint_requirements: HashMap::new(),
@@ -2079,7 +2040,6 @@ impl ModuleInferenceState {
             &struct_update_info,
             &shared_type_vars,
             &self.imports.imported_fn_qualifiers,
-            &self.call_resolved_params,
         )?;
 
         // Filter to exported functions only for cross-module propagation
@@ -3048,32 +3008,14 @@ pub(crate) fn infer_module_inner(
                     imported_fn_types: &state.imports.imported_fn_types,
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
-                    call_resolved_params: Some(&mut state.call_resolved_params),
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
             state.env.fn_return_type = prev_fn_return_type;
             state.env.pop_scope();
 
-            let param_types: Vec<Type> = param_types.iter().enumerate().map(|(i, t)| {
-                let resolved = state.subst.apply(t);
-                // Strip Own from params that don't have an explicit ~T annotation.
-                // Own can leak into param types through Var binding (e.g. `x * 2`
-                // binds x's type var to Own(Int)). Only preserve Own for params
-                // explicitly declared as ~T.
-                let has_own_annotation = decl.params.get(i).and_then(|p| p.ty.as_ref()).map_or(false, |ty_expr| {
-                    matches!(ty_expr, krypton_parser::ast::TypeExpr::Own { .. })
-                });
-                let ty = if has_own_annotation {
-                    resolved
-                } else {
-                    strip_own(&resolved)
-                };
-                debug_assert!(
-                    !matches!(&ty, Type::Own(ref inner) if matches!(inner.as_ref(), Type::Own(_))),
-                    "Own(Own(_)) should never arise — parser rejects ~~T and no codepath double-wraps"
-                );
-                ty
+            let param_types: Vec<Type> = param_types.iter().map(|t| {
+                state.subst.apply(t)
             }).collect();
             let body_ty = state.subst.apply(&body_typed.ty);
 
@@ -3088,31 +3030,19 @@ pub(crate) fn infer_module_inner(
                         ResolutionContext::UserAnnotation,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
-                // Fabrication guard: body must produce `own T` to satisfy an `own T` annotation.
-                // Bare `T` cannot be upgraded to `own T` — ownership must come from a literal,
-                // constructor, or another `own` source.
-                if let Type::Own(ref inner) = annotated_ret {
-                    if !matches!(inner.as_ref(), Type::Fn(_, _)) && !matches!(body_ty, Type::Own(_))
-                    {
-                        return Err(spanned(
-                            TypeError::Mismatch {
-                                expected: annotated_ret.clone(),
-                                actual: body_ty.clone(),
-                            },
-                            decl.span,
-                        ));
-                    }
-                }
-                let coerced_body_ty = strip_own(&body_ty);
-                unify(&coerced_body_ty, &annotated_ret, &mut state.subst)
+                coerce_unify(&body_ty, &annotated_ret, &mut state.subst)
                     .map_err(|e| spanned(e, decl.span))?;
                 state.subst.apply(&annotated_ret)
             } else {
                 strip_own(&body_ty)
             };
 
-            let fn_ty = Type::Fn(param_types, Box::new(ret_ty));
-            unify(tv, &fn_ty, &mut state.subst).map_err(|e| spanned(e, decl.span))?;
+            let fn_ty = Type::Fn(param_types, Box::new(ret_ty.clone()));
+            // Use join_types to reconcile the inferred fn type with the pre-bound SCC type.
+            // This is not a value flow — it's two views of the same function that may differ
+            // in Own wrappers (e.g. body infers Int, recursive call bound ~Int from literals).
+            crate::unify::join_types(&fn_ty, tv, &mut state.subst)
+                .map_err(|e| spanned(e, decl.span))?;
 
             fn_bodies[idx] = Some(body_typed);
         }
@@ -3308,7 +3238,6 @@ pub(crate) fn infer_module_inner(
                         imported_fn_types: &state.imports.imported_fn_types,
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &[],
-                        call_resolved_params: Some(&mut state.call_resolved_params),
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };
@@ -3328,7 +3257,7 @@ pub(crate) fn infer_module_inner(
                 let expected_ret_type = state.subst.apply(
                     &substitute_type_var(&trait_method.return_type, tv_id, &resolved_target),
                 );
-                unify(&final_ret_type, &expected_ret_type, &mut state.subst)
+                coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst)
                     .map_err(|e| spanned(e, method.span))?;
 
                 let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));

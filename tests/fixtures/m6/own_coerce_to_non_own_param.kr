@@ -1,0 +1,4 @@
+# expect: ok
+# ~T coerces to T at call site
+fun len(s: String) -> Int = 42
+fun test(buf: ~String) -> Int = len(buf)

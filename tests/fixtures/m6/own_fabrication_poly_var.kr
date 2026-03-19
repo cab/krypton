@@ -1,5 +1,6 @@
-# expect: error E0001
-# Polymorphic ~T param, var later constrained to non-owned (the hole)
+# expect: error E0101
+# Inferred ownership: `a` is inferred as ~String from consume's ~T param,
+# so using it twice (consume + borrow) is a double-use error.
 fun consume[T](x: ~T) -> T = x
 fun borrow(x: String) -> String = x
 

@@ -1,0 +1,4 @@
+# expect: error E0104
+# Return fabrication: non-owned body cannot satisfy ~T return
+fun borrow(s: String) -> String = s
+fun fabricate(x: String) -> ~String = borrow(x)

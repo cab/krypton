@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # Ownership enters through generic instantiation — must be rejected
 fun ok[T](f: (T) -> String, s: T) -> String = f(s)
 fun borrow(x: Int) -> Int = x

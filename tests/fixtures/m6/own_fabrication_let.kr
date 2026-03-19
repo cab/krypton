@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # let x: ~T = non_owned_val should be rejected (ownership fabrication)
 fun borrow(s: String) -> String = s
 
