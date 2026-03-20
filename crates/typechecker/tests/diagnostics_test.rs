@@ -519,3 +519,73 @@ fn type_error_in_imported_module() {
         "rendered diagnostic should reference 'badmod':\n{output}"
     );
 }
+
+#[test]
+fn nullary_constructor_call_diagnostic() {
+    let output = render_fixture_error("../../tests/fixtures/m6/nullary_ctor_call.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0004"),
+        "expected E0004 in:\n{output}"
+    );
+    assert!(
+        output.contains("remove `()`"),
+        "expected help text about removing () in:\n{output}"
+    );
+}
+
+#[test]
+fn nullary_constructor_call_qualified_diagnostic() {
+    use krypton_modules::module_resolver::ModuleResolver;
+
+    struct Resolver;
+    impl ModuleResolver for Resolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "core/option" => Some("pub type Option[a] = Some(a) | None".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    let src = "import core/option\nfun main() -> Int = option.None()";
+    let output = render_module_error_with_resolver(src, &Resolver);
+    assert!(
+        output.contains("E0004"),
+        "expected E0004 for qualified nullary ctor call in:\n{output}"
+    );
+    assert!(
+        output.contains("remove `()`"),
+        "expected help text about removing () in:\n{output}"
+    );
+}
+
+#[test]
+fn unsolved_type_var_diagnostic() {
+    let output = render_fixture_error("../../tests/fixtures/m6/unsolved_type_display.kr");
+    insta::assert_snapshot!(output);
+    // Should not contain raw inference variable names like z3, a4, etc.
+    // Type vars in errors should be sequential: a, b, c, ...
+    // The error should show clean type names
+    let has_raw_var = output.lines().any(|line| {
+        // Skip file path lines
+        if line.contains(".kr") { return false; }
+        // Look for patterns like single letter followed by digit (raw var names)
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c.is_ascii_lowercase() {
+                if let Some(&next) = chars.peek() {
+                    if next.is_ascii_digit() {
+                        // Check it's not part of a larger word
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    });
+    assert!(
+        !has_raw_var,
+        "should not contain raw inference variable names in:\n{output}"
+    );
+}

@@ -952,7 +952,7 @@ fn infer_match_wrong_constructor() {
         infer_module_types(
             "type Color = Red | Green | Blue\ntype Option[a] = Some(a) | None\nfun bad(c) = match Red { Some(x) => x, _ => 0 }"
         ),
-        @"TypeError: type mismatch: expected Color, found Option[u7]"
+        @"TypeError: type mismatch: expected Color, found Option[a]"
     );
 }
 

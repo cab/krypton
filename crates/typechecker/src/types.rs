@@ -56,6 +56,53 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
     }
 }
 
+impl Type {
+    /// Re-letter type variables to sequential a, b, c, ... based on first-appearance order.
+    /// Preserves identity: same original var → same new letter throughout.
+    pub fn renumber_for_display(&self) -> Type {
+        let mut mapping = HashMap::new();
+        let mut next_id = 0u32;
+        self.renumber_inner(&mut mapping, &mut next_id)
+    }
+
+    fn renumber_inner(&self, mapping: &mut HashMap<TypeVarId, TypeVarId>, next_id: &mut u32) -> Type {
+        match self {
+            Type::Var(id) => {
+                let new_id = *mapping.entry(*id).or_insert_with(|| {
+                    let id = TypeVarId(*next_id);
+                    *next_id += 1;
+                    id
+                });
+                Type::Var(new_id)
+            }
+            Type::Fn(params, ret) => Type::Fn(
+                params.iter().map(|p| p.renumber_inner(mapping, next_id)).collect(),
+                Box::new(ret.renumber_inner(mapping, next_id)),
+            ),
+            Type::Named(n, args) => Type::Named(
+                n.clone(),
+                args.iter().map(|a| a.renumber_inner(mapping, next_id)).collect(),
+            ),
+            Type::Own(inner) => Type::Own(Box::new(inner.renumber_inner(mapping, next_id))),
+            Type::Tuple(elems) => Type::Tuple(
+                elems.iter().map(|e| e.renumber_inner(mapping, next_id)).collect(),
+            ),
+            Type::App(ctor, args) => Type::App(
+                Box::new(ctor.renumber_inner(mapping, next_id)),
+                args.iter().map(|a| a.renumber_inner(mapping, next_id)).collect(),
+            ),
+            other => other.clone(),
+        }
+    }
+}
+
+/// Renumber type vars across multiple types sharing the same mapping.
+pub fn renumber_types_for_display(types: &[&Type]) -> Vec<Type> {
+    let mut mapping = HashMap::new();
+    let mut next_id = 0u32;
+    types.iter().map(|t| t.renumber_inner(&mut mapping, &mut next_id)).collect()
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

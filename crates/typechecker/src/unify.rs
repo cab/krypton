@@ -1,6 +1,6 @@
 use krypton_parser::ast::Span;
 
-use crate::types::{Substitution, Type, TypeVarId};
+use crate::types::{Substitution, Type, TypeVarId, renumber_types_for_display};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -346,7 +346,16 @@ impl TypeError {
                 Some(format!("did you mean to define `{}` first?", name))
             }
             TypeError::NotAFunction { actual } => {
-                Some(format!("the expression has type `{}`, which is not callable", actual))
+                let actual = actual.renumber_for_display();
+                let inner = match &actual {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                if matches!(inner, Type::Named(_, _)) {
+                    Some(format!("`{}` is a value, not a function — remove `()` to use it directly", actual))
+                } else {
+                    Some(format!("the expression has type `{}`, which is not callable", actual))
+                }
             }
             TypeError::WrongArity { expected, .. } => {
                 Some(format!("this function expects {} argument(s)", expected))
@@ -361,6 +370,7 @@ impl TypeError {
                 Some(format!("type `{}` requires fields: {}", type_name, fields.join(", ")))
             }
             TypeError::NotAStruct { actual } => {
+                let actual = actual.renumber_for_display();
                 Some(format!("the expression has type `{}`, which is not a struct", actual))
             }
             TypeError::NonExhaustive { missing } => {
@@ -427,9 +437,11 @@ impl TypeError {
                 }
             }
             TypeError::QuestionMarkBadReturn { actual } => {
+                let actual = actual.renumber_for_display();
                 Some(format!("function returns `{}`, but `?` requires `Result` or `Option`", actual))
             }
             TypeError::QuestionMarkBadOperand { actual } => {
+                let actual = actual.renumber_for_display();
                 Some(format!("`?` can only be applied to `Result` or `Option`, found `{}`", actual))
             }
             TypeError::QuestionMarkMismatch { expr_kind, return_kind } => {
@@ -506,10 +518,12 @@ impl fmt::Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TypeError::Mismatch { expected, actual } => {
-                write!(f, "type mismatch: expected {}, found {}", expected, actual)
+                let renamed = renumber_types_for_display(&[expected, actual]);
+                write!(f, "type mismatch: expected {}, found {}", renamed[0], renamed[1])
             }
             TypeError::InfiniteType { var, ty } => {
-                write!(f, "infinite type: variable {} occurs in {}", var, ty)
+                let renamed = renumber_types_for_display(&[&Type::Var(*var), ty]);
+                write!(f, "infinite type: variable {} occurs in {}", renamed[0], renamed[1])
             }
             TypeError::WrongArity { expected, actual } => {
                 write!(
@@ -525,6 +539,7 @@ impl fmt::Display for TypeError {
                 write!(f, "duplicate type definition: {}", name)
             }
             TypeError::NotAFunction { actual } => {
+                let actual = actual.renumber_for_display();
                 write!(f, "not a function: type {} is not callable", actual)
             }
             TypeError::UnknownField {
@@ -541,6 +556,7 @@ impl fmt::Display for TypeError {
                 write!(f, "missing fields on {}: {}", type_name, fields.join(", "))
             }
             TypeError::NotAStruct { actual } => {
+                let actual = actual.renumber_for_display();
                 write!(f, "not a struct: type {} is not a record", actual)
             }
             TypeError::NonExhaustive { missing } => {
@@ -559,7 +575,8 @@ impl fmt::Display for TypeError {
                 write!(f, "cannot pass `{name}` to `{callee}`: `{callee}` uses its argument multiple times, but `{name}` is single-use (`~`)")
             }
             TypeError::OwnershipMismatch { expected, actual } => {
-                write!(f, "ownership mismatch: expected `{expected}`, found `{actual}`")
+                let renamed = renumber_types_for_display(&[expected, actual]);
+                write!(f, "ownership mismatch: expected `{}`, found `{}`", renamed[0], renamed[1])
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
@@ -614,6 +631,7 @@ impl fmt::Display for TypeError {
                 write!(f, "unknown type: {}", name)
             }
             TypeError::QuestionMarkBadReturn { actual } => {
+                let actual = actual.renumber_for_display();
                 write!(
                     f,
                     "`?` operator in function returning `{}` (expected Result or Option)",
@@ -621,6 +639,7 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::QuestionMarkBadOperand { actual } => {
+                let actual = actual.renumber_for_display();
                 write!(
                     f,
                     "`?` operator on `{}` (expected Result or Option)",

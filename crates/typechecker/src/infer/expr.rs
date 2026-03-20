@@ -168,7 +168,7 @@ impl<'a> InferenceContext<'a> {
                             let resolved_fn_ty = self.subst.apply(func_ty);
                             err.secondary_span = Some(SecondaryLabel {
                                 span: def.span,
-                                message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
                                 source_file: def.source_module.clone(),
                             });
                         }
@@ -216,7 +216,7 @@ impl<'a> InferenceContext<'a> {
                                     let resolved_fn_ty = self.subst.apply(func_ty);
                                     err.secondary_span = Some(SecondaryLabel {
                                         span: def.span,
-                                        message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                        message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
                                         source_file: def.source_module.clone(),
                                     });
                                 }
@@ -230,6 +230,10 @@ impl<'a> InferenceContext<'a> {
                     .map_err(|e| super::spanned(e, span))?;
             }
             _ => {
+                if super::is_concrete_non_function(func_ty, self.subst) {
+                    let actual = self.subst.apply(func_ty);
+                    return Err(super::spanned(TypeError::NotAFunction { actual }, span));
+                }
                 // Function type not yet resolved — fall back to building expected Fn and unifying.
                 // Strip Own from arg types to avoid baking ownership into the function's type
                 // variable (ownership is handled by coerce_unify at resolved call sites).
@@ -741,7 +745,7 @@ impl<'a> InferenceContext<'a> {
                                     let resolved_fn_ty = self.subst.apply(&func_typed.ty);
                                     err.secondary_span = Some(SecondaryLabel {
                                         span: def.span,
-                                        message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                        message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
                                         source_file: def.source_module.clone(),
                                     });
                                 }
@@ -831,7 +835,7 @@ impl<'a> InferenceContext<'a> {
                                             let resolved_fn_ty = self.subst.apply(&func_typed.ty);
                                             err.secondary_span = Some(SecondaryLabel {
                                                 span: def.span,
-                                                message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                                message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
                                                 source_file: def.source_module.clone(),
                                             });
                                         }
