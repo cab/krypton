@@ -1,0 +1,20 @@
+# expect: output "true"
+type Box[a] = { value: a }
+
+trait MyEq[a] {
+    fun my_eq(x: a, y: a) -> Bool
+}
+
+impl MyEq[Int] {
+    fun my_eq(x: Int, y: Int) -> Bool = x == y
+}
+
+impl[a] MyEq[Box[a]] where a: MyEq {
+    fun my_eq(x: Self, y: Self) -> Bool = my_eq(x.value, y.value)
+}
+
+fun main() = {
+    let a = Box { value = 1 }
+    let b = Box { value = 1 }
+    println(my_eq(a, b))
+}

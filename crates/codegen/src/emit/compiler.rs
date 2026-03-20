@@ -20,6 +20,12 @@ pub enum JvmType {
     StructRef(u16), // cpool class index for struct type
 }
 
+impl JvmType {
+    pub fn is_reference(&self) -> bool {
+        matches!(self, JvmType::StructRef(_))
+    }
+}
+
 /// Error type for codegen failures.
 #[derive(Debug)]
 pub enum CodegenError {

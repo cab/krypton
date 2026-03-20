@@ -1001,11 +1001,15 @@ impl Compiler {
 
         self.builder.emit_new_dup(class_idx);
 
-        for (field_name, _) in &ordered_fields {
+        for (field_name, field_type) in &ordered_fields {
             let value = field_values.get(field_name.as_str()).ok_or_else(|| {
                 CodegenError::TypeError(format!("missing struct field: {field_name}"))
             })?;
-            self.compile_expr(value, false)?;
+            let actual_type = self.compile_expr(value, false)?;
+            // Box primitives when the field is erased to Object (generic type param)
+            if field_type.is_reference() && !actual_type.is_reference() {
+                self.builder.box_if_needed(actual_type);
+            }
         }
 
         for (_, field_type) in &ordered_fields {
