@@ -1,7 +1,7 @@
 use krypton_parser::ast::Span;
 
-use crate::types::{Substitution, Type, TypeVarId, renumber_types_for_display};
-use std::collections::HashSet;
+use crate::types::{Substitution, Type, TypeVarId, format_type_with_var_map, renumber_types_for_display};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Error codes for type errors.
@@ -517,6 +517,96 @@ impl TypeError {
             TypeError::SelfOutsideImpl => None,
         }
     }
+
+    /// Format with user var name context. Falls back to Display for non-type fields.
+    pub fn format_with_names(&self, names: &HashMap<TypeVarId, &str>) -> String {
+        match self {
+            TypeError::Mismatch { expected, actual } => {
+                format!(
+                    "type mismatch: expected {}, found {}",
+                    format_type_with_var_map(expected, names),
+                    format_type_with_var_map(actual, names),
+                )
+            }
+            TypeError::InfiniteType { var, ty } => {
+                format!(
+                    "infinite type: variable {} occurs in {}",
+                    format_type_with_var_map(&Type::Var(*var), names),
+                    format_type_with_var_map(ty, names),
+                )
+            }
+            TypeError::NotAFunction { actual } => {
+                format!(
+                    "not a function: type {} is not callable",
+                    format_type_with_var_map(actual, names),
+                )
+            }
+            TypeError::NotAStruct { actual } => {
+                format!(
+                    "not a struct: type {} is not a record",
+                    format_type_with_var_map(actual, names),
+                )
+            }
+            TypeError::OwnershipMismatch { expected, actual } => {
+                format!(
+                    "ownership mismatch: expected `{}`, found `{}`",
+                    format_type_with_var_map(expected, names),
+                    format_type_with_var_map(actual, names),
+                )
+            }
+            TypeError::InvalidImpl { trait_name, target_type, .. } => {
+                format!(
+                    "invalid impl: `{}` for `{}` does not match trait requirements",
+                    trait_name, target_type,
+                )
+            }
+            // All other variants don't contain Type fields that need var mapping
+            other => other.to_string(),
+        }
+    }
+
+    /// Help text with user var name context.
+    pub fn help_with_names(&self, names: &HashMap<TypeVarId, &str>) -> Option<String> {
+        match self {
+            TypeError::NotAFunction { actual } => {
+                let inner = match actual {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                if matches!(inner, Type::Named(_, _)) {
+                    Some(format!(
+                        "`{}` is a value, not a function — remove `()` to use it directly",
+                        format_type_with_var_map(actual, names),
+                    ))
+                } else {
+                    Some(format!(
+                        "the expression has type `{}`, which is not callable",
+                        format_type_with_var_map(actual, names),
+                    ))
+                }
+            }
+            TypeError::NotAStruct { actual } => {
+                Some(format!(
+                    "the expression has type `{}`, which is not a struct",
+                    format_type_with_var_map(actual, names),
+                ))
+            }
+            TypeError::QuestionMarkBadReturn { actual } => {
+                Some(format!(
+                    "function returns `{}`, but `?` requires `Result` or `Option`",
+                    format_type_with_var_map(actual, names),
+                ))
+            }
+            TypeError::QuestionMarkBadOperand { actual } => {
+                Some(format!(
+                    "`?` can only be applied to `Result` or `Option`, found `{}`",
+                    format_type_with_var_map(actual, names),
+                ))
+            }
+            // All other variants: delegate to help()
+            other => other.help(),
+        }
+    }
 }
 
 impl fmt::Display for TypeError {
@@ -781,6 +871,32 @@ pub struct SpannedTypeError {
     pub secondary_span: Option<SecondaryLabel>,
     /// The module path where this error originated (None = root/user file).
     pub source_file: Option<String>,
+    /// User-written type parameter names for rendering (e.g., from `impl Trait[Vec[a]]`).
+    pub var_names: Option<Vec<(TypeVarId, String)>>,
+}
+
+impl SpannedTypeError {
+    /// Format the error message, using user var names if available.
+    pub fn format_message(&self) -> String {
+        match &self.var_names {
+            Some(names) => {
+                let map: HashMap<TypeVarId, &str> = names.iter().map(|(id, n)| (*id, n.as_str())).collect();
+                self.error.format_with_names(&map)
+            }
+            None => self.error.to_string(),
+        }
+    }
+
+    /// Format help text, using user var names if available.
+    pub fn format_help(&self) -> Option<String> {
+        match &self.var_names {
+            Some(names) => {
+                let map: HashMap<TypeVarId, &str> = names.iter().map(|(id, n)| (*id, n.as_str())).collect();
+                self.error.help_with_names(&map)
+            }
+            None => self.error.help(),
+        }
+    }
 }
 
 impl fmt::Display for SpannedTypeError {

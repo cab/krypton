@@ -15,7 +15,7 @@ fn display_primitives() {
 #[test]
 fn display_fn_type() {
     let ty = Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::Bool));
-    assert_eq!(ty.to_string(), "fn(Int, Int) -> Bool");
+    assert_eq!(ty.to_string(), "(Int, Int) -> Bool");
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn display_all_types_snapshot() {
     Bool: Bool
     String: String
     Unit: Unit
-    Fn: fn(Int, Int) -> Bool
+    Fn: (Int, Int) -> Bool
     Var: a
     Named: List[Int]
     Own: ~Int
@@ -98,7 +98,7 @@ fn substitute_fn_type() {
     let sub = Substitution::bind(a, Type::Int);
     let result = sub.apply(&ty);
     assert_eq!(result, Type::Fn(vec![Type::Int], Box::new(Type::Int)));
-    assert_eq!(result.to_string(), "fn(Int) -> Int");
+    assert_eq!(result.to_string(), "(Int) -> Int");
 }
 
 // ── 1b. Substitution composition and application ──
@@ -227,7 +227,7 @@ fn type_scheme_poly_display() {
         ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
         var_names: HashMap::new(),
     };
-    insta::assert_snapshot!(scheme.to_string(), @"forall a b. fn(a) -> b");
+    insta::assert_snapshot!(scheme.to_string(), @"forall a b. (a) -> b");
 }
 
 #[test]

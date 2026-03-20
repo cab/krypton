@@ -589,3 +589,35 @@ fn unsolved_type_var_diagnostic() {
         "should not contain raw inference variable names in:\n{output}"
     );
 }
+
+#[test]
+fn impl_fn_type_missing_method_diagnostic() {
+    let src = "trait Apply[f] { fun apply(f: f, x: Int) -> Int }\nimpl Apply[() -> Int] { }";
+    let output = parse_and_infer_module_error(src);
+    insta::assert_snapshot!(output);
+    // Should show `() -> Int` not `Fun0` in the error
+    assert!(
+        output.contains("() -> Int"),
+        "expected `() -> Int` in error, got:\n{output}"
+    );
+    assert!(
+        !output.contains("Fun0"),
+        "should not contain JVM name `Fun0` in:\n{output}"
+    );
+}
+
+#[test]
+fn impl_return_type_mismatch_diagnostic() {
+    let src = "trait Convert[a] { fun convert(x: a) -> String }\nimpl Convert[Int] { fun convert(x: Int) -> Int = x }";
+    let output = parse_and_infer_module_error(src);
+    insta::assert_snapshot!(output);
+    // Should show type mismatch, not wrong arity
+    assert!(
+        output.contains("type mismatch"),
+        "expected 'type mismatch' in error, got:\n{output}"
+    );
+    assert!(
+        !output.contains("wrong arity"),
+        "should not contain 'wrong arity' in:\n{output}"
+    );
+}

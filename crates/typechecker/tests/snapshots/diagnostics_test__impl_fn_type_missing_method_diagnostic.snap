@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: output
+---
+[E0306] Error: invalid impl: `Apply` for `() -> Int` does not match trait requirements
+   ╭─[ test.kr:2:1 ]
+   │
+ 2 │ impl Apply[() -> Int] { }
+   │ ────────────┬────────────  
+   │             ╰────────────── E0306: invalid impl: `Apply` for `() -> Int` does not match trait requirements
+   │ 
+   │ Help: missing method(s): apply
+───╯

@@ -714,6 +714,27 @@ pub(super) fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> Span
         note: None,
         secondary_span: None,
         source_file: None,
+        var_names: None,
+    }
+}
+
+/// Like `spanned` but populates var_names from a type_param_map for better error messages.
+pub(super) fn spanned_with_names(
+    error: TypeError,
+    span: krypton_parser::ast::Span,
+    type_param_map: &HashMap<String, TypeVarId>,
+) -> SpannedTypeError {
+    let var_names: Vec<(TypeVarId, String)> = type_param_map
+        .iter()
+        .map(|(name, &id)| (id, name.clone()))
+        .collect();
+    SpannedTypeError {
+        error,
+        span,
+        note: None,
+        secondary_span: None,
+        source_file: None,
+        var_names: Some(var_names),
     }
 }
 
@@ -2814,7 +2835,14 @@ pub(crate) fn infer_module_inner(
                             *span,
                         ));
                     }
-                    format!("Fun{}", params.len())
+                    // Use user-written var names if available, otherwise renumber
+                    if type_param_map.is_empty() {
+                        format!("{}", resolved_target.renumber_for_display())
+                    } else {
+                        let names: std::collections::HashMap<crate::types::TypeVarId, &str> =
+                            type_param_map.iter().map(|(n, &id)| (id, n.as_str())).collect();
+                        crate::types::format_type_with_var_map(&resolved_target, &names)
+                    }
                 }
                 other => {
                     return Err(spanned(
@@ -2889,7 +2917,7 @@ pub(crate) fn infer_module_inner(
                     .map(|m| m.name.clone())
                     .collect();
                 if !missing_methods.is_empty() || !extra_methods.is_empty() {
-                    return Err(spanned(
+                    return Err(spanned_with_names(
                         TypeError::InvalidImpl {
                             trait_name: trait_name.clone(),
                             target_type: target_name.clone(),
@@ -2897,6 +2925,7 @@ pub(crate) fn infer_module_inner(
                             extra_methods,
                         },
                         *span,
+                        &type_param_map,
                     ));
                 }
             }
@@ -2972,6 +3001,7 @@ pub(crate) fn infer_module_inner(
                         note: None,
                         secondary_span: Some(crate::unify::SecondaryLabel { span: *method_span, message: "trait method defined here".into(), source_file: None }),
                         source_file: None,
+                        var_names: None,
                     });
                 }
                 // Second pass: check built-in traits (no secondary span)
@@ -2987,6 +3017,7 @@ pub(crate) fn infer_module_inner(
                             note: None,
                             secondary_span: None,
                             source_file: None,
+                            var_names: None,
                         });
                     }
                 }
@@ -3372,7 +3403,7 @@ pub(crate) fn infer_module_inner(
                             )
                             .map_err(|e| spanned(e, p.span))?;
                             unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
-                                .map_err(|e| spanned(e, p.span))?;
+                                .map_err(|e| spanned_with_names(e, p.span, &impl_method_tpm))?;
                         }
                     }
                 }
@@ -3390,7 +3421,14 @@ pub(crate) fn infer_module_inner(
                         )
                         .map_err(|e| spanned(e, method.span))?;
                     unify(&annotated_ret, &concrete_ret, &mut state.subst)
-                        .map_err(|e| spanned(e, method.span))?;
+                        .map_err(|_| spanned_with_names(
+                            TypeError::Mismatch {
+                                expected: concrete_ret.clone(),
+                                actual: annotated_ret.clone(),
+                            },
+                            method.span,
+                            &impl_method_tpm,
+                        ))?;
                 }
 
                 // For intrinsic impls, skip body type-checking (bridge bytecode handles these)

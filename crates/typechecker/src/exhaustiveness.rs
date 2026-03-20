@@ -461,6 +461,7 @@ pub fn check_exhaustiveness(
                 note: Some("this arm can never be reached".to_string()),
                 secondary_span: None,
                 source_file: None,
+                var_names: None,
             });
         }
     }
@@ -474,6 +475,7 @@ pub fn check_exhaustiveness(
             note: None,
             secondary_span: None,
             source_file: None,
+            var_names: None,
         });
     }
 

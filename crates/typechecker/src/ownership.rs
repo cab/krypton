@@ -497,6 +497,7 @@ impl<'a> OwnershipChecker<'a> {
                 note,
                 secondary_span: Some(SecondaryLabel { span: first_span, message: "first use here".into(), source_file: None }),
                 source_file: None,
+                var_names: None,
             });
         }
         if let Some(&branch_span) = self.partially_consumed.get(name) {
@@ -506,6 +507,7 @@ impl<'a> OwnershipChecker<'a> {
                 note: None,
                 secondary_span: Some(SecondaryLabel { span: branch_span, message: "consumed here".into(), source_file: None }),
                 source_file: None,
+                var_names: None,
             });
         }
         Ok(())
@@ -571,6 +573,7 @@ impl<'a> OwnershipChecker<'a> {
                                                 note: None,
                                                 secondary_span: None,
                                                 source_file: None,
+                                                var_names: None,
                                             });
                                         }
                                         ParamQualifier::Shared | ParamQualifier::Polymorphic => {
@@ -628,6 +631,7 @@ impl<'a> OwnershipChecker<'a> {
                                 )),
                                 secondary_span: None,
                                 source_file: None,
+                                var_names: None,
                             });
                         }
                     }
@@ -674,6 +678,7 @@ impl<'a> OwnershipChecker<'a> {
                                 note: Some("annotation `~` requires an owned value".into()),
                                 secondary_span: None,
                                 source_file: None,
+                                var_names: None,
                             });
                         }
                     }
@@ -792,6 +797,7 @@ impl<'a> OwnershipChecker<'a> {
                             note: None,
                             secondary_span: Some(SecondaryLabel { span: first_span, message: "consumed here".into(), source_file: None }),
                             source_file: None,
+                            var_names: None,
                         });
                     }
                     self.consumed.insert(name.clone(), *span);

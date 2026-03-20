@@ -255,3 +255,43 @@ fn join_bare_bare_ok() {
     // join_types(Int, Int) → OK
     assert!(join_types(&Type::Int, &Type::Int, &mut subst).is_ok());
 }
+
+#[test]
+fn mismatch_with_var_names() {
+    use krypton_typechecker::unify::SpannedTypeError;
+
+    let mut gen = TypeVarGen::new();
+    let var_a = gen.fresh();
+    let err = SpannedTypeError {
+        error: TypeError::Mismatch {
+            expected: Type::Fn(vec![Type::Var(var_a)], Box::new(Type::Int)),
+            actual: Type::String,
+        },
+        span: (0, 1),
+        note: None,
+        secondary_span: None,
+        source_file: None,
+        var_names: Some(vec![(var_a, "elem".to_string())]),
+    };
+    let msg = err.format_message();
+    assert!(msg.contains("elem"), "expected user name 'elem' in: {msg}");
+    assert!(msg.contains("(elem) -> Int"), "expected '(elem) -> Int' in: {msg}");
+}
+
+#[test]
+fn mismatch_without_var_names() {
+    let err = krypton_typechecker::unify::SpannedTypeError {
+        error: TypeError::Mismatch {
+            expected: Type::Int,
+            actual: Type::String,
+        },
+        span: (0, 1),
+        note: None,
+        secondary_span: None,
+        source_file: None,
+        var_names: None,
+    };
+    let msg = err.format_message();
+    assert!(msg.contains("expected Int"), "expected 'expected Int' in: {msg}");
+    assert!(msg.contains("found String"), "expected 'found String' in: {msg}");
+}

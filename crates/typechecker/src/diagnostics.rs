@@ -42,7 +42,7 @@ fn render_type_error_with_source(
 
     let (start, end) = err.span;
     let code = err.error.error_code();
-    let message = err.error.to_string();
+    let message = err.format_message();
 
     // Use the module's filename/source if the error originated in a module
     let (err_file, err_src) = match error_source {
@@ -83,7 +83,7 @@ fn render_type_error_with_source(
         }
     }
 
-    if let Some(help) = err.error.help() {
+    if let Some(help) = err.format_help() {
         report = report.with_help(help);
     }
 

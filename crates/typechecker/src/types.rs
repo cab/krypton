@@ -140,7 +140,7 @@ impl fmt::Display for Type {
             Type::String => write!(f, "String"),
             Type::Unit => write!(f, "Unit"),
             Type::Fn(params, ret) => {
-                write!(f, "fn(")?;
+                write!(f, "(")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -313,7 +313,7 @@ pub fn format_type_with_var_names(ty: &Type, var_names: &[String]) -> String {
         }
         Type::Fn(params, ret) => {
             let ps: Vec<String> = params.iter().map(|p| format_type_with_var_names(p, var_names)).collect();
-            format!("fn({}) -> {}", ps.join(", "), format_type_with_var_names(ret, var_names))
+            format!("({}) -> {}", ps.join(", "), format_type_with_var_names(ret, var_names))
         }
         Type::Named(name, args) => {
             if args.is_empty() {
@@ -335,6 +335,51 @@ pub fn format_type_with_var_names(ty: &Type, var_names: &[String]) -> String {
         Type::Own(inner) => format!("~{}", format_type_with_var_names(inner, var_names)),
         Type::Tuple(elems) => {
             let es: Vec<String> = elems.iter().map(|e| format_type_with_var_names(e, var_names)).collect();
+            format!("({})", es.join(", "))
+        }
+    }
+}
+
+/// Format a type using a map from TypeVarId to user-written name.
+/// Falls back to `display_name()` for vars not in the map.
+pub fn format_type_with_var_map(ty: &Type, names: &HashMap<TypeVarId, &str>) -> String {
+    match ty {
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Var(id) => {
+            if let Some(name) = names.get(id) {
+                name.to_string()
+            } else {
+                id.display_name()
+            }
+        }
+        Type::Fn(params, ret) => {
+            let ps: Vec<String> = params.iter().map(|p| format_type_with_var_map(p, names)).collect();
+            format!("({}) -> {}", ps.join(", "), format_type_with_var_map(ret, names))
+        }
+        Type::Named(name, args) => {
+            if args.is_empty() {
+                name.clone()
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_map(a, names)).collect();
+                format!("{}[{}]", name, as_.join(", "))
+            }
+        }
+        Type::App(ctor, args) => {
+            let base = format_type_with_var_map(ctor, names);
+            if args.is_empty() {
+                base
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_map(a, names)).collect();
+                format!("{}[{}]", base, as_.join(", "))
+            }
+        }
+        Type::Own(inner) => format!("~{}", format_type_with_var_map(inner, names)),
+        Type::Tuple(elems) => {
+            let es: Vec<String> = elems.iter().map(|e| format_type_with_var_map(e, names)).collect();
             format!("({})", es.join(", "))
         }
     }
@@ -667,5 +712,41 @@ mod tests {
         assert_eq!(TypeVarId(25).display_name(), "z");
         assert_eq!(TypeVarId(26).display_name(), "a1");
         assert_eq!(TypeVarId(27).display_name(), "b1");
+    }
+
+    #[test]
+    fn format_with_var_map_simple() {
+        let id = TypeVarId(5);
+        let ty = Type::Fn(vec![Type::Int], Box::new(Type::Var(id)));
+        let names: HashMap<TypeVarId, &str> = [(id, "b")].into_iter().collect();
+        assert_eq!(format_type_with_var_map(&ty, &names), "(Int) -> b");
+    }
+
+    #[test]
+    fn format_with_var_map_nested_fn() {
+        let a = TypeVarId(10);
+        let b = TypeVarId(11);
+        let ty = Type::Fn(
+            vec![Type::Var(a)],
+            Box::new(Type::Fn(vec![Type::Var(b)], Box::new(Type::Int))),
+        );
+        let names: HashMap<TypeVarId, &str> = [(a, "x"), (b, "y")].into_iter().collect();
+        assert_eq!(format_type_with_var_map(&ty, &names), "(x) -> (y) -> Int");
+    }
+
+    #[test]
+    fn format_with_var_map_unmapped_fallback() {
+        let id = TypeVarId(2); // display_name = "c"
+        let ty = Type::Var(id);
+        let names: HashMap<TypeVarId, &str> = HashMap::new();
+        assert_eq!(format_type_with_var_map(&ty, &names), "c");
+    }
+
+    #[test]
+    fn format_with_var_map_named_type() {
+        let id = TypeVarId(7);
+        let ty = Type::Named("Vec".to_string(), vec![Type::Var(id)]);
+        let names: HashMap<TypeVarId, &str> = [(id, "a")].into_iter().collect();
+        assert_eq!(format_type_with_var_map(&ty, &names), "Vec[a]");
     }
 }

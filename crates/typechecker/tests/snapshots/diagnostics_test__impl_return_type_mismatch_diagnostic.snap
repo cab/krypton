@@ -1,0 +1,11 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: output
+---
+[E0001] Error: type mismatch: expected String, found Int
+   ╭─[ test.kr:2:21 ]
+   │
+ 2 │ impl Convert[Int] { fun convert(x: Int) -> Int = x }
+   │                     ───────────────┬──────────────  
+   │                                    ╰──────────────── E0001: type mismatch: expected String, found Int
+───╯
