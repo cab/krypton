@@ -737,13 +737,21 @@ impl fmt::Display for TypeError {
     }
 }
 
+/// A secondary diagnostic label with optional cross-file source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecondaryLabel {
+    pub span: Span,
+    pub message: String,
+    pub source_file: Option<String>, // None = same file as primary span
+}
+
 /// A type error paired with the source span where it occurred.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpannedTypeError {
     pub error: TypeError,
     pub span: Span,
     pub note: Option<String>,
-    pub secondary_span: Option<(Span, String)>,
+    pub secondary_span: Option<SecondaryLabel>,
     /// The module path where this error originated (None = root/user file).
     pub source_file: Option<String>,
 }

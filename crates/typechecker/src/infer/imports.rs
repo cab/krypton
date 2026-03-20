@@ -67,10 +67,10 @@ impl ModuleInferenceState {
 
         // Re-exported functions (e.g. println), excluding constructors
         // that will be bound via type processing
-        for (name, _, _) in &cached.reexported_fn_types {
-            if !prelude_constructor_names.contains(name) {
+        for ef in &cached.reexported_fn_types {
+            if !prelude_constructor_names.contains(&ef.name) {
                 names.push(ImportName {
-                    name: name.clone(),
+                    name: ef.name.clone(),
                     alias: None,
                 });
             }
@@ -162,12 +162,12 @@ impl ModuleInferenceState {
         let exported_fn_names: HashSet<&str> = cached
             .exported_fn_types
             .iter()
-            .map(|(n, _, _)| n.as_str())
+            .map(|ef| ef.name.as_str())
             .collect();
         let reexported_fn_names: HashSet<&str> = cached
             .reexported_fn_types
             .iter()
-            .map(|(n, _, _)| n.as_str())
+            .map(|ef| ef.name.as_str())
             .collect();
         // Build set of names importable via type/trait paths (not fn_types)
         let type_or_trait_names: HashSet<&str> = {
@@ -265,64 +265,81 @@ impl ModuleInferenceState {
             }
         }
 
-        for (name, scheme, origin) in &cached.exported_fn_types {
-            if reexported_fn_names.contains(name.as_str()) {
+        for ef in &cached.exported_fn_types {
+            if reexported_fn_names.contains(ef.name.as_str()) {
                 continue;
             }
-            if requested.contains(name.as_str()) {
-                let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-                self.imports.bind_import(&mut self.env, effective_name.clone(), scheme.clone(), origin.clone(), path.to_string(), name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
-                if let Some(quals) = cached.exported_fn_qualifiers.get(name) {
+            if requested.contains(ef.name.as_str()) {
+                let effective_name = aliases.get(&ef.name).cloned().unwrap_or_else(|| ef.name.clone());
+                self.imports.bind_import(&mut self.env, effective_name.clone(), ef.scheme.clone(), ef.origin.clone(), path.to_string(), ef.name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                // Store definition span for imported function
+                if let Some(ds) = ef.def_span {
+                    self.env.bind_with_def_span(
+                        effective_name.clone(),
+                        ef.scheme.clone(),
+                        crate::types::DefSpan { span: ds, source_module: Some(path.to_string()) },
+                    );
+                }
+                if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
                     self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
                 }
             } else if import_all {
-                let hidden_name = format!("__qual${}${}", qualifier_name, name);
+                let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
                 qualified_exports.insert(
-                    name.clone(),
+                    ef.name.clone(),
                     QualifiedExport {
                         local_name: hidden_name.clone(),
-                        scheme: scheme.clone(),
+                        scheme: ef.scheme.clone(),
                     },
                 );
-                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), origin.clone(), (path.to_string(), name.clone()));
+                self.imports.bind_hidden_fn(hidden_name, ef.scheme.clone(), ef.origin.clone(), (path.to_string(), ef.name.clone()));
             }
         }
 
-        for (name, scheme, origin) in &cached.reexported_fn_types {
+        for ef in &cached.reexported_fn_types {
             if import_all {
-                let hidden_name = format!("__qual${}${}", qualifier_name, name);
+                let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
                 let original_prov = cached.fn_types.iter()
-                    .find(|e| e.name == *name)
+                    .find(|e| e.name == ef.name)
                     .and_then(|e| e.provenance.clone())
-                    .unwrap_or_else(|| (path.to_string(), name.clone()));
+                    .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
                 qualified_exports.insert(
-                    name.clone(),
+                    ef.name.clone(),
                     QualifiedExport {
                         local_name: hidden_name.clone(),
-                        scheme: scheme.clone(),
+                        scheme: ef.scheme.clone(),
                     },
                 );
-                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), origin.clone(), original_prov);
+                self.imports.bind_hidden_fn(hidden_name, ef.scheme.clone(), ef.origin.clone(), original_prov);
             }
         }
 
         // Process re-exported functions from the cached module.
-        for (name, scheme, origin) in &cached.reexported_fn_types {
-            if requested.contains(name.as_str()) {
-                let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
+        for ef in &cached.reexported_fn_types {
+            if requested.contains(ef.name.as_str()) {
+                let effective_name = aliases.get(&ef.name).cloned().unwrap_or_else(|| ef.name.clone());
                 let original_prov = cached.fn_types.iter()
-                    .find(|e| e.name == *name)
+                    .find(|e| e.name == ef.name)
                     .and_then(|e| e.provenance.clone())
-                    .unwrap_or_else(|| (path.to_string(), name.clone()));
-                self.env.bind_with_provenance(effective_name.clone(), scheme.clone(), path.to_string());
+                    .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
+                self.env.bind_with_provenance(effective_name.clone(), ef.scheme.clone(), path.to_string());
+                // Store definition span for re-exported function
+                if let Some(ds) = ef.def_span {
+                    let source_module = original_prov.0.clone();
+                    self.env.bind_with_def_span(
+                        effective_name.clone(),
+                        ef.scheme.clone(),
+                        crate::types::DefSpan { span: ds, source_module: Some(source_module) },
+                    );
+                }
                 self.imports.imported_fn_types.push(typed_ast::ImportedFn {
                     name: effective_name.clone(),
-                    scheme: scheme.clone(),
-                    origin: origin.clone(),
+                    scheme: ef.scheme.clone(),
+                    origin: ef.origin.clone(),
                     source_module: original_prov.0,
                     original_name: original_prov.1,
                 });
-                if let Some(quals) = cached.exported_fn_qualifiers.get(name) {
+                if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
                     self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
                 }
             }
@@ -671,7 +688,15 @@ impl ModuleInferenceState {
                         .iter()
                         .find(|f| f.name == effective_name)
                     {
-                        self.reexported_fn_types.push((effective_name.clone(), f.scheme.clone(), f.origin.clone()));
+                        // Try to propagate def_span from the source module's exports
+                        let reexport_def_span = self.env.get_def_span(&effective_name)
+                            .map(|d| d.span);
+                        self.reexported_fn_types.push(typed_ast::ExportedFn {
+                            name: effective_name.clone(),
+                            scheme: f.scheme.clone(),
+                            origin: f.origin.clone(),
+                            def_span: reexport_def_span,
+                        });
                     }
                 }
                 if found_type {

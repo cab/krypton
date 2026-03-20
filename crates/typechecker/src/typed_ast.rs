@@ -186,6 +186,15 @@ pub struct TypedFnDecl {
     pub close_self_type: Option<String>,
 }
 
+/// A function exported from a module's public API, with optional definition span.
+#[derive(Debug, Clone)]
+pub struct ExportedFn {
+    pub name: String,
+    pub scheme: TypeScheme,
+    pub origin: FnOrigin,
+    pub def_span: Option<Span>,
+}
+
 pub struct TraitDefInfo {
     pub name: String,
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
@@ -244,7 +253,7 @@ pub struct TypedModule {
     pub fn_types: Vec<FnTypeEntry>,
     /// Public API: only locally-defined pub functions, pub (transparent) constructors,
     /// and trait instance methods. Used by downstream importers.
-    pub exported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    pub exported_fn_types: Vec<ExportedFn>,
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
@@ -269,7 +278,7 @@ pub struct TypedModule {
     /// Maps type_name → visibility for types declared in this module.
     pub type_visibility: HashMap<String, Visibility>,
     /// Functions re-exported via `pub use` — these become part of this module's public API.
-    pub reexported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    pub reexported_fn_types: Vec<ExportedFn>,
     /// Type names re-exported via `pub use`.
     pub reexported_type_names: Vec<String>,
     /// Maps re-exported type name → original visibility (preserves pub/opaque distinction).

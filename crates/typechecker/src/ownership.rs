@@ -5,7 +5,7 @@ use krypton_parser::ast::{Decl, Expr, FnDecl, Module, Span, TypeExpr};
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::ParamQualifier;
 use crate::types::{Type, TypeScheme, TypeVarId};
-use crate::unify::{SpannedTypeError, TypeError};
+use crate::unify::{SecondaryLabel, SpannedTypeError, TypeError};
 
 /// Check if a param has an `own` type annotation.
 fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
@@ -495,7 +495,7 @@ impl<'a> OwnershipChecker<'a> {
                 error: TypeError::AlreadyMoved { name: name.to_string() },
                 span,
                 note,
-                secondary_span: Some((first_span, "first use here".into())),
+                secondary_span: Some(SecondaryLabel { span: first_span, message: "first use here".into(), source_file: None }),
                 source_file: None,
             });
         }
@@ -504,7 +504,7 @@ impl<'a> OwnershipChecker<'a> {
                 error: TypeError::MovedInBranch { name: name.to_string() },
                 span,
                 note: None,
-                secondary_span: Some((branch_span, "consumed here".into())),
+                secondary_span: Some(SecondaryLabel { span: branch_span, message: "consumed here".into(), source_file: None }),
                 source_file: None,
             });
         }
@@ -790,7 +790,7 @@ impl<'a> OwnershipChecker<'a> {
                             error: TypeError::CapturedMoved { name: name.clone() },
                             span: *span,
                             note: None,
-                            secondary_span: Some((first_span, "consumed here".into())),
+                            secondary_span: Some(SecondaryLabel { span: first_span, message: "consumed here".into(), source_file: None }),
                             source_file: None,
                         });
                     }

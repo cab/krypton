@@ -305,12 +305,20 @@ impl Substitution {
     }
 }
 
+/// Span of a function definition, optionally in a different source module.
+#[derive(Debug, Clone)]
+pub struct DefSpan {
+    pub span: krypton_parser::ast::Span,
+    pub source_module: Option<String>, // None = same file
+}
+
 /// Scoped type environment for variable lookups.
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
     scopes: Vec<HashMap<std::string::String, TypeScheme>>,
     pub fn_return_type: Option<Type>,
     provenance: HashMap<std::string::String, std::string::String>,
+    def_spans: HashMap<std::string::String, DefSpan>,
 }
 
 impl TypeEnv {
@@ -320,6 +328,7 @@ impl TypeEnv {
             scopes: vec![HashMap::new()],
             fn_return_type: None,
             provenance: HashMap::new(),
+            def_spans: HashMap::new(),
         }
     }
 
@@ -373,6 +382,22 @@ impl TypeEnv {
     /// Get the provenance (source module path) for a binding, if any.
     pub fn get_provenance(&self, name: &str) -> Option<&str> {
         self.provenance.get(name).map(|s| s.as_str())
+    }
+
+    /// Bind a name and record its definition span (for secondary diagnostics).
+    pub fn bind_with_def_span(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        def_span: DefSpan,
+    ) {
+        self.bind(name.clone(), scheme);
+        self.def_spans.insert(name, def_span);
+    }
+
+    /// Get the definition span for a binding, if any.
+    pub fn get_def_span(&self, name: &str) -> Option<&DefSpan> {
+        self.def_spans.get(name)
     }
 
     /// Iterate over all type schemes in the environment.

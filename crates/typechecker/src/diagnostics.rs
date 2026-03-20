@@ -2,6 +2,7 @@ use ariadne::{sources, Color, Config, IndexType, Label, Report, ReportKind};
 
 use crate::infer::InferError;
 use crate::unify::SpannedTypeError;
+use krypton_modules::stdlib_loader::StdlibLoader;
 
 /// Render an `InferError` as a diagnostic string.
 ///
@@ -59,13 +60,27 @@ fn render_type_error_with_source(
                 .with_color(Color::Red),
         );
 
-    if let Some((sec_span, sec_msg)) = &err.secondary_span {
-        let (sec_start, sec_end) = *sec_span;
+    // Build source table — include both root and module source if different
+    let mut all_sources = vec![(err_file.to_string(), err_src.to_string())];
+    if err_file != filename {
+        all_sources.push((filename.to_string(), source.to_string()));
+    }
+
+    if let Some(sec) = &err.secondary_span {
+        let (sec_start, sec_end) = sec.span;
+        let sec_file = sec.source_file.as_deref().unwrap_or(err_file);
         report = report.with_label(
-            Label::new((err_file.to_string(), sec_start..sec_end))
-                .with_message(sec_msg)
+            Label::new((sec_file.to_string(), sec_start..sec_end))
+                .with_message(&sec.message)
                 .with_color(Color::Blue),
         );
+        if let Some(mod_path) = &sec.source_file {
+            if mod_path.as_str() != err_file {
+                if let Some(sec_src) = StdlibLoader::get_source(mod_path) {
+                    all_sources.push((mod_path.clone(), sec_src.to_string()));
+                }
+            }
+        }
     }
 
     if let Some(help) = err.error.help() {
@@ -74,12 +89,6 @@ fn render_type_error_with_source(
 
     if let Some(note) = &err.note {
         report = report.with_note(note);
-    }
-
-    // Build source table — include both root and module source if different
-    let mut all_sources = vec![(err_file.to_string(), err_src.to_string())];
-    if err_file != filename {
-        all_sources.push((filename.to_string(), source.to_string()));
     }
 
     report

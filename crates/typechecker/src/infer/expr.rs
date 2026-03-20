@@ -5,7 +5,7 @@ use krypton_parser::ast::{BinOp, Expr, Lit, Span, UnaryOp};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{FnOrigin, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
-use crate::unify::{coerce_unify, join_types, unify, SpannedTypeError, TypeError};
+use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
 use super::QualifiedModuleBinding;
 
@@ -141,6 +141,10 @@ impl<'a> InferenceContext<'a> {
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         let func_param_types = self.extract_fn_params(func_ty);
+        let callee_name = match &func_typed.kind {
+            TypedExprKind::Var(name) => Some(name.as_str()),
+            _ => None,
+        };
         let mut args_typed = Vec::new();
         let mut arg_types = Vec::new();
         for (i, a) in args.iter().enumerate() {
@@ -156,7 +160,21 @@ impl<'a> InferenceContext<'a> {
             let a_typed = self.infer_expr_inner(
                 a,
                 arg_expected_type.as_ref(),
-            )?;
+            ).map_err(|mut err| {
+                if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
+                    if let Some(cname) = callee_name {
+                        if let Some(def) = self.env.get_def_span(cname) {
+                            let resolved_fn_ty = self.subst.apply(func_ty);
+                            err.secondary_span = Some(SecondaryLabel {
+                                span: def.span,
+                                message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                source_file: def.source_module.clone(),
+                            });
+                        }
+                    }
+                }
+                err
+            })?;
             arg_types.push(a_typed.ty.clone());
             args_typed.push(a_typed);
         }
@@ -178,10 +196,6 @@ impl<'a> InferenceContext<'a> {
                     ));
                 }
                 // Per-arg coerce_unify: directional, catches fabrication structurally
-                let callee_name = match &func_typed.kind {
-                    TypedExprKind::Var(name) => Some(name.as_str()),
-                    _ => None,
-                };
                 for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
@@ -193,6 +207,18 @@ impl<'a> InferenceContext<'a> {
                                     format!("`{cname}` requires an owned argument at position {}", i + 1)
                                 };
                                 err.note = Some(note);
+                            }
+                        }
+                        if err.secondary_span.is_none() {
+                            if let Some(cname) = callee_name {
+                                if let Some(def) = self.env.get_def_span(cname) {
+                                    let resolved_fn_ty = self.subst.apply(func_ty);
+                                    err.secondary_span = Some(SecondaryLabel {
+                                        span: def.span,
+                                        message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                        source_file: def.source_module.clone(),
+                                    });
+                                }
                             }
                         }
                         err
@@ -669,6 +695,12 @@ impl<'a> InferenceContext<'a> {
                     }
                 };
 
+                let callee_name = if let Expr::Var { name, .. } = func.as_ref() {
+                    Some(name.as_str())
+                } else {
+                    None
+                };
+
                 let mut args_typed = Vec::new();
                 let mut arg_types = Vec::new();
                 for (i, a) in args.iter().enumerate() {
@@ -686,7 +718,21 @@ impl<'a> InferenceContext<'a> {
                     let a_typed = self.infer_expr_inner(
                         a,
                         arg_expected_type.as_ref(),
-                    )?;
+                    ).map_err(|mut err| {
+                        if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
+                            if let Some(cname) = callee_name {
+                                if let Some(def) = self.env.get_def_span(cname) {
+                                    let resolved_fn_ty = self.subst.apply(&func_typed.ty);
+                                    err.secondary_span = Some(SecondaryLabel {
+                                        span: def.span,
+                                        message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                        source_file: def.source_module.clone(),
+                                    });
+                                }
+                            }
+                        }
+                        err
+                    })?;
                     let a_ty = a_typed.ty.clone();
                     arg_types.push(a_ty.clone());
                     args_typed.push(a_typed);
@@ -724,11 +770,6 @@ impl<'a> InferenceContext<'a> {
                             ));
                         }
                         // Per-arg coerce_unify: directional, catches fabrication structurally
-                        let callee_name = if let Expr::Var { name, .. } = func.as_ref() {
-                            Some(name.as_str())
-                        } else {
-                            None
-                        };
                         for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
                             coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                                 let mut err = super::spanned(e, *span);
@@ -766,6 +807,18 @@ impl<'a> InferenceContext<'a> {
                                             shadows.join(", "),
                                             if shadows.len() == 1 { "is" } else { "are" },
                                         ));
+                                    }
+                                }
+                                if err.secondary_span.is_none() {
+                                    if let Some(cname) = callee_name {
+                                        if let Some(def) = self.env.get_def_span(cname) {
+                                            let resolved_fn_ty = self.subst.apply(&func_typed.ty);
+                                            err.secondary_span = Some(SecondaryLabel {
+                                                span: def.span,
+                                                message: format!("`{cname}` defined here, expects {resolved_fn_ty}"),
+                                                source_file: def.source_module.clone(),
+                                            });
+                                        }
                                     }
                                 }
                                 err

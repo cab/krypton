@@ -1778,7 +1778,7 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imported_trait_names: HashSet<String>,
     pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
     // Re-export state
-    pub(super) reexported_fn_types: Vec<(String, TypeScheme, FnOrigin)>,
+    pub(super) reexported_fn_types: Vec<typed_ast::ExportedFn>,
     pub(super) reexported_type_names: Vec<String>,
     pub(super) reexported_type_visibility: HashMap<String, Visibility>,
     pub(super) reexported_trait_defs: Vec<ExportedTraitDef>,
@@ -2003,7 +2003,7 @@ impl ModuleInferenceState {
         // Build exported_fn_types: the public API surface for downstream importers.
         // Includes pub (transparent) constructors, pub local functions, and instance methods.
         // Does NOT include imported functions.
-        let mut exported_fn_types: Vec<(String, TypeScheme, FnOrigin)> = Vec::new();
+        let mut exported_fn_types: Vec<typed_ast::ExportedFn> = Vec::new();
 
         // 1. Constructors for pub (transparent) types only
         for (cname, scheme) in &constructor_schemes {
@@ -2015,18 +2015,24 @@ impl ModuleInferenceState {
                 }
             });
             if is_pub_open {
-                exported_fn_types.push((cname.clone(), scheme.clone(), FnOrigin::Regular));
+                exported_fn_types.push(typed_ast::ExportedFn {
+                    name: cname.clone(),
+                    scheme: scheme.clone(),
+                    origin: FnOrigin::Regular,
+                    def_span: None,
+                });
             }
         }
 
         // 2. Local pub function declarations
         for (i, decl) in fn_decls.iter().enumerate() {
             if matches!(decl.visibility, Visibility::Pub) {
-                exported_fn_types.push((
-                    decl.name.clone(),
-                    result_schemes[i].clone().unwrap(),
-                    FnOrigin::Regular,
-                ));
+                exported_fn_types.push(typed_ast::ExportedFn {
+                    name: decl.name.clone(),
+                    scheme: result_schemes[i].clone().unwrap(),
+                    origin: FnOrigin::Regular,
+                    def_span: Some(decl.span),
+                });
             }
         }
 
@@ -2159,7 +2165,7 @@ impl ModuleInferenceState {
         )?;
 
         // Filter to exported functions only for cross-module propagation
-        let exported_names: HashSet<&str> = exported_fn_types.iter().map(|(n, _, _)| n.as_str()).collect();
+        let exported_names: HashSet<&str> = exported_fn_types.iter().map(|ef| ef.name.as_str()).collect();
         let exported_fn_qualifiers: HashMap<_, _> = ownership_result.fn_qualifiers
             .into_iter()
             .filter(|(name, _)| exported_names.contains(name.as_str()))
@@ -2929,7 +2935,7 @@ pub(crate) fn infer_module_inner(
                         },
                         span: f.span,
                         note: None,
-                        secondary_span: Some((*method_span, "trait method defined here".into())),
+                        secondary_span: Some(crate::unify::SecondaryLabel { span: *method_span, message: "trait method defined here".into(), source_file: None }),
                         source_file: None,
                     });
                 }
@@ -3180,7 +3186,11 @@ pub(crate) fn infer_module_inner(
         for &(idx, ref tv) in &pre_bound {
             let final_ty = state.subst.apply(tv);
             let scheme = generalize(&final_ty, &empty_env, &state.subst);
-            state.env.bind(fn_decls[idx].name.clone(), scheme.clone());
+            state.env.bind_with_def_span(
+                fn_decls[idx].name.clone(),
+                scheme.clone(),
+                crate::types::DefSpan { span: fn_decls[idx].span, source_module: None },
+            );
             result_schemes[idx] = Some(scheme);
         }
     }
