@@ -12,7 +12,7 @@ build/
 # Local scratch/temp
 tmp/
 thoughts/
-spec/
+
 
 # Snapshot pending files
 *.snap.new
