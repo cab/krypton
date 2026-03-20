@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::types::{Type, TypeEnv, TypeScheme, TypeVarGen};
 
 pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_module: bool) {
@@ -8,6 +9,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
         TypeScheme {
             vars: vec![a],
             ty: Type::Fn(vec![Type::String], Box::new(Type::Var(a))),
+            var_names: HashMap::new(),
         },
     );
 
@@ -20,6 +22,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
             TypeScheme {
                 vars: vec![a, b],
                 ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
+                var_names: HashMap::new(),
             },
         );
     }
@@ -32,6 +35,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
             TypeScheme {
                 vars: vec![b],
                 ty: Type::Fn(vec![], Box::new(Type::Var(b))),
+                var_names: HashMap::new(),
             },
         );
 
@@ -42,6 +46,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
             TypeScheme {
                 vars: vec![a],
                 ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Bool)),
+                var_names: HashMap::new(),
             },
         );
     }

@@ -7,7 +7,13 @@ use krypton_typechecker::types::Type;
 
 /// Convert a Type to Krypton source syntax.
 /// Differences from Display: `own X` → `~X`, `fn(X) -> Y` → `(X) -> Y`
-fn type_to_source(ty: &Type) -> String {
+/// When `var_names` is provided, uses those names for type variables instead of
+/// the default display_name().
+fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
+    if let Some(names) = var_names {
+        // Use the var_names-aware formatter, but with source syntax for fn types
+        return type_to_source_with_names(ty, names);
+    }
     match ty {
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -15,30 +21,75 @@ fn type_to_source(ty: &Type) -> String {
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Var(id) => id.display_name(),
-        Type::Own(inner) => format!("~{}", type_to_source(inner)),
+        Type::Own(inner) => format!("~{}", type_to_source(inner, None)),
         Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| type_to_source(p)).collect();
-            format!("({}) -> {}", ps.join(", "), type_to_source(ret))
+            let ps: Vec<String> = params.iter().map(|p| type_to_source(p, None)).collect();
+            format!("({}) -> {}", ps.join(", "), type_to_source(ret, None))
         }
         Type::Named(name, args) => {
             if args.is_empty() {
                 name.clone()
             } else {
-                let as_: Vec<String> = args.iter().map(|a| type_to_source(a)).collect();
+                let as_: Vec<String> = args.iter().map(|a| type_to_source(a, None)).collect();
                 format!("{}[{}]", name, as_.join(", "))
             }
         }
         Type::App(ctor, args) => {
-            let base = type_to_source(ctor);
+            let base = type_to_source(ctor, None);
             if args.is_empty() {
                 base
             } else {
-                let as_: Vec<String> = args.iter().map(|a| type_to_source(a)).collect();
+                let as_: Vec<String> = args.iter().map(|a| type_to_source(a, None)).collect();
                 format!("{}[{}]", base, as_.join(", "))
             }
         }
         Type::Tuple(elems) => {
-            let es: Vec<String> = elems.iter().map(|e| type_to_source(e)).collect();
+            let es: Vec<String> = elems.iter().map(|e| type_to_source(e, None)).collect();
+            format!("({})", es.join(", "))
+        }
+    }
+}
+
+/// Convert a Type to Krypton source syntax using explicit var name mappings.
+fn type_to_source_with_names(ty: &Type, names: &[String]) -> String {
+    match ty {
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Var(id) => {
+            let idx = id.index();
+            if idx < names.len() {
+                names[idx].clone()
+            } else {
+                id.display_name()
+            }
+        }
+        Type::Own(inner) => format!("~{}", type_to_source_with_names(inner, names)),
+        Type::Fn(params, ret) => {
+            let ps: Vec<String> = params.iter().map(|p| type_to_source_with_names(p, names)).collect();
+            format!("({}) -> {}", ps.join(", "), type_to_source_with_names(ret, names))
+        }
+        Type::Named(name, args) => {
+            if args.is_empty() {
+                name.clone()
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| type_to_source_with_names(a, names)).collect();
+                format!("{}[{}]", name, as_.join(", "))
+            }
+        }
+        Type::App(ctor, args) => {
+            let base = type_to_source_with_names(ctor, names);
+            if args.is_empty() {
+                base
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| type_to_source_with_names(a, names)).collect();
+                format!("{}[{}]", base, as_.join(", "))
+            }
+        }
+        Type::Tuple(elems) => {
+            let es: Vec<String> = elems.iter().map(|e| type_to_source_with_names(e, names)).collect();
             format!("({})", es.join(", "))
         }
     }
@@ -48,9 +99,15 @@ struct TypedFormatter<'a> {
     indent_level: usize,
     buf: String,
     auto_close: &'a AutoCloseInfo,
+    /// Display names for type variables, computed from the scheme's display_var_names().
+    var_names: Option<Vec<String>>,
 }
 
 impl<'a> TypedFormatter<'a> {
+    fn type_str(&self, ty: &Type) -> String {
+        type_to_source(ty, self.var_names.as_deref())
+    }
+
     fn indent(&mut self) {
         for _ in 0..self.indent_level * 4 {
             self.buf.push(' ');
@@ -104,8 +161,8 @@ impl<'a> TypedFormatter<'a> {
         fn_type: &Type,
     ) {
         let (param_types, ret_type) = match fn_type {
-            Type::Fn(params, ret) => (params.clone(), type_to_source(ret)),
-            _ => (vec![], type_to_source(fn_type)),
+            Type::Fn(params, ret) => (params.clone(), self.type_str(ret)),
+            _ => (vec![], self.type_str(fn_type)),
         };
 
         self.buf.push_str("fun ");
@@ -118,7 +175,7 @@ impl<'a> TypedFormatter<'a> {
             self.buf.push_str(param_name);
             if let Some(ty) = param_types.get(i) {
                 self.buf.push_str(": ");
-                self.buf.push_str(&type_to_source(ty));
+                self.buf.push_str(&self.type_str(ty));
             }
         }
         self.buf.push_str(") -> ");
@@ -155,8 +212,8 @@ impl<'a> TypedFormatter<'a> {
         fn_type: &Type,
     ) {
         let (param_types, ret_type) = match fn_type {
-            Type::Fn(params, ret) => (params.clone(), type_to_source(ret)),
-            _ => (vec![], type_to_source(fn_type)),
+            Type::Fn(params, ret) => (params.clone(), self.type_str(ret)),
+            _ => (vec![], self.type_str(fn_type)),
         };
 
         self.buf.push_str("fun ");
@@ -169,7 +226,7 @@ impl<'a> TypedFormatter<'a> {
             self.buf.push_str(param_name);
             if let Some(ty) = param_types.get(i) {
                 self.buf.push_str(": ");
-                self.buf.push_str(&type_to_source(ty));
+                self.buf.push_str(&self.type_str(ty));
             }
         }
         self.buf.push_str(") -> ");
@@ -272,7 +329,7 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str("let ");
                 self.buf.push_str(name);
                 self.buf.push_str(": ");
-                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(&self.type_str(&value.ty));
                 self.buf.push_str(" = ");
                 self.fmt_expr(value);
             }
@@ -280,7 +337,7 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str("let ");
                 self.buf.push_str(name);
                 self.buf.push_str(": ");
-                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(&self.type_str(&value.ty));
                 self.buf.push_str(" = ");
                 self.fmt_expr(value);
                 self.buf.push('\n');
@@ -293,7 +350,7 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str("let ");
                 self.fmt_typed_pattern(pattern);
                 self.buf.push_str(": ");
-                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(&self.type_str(&value.ty));
                 self.buf.push_str(" = ");
                 self.fmt_expr(value);
             }
@@ -301,7 +358,7 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str("let ");
                 self.fmt_typed_pattern(pattern);
                 self.buf.push_str(": ");
-                self.buf.push_str(&type_to_source(&value.ty));
+                self.buf.push_str(&self.type_str(&value.ty));
                 self.buf.push_str(" = ");
                 self.fmt_expr(value);
                 self.buf.push('\n');
@@ -355,7 +412,7 @@ impl<'a> TypedFormatter<'a> {
                         self.buf.push_str("{ let ");
                         self.buf.push_str(name);
                         self.buf.push_str(": ");
-                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(&self.type_str(&value.ty));
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                         self.buf.push_str("; ");
@@ -366,7 +423,7 @@ impl<'a> TypedFormatter<'a> {
                         self.buf.push_str("let ");
                         self.buf.push_str(name);
                         self.buf.push_str(": ");
-                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(&self.type_str(&value.ty));
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                     }
@@ -378,7 +435,7 @@ impl<'a> TypedFormatter<'a> {
                         self.buf.push_str("{ let ");
                         self.fmt_typed_pattern(pattern);
                         self.buf.push_str(": ");
-                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(&self.type_str(&value.ty));
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                         self.buf.push_str("; ");
@@ -389,7 +446,7 @@ impl<'a> TypedFormatter<'a> {
                         self.buf.push_str("let ");
                         self.fmt_typed_pattern(pattern);
                         self.buf.push_str(": ");
-                        self.buf.push_str(&type_to_source(&value.ty));
+                        self.buf.push_str(&self.type_str(&value.ty));
                         self.buf.push_str(" = ");
                         self.fmt_expr(value);
                     }
@@ -443,7 +500,7 @@ impl<'a> TypedFormatter<'a> {
                             if let Some(ref pts) = param_types {
                                 if let Some(ty) = pts.get(i) {
                                     self.buf.push_str(": ");
-                                    self.buf.push_str(&type_to_source(ty));
+                                    self.buf.push_str(&self.type_str(ty));
                                 }
                             }
                         }
@@ -749,12 +806,19 @@ pub fn render_inspect(
                 // Find the matching TypedFnDecl and FnTypeEntry
                 if let Some(typed_fn) = functions.iter().find(|tf| tf.name == f.name) {
                     if let Some(entry) = fn_types.iter().find(|e| e.name == f.name) {
+                        let (display_ty, var_names) = if entry.scheme.vars.is_empty() {
+                            (entry.scheme.ty.clone(), None)
+                        } else {
+                            let (ty, names) = entry.scheme.display_var_names();
+                            (ty, Some(names))
+                        };
                         let mut formatter = TypedFormatter {
                             indent_level: 0,
                             buf: String::new(),
                             auto_close,
+                            var_names,
                         };
-                        formatter.fmt_fn_decl(typed_fn, &entry.scheme.ty);
+                        formatter.fmt_fn_decl(typed_fn, &display_ty);
                         output.push_str(&formatter.buf);
                     } else {
                         output.push_str(&krypton_parser::pretty::pretty_print_decl(decl));
@@ -800,6 +864,7 @@ pub fn render_inspect(
                                 indent_level: 1,
                                 buf: String::new(),
                                 auto_close,
+                                var_names: None,
                             };
                             formatter.indent();
                             let typed_fn = TypedFnDecl {

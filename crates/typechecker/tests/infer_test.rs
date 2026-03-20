@@ -243,30 +243,30 @@ fn infer_forward_reference() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -286,30 +286,30 @@ fn infer_module_basic() {
     insta::assert_snapshot!(
         infer_module_types("fun add(a, b) = a + b"),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -323,30 +323,30 @@ fn infer_module_forward_ref() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -363,30 +363,30 @@ fn infer_mutual_recursion() {
             "fun is_even(n) = if n == 0 { true } else { is_odd(n - 1) }\nfun is_odd(n) = if n == 0 { false } else { is_even(n - 1) }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -417,30 +417,30 @@ fn infer_record_constructor() {
             "type Point = { x: Int, y: Int }\nfun p() = Point(1, 2)"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -457,36 +457,36 @@ fn infer_sum_constructor() {
             "type Option[a] = Some(a) | None\nfun wrap(x) = Some(x)"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall g7. fn(g7) -> Option[g7]
-    None: forall g7. Option[g7]
-    wrap: forall s7. fn(s7) -> Option[s7]
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    wrap: forall a. fn(a) -> Option[a]
     "
     );
 }
@@ -498,36 +498,36 @@ fn infer_bare_variant() {
             "type Option[a] = Some(a) | None\nfun none() = None"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall g7. fn(g7) -> Option[g7]
-    None: forall g7. Option[g7]
-    none: forall t7. fn() -> Option[t7]
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    none: forall a. fn() -> Option[a]
     "
     );
 }
@@ -549,36 +549,36 @@ fn infer_scc_generalization_order() {
             "fun id(x) = x\nfun f(n) = id(n)\nfun g(s) = id(s)"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    id: forall r7. fn(r7) -> r7
-    f: forall x7. fn(x7) -> x7
-    g: forall c8. fn(c8) -> c8
+    id: forall a. fn(a) -> a
+    f: forall a. fn(a) -> a
+    g: forall a. fn(a) -> a
     "
     );
 }
@@ -590,30 +590,30 @@ fn infer_field_access() {
             "type Point = { x: Int, y: Int }\nfun get_x() = Point(1, 2).x"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -630,30 +630,30 @@ fn infer_struct_update() {
             "type Point = { x: Int, y: Int }\nfun move_x() = { Point(1, 2) | x = 42 }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -700,36 +700,36 @@ fn infer_match_option() {
             "type Option[a] = Some(a) | None\nfun unwrap_or(opt, default) = match opt { Some(x) => x, None => default }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall g7. fn(g7) -> Option[g7]
-    None: forall g7. Option[g7]
-    unwrap_or: forall t7. fn(Option[t7], t7) -> t7
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    unwrap_or: forall a. fn(Option[a], a) -> a
     "
     );
 }
@@ -741,30 +741,30 @@ fn infer_match_literal() {
             "fun describe(x) = match x { 1 => \"one\", 2 => \"two\", _ => \"other\" }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -780,34 +780,34 @@ fn infer_match_variable() {
             "fun identity(x) = match x { y => y }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    identity: forall r7. fn(r7) -> r7
+    identity: forall a. fn(a) -> a
     "
     );
 }
@@ -819,35 +819,35 @@ fn infer_match_nested_constructor() {
             "type List[a] = Cons(a, List[a]) | Nil\nfun sum2(xs) = match xs { Cons(h, Cons(h2, t)) => h + h2, _ => 0 }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Cons: forall g7. fn(g7, List[g7]) -> List[g7]
-    Nil: forall g7. List[g7]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     sum2: fn(List[Int]) -> Int
     "
     );
@@ -870,34 +870,34 @@ fn infer_tuple_in_match() {
             "fun first(p) = match p { (a, b) => a }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    first: forall t7 u7. fn((t7, u7)) -> t7
+    first: forall a b. fn((a, b)) -> a
     "
     );
 }
@@ -914,34 +914,34 @@ fn infer_tuple_polymorphic() {
             "fun swap(p) = match p { (a, b) => (b, a) }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    swap: forall t7 u7. fn((t7, u7)) -> (u7, t7)
+    swap: forall a b. fn((a, b)) -> (b, a)
     "
     );
 }
@@ -963,35 +963,35 @@ fn test_exhaustive_complete() {
             "type Option[a] = Some(a) | None\nfun unwrap(opt) = match opt { Some(x) => x, None => 0 }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall g7. fn(g7) -> Option[g7]
-    None: forall g7. Option[g7]
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
     unwrap: fn(Option[Int]) -> Int
     "
     );
@@ -1014,36 +1014,36 @@ fn test_exhaustive_wildcard_covers_all() {
             "type Option[a] = Some(a) | None\nfun test(opt) = match opt { _ => 0 }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
-    Some: forall g7. fn(g7) -> Option[g7]
-    None: forall g7. Option[g7]
-    test: forall s7. fn(s7) -> Int
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    test: forall a. fn(a) -> Int
     "
     );
 }
@@ -1065,30 +1065,30 @@ fn infer_call_site_coercion_borrow() {
             "fun len(s: String) -> Int = 42\nfun test(buf: ~String) -> Int = { len(buf); len(buf) }"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -1105,30 +1105,30 @@ fn infer_call_site_coercion_no_collection() {
             "type MyList = Cons(String, MyList) | Nil\nfun test(buf: ~String) -> MyList = Cons(buf, Nil)"
         ),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -1161,7 +1161,7 @@ fn explicit_type_param_generalized() {
     // fun view[t](x: ~t) -> t should produce forall t. fn(own t) -> t
     insta::assert_snapshot!(
         infer_module_fn("fun view[t](x: ~t) -> t = x", "view"),
-        @"forall r7. fn(~r7) -> r7"
+        @"forall t. fn(~t) -> t"
     );
 }
 
@@ -1170,7 +1170,7 @@ fn explicit_type_param_identity() {
     // fun id[a](x: a) -> a should produce forall a. fn(a) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall r7. fn(r7) -> r7"
+        @"forall a. fn(a) -> a"
     );
 }
 
@@ -1179,7 +1179,7 @@ fn explicit_type_param_multiple() {
     // fun const[a, b](x: a, y: b) -> a should produce forall a b. fn(a, b) -> a
     insta::assert_snapshot!(
         infer_module_fn("fun const_[a, b](x: a, y: b) -> a = x", "const_"),
-        @"forall r7 s7. fn(r7, s7) -> r7"
+        @"forall a b. fn(a, b) -> a"
     );
 }
 
@@ -1199,7 +1199,7 @@ fn explicit_hkt_type_param_generalized() {
 
         fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x -> x)
     "#;
-    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall v7 w7. fn(v7[w7]) -> v7[w7]");
+    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall f a. fn(f[a]) -> f[a]");
 }
 
 #[test]
@@ -1233,7 +1233,7 @@ fn no_type_params_still_generalizes() {
     // Unannotated identity should still generalize via HM
     insta::assert_snapshot!(
         infer_module_fn("fun id(x) = x", "id"),
-        @"forall r7. fn(r7) -> r7"
+        @"forall a. fn(a) -> a"
     );
 }
 
@@ -1363,7 +1363,7 @@ fn typo_in_type_name() {
 fn type_param_not_unknown() {
     insta::assert_snapshot!(
         infer_module_fn("fun id[a](x: a) -> a = x", "id"),
-        @"forall r7. fn(r7) -> r7"
+        @"forall a. fn(a) -> a"
     );
 }
 
@@ -2276,30 +2276,30 @@ fn lambda_params_inferred_from_higher_order_fn() {
             fun get_score(p: Player) -> Int = apply(p, (x) -> x.score)
         "#),
         @"
-    eq: forall g. fn(g, g) -> Bool
-    lt: forall h. fn(h, h) -> Bool
-    combine: forall g. fn(g, g) -> g
-    sub: forall g. fn(g, g) -> g
-    mul: forall g. fn(g, g) -> g
-    div: forall g. fn(g, g) -> g
-    neg: forall g. fn(g) -> g
-    show: forall g. fn(g) -> String
-    hash: forall g. fn(g) -> Int
-    close: forall g. fn(~g) -> Unit
-    peek: forall h. fn(h) -> h
-    last: forall q3. fn(List[q3]) -> Option[q3]
-    sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-    filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-    fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-    map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-    to_list: forall f7. fn(Vec[f7]) -> List[f7]
-    println: forall m. fn(m) -> Unit
-    Some: forall e. fn(e) -> Option[e]
-    None: forall e. Option[e]
-    Ok: forall f g. fn(g) -> Result[f, g]
-    Err: forall f g. fn(f) -> Result[f, g]
-    Cons: forall h. fn(h, List[h]) -> List[h]
-    Nil: forall h. List[h]
+    eq: forall a. fn(a, a) -> Bool
+    lt: forall a. fn(a, a) -> Bool
+    combine: forall a. fn(a, a) -> a
+    sub: forall a. fn(a, a) -> a
+    mul: forall a. fn(a, a) -> a
+    div: forall a. fn(a, a) -> a
+    neg: forall a. fn(a) -> a
+    show: forall a. fn(a) -> String
+    hash: forall a. fn(a) -> Int
+    close: forall a. fn(~a) -> Unit
+    peek: forall a. fn(a) -> a
+    last: forall a. fn(List[a]) -> Option[a]
+    sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+    filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+    fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+    map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+    to_list: forall a. fn(Vec[a]) -> List[a]
+    println: forall a. fn(a) -> Unit
+    Some: forall a. fn(a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. fn(b) -> Result[a, b]
+    Err: forall a b. fn(a) -> Result[a, b]
+    Cons: forall a. fn(a, List[a]) -> List[a]
+    Nil: forall a. List[a]
     LT: Ordering
     EQ: Ordering
     GT: Ordering
@@ -2337,5 +2337,31 @@ fn shadowed_prelude_fn_note_on_ufcs_mismatch() {
     assert!(
         note.contains("filter"),
         "note should mention the shadowed function name, got: {note}"
+    );
+}
+
+// ── Alpha-renaming / user type param names ──
+
+#[test]
+fn infer_user_type_param_names_preserved() {
+    insta::assert_snapshot!(
+        infer_module_fn("fun identity[elem](x: elem) -> elem = x", "identity"),
+        @"forall elem. fn(elem) -> elem"
+    );
+}
+
+#[test]
+fn infer_user_type_param_names_multi() {
+    insta::assert_snapshot!(
+        infer_module_fn("fun swap[a, b](x: a, y: b) -> (b, a) = (y, x)", "swap"),
+        @"forall a b. fn(a, b) -> (b, a)"
+    );
+}
+
+#[test]
+fn infer_anonymous_vars_renumbered() {
+    insta::assert_snapshot!(
+        infer_module_fn("fun id(x) = x", "id"),
+        @"forall a. fn(a) -> a"
     );
 }

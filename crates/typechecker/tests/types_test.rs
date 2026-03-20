@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use krypton_typechecker::types::*;
 
 // ── 1a. Types construct, substitute, and pretty-print ──
@@ -224,6 +225,7 @@ fn type_scheme_poly_display() {
     let scheme = TypeScheme {
         vars: vec![a, b],
         ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
+        var_names: HashMap::new(),
     };
     insta::assert_snapshot!(scheme.to_string(), @"forall a b. fn(a) -> b");
 }
@@ -236,6 +238,7 @@ fn type_scheme_instantiate() {
     let scheme = TypeScheme {
         vars: vec![a, b],
         ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
+        var_names: HashMap::new(),
     };
     let instantiated = scheme.instantiate(&mut || gen.fresh());
     let c = gen.fresh(); // this is the 5th var (index 4), but we need the 3rd and 4th
@@ -285,6 +288,7 @@ fn apply_scheme_respects_quantified_vars() {
     let scheme = TypeScheme {
         vars: vec![a],
         ty: Type::Fn(vec![Type::Var(a), Type::Var(b)], Box::new(Type::Var(a))),
+        var_names: HashMap::new(),
     };
     // Substituting {a -> Int, b -> Bool}: var a is quantified so should NOT be substituted
     let s1 = Substitution::bind(a, Type::Int);

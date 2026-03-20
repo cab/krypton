@@ -654,6 +654,7 @@ impl ModuleInferenceState {
                         let scheme = TypeScheme {
                             vars: vec![trait_def.type_var_id],
                             ty: fn_ty,
+                            var_names: HashMap::new(),
                         };
                         self.imports.bind_import(&mut self.env, method.name.clone(), scheme, origin.clone(), path.to_string(), method.name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                     }

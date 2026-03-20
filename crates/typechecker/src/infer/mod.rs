@@ -700,7 +700,7 @@ pub(super) fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> Type
     let env_vars = free_vars_env(env, subst);
     let mut vars: Vec<TypeVarId> = ty_vars.difference(&env_vars).copied().collect();
     vars.sort();
-    TypeScheme { vars, ty }
+    TypeScheme { vars, ty, var_names: HashMap::new() }
 }
 
 /// Attach a span to a TypeError, producing a SpannedTypeError.
@@ -1481,6 +1481,7 @@ fn process_extern_methods(
             TypeScheme {
                 vars: scheme_vars,
                 ty: fn_ty,
+                var_names: HashMap::new(),
             }
         };
         env.bind(bind_name.clone(), scheme);
@@ -2508,6 +2509,7 @@ pub(crate) fn infer_module_inner(
                 let scheme = TypeScheme {
                     vars: all_vars,
                     ty: fn_ty,
+                    var_names: HashMap::new(),
                 };
                 state.env.bind(method.name.clone(), scheme);
 
@@ -2669,6 +2671,7 @@ pub(crate) fn infer_module_inner(
                 let scheme = TypeScheme {
                     vars: vec![],
                     ty: fn_ty,
+                    var_names: HashMap::new(),
                 };
 
                 let derive_trait_id = trait_registry.lookup_trait(trait_name)
@@ -3014,6 +3017,9 @@ pub(crate) fn infer_module_inner(
     let mut fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>> = HashMap::new();
     let mut shared_type_vars: HashMap<String, HashSet<String>> = HashMap::new();
 
+    // Save type_param_maps so we can attach user names to generalized schemes later
+    let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
+
     // Process each SCC in topological order (dependencies first)
     for component in &sccs {
         // Bind each name in the SCC to a fresh type variable (monomorphic within SCC)
@@ -3032,6 +3038,7 @@ pub(crate) fn infer_module_inner(
             // Build type_param_map from explicit type parameters
             let (type_param_map, type_param_arity) =
                 build_type_param_maps(&decl.type_params, &mut state.gen);
+            saved_type_param_maps.insert(idx, type_param_map.clone());
             // Collect shared type vars and filter them out of trait constraints
             let mut shared_tv_names: HashSet<String> = HashSet::new();
             if !decl.constraints.is_empty() {
@@ -3198,7 +3205,19 @@ pub(crate) fn infer_module_inner(
         let empty_env = TypeEnv::new();
         for &(idx, ref tv) in &pre_bound {
             let final_ty = state.subst.apply(tv);
-            let scheme = generalize(&final_ty, &empty_env, &state.subst);
+            let mut scheme = generalize(&final_ty, &empty_env, &state.subst);
+            // Attach user-written type parameter names to the scheme
+            if let Some(tpm) = saved_type_param_maps.get(&idx) {
+                let scheme_var_set: HashSet<TypeVarId> = scheme.vars.iter().copied().collect();
+                for (name, &original_id) in tpm {
+                    let resolved = state.subst.apply(&Type::Var(original_id));
+                    if let Type::Var(final_id) = resolved {
+                        if scheme_var_set.contains(&final_id) {
+                            scheme.var_names.insert(final_id, name.clone());
+                        }
+                    }
+                }
+            }
             state.env.bind_with_def_span(
                 fn_decls[idx].name.clone(),
                 scheme.clone(),
@@ -3415,6 +3434,7 @@ pub(crate) fn infer_module_inner(
                 let scheme = TypeScheme {
                     vars: vec![],
                     ty: fn_ty,
+                    var_names: HashMap::new(),
                 };
 
                 instance_methods.push(typed_ast::InstanceMethod {

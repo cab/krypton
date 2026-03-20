@@ -277,6 +277,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
     let render_wrap_scheme = TypeScheme {
         vars: vec![var_a],
         ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
+        var_names: HashMap::new(),
     };
 
     let mut fn_types = vec![
@@ -311,6 +312,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             scheme: TypeScheme {
                 vars: vec![var_a],
                 ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
+                var_names: HashMap::new(),
             },
             origin: None,
             provenance: None,

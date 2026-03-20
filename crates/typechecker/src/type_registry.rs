@@ -384,6 +384,7 @@ pub fn process_type_decl(
                 TypeScheme {
                     vars: quantified_vars.clone(),
                     ty: ctor_ty,
+                    var_names: HashMap::new(),
                 },
             ));
 
@@ -419,6 +420,7 @@ pub fn process_type_decl(
                     TypeScheme {
                         vars: quantified_vars.clone(),
                         ty: ctor_ty,
+                        var_names: HashMap::new(),
                     },
                 ));
 

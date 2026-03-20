@@ -1,5 +1,6 @@
 //! Pattern matching compilation (match expressions and let-destructuring).
 
+use krypton_parser::ast::Lit;
 use krypton_typechecker::typed_ast::{TypedExpr, TypedMatchArm, TypedPattern};
 use krypton_typechecker::types::Type;
 use ristretto_classfile::attributes::{Instruction, VerificationType};
@@ -268,7 +269,12 @@ impl Compiler {
             // Patch the next_arm branch target (and any nested ifeq patches)
             if let Some(patch_idx) = next_arm_patch {
                 let next_arm_target = self.builder.current_offset();
-                self.builder.patch(patch_idx, Instruction::Ifeq(next_arm_target));
+                // Preserve the branch type: Ifeq for instanceof, Ifne for literal compare
+                let branch = match self.builder.code[patch_idx] {
+                    Instruction::Ifne(_) => Instruction::Ifne(next_arm_target),
+                    _ => Instruction::Ifeq(next_arm_target),
+                };
+                self.builder.patch(patch_idx, branch);
                 for nested_idx in &nested_patches {
                     self.builder.code[*nested_idx] = Instruction::Ifeq(next_arm_target);
                 }
@@ -563,6 +569,81 @@ impl Compiler {
                     }
                 }
 
+                Ok(ifeq_idx)
+            }
+            TypedPattern::Lit { value, .. } => {
+                let ifeq_idx = if matches!(mode, PatternMode::CheckAndBind) {
+                    match value {
+                        Lit::Int(n) => {
+                            // Load scrutinee (long), push literal, Lcmp → 0 if equal
+                            self.builder.emit_load(scrutinee_slot, JvmType::Long);
+                            match *n {
+                                0 => self.builder.emit(Instruction::Lconst_0),
+                                1 => self.builder.emit(Instruction::Lconst_1),
+                                _ => {
+                                    let idx = self.cp.add_long(*n)?;
+                                    self.builder.emit(Instruction::Ldc2_w(idx));
+                                }
+                            }
+                            self.builder.frame.push_long_type();
+                            self.builder.emit(Instruction::Lcmp);
+                            // Lcmp pops two longs (4 slots), pushes int
+                            self.builder.frame.pop_type_n(4);
+                            self.builder.frame.push_type(VerificationType::Integer);
+                            // Ifne: branch to next arm when NOT equal (lcmp != 0)
+                            let idx = self.builder.emit_placeholder(Instruction::Ifne(0));
+                            self.builder.frame.pop_type();
+                            Some(idx)
+                        }
+                        Lit::Bool(b) => {
+                            // Load scrutinee (int), push literal, compare
+                            self.builder.emit_load(scrutinee_slot, JvmType::Int);
+                            self.builder.emit(if *b {
+                                Instruction::Iconst_1
+                            } else {
+                                Instruction::Iconst_0
+                            });
+                            self.builder.frame.push_type(VerificationType::Integer);
+                            // XOR: 0 if same, non-zero if different
+                            self.builder.emit(Instruction::Ixor);
+                            self.builder.frame.pop_type();
+                            // Ifne: branch to next arm when different (xor != 0)
+                            let idx = self.builder.emit_placeholder(Instruction::Ifne(0));
+                            self.builder.frame.pop_type();
+                            Some(idx)
+                        }
+                        Lit::String(s) => {
+                            // Load scrutinee (string ref), push literal, call equals
+                            self.builder.emit_load(scrutinee_slot, scrutinee_type);
+                            let str_idx = self.cp.add_string(s)?;
+                            if str_idx <= 255 {
+                                self.builder.emit(Instruction::Ldc(str_idx as u8));
+                            } else {
+                                self.builder.emit(Instruction::Ldc_w(str_idx));
+                            }
+                            self.builder.frame.push_type(VerificationType::Object {
+                                cpool_index: self.builder.refs.string_class,
+                            });
+                            self.builder.emit(Instruction::Invokevirtual(
+                                self.builder.refs.string_equals,
+                            ));
+                            self.builder.frame.pop_type(); // pop arg
+                            self.builder.frame.pop_type(); // pop receiver
+                            self.builder.frame.push_type(VerificationType::Integer);
+                            // equals returns 1 if match → Ifeq branches when 0 (no match)
+                            let idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
+                            self.builder.frame.pop_type();
+                            Some(idx)
+                        }
+                        _ => {
+                            return Err(CodegenError::UnsupportedExpr(format!(
+                                "unsupported literal pattern: {value:?}"
+                            )));
+                        }
+                    }
+                } else {
+                    None
+                };
                 Ok(ifeq_idx)
             }
             _ => Err(CodegenError::UnsupportedExpr(format!(

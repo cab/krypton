@@ -12,6 +12,11 @@ impl fmt::Display for TypeVarId {
 }
 
 impl TypeVarId {
+    /// Get the numeric index of this type variable.
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+
     /// Human-readable name: 0→a, 1→b, ..., 25→z, 26→a1, etc.
     pub fn display_name(self) -> String {
         let letter = (b'a' + (self.0 % 26) as u8) as char;
@@ -170,6 +175,9 @@ impl fmt::Display for Type {
 pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
     pub ty: Type,
+    /// User-written type parameter names (e.g., from `fun foo[elem](...)`).
+    /// Display uses these instead of auto-generated letters when available.
+    pub var_names: HashMap<TypeVarId, String>,
 }
 
 impl TypeScheme {
@@ -178,6 +186,7 @@ impl TypeScheme {
         TypeScheme {
             vars: Vec::new(),
             ty,
+            var_names: HashMap::new(),
         }
     }
 
@@ -212,7 +221,99 @@ impl TypeScheme {
         }
         let new_ty = subst.apply(&self.ty);
         let new_vars = mapping.iter().map(|&(_, new)| new).collect();
-        (TypeScheme { vars: new_vars, ty: new_ty }, mapping)
+        let new_var_names = self.var_names.iter()
+            .filter_map(|(old, name)| {
+                mapping.iter().find(|(o, _)| o == old).map(|(_, new)| (*new, name.clone()))
+            })
+            .collect();
+        (TypeScheme { vars: new_vars, ty: new_ty, var_names: new_var_names }, mapping)
+    }
+}
+
+impl TypeScheme {
+    /// Build display names for this scheme's quantified vars.
+    /// Uses user names when available, sequential letters otherwise.
+    pub fn display_var_names(&self) -> (Type, Vec<String>) {
+        // 1. Renumber vars to sequential 0,1,2,... (order in vars list)
+        let mut id_mapping = HashMap::new();
+        let mut next_id = 0u32;
+        for &v in &self.vars {
+            id_mapping.entry(v).or_insert_with(|| {
+                let new = TypeVarId(next_id);
+                next_id += 1;
+                new
+            });
+        }
+        let renamed_ty = self.ty.renumber_inner(&mut id_mapping, &mut next_id);
+
+        // 2. Assign display names: user names first, then sequential letters
+        let mut used: HashSet<String> = HashSet::new();
+        let mut names = Vec::new();
+        let mut letter_idx = 0u32;
+        for &v in &self.vars {
+            if let Some(user_name) = self.var_names.get(&v) {
+                names.push(user_name.clone());
+                used.insert(user_name.clone());
+            } else {
+                loop {
+                    let candidate = TypeVarId(letter_idx).display_name();
+                    letter_idx += 1;
+                    if !used.contains(&candidate) {
+                        used.insert(candidate.clone());
+                        names.push(candidate);
+                        break;
+                    }
+                }
+            }
+        }
+
+        (renamed_ty, names)
+    }
+}
+
+/// Format a type using explicit var name mappings instead of TypeVarId::display_name().
+/// Var(TypeVarId(n)) maps to var_names[n].
+pub fn format_type_with_var_names(ty: &Type, var_names: &[String]) -> String {
+    match ty {
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Var(id) => {
+            let idx = id.index();
+            if idx < var_names.len() {
+                var_names[idx].clone()
+            } else {
+                id.display_name()
+            }
+        }
+        Type::Fn(params, ret) => {
+            let ps: Vec<String> = params.iter().map(|p| format_type_with_var_names(p, var_names)).collect();
+            format!("fn({}) -> {}", ps.join(", "), format_type_with_var_names(ret, var_names))
+        }
+        Type::Named(name, args) => {
+            if args.is_empty() {
+                name.clone()
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_names(a, var_names)).collect();
+                format!("{}[{}]", name, as_.join(", "))
+            }
+        }
+        Type::App(ctor, args) => {
+            let base = format_type_with_var_names(ctor, var_names);
+            if args.is_empty() {
+                base
+            } else {
+                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_names(a, var_names)).collect();
+                format!("{}[{}]", base, as_.join(", "))
+            }
+        }
+        Type::Own(inner) => format!("~{}", format_type_with_var_names(inner, var_names)),
+        Type::Tuple(elems) => {
+            let es: Vec<String> = elems.iter().map(|e| format_type_with_var_names(e, var_names)).collect();
+            format!("({})", es.join(", "))
+        }
     }
 }
 
@@ -221,11 +322,12 @@ impl fmt::Display for TypeScheme {
         if self.vars.is_empty() {
             write!(f, "{}", self.ty)
         } else {
+            let (renamed_ty, names) = self.display_var_names();
             write!(f, "forall")?;
-            for &v in &self.vars {
-                write!(f, " {}", v.display_name())?;
+            for name in &names {
+                write!(f, " {}", name)?;
             }
-            write!(f, ". {}", self.ty)
+            write!(f, ". {}", format_type_with_var_names(&renamed_ty, &names))
         }
     }
 }
@@ -323,6 +425,7 @@ impl Substitution {
         TypeScheme {
             vars: scheme.vars.clone(),
             ty: restricted.apply(&scheme.ty),
+            var_names: scheme.var_names.clone(),
         }
     }
 

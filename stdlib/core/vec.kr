@@ -1,4 +1,4 @@
-import core/list.{Cons, Nil, List, length as list_length, filter as list_filter, sort_by as list_sort_by}
+import core/list.{Cons, Nil, List, length as list_length, filter as list_filter, sort_by as list_sort_by, map as list_map, fold as list_fold}
 import core/option.{Option, Some, None}
 import core/sub.{sub}
 import core/ord.{Ord, lt}
@@ -47,5 +47,9 @@ pub fun last(xs) = {
 }
 
 pub fun filter(xs, f) = from_list(list_filter(to_list(xs), f))
+
+pub fun map(xs, f) = from_list(list_map(to_list(xs), f))
+
+pub fun fold(xs, acc, f) = list_fold(to_list(xs), acc, f)
 
 pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord = from_list(list_sort_by(to_list(xs), key))

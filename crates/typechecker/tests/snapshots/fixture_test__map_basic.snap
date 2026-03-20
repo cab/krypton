@@ -2,34 +2,34 @@
 source: crates/typechecker/tests/fixture_test.rs
 expression: snapshot
 ---
-eq: forall g. fn(g, g) -> Bool
-lt: forall h. fn(h, h) -> Bool
-combine: forall g. fn(g, g) -> g
-sub: forall g. fn(g, g) -> g
-mul: forall g. fn(g, g) -> g
-div: forall g. fn(g, g) -> g
-neg: forall g. fn(g) -> g
-show: forall g. fn(g) -> String
-hash: forall g. fn(g) -> Int
-close: forall g. fn(~g) -> Unit
-peek: forall h. fn(h) -> h
-last: forall q3. fn(List[q3]) -> Option[q3]
-sort_by: forall k5 v5. fn(List[v5], fn(v5) -> k5) -> List[v5]
-filter: forall g1. fn(List[g1], fn(g1) -> Bool) -> List[g1]
-fold: forall s1 t1. fn(List[s1], t1, fn(t1, s1) -> t1) -> t1
-map: forall v x. fn(List[v], fn(v) -> x) -> List[x]
-to_list: forall f7. fn(Vec[f7]) -> List[f7]
-println: forall m. fn(m) -> Unit
-Some: forall e. fn(e) -> Option[e]
-None: forall e. Option[e]
-Ok: forall f g. fn(g) -> Result[f, g]
-Err: forall f g. fn(f) -> Result[f, g]
-Cons: forall h. fn(h, List[h]) -> List[h]
-Nil: forall h. List[h]
+eq: forall a. fn(a, a) -> Bool
+lt: forall a. fn(a, a) -> Bool
+combine: forall a. fn(a, a) -> a
+sub: forall a. fn(a, a) -> a
+mul: forall a. fn(a, a) -> a
+div: forall a. fn(a, a) -> a
+neg: forall a. fn(a) -> a
+show: forall a. fn(a) -> String
+hash: forall a. fn(a) -> Int
+close: forall a. fn(~a) -> Unit
+peek: forall a. fn(a) -> a
+last: forall a. fn(List[a]) -> Option[a]
+sort_by: forall b a. fn(List[a], fn(a) -> b) -> List[a]
+filter: forall a. fn(List[a], fn(a) -> Bool) -> List[a]
+fold: forall a b. fn(List[a], b, fn(b, a) -> b) -> b
+map: forall a b. fn(List[a], fn(a) -> b) -> List[b]
+to_list: forall a. fn(Vec[a]) -> List[a]
+println: forall a. fn(a) -> Unit
+Some: forall a. fn(a) -> Option[a]
+None: forall a. Option[a]
+Ok: forall a b. fn(b) -> Result[a, b]
+Err: forall a b. fn(a) -> Result[a, b]
+Cons: forall a. fn(a, List[a]) -> List[a]
+Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-empty: forall n8 o8. fn() -> Map[n8, o8]
-put: forall s8 t8. fn(Map[s8, t8], s8, t8) -> Map[s8, t8]
-get: forall l9 y9. fn(Map[l9, y9], l9) -> Option[y9]
+empty: forall k v. fn() -> Map[k, v]
+put: forall k v. fn(Map[k, v], k, v) -> Map[k, v]
+get: forall k v. fn(Map[k, v], k) -> Option[v]
 main: fn() -> Unit
