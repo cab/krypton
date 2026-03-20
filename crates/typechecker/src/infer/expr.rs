@@ -251,6 +251,7 @@ impl<'a> InferenceContext<'a> {
                 ty
             },
             span,
+            origin: None,
         })
     }
 
@@ -276,6 +277,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Lit(value.clone()),
                     ty: Type::Own(Box::new(ty)),
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -302,10 +304,18 @@ impl<'a> InferenceContext<'a> {
                     } else {
                         ty
                     };
+                    // Check if this var is a trait method
+                    let origin = self.imported_fn_types.iter()
+                        .find(|f| f.name == *name)
+                        .and_then(|f| match &f.origin {
+                            FnOrigin::TraitMethod { .. } => Some(f.origin.clone()),
+                            FnOrigin::Regular => None,
+                        });
                     Ok(TypedExpr {
                         kind: TypedExprKind::Var(name.clone()),
                         ty,
                         span: *span,
+                        origin,
                     })
                 }
                 None => {
@@ -383,6 +393,7 @@ impl<'a> InferenceContext<'a> {
                     kind,
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -436,11 +447,13 @@ impl<'a> InferenceContext<'a> {
                             kind: TypedExprKind::Var("trait_dict".to_string()),
                             ty: Type::Fn(vec![ret_var.clone()], Box::new(Type::Var(self.fresh()))),
                             span: *span,
+                            origin: None,
                         };
                         let arg_typed = TypedExpr {
                             kind: TypedExprKind::Var(trait_name),
                             ty: ret_var,
                             span: *span,
+                            origin: None,
                         };
                         let result_ty = Type::Var(self.fresh());
                         return Ok(TypedExpr {
@@ -450,6 +463,7 @@ impl<'a> InferenceContext<'a> {
                             },
                             ty: result_ty,
                             span: *span,
+                            origin: None,
                         });
                     }
                 }
@@ -538,6 +552,7 @@ impl<'a> InferenceContext<'a> {
                                 kind: TypedExprKind::Var(resolved_name),
                                 ty: func_ty.clone(),
                                 span: *span,
+                                origin: None,
                             };
                             let actual_args = &args[1..];
                             return self.infer_call_args_and_unify(
@@ -590,6 +605,7 @@ impl<'a> InferenceContext<'a> {
                                         func_ty.clone()
                                     },
                                     span: *span,
+                                    origin: None,
                                 };
 
                                 return self.infer_call_args_and_unify(
@@ -652,6 +668,7 @@ impl<'a> InferenceContext<'a> {
                                         kind: TypedExprKind::Var(name.clone()),
                                         ty: func_ty.clone(),
                                         span: *span,
+                                        origin: None,
                                     };
                                     // Pass all args (including receiver) — the function type
                                     // includes the receiver as its first parameter.
@@ -882,6 +899,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -945,6 +963,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: specialized_ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -993,6 +1012,7 @@ impl<'a> InferenceContext<'a> {
                             },
                             ty,
                             span: *span,
+                            origin: None,
                         })
                     }
                     None => {
@@ -1006,6 +1026,7 @@ impl<'a> InferenceContext<'a> {
                             },
                             ty: Type::Unit,
                             span: *span,
+                            origin: None,
                         })
                     }
                 }
@@ -1032,6 +1053,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1043,6 +1065,7 @@ impl<'a> InferenceContext<'a> {
                         kind: TypedExprKind::Do(Vec::new()),
                         ty: Type::Unit,
                         span: *span,
+                        origin: None,
                     });
                 }
                 let mut typed_exprs = Vec::new();
@@ -1055,6 +1078,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Do(typed_exprs),
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1110,6 +1134,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1140,6 +1165,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1175,6 +1201,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Recur(typed_args),
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1213,6 +1240,7 @@ impl<'a> InferenceContext<'a> {
                                 kind: TypedExprKind::Var(resolved_name),
                                 ty,
                                 span: *span,
+                                origin: None,
                             });
                         }
                     }
@@ -1232,6 +1260,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1251,6 +1280,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: resolved,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1305,6 +1335,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1318,6 +1349,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Tuple(typed_elems),
                     ty,
                     span: *span,
+                    origin: None,
                 })
             }
 
@@ -1363,6 +1395,7 @@ impl<'a> InferenceContext<'a> {
                             },
                             ty,
                             span: *span,
+                            origin: None,
                         })
                     }
                     None => {
@@ -1379,6 +1412,7 @@ impl<'a> InferenceContext<'a> {
                             },
                             ty: Type::Unit,
                             span: *span,
+                            origin: None,
                         })
                     }
                 }
@@ -1447,6 +1481,7 @@ impl<'a> InferenceContext<'a> {
                             },
                             ty: Type::Own(Box::new(struct_ty)),
                             span: *span,
+                            origin: None,
                         })
                     }
                     _ => Err(super::spanned(
@@ -1472,6 +1507,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::VecLit(typed_elems),
                     ty: Type::Named("Vec".to_string(), vec![resolved_elem]),
                     span: *span,
+                    origin: None,
                 })
             }
             Expr::QuestionMark { expr, span } => {
@@ -1615,6 +1651,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: result_ty,
                     span: *span,
+                    origin: None,
                 })
             }
         }

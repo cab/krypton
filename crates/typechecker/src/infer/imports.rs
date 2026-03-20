@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
 use crate::type_registry::{self};
-use crate::typed_ast::{self as typed_ast, FnOrigin, TypedModule};
+use crate::typed_ast::{self as typed_ast, FnOrigin, TraitId, TypedModule};
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -641,7 +641,11 @@ impl ModuleInferenceState {
                 self.imported_trait_defs.push(trait_def.clone());
                 self.imported_trait_names.insert(trait_def.name.clone());
                 // Bind visible trait methods as imported functions (skip if already imported via fn_types)
-                let origin = FnOrigin::TraitMethod { trait_name: trait_def.name.clone() };
+                let trait_id = TraitId::new(
+                    trait_def.module_path.clone().or_else(|| Some(path.to_string())),
+                    trait_def.name.clone(),
+                );
+                let origin = FnOrigin::TraitMethod { trait_id };
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
                     let already_imported = self.imports.imported_fn_types.iter().any(|f| f.name == method.name);

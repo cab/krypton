@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
 use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint, TypeExpr, UnaryOp, Variant, Visibility};
@@ -14,10 +15,50 @@ pub enum ParamQualifier {
     Shared,
 }
 
+/// Module-qualified trait identity.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TraitId {
+    /// Source module path, e.g., "core/semigroup". None for the current module.
+    pub module_path: Option<String>,
+    /// Bare trait name, e.g., "Semigroup"
+    pub name: String,
+}
+
+impl TraitId {
+    pub fn new(module_path: Option<String>, name: String) -> Self {
+        TraitId { module_path, name }
+    }
+
+    pub fn display_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn semigroup() -> Self { TraitId { module_path: Some("core/semigroup".into()), name: "Semigroup".into() } }
+    pub fn sub() -> Self { TraitId { module_path: Some("core/sub".into()), name: "Sub".into() } }
+    pub fn mul() -> Self { TraitId { module_path: Some("core/mul".into()), name: "Mul".into() } }
+    pub fn div() -> Self { TraitId { module_path: Some("core/div".into()), name: "Div".into() } }
+    pub fn eq() -> Self { TraitId { module_path: Some("core/eq".into()), name: "Eq".into() } }
+    pub fn ord() -> Self { TraitId { module_path: Some("core/ord".into()), name: "Ord".into() } }
+    pub fn neg() -> Self { TraitId { module_path: Some("core/neg".into()), name: "Neg".into() } }
+    pub fn show() -> Self { TraitId { module_path: Some("core/show".into()), name: "Show".into() } }
+    pub fn hash() -> Self { TraitId { module_path: Some("core/hash".into()), name: "Hash".into() } }
+    pub fn resource() -> Self { TraitId { module_path: Some("core/resource".into()), name: "Resource".into() } }
+}
+
+impl fmt::Display for TraitId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(path) = &self.module_path {
+            write!(f, "{}.{}", path, self.name)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum FnOrigin {
     Regular,
-    TraitMethod { trait_name: String },
+    TraitMethod { trait_id: TraitId },
 }
 
 /// Internal: imported function with full provenance.
@@ -101,6 +142,8 @@ pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Type,
     pub span: Span,
+    /// Set for trait method references; used by codegen to avoid re-resolving via trait_method_map.
+    pub origin: Option<FnOrigin>,
 }
 
 #[derive(Debug, Clone)]
@@ -197,6 +240,7 @@ pub struct ExportedFn {
 
 pub struct TraitDefInfo {
     pub name: String,
+    pub trait_id: TraitId,
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
     pub is_imported: bool,
 }
@@ -205,6 +249,7 @@ pub struct TraitDefInfo {
 pub struct ExportedTraitDef {
     pub visibility: Visibility,
     pub name: String,
+    pub module_path: Option<String>,
     pub type_var: String,
     pub type_var_id: TypeVarId,
     /// 0 = kind *, 1 = * -> *, etc.
@@ -231,6 +276,7 @@ pub struct InstanceMethod {
 #[derive(Clone)]
 pub struct InstanceDefInfo {
     pub trait_name: String,
+    pub trait_id: TraitId,
     pub target_type_name: String,
     pub target_type: Type,
     pub type_var_ids: HashMap<String, TypeVarId>,
@@ -264,7 +310,7 @@ pub struct TypedModule {
     /// TypeVarId-based constraint requirements inherited from imported modules.
     /// Used by codegen for functions where the constrained type var is nested in params.
     pub imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
-    pub trait_method_map: HashMap<String, String>,
+    pub trait_method_map: HashMap<String, TraitId>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
     /// Extern java type bindings: (krypton_name, java_class_dotted).

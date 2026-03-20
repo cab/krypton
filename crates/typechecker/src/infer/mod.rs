@@ -9,7 +9,7 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, FnOrigin, InstanceDefInfo,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, FnOrigin, InstanceDefInfo, TraitId,
     TraitDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
@@ -1105,7 +1105,7 @@ fn typed_callee_var_name(expr: &TypedExpr) -> Option<&str> {
 /// Detect trait method calls on type variables (indicating the function needs a dict param).
 fn detect_trait_constraints(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, String>,
+    trait_method_map: &HashMap<String, TraitId>,
     subst: &Substitution,
     param_type_var_map: &HashMap<TypeVarId, usize>,
     constraints: &mut Vec<(String, usize)>,
@@ -1116,13 +1116,13 @@ fn detect_trait_constraints(
         match &expr.kind {
             TypedExprKind::App { func, args } => {
                 if let Some(name) = typed_callee_var_name(func) {
-                    if let Some(trait_name) = trait_method_map.get(name) {
+                    if let Some(trait_id) = trait_method_map.get(name) {
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
                             if let Some(v) = leading_type_var(&concrete_ty) {
                                 if let Some(param_idx) = param_type_var_map.get(&v).copied() {
-                                    constraints.push((trait_name.clone(), param_idx));
+                                    constraints.push((trait_id.name.clone(), param_idx));
                                 }
                             }
                         } else {
@@ -1134,7 +1134,7 @@ fn detect_trait_constraints(
                             };
                             if let Some(v) = leading_type_var(&concrete_ret) {
                                 if let Some(param_idx) = param_type_var_map.get(&v).copied() {
-                                    constraints.push((trait_name.clone(), param_idx));
+                                    constraints.push((trait_id.name.clone(), param_idx));
                                 }
                             }
                         }
@@ -1205,7 +1205,7 @@ fn detect_trait_constraints(
 /// Also checks calls to imported constrained functions (via `fn_constraints`).
 fn check_trait_instances(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, String>,
+    trait_method_map: &HashMap<String, TraitId>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_constraints: &HashMap<String, Vec<(String, usize)>>,
@@ -1216,18 +1216,18 @@ fn check_trait_instances(
         match &expr.kind {
             TypedExprKind::App { func, args } => {
                 if let Some(name) = typed_callee_var_name(func) {
-                    if let Some(trait_name) = trait_method_map.get(name) {
+                    if let Some(trait_id) = trait_method_map.get(name) {
                         if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
                             if leading_type_var(&concrete_ty).is_none()
                                 && trait_registry
-                                    .find_instance(trait_name, &concrete_ty)
+                                    .find_instance(&trait_id.name, &concrete_ty)
                                     .is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,
-                                    trait_name,
+                                    &trait_id.name,
                                     &concrete_ty,
                                     expr.span,
                                 ));
@@ -1255,12 +1255,12 @@ fn check_trait_instances(
                             };
                             if leading_type_var(&concrete_ty).is_none()
                                 && trait_registry
-                                    .find_instance(trait_name, &concrete_ty)
+                                    .find_instance(&trait_id.name, &concrete_ty)
                                     .is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,
-                                    trait_name,
+                                    &trait_id.name,
                                     &concrete_ty,
                                     expr.span,
                                 ));
@@ -1949,7 +1949,7 @@ impl ModuleInferenceState {
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
         fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
-        trait_method_map: &HashMap<String, String>,
+        trait_method_map: &HashMap<String, TraitId>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
@@ -2122,6 +2122,7 @@ impl ModuleInferenceState {
                 .collect();
             trait_defs.push(TraitDefInfo {
                 name: trait_name.clone(),
+                trait_id: TraitId::new(info.module_path.clone(), trait_name.clone()),
                 methods: method_info,
                 is_imported,
             });
@@ -2136,6 +2137,7 @@ impl ModuleInferenceState {
                         .collect();
                     trait_defs.push(TraitDefInfo {
                         name: name.clone(),
+                        trait_id: TraitId::new(module_path.clone(), name.clone()),
                         methods: method_info,
                         is_imported: false,
                     });
@@ -2415,6 +2417,7 @@ pub(crate) fn infer_module_inner(
         trait_registry
             .register_trait(TraitInfo {
                 name: trait_def.name.clone(),
+                module_path: trait_def.module_path.clone(),
                 type_var: trait_def.type_var.clone(),
                 type_var_id: new_tv_id,
                 type_var_arity: trait_def.type_var_arity,
@@ -2523,6 +2526,7 @@ pub(crate) fn infer_module_inner(
             trait_registry
                 .register_trait(TraitInfo {
                     name: name.clone(),
+                    module_path: module_path.clone(),
                     type_var: type_param.name.clone(),
                     type_var_id: tv_id,
                     type_var_arity,
@@ -2535,6 +2539,7 @@ pub(crate) fn infer_module_inner(
             exported_trait_defs.push(ExportedTraitDef {
                 visibility: visibility.clone(),
                 name: name.clone(),
+                module_path: module_path.clone(),
                 type_var: type_param.name.clone(),
                 type_var_id: tv_id,
                 type_var_arity,
@@ -2663,8 +2668,12 @@ pub(crate) fn infer_module_inner(
                     ty: fn_ty,
                 };
 
+                let derive_trait_id = trait_registry.lookup_trait(trait_name)
+                    .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()))
+                    .unwrap_or_else(|| TraitId::new(module_path.clone(), trait_name.clone()));
                 derived_instance_defs.push(InstanceDefInfo {
                     trait_name: trait_name.clone(),
+                    trait_id: derive_trait_id,
                     target_type_name,
                     target_type,
                     type_var_ids: derived_type_var_ids.clone(),
@@ -2897,8 +2906,8 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Collect the mapping of trait method names → trait names for post-inference resolution
-    let trait_method_map: HashMap<String, String> =
+    // Collect the mapping of trait method names → trait ids for post-inference resolution
+    let trait_method_map: HashMap<String, TraitId> =
         trait_registry.trait_method_names().into_iter().collect();
 
     // Check for top-level def names conflicting with ANY trait method names (including built-ins)
@@ -2942,11 +2951,11 @@ pub(crate) fn infer_module_inner(
                 // Second pass: check built-in traits (no secondary span)
                 // Only check when module uses traits (has instances, trait defs, or deriving)
                 if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
-                    if let Some(trait_name) = trait_method_map.get(&f.name) {
+                    if let Some(trait_id) = trait_method_map.get(&f.name) {
                         return Err(SpannedTypeError {
                             error: TypeError::DefinitionConflictsWithTraitMethod {
                                 def_name: f.name.clone(),
-                                trait_name: trait_name.clone(),
+                                trait_name: trait_id.name.clone(),
                             },
                             span: f.span,
                             note: None,
@@ -3411,8 +3420,12 @@ pub(crate) fn infer_module_inner(
                 });
             }
 
+            let inst_trait_id = trait_registry.lookup_trait(trait_name)
+                .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()))
+                .unwrap_or_else(|| TraitId::new(module_path.clone(), trait_name.clone()));
             instance_defs.push(InstanceDefInfo {
                 trait_name: trait_name.clone(),
+                trait_id: inst_trait_id,
                 target_type_name,
                 target_type: resolved_target,
                 type_var_ids: instance.type_var_ids.clone(),
@@ -3454,21 +3467,25 @@ fn synthesize_eq_body(
         kind: TypedExprKind::Var("__a".to_string()),
         ty: target_type.clone(),
         span,
+        origin: None,
     };
     let param_b = TypedExpr {
         kind: TypedExprKind::Var("__b".to_string()),
         ty: target_type.clone(),
         span,
+        origin: None,
     };
     let true_expr = || TypedExpr {
         kind: TypedExprKind::Lit(Lit::Bool(true)),
         ty: Type::Bool,
         span,
+        origin: None,
     };
     let false_expr = || TypedExpr {
         kind: TypedExprKind::Lit(Lit::Bool(false)),
         ty: Type::Bool,
         span,
+        origin: None,
     };
 
     let body = match &type_info.kind {
@@ -3486,6 +3503,7 @@ fn synthesize_eq_body(
                         },
                         ty: field_ty.clone(),
                         span,
+                        origin: None,
                     };
                     let rhs = TypedExpr {
                         kind: TypedExprKind::FieldAccess {
@@ -3494,6 +3512,7 @@ fn synthesize_eq_body(
                         },
                         ty: field_ty.clone(),
                         span,
+                        origin: None,
                     };
                     let cmp = TypedExpr {
                         kind: TypedExprKind::BinaryOp {
@@ -3503,6 +3522,7 @@ fn synthesize_eq_body(
                         },
                         ty: Type::Bool,
                         span,
+                        origin: None,
                     };
                     result = TypedExpr {
                         kind: TypedExprKind::If {
@@ -3512,6 +3532,7 @@ fn synthesize_eq_body(
                         },
                         ty: Type::Bool,
                         span,
+                        origin: None,
                     };
                 }
                 result
@@ -3575,11 +3596,13 @@ fn synthesize_eq_body(
                                             kind: TypedExprKind::Var(format!("__x{}", i)),
                                             ty: ft.clone(),
                                             span,
+                                            origin: None,
                                         };
                                         let y = TypedExpr {
                                             kind: TypedExprKind::Var(format!("__y{}", i)),
                                             ty: ft.clone(),
                                             span,
+                                            origin: None,
                                         };
                                         let cmp = TypedExpr {
                                             kind: TypedExprKind::BinaryOp {
@@ -3589,6 +3612,7 @@ fn synthesize_eq_body(
                                             },
                                             ty: Type::Bool,
                                             span,
+                                            origin: None,
                                         };
                                         result = TypedExpr {
                                             kind: TypedExprKind::If {
@@ -3598,6 +3622,7 @@ fn synthesize_eq_body(
                                             },
                                             ty: Type::Bool,
                                             span,
+                                            origin: None,
                                         };
                                     }
                                     TypedMatchArm {
@@ -3625,6 +3650,7 @@ fn synthesize_eq_body(
                         },
                         ty: Type::Bool,
                         span,
+                        origin: None,
                     };
 
                     TypedMatchArm {
@@ -3641,6 +3667,7 @@ fn synthesize_eq_body(
                 },
                 ty: Type::Bool,
                 span,
+                origin: None,
             }
         }
     };
@@ -3662,6 +3689,7 @@ fn synthesize_show_body(
         kind: TypedExprKind::Var("__a".to_string()),
         ty: target_type.clone(),
         span,
+        origin: None,
     };
 
     let str_lit = |s: &str| -> TypedExpr {
@@ -3669,6 +3697,7 @@ fn synthesize_show_body(
             kind: TypedExprKind::Lit(Lit::String(s.to_string())),
             ty: Type::String,
             span,
+            origin: None,
         }
     };
 
@@ -3681,6 +3710,7 @@ fn synthesize_show_body(
             },
             ty: Type::String,
             span,
+            origin: None,
         }
     };
 
@@ -3692,11 +3722,13 @@ fn synthesize_show_body(
                     kind: TypedExprKind::Var("show".to_string()),
                     ty: Type::Fn(vec![arg_ty], Box::new(Type::String)),
                     span,
+                    origin: None,
                 }),
                 args: vec![expr],
             },
             ty: Type::String,
             span,
+            origin: None,
         }
     };
 
@@ -3715,6 +3747,7 @@ fn synthesize_show_body(
                     },
                     ty: field_ty.clone(),
                     span,
+                    origin: None,
                 };
                 result = str_concat(result, show_call(field_access));
             }
@@ -3755,6 +3788,7 @@ fn synthesize_show_body(
                                 kind: TypedExprKind::Var(format!("__x{}", i)),
                                 ty: ft.clone(),
                                 span,
+                                origin: None,
                             };
                             result = str_concat(result, show_call(var_expr));
                         }
@@ -3772,6 +3806,7 @@ fn synthesize_show_body(
                 },
                 ty: Type::String,
                 span,
+                origin: None,
             }
         }
     };
@@ -3789,6 +3824,7 @@ fn synthesize_hash_body(
         kind: TypedExprKind::Var("__a".to_string()),
         ty: target_type.clone(),
         span,
+        origin: None,
     };
 
     let int_lit = |n: i64| -> TypedExpr {
@@ -3796,6 +3832,7 @@ fn synthesize_hash_body(
             kind: TypedExprKind::Lit(Lit::Int(n)),
             ty: Type::Int,
             span,
+            origin: None,
         }
     };
 
@@ -3807,11 +3844,13 @@ fn synthesize_hash_body(
                     kind: TypedExprKind::Var("hash".to_string()),
                     ty: Type::Fn(vec![arg_ty], Box::new(Type::Int)),
                     span,
+                    origin: None,
                 }),
                 args: vec![expr],
             },
             ty: Type::Int,
             span,
+            origin: None,
         }
     };
 
@@ -3825,6 +3864,7 @@ fn synthesize_hash_body(
             },
             ty: Type::Int,
             span,
+            origin: None,
         };
         TypedExpr {
             kind: TypedExprKind::BinaryOp {
@@ -3834,6 +3874,7 @@ fn synthesize_hash_body(
             },
             ty: Type::Int,
             span,
+            origin: None,
         }
     };
 
@@ -3851,6 +3892,7 @@ fn synthesize_hash_body(
                         },
                         ty: field_ty.clone(),
                         span,
+                        origin: None,
                     };
                     hash_call(field_access)
                 };
@@ -3862,6 +3904,7 @@ fn synthesize_hash_body(
                         },
                         ty: field_ty.clone(),
                         span,
+                        origin: None,
                     };
                     result = combine_hash(result, hash_call(field_access));
                 }
@@ -3897,6 +3940,7 @@ fn synthesize_hash_body(
                             kind: TypedExprKind::Var(format!("__x{}", i)),
                             ty: ft.clone(),
                             span,
+                            origin: None,
                         };
                         result = combine_hash(result, hash_call(var_expr));
                     }
@@ -3912,6 +3956,7 @@ fn synthesize_hash_body(
                 },
                 ty: Type::Int,
                 span,
+                origin: None,
             }
         }
     };

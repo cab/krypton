@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
+use krypton_typechecker::typed_ast::{FnOrigin, TypedExpr, TypedExprKind};
 use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
@@ -273,8 +273,22 @@ impl Compiler {
             }
         }
 
-        // Trait method dispatch
-        if let Some(trait_name) = self.traits.trait_method_map.get(name) {
+        // Trait method dispatch: prefer origin annotation from typechecker, fall back to trait_method_map
+        let resolved_trait_name = func.origin.as_ref().and_then(|o| match o {
+            FnOrigin::TraitMethod { trait_id } => Some(trait_id.name.clone()),
+            FnOrigin::Regular => None,
+        }).or_else(|| {
+            // Also check inner expr for TypeApp wrapping
+            if let TypedExprKind::TypeApp { expr: inner, .. } = &func.kind {
+                inner.origin.as_ref().and_then(|o| match o {
+                    FnOrigin::TraitMethod { trait_id } => Some(trait_id.name.clone()),
+                    FnOrigin::Regular => None,
+                })
+            } else {
+                None
+            }
+        }).or_else(|| self.traits.trait_method_map.get(name).map(|tid| tid.name.clone()));
+        if let Some(trait_name) = resolved_trait_name.as_deref() {
             if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
                 let dict_ty = if args.is_empty() {
                     if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
@@ -302,7 +316,7 @@ impl Compiler {
                     )));
                 }
                 return Ok((name.to_string(), CallTarget::TraitMethod {
-                    trait_name: trait_name.clone(),
+                    trait_name: trait_name.to_string(),
                     iface_method_ref: dispatch.method_refs[name],
                     iface_class: dispatch.interface_class,
                     dict_ty,

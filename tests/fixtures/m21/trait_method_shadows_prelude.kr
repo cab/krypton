@@ -1,0 +1,14 @@
+# expect: ok
+# expect: output 3
+import core/show.{Show, show}
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+trait Combinable[a] {
+    fun combine(x: a, y: a) -> a
+}
+impl Combinable[Int] {
+    fun combine(x: Int, y: Int) -> Int = x
+}
+fun main() -> Unit = println(show(1 + 2))

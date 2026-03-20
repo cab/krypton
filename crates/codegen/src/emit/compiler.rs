@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl};
+use krypton_typechecker::typed_ast::{FnOrigin, TraitId, TypedExpr, TypedExprKind, TypedFnDecl};
 use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
@@ -157,7 +157,7 @@ pub(super) struct InstanceSingletonInfo {
 pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<String, TraitDispatchInfo>,
     pub(super) instance_singletons: HashMap<(String, Type), InstanceSingletonInfo>,
-    pub(super) trait_method_map: HashMap<String, String>,
+    pub(super) trait_method_map: HashMap<String, TraitId>,
     pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
     pub(super) dict_locals: HashMap<(String, TypeVarId), u16>,

@@ -9,6 +9,7 @@ use crate::unify::TypeError;
 
 pub struct TraitInfo {
     pub name: String,
+    pub module_path: Option<String>,
     pub type_var: String,
     pub type_var_id: TypeVarId,
     /// 0 = kind *, 1 = * -> *, 2 = * -> * -> *, etc.
@@ -212,11 +213,12 @@ impl TraitRegistry {
             .find(|inst| inst.trait_name == trait_name && inst.span == span)
     }
 
-    pub fn trait_method_names(&self) -> Vec<(String, String)> {
+    pub fn trait_method_names(&self) -> Vec<(String, crate::typed_ast::TraitId)> {
         let mut result = Vec::new();
-        for (trait_name, info) in &self.traits {
+        for (_trait_name, info) in &self.traits {
+            let trait_id = crate::typed_ast::TraitId::new(info.module_path.clone(), info.name.clone());
             for method in &info.methods {
-                result.push((method.name.clone(), trait_name.clone()));
+                result.push((method.name.clone(), trait_id.clone()));
             }
         }
         result
@@ -512,6 +514,7 @@ mod tests {
         let var_a = TypeVarGen::new().fresh();
         TraitInfo {
             name: name.to_string(),
+            module_path: None,
             type_var: "a".to_string(),
             type_var_id: var_a,
             type_var_arity,
