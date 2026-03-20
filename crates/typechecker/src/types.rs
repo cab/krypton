@@ -645,6 +645,11 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
             let arg_strs: Vec<String> = args.iter().map(type_to_canonical_name).collect();
             format!("{}${}", name, arg_strs.join("$"))
         }
+        Type::Fn(params, ret) => {
+            let mut parts: Vec<String> = params.iter().map(type_to_canonical_name).collect();
+            parts.push(type_to_canonical_name(ret));
+            format!("Fun{}${}", params.len(), parts.join("$"))
+        }
         Type::Own(inner) => type_to_canonical_name(inner),
         Type::Var(_) => "T".to_string(),
         other => format!("{other:?}"),

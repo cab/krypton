@@ -2796,6 +2796,19 @@ pub(crate) fn infer_module_inner(
                 Type::Float => "Float".to_string(),
                 Type::Bool => "Bool".to_string(),
                 Type::String => "String".to_string(),
+                Type::Fn(params, _) => {
+                    // Function types are unowned (like primitives) — impl must live with the trait
+                    if !local_trait_names.contains(trait_name) {
+                        return Err(spanned(
+                            TypeError::OrphanInstance {
+                                trait_name: trait_name.clone(),
+                                ty: format!("{}", resolved_target),
+                            },
+                            *span,
+                        ));
+                    }
+                    format!("Fun{}", params.len())
+                }
                 other => {
                     return Err(spanned(
                         TypeError::OrphanInstance {

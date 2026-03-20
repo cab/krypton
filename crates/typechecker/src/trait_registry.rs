@@ -474,6 +474,14 @@ fn types_match_with_bindings(
                 false
             }
         }
+        (Type::Fn(params1, ret1), Type::Fn(params2, ret2)) => {
+            params1.len() == params2.len()
+                && params1
+                    .iter()
+                    .zip(params2)
+                    .all(|(a, b)| types_match_with_bindings(a, b, bindings))
+                && types_match_with_bindings(ret1, ret2, bindings)
+        }
         _ => false,
     }
 }

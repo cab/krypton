@@ -17,6 +17,7 @@ fn head_type_name(ty: &Type) -> Result<String, CodegenError> {
         Type::Float => Ok("Float".to_string()),
         Type::Bool => Ok("Bool".to_string()),
         Type::String => Ok("String".to_string()),
+        Type::Fn(params, _) => Ok(format!("Fun{}", params.len())),
         other => Err(CodegenError::TypeError(format!(
             "cannot extract head type name from {other:?}"
         ))),

@@ -1,0 +1,14 @@
+# expect: output "hello"
+trait Callable[e] {
+    fun call(f: e) -> String
+}
+
+impl Callable[(Int) -> String] {
+    fun call(f) = f(42)
+}
+
+fun greet(x: Int) -> String = "hello"
+
+fun main() = {
+    println(call(greet))
+}
