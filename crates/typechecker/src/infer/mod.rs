@@ -2855,6 +2855,15 @@ pub(crate) fn infer_module_inner(
                 }
             };
 
+            // Format the full target type (including args) for use in error messages
+            let target_display_name = if type_param_map.is_empty() {
+                format!("{}", resolved_target.renumber_for_display())
+            } else {
+                let names: std::collections::HashMap<crate::types::TypeVarId, &str> =
+                    type_param_map.iter().map(|(n, &id)| (id, n.as_str())).collect();
+                crate::types::format_type_with_var_map(&resolved_target, &names)
+            };
+
             // Validate trait names in where-clause constraints
             for constraint in type_constraints {
                 if constraint.trait_name != "shared" {
@@ -2920,7 +2929,7 @@ pub(crate) fn infer_module_inner(
                     return Err(spanned_with_names(
                         TypeError::InvalidImpl {
                             trait_name: trait_name.clone(),
-                            target_type: target_name.clone(),
+                            target_type: target_display_name.clone(),
                             missing_methods,
                             extra_methods,
                         },
@@ -3420,15 +3429,17 @@ pub(crate) fn infer_module_inner(
                             Some(&resolved_target),
                         )
                         .map_err(|e| spanned(e, method.span))?;
-                    unify(&annotated_ret, &concrete_ret, &mut state.subst)
-                        .map_err(|_| spanned_with_names(
-                            TypeError::Mismatch {
-                                expected: concrete_ret.clone(),
-                                actual: annotated_ret.clone(),
-                            },
-                            method.span,
-                            &impl_method_tpm,
-                        ))?;
+                    unify(&concrete_ret, &annotated_ret, &mut state.subst)
+                        .map_err(|e| {
+                            let error = match e {
+                                TypeError::WrongArity { .. } => TypeError::Mismatch {
+                                    expected: concrete_ret.clone(),
+                                    actual: annotated_ret.clone(),
+                                },
+                                other => other,
+                            };
+                            spanned_with_names(error, method.span, &impl_method_tpm)
+                        })?;
                 }
 
                 // For intrinsic impls, skip body type-checking (bridge bytecode handles these)

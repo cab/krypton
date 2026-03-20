@@ -294,55 +294,31 @@ impl TypeScheme {
     }
 }
 
-/// Format a type using explicit var name mappings instead of TypeVarId::display_name().
-/// Var(TypeVarId(n)) maps to var_names[n].
-pub fn format_type_with_var_names(ty: &Type, var_names: &[String]) -> String {
-    match ty {
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::String => "String".to_string(),
-        Type::Unit => "Unit".to_string(),
-        Type::Var(id) => {
-            let idx = id.index();
-            if idx < var_names.len() {
-                var_names[idx].clone()
-            } else {
-                id.display_name()
-            }
-        }
-        Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| format_type_with_var_names(p, var_names)).collect();
-            format!("({}) -> {}", ps.join(", "), format_type_with_var_names(ret, var_names))
-        }
-        Type::Named(name, args) => {
-            if args.is_empty() {
-                name.clone()
-            } else {
-                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_names(a, var_names)).collect();
-                format!("{}[{}]", name, as_.join(", "))
-            }
-        }
-        Type::App(ctor, args) => {
-            let base = format_type_with_var_names(ctor, var_names);
-            if args.is_empty() {
-                base
-            } else {
-                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_names(a, var_names)).collect();
-                format!("{}[{}]", base, as_.join(", "))
-            }
-        }
-        Type::Own(inner) => format!("~{}", format_type_with_var_names(inner, var_names)),
-        Type::Tuple(elems) => {
-            let es: Vec<String> = elems.iter().map(|e| format_type_with_var_names(e, var_names)).collect();
-            format!("({})", es.join(", "))
+/// Trait for looking up user-written variable names by TypeVarId.
+pub trait VarNameLookup {
+    fn lookup(&self, id: &TypeVarId) -> Option<&str>;
+}
+
+impl VarNameLookup for [String] {
+    fn lookup(&self, id: &TypeVarId) -> Option<&str> {
+        let idx = id.index();
+        if idx < self.len() {
+            Some(&self[idx])
+        } else {
+            None
         }
     }
 }
 
-/// Format a type using a map from TypeVarId to user-written name.
-/// Falls back to `display_name()` for vars not in the map.
-pub fn format_type_with_var_map(ty: &Type, names: &HashMap<TypeVarId, &str>) -> String {
+impl VarNameLookup for HashMap<TypeVarId, &str> {
+    fn lookup(&self, id: &TypeVarId) -> Option<&str> {
+        self.get(id).copied()
+    }
+}
+
+/// Format a type using a `VarNameLookup` for variable names.
+/// Falls back to `display_name()` for vars not found in the lookup.
+fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
     match ty {
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -350,39 +326,51 @@ pub fn format_type_with_var_map(ty: &Type, names: &HashMap<TypeVarId, &str>) -> 
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Var(id) => {
-            if let Some(name) = names.get(id) {
+            if let Some(name) = names.lookup(id) {
                 name.to_string()
             } else {
                 id.display_name()
             }
         }
         Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| format_type_with_var_map(p, names)).collect();
-            format!("({}) -> {}", ps.join(", "), format_type_with_var_map(ret, names))
+            let ps: Vec<String> = params.iter().map(|p| format_type_impl(p, names)).collect();
+            format!("({}) -> {}", ps.join(", "), format_type_impl(ret, names))
         }
         Type::Named(name, args) => {
             if args.is_empty() {
                 name.clone()
             } else {
-                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_map(a, names)).collect();
+                let as_: Vec<String> = args.iter().map(|a| format_type_impl(a, names)).collect();
                 format!("{}[{}]", name, as_.join(", "))
             }
         }
         Type::App(ctor, args) => {
-            let base = format_type_with_var_map(ctor, names);
+            let base = format_type_impl(ctor, names);
             if args.is_empty() {
                 base
             } else {
-                let as_: Vec<String> = args.iter().map(|a| format_type_with_var_map(a, names)).collect();
+                let as_: Vec<String> = args.iter().map(|a| format_type_impl(a, names)).collect();
                 format!("{}[{}]", base, as_.join(", "))
             }
         }
-        Type::Own(inner) => format!("~{}", format_type_with_var_map(inner, names)),
+        Type::Own(inner) => format!("~{}", format_type_impl(inner, names)),
         Type::Tuple(elems) => {
-            let es: Vec<String> = elems.iter().map(|e| format_type_with_var_map(e, names)).collect();
+            let es: Vec<String> = elems.iter().map(|e| format_type_impl(e, names)).collect();
             format!("({})", es.join(", "))
         }
     }
+}
+
+/// Format a type using explicit var name mappings instead of TypeVarId::display_name().
+/// Var(TypeVarId(n)) maps to var_names[n].
+pub fn format_type_with_var_names(ty: &Type, var_names: &[String]) -> String {
+    format_type_impl(ty, var_names)
+}
+
+/// Format a type using a map from TypeVarId to user-written name.
+/// Falls back to `display_name()` for vars not in the map.
+pub fn format_type_with_var_map(ty: &Type, names: &HashMap<TypeVarId, &str>) -> String {
+    format_type_impl(ty, names)
 }
 
 impl fmt::Display for TypeScheme {
