@@ -1,0 +1,7 @@
+# expect: error E0001
+type Wrapper = { action: ~() -> String }
+fun test(w: Wrapper) -> String {
+    match w {
+        Wrapper { action } => action()
+    }
+}

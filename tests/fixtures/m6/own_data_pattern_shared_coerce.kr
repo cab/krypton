@@ -1,0 +1,7 @@
+# expect: ok
+type Box = { value: ~String }
+fun test(b: Box) -> String {
+    match b {
+        Box { value } => value
+    }
+}

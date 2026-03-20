@@ -1254,12 +1254,36 @@ impl<'a> InferenceContext<'a> {
                 }
                 let target_typed = self.infer_expr_inner(target, None)?;
                 let resolved = self.subst.apply(&target_typed.ty);
+                let base_is_owned = matches!(&resolved, Type::Own(_));
                 // Unwrap Own wrapper — field access works on the inner type
                 let inner_resolved = match &resolved {
                     Type::Own(inner) => inner.as_ref(),
                     other => other,
                 };
-                let ty = self.resolve_field_access(inner_resolved, field, *span)?;
+                let field_ty = self.resolve_field_access(inner_resolved, field, *span)?;
+                // Apply coercion: shared base strips ~T from non-fn fields, errors on ~fn
+                let ty = if !base_is_owned {
+                    match &field_ty {
+                        Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)) => {
+                            let mut err = super::spanned(
+                                TypeError::Mismatch {
+                                    expected: field_ty.clone(),
+                                    actual: (**inner).clone(),
+                                },
+                                *span,
+                            );
+                            err.note = Some(format!(
+                                "cannot access owned function field `{}` from a shared struct — take ownership of the struct first",
+                                field
+                            ));
+                            return Err(err);
+                        }
+                        Type::Own(inner) => (**inner).clone(),
+                        _ => field_ty,
+                    }
+                } else {
+                    field_ty
+                };
                 Ok(TypedExpr {
                     kind: TypedExprKind::FieldAccess {
                         expr: Box::new(target_typed),
@@ -1298,6 +1322,7 @@ impl<'a> InferenceContext<'a> {
             } => {
                 let scrutinee_typed = self.infer_expr_inner(scrutinee, None)?;
                 let scrutinee_ty = self.subst.apply(&scrutinee_typed.ty);
+                let scrutinee_is_owned = matches!(&scrutinee_ty, Type::Own(_));
                 // Unwrap Own wrapper — match works on the inner type
                 let match_ty = match &scrutinee_ty {
                     Type::Own(inner) => inner.as_ref().clone(),
@@ -1309,7 +1334,7 @@ impl<'a> InferenceContext<'a> {
                 for arm in arms {
                     self.env.push_scope();
                     let typed_pattern =
-                        self.check_pattern(&arm.pattern, &match_ty, *span)?;
+                        self.check_pattern(&arm.pattern, &match_ty, *span, scrutinee_is_owned)?;
                     let body_typed = self.infer_expr_inner(&arm.body, None)?;
                     match &result_ty {
                         None => {
@@ -1386,10 +1411,13 @@ impl<'a> InferenceContext<'a> {
                 match body {
                     Some(body) => {
                         self.env.push_scope();
+                        // For let-pattern, always preserve ownership (scrutinee_is_owned = true)
+                        // since the value is being consumed by the destructuring.
                         let typed_pattern = self.check_pattern(
                             pattern,
                             &binding_ty,
                             *span,
+                            true,
                         )?;
                         let body_typed = self.infer_expr_inner(body, None)?;
                         self.env.pop_scope();
@@ -1410,6 +1438,7 @@ impl<'a> InferenceContext<'a> {
                             pattern,
                             &binding_ty,
                             *span,
+                            true,
                         )?;
                         Ok(TypedExpr {
                             kind: TypedExprKind::LetPattern {

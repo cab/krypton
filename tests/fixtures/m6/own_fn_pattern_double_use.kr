@@ -1,0 +1,12 @@
+# expect: error E0101
+type Wrapper = { action: ~() -> String }
+fun consume(buf: ~String) -> String = buf
+fun test(x: ~String) -> String {
+    let w = Wrapper { action = () -> consume(x) }
+    match w {
+        Wrapper { action } => {
+            action()
+            action()
+        }
+    }
+}

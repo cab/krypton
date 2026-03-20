@@ -10,11 +10,15 @@ use super::expr::InferenceContext;
 impl<'a> InferenceContext<'a> {
     /// Check a pattern against an expected type, binding variables in the environment.
     /// Returns a TypedPattern carrying resolved type information.
+    ///
+    /// `scrutinee_is_owned` controls coercion: when false (shared scrutinee), `~T` fields
+    /// are coerced to `T` at binding sites, and `~fn` fields produce an error.
     pub(crate) fn check_pattern(
         &mut self,
         pattern: &Pattern,
         expected: &Type,
         span: Span,
+        scrutinee_is_owned: bool,
     ) -> Result<TypedPattern, SpannedTypeError> {
         match pattern {
             Pattern::Wildcard { span: pat_span } => Ok(TypedPattern::Wildcard {
@@ -26,10 +30,33 @@ impl<'a> InferenceContext<'a> {
                 name,
                 span: pat_span,
             } => {
-                self.env.bind(name.clone(), TypeScheme::mono(expected.clone()));
+                // Apply shared-scrutinee coercion: ~T -> T (error for ~fn)
+                let bind_ty = if !scrutinee_is_owned {
+                    match expected {
+                        Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)) => {
+                            let mut err = super::spanned(
+                                TypeError::Mismatch {
+                                    expected: expected.clone(),
+                                    actual: (**inner).clone(),
+                                },
+                                span,
+                            );
+                            err.note = Some(format!(
+                                "cannot bind owned function `{}` from a shared container — take ownership of the container first",
+                                name
+                            ));
+                            return Err(err);
+                        }
+                        Type::Own(inner) => (**inner).clone(),
+                        _ => expected.clone(),
+                    }
+                } else {
+                    expected.clone()
+                };
+                self.env.bind(name.clone(), TypeScheme::mono(bind_ty.clone()));
                 Ok(TypedPattern::Var {
                     name: name.clone(),
-                    ty: expected.clone(),
+                    ty: bind_ty,
                     span: *pat_span,
                 })
             }
@@ -81,6 +108,7 @@ impl<'a> InferenceContext<'a> {
                                         arg_pat,
                                         &resolved_param,
                                         span,
+                                        scrutinee_is_owned,
                                     )?);
                                 }
                                 Ok(TypedPattern::Constructor {
@@ -128,7 +156,7 @@ impl<'a> InferenceContext<'a> {
                 for (elem_pat, fresh_var) in elements.iter().zip(fresh_vars.iter()) {
                     let resolved = self.subst.apply(fresh_var);
                     typed_elems.push(self.check_pattern(
-                        elem_pat, &resolved, span,
+                        elem_pat, &resolved, span, scrutinee_is_owned,
                     )?);
                 }
                 Ok(TypedPattern::Tuple {
@@ -176,7 +204,7 @@ impl<'a> InferenceContext<'a> {
                                         super::instantiate_field_type(field_ty, info, &fresh_args);
                                     let resolved = self.subst.apply(&instantiated);
                                     let typed_field_pat = self.check_pattern(
-                                        field_pat, &resolved, span,
+                                        field_pat, &resolved, span, scrutinee_is_owned,
                                     )?;
                                     typed_fields.push((field_name.clone(), typed_field_pat));
                                 }

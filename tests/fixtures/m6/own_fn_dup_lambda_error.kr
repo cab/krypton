@@ -1,0 +1,4 @@
+# expect: error E0104
+fun dup(x) = (x, x)
+fun consume(buf: ~String) -> String = buf
+fun test(x: ~String) = dup(() -> consume(x))

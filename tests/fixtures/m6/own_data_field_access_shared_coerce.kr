@@ -1,0 +1,4 @@
+# expect: ok
+type Config = { timeout: ~Int }
+type Task = { config: ~Config }
+fun get_timeout(t: Task) -> Int = t.config.timeout

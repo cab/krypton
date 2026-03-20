@@ -348,9 +348,11 @@ pub fn check_ownership(
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
-    struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
+    struct_update_info: &HashMap<Span, (String, HashSet<String>, bool)>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
+    match_arm_owned_vars: &HashMap<Span, Vec<Vec<String>>>,
+    field_access_owned: &HashSet<Span>,
 ) -> Result<OwnershipResult, SpannedTypeError> {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
@@ -413,6 +415,8 @@ pub fn check_ownership(
                 struct_update_info,
                 registry,
                 &fn_scheme_params,
+                match_arm_owned_vars,
+                field_access_owned,
             )?;
             all_moves.extend(fn_moves);
         }
@@ -435,8 +439,12 @@ struct OwnershipChecker<'a> {
     let_own_spans: &'a HashSet<Span>,
     lambda_own_captures: &'a HashMap<Span, String>,
     own_fn_notes: &'a mut HashMap<String, String>,
-    struct_update_info: &'a HashMap<Span, (String, HashSet<String>)>,
+    struct_update_info: &'a HashMap<Span, (String, HashSet<String>, bool)>,
     registry: &'a TypeRegistry,
+    /// Pattern-bound owned variables per match (keyed by match span, per-arm).
+    match_arm_owned_vars: &'a HashMap<Span, Vec<Vec<String>>>,
+    /// Spans of field access expressions whose result type is `Type::Own(...)`.
+    field_access_owned: &'a HashSet<Span>,
 }
 
 impl<'a> OwnershipChecker<'a> {
@@ -579,6 +587,48 @@ impl<'a> OwnershipChecker<'a> {
                                         ParamQualifier::Shared | ParamQualifier::Polymorphic => {
                                             // Shared: `shared` bound — affine args are non-consuming borrows
                                             // Polymorphic: used <=1 times — accepts both affine and unlimited
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Check qualifier mismatch for non-Var affine arguments
+                    // (e.g. lambda capturing ~T passed to RequiresU or Shared param)
+                    if !matches!(arg, Expr::Var { .. }) {
+                        let is_affine_arg = match arg {
+                            Expr::Lambda { span: lspan, .. } => {
+                                self.lambda_own_captures.contains_key(lspan)
+                            }
+                            _ => false,
+                        };
+                        if is_affine_arg {
+                            if let Some(quals) = callee_qualifiers {
+                                if let Some((qualifier, param_name)) = quals.get(i) {
+                                    match qualifier {
+                                        ParamQualifier::RequiresU | ParamQualifier::Shared => {
+                                            let callee_name =
+                                                callee_var_name(func).unwrap_or("<anonymous>").to_string();
+                                            let arg_span = match arg {
+                                                Expr::Lambda { span, .. } => *span,
+                                                _ => (0, 0),
+                                            };
+                                            return Err(SpannedTypeError {
+                                                error: TypeError::QualifierMismatch {
+                                                    name: "<lambda>".to_string(),
+                                                    callee: callee_name,
+                                                    param: param_name.clone(),
+                                                },
+                                                span: arg_span,
+                                                note: Some("closure captures an owned (`~`) value, making it single-use".to_string()),
+                                                secondary_span: None,
+                                                source_file: None,
+                                                var_names: None,
+                                            });
+                                        }
+                                        ParamQualifier::Polymorphic => {
+                                            // Used <=1 times — accepts affine
                                         }
                                     }
                                 }
@@ -732,7 +782,7 @@ impl<'a> OwnershipChecker<'a> {
             }
 
             Expr::Match {
-                scrutinee, arms, ..
+                scrutinee, arms, span,
             } => {
                 self.check_expr(scrutinee)?;
                 let before: HashSet<String> = self.consumed.keys().cloned().collect();
@@ -740,8 +790,27 @@ impl<'a> OwnershipChecker<'a> {
                 let mut per_arm_new: Vec<HashMap<String, Span>> = Vec::new();
                 let mut merged_partial = self.partially_consumed.clone();
 
-                for arm in arms {
+                let per_arm_owned = self.match_arm_owned_vars.get(span);
+
+                for (arm_idx, arm) in arms.iter().enumerate() {
+                    // Track pattern-bound owned variables for this arm
+                    let pattern_owned: &[String] = per_arm_owned
+                        .and_then(|v| v.get(arm_idx))
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
+                    for name in pattern_owned {
+                        self.owned.insert(name.clone());
+                    }
+
                     let (arm_consumed, arm_partial) = self.check_branch(&arm.body)?;
+
+                    // Clean up pattern-bound vars (scoped to this arm)
+                    for name in pattern_owned {
+                        self.owned.remove(name);
+                        self.consumed.remove(name);
+                        self.partially_consumed.remove(name);
+                    }
+
                     let newly: HashMap<String, Span> = arm_consumed
                         .into_iter()
                         .filter(|(k, _)| !before.contains(k))
@@ -811,11 +880,16 @@ impl<'a> OwnershipChecker<'a> {
                 result
             }
 
-            Expr::FieldAccess { expr, .. } => {
-                if let Expr::Var { name, span, .. } = expr.as_ref() {
+            Expr::FieldAccess { expr, span, .. } => {
+                if let Expr::Var { name, span: var_span, .. } = expr.as_ref() {
                     if self.owned.contains(name) {
-                        self.check_not_consumed(name, *span, None)?;
-                        // Field access is a projection, not a move — don't consume
+                        self.check_not_consumed(name, *var_span, None)?;
+                        // If this field access returns an owned type, consume the base
+                        if self.field_access_owned.contains(span) {
+                            self.consumed.insert(name.clone(), *var_span);
+                            self.moves.insert(*var_span, name.clone());
+                        }
+                        // Otherwise: projection, no consumption
                         return Ok(());
                     }
                 }
@@ -827,27 +901,63 @@ impl<'a> OwnershipChecker<'a> {
             Expr::StructUpdate { base, fields, span } => {
                 self.check_exprs(fields.iter().map(|(_, e)| e))?;
 
-                let base_consumed =
-                    if let Some((type_name, updated_fields)) = self.struct_update_info.get(span) {
+                let (base_consumed, base_is_owned) =
+                    if let Some((type_name, updated_fields, base_own)) = self.struct_update_info.get(span) {
                         if let Some(info) = self.registry.lookup_type(type_name) {
                             if let TypeKind::Record {
                                 fields: record_fields,
                             } = &info.kind
                             {
-                                record_fields.iter().any(|(fname, fty)| {
+                                let has_unreplaced_own = record_fields.iter().any(|(fname, fty)| {
                                     type_contains_own(fty) && !updated_fields.contains(fname)
-                                })
+                                });
+                                (has_unreplaced_own, *base_own)
                             } else {
-                                true
+                                (true, *base_own)
                             }
                         } else {
-                            true
+                            (true, *base_own)
                         }
                     } else {
-                        true
+                        (true, false)
                     };
 
-                if base_consumed {
+                // If base has un-replaced owned fields and base is not owned, error:
+                // struct update on shared base would fabricate owned fields.
+                if base_consumed && !base_is_owned {
+                    if let Expr::Var { name, span: var_span, .. } = base.as_ref() {
+                        // Find un-replaced owned field names for the error message
+                        let unreplaced: Vec<String> = if let Some((type_name, updated_fields, _)) = self.struct_update_info.get(span) {
+                            if let Some(info) = self.registry.lookup_type(type_name) {
+                                if let TypeKind::Record { fields: record_fields } = &info.kind {
+                                    record_fields.iter()
+                                        .filter(|(fname, fty)| type_contains_own(fty) && !updated_fields.contains(fname))
+                                        .map(|(fname, _)| fname.clone())
+                                        .collect()
+                                } else { vec![] }
+                            } else { vec![] }
+                        } else { vec![] };
+                        let t = Type::Named("T".into(), vec![]);
+                        return Err(SpannedTypeError {
+                            error: TypeError::Mismatch {
+                                expected: Type::Own(Box::new(t.clone())),
+                                actual: t,
+                            },
+                            span: *var_span,
+                            note: Some(format!(
+                                "struct update on shared `{}` would fabricate owned field(s): {}",
+                                name,
+                                unreplaced.join(", ")
+                            )),
+                            secondary_span: None,
+                            source_file: None,
+                            var_names: None,
+                        });
+                    }
+                    // Non-Var base expression with fabrication: check the base for moves
+                    self.check_expr(base)?;
+                } else if base_consumed {
+                    // base_is_owned: consume the base (it has un-replaced owned fields)
                     self.check_expr(base)?;
                 } else if let Expr::Var { name, span, .. } = base.as_ref() {
                     if self.owned.contains(name) {
@@ -875,9 +985,11 @@ fn check_fn(
     fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
-    struct_update_info: &HashMap<Span, (String, HashSet<String>)>,
+    struct_update_info: &HashMap<Span, (String, HashSet<String>, bool)>,
     registry: &TypeRegistry,
     fn_scheme_params: &HashMap<String, Vec<Type>>,
+    match_arm_owned_vars: &HashMap<Span, Vec<Vec<String>>>,
+    field_access_owned: &HashSet<Span>,
 ) -> Result<HashMap<Span, String>, SpannedTypeError> {
     let mut owned: HashSet<String> = decl
         .params
@@ -920,6 +1032,8 @@ fn check_fn(
         own_fn_notes: &mut own_fn_notes,
         struct_update_info,
         registry,
+        match_arm_owned_vars,
+        field_access_owned,
     };
     checker.check_expr(&decl.body)?;
     Ok(checker.moves)
