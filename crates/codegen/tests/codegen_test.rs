@@ -3,7 +3,7 @@ use krypton_parser::ast::{BinOp, Lit, TypeConstraint, TypeExpr, Variant, Visibil
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
-    AutoCloseInfo, ExternFnInfo, FnOrigin, FnTypeEntry, InstanceDefInfo, InstanceMethod, TraitDefInfo, TraitId,
+    AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, TraitDefInfo, TraitId,
     TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
@@ -149,6 +149,23 @@ fn app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type) -> Ty
     }
 }
 
+fn trait_app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type, trait_id: TraitId) -> TypedExpr {
+    TypedExpr {
+        kind: TypedExprKind::App {
+            func: Box::new(TypedExpr {
+                kind: TypedExprKind::Var(name.to_string()),
+                ty: func_ty,
+                span: (0, 0),
+                origin: Some(trait_id.clone()),
+            }),
+            args,
+        },
+        ty: ret_ty,
+        span: (0, 0),
+        origin: Some(trait_id),
+    }
+}
+
 fn concat_expr(lhs: TypedExpr, rhs: TypedExpr) -> TypedExpr {
     TypedExpr {
         kind: TypedExprKind::BinaryOp {
@@ -204,11 +221,13 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         span: (0, 0),
     };
 
-    let render_inner = app_expr(
+    let render_trait_id = TraitId::new(None, "Render".to_string());
+    let render_inner = trait_app_expr(
         "render",
         Type::Fn(vec![a_ty.clone()], Box::new(Type::String)),
         vec![var_expr("inner", a_ty.clone())],
         Type::String,
+        render_trait_id.clone(),
     );
     let wrap_render_body = TypedExpr {
         kind: TypedExprKind::Match {
@@ -245,11 +264,12 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             Type::String,
         )
     } else {
-        app_expr(
+        trait_app_expr(
             "render",
             Type::Fn(vec![wrap_int_ty.clone()], Box::new(Type::String)),
             vec![wrapped_main_value],
             Type::String,
+            render_trait_id.clone(),
         )
     };
 
@@ -263,7 +283,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         FnTypeEntry {
             name: "main".to_string(),
             scheme: TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
-            origin: FnOrigin::Regular,
+            origin: None,
             provenance: None,
         },
     ];
@@ -292,18 +312,19 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 vars: vec![var_a],
                 ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
             },
-            origin: FnOrigin::Regular,
+            origin: None,
             provenance: None,
         });
         functions.push(TypedFnDecl {
             name: "render_wrap".to_string(),
             visibility: Visibility::Pub,
             params: vec!["value".to_string()],
-            body: app_expr(
+            body: trait_app_expr(
                 "render",
                 Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
                 vec![var_expr("value", wrap_a_ty.clone())],
                 Type::String,
+                render_trait_id.clone(),
             ),
             close_self_type: None,
         });
@@ -370,7 +391,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         fn_constraint_requirements,
         imported_fn_constraints: HashMap::new(),
         imported_fn_constraint_requirements: HashMap::new(),
-        trait_method_map: HashMap::from([("render".to_string(), TraitId::new(None, "Render".to_string()))]),
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),
             java_class: "krypton.runtime.KryptonIO".to_string(),

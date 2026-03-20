@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
 use crate::type_registry::{self};
-use crate::typed_ast::{self as typed_ast, FnOrigin, TraitId, TypedModule};
+use crate::typed_ast::{self as typed_ast, TraitId, TypedModule};
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -383,7 +383,7 @@ impl ModuleInferenceState {
                                 }
                                 if matches!(original_vis, Visibility::Pub) {
                                     for (cname, scheme) in &constructors {
-                                        self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), FnOrigin::Regular, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                                        self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), None, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                                     }
                                 }
                                 self.imports.bind_type_info(
@@ -478,7 +478,7 @@ impl ModuleInferenceState {
                                         scheme: scheme.clone(),
                                     },
                                 );
-                                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), FnOrigin::Regular, (path.to_string(), cname.clone()));
+                                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), None, (path.to_string(), cname.clone()));
                                 self.env.bind(cname, scheme);
                             }
                         }
@@ -645,7 +645,7 @@ impl ModuleInferenceState {
                     trait_def.module_path.clone().or_else(|| Some(path.to_string())),
                     trait_def.name.clone(),
                 );
-                let origin = FnOrigin::TraitMethod { trait_id };
+                let origin = Some(trait_id);
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
                     let already_imported = self.imports.imported_fn_types.iter().any(|f| f.name == method.name);

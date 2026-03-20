@@ -298,7 +298,6 @@ impl Compiler {
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
-        self.traits.trait_method_map = typed_module.trait_method_map.clone();
         self.traits.fn_constraints = typed_module.fn_constraints.clone();
         for (name, requirements) in &typed_module.fn_constraint_requirements {
             self.traits.impl_dict_requirements.insert(

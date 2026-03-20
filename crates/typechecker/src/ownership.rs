@@ -216,7 +216,7 @@ fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSe
 /// Params whose type var has a `shared` bound get `Shared` regardless of body usage.
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
-    fn_types: &[(String, TypeScheme, crate::typed_ast::FnOrigin)],
+    fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitId>)],
     shared_type_vars: &HashMap<String, HashSet<String>>,
 ) -> HashMap<String, Vec<(ParamQualifier, String)>> {
     let type_map: HashMap<&str, &TypeScheme> =
@@ -344,7 +344,7 @@ pub struct OwnershipResult {
 /// partial-branch use as E0102, and qualifier mismatches as E0104.
 pub fn check_ownership(
     module: &Module,
-    fn_types: &[(String, TypeScheme, crate::typed_ast::FnOrigin)],
+    fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitId>)],
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,

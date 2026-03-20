@@ -9,7 +9,7 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, FnOrigin, InstanceDefInfo, TraitId,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, TraitId,
     TraitDefInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
@@ -821,6 +821,7 @@ pub fn infer_expr(
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
     let empty_efn = HashSet::new();
+    let empty_tmm = HashMap::new();
     let mut ctx = InferenceContext {
         env,
         subst,
@@ -836,6 +837,7 @@ pub fn infer_expr(
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
         shadowed_prelude_fns: &[],
+        trait_method_map: &empty_tmm,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -1640,7 +1642,7 @@ impl ImportContext {
         env: &mut TypeEnv,
         name: String,
         scheme: TypeScheme,
-        origin: FnOrigin,
+        origin: Option<TraitId>,
         source_module: String,
         original_name: String,
         prelude_imported_names: &HashSet<String>,
@@ -1719,7 +1721,7 @@ impl ImportContext {
         &mut self,
         name: String,
         scheme: TypeScheme,
-        origin: FnOrigin,
+        origin: Option<TraitId>,
         provenance: (String, String),
     ) {
         self.imported_fn_types.push(typed_ast::ImportedFn {
@@ -1973,7 +1975,7 @@ impl ModuleInferenceState {
         results.extend(constructor_schemes.iter().map(|(n, s)| typed_ast::FnTypeEntry {
             name: n.clone(),
             scheme: s.clone(),
-            origin: FnOrigin::Regular,
+            origin: None,
             provenance: None,
         }));
         results.extend(
@@ -1983,7 +1985,7 @@ impl ModuleInferenceState {
                 .map(|(i, d)| typed_ast::FnTypeEntry {
                     name: d.name.clone(),
                     scheme: result_schemes[i].clone().unwrap(),
-                    origin: FnOrigin::Regular,
+                    origin: None,
                     provenance: None,
                 }),
         );
@@ -1994,7 +1996,7 @@ impl ModuleInferenceState {
                 results.push(typed_ast::FnTypeEntry {
                     name: qualified,
                     scheme: m.scheme.clone(),
-                    origin: FnOrigin::Regular,
+                    origin: None,
                     provenance: None,
                 });
             }
@@ -2018,7 +2020,7 @@ impl ModuleInferenceState {
                 exported_fn_types.push(typed_ast::ExportedFn {
                     name: cname.clone(),
                     scheme: scheme.clone(),
-                    origin: FnOrigin::Regular,
+                    origin: None,
                     def_span: None,
                 });
             }
@@ -2030,7 +2032,7 @@ impl ModuleInferenceState {
                 exported_fn_types.push(typed_ast::ExportedFn {
                     name: decl.name.clone(),
                     scheme: result_schemes[i].clone().unwrap(),
-                    origin: FnOrigin::Regular,
+                    origin: None,
                     def_span: Some(decl.span),
                 });
             }
@@ -2151,7 +2153,7 @@ impl ModuleInferenceState {
         }
 
         // Convert FnTypeEntry to tuple format for ownership/auto_close APIs
-        let results_tuples: Vec<(String, TypeScheme, FnOrigin)> = results.iter()
+        let results_tuples: Vec<(String, TypeScheme, Option<TraitId>)> = results.iter()
             .map(|e| (e.name.clone(), e.scheme.clone(), e.origin.clone()))
             .collect();
 
@@ -2271,7 +2273,6 @@ impl ModuleInferenceState {
             fn_constraint_requirements: fn_constraint_requirements.clone(),
             imported_fn_constraints: self.imports.imported_fn_constraints,
             imported_fn_constraint_requirements: self.imported_fn_constraint_requirements,
-            trait_method_map: trait_method_map.clone(),
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
             extern_java_types,
@@ -2650,10 +2651,12 @@ pub(crate) fn infer_module_inner(
                 // Synthesize the method body
                 let syn_span: Span = (0, 0);
 
+                let trait_id_for_synth = trait_registry.lookup_trait(trait_name)
+                    .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()));
                 let (body, fn_ty) = match trait_name.as_str() {
                     "Eq" => synthesize_eq_body(type_info, &target_type, syn_span),
-                    "Show" => synthesize_show_body(type_info, &target_type, syn_span),
-                    "Hash" => synthesize_hash_body(type_info, &target_type, syn_span),
+                    "Show" => synthesize_show_body(type_info, &target_type, syn_span, trait_id_for_synth.clone()),
+                    "Hash" => synthesize_hash_body(type_info, &target_type, syn_span, trait_id_for_synth.clone()),
                     _ => continue,
                 };
 
@@ -3142,6 +3145,7 @@ pub(crate) fn infer_module_inner(
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
+                    trait_method_map: &trait_method_map,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
@@ -3384,6 +3388,7 @@ pub(crate) fn infer_module_inner(
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &[],
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
+                        trait_method_map: &trait_method_map,
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };
@@ -3684,6 +3689,7 @@ fn synthesize_show_body(
     type_info: &crate::type_registry::TypeInfo,
     target_type: &Type,
     span: Span,
+    trait_id: Option<TraitId>,
 ) -> (TypedExpr, Type) {
     let param_a = TypedExpr {
         kind: TypedExprKind::Var("__a".to_string()),
@@ -3722,7 +3728,7 @@ fn synthesize_show_body(
                     kind: TypedExprKind::Var("show".to_string()),
                     ty: Type::Fn(vec![arg_ty], Box::new(Type::String)),
                     span,
-                    origin: None,
+                    origin: trait_id.clone(),
                 }),
                 args: vec![expr],
             },
@@ -3819,6 +3825,7 @@ fn synthesize_hash_body(
     type_info: &crate::type_registry::TypeInfo,
     target_type: &Type,
     span: Span,
+    trait_id: Option<TraitId>,
 ) -> (TypedExpr, Type) {
     let param_a = TypedExpr {
         kind: TypedExprKind::Var("__a".to_string()),
@@ -3844,7 +3851,7 @@ fn synthesize_hash_body(
                     kind: TypedExprKind::Var("hash".to_string()),
                     ty: Type::Fn(vec![arg_ty], Box::new(Type::Int)),
                     span,
-                    origin: None,
+                    origin: trait_id.clone(),
                 }),
                 args: vec![expr],
             },

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Expr, Lit, Span, UnaryOp};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
-use crate::typed_ast::{FnOrigin, TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{TraitId, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
@@ -24,6 +24,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
+    pub(super) trait_method_map: &'a HashMap<String, TraitId>,
 }
 
 impl<'a> InferenceContext<'a> {
@@ -90,7 +91,7 @@ impl<'a> InferenceContext<'a> {
     /// Returns empty if fewer than 2 distinct modules provide the name (no overload).
     /// Prelude entries are excluded: if the user explicitly imports a name that the prelude
     /// also provides, that's a shadow, not an overload.
-    fn find_overloaded_candidates(&self, name: &str) -> Vec<(TypeScheme, FnOrigin, String)> {
+    fn find_overloaded_candidates(&self, name: &str) -> Vec<(TypeScheme, Option<TraitId>, String)> {
         let all: Vec<_> = self.imported_fn_types
             .iter()
             .filter(|f| f.name == name)
@@ -307,10 +308,8 @@ impl<'a> InferenceContext<'a> {
                     // Check if this var is a trait method
                     let origin = self.imported_fn_types.iter()
                         .find(|f| f.name == *name)
-                        .and_then(|f| match &f.origin {
-                            FnOrigin::TraitMethod { .. } => Some(f.origin.clone()),
-                            FnOrigin::Regular => None,
-                        });
+                        .and_then(|f| f.origin.clone())
+                        .or_else(|| self.trait_method_map.get(name).cloned());
                     Ok(TypedExpr {
                         kind: TypedExprKind::Var(name.clone()),
                         ty,
@@ -625,7 +624,7 @@ impl<'a> InferenceContext<'a> {
                     let candidates = self.find_overloaded_candidates(name);
                     if candidates.len() > 1 {
                         // Check if all candidates are trait methods — if so, skip and let typeclass dispatch handle it
-                        let all_trait_methods = candidates.iter().all(|(_, origin, _)| matches!(origin, FnOrigin::TraitMethod { .. }));
+                        let all_trait_methods = candidates.iter().all(|(_, origin, _)| origin.is_some());
                         if all_trait_methods {
                             // Fall through to normal path
                         } else if !is_ufcs {
@@ -643,7 +642,7 @@ impl<'a> InferenceContext<'a> {
                             let recv_typed = self.infer_expr_inner(&args[0], None)?;
                             let recv_ty = self.subst.apply(&recv_typed.ty);
 
-                            let mut matches_found: Vec<(usize, Substitution, Type, FnOrigin, String)> = Vec::new();
+                            let mut matches_found: Vec<(usize, Substitution, Type, Option<TraitId>, String)> = Vec::new();
                             for (i, (scheme, origin, module)) in candidates.iter().enumerate() {
                                 let mut trial_subst = self.subst.clone();
                                 let trial_ty = scheme.instantiate(&mut || self.gen.fresh());
@@ -658,7 +657,7 @@ impl<'a> InferenceContext<'a> {
 
                             if matches_found.len() == 1 {
                                 let (_, winning_subst, func_ty, origin, _) = matches_found.remove(0);
-                                if matches!(origin, FnOrigin::TraitMethod { .. }) {
+                                if origin.is_some() {
                                     // Single match is a trait method → fall through to normal
                                     // typeclass dispatch (don't resolve via UFCS)
                                 } else {
@@ -956,6 +955,7 @@ impl<'a> InferenceContext<'a> {
                     }
                 };
 
+                let origin = expr_typed.origin.clone();
                 Ok(TypedExpr {
                     kind: TypedExprKind::TypeApp {
                         expr: Box::new(expr_typed),
@@ -963,7 +963,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: specialized_ty,
                     span: *span,
-                    origin: None,
+                    origin,
                 })
             }
 

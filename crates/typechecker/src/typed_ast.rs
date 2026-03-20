@@ -32,17 +32,6 @@ impl TraitId {
     pub fn display_name(&self) -> &str {
         &self.name
     }
-
-    pub fn semigroup() -> Self { TraitId { module_path: Some("core/semigroup".into()), name: "Semigroup".into() } }
-    pub fn sub() -> Self { TraitId { module_path: Some("core/sub".into()), name: "Sub".into() } }
-    pub fn mul() -> Self { TraitId { module_path: Some("core/mul".into()), name: "Mul".into() } }
-    pub fn div() -> Self { TraitId { module_path: Some("core/div".into()), name: "Div".into() } }
-    pub fn eq() -> Self { TraitId { module_path: Some("core/eq".into()), name: "Eq".into() } }
-    pub fn ord() -> Self { TraitId { module_path: Some("core/ord".into()), name: "Ord".into() } }
-    pub fn neg() -> Self { TraitId { module_path: Some("core/neg".into()), name: "Neg".into() } }
-    pub fn show() -> Self { TraitId { module_path: Some("core/show".into()), name: "Show".into() } }
-    pub fn hash() -> Self { TraitId { module_path: Some("core/hash".into()), name: "Hash".into() } }
-    pub fn resource() -> Self { TraitId { module_path: Some("core/resource".into()), name: "Resource".into() } }
 }
 
 impl fmt::Display for TraitId {
@@ -55,18 +44,12 @@ impl fmt::Display for TraitId {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum FnOrigin {
-    Regular,
-    TraitMethod { trait_id: TraitId },
-}
-
 /// Internal: imported function with full provenance.
 #[derive(Debug, Clone)]
 pub struct ImportedFn {
     pub name: String,
     pub scheme: TypeScheme,
-    pub origin: FnOrigin,
+    pub origin: Option<TraitId>,
     pub source_module: String,
     pub original_name: String,
 }
@@ -76,7 +59,7 @@ pub struct ImportedFn {
 pub struct FnTypeEntry {
     pub name: String,
     pub scheme: TypeScheme,
-    pub origin: FnOrigin,
+    pub origin: Option<TraitId>,
     /// Provenance for imported functions (source_module, original_name). None for local.
     pub provenance: Option<(String, String)>,
 }
@@ -142,8 +125,8 @@ pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Type,
     pub span: Span,
-    /// Set for trait method references; used by codegen to avoid re-resolving via trait_method_map.
-    pub origin: Option<FnOrigin>,
+    /// Set for trait method references; used by codegen to dispatch to the correct trait.
+    pub origin: Option<TraitId>,
 }
 
 #[derive(Debug, Clone)]
@@ -234,7 +217,7 @@ pub struct TypedFnDecl {
 pub struct ExportedFn {
     pub name: String,
     pub scheme: TypeScheme,
-    pub origin: FnOrigin,
+    pub origin: Option<TraitId>,
     pub def_span: Option<Span>,
 }
 
@@ -310,7 +293,6 @@ pub struct TypedModule {
     /// TypeVarId-based constraint requirements inherited from imported modules.
     /// Used by codegen for functions where the constrained type var is nested in params.
     pub imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
-    pub trait_method_map: HashMap<String, TraitId>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
     /// Extern java type bindings: (krypton_name, java_class_dotted).
