@@ -200,7 +200,7 @@ impl Compiler {
             }
 
             // Compile pattern: CheckAndBind emits guards, BindOnly (last arm) skips them
-            self.builder.nested_ifeq_patches.clear();
+            self.builder.nested_branch_patches.clear();
             let mode = if !is_last {
                 PatternMode::CheckAndBind
             } else {
@@ -213,7 +213,7 @@ impl Compiler {
                 &scrutinee.ty,
                 mode,
             )?;
-            let nested_patches = std::mem::take(&mut self.builder.nested_ifeq_patches);
+            let nested_patches = std::mem::take(&mut self.builder.nested_branch_patches);
 
             // Compile arm body
             let arm_type = self.compile_expr(&arm.body, in_tail)?;
@@ -276,7 +276,11 @@ impl Compiler {
                 };
                 self.builder.patch(patch_idx, branch);
                 for nested_idx in &nested_patches {
-                    self.builder.code[*nested_idx] = Instruction::Ifeq(next_arm_target);
+                    let branch = match self.builder.code[*nested_idx] {
+                        Instruction::Ifne(_) => Instruction::Ifne(next_arm_target),
+                        _ => Instruction::Ifeq(next_arm_target),
+                    };
+                    self.builder.code[*nested_idx] = branch;
                 }
             }
         }
@@ -463,7 +467,7 @@ impl Compiler {
                                     self.builder.frame.push_type(VerificationType::Integer);
                                     let nested_ifeq = self.builder.emit_placeholder(Instruction::Ifeq(0));
                                     self.builder.frame.pop_type();
-                                    self.builder.nested_ifeq_patches.push(nested_ifeq);
+                                    self.builder.nested_branch_patches.push(nested_ifeq);
                                 } else {
                                     self.builder.emit(Instruction::Pop);
                                     self.builder.frame.pop_type();
@@ -498,7 +502,7 @@ impl Compiler {
                                     scrutinee_tc_type,
                                     nested_mode,
                                 )? {
-                                    self.builder.nested_ifeq_patches.push(nested_ifeq);
+                                    self.builder.nested_branch_patches.push(nested_ifeq);
                                 }
                             }
                             TypedPattern::Wildcard { .. } => {

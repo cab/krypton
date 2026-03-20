@@ -183,7 +183,7 @@ pub(super) struct BytecodeBuilder {
     pub(super) recur_target: u16,
     pub(super) recur_frame_locals: Vec<VerificationType>,
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
-    pub(super) nested_ifeq_patches: Vec<usize>,
+    pub(super) nested_branch_patches: Vec<usize>,
 }
 
 impl BytecodeBuilder {
@@ -200,7 +200,7 @@ impl BytecodeBuilder {
             recur_target: 1,
             recur_frame_locals: Vec::new(),
             local_fn_info: HashMap::new(),
-            nested_ifeq_patches: Vec::new(),
+            nested_branch_patches: Vec::new(),
         }
     }
 

@@ -99,6 +99,29 @@ impl Type {
             other => other.clone(),
         }
     }
+
+    /// Remap only vars present in the mapping; leave others unchanged.
+    fn remap_vars(&self, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
+        match self {
+            Type::Var(id) => Type::Var(*mapping.get(id).unwrap_or(id)),
+            Type::Fn(params, ret) => Type::Fn(
+                params.iter().map(|p| p.remap_vars(mapping)).collect(),
+                Box::new(ret.remap_vars(mapping)),
+            ),
+            Type::Named(n, args) => Type::Named(
+                n.clone(), args.iter().map(|a| a.remap_vars(mapping)).collect(),
+            ),
+            Type::Own(inner) => Type::Own(Box::new(inner.remap_vars(mapping))),
+            Type::Tuple(elems) => Type::Tuple(
+                elems.iter().map(|e| e.remap_vars(mapping)).collect(),
+            ),
+            Type::App(ctor, args) => Type::App(
+                Box::new(ctor.remap_vars(mapping)),
+                args.iter().map(|a| a.remap_vars(mapping)).collect(),
+            ),
+            other => other.clone(),
+        }
+    }
 }
 
 /// Renumber type vars across multiple types sharing the same mapping.
@@ -244,7 +267,7 @@ impl TypeScheme {
                 new
             });
         }
-        let renamed_ty = self.ty.renumber_inner(&mut id_mapping, &mut next_id);
+        let renamed_ty = self.ty.remap_vars(&id_mapping);
 
         // 2. Assign display names: user names first, then sequential letters
         let mut used: HashSet<String> = HashSet::new();

@@ -10,48 +10,6 @@ use krypton_typechecker::types::Type;
 /// When `var_names` is provided, uses those names for type variables instead of
 /// the default display_name().
 fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
-    if let Some(names) = var_names {
-        // Use the var_names-aware formatter, but with source syntax for fn types
-        return type_to_source_with_names(ty, names);
-    }
-    match ty {
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::String => "String".to_string(),
-        Type::Unit => "Unit".to_string(),
-        Type::Var(id) => id.display_name(),
-        Type::Own(inner) => format!("~{}", type_to_source(inner, None)),
-        Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| type_to_source(p, None)).collect();
-            format!("({}) -> {}", ps.join(", "), type_to_source(ret, None))
-        }
-        Type::Named(name, args) => {
-            if args.is_empty() {
-                name.clone()
-            } else {
-                let as_: Vec<String> = args.iter().map(|a| type_to_source(a, None)).collect();
-                format!("{}[{}]", name, as_.join(", "))
-            }
-        }
-        Type::App(ctor, args) => {
-            let base = type_to_source(ctor, None);
-            if args.is_empty() {
-                base
-            } else {
-                let as_: Vec<String> = args.iter().map(|a| type_to_source(a, None)).collect();
-                format!("{}[{}]", base, as_.join(", "))
-            }
-        }
-        Type::Tuple(elems) => {
-            let es: Vec<String> = elems.iter().map(|e| type_to_source(e, None)).collect();
-            format!("({})", es.join(", "))
-        }
-    }
-}
-
-/// Convert a Type to Krypton source syntax using explicit var name mappings.
-fn type_to_source_with_names(ty: &Type, names: &[String]) -> String {
     match ty {
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -59,37 +17,38 @@ fn type_to_source_with_names(ty: &Type, names: &[String]) -> String {
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Var(id) => {
-            let idx = id.index();
-            if idx < names.len() {
-                names[idx].clone()
-            } else {
-                id.display_name()
+            if let Some(names) = var_names {
+                let idx = id.index();
+                if idx < names.len() {
+                    return names[idx].clone();
+                }
             }
+            id.display_name()
         }
-        Type::Own(inner) => format!("~{}", type_to_source_with_names(inner, names)),
+        Type::Own(inner) => format!("~{}", type_to_source(inner, var_names)),
         Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| type_to_source_with_names(p, names)).collect();
-            format!("({}) -> {}", ps.join(", "), type_to_source_with_names(ret, names))
+            let ps: Vec<String> = params.iter().map(|p| type_to_source(p, var_names)).collect();
+            format!("({}) -> {}", ps.join(", "), type_to_source(ret, var_names))
         }
         Type::Named(name, args) => {
             if args.is_empty() {
                 name.clone()
             } else {
-                let as_: Vec<String> = args.iter().map(|a| type_to_source_with_names(a, names)).collect();
+                let as_: Vec<String> = args.iter().map(|a| type_to_source(a, var_names)).collect();
                 format!("{}[{}]", name, as_.join(", "))
             }
         }
         Type::App(ctor, args) => {
-            let base = type_to_source_with_names(ctor, names);
+            let base = type_to_source(ctor, var_names);
             if args.is_empty() {
                 base
             } else {
-                let as_: Vec<String> = args.iter().map(|a| type_to_source_with_names(a, names)).collect();
+                let as_: Vec<String> = args.iter().map(|a| type_to_source(a, var_names)).collect();
                 format!("{}[{}]", base, as_.join(", "))
             }
         }
         Type::Tuple(elems) => {
-            let es: Vec<String> = elems.iter().map(|e| type_to_source_with_names(e, names)).collect();
+            let es: Vec<String> = elems.iter().map(|e| type_to_source(e, var_names)).collect();
             format!("({})", es.join(", "))
         }
     }
