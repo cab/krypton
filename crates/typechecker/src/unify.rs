@@ -48,6 +48,7 @@ pub enum TypeErrorCode {
     E0511, // Wildcard not allowed in this position
     E0512, // Nested wildcard in impl head
     E0307, // Unknown trait
+    E0308, // Self outside impl block
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -94,6 +95,7 @@ impl fmt::Display for TypeErrorCode {
             TypeErrorCode::E0511 => write!(f, "E0511"),
             TypeErrorCode::E0512 => write!(f, "E0512"),
             TypeErrorCode::E0307 => write!(f, "E0307"),
+            TypeErrorCode::E0308 => write!(f, "E0308"),
         }
     }
 }
@@ -258,6 +260,7 @@ pub enum TypeError {
     UnknownTrait {
         name: String,
     },
+    SelfOutsideImpl,
 }
 
 impl TypeError {
@@ -313,6 +316,7 @@ impl TypeError {
             TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
             TypeError::NestedWildcard { .. } => TypeErrorCode::E0512,
             TypeError::UnknownTrait { .. } => TypeErrorCode::E0307,
+            TypeError::SelfOutsideImpl => TypeErrorCode::E0308,
         }
     }
 
@@ -510,6 +514,7 @@ impl TypeError {
                 Some("wildcards must appear at the outermost type application level, not nested inside type arguments".to_string())
             }
             TypeError::UnknownTrait { .. } => None,
+            TypeError::SelfOutsideImpl => None,
         }
     }
 }
@@ -751,6 +756,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownTrait { name } => {
                 write!(f, "unknown trait `{}`", name)
+            }
+            TypeError::SelfOutsideImpl => {
+                write!(f, "`Self` can only be used inside impl blocks")
             }
         }
     }

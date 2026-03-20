@@ -1,0 +1,4 @@
+# expect: error E0308
+trait Displayable[a] {
+    fun display(x: Self) -> String
+}

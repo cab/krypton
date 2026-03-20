@@ -25,6 +25,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
     pub(super) trait_method_map: &'a HashMap<String, TraitId>,
+    pub(super) self_type: Option<Type>,
 }
 
 impl<'a> InferenceContext<'a> {
@@ -82,7 +83,7 @@ impl<'a> InferenceContext<'a> {
                 span,
             )
         })?;
-        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg, ResolutionContext::UserAnnotation)
+        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg, ResolutionContext::UserAnnotation, self.self_type.as_ref())
             .map_err(|e| super::spanned(e, span))
     }
 
@@ -540,6 +541,7 @@ impl<'a> InferenceContext<'a> {
                                             self.type_param_arity,
                                             reg,
                                             ResolutionContext::UserAnnotation,
+                                            self.self_type.as_ref(),
                                         )
                                         .map_err(|e| super::spanned(e, *span))
                                     })
@@ -923,6 +925,7 @@ impl<'a> InferenceContext<'a> {
                                 self.type_param_arity,
                                 reg,
                                 ResolutionContext::UserAnnotation,
+                                self.self_type.as_ref(),
                             )
                             .map_err(|e| super::spanned(e, *span))
                         })

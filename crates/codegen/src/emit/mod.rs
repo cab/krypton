@@ -142,6 +142,7 @@ fn type_expr_to_jvm_with_params(
         &HashMap::new(),
         type_registry_ref,
         ResolutionContext::InternalDecl,
+        None,
     )
     .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
     compiler.type_to_jvm(&resolved)
@@ -297,6 +298,7 @@ fn compile_module_inner(
                     &HashMap::new(),
                     &field_type_registry,
                     ResolutionContext::InternalDecl,
+                    None,
                 )
             })
             .collect::<Result<Vec<_>, _>>()

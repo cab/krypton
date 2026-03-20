@@ -206,22 +206,23 @@ pub fn resolve_type_expr(
     type_param_arity: &HashMap<String, usize>,
     registry: &TypeRegistry,
     context: ResolutionContext,
+    self_type: Option<&Type>,
 ) -> Result<Type, TypeError> {
     match texpr {
         TypeExpr::Named { name, .. } | TypeExpr::Qualified { name, .. } => {
-            resolve_named(name, type_param_map, type_param_arity, registry, context)
+            resolve_named(name, type_param_map, type_param_arity, registry, context, self_type)
         }
         TypeExpr::Var { name, .. } => {
             if let Some(&var_id) = type_param_map.get(name) {
                 Ok(Type::Var(var_id))
             } else {
-                resolve_named(name, type_param_map, type_param_arity, registry, context)
+                resolve_named(name, type_param_map, type_param_arity, registry, context, self_type)
             }
         }
         TypeExpr::App { name, args, .. } => {
             let mut resolved_args = Vec::new();
             for a in args {
-                resolved_args.push(resolve_type_expr(a, type_param_map, type_param_arity, registry, context)?);
+                resolved_args.push(resolve_type_expr(a, type_param_map, type_param_arity, registry, context, self_type)?);
             }
             // If the name is a type parameter (HKT variable), produce Type::App
             if let Some(&var_id) = type_param_map.get(name) {
@@ -237,7 +238,7 @@ pub fn resolve_type_expr(
                 return Ok(Type::App(Box::new(Type::Var(var_id)), resolved_args));
             }
             // Validate the type name
-            resolve_named(name, type_param_map, type_param_arity, registry, context)?;
+            resolve_named(name, type_param_map, type_param_arity, registry, context, self_type)?;
             // Kind check: verify arity matches
             let expected = registry.expected_arity(name);
             if let Some(expected) = expected {
@@ -257,9 +258,9 @@ pub fn resolve_type_expr(
         TypeExpr::Fn { params, ret, .. } => {
             let mut param_types = Vec::new();
             for p in params {
-                param_types.push(resolve_type_expr(p, type_param_map, type_param_arity, registry, context)?);
+                param_types.push(resolve_type_expr(p, type_param_map, type_param_arity, registry, context, self_type)?);
             }
-            let ret_type = resolve_type_expr(ret, type_param_map, type_param_arity, registry, context)?;
+            let ret_type = resolve_type_expr(ret, type_param_map, type_param_arity, registry, context, self_type)?;
             Ok(Type::Fn(param_types, Box::new(ret_type)))
         }
         TypeExpr::Own { inner, .. } => Ok(Type::Own(Box::new(resolve_type_expr(
@@ -268,11 +269,12 @@ pub fn resolve_type_expr(
             type_param_arity,
             registry,
             context,
+            self_type,
         )?))),
         TypeExpr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
-                elem_types.push(resolve_type_expr(e, type_param_map, type_param_arity, registry, context)?);
+                elem_types.push(resolve_type_expr(e, type_param_map, type_param_arity, registry, context, self_type)?);
             }
             Ok(Type::Tuple(elem_types))
         }
@@ -288,6 +290,7 @@ fn resolve_named(
     _type_param_arity: &HashMap<String, usize>,
     registry: &TypeRegistry,
     context: ResolutionContext,
+    self_type: Option<&Type>,
 ) -> Result<Type, TypeError> {
     // Check if it's a type parameter first
     if let Some(&var_id) = type_param_map.get(name) {
@@ -301,6 +304,12 @@ fn resolve_named(
         "String" => Ok(Type::String),
         "Unit" => Ok(Type::Unit),
         "Object" => Ok(Type::Named("Object".to_string(), Vec::new())),
+        "Self" => {
+            return match self_type {
+                Some(ty) => Ok(ty.clone()),
+                None => Err(TypeError::SelfOutsideImpl),
+            };
+        }
         _ => {
             let is_available = match context {
                 ResolutionContext::UserAnnotation => registry.is_user_visible(name),
@@ -372,7 +381,7 @@ pub fn process_type_decl(
         TypeDeclKind::Record { fields } => {
             let mut resolved_fields: Vec<(String, Type)> = Vec::new();
             for (name, texpr) in fields {
-                let ty = resolve_type_expr(texpr, &type_param_map, &type_param_arity, registry, ResolutionContext::InternalDecl)?;
+                let ty = resolve_type_expr(texpr, &type_param_map, &type_param_arity, registry, ResolutionContext::InternalDecl, None)?;
                 resolved_fields.push((name.clone(), ty));
             }
 
@@ -403,6 +412,7 @@ pub fn process_type_decl(
                         &type_param_arity,
                         registry,
                         ResolutionContext::InternalDecl,
+                        None,
                     )?);
                 }
 

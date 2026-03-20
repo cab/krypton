@@ -1,0 +1,20 @@
+# expect: output "true"
+type Wrapper[a] = { value: a }
+
+trait MyEq[a] {
+    fun my_eq(x: a, y: a) -> Bool
+}
+
+impl MyEq[String] {
+    fun my_eq(x: String, y: String) -> Bool = x == y
+}
+
+impl[a] MyEq[Wrapper[a]] where a: MyEq {
+    fun my_eq(x: Self, y: Self) -> Bool = my_eq(x.value, y.value)
+}
+
+fun main() = {
+    let a = Wrapper { value = "hello" }
+    let b = Wrapper { value = "hello" }
+    println(my_eq(a, b))
+}

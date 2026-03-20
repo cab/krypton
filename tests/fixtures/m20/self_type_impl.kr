@@ -1,0 +1,16 @@
+# expect: output "true"
+type Point = { x: Int, y: Int }
+
+trait MyEq[a] {
+    fun my_eq(x: a, y: a) -> Bool
+}
+
+impl MyEq[Point] {
+    fun my_eq(x: Self, y: Self) -> Bool = x.x == y.x && x.y == y.y
+}
+
+fun main() = {
+    let a = Point { x = 1, y = 2 }
+    let b = Point { x = 1, y = 2 }
+    println(my_eq(a, b))
+}

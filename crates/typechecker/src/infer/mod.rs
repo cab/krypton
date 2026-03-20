@@ -619,6 +619,7 @@ fn resolve_impl_target(
                             type_param_arity,
                             registry,
                             type_registry::ResolutionContext::UserAnnotation,
+                            None,
                         )?);
                     }
                 }
@@ -634,6 +635,7 @@ fn resolve_impl_target(
                 type_param_arity,
                 registry,
                 type_registry::ResolutionContext::UserAnnotation,
+                None,
             )?;
             // Kind check: verify arity matches
             let expected = registry.expected_arity(name);
@@ -658,6 +660,7 @@ fn resolve_impl_target(
             type_param_arity,
             registry,
             type_registry::ResolutionContext::UserAnnotation,
+            None,
         ),
     }
 }
@@ -837,6 +840,7 @@ pub fn infer_expr(
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
         shadowed_prelude_fns: &[],
+        self_type: None,
         trait_method_map: &empty_tmm,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
@@ -1451,7 +1455,7 @@ fn process_extern_methods(
         let mut param_types = Vec::new();
         for ty_expr in &method.param_types {
             let resolved =
-                type_registry::resolve_type_expr(ty_expr, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation)
+                type_registry::resolve_type_expr(ty_expr, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
             if !has_type_params && matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                 let fresh = gen.fresh();
@@ -1463,7 +1467,7 @@ fn process_extern_methods(
         }
 
         let return_type =
-            type_registry::resolve_type_expr(&method.return_type, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation)
+            type_registry::resolve_type_expr(&method.return_type, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
         let ret = if !has_type_params && matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
         {
@@ -1491,14 +1495,14 @@ fn process_extern_methods(
         // won't resolve and fall back to Object.
         let mut concrete_params = Vec::new();
         for ty_expr in &method.param_types {
-            let resolved = match type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation) {
+            let resolved = match type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation, None) {
                 Ok(ty) => ty,
                 Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
                 Err(e) => return Err(spanned(e, span)),
             };
             concrete_params.push(resolved);
         }
-        let codegen_return = match type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation) {
+        let codegen_return = match type_registry::resolve_type_expr(&method.return_type, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation, None) {
             Ok(ty) => ty,
             Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
             Err(e) => return Err(spanned(e, span)),
@@ -2482,6 +2486,7 @@ pub(crate) fn infer_module_inner(
                                 &method_type_param_arity,
                                 &state.registry,
                                 ResolutionContext::UserAnnotation,
+                                None,
                             )
                             .map_err(|e| spanned(e, method.span))?,
                         );
@@ -2496,6 +2501,7 @@ pub(crate) fn infer_module_inner(
                         &method_type_param_arity,
                         &state.registry,
                         ResolutionContext::UserAnnotation,
+                        None,
                     )
                         .map_err(|e| spanned(e, method.span))?
                 } else {
@@ -2763,6 +2769,7 @@ pub(crate) fn infer_module_inner(
                     &type_param_arity,
                     &state.registry,
                     ResolutionContext::UserAnnotation,
+                    None,
                 )
                     .map_err(|e| spanned(e, *span))?
             };
@@ -3121,6 +3128,7 @@ pub(crate) fn infer_module_inner(
                             &type_param_arity,
                             &state.registry,
                             ResolutionContext::UserAnnotation,
+                            None,
                         )
                         .map_err(|e| spanned(e, decl.span))?;
                     unify(&ptv, &annotated_ty, &mut state.subst).map_err(|e| spanned(e, decl.span))?;
@@ -3138,6 +3146,7 @@ pub(crate) fn infer_module_inner(
                         &type_param_arity,
                         &state.registry,
                         ResolutionContext::UserAnnotation,
+                        None,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
                 state.env.fn_return_type = Some(resolved_ret);
@@ -3166,6 +3175,7 @@ pub(crate) fn infer_module_inner(
                     enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                     trait_method_map: &trait_method_map,
+                    self_type: None,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
             };
@@ -3193,6 +3203,7 @@ pub(crate) fn infer_module_inner(
                         &type_param_arity,
                         &state.registry,
                         ResolutionContext::UserAnnotation,
+                        None,
                     )
                     .map_err(|e| spanned(e, decl.span))?;
                 coerce_unify(&body_ty, &annotated_ret, &mut state.subst)
@@ -3357,6 +3368,7 @@ pub(crate) fn infer_module_inner(
                                 &impl_method_tpa,
                                 &state.registry,
                                 ResolutionContext::UserAnnotation,
+                                Some(&resolved_target),
                             )
                             .map_err(|e| spanned(e, p.span))?;
                             unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
@@ -3374,6 +3386,7 @@ pub(crate) fn infer_module_inner(
                             &impl_method_tpa,
                             &state.registry,
                             ResolutionContext::UserAnnotation,
+                            Some(&resolved_target),
                         )
                         .map_err(|e| spanned(e, method.span))?;
                     unify(&annotated_ret, &concrete_ret, &mut state.subst)
@@ -3421,6 +3434,7 @@ pub(crate) fn infer_module_inner(
                         enclosing_fn_constraints: &[],
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                         trait_method_map: &trait_method_map,
+                        self_type: Some(resolved_target.clone()),
                     };
                     ctx.infer_expr_inner(&method.body, None)?
                 };
