@@ -31,3 +31,19 @@ fmt:
 lint:
     cargo clippy --workspace
     cargo fmt -- --check
+
+# Run all benchmarks
+bench:
+    cargo bench
+
+# Run benchmarks for a specific crate (parser, typechecker, codegen)
+bench-crate crate:
+    cargo bench -p krypton-{{crate}}
+
+# Save a named benchmark baseline
+bench-save name:
+    cargo bench -- --save-baseline {{name}}
+
+# Compare against a named baseline
+bench-compare name:
+    cargo bench -- --baseline {{name}}
