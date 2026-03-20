@@ -1,0 +1,270 @@
+# expect: ok
+# Stress test fixture exercising many language features.
+
+import core/vec.{nth, len}
+
+# --- Records ---
+
+type Point = { x: Int, y: Int }
+
+type Rect = { origin: Point, width: Int, height: Int }
+
+type Person = { name: Int, age: Int }
+
+# --- Sum types ---
+
+type Shape = Circle(Int) | Rectangle(Int, Int) | Triangle(Int, Int, Int)
+
+type Color = Red | Green | Blue | Custom(Int, Int, Int)
+
+type Option2[a] = None2 | Some2(a)
+
+type Either[a, b] = Left(a) | Right(b)
+
+type List[a] = Nil | Cons(a, List[a])
+
+type Tree[a] = Leaf(a) | Branch(Tree[a], a, Tree[a])
+
+# --- Traits ---
+
+trait Measurable[a] {
+    fun measure(x: a) -> Int
+}
+
+trait Mergeable[a] {
+    fun merge(x: a, y: a) -> a
+}
+
+# --- Trait implementations ---
+
+impl Measurable[Shape] {
+    fun measure(s: Shape) -> Int = match s {
+        Circle(r) => r * r * 3,
+        Rectangle(w, h) => w * h,
+        Triangle(a, b, c) => (a * b) / 2,
+    }
+}
+
+impl Mergeable[Int] {
+    fun merge(x: Int, y: Int) -> Int = x + y
+}
+
+
+# --- Higher-kinded types ---
+
+type Box[a] = Box(a)
+
+type Pair[a] = Pair(a, a)
+
+trait Functor[f[_]] {
+    fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl Functor[Box] {
+    fun fmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
+        match fa { Box(x) => Box(g(x)) }
+}
+
+impl Functor[Pair] {
+    fun fmap[a, b](fa: Pair[a], g: (a) -> b) -> Pair[b] =
+        match fa { Pair(x, y) => Pair(g(x), g(y)) }
+}
+
+# --- Generic functions ---
+
+fun identity[a](x: a) -> a = x
+
+fun const_fn[a, b](x: a, y: b) -> a = x
+
+fun apply[a, b](f: (a) -> b, x: a) -> b = f(x)
+
+fun compose[a, b, c](f: (b) -> c, g: (a) -> b) -> (a) -> c =
+    x -> f(g(x))
+
+fun flip[a, b, c](f: (a, b) -> c) -> (b, a) -> c =
+    (b, a) -> f(a, b)
+
+fun twice[a](f: (a) -> a, x: a) -> a = f(f(x))
+
+# --- Pattern matching ---
+
+fun color_to_int(c: Color) -> Int = match c {
+    Red => 0,
+    Green => 1,
+    Blue => 2,
+    Custom(r, g, b) => r * 65536 + g * 256 + b,
+}
+
+fun shape_perimeter(s: Shape) -> Int = match s {
+    Circle(r) => 2 * 3 * r,
+    Rectangle(w, h) => 2 * (w + h),
+    Triangle(a, b, c) => a + b + c,
+}
+
+fun either_map[a, b, c](e: Either[a, b], f: (b) -> c) -> Either[a, c] =
+    match e {
+        Left(a) => Left(a),
+        Right(b) => Right(f(b)),
+    }
+
+fun option2_map[a, b](o: Option2[a], f: (a) -> b) -> Option2[b] =
+    match o {
+        None2 => None2,
+        Some2(x) => Some2(f(x)),
+    }
+
+fun option2_unwrap_or[a](o: Option2[a], default: a) -> a =
+    match o {
+        None2 => default,
+        Some2(x) => x,
+    }
+
+# --- Recursive functions ---
+
+fun list_length[a](xs: List[a]) -> Int = match xs {
+    Nil => 0,
+    Cons(_, rest) => 1 + list_length(rest),
+}
+
+fun list_sum(xs: List[Int]) -> Int = match xs {
+    Nil => 0,
+    Cons(x, rest) => x + list_sum(rest),
+}
+
+fun tree_size[a](t: Tree[a]) -> Int = match t {
+    Leaf(_) => 1,
+    Branch(l, _, r) => tree_size(l) + 1 + tree_size(r),
+}
+
+fun tree_depth[a](t: Tree[a]) -> Int = match t {
+    Leaf(_) => 0,
+    Branch(l, _, r) => {
+        let ld = tree_depth(l);
+        let rd = tree_depth(r);
+        1 + (if ld > rd { ld } else { rd })
+    },
+}
+
+# --- Closures and higher-order functions ---
+
+fun make_adder(n: Int) -> (Int) -> Int = x -> x + n
+
+fun apply_twice[a](f: (a) -> a, x: a) -> a = f(f(x))
+
+fun apply_n(f: (Int) -> Int, x: Int, n: Int) -> Int =
+    if n == 0 { x } else { apply_n(f, f(x), n - 1) }
+
+fun pipeline(x: Int) -> Int = {
+    let add5 = make_adder(5);
+    let double = n -> n * 2;
+    let square = n -> n * n;
+    square(double(add5(x)))
+}
+
+# --- Record construction and access ---
+
+fun make_point(x: Int, y: Int) -> Point = Point { x = x, y = y }
+
+fun translate(p: Point, dx: Int, dy: Int) -> Point =
+    Point { x = p.x + dx, y = p.y + dy }
+
+fun distance_sq(a: Point, b: Point) -> Int = {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy
+}
+
+fun make_rect(x: Int, y: Int, w: Int, h: Int) -> Rect =
+    Rect { origin = Point { x = x, y = y }, width = w, height = h }
+
+fun rect_area(r: Rect) -> Int = r.width * r.height
+
+fun rect_contains(r: Rect, p: Point) -> Bool = {
+    let in_x = p.x >= r.origin.x && p.x <= r.origin.x + r.width;
+    let in_y = p.y >= r.origin.y && p.y <= r.origin.y + r.height;
+    in_x && in_y
+}
+
+# --- Let bindings and complex expressions ---
+
+fun elaborate_computation(x: Int) -> Int = {
+    let a = x * 2;
+    let b = a + 3;
+    let c = b * b;
+    let d = if c > 100 { c - 50 } else { c + 50 };
+    let e = {
+        let inner = d / 2;
+        inner + 1
+    };
+    e
+}
+
+fun nested_ifs(x: Int, y: Int) -> Int =
+    if x > 0 {
+        if y > 0 { x + y } else { x - y }
+    } else {
+        if y > 0 { y - x } else { 0 - (x + y) }
+    }
+
+# --- Constrained generics ---
+
+fun merge_all[a](x: a, y: a, z: a) -> a where a: Mergeable = {
+    let xy = merge(x, y);
+    merge(xy, z)
+}
+
+fun double_measure(s: Shape) -> Int = {
+    let a = measure(s);
+    a * 2
+}
+
+fun lift_box[a, b](f: (a) -> b, x: a) -> Box[b] = Box(f(x))
+
+fun unbox[a](b: Box[a]) -> a = match b { Box(x) => x }
+
+fun map_box[a, b](b: Box[a], f: (a) -> b) -> Box[b] = fmap(b, f)
+
+# --- Deriving ---
+
+type RGB = { r: Int, g: Int, b: Int } deriving (Eq)
+
+type Direction = North | South | East | West deriving (Eq)
+
+# --- Entry point ---
+
+fun main() -> Int = {
+    let p1 = make_point(1, 2);
+    let p2 = translate(p1, 3, 4);
+    let d = distance_sq(p1, p2);
+
+    let s1 = Circle(5);
+    let s2 = Rectangle(3, 4);
+    let s3 = Triangle(3, 4, 5);
+    let a1 = measure(s1);
+    let a2 = measure(s2);
+    let a3 = measure(s3);
+
+    let c = color_to_int(Custom(255, 128, 0));
+
+    let r = make_rect(0, 0, 10, 10);
+    let ra = rect_area(r);
+
+    let sum = merge_all(1, 2, 3);
+
+    let res = elaborate_computation(7);
+    let nm = nested_ifs(3, 4);
+
+    let p = pipeline(10);
+
+    let b = Box(42);
+    let b2 = map_box(b, x -> x + 1);
+
+    let ll = list_length(Cons(1, Cons(2, Cons(3, Nil))));
+    let ls = list_sum(Cons(10, Cons(20, Cons(30, Nil))));
+
+    let t = Branch(Leaf(1), 2, Branch(Leaf(3), 4, Leaf(5)));
+    let ts = tree_size(t);
+    let td = tree_depth(t);
+
+    d + a1 + a2 + a3 + c + ra + sum + res + nm + p + ll + ls + ts + td
+}

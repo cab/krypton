@@ -13,3 +13,8 @@ tracing.workspace = true
 insta.workspace = true
 strip-ansi-escapes = "0.2"
 krypton-test-harness = { path = "../test-harness" }
+criterion.workspace = true
+
+[[bench]]
+name = "parse_bench"
+harness = false

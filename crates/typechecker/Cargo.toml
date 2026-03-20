@@ -13,3 +13,9 @@ tracing.workspace = true
 [dev-dependencies]
 krypton-test-harness = { path = "../test-harness" }
 insta.workspace = true
+criterion.workspace = true
+krypton-modules = { path = "../modules" }
+
+[[bench]]
+name = "typecheck_bench"
+harness = false

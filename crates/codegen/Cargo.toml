@@ -16,3 +16,8 @@ tempfile = "3"
 zip = { version = "2", features = ["default"] }
 krypton-test-harness = { path = "../test-harness" }
 krypton-modules = { path = "../modules" }
+criterion.workspace = true
+
+[[bench]]
+name = "codegen_bench"
+harness = false
