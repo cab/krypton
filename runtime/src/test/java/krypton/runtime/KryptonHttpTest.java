@@ -153,6 +153,8 @@ class KryptonHttpTest {
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         assertEquals("POST|/test|hello body|custom-value|alice", response.body());
+        assertEquals("text/plain; charset=utf-8",
+            response.headers().firstValue("Content-Type").orElse(null));
     }
 
     @Test

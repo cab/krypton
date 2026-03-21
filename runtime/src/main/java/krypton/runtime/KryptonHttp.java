@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
 
@@ -64,6 +65,7 @@ public final class KryptonHttp {
 
     private static void sendResponse(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
         exchange.sendResponseHeaders(status, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
@@ -86,7 +88,7 @@ public final class KryptonHttp {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8);
             }
         } catch (IOException e) {
-            return "";
+            throw new KryptonPanic("Failed to read request body: " + e.getMessage());
         }
     }
 
@@ -104,7 +106,7 @@ public final class KryptonHttp {
             if (eq >= 0) {
                 String paramName = param.substring(0, eq);
                 if (paramName.equals(key)) {
-                    return param.substring(eq + 1);
+                    return URLDecoder.decode(param.substring(eq + 1), StandardCharsets.UTF_8);
                 }
             } else if (param.equals(key)) {
                 return "";
