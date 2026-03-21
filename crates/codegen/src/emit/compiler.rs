@@ -152,7 +152,7 @@ impl CodegenTypeInfo {
 pub(super) struct TraitDispatchInfo {
     pub(super) interface_class: u16, // class index of the trait interface in main cpool
     pub(super) method_refs: HashMap<String, u16>, // method_name → interface method_ref
-    pub(super) type_var_id: TypeVarId,
+    pub(super) type_var_id: Option<TypeVarId>,
     pub(super) method_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
 

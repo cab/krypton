@@ -3,7 +3,7 @@ use std::fmt;
 
 /// Type variable identifier (newtype wrapper for type safety).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeVarId(pub u32);
+pub struct TypeVarId(pub(crate) u32);
 
 impl fmt::Display for TypeVarId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

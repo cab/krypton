@@ -261,8 +261,33 @@ impl Compiler {
         let resolved_trait_name = func.origin.as_ref().map(|tid| tid.name.clone());
         if let Some(trait_name) = resolved_trait_name.as_deref() {
             if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
-                let dict_ty = if args.is_empty() {
+                let dict_ty = if let Some((param_patterns, ret_pattern)) = dispatch.method_tc_types.get(name) {
+                    let type_var_id = dispatch.type_var_id
+                        .expect("trait with method_tc_types must have type_var_id");
+                    let mut bindings = HashMap::new();
+                    // Bind from params
+                    for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
+                        Self::bind_type_vars(pattern, &arg.ty, &mut bindings);
+                    }
+                    // Bind from return type
+                    let actual_ret = match &func.ty {
+                        Type::Fn(_, ret) => ret.as_ref().clone(),
+                        _ => result_ty.clone(),
+                    };
+                    Self::bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
+                    // Bind from explicit type application
                     if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
+                        if !type_args.is_empty() {
+                            bindings.entry(type_var_id).or_insert_with(|| type_args[0].clone());
+                        }
+                    }
+                    bindings.get(&type_var_id).cloned()
+                        .expect("trait type var must resolve from params, return type, or type args")
+                } else {
+                    // method_tc_types unavailable: use first arg, type args, or return type
+                    if !args.is_empty() {
+                        args[0].ty.clone()
+                    } else if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
                         if !type_args.is_empty() {
                             type_args[0].clone()
                         } else {
@@ -276,25 +301,6 @@ impl Compiler {
                             Type::Fn(_, ret) => ret.as_ref().clone(),
                             _ => result_ty.clone(),
                         }
-                    }
-                } else {
-                    // Check if trait type var is in method params or only in return type
-                    if let Some((param_patterns, ret_pattern)) = dispatch.method_tc_types.get(name) {
-                        let mut bindings = HashMap::new();
-                        for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
-                            Self::bind_type_vars(pattern, &arg.ty, &mut bindings);
-                        }
-                        if bindings.get(&dispatch.type_var_id).is_none() {
-                            // Type var not in params — extract from return type
-                            let actual_ret = match &func.ty {
-                                Type::Fn(_, ret) => ret.as_ref().clone(),
-                                _ => result_ty.clone(),
-                            };
-                            Self::bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
-                        }
-                        bindings.get(&dispatch.type_var_id).cloned().unwrap_or_else(|| args[0].ty.clone())
-                    } else {
-                        args[0].ty.clone()
                     }
                 };
                 let is_type_var = matches!(&dict_ty, Type::Var(_));
