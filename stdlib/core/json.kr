@@ -1,0 +1,112 @@
+# core/json — JSON parsing and serialization
+import core/result.{Result, Ok, Err}
+import core/option.{Option, Some, None}
+import core/list.{List, Cons, Nil, fold}
+import core/map.{Map, empty, put, get as map_get, entries, from_list}
+import core/eq.{Eq}
+import core/hash.{Hash}
+
+pub type Json = JNull | JBool(Bool) | JNum(Float) | JStr(String)
+              | JArr(List[Json]) | JObj(Map[String, Json])
+
+extern "krypton.runtime.JsonRuntime" {
+    fun staticParse(String) -> Object
+    fun staticSerialize(Object) -> String
+    fun staticRawType(Object) -> String
+    fun staticRawBool(Object) -> Bool
+    fun staticRawNum(Object) -> Float
+    fun staticRawStr(Object) -> String
+    fun staticRawArr(Object) -> Object
+    fun staticRawEntries(Object) -> Object
+    fun staticMkNull() -> Object
+    fun staticMkBool(Bool) -> Object
+    fun staticMkNum(Float) -> Object
+    fun staticMkStr(String) -> Object
+    fun staticNewArr() -> Object
+    fun staticArrPush(Object, Object) -> Unit
+    fun staticNewObj() -> Object
+    fun staticObjPut(Object, Object, Object) -> Unit
+}
+
+extern "krypton.runtime.KryptonArray" {
+    fun staticLength(Object) -> Int
+    fun staticGet(Object, Int) -> Object
+}
+
+# ── Parse direction: JavaJson → Krypton Json ──────────────────────
+
+fun arr_to_list(arr: Object, i: Int, n: Int) -> List[Json] =
+    if i >= n { Nil }
+    else { Cons(from_java(staticGet(arr, i)), arr_to_list(arr, i + 1, n)) }
+
+fun entries_to_map(arr: Object, i: Int, n: Int) -> Map[String, Json] =
+    if i >= n { empty() }
+    else { put(entries_to_map(arr, i + 2, n), staticGet(arr, i), from_java(staticGet(arr, i + 1))) }
+
+fun from_java(raw: Object) -> Json = {
+    let t = staticRawType(raw)
+    if t == "null" { JNull }
+    else if t == "bool" { JBool(staticRawBool(raw)) }
+    else if t == "num" { JNum(staticRawNum(raw)) }
+    else if t == "str" { JStr(staticRawStr(raw)) }
+    else if t == "arr" {
+        let arr = staticRawArr(raw)
+        JArr(arr_to_list(arr, 0, staticLength(arr)))
+    }
+    else {
+        let es = staticRawEntries(raw)
+        JObj(entries_to_map(es, 0, staticLength(es)))
+    }
+}
+
+# ── Serialize direction: Krypton Json → JavaJson ──────────────────
+
+fun build_arr(items: List[Json], arr: Object) -> Object =
+    match items {
+        Nil => arr,
+        Cons(h, rest) => {
+            staticArrPush(arr, to_java(h));
+            build_arr(rest, arr)
+        },
+    }
+
+fun build_obj(es: List[(String, Json)], obj: Object) -> Object =
+    match es {
+        Nil => obj,
+        Cons(pair, rest) => {
+            let (k, v) = pair;
+            staticObjPut(obj, k, to_java(v));
+            build_obj(rest, obj)
+        },
+    }
+
+fun to_java(j: Json) -> Object = match j {
+    JNull => staticMkNull(),
+    JBool(b) => staticMkBool(b),
+    JNum(n) => staticMkNum(n),
+    JStr(s) => staticMkStr(s),
+    JArr(items) => build_arr(items, staticNewArr()),
+    JObj(m) => build_obj(entries(m), staticNewObj()),
+}
+
+# ── Public API ────────────────────────────────────────────────────
+
+pub fun parse_json(s: String) -> Result[String, Json] = {
+    let pair = staticParse(s)
+    let raw = staticGet(pair, 0)
+    if is_null(raw) {
+        Err(staticGet(pair, 1))
+    } else {
+        Ok(from_java(raw))
+    }
+}
+
+pub fun json_to_string(j: Json) -> String = staticSerialize(to_java(j))
+
+pub fun json_object(pairs: List[(String, Json)]) -> Json = JObj(from_list(pairs))
+
+pub fun json_get(j: Json, key: String) -> Option[Json] =
+    match j {
+        JObj(m) => map_get(m, key),
+        _ => None,
+    }

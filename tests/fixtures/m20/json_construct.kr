@@ -1,0 +1,12 @@
+# expect: output "found"
+import core/map.{Map}
+import core/list.{List, Cons, Nil}
+import core/option.{Some, None}
+import core/json.{json_object, json_get, Json, JStr, JNum}
+fun main() = {
+  let obj = json_object(Cons(("key", JStr("val")), Nil))
+  match json_get(obj, "key") {
+    Some(v) => println("found"),
+    None => println("FAIL"),
+  }
+}

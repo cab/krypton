@@ -6,6 +6,10 @@ repositories {
     mavenCentral()
 }
 
+dependencies {
+    api("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -14,6 +18,8 @@ java {
 
 tasks.jar {
     archiveBaseName.set("krypton-runtime")
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 testing {

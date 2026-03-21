@@ -6,6 +6,7 @@ use krypton_codegen::emit::compile_modules;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_typechecker::diagnostics::render_infer_error;
 use krypton_typechecker::infer::infer_module;
 
 fn build_classpath(class_dir: &Path) -> String {
@@ -28,7 +29,10 @@ fn run_program_with_resolver(
     assert!(errors.is_empty(), "fixture {fixture_name}: parse errors: {errors:?}");
 
     let typed_modules = infer_module(&module, resolver)
-        .unwrap_or_else(|e| panic!("fixture {fixture_name}: type check failed: {e:?}"));
+        .unwrap_or_else(|e| {
+            let rendered = render_infer_error(fixture_name, source, &e);
+            panic!("fixture {fixture_name}: type check failed:\n{rendered}");
+        });
     let classes = compile_modules(&typed_modules, "Kr$Test")
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
@@ -108,7 +112,8 @@ fn run_codegen_fixtures(subdir: &str) {
                     let typed_modules = match infer_module(&module, &resolver) {
                         Ok(tm) => tm,
                         Err(e) => {
-                            failures.push(format!("{name}: expected ok but typecheck failed: {e:?}"));
+                            let rendered = render_infer_error(&name, &fixture.source, &e);
+                            failures.push(format!("{name}: expected ok but typecheck failed:\n{rendered}"));
                             continue;
                         }
                     };
@@ -202,7 +207,14 @@ fn a_fixtures() {
 
 #[test]
 fn m20_fixtures() {
-    run_codegen_fixtures("m20");
+    // Json type is recursive (JArr(List[Json]), JObj(Map[String, Json]))
+    // which causes deep recursion in the typechecker, requiring a larger stack.
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| run_codegen_fixtures("m20"))
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 #[test]

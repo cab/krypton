@@ -1,0 +1,19 @@
+# expect: output "true"
+import core/map.{Map}
+import core/list.{List, Cons, Nil}
+import core/result.{Ok, Err}
+import core/json.{parse_json, json_to_string, json_object, Json, JNum, JBool, JStr}
+fun main() = {
+  let j = json_object(Cons(("x", JNum(1.0)), Cons(("y", JBool(true)), Cons(("z", JStr("hello")), Nil))))
+  let s1 = json_to_string(j)
+  match parse_json(s1) {
+    Ok(j2) => {
+      let s2 = json_to_string(j2)
+      match parse_json(s2) {
+        Ok(x) => println("true"),
+        Err(e) => println(e),
+      }
+    },
+    Err(e) => println(e),
+  }
+}
