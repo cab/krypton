@@ -1,0 +1,7 @@
+# expect: output [1.5,2.75]
+import core/list.{Cons, Nil}
+import core/json.{json_to_string, Json, JArr, JNum}
+fun main() = {
+  let arr = JArr(Cons(JNum(1.5), Cons(JNum(2.75), Nil)))
+  println(json_to_string(arr))
+}

@@ -1,0 +1,21 @@
+# expect: output ok
+import core/list.{Cons, Nil}
+import core/result.{Ok, Err}
+import core/json.{parse_json, json_to_string, json_object, json_get, Json, JObj, JArr, JNum, JStr}
+import core/option.{Some, None}
+fun main() = {
+  let inner = json_object(Cons(("b", JNum(2.0)), Nil))
+  let arr = JArr(Cons(JNum(1.0), Nil))
+  let outer = json_object(Cons(("a", inner), Cons(("list", arr), Nil)))
+  let s = json_to_string(outer)
+  match parse_json(s) {
+    Ok(parsed) => match json_get(parsed, "a") {
+      Some(JObj(m)) => match json_get(parsed, "list") {
+        Some(JArr(xs)) => println("ok"),
+        _ => println("FAIL list"),
+      },
+      _ => println("FAIL a"),
+    },
+    Err(e) => println(e),
+  }
+}

@@ -1,0 +1,11 @@
+# expect: output None
+import core/list.{Cons, Nil}
+import core/option.{Some, None}
+import core/json.{json_object, json_get, Json, JNum}
+fun main() = {
+  let obj = json_object(Cons(("a", JNum(1.0)), Nil))
+  match json_get(obj, "missing") {
+    None => println("None"),
+    Some(v) => println("FAIL"),
+  }
+}

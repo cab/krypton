@@ -1,0 +1,10 @@
+# expect: output [1,2,3]
+import core/list.{Cons, Nil}
+import core/result.{Ok, Err}
+import core/json.{parse_json, json_to_string, Json, JArr, JNum}
+fun main() = {
+  match parse_json("[1,2,3]") {
+    Ok(JArr(items)) => println(json_to_string(JArr(items))),
+    _ => println("FAIL"),
+  }
+}

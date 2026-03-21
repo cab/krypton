@@ -1,0 +1,9 @@
+# expect: output error
+import core/result.{Ok, Err}
+import core/json.{parse_json}
+fun main() = {
+  match parse_json("not json") {
+    Err(msg) => println("error"),
+    Ok(v) => println("FAIL"),
+  }
+}

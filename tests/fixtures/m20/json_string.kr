@@ -1,0 +1,7 @@
+# expect: output {"greeting":"hello"}
+import core/list.{Cons, Nil}
+import core/json.{json_to_string, json_object, Json, JStr}
+fun main() = {
+  let obj = json_object(Cons(("greeting", JStr("hello")), Nil))
+  println(json_to_string(obj))
+}

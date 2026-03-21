@@ -1,0 +1,9 @@
+# expect: output None
+import core/option.{Some, None}
+import core/json.{json_get, Json, JNum}
+fun main() = {
+  match json_get(JNum(1.0), "x") {
+    None => println("None"),
+    Some(v) => println("FAIL"),
+  }
+}

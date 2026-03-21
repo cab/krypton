@@ -1,0 +1,13 @@
+# expect: output alice
+import core/result.{Ok, Err}
+import core/option.{Some, None}
+import core/json.{parse_json, json_get, Json, JObj, JStr}
+fun main() = {
+  match parse_json("{\"name\":\"alice\"}") {
+    Ok(obj) => match json_get(obj, "name") {
+      Some(JStr(s)) => println(s),
+      _ => println("FAIL get"),
+    },
+    Err(e) => println(e),
+  }
+}

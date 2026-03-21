@@ -1,0 +1,10 @@
+# expect: output null
+import core/result.{Ok, Err}
+import core/json.{parse_json, json_to_string, Json, JNull}
+fun main() = {
+  let s = json_to_string(JNull)
+  match parse_json(s) {
+    Ok(JNull) => println(s),
+    _ => println("FAIL"),
+  }
+}

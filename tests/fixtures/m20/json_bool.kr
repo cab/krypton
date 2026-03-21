@@ -1,0 +1,6 @@
+# expect: output "true\nfalse"
+import core/json.{json_to_string, Json, JBool}
+fun main() = {
+  println(json_to_string(JBool(true)));
+  println(json_to_string(JBool(false)))
+}
