@@ -360,7 +360,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             trait_id: TraitId::new(None, "Render".to_string()),
             methods: vec![("render".to_string(), 1)],
             is_imported: false,
-            type_var_id: Some(render_type_var),
+            type_var_id: render_type_var,
             method_tc_types: {
                 let mut m = std::collections::HashMap::new();
                 m.insert("render".to_string(), (vec![Type::Var(render_type_var)], Type::String));

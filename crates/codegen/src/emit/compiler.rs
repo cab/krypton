@@ -152,7 +152,7 @@ impl CodegenTypeInfo {
 pub(super) struct TraitDispatchInfo {
     pub(super) interface_class: u16, // class index of the trait interface in main cpool
     pub(super) method_refs: HashMap<String, u16>, // method_name → interface method_ref
-    pub(super) type_var_id: Option<TypeVarId>,
+    pub(super) type_var_id: TypeVarId,
     pub(super) method_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
 
@@ -576,6 +576,7 @@ impl Compiler {
             }
         }
         self.builder.fn_params = fn_params;
+        self.builder.num_dict_params = num_dict_params;
         self.builder.fn_return_type = Some(return_type);
 
         // Emit Nop as recur back-edge target at instruction 0.

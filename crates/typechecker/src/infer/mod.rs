@@ -1025,6 +1025,13 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
                 bind_type_vars_simple(p, a, bindings);
             }
         }
+        // Cross-arm for HKT: pattern App(Var(f), [a]) vs actual Named("Box", [Int])
+        (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) if p_args.len() == a_args.len() => {
+            bind_type_vars_simple(p_ctor, &Type::Named(a_name.clone(), vec![]), bindings);
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                bind_type_vars_simple(p, a, bindings);
+            }
+        }
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) if p_name == a_name => {
             for (p, a) in p_args.iter().zip(a_args.iter()) {
                 bind_type_vars_simple(p, a, bindings);
@@ -1183,19 +1190,23 @@ fn check_trait_instances(
                                     bindings.entry(info.type_var_id).or_insert_with(|| type_args[0].clone());
                                 }
                             }
-                            // Check dispatch type var
-                            if let Some(dispatch_ty) = bindings.get(&info.type_var_id) {
-                                let concrete_ty = strip_own(dispatch_ty);
-                                if leading_type_var(&concrete_ty).is_none()
-                                    && trait_registry.find_instance(&trait_id.name, &concrete_ty).is_none()
-                                {
-                                    return Err(no_instance_error(
-                                        trait_registry,
-                                        &trait_id.name,
-                                        &concrete_ty,
-                                        expr.span,
-                                    ));
-                                }
+                            // Check dispatch type var — must always be bindable from the
+                            // method signature (params, return type, or explicit type args)
+                            let dispatch_ty = bindings.get(&info.type_var_id)
+                                .unwrap_or_else(|| panic!(
+                                    "ICE: trait type var for `{}::{}` not bound from method signature",
+                                    trait_id.name, name
+                                ));
+                            let concrete_ty = strip_own(dispatch_ty);
+                            if leading_type_var(&concrete_ty).is_none()
+                                && trait_registry.find_instance(&trait_id.name, &concrete_ty).is_none()
+                            {
+                                return Err(no_instance_error(
+                                    trait_registry,
+                                    &trait_id.name,
+                                    &concrete_ty,
+                                    expr.span,
+                                ));
                             }
                         }
                     }
@@ -2052,7 +2063,6 @@ impl ModuleInferenceState {
         }
 
         let mut trait_defs = Vec::new();
-        let mut seen_traits = std::collections::HashSet::new();
         for (trait_name, info) in trait_registry.traits() {
             let is_imported = self.imported_trait_names.contains(trait_name);
             let method_info: Vec<(String, usize)> = info
@@ -2070,28 +2080,9 @@ impl ModuleInferenceState {
                 trait_id: TraitId::new(info.module_path.clone(), trait_name.clone()),
                 methods: method_info,
                 is_imported,
-                type_var_id: Some(info.type_var_id),
+                type_var_id: info.type_var_id,
                 method_tc_types,
             });
-            seen_traits.insert(trait_name.clone());
-        }
-        for decl in &module.decls {
-            if let Decl::DefTrait { name, methods, .. } = decl {
-                if !seen_traits.contains(name) {
-                    let method_info: Vec<(String, usize)> = methods
-                        .iter()
-                        .map(|m| (m.name.clone(), m.params.len()))
-                        .collect();
-                    trait_defs.push(TraitDefInfo {
-                        name: name.clone(),
-                        trait_id: TraitId::new(module_path.clone(), name.clone()),
-                        methods: method_info,
-                        is_imported: false,
-                        type_var_id: None,
-                        method_tc_types: HashMap::new(),
-                    });
-                }
-            }
         }
 
         // Convert FnTypeEntry to tuple format for ownership/auto_close APIs

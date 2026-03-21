@@ -261,48 +261,36 @@ impl Compiler {
         let resolved_trait_name = func.origin.as_ref().map(|tid| tid.name.clone());
         if let Some(trait_name) = resolved_trait_name.as_deref() {
             if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
-                let dict_ty = if let Some((param_patterns, ret_pattern)) = dispatch.method_tc_types.get(name) {
-                    let type_var_id = dispatch.type_var_id
-                        .expect("trait with method_tc_types must have type_var_id");
-                    let mut bindings = HashMap::new();
-                    // Bind from params
-                    for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
-                        Self::bind_type_vars(pattern, &arg.ty, &mut bindings);
-                    }
-                    // Bind from return type
-                    let actual_ret = match &func.ty {
-                        Type::Fn(_, ret) => ret.as_ref().clone(),
-                        _ => result_ty.clone(),
-                    };
-                    Self::bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
-                    // Bind from explicit type application
-                    if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
-                        if !type_args.is_empty() {
-                            bindings.entry(type_var_id).or_insert_with(|| type_args[0].clone());
-                        }
-                    }
-                    bindings.get(&type_var_id).cloned()
-                        .expect("trait type var must resolve from params, return type, or type args")
-                } else {
-                    // method_tc_types unavailable: use first arg, type args, or return type
-                    if !args.is_empty() {
-                        args[0].ty.clone()
-                    } else if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
-                        if !type_args.is_empty() {
-                            type_args[0].clone()
-                        } else {
-                            match &func.ty {
-                                Type::Fn(_, ret) => ret.as_ref().clone(),
-                                _ => result_ty.clone(),
-                            }
-                        }
-                    } else {
-                        match &func.ty {
-                            Type::Fn(_, ret) => ret.as_ref().clone(),
-                            _ => result_ty.clone(),
-                        }
-                    }
+                // Resolve the dispatch type by binding type vars from all sources
+                // (params, return type, explicit type args). The typechecker guarantees
+                // the trait's type var is always bindable from the method signature.
+                let (param_patterns, ret_pattern) = dispatch.method_tc_types.get(name)
+                    .unwrap_or_else(|| panic!(
+                        "ICE: method `{name}` not found in method_tc_types for trait `{trait_name}`"
+                    ));
+                let type_var_id = dispatch.type_var_id;
+                let mut bindings = HashMap::new();
+                // Bind from params
+                for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
+                    Self::bind_type_vars(pattern, &arg.ty, &mut bindings);
+                }
+                // Bind from return type
+                let actual_ret = match &func.ty {
+                    Type::Fn(_, ret) => ret.as_ref().clone(),
+                    _ => result_ty.clone(),
                 };
+                Self::bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
+                // Bind from explicit type application
+                if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
+                    if !type_args.is_empty() {
+                        bindings.entry(type_var_id).or_insert_with(|| type_args[0].clone());
+                    }
+                }
+                let dict_ty = bindings.get(&type_var_id).cloned()
+                    .unwrap_or_else(|| panic!(
+                        "ICE: trait type var for `{trait_name}::{name}` not resolved \
+                         from params, return type, or type args"
+                    ));
                 let is_type_var = matches!(&dict_ty, Type::Var(_));
                 if is_type_var && !self.traits.has_dict_for_trait(trait_name) {
                     return Err(CodegenError::UndefinedVariable(format!(
