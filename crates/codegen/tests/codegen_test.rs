@@ -428,6 +428,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         reexported_type_names: vec![],
         reexported_type_visibility: HashMap::new(),
         exported_trait_defs: vec![],
+        exported_type_infos: HashMap::new(),
         auto_close: AutoCloseInfo::default(),
         exported_fn_qualifiers: HashMap::new(),
     }

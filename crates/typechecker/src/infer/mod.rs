@@ -2203,6 +2203,46 @@ impl ModuleInferenceState {
         let mut exported_trait_defs = exported_trait_defs;
         exported_trait_defs.extend(self.reexported_trait_defs);
 
+        // Build exported_type_infos from fully-resolved TypeInfo in the registry.
+        // This allows importers to register types without re-resolving from AST.
+        let mut exported_type_infos: HashMap<String, typed_ast::ExportedTypeInfo> = HashMap::new();
+        for decl in &module.decls {
+            if let Decl::DefType(td) = decl {
+                if matches!(td.visibility, Visibility::Private) {
+                    continue;
+                }
+                if let Some(type_info) = self.registry.lookup_type(&td.name) {
+                    let kind = match &type_info.kind {
+                        crate::type_registry::TypeKind::Record { fields } => {
+                            typed_ast::ExportedTypeKind::Record {
+                                fields: fields.clone(),
+                            }
+                        }
+                        crate::type_registry::TypeKind::Sum { variants } => {
+                            typed_ast::ExportedTypeKind::Sum {
+                                variants: variants
+                                    .iter()
+                                    .map(|v| typed_ast::ExportedVariantInfo {
+                                        name: v.name.clone(),
+                                        fields: v.fields.clone(),
+                                    })
+                                    .collect(),
+                            }
+                        }
+                    };
+                    exported_type_infos.insert(
+                        td.name.clone(),
+                        typed_ast::ExportedTypeInfo {
+                            name: td.name.clone(),
+                            type_params: td.type_params.clone(),
+                            type_param_vars: type_info.type_param_vars.clone(),
+                            kind,
+                        },
+                    );
+                }
+            }
+        }
+
         Ok(TypedModule {
             module_path,
             fn_types: results,
@@ -2226,62 +2266,35 @@ impl ModuleInferenceState {
             reexported_type_names: self.reexported_type_names,
             reexported_type_visibility: self.reexported_type_visibility,
             exported_trait_defs,
+            exported_type_infos,
             auto_close,
             exported_fn_qualifiers,
         })
     }
 }
 
-/// Internal per-module inference with pre-resolved module cache.
+/// Phase: Register traits (imported + local), process deriving, register impl instances.
+/// Returns (trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map).
 ///
-/// The module graph has already been resolved and toposorted by `infer_module`.
-/// Import declarations look up parsed ASTs from `parsed_modules` and typed
-/// results from `cache` — no recursive resolution or cycle detection needed.
-///
-/// Pipeline phases:
-///  1. Initialize state (env, registry, intrinsics)
-///  2. Build synthetic prelude import
-///  3. Process imports (types, fns, traits, re-exports)
-///  4. Reserve type var generator past imported schemes
-///  5. Process local extern declarations
-///  6. Clean up prelude shadows
-///  7. Pre-register local type names
-///  8. Process local type declarations
-///  9. Register traits (imported + local)
-/// 10. Process deriving declarations
-/// 11. Process impl blocks
-/// 12. SCC-based function inference
-/// 13. Post-inference instance resolution
-/// 14. Impl method type-checking
-/// 15. Assemble TypedModule
-pub(crate) fn infer_module_inner(
+/// Extracted from `infer_module_inner` so its locals are deallocated before the
+/// SCC function inference phase, reducing peak stack usage.
+fn process_traits_and_deriving(
+    state: &mut ModuleInferenceState,
     module: &Module,
-    cache: &mut HashMap<String, TypedModule>,
-    parsed_modules: &HashMap<String, &Module>,
-    module_path: Option<String>,
+    cache: &HashMap<String, TypedModule>,
+    module_path: &Option<String>,
+    is_prelude_tree: bool,
     prelude_tree_paths: &HashSet<String>,
-) -> Result<TypedModule, SpannedTypeError> {
-    let is_core_module = module_path.as_ref().is_some_and(|p| p.starts_with("core/"));
-    let is_prelude_tree = module_path.as_ref()
-        .is_some_and(|p| prelude_tree_paths.contains(p));
-
-    let mut state = ModuleInferenceState::new(is_core_module);
-
-    let synthetic_prelude_import = state.build_synthetic_prelude_import(
-        is_prelude_tree,
-        cache,
-        parsed_modules,
-    );
-
-    state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;
-    reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let (extern_fns, extern_java_types) = state.process_local_externs(module)?;
-    state.cleanup_prelude_shadows(module);
-    state.preregister_type_names(module);
-    let constructor_schemes = state.process_local_type_decls(module)?;
-
-    // --- Phases 12-21: trait/impl/deriving/SCC inference (inline for M17-T3) ---
-
+    is_core_module: bool,
+) -> Result<
+    (
+        TraitRegistry,
+        Vec<ExportedTraitDef>,
+        Vec<InstanceDefInfo>,
+        HashMap<String, TraitId>,
+    ),
+    SpannedTypeError,
+> {
     let mut trait_registry = TraitRegistry::new();
 
     // Structural instance lookup: for each type/trait in scope, look up instances
@@ -2297,7 +2310,6 @@ pub(crate) fn infer_module_inner(
         }
 
         // Prelude-tree modules need instances from all already-compiled siblings
-        // (e.g. core/vec needs Sub[Int], Ord[Int] from core/int via core/sub, core/ord)
         if is_prelude_tree {
             for path in prelude_tree_paths {
                 source_modules.insert(path.as_str());
@@ -2305,8 +2317,8 @@ pub(crate) fn infer_module_inner(
         }
 
         let mut seen_instances: HashSet<(String, Type)> = HashSet::new();
-        for module_path in &source_modules {
-            if let Some(cached_module) = cache.get(*module_path) {
+        for mod_path in &source_modules {
+            if let Some(cached_module) = cache.get(*mod_path) {
                 for inst in &cached_module.instance_defs {
                     let key = (inst.trait_name.clone(), inst.target_type.clone());
                     if seen_instances.insert(key) {
@@ -2324,7 +2336,6 @@ pub(crate) fn infer_module_inner(
                             span: (0, 0),
                             is_builtin: false,
                         };
-                        // A-T14: silently ignores duplicate imported instances; should be an error
                         let _ = trait_registry.register_instance(instance);
                     }
                 }
@@ -2370,7 +2381,7 @@ pub(crate) fn infer_module_inner(
             .expect("imported trait should not already be registered (checked above)");
     }
 
-    // Second pass: process DefTrait declarations
+    // Process DefTrait declarations
     let mut exported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
     for decl in &module.decls {
         if let Decl::DefTrait {
@@ -2382,7 +2393,6 @@ pub(crate) fn infer_module_inner(
             span,
         } = decl
         {
-            // Error if this trait conflicts with an imported trait
             if trait_registry.lookup_trait(name).is_some() {
                 return Err(spanned(
                     TypeError::DuplicateType { name: name.clone() },
@@ -2396,7 +2406,6 @@ pub(crate) fn infer_module_inner(
             type_param_map.insert(type_param.name.clone(), tv_id);
             type_param_arity.insert(type_param.name.clone(), type_param.arity);
 
-            // For HK trait methods, use explicit type_params from the method declaration
             let mut trait_methods = Vec::new();
             let mut exported_methods = Vec::new();
             for method in methods {
@@ -2444,7 +2453,6 @@ pub(crate) fn infer_module_inner(
                     Type::Var(state.gen.fresh())
                 };
 
-                // Bind the method as a polymorphic function: forall tv_id, method_tvs. fn(params) -> ret
                 let fn_ty = Type::Fn(param_types.clone(), Box::new(return_type.clone()));
                 let mut all_vars = vec![tv_id];
                 all_vars.extend_from_slice(&method_tv_ids);
@@ -2494,9 +2502,8 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Deriving pass: process DefType declarations with `deriving` clauses
+    // Deriving pass
     let mut derived_instance_defs: Vec<InstanceDefInfo> = Vec::new();
-
     for decl in &module.decls {
         if let Decl::DefType(type_decl) = decl {
             if type_decl.deriving.is_empty() {
@@ -2516,7 +2523,6 @@ pub(crate) fn infer_module_inner(
                     ));
                 }
 
-                // Collect all field types that need the trait
                 let field_types: Vec<&Type> = match &type_info.kind {
                     crate::type_registry::TypeKind::Record { fields } => {
                         fields.iter().map(|(_, ty)| ty).collect()
@@ -2539,7 +2545,6 @@ pub(crate) fn infer_module_inner(
                 let mut derived_constraints: Vec<TypeConstraint> = Vec::new();
                 let mut visited_constraints: HashSet<(String, String)> = HashSet::new();
 
-                // Validate that all field types have instances for this trait
                 for ft in &field_types {
                     if !collect_derived_constraints_for_type(
                         &trait_registry,
@@ -2560,17 +2565,14 @@ pub(crate) fn infer_module_inner(
                     }
                 }
 
-                // Build the target type
                 let type_args: Vec<Type> = type_info
                     .type_param_vars
                     .iter()
                     .map(|&v| Type::Var(v))
                     .collect();
                 let target_type = Type::Named(type_decl.name.clone(), type_args);
-                // Parameterized types keep head name only; canonical name is for concrete types
                 let target_type_name = type_decl.name.clone();
 
-                // Register the instance
                 let method_name = match trait_name.as_str() {
                     "Eq" => "eq",
                     "Show" => "show",
@@ -2592,9 +2594,7 @@ pub(crate) fn infer_module_inner(
                     .register_instance(instance)
                     .map_err(|e| spanned(e, type_decl.span))?;
 
-                // Synthesize the method body
                 let syn_span: Span = (0, 0);
-
                 let trait_id_for_synth = trait_registry.lookup_trait(trait_name)
                     .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()));
                 let (body, fn_ty) = match trait_name.as_str() {
@@ -2652,7 +2652,7 @@ pub(crate) fn infer_module_inner(
         })
         .collect();
 
-    // Third pass: process DefImpl declarations
+    // Process DefImpl declarations (register instances)
     for decl in &module.decls {
         if let Decl::DefImpl {
             trait_name,
@@ -2664,12 +2664,9 @@ pub(crate) fn infer_module_inner(
             ..
         } = decl
         {
-            // Validate wildcards in the impl target
             let wildcard_count = validate_impl_wildcards(target_type)
                 .map_err(|e| spanned(e, *span))?;
 
-            // Build type_param_map: use explicit type_params if provided,
-            // otherwise collect free vars from the target type
             let type_param_map: HashMap<String, TypeVarId> = if !type_params.is_empty() {
                 type_params
                     .iter()
@@ -2688,7 +2685,6 @@ pub(crate) fn infer_module_inner(
             };
             let type_param_arity: HashMap<String, usize> = HashMap::new();
 
-            // Resolve the target type, handling wildcards
             let resolved_target = if wildcard_count > 0 {
                 resolve_impl_target(
                     target_type,
@@ -2710,7 +2706,6 @@ pub(crate) fn infer_module_inner(
                     .map_err(|e| spanned(e, *span))?
             };
 
-            // Orphan check: type must be known, and either the type or the trait must be locally defined
             let target_name = match &resolved_target {
                 Type::Named(name, _) => {
                     if state.registry.lookup_type(name).is_none() {
@@ -2739,8 +2734,7 @@ pub(crate) fn infer_module_inner(
                 Type::Float => "Float".to_string(),
                 Type::Bool => "Bool".to_string(),
                 Type::String => "String".to_string(),
-                Type::Fn(params, _) => {
-                    // Function types are unowned (like primitives) — impl must live with the trait
+                Type::Fn(_params, _) => {
                     if !local_trait_names.contains(trait_name) {
                         return Err(spanned(
                             TypeError::OrphanInstance {
@@ -2750,7 +2744,6 @@ pub(crate) fn infer_module_inner(
                             *span,
                         ));
                     }
-                    // Use user-written var names if available, otherwise renumber
                     if type_param_map.is_empty() {
                         format!("{}", resolved_target.renumber_for_display())
                     } else {
@@ -2770,7 +2763,6 @@ pub(crate) fn infer_module_inner(
                 }
             };
 
-            // Format the full target type (including args) for use in error messages
             let target_display_name = if type_param_map.is_empty() {
                 format!("{}", resolved_target.renumber_for_display())
             } else {
@@ -2779,7 +2771,6 @@ pub(crate) fn infer_module_inner(
                 crate::types::format_type_with_var_map(&resolved_target, &names)
             };
 
-            // Validate trait names in where-clause constraints
             for constraint in type_constraints {
                 if constraint.trait_name != "shared" {
                     if trait_registry.lookup_trait(&constraint.trait_name).is_none() {
@@ -2793,12 +2784,10 @@ pub(crate) fn infer_module_inner(
                 }
             }
 
-            // Kind-arity check: verify the impl target has the right arity for the trait
             if let Some(trait_info) = trait_registry.lookup_trait(trait_name) {
                 let expected_arity = trait_info.type_var_arity;
                 if expected_arity > 0 {
                     if wildcard_count > 0 {
-                        // With wildcards: wildcard_count must equal trait arity
                         if wildcard_count != expected_arity {
                             return Err(spanned(
                                 TypeError::KindMismatch {
@@ -2810,7 +2799,6 @@ pub(crate) fn infer_module_inner(
                             ));
                         }
                     } else {
-                        // Without wildcards: bare constructor path (existing logic)
                         let actual_arity = state.registry.expected_arity(&target_name).unwrap_or(0);
                         if actual_arity != expected_arity {
                             return Err(spanned(
@@ -2868,7 +2856,6 @@ pub(crate) fn infer_module_inner(
                 is_builtin: false,
             };
 
-            // Superclass check before registering
             trait_registry
                 .check_superclasses(&instance)
                 .map_err(|e| spanned(e, *span))?;
@@ -2879,13 +2866,11 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Collect the mapping of trait method names → trait ids for post-inference resolution
     let trait_method_map: HashMap<String, TraitId> =
         trait_registry.trait_method_names().into_iter().collect();
 
-    // Check for top-level def names conflicting with ANY trait method names (including built-ins)
+    // Check for top-level def names conflicting with trait method names
     {
-        // Determine if the module uses traits (has DefTrait, DefImpl, or deriving)
         let has_trait_usage = module
             .decls
             .iter()
@@ -2898,7 +2883,6 @@ pub(crate) fn infer_module_inner(
                 }
             });
 
-        // First pass: check user-defined traits (with secondary span)
         let mut user_trait_methods: HashMap<String, (String, Span)> = HashMap::new();
         for decl in &module.decls {
             if let Decl::DefTrait { name, methods, .. } = decl {
@@ -2922,8 +2906,6 @@ pub(crate) fn infer_module_inner(
                         var_names: None,
                     });
                 }
-                // Second pass: check built-in traits (no secondary span)
-                // Only check when module uses traits (has instances, trait defs, or deriving)
                 if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
                     if let Some(trait_id) = trait_method_map.get(&f.name) {
                         return Err(SpannedTypeError {
@@ -2959,7 +2941,30 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Collect DefFn declarations (includes impl method bodies for type checking)
+    Ok((trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map))
+}
+
+/// Phase: SCC-based function body inference.
+/// Returns (fn_decls, result_schemes, fn_bodies, fn_constraint_requirements, shared_type_vars).
+///
+/// Extracted from `infer_module_inner` so that earlier phase locals are deallocated
+/// before the deep `infer_expr_inner` recursion.
+fn infer_function_bodies<'a>(
+    state: &mut ModuleInferenceState,
+    module: &'a Module,
+    extern_fns: &[ExternFnInfo],
+    trait_registry: &TraitRegistry,
+    trait_method_map: &HashMap<String, TraitId>,
+) -> Result<
+    (
+        Vec<&'a krypton_parser::ast::FnDecl>,
+        Vec<Option<TypeScheme>>,
+        Vec<Option<TypedExpr>>,
+        HashMap<String, Vec<(String, TypeVarId)>>,
+        HashMap<String, HashSet<String>>,
+    ),
+    SpannedTypeError,
+> {
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
         .iter()
@@ -2969,29 +2974,22 @@ pub(crate) fn infer_module_inner(
         })
         .collect();
 
-    // Build dependency graph and compute SCCs in topological order
     let adj = scc::build_dependency_graph(&fn_decls);
     let sccs = scc::tarjan_scc(&adj);
 
-    // Build extern function name set for trait_dict validation
     let extern_fn_names: HashSet<String> = extern_fns
         .iter()
         .map(|ef| ef.name.clone())
         .chain(state.imported_extern_fns.iter().map(|ef| ef.name.clone()))
         .collect();
 
-    // Store results indexed by declaration order
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
     let mut fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>> = HashMap::new();
     let mut shared_type_vars: HashMap<String, HashSet<String>> = HashMap::new();
-
-    // Save type_param_maps so we can attach user names to generalized schemes later
     let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
 
-    // Process each SCC in topological order (dependencies first)
     for component in &sccs {
-        // Bind each name in the SCC to a fresh type variable (monomorphic within SCC)
         let mut pre_bound: Vec<(usize, Type)> = Vec::new();
         for &idx in component {
             let tv = Type::Var(state.gen.fresh());
@@ -2999,16 +2997,13 @@ pub(crate) fn infer_module_inner(
             pre_bound.push((idx, tv));
         }
 
-        // Infer all bodies in the SCC
         for &(idx, ref tv) in &pre_bound {
             let decl = fn_decls[idx];
             state.env.push_scope();
 
-            // Build type_param_map from explicit type parameters
             let (type_param_map, type_param_arity) =
                 build_type_param_maps(&decl.type_params, &mut state.gen);
             saved_type_param_maps.insert(idx, type_param_map.clone());
-            // Collect shared type vars and filter them out of trait constraints
             let mut shared_tv_names: HashSet<String> = HashSet::new();
             if !decl.constraints.is_empty() {
                 for constraint in &decl.constraints {
@@ -3017,7 +3012,6 @@ pub(crate) fn infer_module_inner(
                     }
                 }
 
-                // Validate: ~a param where a: shared is contradictory
                 for p in &decl.params {
                     if let Some(TypeExpr::Own { inner, .. }) = &p.ty {
                         if let TypeExpr::Var { name, .. } = inner.as_ref() {
@@ -3085,7 +3079,6 @@ pub(crate) fn infer_module_inner(
                 param_types.push(ptv.clone());
                 state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
             }
-            // Set fn_return_type for ? operator support
             let prev_fn_return_type = state.env.fn_return_type.take();
             if let Some(ref ret_ty_expr) = decl.return_type {
                 let resolved_ret =
@@ -3123,7 +3116,7 @@ pub(crate) fn infer_module_inner(
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
-                    trait_method_map: &trait_method_map,
+                    trait_method_map,
                     self_type: None,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
@@ -3143,7 +3136,6 @@ pub(crate) fn infer_module_inner(
             }).collect();
             let body_ty = state.subst.apply(&body_typed.ty);
 
-            // Enforce return type annotation if present
             let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
                 let annotated_ret =
                     type_registry::resolve_type_expr(
@@ -3163,23 +3155,16 @@ pub(crate) fn infer_module_inner(
             };
 
             let fn_ty = Type::Fn(param_types, Box::new(ret_ty.clone()));
-            // Use join_types to reconcile the inferred fn type with the pre-bound SCC type.
-            // This is not a value flow — it's two views of the same function that may differ
-            // in Own wrappers (e.g. body infers Int, recursive call bound ~Int from literals).
             crate::unify::join_types(&fn_ty, tv, &mut state.subst)
                 .map_err(|e| spanned(e, decl.span))?;
 
             fn_bodies[idx] = Some(body_typed);
         }
 
-        // Generalize against an empty env: all env bindings are either fully-quantified
-        // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
-        // generalized. This must change if nested let-polymorphism is added.
         let empty_env = TypeEnv::new();
         for &(idx, ref tv) in &pre_bound {
             let final_ty = state.subst.apply(tv);
             let mut scheme = generalize(&final_ty, &empty_env, &state.subst);
-            // Attach user-written type parameter names to the scheme
             if let Some(tpm) = saved_type_param_maps.get(&idx) {
                 let scheme_var_set: HashSet<TypeVarId> = scheme.vars.iter().copied().collect();
                 for (name, &original_id) in tpm {
@@ -3200,9 +3185,7 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Normalize fn_constraint_requirements: apply the substitution to TypeVarIds so they
-    // match the TypeVarIds in the generalized type schemes. During inference, unification
-    // may map the original type_param_map TypeVarIds to different variables.
+    // Normalize fn_constraint_requirements
     for requirements in fn_constraint_requirements.values_mut() {
         for (_, type_var) in requirements.iter_mut() {
             let resolved = state.subst.apply(&Type::Var(*type_var));
@@ -3212,15 +3195,14 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Post-inference instance resolution: check that all trait method calls have instances
-    // and check cross-module constraints (e.g., imported `println` requires Show)
+    // Post-inference instance resolution
     if !trait_method_map.is_empty() || !state.imports.imported_fn_constraints.is_empty() {
         for body in fn_bodies.iter() {
             if let Some(body) = body {
                 check_trait_instances(
                     body,
-                    &trait_method_map,
-                    &trait_registry,
+                    trait_method_map,
+                    trait_registry,
                     &state.subst,
                     &state.imports.imported_fn_constraints,
                 )?;
@@ -3228,7 +3210,20 @@ pub(crate) fn infer_module_inner(
         }
     }
 
-    // Type-check impl method bodies and store on InstanceDefInfo
+    Ok((fn_decls, result_schemes, fn_bodies, fn_constraint_requirements, shared_type_vars))
+}
+
+/// Phase: Type-check impl method bodies and produce InstanceDefInfo.
+///
+/// Extracted from `infer_module_inner` to reduce stack frame size.
+fn typecheck_impl_methods(
+    state: &mut ModuleInferenceState,
+    module: &Module,
+    module_path: &Option<String>,
+    trait_registry: &TraitRegistry,
+    trait_method_map: &HashMap<String, TraitId>,
+    extern_fns: &[ExternFnInfo],
+) -> Result<Vec<InstanceDefInfo>, SpannedTypeError> {
     let mut instance_defs: Vec<InstanceDefInfo> = Vec::new();
 
     for decl in &module.decls {
@@ -3240,17 +3235,12 @@ pub(crate) fn infer_module_inner(
             ..
         } = decl
         {
-            // Look up the trait and instance
             let trait_info = trait_registry.lookup_trait(trait_name).unwrap();
             let tv_id = trait_info.type_var_id;
 
-            // Find the registered instance to get the resolved target type
             let instance = trait_registry
                 .find_instance_by_trait_and_span(trait_name, *span)
                 .unwrap();
-            // For HKT partial application, strip anonymous type var args from the
-            // target type so it acts as a partial constructor for substitution.
-            // e.g., Named("Result", [Var(e), Var(anon)]) → Named("Result", [Var(e)])
             let resolved_target = if trait_info.type_var_arity > 0 {
                 strip_anon_type_args(&instance.target_type, &instance.type_var_ids)
             } else {
@@ -3260,21 +3250,18 @@ pub(crate) fn infer_module_inner(
 
             let mut instance_methods = Vec::new();
 
-            // Detect if all method bodies are __krypton_intrinsic() calls
             let all_intrinsic = methods.iter().all(|m| {
                 matches!(&*m.body, Expr::App { func, args, .. }
                     if args.is_empty() && matches!(func.as_ref(), Expr::Var { name, .. } if name == "__krypton_intrinsic"))
             });
 
             for method in methods {
-                // Find the trait method signature
                 let trait_method = trait_info
                     .methods
                     .iter()
                     .find(|m| m.name == method.name)
                     .unwrap();
 
-                // Substitute trait type var → concrete target type
                 let concrete_param_types: Vec<Type> = trait_method
                     .param_types
                     .iter()
@@ -3283,12 +3270,9 @@ pub(crate) fn infer_module_inner(
                 let _concrete_ret_type =
                     substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
 
-                // Build type_param_map for impl method annotations
-                // Start with impl-level type vars (e.g., `a` from `impl Trait[Vec[a]]`)
                 let mut impl_method_tpm: HashMap<String, TypeVarId> =
                     instance.type_var_ids.clone();
                 let mut impl_method_tpa = HashMap::new();
-                // Then add method-level type params (for HKT annotations like `Box[a]`)
                 for tv_param in &method.type_params {
                     if !impl_method_tpm.contains_key(&tv_param.name) {
                         impl_method_tpm.insert(tv_param.name.clone(), state.gen.fresh());
@@ -3296,7 +3280,6 @@ pub(crate) fn infer_module_inner(
                     }
                 }
 
-                // Check parameter arity matches trait signature
                 if method.params.len() != concrete_param_types.len() {
                     return Err(spanned(
                         TypeError::WrongArity {
@@ -3307,7 +3290,6 @@ pub(crate) fn infer_module_inner(
                     ));
                 }
 
-                // Validate user-provided type annotations against the trait signature
                 for (i, p) in method.params.iter().enumerate() {
                     if let Some(ref ty_expr) = p.ty {
                         if i < concrete_param_types.len() {
@@ -3351,12 +3333,10 @@ pub(crate) fn infer_module_inner(
                         })?;
                 }
 
-                // For intrinsic impls, skip body type-checking (bridge bytecode handles these)
                 if all_intrinsic {
                     continue;
                 }
 
-                // Type-check the method body
                 state.env.push_scope();
                 let mut param_types_inferred = Vec::new();
                 for (i, p) in method.params.iter().enumerate() {
@@ -3368,7 +3348,6 @@ pub(crate) fn infer_module_inner(
                     param_types_inferred.push(ptv.clone());
                     state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
                 }
-                // Set fn_return_type for ? operator support
                 let prev_fn_return_type = state.env.fn_return_type.take();
                 let concrete_ret_type =
                     substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
@@ -3391,7 +3370,7 @@ pub(crate) fn infer_module_inner(
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &[],
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
-                        trait_method_map: &trait_method_map,
+                        trait_method_map,
                         self_type: Some(resolved_target.clone()),
                     };
                     ctx.infer_expr_inner(&method.body, None)?
@@ -3408,7 +3387,6 @@ pub(crate) fn infer_module_inner(
                     .collect();
                 let final_ret_type = state.subst.apply(&body_typed.ty);
 
-                // Unify inferred return type against trait's expected return type
                 let expected_ret_type = state.subst.apply(
                     &substitute_type_var(&trait_method.return_type, tv_id, &resolved_target),
                 );
@@ -3453,6 +3431,89 @@ pub(crate) fn infer_module_inner(
             });
         }
     }
+
+    Ok(instance_defs)
+}
+
+/// Internal per-module inference with pre-resolved module cache.
+///
+/// The module graph has already been resolved and toposorted by `infer_module`.
+/// Import declarations look up parsed ASTs from `parsed_modules` and typed
+/// results from `cache` — no recursive resolution or cycle detection needed.
+///
+/// Pipeline phases:
+///  1. Initialize state (env, registry, intrinsics)
+///  2. Build synthetic prelude import
+///  3. Process imports (types, fns, traits, re-exports)
+///  4. Reserve type var generator past imported schemes
+///  5. Process local extern declarations
+///  6. Clean up prelude shadows
+///  7. Pre-register local type names
+///  8. Process local type declarations
+///  9. Register traits (imported + local)
+/// 10. Process deriving declarations
+/// 11. Process impl blocks
+/// 12. SCC-based function inference
+/// 13. Post-inference instance resolution
+/// 14. Impl method type-checking
+/// 15. Assemble TypedModule
+pub(crate) fn infer_module_inner(
+    module: &Module,
+    cache: &mut HashMap<String, TypedModule>,
+    parsed_modules: &HashMap<String, &Module>,
+    module_path: Option<String>,
+    prelude_tree_paths: &HashSet<String>,
+) -> Result<TypedModule, SpannedTypeError> {
+    let is_core_module = module_path.as_ref().is_some_and(|p| p.starts_with("core/"));
+    let is_prelude_tree = module_path.as_ref()
+        .is_some_and(|p| prelude_tree_paths.contains(p));
+
+    let mut state = ModuleInferenceState::new(is_core_module);
+
+    let synthetic_prelude_import = state.build_synthetic_prelude_import(
+        is_prelude_tree,
+        cache,
+        parsed_modules,
+    );
+
+    state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;
+    reserve_gen_for_env_schemes(&state.env, &mut state.gen);
+    let (extern_fns, extern_java_types) = state.process_local_externs(module)?;
+    state.cleanup_prelude_shadows(module);
+    state.preregister_type_names(module);
+    let constructor_schemes = state.process_local_type_decls(module)?;
+
+    // Phase: trait registration, deriving, impl registration
+    let (trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map) =
+        process_traits_and_deriving(
+            &mut state,
+            module,
+            cache,
+            &module_path,
+            is_prelude_tree,
+            prelude_tree_paths,
+            is_core_module,
+        )?;
+
+    // Phase: SCC-based function inference
+    let (fn_decls, result_schemes, fn_bodies, fn_constraint_requirements, shared_type_vars) =
+        infer_function_bodies(
+            &mut state,
+            module,
+            &extern_fns,
+            &trait_registry,
+            &trait_method_map,
+        )?;
+
+    // Phase: impl method type-checking
+    let instance_defs = typecheck_impl_methods(
+        &mut state,
+        module,
+        &module_path,
+        &trait_registry,
+        &trait_method_map,
+        &extern_fns,
+    )?;
 
     state.assemble_typed_module(
         module,

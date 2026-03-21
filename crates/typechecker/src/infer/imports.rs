@@ -362,7 +362,41 @@ impl ModuleInferenceState {
                     .unwrap_or(Visibility::Opaque);
                 if self.registry.lookup_type(reex_type_name).is_none() {
                     let original_path = cached.type_provenance.get(reex_type_name);
-                    if let Some(orig_path) = original_path {
+                    // Try pre-resolved export from the original source module's cache
+                    let export_info = original_path.as_ref().and_then(|orig_path| {
+                        cache.get(orig_path.as_str())
+                            .and_then(|orig_cached| orig_cached.exported_type_infos.get(reex_type_name.as_str()))
+                            .cloned()
+                    });
+                    if let Some(ref export) = export_info {
+                        let orig_path = original_path.unwrap();
+                        self.registry.register_name(&export.name);
+                        let constructors = type_registry::register_type_from_export(
+                            export,
+                            &mut self.registry,
+                            &mut self.gen,
+                        )
+                        .map_err(|e| spanned(e, span))?;
+                        if effective_type_name != *reex_type_name {
+                            self.registry
+                                .register_type_alias(&effective_type_name, reex_type_name)
+                                .map_err(|e| spanned(e, span))?;
+                        }
+                        if path == "prelude" {
+                            self.registry.set_prelude(&export.name);
+                        }
+                        if matches!(original_vis, Visibility::Pub) {
+                            for (cname, scheme) in &constructors {
+                                self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), None, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                            }
+                        }
+                        self.imports.bind_type_info(
+                            effective_type_name.clone(),
+                            orig_path.clone(),
+                            original_vis.clone(),
+                        );
+                        self.type_provenance.insert(export.name.clone(), orig_path.clone());
+                    } else if let Some(orig_path) = original_path {
                         if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
                             if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name)
                             {
@@ -426,10 +460,21 @@ impl ModuleInferenceState {
                         ));
                     }
                     if self.registry.lookup_type(&td.name).is_none() {
-                        self.registry.register_name(&td.name);
-                        let constructors =
+                        // Try pre-resolved export from the source module's cache
+                        let export_info = cached.exported_type_infos.get(td.name.as_str()).cloned();
+                        let constructors = if let Some(ref export) = export_info {
+                            self.registry.register_name(&export.name);
+                            type_registry::register_type_from_export(
+                                export,
+                                &mut self.registry,
+                                &mut self.gen,
+                            )
+                            .map_err(|e| spanned(e, span))?
+                        } else {
+                            self.registry.register_name(&td.name);
                             type_registry::process_type_decl(td, &mut self.registry, &mut self.gen)
-                                .map_err(|e| spanned(e, span))?;
+                                .map_err(|e| spanned(e, span))?
+                        };
                         if effective_type_name != td.name {
                             self.registry
                                 .register_type_alias(&effective_type_name, &td.name)
@@ -460,10 +505,20 @@ impl ModuleInferenceState {
                     // Branch B: import_all — mark user-visible
                     self.registry.mark_user_visible(&td.name);
                     if self.registry.lookup_type(&td.name).is_none() {
-                        self.registry.register_name(&td.name);
-                        let constructors =
+                        let export_info = cached.exported_type_infos.get(td.name.as_str()).cloned();
+                        let constructors = if let Some(ref export) = export_info {
+                            self.registry.register_name(&export.name);
+                            type_registry::register_type_from_export(
+                                export,
+                                &mut self.registry,
+                                &mut self.gen,
+                            )
+                            .map_err(|e| spanned(e, span))?
+                        } else {
+                            self.registry.register_name(&td.name);
                             type_registry::process_type_decl(td, &mut self.registry, &mut self.gen)
-                                .map_err(|e| spanned(e, span))?;
+                                .map_err(|e| spanned(e, span))?
+                        };
                         if path == "prelude" {
                             self.registry.set_prelude(&td.name);
                         }
@@ -484,10 +539,20 @@ impl ModuleInferenceState {
                         }
                     }
                 } else if self.registry.lookup_type(&td.name).is_none() {
-                    self.registry.register_name(&td.name);
-                    let constructors =
+                    let export_info = cached.exported_type_infos.get(td.name.as_str()).cloned();
+                    let constructors = if let Some(ref export) = export_info {
+                        self.registry.register_name(&export.name);
+                        type_registry::register_type_from_export(
+                            export,
+                            &mut self.registry,
+                            &mut self.gen,
+                        )
+                        .map_err(|e| spanned(e, span))?
+                    } else {
+                        self.registry.register_name(&td.name);
                         type_registry::process_type_decl(td, &mut self.registry, &mut self.gen)
-                            .map_err(|e| spanned(e, span))?;
+                            .map_err(|e| spanned(e, span))?
+                    };
                     for (cname, scheme) in constructors {
                         self.env.bind(cname, scheme);
                     }

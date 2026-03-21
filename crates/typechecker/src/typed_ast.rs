@@ -277,6 +277,30 @@ pub struct ExternFnInfo {
     pub return_type: Type,
 }
 
+/// Pre-resolved type registration for an exported type.
+/// Carries fully-resolved `Type` values so importers don't need to re-resolve
+/// from raw AST (which would require transitive type dependencies in the consumer's registry).
+#[derive(Clone, Debug)]
+pub struct ExportedTypeInfo {
+    pub name: String,
+    pub type_params: Vec<String>,
+    /// Original TypeVarIds corresponding to type_params (1:1 mapping).
+    pub type_param_vars: Vec<TypeVarId>,
+    pub kind: ExportedTypeKind,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExportedTypeKind {
+    Record { fields: Vec<(String, Type)> },
+    Sum { variants: Vec<ExportedVariantInfo> },
+}
+
+#[derive(Clone, Debug)]
+pub struct ExportedVariantInfo {
+    pub name: String,
+    pub fields: Vec<Type>,
+}
+
 pub struct TypedModule {
     pub module_path: Option<String>,
     pub fn_types: Vec<FnTypeEntry>,
@@ -313,6 +337,9 @@ pub struct TypedModule {
     pub reexported_type_visibility: HashMap<String, Visibility>,
     /// Trait definitions exported for cross-module use.
     pub exported_trait_defs: Vec<ExportedTraitDef>,
+    /// Pre-resolved type registrations for exported types.
+    /// Used by importers to register types without re-resolving from AST.
+    pub exported_type_infos: HashMap<String, ExportedTypeInfo>,
     /// Auto-close info for Resource bindings.
     pub auto_close: AutoCloseInfo,
     /// Pre-computed per-param qualifier info for exported functions.

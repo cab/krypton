@@ -1,6 +1,5 @@
 # expect: output "found"
-import core/map.{Map}
-import core/list.{List, Cons, Nil}
+import core/list.{Cons, Nil}
 import core/option.{Some, None}
 import core/json.{json_object, json_get, Json, JStr, JNum}
 fun main() = {

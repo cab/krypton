@@ -1,6 +1,5 @@
 # expect: output {"a":1}
-import core/map.{Map}
-import core/list.{List, Cons, Nil}
+import core/list.{Cons, Nil}
 import core/json.{json_to_string, json_object, Json, JNum}
 fun main() = {
   let j = json_object(Cons(("a", JNum(1.0)), Nil))

@@ -1,6 +1,5 @@
 # expect: output "JObj"
-import core/map.{Map}
-import core/list.{List, Cons, Nil}
+import core/list.{Cons, Nil}
 import core/result.{Ok, Err}
 import core/json.{parse_json, json_to_string, json_object, Json, JObj, JNum}
 fun main() = {

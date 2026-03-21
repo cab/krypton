@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::{TypeDeclKind, TypeExpr};
 
+use crate::typed_ast::{ExportedTypeInfo, ExportedTypeKind};
 use crate::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::TypeError;
 
@@ -456,4 +457,134 @@ pub fn process_type_decl(
     })?;
 
     Ok(constructors)
+}
+
+/// Register a type from a pre-resolved `ExportedTypeInfo` (from a source module's
+/// `exported_type_infos`). This avoids re-resolving variant field types from raw AST,
+/// which would require transitive type dependencies in the consumer's registry.
+///
+/// Creates fresh TypeVarIds and substitutes the old ones in the pre-resolved field types.
+pub fn register_type_from_export(
+    info: &ExportedTypeInfo,
+    registry: &mut TypeRegistry,
+    gen: &mut TypeVarGen,
+) -> Result<Vec<(String, TypeScheme)>, TypeError> {
+    // Create fresh type vars for type params and build old→new mapping
+    let mut fresh_vars: Vec<TypeVarId> = Vec::new();
+    let mut old_to_new: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+
+    for (i, _) in info.type_params.iter().enumerate() {
+        let fresh_id = gen.fresh();
+        fresh_vars.push(fresh_id);
+        if i < info.type_param_vars.len() {
+            old_to_new.insert(info.type_param_vars[i], fresh_id);
+        }
+    }
+
+    // Build the named type
+    let type_args: Vec<Type> = fresh_vars.iter().map(|&v| Type::Var(v)).collect();
+    let named_type = Type::Named(info.name.clone(), type_args);
+
+    let mut constructors: Vec<(String, TypeScheme)> = Vec::new();
+
+    let kind = match &info.kind {
+        ExportedTypeKind::Record { fields } => {
+            let resolved_fields: Vec<(String, Type)> = fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), remap_vars(ty, &old_to_new)))
+                .collect();
+
+            let field_types: Vec<Type> = resolved_fields.iter().map(|(_, t)| t.clone()).collect();
+            let ctor_ty = Type::Fn(field_types, Box::new(named_type.clone()));
+            constructors.push((
+                info.name.clone(),
+                TypeScheme {
+                    vars: fresh_vars.clone(),
+                    ty: ctor_ty,
+                    var_names: HashMap::new(),
+                },
+            ));
+
+            TypeKind::Record {
+                fields: resolved_fields,
+            }
+        }
+        ExportedTypeKind::Sum { variants } => {
+            let mut variant_infos = Vec::new();
+            for v in variants {
+                let resolved_fields: Vec<Type> = v
+                    .fields
+                    .iter()
+                    .map(|ty| remap_vars(ty, &old_to_new))
+                    .collect();
+
+                let ctor_ty = if resolved_fields.is_empty() {
+                    named_type.clone()
+                } else {
+                    Type::Fn(resolved_fields.clone(), Box::new(named_type.clone()))
+                };
+
+                constructors.push((
+                    v.name.clone(),
+                    TypeScheme {
+                        vars: fresh_vars.clone(),
+                        ty: ctor_ty,
+                        var_names: HashMap::new(),
+                    },
+                ));
+
+                variant_infos.push(VariantInfo {
+                    name: v.name.clone(),
+                    fields: resolved_fields,
+                });
+            }
+
+            TypeKind::Sum {
+                variants: variant_infos,
+            }
+        }
+    };
+
+    registry.register_type(TypeInfo {
+        name: info.name.clone(),
+        type_params: info.type_params.clone(),
+        type_param_vars: fresh_vars,
+        kind,
+        is_prelude: false,
+    })?;
+
+    Ok(constructors)
+}
+
+/// Remap TypeVarIds in a Type according to the given mapping.
+fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
+    match ty {
+        Type::Var(id) => {
+            if let Some(&new_id) = mapping.get(id) {
+                Type::Var(new_id)
+            } else {
+                ty.clone()
+            }
+        }
+        Type::Named(name, args) => {
+            Type::Named(name.clone(), args.iter().map(|a| remap_vars(a, mapping)).collect())
+        }
+        Type::Fn(params, ret) => {
+            Type::Fn(
+                params.iter().map(|p| remap_vars(p, mapping)).collect(),
+                Box::new(remap_vars(ret, mapping)),
+            )
+        }
+        Type::Tuple(elems) => {
+            Type::Tuple(elems.iter().map(|e| remap_vars(e, mapping)).collect())
+        }
+        Type::Own(inner) => Type::Own(Box::new(remap_vars(inner, mapping))),
+        Type::App(base, args) => {
+            Type::App(
+                Box::new(remap_vars(base, mapping)),
+                args.iter().map(|a| remap_vars(a, mapping)).collect(),
+            )
+        }
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit => ty.clone(),
+    }
 }
