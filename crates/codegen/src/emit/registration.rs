@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
 use krypton_typechecker::type_registry;
-use krypton_typechecker::types::{Type, TypeVarId};
+use krypton_typechecker::types::{self, Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 use ristretto_classfile::Method;
 
@@ -408,14 +408,14 @@ impl Compiler {
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
-                self.traits.parameterized_instances.insert(
-                    (trait_name.clone(), type_name.clone()),
-                    ParameterizedInstanceInfo {
+                self.traits.parameterized_instances
+                    .entry(trait_name.clone())
+                    .or_default()
+                    .push(ParameterizedInstanceInfo {
                         class_name: imported_instance.class_name.clone(),
                         target_type: imported_instance.target_type.clone(),
                         requirements: imported_instance.requirements.clone(),
-                    },
-                );
+                    });
             }
         }
         Ok(())
@@ -527,14 +527,24 @@ impl Compiler {
                 )?;
                 result_classes.push((instance_class_name.clone(), instance_bytes));
 
-                self.traits.parameterized_instances.insert(
-                    (instance_def.trait_name.clone(), instance_def.target_type_name.clone()),
-                    ParameterizedInstanceInfo {
-                        class_name: instance_class_name.clone(),
-                        target_type: instance_def.target_type.clone(),
-                        requirements: dict_requirements,
-                    },
-                );
+                let new_info = ParameterizedInstanceInfo {
+                    class_name: instance_class_name.clone(),
+                    target_type: instance_def.target_type.clone(),
+                    requirements: dict_requirements,
+                };
+                let entries = self.traits.parameterized_instances
+                    .entry(instance_def.trait_name.clone())
+                    .or_default();
+                // Local impls shadow imported impls with the same target type name
+                // (e.g. user-defined Option shadows prelude Option).
+                let canonical = types::type_to_canonical_name(&instance_def.target_type);
+                if let Some(pos) = entries.iter().position(|e| {
+                    types::type_to_canonical_name(&e.target_type) == canonical
+                }) {
+                    entries[pos] = new_info;
+                } else {
+                    entries.push(new_info);
+                }
             }
         }
         Ok(result_classes)

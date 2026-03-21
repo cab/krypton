@@ -72,9 +72,11 @@ impl TraitRegistry {
             if existing.trait_name == info.trait_name
                 && existing.target_type_name == info.target_type_name
             {
+                let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info.type_var_ids.iter()
+                    .map(|(name, &id)| (id, name.as_str())).collect();
                 return Err(TypeError::OrphanInstance {
                     trait_name: info.trait_name.clone(),
-                    ty: info.target_type_name.clone(),
+                    ty: crate::types::format_type_with_var_map(&info.target_type, &names),
                 });
             }
         }

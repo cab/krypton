@@ -2856,13 +2856,7 @@ pub(crate) fn infer_module_inner(
 
             let method_names: Vec<String> = methods.iter().map(|m| m.name.clone()).collect();
 
-            // Use canonical name for concrete types (distinct JVM artifacts),
-            // head name for parameterized types (used as HashMap key for dispatch).
-            let target_type_name = if type_param_map.is_empty() && wildcard_count == 0 {
-                type_to_canonical_name(&resolved_target)
-            } else {
-                target_name.clone()
-            };
+            let target_type_name = type_to_canonical_name(&resolved_target);
             let instance = InstanceInfo {
                 trait_name: trait_name.clone(),
                 target_type: resolved_target,
@@ -3419,7 +3413,14 @@ pub(crate) fn infer_module_inner(
                     &substitute_type_var(&trait_method.return_type, tv_id, &resolved_target),
                 );
                 coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst)
-                    .map_err(|e| spanned(e, method.span))?;
+                    .map_err(|_| spanned_with_names(
+                        TypeError::Mismatch {
+                            expected: expected_ret_type.clone(),
+                            actual: final_ret_type.clone(),
+                        },
+                        method.span,
+                        &impl_method_tpm,
+                    ))?;
 
                 let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));
                 let scheme = TypeScheme {

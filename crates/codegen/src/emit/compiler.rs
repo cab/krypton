@@ -166,7 +166,7 @@ pub(super) struct TraitState {
     pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
     pub(super) dict_locals: HashMap<(String, TypeVarId), u16>,
-    pub(super) parameterized_instances: HashMap<(String, String), ParameterizedInstanceInfo>,
+    pub(super) parameterized_instances: HashMap<String, Vec<ParameterizedInstanceInfo>>,
 }
 
 impl TraitState {

@@ -1,0 +1,11 @@
+# expect: error E0302
+trait Test[a] {
+    fun test(x: a) -> String
+}
+impl[a] Test[(a) -> Int] {
+    fun test(x) = "first"
+}
+impl[b] Test[(b) -> Int] {
+    fun test(x) = "second"
+}
+fun main() = 0

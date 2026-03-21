@@ -1,0 +1,16 @@
+# expect: output "to-int\nto-bool"
+trait Convert[a] {
+    fun convert(x: a) -> String
+}
+impl[a] Convert[(a) -> Int] {
+    fun convert(x) = "to-int"
+}
+impl[a] Convert[(a) -> Bool] {
+    fun convert(x) = "to-bool"
+}
+fun f(x: String) -> Int = 0
+fun g(x: String) -> Bool = true
+fun main() = {
+    println(convert(f))
+    println(convert(g))
+}

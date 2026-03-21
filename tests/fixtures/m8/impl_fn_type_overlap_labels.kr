@@ -1,0 +1,11 @@
+# expect: error E0302
+trait Wrap[a] {
+    fun wrap(x: a) -> String
+}
+impl[myvar] Wrap[(myvar) -> Int] {
+    fun wrap(x) = "first"
+}
+impl[other] Wrap[(other) -> Int] {
+    fun wrap(x) = "second"
+}
+fun main() = 0

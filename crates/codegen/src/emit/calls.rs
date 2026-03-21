@@ -3,26 +3,10 @@
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
-use krypton_typechecker::types::{Type, TypeVarId};
+use krypton_typechecker::types::{self, Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo};
-
-/// Extract head type constructor name for parameterized instance lookup.
-fn head_type_name(ty: &Type) -> Result<String, CodegenError> {
-    match ty {
-        Type::Own(inner) => head_type_name(inner),
-        Type::Named(name, _) => Ok(name.clone()),
-        Type::Int => Ok("Int".to_string()),
-        Type::Float => Ok("Float".to_string()),
-        Type::Bool => Ok("Bool".to_string()),
-        Type::String => Ok("String".to_string()),
-        Type::Fn(params, _) => Ok(format!("Fun{}", params.len())),
-        other => Err(CodegenError::TypeError(format!(
-            "cannot extract head type name from {other:?}"
-        ))),
-    }
-}
 
 /// Resolved calling convention for a function application.
 pub(super) enum CallTarget {
@@ -765,7 +749,7 @@ impl Compiler {
         let lookup_type = ty.strip_own();
         // Try full type first (concrete instances), then head-only (HKT instances like Functor[Box])
         let singleton_key = (trait_name.to_string(), lookup_type.clone());
-        let head_key = (trait_name.to_string(), Type::Named(head_type_name(ty)?, vec![]));
+        let head_key = (trait_name.to_string(), Type::Named(types::head_type_name(ty), vec![]));
         if let Some(singleton) = self
             .traits
             .instance_singletons
@@ -779,11 +763,16 @@ impl Compiler {
             return Ok(());
         }
 
-        let head_name = head_type_name(ty)?;
         if let Some(instance_info) = self
             .traits
             .parameterized_instances
-            .get(&(trait_name.to_string(), head_name))
+            .get(trait_name)
+            .and_then(|instances| {
+                instances.iter().find(|inst| {
+                    let mut bindings = HashMap::new();
+                    Self::bind_type_vars(&inst.target_type, ty, &mut bindings)
+                })
+            })
             .cloned()
         {
             let inst_class = self.cp.add_class(&instance_info.class_name)?;
