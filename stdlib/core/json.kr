@@ -12,7 +12,7 @@ pub type Json = JNull | JBool(Bool) | JNum(Float) | JStr(String)
 extern "krypton.runtime.JsonRuntime" {
     fun staticParse(String) -> Object
     fun staticSerialize(Object) -> String
-    fun staticRawType(Object) -> String
+    fun staticRawType(Object) -> Int
     fun staticRawBool(Object) -> Bool
     fun staticRawNum(Object) -> Float
     fun staticRawStr(Object) -> String
@@ -45,11 +45,11 @@ fun entries_to_map(arr: Object, i: Int, n: Int) -> Map[String, Json] =
 
 fun from_java(raw: Object) -> Json = {
     let t = staticRawType(raw)
-    if t == "null" { JNull }
-    else if t == "bool" { JBool(staticRawBool(raw)) }
-    else if t == "num" { JNum(staticRawNum(raw)) }
-    else if t == "str" { JStr(staticRawStr(raw)) }
-    else if t == "arr" {
+    if t == 0 { JNull }
+    else if t == 1 { JBool(staticRawBool(raw)) }
+    else if t == 2 { JNum(staticRawNum(raw)) }
+    else if t == 3 { JStr(staticRawStr(raw)) }
+    else if t == 4 {
         let arr = staticRawArr(raw)
         JArr(arr_to_list(arr, 0, staticLength(arr)))
     }

@@ -14,76 +14,73 @@ public final class JsonRuntime {
 
     // ── Internal JSON representation ──────────────────────────────────
 
-    private static final class JavaJson {
-        final String type; // "null", "bool", "num", "str", "arr", "obj"
-        boolean boolVal;
-        double numVal;
-        String strVal;
-        ArrayList<JavaJson> arrVal;
-        LinkedHashMap<String, JavaJson> objVal;
-
-        private JavaJson(String type) { this.type = type; }
-
-        static JavaJson ofNull() { return new JavaJson("null"); }
-        static JavaJson ofBool(boolean v) { var j = new JavaJson("bool"); j.boolVal = v; return j; }
-        static JavaJson ofNum(double v) { var j = new JavaJson("num"); j.numVal = v; return j; }
-        static JavaJson ofStr(String v) { var j = new JavaJson("str"); j.strVal = v; return j; }
-        static JavaJson ofArr() { var j = new JavaJson("arr"); j.arrVal = new ArrayList<>(); return j; }
-        static JavaJson ofObj() { var j = new JavaJson("obj"); j.objVal = new LinkedHashMap<>(); return j; }
+    private sealed interface JavaJson {
+        record JNull() implements JavaJson {}
+        record JBool(boolean value) implements JavaJson {}
+        record JNum(double value) implements JavaJson {}
+        record JStr(String value) implements JavaJson {}
+        record JArr(ArrayList<JavaJson> elements) implements JavaJson {}
+        record JObj(LinkedHashMap<String, JavaJson> entries) implements JavaJson {}
+        JNull NULL_INSTANCE = new JNull();
     }
+
+    // ── Int tags for staticRawType ────────────────────────────────────
+
+    private static final long TAG_NULL = 0, TAG_BOOL = 1, TAG_NUM = 2,
+                               TAG_STR = 3, TAG_ARR = 4, TAG_OBJ = 5;
 
     // ── Jackson → JavaJson ────────────────────────────────────────────
 
     private static JavaJson fromNode(JsonNode node) {
-        if (node == null || node.isNull()) return JavaJson.ofNull();
-        if (node.isBoolean()) return JavaJson.ofBool(node.booleanValue());
-        if (node.isNumber()) return JavaJson.ofNum(node.doubleValue());
-        if (node.isTextual()) return JavaJson.ofStr(node.textValue());
+        if (node == null || node.isNull()) return JavaJson.NULL_INSTANCE;
+        if (node.isBoolean()) return new JavaJson.JBool(node.booleanValue());
+        if (node.isNumber()) return new JavaJson.JNum(node.doubleValue());
+        if (node.isTextual()) return new JavaJson.JStr(node.textValue());
         if (node.isArray()) {
-            var arr = JavaJson.ofArr();
-            for (JsonNode child : node) arr.arrVal.add(fromNode(child));
-            return arr;
+            var elements = new ArrayList<JavaJson>();
+            for (JsonNode child : node) elements.add(fromNode(child));
+            return new JavaJson.JArr(elements);
         }
         // object
-        var obj = JavaJson.ofObj();
+        var entries = new LinkedHashMap<String, JavaJson>();
         Iterator<Map.Entry<String, JsonNode>> it = node.fields();
         while (it.hasNext()) {
             var entry = it.next();
-            obj.objVal.put(entry.getKey(), fromNode(entry.getValue()));
+            entries.put(entry.getKey(), fromNode(entry.getValue()));
         }
-        return obj;
+        return new JavaJson.JObj(entries);
     }
 
     // ── JavaJson → JSON string ────────────────────────────────────────
 
     private static void writeJson(JavaJson j, StringBuilder sb) {
-        switch (j.type) {
-            case "null" -> sb.append("null");
-            case "bool" -> sb.append(j.boolVal);
-            case "num" -> {
-                if (j.numVal == Math.floor(j.numVal) && !Double.isInfinite(j.numVal)) {
-                    sb.append((long) j.numVal);
+        switch (j) {
+            case JavaJson.JNull n -> sb.append("null");
+            case JavaJson.JBool b -> sb.append(b.value());
+            case JavaJson.JNum n -> {
+                if (n.value() == Math.floor(n.value()) && !Double.isInfinite(n.value())) {
+                    sb.append((long) n.value());
                 } else {
-                    sb.append(j.numVal);
+                    sb.append(n.value());
                 }
             }
-            case "str" -> {
+            case JavaJson.JStr s -> {
                 sb.append('"');
-                sb.append(escapeString(j.strVal));
+                sb.append(escapeString(s.value()));
                 sb.append('"');
             }
-            case "arr" -> {
+            case JavaJson.JArr a -> {
                 sb.append('[');
-                for (int i = 0; i < j.arrVal.size(); i++) {
+                for (int i = 0; i < a.elements().size(); i++) {
                     if (i > 0) sb.append(',');
-                    writeJson(j.arrVal.get(i), sb);
+                    writeJson(a.elements().get(i), sb);
                 }
                 sb.append(']');
             }
-            case "obj" -> {
+            case JavaJson.JObj o -> {
                 sb.append('{');
                 boolean first = true;
-                for (var entry : j.objVal.entrySet()) {
+                for (var entry : o.entries().entrySet()) {
                     if (!first) sb.append(',');
                     sb.append('"');
                     sb.append(escapeString(entry.getKey()));
@@ -94,7 +91,6 @@ public final class JsonRuntime {
                 }
                 sb.append('}');
             }
-            default -> throw new KryptonPanic("unknown json type: " + j.type);
         }
     }
 
@@ -151,25 +147,32 @@ public final class JsonRuntime {
 
     // ── Inspect methods (for from_java conversion) ────────────────────
 
-    public static String staticRawType(Object j) {
-        return ((JavaJson) j).type;
+    public static long staticRawType(Object j) {
+        return switch ((JavaJson) j) {
+            case JavaJson.JNull n -> TAG_NULL;
+            case JavaJson.JBool b -> TAG_BOOL;
+            case JavaJson.JNum n -> TAG_NUM;
+            case JavaJson.JStr s -> TAG_STR;
+            case JavaJson.JArr a -> TAG_ARR;
+            case JavaJson.JObj o -> TAG_OBJ;
+        };
     }
 
     public static boolean staticRawBool(Object j) {
-        return ((JavaJson) j).boolVal;
+        return ((JavaJson.JBool) j).value();
     }
 
     public static double staticRawNum(Object j) {
-        return ((JavaJson) j).numVal;
+        return ((JavaJson.JNum) j).value();
     }
 
     public static String staticRawStr(Object j) {
-        return ((JavaJson) j).strVal;
+        return ((JavaJson.JStr) j).value();
     }
 
     // Returns KryptonArray of JavaJson elements
     public static Object staticRawArr(Object j) {
-        ArrayList<JavaJson> elements = ((JavaJson) j).arrVal;
+        ArrayList<JavaJson> elements = ((JavaJson.JArr) j).elements();
         KryptonArray arr = new KryptonArray(elements.size());
         for (int i = 0; i < elements.size(); i++) {
             arr.set(i, elements.get(i));
@@ -180,7 +183,7 @@ public final class JsonRuntime {
 
     // Returns KryptonArray of [key0, val0, key1, val1, ...]
     public static Object staticRawEntries(Object j) {
-        LinkedHashMap<String, JavaJson> map = ((JavaJson) j).objVal;
+        LinkedHashMap<String, JavaJson> map = ((JavaJson.JObj) j).entries();
         KryptonArray arr = new KryptonArray(map.size() * 2);
         int i = 0;
         for (var entry : map.entrySet()) {
@@ -195,35 +198,35 @@ public final class JsonRuntime {
     // ── Build methods (for to_java conversion) ────────────────────────
 
     public static Object staticMkNull() {
-        return JavaJson.ofNull();
+        return JavaJson.NULL_INSTANCE;
     }
 
     public static Object staticMkBool(boolean b) {
-        return JavaJson.ofBool(b);
+        return new JavaJson.JBool(b);
     }
 
     public static Object staticMkNum(double n) {
-        return JavaJson.ofNum(n);
+        return new JavaJson.JNum(n);
     }
 
     public static Object staticMkStr(String s) {
-        return JavaJson.ofStr(s);
+        return new JavaJson.JStr(s);
     }
 
     public static Object staticNewArr() {
-        return JavaJson.ofArr();
+        return new JavaJson.JArr(new ArrayList<>());
     }
 
     public static void staticArrPush(Object arr, Object elem) {
-        ((JavaJson) arr).arrVal.add((JavaJson) elem);
+        ((JavaJson.JArr) arr).elements().add((JavaJson) elem);
     }
 
     public static Object staticNewObj() {
-        return JavaJson.ofObj();
+        return new JavaJson.JObj(new LinkedHashMap<>());
     }
 
     public static void staticObjPut(Object obj, Object key, Object value) {
-        ((JavaJson) obj).objVal.put((String) key, (JavaJson) value);
+        ((JavaJson.JObj) obj).entries().put((String) key, (JavaJson) value);
     }
 
     private JsonRuntime() {}
