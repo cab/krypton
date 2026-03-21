@@ -664,9 +664,31 @@ impl Type {
     }
 }
 
-/// Canonical name for JVM artifact naming (class names, method names).
-/// Not used for HashMap keys — those use `(String, Type)` tuples directly.
+/// Head type constructor name for parameterized instance dispatch.
+/// Returns the outermost constructor as a unique identifier.
+pub fn head_type_name(ty: &Type) -> String {
+    match ty {
+        Type::Own(inner) => head_type_name(inner),
+        Type::Named(name, _) => name.clone(),
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Fn(params, _) => format!("$Fun{}", params.len()),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Unique canonical name for a type, used for artifact naming and method mangling.
+/// Produces collision-free identifiers: `$Fun` prefix prevents collision with
+/// user-defined type names, and type vars are normalized by order of occurrence.
 pub fn type_to_canonical_name(ty: &Type) -> String {
+    let mut var_map = HashMap::new();
+    canonical_name_inner(ty, &mut var_map)
+}
+
+fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> String {
     match ty {
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -675,16 +697,20 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
         Type::Unit => "Unit".to_string(),
         Type::Named(name, args) if args.is_empty() => name.clone(),
         Type::Named(name, args) => {
-            let arg_strs: Vec<String> = args.iter().map(type_to_canonical_name).collect();
+            let arg_strs: Vec<String> = args.iter().map(|a| canonical_name_inner(a, var_map)).collect();
             format!("{}${}", name, arg_strs.join("$"))
         }
         Type::Fn(params, ret) => {
-            let mut parts: Vec<String> = params.iter().map(type_to_canonical_name).collect();
-            parts.push(type_to_canonical_name(ret));
-            format!("Fun{}${}", params.len(), parts.join("$"))
+            let mut parts: Vec<String> = params.iter().map(|p| canonical_name_inner(p, var_map)).collect();
+            parts.push(canonical_name_inner(ret, var_map));
+            format!("$Fun{}${}", params.len(), parts.join("$"))
         }
-        Type::Own(inner) => type_to_canonical_name(inner),
-        Type::Var(_) => "T".to_string(),
+        Type::Own(inner) => canonical_name_inner(inner, var_map),
+        Type::Var(id) => {
+            let next = var_map.len();
+            let idx = *var_map.entry(*id).or_insert(next);
+            format!("T{idx}")
+        }
         other => format!("{other:?}"),
     }
 }
@@ -700,6 +726,115 @@ mod tests {
         assert_eq!(TypeVarId(25).display_name(), "z");
         assert_eq!(TypeVarId(26).display_name(), "a1");
         assert_eq!(TypeVarId(27).display_name(), "b1");
+    }
+
+    #[test]
+    fn canonical_name_primitives() {
+        assert_eq!(type_to_canonical_name(&Type::Int), "Int");
+        assert_eq!(type_to_canonical_name(&Type::Bool), "Bool");
+        assert_eq!(type_to_canonical_name(&Type::Unit), "Unit");
+    }
+
+    #[test]
+    fn canonical_name_named() {
+        assert_eq!(
+            type_to_canonical_name(&Type::Named("Point".into(), vec![])),
+            "Point"
+        );
+        assert_eq!(
+            type_to_canonical_name(&Type::Named("Vec".into(), vec![Type::Int])),
+            "Vec$Int"
+        );
+    }
+
+    #[test]
+    fn canonical_name_fn() {
+        // () -> Int
+        assert_eq!(
+            type_to_canonical_name(&Type::Fn(vec![], Box::new(Type::Int))),
+            "$Fun0$Int"
+        );
+        // (Int) -> Bool
+        assert_eq!(
+            type_to_canonical_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))),
+            "$Fun1$Int$Bool"
+        );
+    }
+
+    #[test]
+    fn canonical_name_vars_normalized_by_occurrence() {
+        // (a) -> Int and (b) -> Int should produce the same name
+        let ty_a = Type::Fn(vec![Type::Var(TypeVarId(5))], Box::new(Type::Int));
+        let ty_b = Type::Fn(vec![Type::Var(TypeVarId(99))], Box::new(Type::Int));
+        assert_eq!(type_to_canonical_name(&ty_a), "$Fun1$T0$Int");
+        assert_eq!(type_to_canonical_name(&ty_a), type_to_canonical_name(&ty_b));
+    }
+
+    #[test]
+    fn canonical_name_distinct_vars_no_collision() {
+        // (a) -> a  vs  (a) -> b  must differ
+        let same = Type::Fn(
+            vec![Type::Var(TypeVarId(0))],
+            Box::new(Type::Var(TypeVarId(0))),
+        );
+        let diff = Type::Fn(
+            vec![Type::Var(TypeVarId(0))],
+            Box::new(Type::Var(TypeVarId(1))),
+        );
+        assert_eq!(type_to_canonical_name(&same), "$Fun1$T0$T0");
+        assert_eq!(type_to_canonical_name(&diff), "$Fun1$T0$T1");
+        assert_ne!(type_to_canonical_name(&same), type_to_canonical_name(&diff));
+    }
+
+    #[test]
+    fn canonical_name_different_concrete_returns_no_collision() {
+        // (a) -> Int  vs  (a) -> Bool
+        let ty_int = Type::Fn(vec![Type::Var(TypeVarId(0))], Box::new(Type::Int));
+        let ty_bool = Type::Fn(vec![Type::Var(TypeVarId(0))], Box::new(Type::Bool));
+        assert_ne!(type_to_canonical_name(&ty_int), type_to_canonical_name(&ty_bool));
+    }
+
+    #[test]
+    fn canonical_name_fn_vs_named_no_collision() {
+        // Fn([Int], Bool) -> "$Fun1$Int$Bool"
+        // Named("Fun1", [Int, Bool]) -> "Fun1$Int$Bool"
+        // The $ prefix on function types prevents collision with user type "Fun1"
+        let fn_ty = Type::Fn(vec![Type::Int], Box::new(Type::Bool));
+        let named_ty = Type::Named("Fun1".into(), vec![Type::Int, Type::Bool]);
+        assert_ne!(type_to_canonical_name(&fn_ty), type_to_canonical_name(&named_ty));
+    }
+
+    #[test]
+    fn canonical_name_jvm_safe() {
+        // Parameterized fn type impl should produce JVM-safe identifiers (no spaces, parens, arrows)
+        let ty = Type::Fn(vec![], Box::new(Type::Var(TypeVarId(42))));
+        let name = type_to_canonical_name(&ty);
+        assert!(!name.contains(' '), "canonical name must not contain spaces: {name}");
+        assert!(!name.contains('('), "canonical name must not contain parens: {name}");
+        assert!(!name.contains(')'), "canonical name must not contain parens: {name}");
+        assert!(!name.contains('>'), "canonical name must not contain arrows: {name}");
+        assert!(!name.contains('-'), "canonical name must not contain dashes: {name}");
+    }
+
+    #[test]
+    fn head_type_name_basics() {
+        assert_eq!(head_type_name(&Type::Int), "Int");
+        assert_eq!(head_type_name(&Type::Named("Vec".into(), vec![Type::Int])), "Vec");
+        assert_eq!(head_type_name(&Type::Fn(vec![], Box::new(Type::Int))), "$Fun0");
+        assert_eq!(head_type_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))), "$Fun1");
+        assert_eq!(
+            head_type_name(&Type::Own(Box::new(Type::Named("Foo".into(), vec![])))),
+            "Foo"
+        );
+    }
+
+    #[test]
+    fn head_type_name_fn_no_collision_with_named() {
+        // A user type "Fun1" must not collide with the head name for (a) -> b
+        assert_ne!(
+            head_type_name(&Type::Named("Fun1".into(), vec![])),
+            head_type_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))),
+        );
     }
 
     #[test]
