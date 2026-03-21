@@ -98,7 +98,7 @@ impl ModuleInferenceState {
         }
 
         // Track which names came from the prelude so we can remove shadowed
-        // entries from imported_fn_constraints later.
+        // entries from imported_fn_constraint_requirements later.
         for n in &names {
             self.prelude_imported_names.insert(n.name.clone());
         }
@@ -637,23 +637,7 @@ impl ModuleInferenceState {
             self.imported_extern_java_types.push(entry.clone());
         }
 
-        // Collect fn_constraints from imported module for cross-module constraint checking.
-        for (name, constraints) in &cached.fn_constraints {
-            let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-            if requested.contains(name.as_str()) || import_all {
-                self.imports.bind_fn_constraints(effective_name, constraints.clone());
-            }
-        }
-        for (name, constraints) in &cached.imported_fn_constraints {
-            let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-            if requested.contains(name.as_str()) || import_all {
-                self.imports.bind_fn_constraints(effective_name, constraints.clone());
-            }
-        }
-
         // Propagate fn_constraint_requirements (TypeVarId-based) for cross-module codegen.
-        // This handles functions where the constrained type var is nested in param types
-        // (e.g. `put(m: Map[k,v], key: k, value: v) where k: Eq + Hash`).
         for (name, requirements) in &cached.fn_constraint_requirements {
             let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
             if requested.contains(name.as_str()) || import_all {

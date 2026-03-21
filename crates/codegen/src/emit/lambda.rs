@@ -8,7 +8,7 @@ use ristretto_classfile::attributes::{BootstrapMethod, Instruction, Verification
 use ristretto_classfile::{ConstantPool, Method, MethodAccessFlags, ReferenceKind};
 
 use super::builder::BytecodeBuilder;
-use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType};
+use super::compiler::{Compiler, CodegenError, JvmType};
 
 /// Lambda/closure compilation state.
 pub(super) struct LambdaState {
@@ -171,23 +171,10 @@ impl Compiler {
             .ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
         let fun_class_idx = self.lambda.fun_classes[&arity];
 
-        let dict_requirements = if let Some(requirements) =
-            self.traits.impl_dict_requirements.get(name)
-        {
-            requirements.clone()
-        } else {
-            self.traits
-                .fn_constraints
-                .get(name)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
-                    trait_name,
-                    param_idx,
-                })
-                .collect::<Vec<_>>()
-        };
+        let dict_requirements = self.traits.impl_dict_requirements
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
 
         let bridge_name = format!("lambda${}", self.lambda.lambda_counter);
         self.lambda.lambda_counter += 1;

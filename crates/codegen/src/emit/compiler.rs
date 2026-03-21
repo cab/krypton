@@ -163,7 +163,6 @@ pub(super) struct InstanceSingletonInfo {
 pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<String, TraitDispatchInfo>,
     pub(super) instance_singletons: HashMap<(String, Type), InstanceSingletonInfo>,
-    pub(super) fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
     pub(super) dict_locals: HashMap<(String, TypeVarId), u16>,
     pub(super) parameterized_instances: HashMap<String, Vec<ParameterizedInstanceInfo>>,
@@ -190,49 +189,18 @@ impl TraitState {
 }
 
 #[derive(Clone)]
-pub(super) enum DictRequirement {
-    TypeParam {
-        trait_name: String,
-        param_idx: usize,
-    },
-    Constraint {
-        trait_name: String,
-        type_var: TypeVarId,
-    },
+pub(super) struct DictRequirement {
+    pub(super) trait_name: String,
+    pub(super) type_var: TypeVarId,
 }
 
 impl DictRequirement {
     pub(super) fn trait_name(&self) -> &str {
-        match self {
-            DictRequirement::TypeParam { trait_name, .. }
-            | DictRequirement::Constraint { trait_name, .. } => trait_name,
-        }
+        &self.trait_name
     }
 
-    /// Get the TypeVarId for this requirement, deriving it from fn_tc_types for TypeParam variants.
-    pub(super) fn type_var_id(&self, fn_tc_types: Option<&(Vec<Type>, Type)>) -> Option<TypeVarId> {
-        match self {
-            DictRequirement::Constraint { type_var, .. } => Some(*type_var),
-            DictRequirement::TypeParam { param_idx, .. } => {
-                fn_tc_types.and_then(|(param_types, _)| {
-                    param_types.get(*param_idx).and_then(extract_first_type_var)
-                })
-            }
-        }
-    }
-}
-
-/// Extract the first TypeVarId from a type (recursing through Own/App wrappers).
-fn extract_first_type_var(ty: &Type) -> Option<TypeVarId> {
-    match ty {
-        Type::Var(id) => Some(*id),
-        Type::Own(inner) => extract_first_type_var(inner),
-        Type::App(ctor, _) => extract_first_type_var(ctor),
-        Type::Named(_, args) => args.iter().find_map(extract_first_type_var),
-        Type::Tuple(elems) => elems.iter().find_map(extract_first_type_var),
-        Type::Fn(params, ret) => params.iter().find_map(extract_first_type_var)
-            .or_else(|| extract_first_type_var(ret)),
-        _ => None,
+    pub(super) fn type_var_id(&self) -> TypeVarId {
+        self.type_var
     }
 }
 
@@ -374,7 +342,6 @@ impl Compiler {
             traits: TraitState {
                 trait_dispatch: HashMap::new(),
                 instance_singletons: HashMap::new(),
-                fn_constraints: HashMap::new(),
                 impl_dict_requirements: HashMap::new(),
                 dict_locals: HashMap::new(),
                 parameterized_instances: HashMap::new(),
@@ -554,34 +521,18 @@ impl Compiler {
         let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
 
         // Register dict params for constrained functions (leading params before user params)
-        let dict_requirements = if let Some(requirements) =
-            self.traits.impl_dict_requirements.get(&decl.name)
-        {
-            requirements.clone()
-        } else {
-            self.traits
-                .fn_constraints
-                .get(&decl.name)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
-                    trait_name,
-                    param_idx,
-                })
-                .collect()
-        };
+        let dict_requirements = self.traits.impl_dict_requirements
+            .get(&decl.name)
+            .cloned()
+            .unwrap_or_default();
         let num_dict_params = dict_requirements.len();
-        let fn_tc = self.types.fn_tc_types.get(&decl.name);
         let mut fn_params = Vec::new();
         for requirement in &dict_requirements {
             let slot = self.builder.next_local;
             let jvm_ty = JvmType::StructRef(self.builder.refs.object_class);
-            if let Some(var_id) = requirement.type_var_id(fn_tc) {
-                self.traits
-                    .dict_locals
-                    .insert((requirement.trait_name().to_string(), var_id), slot);
-            }
+            self.traits
+                .dict_locals
+                .insert((requirement.trait_name().to_string(), requirement.type_var_id()), slot);
             fn_params.push((slot, jvm_ty));
             self.builder.next_local += 1;
             self.builder.frame.local_types.push(VerificationType::Object {

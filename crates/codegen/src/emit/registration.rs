@@ -298,29 +298,23 @@ impl Compiler {
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
-        self.traits.fn_constraints = typed_module.fn_constraints.clone();
         for (name, requirements) in &typed_module.fn_constraint_requirements {
             self.traits.impl_dict_requirements.insert(
                 name.clone(),
                 requirements
                     .iter()
-                    .map(|(trait_name, type_var)| DictRequirement::Constraint {
+                    .map(|(trait_name, type_var)| DictRequirement {
                         trait_name: trait_name.clone(),
                         type_var: *type_var,
                     })
                     .collect(),
             );
         }
-        for (name, constraints) in &typed_module.imported_fn_constraints {
-            self.traits.fn_constraints.entry(name.clone()).or_insert_with(|| constraints.clone());
-        }
-        // Load imported fn_constraint_requirements into impl_dict_requirements
-        // for cross-module functions with nested type var constraints.
         for (name, requirements) in &typed_module.imported_fn_constraint_requirements {
             self.traits.impl_dict_requirements.entry(name.clone()).or_insert_with(|| {
                 requirements
                     .iter()
-                    .map(|(trait_name, type_var)| DictRequirement::Constraint {
+                    .map(|(trait_name, type_var)| DictRequirement {
                         trait_name: trait_name.clone(),
                         type_var: *type_var,
                     })
@@ -458,17 +452,8 @@ impl Compiler {
                     self.traits
                         .impl_dict_requirements
                         .insert(qualified_name.clone(), dict_requirements.clone());
-                    let fn_constraint_count = if dict_requirements.is_empty() {
-                        typed_module
-                            .fn_constraints
-                            .get(&qualified_name)
-                            .map(|constraints| constraints.len())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
                     let mut all_param_jvm = Vec::new();
-                    for _ in 0..(dict_requirements.len() + fn_constraint_count) {
+                    for _ in 0..dict_requirements.len() {
                         all_param_jvm.push(JvmType::StructRef(self.builder.refs.object_class));
                     }
                     all_param_jvm.extend(param_jvm.iter().copied());
@@ -628,17 +613,8 @@ impl Compiler {
                     .get(name)
                     .map(|requirements| requirements.len())
                     .unwrap_or(0);
-                let fn_constraint_count = if impl_dict_count == 0 {
-                    self.traits
-                        .fn_constraints
-                        .get(name)
-                        .map(|constraints| constraints.len())
-                        .unwrap_or(0)
-                } else {
-                    0
-                };
                 let mut all_param_types: Vec<JvmType> = Vec::new();
-                for _ in 0..(impl_dict_count + fn_constraint_count) {
+                for _ in 0..impl_dict_count {
                     all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
                 }
                 let user_param_types: Vec<JvmType> = param_tys
@@ -691,17 +667,8 @@ impl Compiler {
                         .get(&qualified_name)
                         .map(|requirements| requirements.len())
                         .unwrap_or(0);
-                    let fn_constraint_count = if impl_dict_count == 0 {
-                        self.traits
-                            .fn_constraints
-                            .get(&qualified_name)
-                            .map(|constraints| constraints.len())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
                     let mut all_param_types: Vec<JvmType> = Vec::new();
-                    for _ in 0..(impl_dict_count + fn_constraint_count) {
+                    for _ in 0..impl_dict_count {
                         all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
                     }
                     let user_param_types: Vec<JvmType> = param_tys

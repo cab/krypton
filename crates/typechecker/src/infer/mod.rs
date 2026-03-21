@@ -177,43 +177,20 @@ fn bare_function_ref_name(expr: &TypedExpr) -> Option<&str> {
     }
 }
 
-#[derive(Clone)]
-enum FunctionConstraintRef {
-    TypeParam { trait_name: String, param_idx: usize },
-    TypeVar {
-        trait_name: String,
-        type_var: TypeVarId,
-    },
-}
-
-impl FunctionConstraintRef {
-    fn trait_name(&self) -> &str {
-        match self {
-            FunctionConstraintRef::TypeParam { trait_name, .. }
-            | FunctionConstraintRef::TypeVar { trait_name, .. } => trait_name,
-        }
-    }
-}
-
 fn resolve_function_ref_requirement_type(
-    requirement: &FunctionConstraintRef,
+    trait_name: &str,
+    type_var: TypeVarId,
     declared_param_types: &[Type],
     actual_param_types: &[Type],
 ) -> Option<Type> {
-    match requirement {
-        FunctionConstraintRef::TypeParam { param_idx, .. } => {
-            actual_param_types.get(*param_idx).cloned()
-        }
-        FunctionConstraintRef::TypeVar { type_var, .. } => {
-            let mut bindings = HashMap::new();
-            for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
-                if !match_type_with_bindings(declared, actual, &mut bindings) {
-                    return None;
-                }
-            }
-            bindings.get(type_var).cloned()
+    let _ = trait_name;
+    let mut bindings = HashMap::new();
+    for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
+        if !match_type_with_bindings(declared, actual, &mut bindings) {
+            return None;
         }
     }
+    bindings.get(&type_var).cloned()
 }
 
 fn check_constrained_function_refs(
@@ -221,7 +198,6 @@ fn check_constrained_function_refs(
     current_requirements: &[(String, TypeVarId)],
     fn_schemes: &HashMap<String, TypeScheme>,
     fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
-    imported_fn_constraints: &HashMap<String, Vec<(String, usize)>>,
     trait_registry: &TraitRegistry,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = vec![expr];
@@ -232,24 +208,10 @@ fn check_constrained_function_refs(
                 other => other,
             };
             if let Type::Fn(actual_param_types, _) = fn_type {
-                let requirements: Vec<FunctionConstraintRef> =
-                    if let Some(reqs) = fn_constraint_requirements.get(name) {
-                        reqs.iter()
-                            .map(|(trait_name, type_var)| FunctionConstraintRef::TypeVar {
-                                trait_name: trait_name.clone(),
-                                type_var: *type_var,
-                            })
-                            .collect()
-                    } else if let Some(reqs) = imported_fn_constraints.get(name) {
-                        reqs.iter()
-                            .map(|(trait_name, param_idx)| FunctionConstraintRef::TypeParam {
-                                trait_name: trait_name.clone(),
-                                param_idx: *param_idx,
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
+                let requirements = fn_constraint_requirements
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
 
                 if !requirements.is_empty() {
                     let scheme = fn_schemes.get(name).ok_or_else(|| {
@@ -276,9 +238,10 @@ fn check_constrained_function_refs(
                         }
                     };
 
-                    for requirement in &requirements {
+                    for (req_trait_name, req_type_var) in &requirements {
                         let requirement_ty = resolve_function_ref_requirement_type(
-                            requirement,
+                            req_trait_name,
+                            *req_type_var,
                             declared_param_types,
                             actual_param_types,
                         )
@@ -286,8 +249,7 @@ fn check_constrained_function_refs(
                             spanned(
                                 TypeError::UnsupportedExpr {
                                     description: format!(
-                                        "could not resolve `{}` for constrained function reference `{name}`",
-                                        requirement.trait_name()
+                                        "could not resolve `{req_trait_name}` for constrained function reference `{name}`"
                                     ),
                                 },
                                 expr.span,
@@ -297,12 +259,12 @@ fn check_constrained_function_refs(
                         let requirement_ty = strip_own(&requirement_ty);
                         if free_vars(&requirement_ty).is_empty() {
                             if trait_registry
-                                .find_instance(requirement.trait_name(), &requirement_ty)
+                                .find_instance(req_trait_name, &requirement_ty)
                                 .is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,
-                                    requirement.trait_name(),
+                                    req_trait_name,
                                     &requirement_ty,
                                     expr.span,
                                 ));
@@ -312,7 +274,7 @@ fn check_constrained_function_refs(
 
                         if let Type::Var(type_var) = requirement_ty {
                             if current_requirements.iter().any(|(trait_name, current_type_var)| {
-                                trait_name == requirement.trait_name() && *current_type_var == type_var
+                                trait_name == req_trait_name && *current_type_var == type_var
                             }) {
                                 continue;
                             }
@@ -320,7 +282,7 @@ fn check_constrained_function_refs(
 
                         if current_requirements
                             .iter()
-                            .any(|(trait_name, _)| trait_name == requirement.trait_name())
+                            .any(|(trait_name, _)| trait_name == req_trait_name)
                         {
                             continue;
                         }
@@ -1049,13 +1011,47 @@ fn typed_callee_var_name(expr: &TypedExpr) -> Option<&str> {
     }
 }
 
+/// Simple type var binding: walk pattern and actual types, recording Var → concrete mappings.
+fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) {
+    match (pattern, actual) {
+        (Type::Var(id), _) => {
+            bindings.entry(*id).or_insert_with(|| actual.clone());
+        }
+        (Type::Own(p), _) => bind_type_vars_simple(p, actual, bindings),
+        (_, Type::Own(a)) => bind_type_vars_simple(pattern, a, bindings),
+        (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
+            bind_type_vars_simple(p_ctor, a_ctor, bindings);
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                bind_type_vars_simple(p, a, bindings);
+            }
+        }
+        (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) if p_name == a_name => {
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                bind_type_vars_simple(p, a, bindings);
+            }
+        }
+        (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
+            for (p, a) in p_params.iter().zip(a_params.iter()) {
+                bind_type_vars_simple(p, a, bindings);
+            }
+            bind_type_vars_simple(p_ret, a_ret, bindings);
+        }
+        (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
+            for (p, a) in p_elems.iter().zip(a_elems.iter()) {
+                bind_type_vars_simple(p, a, bindings);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Detect trait method calls on type variables (indicating the function needs a dict param).
 fn detect_trait_constraints(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitId>,
     subst: &Substitution,
-    param_type_var_map: &HashMap<TypeVarId, usize>,
-    constraints: &mut Vec<(String, usize)>,
+    fn_type_param_vars: &HashSet<TypeVarId>,
+    constraints: &mut Vec<(String, TypeVarId)>,
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -1064,25 +1060,25 @@ fn detect_trait_constraints(
             TypedExprKind::App { func, args } => {
                 if let Some(name) = typed_callee_var_name(func) {
                     if let Some(trait_id) = trait_method_map.get(name) {
-                        if let Some(first_arg) = args.first() {
+                        // Try first arg, then fall back to return type
+                        let candidate_var = if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
                             let concrete_ty = strip_own(&arg_ty);
-                            if let Some(v) = leading_type_var(&concrete_ty) {
-                                if let Some(param_idx) = param_type_var_map.get(&v).copied() {
-                                    constraints.push((trait_id.name.clone(), param_idx));
-                                }
-                            }
+                            leading_type_var(&concrete_ty)
                         } else {
-                            // Zero-arg trait method: check return type for type variable
+                            None
+                        };
+                        let candidate_var = candidate_var.or_else(|| {
                             let ret_ty = subst.apply(&func.ty);
                             let concrete_ret = match &ret_ty {
                                 Type::Fn(_, ret) => strip_own(ret),
                                 other => strip_own(other),
                             };
-                            if let Some(v) = leading_type_var(&concrete_ret) {
-                                if let Some(param_idx) = param_type_var_map.get(&v).copied() {
-                                    constraints.push((trait_id.name.clone(), param_idx));
-                                }
+                            leading_type_var(&concrete_ret)
+                        });
+                        if let Some(v) = candidate_var {
+                            if fn_type_param_vars.contains(&v) {
+                                constraints.push((trait_id.name.clone(), v));
                             }
                         }
                     }
@@ -1149,13 +1145,14 @@ fn detect_trait_constraints(
 
 /// Walk a typed AST looking for calls to trait methods. For each call,
 /// resolve the argument type and verify that a matching instance exists.
-/// Also checks calls to imported constrained functions (via `fn_constraints`).
+/// Also checks calls to imported constrained functions (via `fn_constraint_requirements`).
 fn check_trait_instances(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitId>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_constraints: &HashMap<String, Vec<(String, usize)>>,
+    fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
+    fn_schemes: &HashMap<String, TypeScheme>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -1215,11 +1212,30 @@ fn check_trait_instances(
                         }
                     }
                     // Check calls to constrained functions (e.g., imported `println` requires Show)
-                    if let Some(constraints) = fn_constraints.get(name) {
-                        for (trait_name, param_idx) in constraints {
-                            if let Some(arg) = args.get(*param_idx) {
-                                let arg_ty = subst.apply(&arg.ty);
-                                let concrete_ty = strip_own(&arg_ty);
+                    if let Some(requirements) = fn_constraint_requirements.get(name) {
+                        // Resolve each constraint's type via bind_type_vars approach
+                        let fn_scheme = fn_schemes.get(name);
+                        for (trait_name, type_var) in requirements {
+                            let resolved_ty = fn_scheme.and_then(|scheme| {
+                                if let Type::Fn(param_types, ret_ty) = &scheme.ty {
+                                    let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+                                    for (pattern, arg) in param_types.iter().zip(args.iter()) {
+                                        bind_type_vars_simple(pattern, &subst.apply(&arg.ty), &mut bindings);
+                                    }
+                                    if bindings.get(type_var).is_none() {
+                                        // Also try return type
+                                        let ret_actual = subst.apply(&func.ty);
+                                        if let Type::Fn(_, actual_ret) = &ret_actual {
+                                            bind_type_vars_simple(ret_ty, actual_ret, &mut bindings);
+                                        }
+                                    }
+                                    bindings.get(type_var).cloned()
+                                } else {
+                                    None
+                                }
+                            });
+                            if let Some(ty) = resolved_ty {
+                                let concrete_ty = strip_own(&ty);
                                 if leading_type_var(&concrete_ty).is_none() {
                                     if trait_registry
                                         .find_instance(trait_name, &concrete_ty)
@@ -1559,11 +1575,10 @@ pub fn infer_module_single(
     Ok(modules.remove(0))
 }
 
-/// Grouped import state: the 4 maps that must stay in sync when binding/shadowing imports.
+/// Grouped import state: the maps that must stay in sync when binding/shadowing imports.
 pub(crate) struct ImportContext {
     pub(super) imported_fn_types: Vec<typed_ast::ImportedFn>,
     pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
-    pub(super) imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub(super) imported_fn_qualifiers: HashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
     /// Prelude functions that were shadowed by explicit imports: (name, source_module)
     pub(super) shadowed_prelude_fns: Vec<(String, String)>,
@@ -1574,7 +1589,6 @@ impl ImportContext {
         ImportContext {
             imported_fn_types: Vec::new(),
             imported_type_info: HashMap::new(),
-            imported_fn_constraints: HashMap::new(),
             imported_fn_qualifiers: HashMap::new(),
             shadowed_prelude_fns: Vec::new(),
         }
@@ -1603,7 +1617,6 @@ impl ImportContext {
                 self.shadowed_prelude_fns.push((f.name.clone(), f.source_module.clone()));
             }
             self.imported_fn_types.retain(|f| f.name != name);
-            self.imported_fn_constraints.remove(&name);
             imported_fn_constraint_requirements.remove(&name);
         }
 
@@ -1684,25 +1697,6 @@ impl ImportContext {
         self.imported_type_info.insert(name, (source, vis));
     }
 
-    /// Bind fn constraints for an imported function.
-    fn bind_fn_constraints(&mut self, name: String, constraints: Vec<(String, usize)>) {
-        self.imported_fn_constraints.insert(name, constraints);
-    }
-
-    /// Remove stale import metadata for a name being locally redefined.
-    /// Clears constraints but keeps imported_fn_types
-    /// (the entry is still needed in the fn_types output list) and
-    /// does not touch env (the local binding is already in place).
-    fn remove_import_metadata(&mut self, name: &str) {
-        self.imported_fn_constraints.remove(name);
-    }
-
-    /// Atomically shadow a name across all maps + env.
-    fn shadow(&mut self, env: &mut TypeEnv, name: &str) {
-        env.unbind(name);
-        self.imported_fn_constraints.remove(name);
-        self.imported_fn_types.retain(|f| f.name != name);
-    }
 }
 
 /// State accumulated during the bootstrap phases of module inference
@@ -1836,13 +1830,13 @@ impl ModuleInferenceState {
                 Decl::ExternJava { methods, .. } => {
                     for m in methods {
                         if self.prelude_imported_names.contains(&m.name) {
-                            self.imports.remove_import_metadata(&m.name);
+                            self.imported_fn_constraint_requirements.remove(&m.name);
                         }
                     }
                 }
                 Decl::DefFn(f) => {
                     if self.prelude_imported_names.contains(&f.name) {
-                        self.imports.remove_import_metadata(&f.name);
+                        self.imported_fn_constraint_requirements.remove(&f.name);
                     }
                 }
                 _ => {}
@@ -1896,7 +1890,7 @@ impl ModuleInferenceState {
         fn_bodies: Vec<Option<TypedExpr>>,
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
-        fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
+        fn_constraint_requirements: &mut HashMap<String, Vec<(String, TypeVarId)>>,
         trait_method_map: &HashMap<String, TraitId>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
@@ -2027,20 +2021,22 @@ impl ModuleInferenceState {
                 &current_requirements,
                 &fn_schemes,
                 fn_constraint_requirements,
-                &self.imports.imported_fn_constraints,
                 trait_registry,
             )?;
         }
 
-        let mut fn_constraints: HashMap<String, Vec<(String, usize)>> = HashMap::new();
+        // Detect implicit trait constraints from body and merge into fn_constraint_requirements
         for func in &functions {
-            let mut param_type_var_map: HashMap<TypeVarId, usize> = HashMap::new();
+            let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
             if let Some(entry) = results.iter().find(|e| e.name == func.name) {
-                if let Type::Fn(param_types, _) = &entry.scheme.ty {
-                    for (idx, pty) in param_types.iter().enumerate() {
+                if let Type::Fn(param_types, ret_ty) = &entry.scheme.ty {
+                    for pty in param_types.iter() {
                         for v in free_vars(pty) {
-                            param_type_var_map.entry(v).or_insert(idx);
+                            fn_type_param_vars.insert(v);
                         }
+                    }
+                    for v in free_vars(ret_ty) {
+                        fn_type_param_vars.insert(v);
                     }
                 }
             }
@@ -2049,13 +2045,21 @@ impl ModuleInferenceState {
                 &func.body,
                 trait_method_map,
                 &self.subst,
-                &param_type_var_map,
+                &fn_type_param_vars,
                 &mut constraints,
             );
             if !constraints.is_empty() {
                 constraints.sort();
                 constraints.dedup();
-                fn_constraints.insert(func.name.clone(), constraints);
+                // Merge into fn_constraint_requirements (dedup by trait+var)
+                let existing = fn_constraint_requirements
+                    .entry(func.name.clone())
+                    .or_default();
+                for (trait_name, type_var) in constraints {
+                    if !existing.iter().any(|(t, v)| t == &trait_name && *v == type_var) {
+                        existing.push((trait_name, type_var));
+                    }
+                }
             }
         }
 
@@ -2250,9 +2254,7 @@ impl ModuleInferenceState {
             functions,
             trait_defs,
             instance_defs,
-            fn_constraints,
             fn_constraint_requirements: fn_constraint_requirements.clone(),
-            imported_fn_constraints: self.imports.imported_fn_constraints,
             imported_fn_constraint_requirements: self.imported_fn_constraint_requirements,
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
@@ -3203,7 +3205,22 @@ fn infer_function_bodies<'a>(
     }
 
     // Post-inference instance resolution
-    if !trait_method_map.is_empty() || !state.imports.imported_fn_constraints.is_empty() {
+    // Build merged constraint requirements including imported ones
+    let mut merged_constraint_reqs = fn_constraint_requirements.clone();
+    for (name, reqs) in &state.imported_fn_constraint_requirements {
+        merged_constraint_reqs.entry(name.clone()).or_insert_with(|| reqs.clone());
+    }
+    // Build fn_schemes map for bind_type_vars resolution
+    let mut fn_schemes_map: HashMap<String, TypeScheme> = HashMap::new();
+    for (decl, scheme) in fn_decls.iter().zip(result_schemes.iter()) {
+        if let Some(scheme) = scheme {
+            fn_schemes_map.insert(decl.name.clone(), scheme.clone());
+        }
+    }
+    for imp in &state.imports.imported_fn_types {
+        fn_schemes_map.entry(imp.name.clone()).or_insert_with(|| imp.scheme.clone());
+    }
+    if !trait_method_map.is_empty() || !merged_constraint_reqs.is_empty() {
         for body in fn_bodies.iter() {
             if let Some(body) = body {
                 check_trait_instances(
@@ -3211,7 +3228,8 @@ fn infer_function_bodies<'a>(
                     trait_method_map,
                     trait_registry,
                     &state.subst,
-                    &state.imports.imported_fn_constraints,
+                    &merged_constraint_reqs,
+                    &fn_schemes_map,
                 )?;
             }
         }
@@ -3506,7 +3524,7 @@ pub(crate) fn infer_module_inner(
         )?;
 
     // Phase: SCC-based function inference
-    let (fn_decls, result_schemes, fn_bodies, fn_constraint_requirements, shared_type_vars) =
+    let (fn_decls, result_schemes, fn_bodies, mut fn_constraint_requirements, shared_type_vars) =
         infer_function_bodies(
             &mut state,
             module,
@@ -3533,7 +3551,7 @@ pub(crate) fn infer_module_inner(
         fn_bodies,
         instance_defs,
         derived_instance_defs,
-        &fn_constraint_requirements,
+        &mut fn_constraint_requirements,
         &trait_method_map,
         &trait_registry,
         exported_trait_defs,

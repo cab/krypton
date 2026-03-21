@@ -39,27 +39,15 @@ struct ImportedInstanceInfo {
 fn dict_requirements_for_instance(
     type_var_ids: &HashMap<String, TypeVarId>,
     constraints: &[krypton_parser::ast::TypeConstraint],
-    subdict_traits: &[(String, usize)],
+    _subdict_traits: &[(String, usize)],
 ) -> Vec<DictRequirement> {
-    let mut dict_requirements: Vec<DictRequirement> = subdict_traits
-        .iter()
-        .map(|(trait_name, param_idx)| DictRequirement::TypeParam {
-            trait_name: trait_name.clone(),
-            param_idx: *param_idx,
-        })
-        .collect();
+    let mut dict_requirements: Vec<DictRequirement> = Vec::new();
     for constraint in constraints {
         if let Some(&type_var) = type_var_ids.get(&constraint.type_var) {
-            if !dict_requirements.iter().any(|requirement| {
-                matches!(
-                    requirement,
-                    DictRequirement::Constraint {
-                        trait_name,
-                        type_var: existing_type_var,
-                    } if trait_name == &constraint.trait_name && *existing_type_var == type_var
-                )
+            if !dict_requirements.iter().any(|req| {
+                req.trait_name == constraint.trait_name && req.type_var == type_var
             }) {
-                dict_requirements.push(DictRequirement::Constraint {
+                dict_requirements.push(DictRequirement {
                     trait_name: constraint.trait_name.clone(),
                     type_var,
                 });

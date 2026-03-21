@@ -310,12 +310,8 @@ pub struct TypedModule {
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
-    pub fn_constraints: HashMap<String, Vec<(String, usize)>>,
     pub fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
-    /// Constraints inherited from imported modules (e.g., `println` requires `Show`).
-    pub imported_fn_constraints: HashMap<String, Vec<(String, usize)>>,
     /// TypeVarId-based constraint requirements inherited from imported modules.
-    /// Used by codegen for functions where the constrained type var is nested in params.
     pub imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,

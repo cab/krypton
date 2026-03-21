@@ -39,8 +39,7 @@ pub(super) enum CallTarget {
         param_types: Vec<JvmType>,
         return_type: JvmType,
         is_void: bool,
-        explicit_requirements: Vec<DictRequirement>,
-        constraint_traits: Vec<(String, usize)>,
+        requirements: Vec<DictRequirement>,
     },
 }
 
@@ -297,15 +296,9 @@ impl Compiler {
         }
 
         // Static call (user-defined function)
-        let explicit_requirements = self
+        let requirements = self
             .traits
             .impl_dict_requirements
-            .get(name)
-            .cloned()
-            .unwrap_or_default();
-        let constraint_traits = self
-            .traits
-            .fn_constraints
             .get(name)
             .cloned()
             .unwrap_or_default();
@@ -329,8 +322,7 @@ impl Compiler {
             param_types: info.param_types.clone(),
             return_type: info.return_type,
             is_void: info.is_void,
-            explicit_requirements,
-            constraint_traits,
+            requirements,
         }))
     }
 
@@ -484,15 +476,14 @@ impl Compiler {
                 param_types,
                 return_type,
                 is_void,
-                explicit_requirements,
-                constraint_traits,
+                requirements,
             } => {
                 // Push dict args first for constrained functions
-                if !explicit_requirements.is_empty() {
+                if !requirements.is_empty() {
                     if let Some((param_patterns, ret_pattern)) =
                         self.types.fn_tc_types.get(name).cloned()
                     {
-                        for requirement in &explicit_requirements {
+                        for requirement in &requirements {
                             let requirement_ty = Self::resolve_function_requirement_type(
                                 requirement,
                                 &param_patterns,
@@ -512,24 +503,10 @@ impl Compiler {
                             )?;
                         }
                     }
-                } else if !constraint_traits.is_empty() {
-                    for (trait_name, param_idx) in &constraint_traits {
-                        if let Some(target_arg) = args.get(*param_idx) {
-                            self.emit_dict_argument_for_type(
-                                trait_name,
-                                &target_arg.ty,
-                                self.builder.refs.object_class,
-                            )?;
-                        }
-                    }
                 }
 
                 // Compile each argument, boxing/casting if needed for erased type params
-                let dict_offset = if !explicit_requirements.is_empty() {
-                    explicit_requirements.len()
-                } else {
-                    constraint_traits.len()
-                };
+                let dict_offset = requirements.len();
                 for (i, arg) in args.iter().enumerate() {
                     let arg_type = self.compile_expr(arg, false)?;
                     let expected = param_types[i + dict_offset];
@@ -636,31 +613,18 @@ impl Compiler {
         }
     }
 
-    pub(super) fn extract_type_arg(ty: &Type, param_idx: usize) -> Option<Type> {
-        match ty {
-            Type::Named(_, args) => args.get(param_idx).cloned(),
-            Type::Own(inner) => Self::extract_type_arg(inner, param_idx),
-            _ => None,
-        }
-    }
 
     pub(super) fn resolve_dict_requirement_type(
         requirement: &DictRequirement,
         instance_info: &ParameterizedInstanceInfo,
         concrete_ty: &Type,
     ) -> Option<Type> {
-        match requirement {
-            DictRequirement::TypeParam { param_idx, .. } => {
-                Self::extract_type_arg(concrete_ty, *param_idx)
-            }
-            DictRequirement::Constraint { type_var, .. } => {
-                let mut bindings = HashMap::new();
-                if Self::bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
-                    bindings.get(type_var).cloned()
-                } else {
-                    None
-                }
-            }
+        let type_var = &requirement.type_var;
+        let mut bindings = HashMap::new();
+        if Self::bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
+            bindings.get(type_var).cloned()
+        } else {
+            None
         }
     }
 
@@ -670,26 +634,20 @@ impl Compiler {
         args: &[TypedExpr],
         ret_info: Option<(&Type, &Type)>,
     ) -> Option<Type> {
-        match requirement {
-            DictRequirement::TypeParam { param_idx, .. } => {
-                args.get(*param_idx).map(|arg| arg.ty.clone())
-            }
-            DictRequirement::Constraint { type_var, .. } => {
-                let mut bindings = HashMap::new();
-                for (param_ty, arg) in param_types.iter().zip(args.iter()) {
-                    if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
-                        return None;
-                    }
-                }
-                // For zero-arg functions, also try binding from return type
-                if bindings.get(type_var).is_none() {
-                    if let Some((ret_pattern, ret_actual)) = ret_info {
-                        Self::bind_type_vars(ret_pattern, ret_actual, &mut bindings);
-                    }
-                }
-                bindings.get(type_var).cloned()
+        let type_var = &requirement.type_var;
+        let mut bindings = HashMap::new();
+        for (param_ty, arg) in param_types.iter().zip(args.iter()) {
+            if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
+                return None;
             }
         }
+        // For zero-arg functions or return-type-only type vars, also try binding from return type
+        if bindings.get(type_var).is_none() {
+            if let Some((ret_pattern, ret_actual)) = ret_info {
+                Self::bind_type_vars(ret_pattern, ret_actual, &mut bindings);
+            }
+        }
+        bindings.get(type_var).cloned()
     }
 
     pub(super) fn resolve_function_ref_requirement_type(
@@ -697,20 +655,14 @@ impl Compiler {
         declared_param_types: &[Type],
         actual_param_types: &[Type],
     ) -> Option<Type> {
-        match requirement {
-            DictRequirement::TypeParam { param_idx, .. } => {
-                actual_param_types.get(*param_idx).cloned()
-            }
-            DictRequirement::Constraint { type_var, .. } => {
-                let mut bindings = HashMap::new();
-                for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
-                    if !Self::bind_type_vars(declared, actual, &mut bindings) {
-                        return None;
-                    }
-                }
-                bindings.get(type_var).cloned()
+        let type_var = &requirement.type_var;
+        let mut bindings = HashMap::new();
+        for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
+            if !Self::bind_type_vars(declared, actual, &mut bindings) {
+                return None;
             }
         }
+        bindings.get(type_var).cloned()
     }
 
     pub(super) fn emit_dict_argument_for_type(
