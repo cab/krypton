@@ -1,0 +1,10 @@
+# expect: output "true"
+import core/result.{Ok, Err, Result}
+import core/json.{from_json, Json, JBool}
+fun main() = {
+    let r: Result[String, Bool] = from_json(JBool(true));
+    match r {
+        Ok(b) => println(b),
+        Err(e) => println(e),
+    }
+}

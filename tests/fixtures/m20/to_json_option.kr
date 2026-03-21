@@ -1,0 +1,8 @@
+# expect: output "null\n42"
+import core/option.{Option, Some, None}
+import core/json.{json_to_string, to_json, Json}
+fun main() = {
+    let none: Option[Int] = None;
+    println(json_to_string(to_json(none)));
+    println(json_to_string(to_json(Some(42))))
+}

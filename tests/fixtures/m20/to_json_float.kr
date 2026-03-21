@@ -1,0 +1,3 @@
+# expect: output "3.14"
+import core/json.{json_to_string, to_json}
+fun main() = println(json_to_string(to_json(3.14)))

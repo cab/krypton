@@ -1,0 +1,15 @@
+# expect: output "{\"x\":1,\"y\":2}"
+import core/list.{Cons, Nil}
+import core/json.{json_to_string, json_object, to_json, ToJson, Json, JNum}
+import core/map.{from_list}
+
+type Point = { x: Int, y: Int }
+
+impl ToJson[Point] {
+    fun to_json(p: Point) -> Json = json_object(Cons(("x", to_json(p.x)), Cons(("y", to_json(p.y)), Nil)))
+}
+
+fun main() = {
+    let p = Point { x = 1, y = 2 };
+    println(json_to_string(to_json(p)))
+}

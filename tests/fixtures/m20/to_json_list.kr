@@ -1,0 +1,4 @@
+# expect: output "[1,2,3]"
+import core/list.{Cons, Nil}
+import core/json.{json_to_string, to_json}
+fun main() = println(json_to_string(to_json(Cons(1, Cons(2, Cons(3, Nil))))))

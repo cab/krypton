@@ -1,7 +1,7 @@
 # core/json — JSON parsing and serialization
 import core/result.{Result, Ok, Err}
 import core/option.{Option, Some, None}
-import core/list.{List, Cons, Nil, fold}
+import core/list.{List, Cons, Nil, fold, map as list_map}
 import core/map.{Map, empty, put, get as map_get, entries, from_list}
 import core/eq.{Eq}
 import core/hash.{Hash}
@@ -110,3 +110,114 @@ pub fun json_get(j: Json, key: String) -> Option[Json] =
         JObj(m) => map_get(m, key),
         _ => None,
     }
+
+# ── Int↔Float conversion ────────────────────────────────────────
+
+extern "krypton.runtime.KryptonConvert" {
+    fun toFloat(Int) -> Float
+    fun toInt(Float) -> Int
+}
+
+# ── ToJson trait ─────────────────────────────────────────────────
+
+pub trait ToJson[a] {
+    fun to_json(x: a) -> Json
+}
+
+impl ToJson[Int] {
+    fun to_json(x: Int) -> Json = JNum(toFloat(x))
+}
+
+impl ToJson[Float] {
+    fun to_json(x: Float) -> Json = JNum(x)
+}
+
+impl ToJson[String] {
+    fun to_json(x: String) -> Json = JStr(x)
+}
+
+impl ToJson[Bool] {
+    fun to_json(x: Bool) -> Json = JBool(x)
+}
+
+impl ToJson[List[a]] where a: ToJson {
+    fun to_json(xs: List[a]) -> Json = JArr(list_map(xs, (x) -> to_json(x)))
+}
+
+impl ToJson[Option[a]] where a: ToJson {
+    fun to_json(opt: Option[a]) -> Json = match opt {
+        None => JNull,
+        Some(x) => to_json(x),
+    }
+}
+
+impl ToJson[Map[String, a]] where a: ToJson {
+    fun to_json(m: Map[String, a]) -> Json =
+        JObj(from_list(list_map(entries(m), (pair) -> { let (k, v) = pair; (k, to_json(v)) })))
+}
+
+# ── FromJson trait ───────────────────────────────────────────────
+
+pub trait FromJson[a] {
+    fun from_json(j: Json) -> Result[String, a]
+}
+
+impl FromJson[Int] {
+    fun from_json(j: Json) -> Result[String, Int] = match j {
+        JNum(n) => Ok(toInt(n)),
+        _ => Err("expected number"),
+    }
+}
+
+impl FromJson[Float] {
+    fun from_json(j: Json) -> Result[String, Float] = match j {
+        JNum(n) => Ok(n),
+        _ => Err("expected number"),
+    }
+}
+
+impl FromJson[String] {
+    fun from_json(j: Json) -> Result[String, String] = match j {
+        JStr(s) => Ok(s),
+        _ => Err("expected string"),
+    }
+}
+
+impl FromJson[Bool] {
+    fun from_json(j: Json) -> Result[String, Bool] = match j {
+        JBool(b) => Ok(b),
+        _ => Err("expected bool"),
+    }
+}
+
+fun from_json_list[a](items: List[Json]) -> Result[String, List[a]] where a: FromJson =
+    match items {
+        Nil => Ok(Nil),
+        Cons(h, rest) => {
+            let r: Result[String, a] = from_json(h);
+            match r {
+                Err(e) => Err(e),
+                Ok(v) => match from_json_list(rest) {
+                    Err(e) => Err(e),
+                    Ok(vs) => Ok(Cons(v, vs)),
+                },
+            }
+        },
+    }
+
+impl FromJson[List[a]] where a: FromJson {
+    fun from_json(j: Json) -> Result[String, List[a]] = match j {
+        JArr(items) => from_json_list(items),
+        _ => Err("expected array"),
+    }
+}
+
+impl FromJson[Option[a]] where a: FromJson {
+    fun from_json(j: Json) -> Result[String, Option[a]] = match j {
+        JNull => Ok(None),
+        _ => match from_json(j) {
+            Ok(v) => Ok(Some(v)),
+            Err(e) => Err(e),
+        },
+    }
+}

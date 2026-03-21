@@ -1,0 +1,20 @@
+# expect: output "got-unit\ngot-int"
+trait Test[a] {
+    fun test(x: a) -> String
+}
+
+impl[b] Test[() -> b] {
+    fun test(x) = "got-unit"
+}
+
+impl[b] Test[(Int) -> b] {
+    fun test(x) = "got-int"
+}
+
+fun f() -> String = "hello"
+fun g(n: Int) -> String = "world"
+
+fun main() = {
+    println(test(f))
+    println(test(g))
+}

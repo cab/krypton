@@ -1,0 +1,10 @@
+# expect: output "hello"
+import core/result.{Ok, Err, Result}
+import core/json.{from_json, Json, JStr}
+fun main() = {
+    let r: Result[String, String] = from_json(JStr("hello"));
+    match r {
+        Ok(s) => println(s),
+        Err(e) => println(e),
+    }
+}

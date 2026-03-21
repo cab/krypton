@@ -1,0 +1,10 @@
+# expect: output "42"
+import core/result.{Ok, Err, Result}
+import core/json.{from_json, Json, JNum}
+fun main() = {
+    let r: Result[String, Int] = from_json(JNum(42.0));
+    match r {
+        Ok(n) => println(n),
+        Err(e) => println(e),
+    }
+}

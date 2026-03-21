@@ -1,0 +1,12 @@
+# expect: output "3"
+import core/list.{Cons, Nil, length}
+import core/result.{Ok, Err, Result}
+import core/json.{from_json, Json, JArr, JNum}
+fun main() = {
+    let arr = JArr(Cons(JNum(1.0), Cons(JNum(2.0), Cons(JNum(3.0), Nil))));
+    let r: Result[String, List[Int]] = from_json(arr);
+    match r {
+        Ok(xs) => println(length(xs)),
+        Err(e) => println(e),
+    }
+}
