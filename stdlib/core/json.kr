@@ -162,6 +162,7 @@ pub trait FromJson[a] {
     fun from_json(j: Json) -> Result[String, a]
 }
 
+# toInt truncates toward zero (Java `(long)` cast), e.g. 42.9 → 42
 impl FromJson[Int] {
     fun from_json(j: Json) -> Result[String, Int] = match j {
         JNum(n) => Ok(toInt(n)),
@@ -212,6 +213,8 @@ impl FromJson[List[a]] where a: FromJson {
     }
 }
 
+# Note: for nested Option[Option[a]], JNull always yields Ok(None) for the
+# outer layer — Ok(Some(None)) is not representable. This matches Aeson/serde.
 impl FromJson[Option[a]] where a: FromJson {
     fun from_json(j: Json) -> Result[String, Option[a]] = match j {
         JNull => Ok(None),
@@ -219,5 +222,31 @@ impl FromJson[Option[a]] where a: FromJson {
             Ok(v) => Ok(Some(v)),
             Err(e) => Err(e),
         },
+    }
+}
+
+fun from_json_entries[a](pairs: List[(String, Json)]) -> Result[String, List[(String, a)]] where a: FromJson =
+    match pairs {
+        Nil => Ok(Nil),
+        Cons(pair, rest) => {
+            let (k, v) = pair;
+            let r: Result[String, a] = from_json(v);
+            match r {
+                Err(e) => Err(e),
+                Ok(val) => match from_json_entries(rest) {
+                    Err(e) => Err(e),
+                    Ok(ps) => Ok(Cons((k, val), ps)),
+                },
+            }
+        },
+    }
+
+impl FromJson[Map[String, a]] where a: FromJson {
+    fun from_json(j: Json) -> Result[String, Map[String, a]] = match j {
+        JObj(m) => match from_json_entries(entries(m)) {
+            Ok(pairs) => Ok(from_list(pairs)),
+            Err(e) => Err(e),
+        },
+        _ => Err("expected object"),
     }
 }

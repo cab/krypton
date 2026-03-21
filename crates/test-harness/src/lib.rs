@@ -48,7 +48,11 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
             let text = text.trim();
             // Strip surrounding quotes if present, then unescape \n
             let text = if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
-                text[1..text.len() - 1].replace("\\n", "\n").replace("\\\"", "\"")
+                text[1..text.len() - 1]
+                    .replace("\\\\", "\x00")
+                    .replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+                    .replace('\x00', "\\")
             } else {
                 text.to_string()
             };

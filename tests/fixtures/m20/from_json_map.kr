@@ -1,0 +1,18 @@
+# expect: output "42"
+import core/list.{Cons, Nil}
+import core/result.{Ok, Err, Result}
+import core/map.{Map, get}
+import core/option.{Some, None}
+import core/json.{from_json, Json, JObj, JNum}
+import core/map.{from_list}
+fun main() = {
+    let obj = JObj(from_list(Cons(("x", JNum(42.0)), Nil)));
+    let r: Result[String, Map[String, Int]] = from_json(obj);
+    match r {
+        Ok(m) => match get(m, "x") {
+            Some(n) => println(n),
+            None => println("missing"),
+        },
+        Err(e) => println(e),
+    }
+}
