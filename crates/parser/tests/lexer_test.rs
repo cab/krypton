@@ -46,6 +46,42 @@ fn test_string_literal() {
 }
 
 #[test]
+fn test_string_escape_newline() {
+    assert_yaml_snapshot!(surface_lex("\"hello\\nworld\""));
+}
+
+#[test]
+fn test_string_escape_tab() {
+    assert_yaml_snapshot!(surface_lex("\"a\\tb\""));
+}
+
+#[test]
+fn test_string_escape_quote() {
+    assert_yaml_snapshot!(surface_lex("\"say \\\"hi\\\"\""));
+}
+
+#[test]
+fn test_string_escape_backslash() {
+    assert_yaml_snapshot!(surface_lex("\"a\\\\b\""));
+}
+
+#[test]
+fn test_string_escape_null() {
+    assert_yaml_snapshot!(surface_lex("\"a\\0b\""));
+}
+
+#[test]
+fn test_string_escape_carriage_return() {
+    assert_yaml_snapshot!(surface_lex("\"a\\rb\""));
+}
+
+#[test]
+fn test_string_invalid_escape() {
+    let (_, error_count) = surface_lex_with_errors("\"a\\qb\"");
+    assert!(error_count > 0, "expected error for invalid escape \\q");
+}
+
+#[test]
 fn test_unit_literal() {
     assert_yaml_snapshot!(surface_lex("()"));
 }

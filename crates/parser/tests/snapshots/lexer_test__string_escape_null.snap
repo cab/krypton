@@ -1,0 +1,5 @@
+---
+source: crates/parser/tests/lexer_test.rs
+expression: "surface_lex(\"\\\"a\\\\0b\\\"\")"
+---
+- String: "a\u0000b"

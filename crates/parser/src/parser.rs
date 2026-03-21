@@ -174,7 +174,7 @@ where
         let lit_pat = select! {
             Token::Int(n) => Lit::Int(n),
             Token::Float(n) => Lit::Float(n),
-            Token::String(s) => Lit::String(s.to_string()),
+            Token::String(s) => Lit::String(s),
             Token::Bool(b) => Lit::Bool(b),
         }
         .map_with(|value, e| Pattern::Lit {
@@ -308,7 +308,7 @@ where
         let lit = select! {
             Token::Int(n) => Lit::Int(n),
             Token::Float(n) => Lit::Float(n),
-            Token::String(s) => Lit::String(s.to_string()),
+            Token::String(s) => Lit::String(s),
             Token::Bool(b) => Lit::Bool(b),
         }
         .map_with(|value, e| Expr::Lit {

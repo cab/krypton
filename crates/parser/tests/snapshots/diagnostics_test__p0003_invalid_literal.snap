@@ -2,10 +2,10 @@
 source: crates/parser/tests/diagnostics_test.rs
 expression: plain
 ---
-[P0003] Error: found end of input expected something else, or '"'
+[P0003] Error: found end of input expected something else, '\', or '"'
    ╭─[ test.kr:1:26 ]
    │
  1 │ fun foo() = "unterminated
    │                          │ 
-   │                          ╰─ P0003: found end of input expected something else, or '"'
+   │                          ╰─ P0003: found end of input expected something else, '\', or '"'
 ───╯

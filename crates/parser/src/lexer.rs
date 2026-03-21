@@ -18,7 +18,7 @@ pub enum Token<'src> {
     // Literals
     Int(i64),
     Float(f64),
-    String(&'src str),
+    String(String),
     Bool(bool),
     // Identifiers & keywords
     Ident(&'src str),
@@ -160,10 +160,31 @@ pub fn lexer<'src>(
             }
         });
 
-    // String literals
-    let string = just('"')
-        .ignore_then(none_of('"').repeated().to_slice())
-        .then_ignore(just('"'))
+    // String literals with escape sequences
+    let escape = just('\\').ignore_then(
+        choice((
+            just('\\').to('\\'),
+            just('"').to('"'),
+            just('n').to('\n'),
+            just('t').to('\t'),
+            just('r').to('\r'),
+            just('0').to('\0'),
+        ))
+        .or(any().validate(|c, e, emitter| {
+            emitter.emit(Rich::custom(
+                e.span(),
+                format!("invalid escape sequence: \\{c}"),
+            ));
+            c
+        })),
+    );
+
+    let string_char = none_of("\\\"").or(escape);
+
+    let string = string_char
+        .repeated()
+        .collect::<String>()
+        .delimited_by(just('"'), just('"'))
         .map(Token::String);
 
     // Identifiers and keywords (including _prefixed like _foo, _0)
