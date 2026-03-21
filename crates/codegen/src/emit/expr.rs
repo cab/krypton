@@ -1050,8 +1050,10 @@ impl Compiler {
             self.compile_expr(arg, false)?;
         }
 
-        // Store to param local slots in reverse order (stack is LIFO)
-        for &(slot, jvm_ty) in fn_params.iter().rev() {
+        // Store to user param local slots in reverse order (stack is LIFO).
+        // Skip dict params — they don't change across recur iterations.
+        let user_params = &fn_params[self.builder.num_dict_params..];
+        for &(slot, jvm_ty) in user_params.iter().rev() {
             self.builder.emit_store(slot, jvm_ty);
         }
 
