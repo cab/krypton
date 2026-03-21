@@ -1,0 +1,7 @@
+# expect: ok
+# Shared let-pattern should coerce ~T fields to T, allowing multiple uses
+type Box = { value: ~String }
+fun test(b: Box) -> (String, String) {
+    let Box { value } = b
+    (value, value)
+}

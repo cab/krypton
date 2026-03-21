@@ -1408,16 +1408,23 @@ impl<'a> InferenceContext<'a> {
                     self.subst.apply(&val_typed.ty)
                 };
 
+                // For let-patterns, only apply shared-scrutinee coercion when the
+                // RHS is a plain variable with a non-owned type (i.e., destructuring
+                // a shared parameter). For all other RHS expressions (function calls,
+                // constructors, tuples, etc.), the value is freshly produced and inner
+                // `~T` fields should be preserved.
+                let scrutinee_is_owned = match value.as_ref() {
+                    Expr::Var { .. } => matches!(&binding_ty, Type::Own(_)),
+                    _ => true,
+                };
                 match body {
                     Some(body) => {
                         self.env.push_scope();
-                        // For let-pattern, always preserve ownership (scrutinee_is_owned = true)
-                        // since the value is being consumed by the destructuring.
                         let typed_pattern = self.check_pattern(
                             pattern,
                             &binding_ty,
                             *span,
-                            true,
+                            scrutinee_is_owned,
                         )?;
                         let body_typed = self.infer_expr_inner(body, None)?;
                         self.env.pop_scope();
@@ -1438,7 +1445,7 @@ impl<'a> InferenceContext<'a> {
                             pattern,
                             &binding_ty,
                             *span,
-                            true,
+                            scrutinee_is_owned,
                         )?;
                         Ok(TypedExpr {
                             kind: TypedExprKind::LetPattern {

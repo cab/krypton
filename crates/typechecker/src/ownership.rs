@@ -7,6 +7,13 @@ use crate::typed_ast::ParamQualifier;
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SecondaryLabel, SpannedTypeError, TypeError};
 
+/// Info collected from a `StructUpdate` typed expression for the ownership pass.
+pub struct StructUpdateInfo {
+    pub type_name: String,
+    pub updated_fields: HashSet<String>,
+    pub base_is_owned: bool,
+}
+
 /// Check if a param has an `own` type annotation.
 fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
     matches!(&param.ty, Some(TypeExpr::Own { .. }))
@@ -348,7 +355,7 @@ pub fn check_ownership(
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
-    struct_update_info: &HashMap<Span, (String, HashSet<String>, bool)>,
+    struct_update_info: &HashMap<Span, StructUpdateInfo>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
     match_arm_owned_vars: &HashMap<Span, Vec<Vec<String>>>,
@@ -439,7 +446,7 @@ struct OwnershipChecker<'a> {
     let_own_spans: &'a HashSet<Span>,
     lambda_own_captures: &'a HashMap<Span, String>,
     own_fn_notes: &'a mut HashMap<String, String>,
-    struct_update_info: &'a HashMap<Span, (String, HashSet<String>, bool)>,
+    struct_update_info: &'a HashMap<Span, StructUpdateInfo>,
     registry: &'a TypeRegistry,
     /// Pattern-bound owned variables per match (keyed by match span, per-arm).
     match_arm_owned_vars: &'a HashMap<Span, Vec<Vec<String>>>,
@@ -813,11 +820,13 @@ impl<'a> OwnershipChecker<'a> {
 
                     let newly: HashMap<String, Span> = arm_consumed
                         .into_iter()
-                        .filter(|(k, _)| !before.contains(k))
+                        .filter(|(k, _)| !before.contains(k) && !pattern_owned.contains(k))
                         .collect();
                     per_arm_new.push(newly);
                     for (name, span) in &arm_partial {
-                        merged_partial.entry(name.clone()).or_insert(*span);
+                        if !pattern_owned.contains(name) {
+                            merged_partial.entry(name.clone()).or_insert(*span);
+                        }
                     }
                 }
 
@@ -902,21 +911,21 @@ impl<'a> OwnershipChecker<'a> {
                 self.check_exprs(fields.iter().map(|(_, e)| e))?;
 
                 let (base_consumed, base_is_owned) =
-                    if let Some((type_name, updated_fields, base_own)) = self.struct_update_info.get(span) {
-                        if let Some(info) = self.registry.lookup_type(type_name) {
+                    if let Some(sui) = self.struct_update_info.get(span) {
+                        if let Some(info) = self.registry.lookup_type(&sui.type_name) {
                             if let TypeKind::Record {
                                 fields: record_fields,
                             } = &info.kind
                             {
                                 let has_unreplaced_own = record_fields.iter().any(|(fname, fty)| {
-                                    type_contains_own(fty) && !updated_fields.contains(fname)
+                                    type_contains_own(fty) && !sui.updated_fields.contains(fname)
                                 });
-                                (has_unreplaced_own, *base_own)
+                                (has_unreplaced_own, sui.base_is_owned)
                             } else {
-                                (true, *base_own)
+                                (true, sui.base_is_owned)
                             }
                         } else {
-                            (true, *base_own)
+                            (true, sui.base_is_owned)
                         }
                     } else {
                         (true, false)
@@ -927,21 +936,34 @@ impl<'a> OwnershipChecker<'a> {
                 if base_consumed && !base_is_owned {
                     if let Expr::Var { name, span: var_span, .. } = base.as_ref() {
                         // Find un-replaced owned field names for the error message
-                        let unreplaced: Vec<String> = if let Some((type_name, updated_fields, _)) = self.struct_update_info.get(span) {
-                            if let Some(info) = self.registry.lookup_type(type_name) {
+                        let mut unreplaced: Vec<String> = Vec::new();
+                        let mut first_owned_field_ty: Option<Type> = None;
+                        if let Some(sui) = self.struct_update_info.get(span) {
+                            if let Some(info) = self.registry.lookup_type(&sui.type_name) {
                                 if let TypeKind::Record { fields: record_fields } = &info.kind {
-                                    record_fields.iter()
-                                        .filter(|(fname, fty)| type_contains_own(fty) && !updated_fields.contains(fname))
-                                        .map(|(fname, _)| fname.clone())
-                                        .collect()
-                                } else { vec![] }
-                            } else { vec![] }
-                        } else { vec![] };
-                        let t = Type::Named("T".into(), vec![]);
+                                    for (fname, fty) in record_fields {
+                                        if type_contains_own(fty) && !sui.updated_fields.contains(fname) {
+                                            if first_owned_field_ty.is_none() {
+                                                first_owned_field_ty = Some(fty.clone());
+                                            }
+                                            unreplaced.push(fname.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        let (expected_ty, actual_ty) = match first_owned_field_ty {
+                            Some(Type::Own(inner)) => (Type::Own(inner.clone()), (*inner).clone()),
+                            Some(fty) => (Type::Own(Box::new(fty.clone())), fty),
+                            None => {
+                                let t = Type::Named("T".into(), vec![]);
+                                (Type::Own(Box::new(t.clone())), t)
+                            }
+                        };
                         return Err(SpannedTypeError {
                             error: TypeError::Mismatch {
-                                expected: Type::Own(Box::new(t.clone())),
-                                actual: t,
+                                expected: expected_ty,
+                                actual: actual_ty,
                             },
                             span: *var_span,
                             note: Some(format!(
@@ -985,7 +1007,7 @@ fn check_fn(
     fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
-    struct_update_info: &HashMap<Span, (String, HashSet<String>, bool)>,
+    struct_update_info: &HashMap<Span, StructUpdateInfo>,
     registry: &TypeRegistry,
     fn_scheme_params: &HashMap<String, Vec<Type>>,
     match_arm_owned_vars: &HashMap<Span, Vec<Vec<String>>>,

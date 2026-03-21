@@ -1,0 +1,7 @@
+# expect: error E0001
+# Let-destructuring a shared struct with ~fn field should error
+type Callback = { run: ~() -> String }
+fun test(cb: Callback) -> String {
+    let Callback { run } = cb
+    run()
+}

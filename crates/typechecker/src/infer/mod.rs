@@ -992,10 +992,10 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 }
 
 /// Walk a typed expression tree and record struct update info for each
-/// `StructUpdate` node: maps its span to (type_name, set of updated field names, base_is_owned).
+/// `StructUpdate` node: maps its span to a `StructUpdateInfo`.
 fn collect_struct_update_info(
     expr: &TypedExpr,
-    info: &mut HashMap<Span, (String, HashSet<String>, bool)>,
+    info: &mut HashMap<Span, crate::ownership::StructUpdateInfo>,
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -1010,7 +1010,11 @@ fn collect_struct_update_info(
                 if let Type::Named(name, _) = inner_ty {
                     let field_names: HashSet<String> =
                         fields.iter().map(|(n, _)| n.clone()).collect();
-                    info.insert(expr.span, (name.clone(), field_names, base_is_owned));
+                    info.insert(expr.span, crate::ownership::StructUpdateInfo {
+                        type_name: name.clone(),
+                        updated_fields: field_names,
+                        base_is_owned,
+                    });
                 }
                 work.push(base);
                 for (_, e) in fields {
@@ -2333,7 +2337,7 @@ impl ModuleInferenceState {
             }
         }
 
-        let mut struct_update_info: HashMap<Span, (String, HashSet<String>, bool)> = HashMap::new();
+        let mut struct_update_info: HashMap<Span, crate::ownership::StructUpdateInfo> = HashMap::new();
         let mut match_arm_owned_vars: HashMap<Span, Vec<Vec<String>>> = HashMap::new();
         let mut field_access_owned: HashSet<Span> = HashSet::new();
         for func in &functions {
