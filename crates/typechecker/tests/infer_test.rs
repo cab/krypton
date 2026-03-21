@@ -194,7 +194,7 @@ fn impl_where_clause_constraints_are_stored_on_instance_defs() {
     let instance = modules[0]
         .instance_defs
         .iter()
-        .find(|inst| inst.trait_name == "MyEq" && inst.target_type_name == "Option")
+        .find(|inst| inst.trait_name == "MyEq" && inst.target_type_name == "Option$T0")
         .expect("expected MyEq[Option[a]] instance");
 
     assert_eq!(instance.constraints.len(), 1);

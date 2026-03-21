@@ -2336,6 +2336,7 @@ fn process_traits_and_deriving(
                             span: (0, 0),
                             is_builtin: false,
                         };
+                        // A-T14: silently ignores duplicate imported instances; should be an error
                         let _ = trait_registry.register_instance(instance);
                     }
                 }
@@ -3154,6 +3155,9 @@ fn infer_function_bodies<'a>(
                 strip_own(&body_ty)
             };
 
+            // Use join_types (not unify) to reconcile the inferred fn type with the pre-bound
+            // SCC type. This is not a value flow — it's two views of the same function that may
+            // differ in Own wrappers (e.g. body infers Int, recursive call bound ~Int from literals).
             let fn_ty = Type::Fn(param_types, Box::new(ret_ty.clone()));
             crate::unify::join_types(&fn_ty, tv, &mut state.subst)
                 .map_err(|e| spanned(e, decl.span))?;
@@ -3161,6 +3165,9 @@ fn infer_function_bodies<'a>(
             fn_bodies[idx] = Some(body_typed);
         }
 
+        // Generalize against an empty env: all env bindings are either fully-quantified
+        // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
+        // generalized. This must change if nested let-polymorphism is added.
         let empty_env = TypeEnv::new();
         for &(idx, ref tv) in &pre_bound {
             let final_ty = state.subst.apply(tv);
@@ -3241,6 +3248,9 @@ fn typecheck_impl_methods(
             let instance = trait_registry
                 .find_instance_by_trait_and_span(trait_name, *span)
                 .unwrap();
+            // For HKT partial application, strip anonymous type var args from the
+            // target type so it acts as a partial constructor for substitution.
+            // e.g., Named("Result", [Var(e), Var(anon)]) → Named("Result", [Var(e)])
             let resolved_target = if trait_info.type_var_arity > 0 {
                 strip_anon_type_args(&instance.target_type, &instance.type_var_ids)
             } else {

@@ -1,16 +1,37 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
+use krypton_parser::ast::{Decl, ImportName, Module, Span, TypeDecl, Visibility};
 
-use crate::type_registry::{self};
+use crate::type_registry::{self, TypeRegistry};
+use crate::typed_ast::ExportedTypeInfo;
 use crate::typed_ast::{self as typed_ast, TraitId, TypedModule};
-use crate::types::{Type, TypeScheme, TypeVarId};
+use crate::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
     build_type_param_map, constructor_names, find_type_decl, process_extern_methods, spanned,
     ModuleInferenceState, QualifiedExport, QualifiedModuleBinding,
 };
+
+/// Register a type using pre-resolved export info if available,
+/// falling back to processing the type declaration from AST.
+fn register_type_with_fallback(
+    export_info: Option<&ExportedTypeInfo>,
+    td: &TypeDecl,
+    registry: &mut TypeRegistry,
+    gen: &mut TypeVarGen,
+    span: Span,
+) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
+    if let Some(export) = export_info {
+        registry.register_name(&export.name);
+        type_registry::register_type_from_export(export, registry, gen)
+            .map_err(|e| spanned(e, span))
+    } else {
+        registry.register_name(&td.name);
+        type_registry::process_type_decl(td, registry, gen)
+            .map_err(|e| spanned(e, span))
+    }
+}
 
 impl ModuleInferenceState {
     /// Build a synthetic `Decl::Import` for the prelude, gathering all re-exported names
@@ -460,21 +481,10 @@ impl ModuleInferenceState {
                         ));
                     }
                     if self.registry.lookup_type(&td.name).is_none() {
-                        // Try pre-resolved export from the source module's cache
-                        let export_info = cached.exported_type_infos.get(td.name.as_str()).cloned();
-                        let constructors = if let Some(ref export) = export_info {
-                            self.registry.register_name(&export.name);
-                            type_registry::register_type_from_export(
-                                export,
-                                &mut self.registry,
-                                &mut self.gen,
-                            )
-                            .map_err(|e| spanned(e, span))?
-                        } else {
-                            self.registry.register_name(&td.name);
-                            type_registry::process_type_decl(td, &mut self.registry, &mut self.gen)
-                                .map_err(|e| spanned(e, span))?
-                        };
+                        let constructors = register_type_with_fallback(
+                            cached.exported_type_infos.get(td.name.as_str()),
+                            td, &mut self.registry, &mut self.gen, span,
+                        )?;
                         if effective_type_name != td.name {
                             self.registry
                                 .register_type_alias(&effective_type_name, &td.name)
@@ -505,20 +515,10 @@ impl ModuleInferenceState {
                     // Branch B: import_all — mark user-visible
                     self.registry.mark_user_visible(&td.name);
                     if self.registry.lookup_type(&td.name).is_none() {
-                        let export_info = cached.exported_type_infos.get(td.name.as_str()).cloned();
-                        let constructors = if let Some(ref export) = export_info {
-                            self.registry.register_name(&export.name);
-                            type_registry::register_type_from_export(
-                                export,
-                                &mut self.registry,
-                                &mut self.gen,
-                            )
-                            .map_err(|e| spanned(e, span))?
-                        } else {
-                            self.registry.register_name(&td.name);
-                            type_registry::process_type_decl(td, &mut self.registry, &mut self.gen)
-                                .map_err(|e| spanned(e, span))?
-                        };
+                        let constructors = register_type_with_fallback(
+                            cached.exported_type_infos.get(td.name.as_str()),
+                            td, &mut self.registry, &mut self.gen, span,
+                        )?;
                         if path == "prelude" {
                             self.registry.set_prelude(&td.name);
                         }
@@ -539,20 +539,10 @@ impl ModuleInferenceState {
                         }
                     }
                 } else if self.registry.lookup_type(&td.name).is_none() {
-                    let export_info = cached.exported_type_infos.get(td.name.as_str()).cloned();
-                    let constructors = if let Some(ref export) = export_info {
-                        self.registry.register_name(&export.name);
-                        type_registry::register_type_from_export(
-                            export,
-                            &mut self.registry,
-                            &mut self.gen,
-                        )
-                        .map_err(|e| spanned(e, span))?
-                    } else {
-                        self.registry.register_name(&td.name);
-                        type_registry::process_type_decl(td, &mut self.registry, &mut self.gen)
-                            .map_err(|e| spanned(e, span))?
-                    };
+                    let constructors = register_type_with_fallback(
+                        cached.exported_type_infos.get(td.name.as_str()),
+                        td, &mut self.registry, &mut self.gen, span,
+                    )?;
                     for (cname, scheme) in constructors {
                         self.env.bind(cname, scheme);
                     }

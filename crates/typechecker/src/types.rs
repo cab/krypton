@@ -676,7 +676,7 @@ pub fn head_type_name(ty: &Type) -> String {
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Fn(params, _) => format!("$Fun{}", params.len()),
-        other => format!("{other:?}"),
+        other => unreachable!("unexpected type in head_type_name: {other:?}"),
     }
 }
 
@@ -711,7 +711,7 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
             let idx = *var_map.entry(*id).or_insert(next);
             format!("T{idx}")
         }
-        other => format!("{other:?}"),
+        other => unreachable!("unexpected type in canonical_name_inner: {other:?}"),
     }
 }
 
