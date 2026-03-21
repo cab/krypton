@@ -178,11 +178,11 @@ pub fn compile_modules(
 
     // Build instance class name map from all library modules
     let mut instance_class_map: HashMap<(String, String), ImportedInstanceInfo> = HashMap::new();
+    let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
     for module in typed_modules {
         if module.module_path.is_some() {
             for inst in &module.instance_defs {
-                let builtin_types = ["Int", "Float", "Bool", "String"];
-                if builtin_types.contains(&inst.target_type_name.as_str()) { continue; }
+                if intrinsic_registry.get(&inst.trait_name, &inst.target_type_name).is_some() { continue; }
                 let q_trait = qualify_type_for(module, &inst.trait_name);
                 let class_name = format!("{}$${}", q_trait, inst.target_type_name);
                 instance_class_map.insert(

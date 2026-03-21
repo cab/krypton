@@ -278,7 +278,24 @@ impl Compiler {
                         }
                     }
                 } else {
-                    args[0].ty.clone()
+                    // Check if trait type var is in method params or only in return type
+                    if let Some((param_patterns, ret_pattern)) = dispatch.method_tc_types.get(name) {
+                        let mut bindings = HashMap::new();
+                        for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
+                            Self::bind_type_vars(pattern, &arg.ty, &mut bindings);
+                        }
+                        if bindings.get(&dispatch.type_var_id).is_none() {
+                            // Type var not in params — extract from return type
+                            let actual_ret = match &func.ty {
+                                Type::Fn(_, ret) => ret.as_ref().clone(),
+                                _ => result_ty.clone(),
+                            };
+                            Self::bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
+                        }
+                        bindings.get(&dispatch.type_var_id).cloned().unwrap_or_else(|| args[0].ty.clone())
+                    } else {
+                        args[0].ty.clone()
+                    }
                 };
                 let is_type_var = matches!(&dict_ty, Type::Var(_));
                 if is_type_var && !self.traits.has_dict_for_trait(trait_name) {

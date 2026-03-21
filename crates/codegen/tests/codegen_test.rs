@@ -6,7 +6,7 @@ use krypton_typechecker::typed_ast::{
     AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, TraitDefInfo, TraitId,
     TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
-use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
+use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 
 use krypton_modules::module_resolver::CompositeResolver;
 use std::collections::HashMap;
@@ -304,7 +304,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
 
     let mut functions = vec![];
 
-    let mut fn_constraints = HashMap::new();
     let mut fn_constraint_requirements = HashMap::new();
     if use_polymorphic_wrapper {
         fn_types.push(FnTypeEntry {
@@ -330,7 +329,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             ),
             close_self_type: None,
         });
-        fn_constraints.insert("render_wrap".to_string(), vec![("Render".to_string(), 0)]);
         fn_constraint_requirements.insert("render_wrap".to_string(), vec![("Render".to_string(), var_a)]);
     }
 
@@ -360,6 +358,12 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             trait_id: TraitId::new(None, "Render".to_string()),
             methods: vec![("render".to_string(), 1)],
             is_imported: false,
+            type_var_id: TypeVarId(100),
+            method_tc_types: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("render".to_string(), (vec![Type::Var(TypeVarId(100))], Type::String));
+                m
+            },
         }],
         instance_defs: vec![
             InstanceDefInfo {
@@ -389,9 +393,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 is_intrinsic: false,
             },
         ],
-        fn_constraints,
         fn_constraint_requirements,
-        imported_fn_constraints: HashMap::new(),
         imported_fn_constraint_requirements: HashMap::new(),
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),

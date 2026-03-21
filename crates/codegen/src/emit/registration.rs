@@ -347,6 +347,8 @@ impl Compiler {
             self.traits.trait_dispatch.insert(trait_def.name.clone(), TraitDispatchInfo {
                 interface_class: iface_class,
                 method_refs,
+                type_var_id: trait_def.type_var_id,
+                method_tc_types: trait_def.method_tc_types.clone(),
             });
         }
         Ok(result_classes)

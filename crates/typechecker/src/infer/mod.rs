@@ -1143,6 +1143,18 @@ fn detect_trait_constraints(
     }
 }
 
+fn type_contains_var(ty: &Type, var_id: TypeVarId) -> bool {
+    match ty {
+        Type::Var(v) => *v == var_id,
+        Type::Named(_, args) => args.iter().any(|a| type_contains_var(a, var_id)),
+        Type::App(ctor, args) => type_contains_var(ctor, var_id) || args.iter().any(|a| type_contains_var(a, var_id)),
+        Type::Fn(params, ret) => params.iter().any(|p| type_contains_var(p, var_id)) || type_contains_var(ret, var_id),
+        Type::Own(inner) => type_contains_var(inner, var_id),
+        Type::Tuple(elems) => elems.iter().any(|e| type_contains_var(e, var_id)),
+        _ => false,
+    }
+}
+
 /// Walk a typed AST looking for calls to trait methods. For each call,
 /// resolve the argument type and verify that a matching instance exists.
 /// Also checks calls to imported constrained functions (via `fn_constraint_requirements`).
@@ -1161,53 +1173,94 @@ fn check_trait_instances(
             TypedExprKind::App { func, args } => {
                 if let Some(name) = typed_callee_var_name(func) {
                     if let Some(trait_id) = trait_method_map.get(name) {
-                        if let Some(first_arg) = args.first() {
-                            let arg_ty = subst.apply(&first_arg.ty);
-                            let concrete_ty = strip_own(&arg_ty);
-                            if leading_type_var(&concrete_ty).is_none()
-                                && trait_registry
-                                    .find_instance(&trait_id.name, &concrete_ty)
-                                    .is_none()
-                            {
-                                return Err(no_instance_error(
-                                    trait_registry,
-                                    &trait_id.name,
-                                    &concrete_ty,
-                                    expr.span,
-                                ));
+                        let trait_info = trait_registry.lookup_trait(&trait_id.name);
+                        let type_var_in_params = trait_info
+                            .and_then(|info| {
+                                info.methods.iter().find(|m| m.name == name).map(|m| {
+                                    m.param_types.iter().any(|pt| type_contains_var(pt, info.type_var_id))
+                                })
+                            })
+                            .unwrap_or(true);
+
+                        if type_var_in_params {
+                            // Standard first-arg dispatch
+                            if let Some(first_arg) = args.first() {
+                                let arg_ty = subst.apply(&first_arg.ty);
+                                let concrete_ty = strip_own(&arg_ty);
+                                if leading_type_var(&concrete_ty).is_none()
+                                    && trait_registry
+                                        .find_instance(&trait_id.name, &concrete_ty)
+                                        .is_none()
+                                {
+                                    return Err(no_instance_error(
+                                        trait_registry,
+                                        &trait_id.name,
+                                        &concrete_ty,
+                                        expr.span,
+                                    ));
+                                }
                             }
-                        } else {
-                            // Zero-arg trait method: prefer explicit type_args from TypeApp
-                            let instance_ty = if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
-                                if !type_args.is_empty() {
-                                    Some(type_args[0].clone())
-                                } else {
-                                    None
+                        }
+
+                        if !type_var_in_params || args.is_empty() {
+                            // Return-type dispatch using bind_type_vars_simple
+                            if let Some(info) = trait_info {
+                                if let Some(method) = info.methods.iter().find(|m| m.name == name) {
+                                    let ret_ty = subst.apply(&func.ty);
+                                    let actual_ret = match &ret_ty {
+                                        Type::Fn(_, ret) => ret.as_ref().clone(),
+                                        other => other.clone(),
+                                    };
+                                    let mut bindings = HashMap::new();
+                                    bind_type_vars_simple(&method.return_type, &actual_ret, &mut bindings);
+                                    if let Some(dispatch_ty) = bindings.get(&info.type_var_id) {
+                                        let concrete_ty = strip_own(dispatch_ty);
+                                        if leading_type_var(&concrete_ty).is_none()
+                                            && trait_registry.find_instance(&trait_id.name, &concrete_ty).is_none()
+                                        {
+                                            return Err(no_instance_error(
+                                                trait_registry,
+                                                &trait_id.name,
+                                                &concrete_ty,
+                                                expr.span,
+                                            ));
+                                        }
+                                    }
                                 }
                             } else {
-                                None
-                            };
-                            let concrete_ty = if let Some(ty) = instance_ty {
-                                strip_own(&ty).clone()
-                            } else {
-                                // Fallback: use return type (works when trait var IS the return type)
-                                let ret_ty = subst.apply(&func.ty);
-                                match &ret_ty {
-                                    Type::Fn(_, ret) => strip_own(ret).clone(),
-                                    other => strip_own(other).clone(),
+                                // Fallback for when trait_info unavailable: zero-arg path
+                                if args.is_empty() {
+                                    let instance_ty = if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
+                                        if !type_args.is_empty() {
+                                            Some(type_args[0].clone())
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    };
+                                    let concrete_ty = if let Some(ty) = instance_ty {
+                                        strip_own(&ty).clone()
+                                    } else {
+                                        let ret_ty = subst.apply(&func.ty);
+                                        match &ret_ty {
+                                            Type::Fn(_, ret) => strip_own(ret).clone(),
+                                            other => strip_own(other).clone(),
+                                        }
+                                    };
+                                    if leading_type_var(&concrete_ty).is_none()
+                                        && trait_registry
+                                            .find_instance(&trait_id.name, &concrete_ty)
+                                            .is_none()
+                                    {
+                                        return Err(no_instance_error(
+                                            trait_registry,
+                                            &trait_id.name,
+                                            &concrete_ty,
+                                            expr.span,
+                                        ));
+                                    }
                                 }
-                            };
-                            if leading_type_var(&concrete_ty).is_none()
-                                && trait_registry
-                                    .find_instance(&trait_id.name, &concrete_ty)
-                                    .is_none()
-                            {
-                                return Err(no_instance_error(
-                                    trait_registry,
-                                    &trait_id.name,
-                                    &concrete_ty,
-                                    expr.span,
-                                ));
                             }
                         }
                     }
@@ -2072,11 +2125,18 @@ impl ModuleInferenceState {
                 .iter()
                 .map(|m| (m.name.clone(), m.param_types.len()))
                 .collect();
+            let method_tc_types: HashMap<String, (Vec<Type>, Type)> = info
+                .methods
+                .iter()
+                .map(|m| (m.name.clone(), (m.param_types.clone(), m.return_type.clone())))
+                .collect();
             trait_defs.push(TraitDefInfo {
                 name: trait_name.clone(),
                 trait_id: TraitId::new(info.module_path.clone(), trait_name.clone()),
                 methods: method_info,
                 is_imported,
+                type_var_id: info.type_var_id,
+                method_tc_types,
             });
             seen_traits.insert(trait_name.clone());
         }
@@ -2092,6 +2152,8 @@ impl ModuleInferenceState {
                         trait_id: TraitId::new(module_path.clone(), name.clone()),
                         methods: method_info,
                         is_imported: false,
+                        type_var_id: TypeVarId(0),
+                        method_tc_types: HashMap::new(),
                     });
                 }
             }

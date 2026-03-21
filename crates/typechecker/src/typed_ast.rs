@@ -226,6 +226,8 @@ pub struct TraitDefInfo {
     pub trait_id: TraitId,
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
     pub is_imported: bool,
+    pub type_var_id: TypeVarId,
+    pub method_tc_types: HashMap<String, (Vec<Type>, Type)>, // name -> (param_types, return_type)
 }
 
 #[derive(Clone)]
