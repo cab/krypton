@@ -32,9 +32,11 @@ lint:
     cargo clippy --workspace
     cargo fmt -- --check
 
-# Run all benchmarks
+# Run all benchmarks (criterion only)
 bench:
-    cargo bench
+    cargo bench -p krypton-parser --bench parse_bench
+    cargo bench -p krypton-typechecker --bench typecheck_bench
+    cargo bench -p krypton-codegen --bench codegen_bench
 
 # Run benchmarks for a specific crate (parser, typechecker, codegen)
 bench-crate crate:
@@ -42,8 +44,12 @@ bench-crate crate:
 
 # Save a named benchmark baseline
 bench-save name:
-    cargo bench -- --save-baseline {{name}}
+    cargo bench -p krypton-parser --bench parse_bench -- --save-baseline {{name}}
+    cargo bench -p krypton-typechecker --bench typecheck_bench -- --save-baseline {{name}}
+    cargo bench -p krypton-codegen --bench codegen_bench -- --save-baseline {{name}}
 
 # Compare against a named baseline
 bench-compare name:
-    cargo bench -- --baseline {{name}}
+    cargo bench -p krypton-parser --bench parse_bench -- --baseline {{name}}
+    cargo bench -p krypton-typechecker --bench typecheck_bench -- --baseline {{name}}
+    cargo bench -p krypton-codegen --bench codegen_bench -- --baseline {{name}}
