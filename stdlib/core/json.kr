@@ -1,7 +1,7 @@
 # core/json — JSON parsing and serialization
 import core/result.{Result, Ok, Err}
 import core/option.{Option, Some, None}
-import core/list.{List, Cons, Nil, fold, map as list_map}
+import core/list.{List, Cons, Nil, fold, map as list_map, reverse}
 import core/map.{Map, empty, put, get as map_get, entries, from_list}
 import core/eq.{Eq}
 import core/hash.{Hash}
@@ -191,20 +191,20 @@ impl FromJson[Bool] {
     }
 }
 
-fun from_json_list[a](items: List[Json]) -> Result[String, List[a]] where a: FromJson =
-    match items {
-        Nil => Ok(Nil),
+fun from_json_list_go[a](remaining: List[Json], acc: List[a]) -> Result[String, List[a]] where a: FromJson =
+    match remaining {
+        Nil => Ok(reverse(acc)),
         Cons(h, rest) => {
             let r: Result[String, a] = from_json(h);
             match r {
                 Err(e) => Err(e),
-                Ok(v) => match from_json_list(rest) {
-                    Err(e) => Err(e),
-                    Ok(vs) => Ok(Cons(v, vs)),
-                },
+                Ok(v) => recur(rest, Cons(v, acc)),
             }
         },
     }
+
+fun from_json_list[a](items: List[Json]) -> Result[String, List[a]] where a: FromJson =
+    from_json_list_go(items, Nil)
 
 impl FromJson[List[a]] where a: FromJson {
     fun from_json(j: Json) -> Result[String, List[a]] = match j {
@@ -225,21 +225,21 @@ impl FromJson[Option[a]] where a: FromJson {
     }
 }
 
-fun from_json_entries[a](pairs: List[(String, Json)]) -> Result[String, List[(String, a)]] where a: FromJson =
-    match pairs {
-        Nil => Ok(Nil),
+fun from_json_entries_go[a](remaining: List[(String, Json)], acc: List[(String, a)]) -> Result[String, List[(String, a)]] where a: FromJson =
+    match remaining {
+        Nil => Ok(reverse(acc)),
         Cons(pair, rest) => {
             let (k, v) = pair;
             let r: Result[String, a] = from_json(v);
             match r {
                 Err(e) => Err(e),
-                Ok(val) => match from_json_entries(rest) {
-                    Err(e) => Err(e),
-                    Ok(ps) => Ok(Cons((k, val), ps)),
-                },
+                Ok(val) => recur(rest, Cons((k, val), acc)),
             }
         },
     }
+
+fun from_json_entries[a](pairs: List[(String, Json)]) -> Result[String, List[(String, a)]] where a: FromJson =
+    from_json_entries_go(pairs, Nil)
 
 impl FromJson[Map[String, a]] where a: FromJson {
     fun from_json(j: Json) -> Result[String, Map[String, a]] = match j {

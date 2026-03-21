@@ -48,6 +48,9 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
             let text = text.trim();
             // Strip surrounding quotes if present, then unescape \n
             let text = if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
+                // Use \x00 as a temporary placeholder for escaped backslashes so that
+                // "\\n" (literal backslash + n) is not confused with "\n" (newline).
+                // Assumes test expectations never contain literal NUL bytes.
                 text[1..text.len() - 1]
                     .replace("\\\\", "\x00")
                     .replace("\\n", "\n")
