@@ -17,5 +17,5 @@ fn main() -> Unit =
   let v6: Unit = call println(v5, v4)
   v6
 
-fn lambda$49(v1: f) -> ~String =
+fn lambda$49(v1: ~String) -> ~String =
   v1

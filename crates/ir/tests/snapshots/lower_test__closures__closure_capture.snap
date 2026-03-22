@@ -15,6 +15,6 @@ fn main() -> Unit =
   in
   jump v7(10)
 
-fn lambda$48(v2: f, v3: Int) -> Int =
+fn lambda$48(v2: ~Int, v3: Int) -> Int =
   let v4: Int = add_int(v3, v2)
   v4

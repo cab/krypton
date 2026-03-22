@@ -17,10 +17,10 @@ fn test(v7: ~String) -> String =
   let v10: String = call_closure v9()
   v10
 
-fn lambda$51(v3: h) -> String =
+fn lambda$51(v3: ~String) -> String =
   let v4: String = call consume(v3)
   v4
 
-fn lambda$50(v2: f) -> ~() -> String =
+fn lambda$50(v2: ~String) -> ~() -> String =
   let v5: ~() -> String = make_closure(lambda$51, [v2])
   v5
