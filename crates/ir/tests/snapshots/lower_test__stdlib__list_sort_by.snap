@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 67
 expression: ir_module.to_string()
 ---
 module stdlib__list_sort_by
@@ -17,7 +16,7 @@ fn main() -> Unit =
   let v6: Dict = get_dict Ord[Int]
   let v7: List[Int] = call sort_by(v6, v3, v5)
   switch v7 {
-    0 (v8: a, v9: List[a]) ->
+    0 (v8: c, v9: List[c]) ->
       let v10: Unit = call println(v8)
       v10
     1 ->

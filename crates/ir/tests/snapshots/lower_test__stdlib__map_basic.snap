@@ -18,7 +18,7 @@ fn main() -> Unit =
   let v5: Dict = get_dict Hash[String]
   let v6: Option[Int] = call get(v4, v5, v0, "key")
   switch v6 {
-    0 (v7: d) ->
+    0 (v7: b) ->
       let v8: Dict = get_dict Show[Int]
       let v9: Unit = call println(v8, v7)
       v9

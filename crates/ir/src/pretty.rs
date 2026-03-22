@@ -145,6 +145,7 @@ impl fmt::Display for SimpleExpr {
             } => {
                 write!(f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
             }
+            SimpleExpr::Atom(atom) => write!(f, "{atom}"),
         }
     }
 }
@@ -215,6 +216,7 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
                 write!(self.f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
             }
+            SimpleExpr::Atom(atom) => write!(self.f, "{atom}"),
         }
     }
 

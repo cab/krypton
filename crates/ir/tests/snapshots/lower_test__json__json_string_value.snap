@@ -11,10 +11,10 @@ declare println: (Dict, m) -> Unit
 fn main() -> Unit =
   let v0: Result[String, Json] = call parse_json("{"name":"alice"}")
   switch v0 {
-    0 (v1: c) ->
+    0 (v1: b) ->
       let v2: Option[Json] = call json_get(v1, "name")
       switch v2 {
-        0 (v3: a) ->
+        0 (v3: c) ->
           switch v3 {
             3 (v4: String) ->
               let v5: Dict = get_dict Show[String]
@@ -30,7 +30,7 @@ fn main() -> Unit =
           let v10: Unit = call println(v9, "FAIL get")
           v10
       }
-    1 (v11: b) ->
+    1 (v11: a) ->
       let v12: Dict = get_dict Show[String]
       let v13: Unit = call println(v12, v11)
       v13

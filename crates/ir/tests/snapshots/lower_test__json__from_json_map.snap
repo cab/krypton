@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 67
 expression: ir_module.to_string()
 ---
 module json__from_json_map
@@ -22,7 +21,7 @@ fn main() -> Unit =
   let v9: Dict = get_dict FromJson[Map[String, Int]]
   let v8: Result[String, Map[String, Int]] = call from_json(v9, v0)
   switch v8 {
-    0 (v10: c) ->
+    0 (v10: d) ->
       let v11: Dict = get_dict Eq[String]
       let v12: Dict = get_dict Hash[String]
       let v13: Option[Int] = call get(v11, v12, v10, "x")
@@ -36,7 +35,7 @@ fn main() -> Unit =
           let v18: Unit = call println(v17, "missing")
           v18
       }
-    1 (v19: b) ->
+    1 (v19: c) ->
       let v20: Dict = get_dict Show[String]
       let v21: Unit = call println(v20, v19)
       v21

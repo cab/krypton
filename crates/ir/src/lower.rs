@@ -68,6 +68,9 @@ struct ParamInstanceInfo {
 struct Clause {
     patterns: Vec<TypedPattern>,
     body: TypedExpr,
+    /// Bindings accumulated during specialization for Var patterns that were
+    /// expanded to wildcards. Each entry is (name, scrutinee_atom, type).
+    extra_bindings: Vec<(String, Atom, Type)>,
 }
 
 /// What kind of head constructors appear in a column.
@@ -80,7 +83,12 @@ enum ColumnKind {
 
 /// Check if a pattern is a wildcard or variable (always matches).
 fn is_wildcard_or_var(pat: &TypedPattern) -> bool {
-    matches!(pat, TypedPattern::Wildcard { .. } | TypedPattern::Var { .. })
+    matches!(
+        pat,
+        TypedPattern::Wildcard { .. }
+            | TypedPattern::Var { .. }
+            | TypedPattern::Lit { value: Lit::Unit, .. }
+    )
 }
 
 /// Get the type annotation from a pattern.
@@ -92,18 +100,6 @@ fn pattern_type(pat: &TypedPattern) -> Type {
         | TypedPattern::Lit { ty, .. }
         | TypedPattern::Tuple { ty, .. }
         | TypedPattern::StructPat { ty, .. } => ty.clone(),
-    }
-}
-
-/// Compare two Lit values for equality.
-fn lit_eq(a: &Lit, b: &Lit) -> bool {
-    match (a, b) {
-        (Lit::Int(x), Lit::Int(y)) => x == y,
-        (Lit::Float(x), Lit::Float(y)) => x == y,
-        (Lit::Bool(x), Lit::Bool(y)) => x == y,
-        (Lit::String(x), Lit::String(y)) => x == y,
-        (Lit::Unit, Lit::Unit) => true,
-        _ => false,
     }
 }
 
@@ -343,6 +339,7 @@ fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
         SimpleExpr::MakeDict { sub_dicts, .. } => {
             for atom in sub_dicts { referenced_vars_atom(atom, vars); }
         }
+        SimpleExpr::Atom(atom) => referenced_vars_atom(atom, vars),
     }
 }
 
@@ -1142,6 +1139,7 @@ impl LowerCtx {
             .map(|arm| Clause {
                 patterns: vec![arm.pattern.clone()],
                 body: arm.body.clone(),
+                extra_bindings: vec![],
             })
             .collect();
 
@@ -1175,6 +1173,7 @@ impl LowerCtx {
         let clause = Clause {
             patterns: vec![pattern.clone()],
             body: body_expr,
+            extra_bindings: vec![],
         };
 
         let decision = self.compile_clauses(vec![val_atom], vec![clause], result_ty)?;
@@ -1226,23 +1225,50 @@ impl LowerCtx {
         scrutinees: &[Atom],
         clause: &Clause,
     ) -> Result<Expr, LowerError> {
-        // Push variable bindings: map pattern var names directly to scrutinee VarIds
         let mut bound_names = Vec::new();
+        let mut lit_bindings: Vec<LetBinding> = Vec::new();
+
+        // First, bind extra_bindings accumulated from specialization of Var patterns
+        for (name, atom, ty) in &clause.extra_bindings {
+            match atom {
+                Atom::Var(id) => {
+                    self.var_types.insert(*id, ty.clone());
+                    self.push_var(name, *id);
+                    bound_names.push(name.clone());
+                }
+                Atom::Lit(lit) => {
+                    let var = self.fresh_var();
+                    self.var_types.insert(var, ty.clone());
+                    self.push_var(name, var);
+                    bound_names.push(name.clone());
+                    lit_bindings.push(LetBinding {
+                        bind: var,
+                        ty: ty.clone(),
+                        value: SimpleExpr::Atom(crate::Atom::Lit(lit.clone())),
+                    });
+                }
+            }
+        }
+
+        // Push variable bindings from the remaining pattern row
         for (pat, scrut) in clause.patterns.iter().zip(scrutinees.iter()) {
             if let TypedPattern::Var { name, ty, .. } = pat {
                 match scrut {
                     Atom::Var(scrut_id) => {
-                        // Alias: reuse the scrutinee's VarId for this pattern variable
                         self.var_types.insert(*scrut_id, ty.clone());
                         self.push_var(name, *scrut_id);
                         bound_names.push(name.clone());
                     }
-                    Atom::Lit(_) => {
-                        // Literal scrutinee — need a fresh var bound to the literal
+                    Atom::Lit(lit) => {
                         let var = self.fresh_var();
                         self.var_types.insert(var, ty.clone());
                         self.push_var(name, var);
                         bound_names.push(name.clone());
+                        lit_bindings.push(LetBinding {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::Atom(crate::Atom::Lit(lit.clone())),
+                        });
                     }
                 }
             }
@@ -1255,7 +1281,12 @@ impl LowerCtx {
             self.pop_var(name);
         }
 
-        Ok(body_expr)
+        // Wrap with literal bindings if any
+        if lit_bindings.is_empty() {
+            Ok(body_expr)
+        } else {
+            Ok(Self::wrap_bindings(lit_bindings, body_expr))
+        }
     }
 
     /// Pick the first column that has a non-wildcard/var pattern.
@@ -1328,7 +1359,7 @@ impl LowerCtx {
             }
 
             // Specialize the clause matrix for this constructor
-            let specialized = self.specialize_for_constructor(&clauses, col, ctor_name, field_types.len());
+            let specialized = self.specialize_for_constructor(&clauses, col, ctor_name, field_types, &scrut);
 
             // Build new scrutinee list: replace col with field atoms
             let mut new_scrutinees = Vec::new();
@@ -1350,7 +1381,7 @@ impl LowerCtx {
         }
 
         // Default matrix: rows with wildcard/var at col, remove that column
-        let default_clauses = self.default_matrix(&clauses, col);
+        let default_clauses = self.default_matrix(&clauses, col, &scrut);
         let default = if default_clauses.is_empty() {
             None
         } else {
@@ -1385,18 +1416,16 @@ impl LowerCtx {
 
         // Collect distinct literals
         let mut lit_values: Vec<Lit> = Vec::new();
-        let mut seen_lits: HashSet<String> = HashSet::new();
         for clause in &clauses {
             if let TypedPattern::Lit { value, .. } = &clause.patterns[col] {
-                let key = format!("{value:?}");
-                if seen_lits.insert(key) {
+                if !lit_values.iter().any(|l| l == value) {
                     lit_values.push(value.clone());
                 }
             }
         }
 
         // Build from the bottom up: start with default, then chain if-else for each literal
-        let default_clauses = self.default_matrix(&clauses, col);
+        let default_clauses = self.default_matrix(&clauses, col, &scrut);
         let mut new_scrutinees_for_default: Vec<Atom> = Vec::new();
         for (i, s) in scrutinees.iter().enumerate() {
             if i != col {
@@ -1416,7 +1445,7 @@ impl LowerCtx {
 
         // Chain literals in reverse order so the first literal tested is the first one encountered
         for lit in lit_values.iter().rev() {
-            let specialized = self.specialize_for_literal(&clauses, col, lit);
+            let specialized = self.specialize_for_literal(&clauses, col, lit, &scrut);
             // Literals have no sub-patterns, so just remove the column
             let mut new_scrutinees: Vec<Atom> = Vec::new();
             for (i, s) in scrutinees.iter().enumerate() {
@@ -1470,11 +1499,18 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         let scrut = scrutinees[col].clone();
 
+        // Get the scrutinee type for fallback in tuple_element_type
+        let scrut_ty = if let Atom::Var(id) = &scrut {
+            self.var_types.get(id).cloned().unwrap_or_else(|| pattern_type(&clauses[0].patterns[col]))
+        } else {
+            pattern_type(&clauses[0].patterns[col])
+        };
+
         // Project each element
         let mut proj_vars = Vec::new();
         let mut proj_bindings = Vec::new();
         for i in 0..arity {
-            let elem_ty = self.tuple_element_type(&clauses, col, i);
+            let elem_ty = self.tuple_element_type(&clauses, col, i, &scrut_ty);
             let v = self.fresh_var();
             self.var_types.insert(v, elem_ty.clone());
             proj_bindings.push(LetBinding {
@@ -1491,7 +1527,7 @@ impl LowerCtx {
         // Expand columns: replace col with element sub-patterns
         let expanded: Vec<Clause> = clauses
             .into_iter()
-            .map(|c| self.expand_tuple_clause(c, col, arity))
+            .map(|c| self.expand_tuple_clause(c, col, arity, &scrut))
             .collect();
 
         // Build new scrutinee list
@@ -1545,7 +1581,7 @@ impl LowerCtx {
         // Expand columns: replace col with field sub-patterns in canonical order
         let expanded: Vec<Clause> = clauses
             .into_iter()
-            .map(|c| self.expand_struct_clause(c, col, &canonical_fields))
+            .map(|c| self.expand_struct_clause(c, col, &canonical_fields, &scrut))
             .collect();
 
         let mut new_scrutinees = Vec::new();
@@ -1567,7 +1603,8 @@ impl LowerCtx {
         clauses: &[Clause],
         col: usize,
         ctor_name: &str,
-        arity: usize,
+        field_types: &[Type],
+        scrut_at_col: &Atom,
     ) -> Vec<Clause> {
         let mut result = Vec::new();
         for clause in clauses {
@@ -1585,16 +1622,17 @@ impl LowerCtx {
                     result.push(Clause {
                         patterns: new_pats,
                         body: clause.body.clone(),
+                        extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
-                TypedPattern::Wildcard { ty, span } => {
-                    // Expand wildcard to `arity` wildcards
+                TypedPattern::Wildcard { span, .. } => {
+                    // Expand wildcard to `arity` wildcards with correct field types
                     let mut new_pats = Vec::new();
                     for (i, p) in clause.patterns.iter().enumerate() {
                         if i == col {
-                            for _ in 0..arity {
+                            for ft in field_types {
                                 new_pats.push(TypedPattern::Wildcard {
-                                    ty: ty.clone(),
+                                    ty: ft.clone(),
                                     span: *span,
                                 });
                             }
@@ -1605,19 +1643,17 @@ impl LowerCtx {
                     result.push(Clause {
                         patterns: new_pats,
                         body: clause.body.clone(),
+                        extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
-                TypedPattern::Var { name: _, ty, span } => {
-                    // Treat as wildcard but we need to bind the original scrutinee
-                    // Since the var was for the whole value, not the sub-fields,
-                    // we keep it as wildcards in the expanded pattern.
-                    // The binding will happen at the base case.
+                TypedPattern::Var { name, ty, span } => {
+                    // Expand to wildcards but record binding for the whole scrutinee
                     let mut new_pats = Vec::new();
                     for (i, p) in clause.patterns.iter().enumerate() {
                         if i == col {
-                            for _ in 0..arity {
+                            for ft in field_types {
                                 new_pats.push(TypedPattern::Wildcard {
-                                    ty: ty.clone(),
+                                    ty: ft.clone(),
                                     span: *span,
                                 });
                             }
@@ -1625,9 +1661,12 @@ impl LowerCtx {
                             new_pats.push(p.clone());
                         }
                     }
+                    let mut extra = clause.extra_bindings.clone();
+                    extra.push((name.clone(), scrut_at_col.clone(), ty.clone()));
                     result.push(Clause {
                         patterns: new_pats,
                         body: clause.body.clone(),
+                        extra_bindings: extra,
                     });
                 }
                 _ => {
@@ -1644,33 +1683,45 @@ impl LowerCtx {
         clauses: &[Clause],
         col: usize,
         lit: &Lit,
+        scrut_at_col: &Atom,
     ) -> Vec<Clause> {
         let mut result = Vec::new();
         for clause in clauses {
             match &clause.patterns[col] {
-                TypedPattern::Lit { value, .. } if lit_eq(value, lit) => {
+                TypedPattern::Lit { value, .. } if value == lit => {
                     // Literals have no sub-patterns; just remove the column
-                    let mut new_pats = Vec::new();
-                    for (i, p) in clause.patterns.iter().enumerate() {
-                        if i != col {
-                            new_pats.push(p.clone());
-                        }
-                    }
+                    let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                        .filter(|(i, _)| *i != col)
+                        .map(|(_, p)| p.clone())
+                        .collect();
                     result.push(Clause {
                         patterns: new_pats,
                         body: clause.body.clone(),
+                        extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
-                TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => {
-                    let mut new_pats = Vec::new();
-                    for (i, p) in clause.patterns.iter().enumerate() {
-                        if i != col {
-                            new_pats.push(p.clone());
-                        }
-                    }
+                TypedPattern::Wildcard { .. } => {
+                    let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                        .filter(|(i, _)| *i != col)
+                        .map(|(_, p)| p.clone())
+                        .collect();
                     result.push(Clause {
                         patterns: new_pats,
                         body: clause.body.clone(),
+                        extra_bindings: clause.extra_bindings.clone(),
+                    });
+                }
+                TypedPattern::Var { name, ty, .. } => {
+                    let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                        .filter(|(i, _)| *i != col)
+                        .map(|(_, p)| p.clone())
+                        .collect();
+                    let mut extra = clause.extra_bindings.clone();
+                    extra.push((name.clone(), scrut_at_col.clone(), ty.clone()));
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                        extra_bindings: extra,
                     });
                 }
                 _ => {}
@@ -1680,19 +1731,23 @@ impl LowerCtx {
     }
 
     /// Default matrix: keep rows with wildcard/var at col, remove that column.
-    fn default_matrix(&self, clauses: &[Clause], col: usize) -> Vec<Clause> {
+    fn default_matrix(&self, clauses: &[Clause], col: usize, scrut_at_col: &Atom) -> Vec<Clause> {
         let mut result = Vec::new();
         for clause in clauses {
-            if is_wildcard_or_var(&clause.patterns[col]) {
-                let mut new_pats = Vec::new();
-                for (i, p) in clause.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
+            let pat = &clause.patterns[col];
+            if is_wildcard_or_var(pat) {
+                let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                    .filter(|(i, _)| *i != col)
+                    .map(|(_, p)| p.clone())
+                    .collect();
+                let mut extra = clause.extra_bindings.clone();
+                if let TypedPattern::Var { name, ty, .. } = pat {
+                    extra.push((name.clone(), scrut_at_col.clone(), ty.clone()));
                 }
                 result.push(Clause {
                     patterns: new_pats,
                     body: clause.body.clone(),
+                    extra_bindings: extra,
                 });
             }
         }
@@ -1700,15 +1755,22 @@ impl LowerCtx {
     }
 
     /// Expand a clause's tuple pattern at `col` into element sub-patterns.
-    fn expand_tuple_clause(&self, clause: Clause, col: usize, arity: usize) -> Clause {
+    fn expand_tuple_clause(&self, clause: Clause, col: usize, arity: usize, scrut_at_col: &Atom) -> Clause {
         let mut new_pats = Vec::new();
+        let mut extra = clause.extra_bindings;
         for (i, p) in clause.patterns.into_iter().enumerate() {
             if i == col {
                 match p {
                     TypedPattern::Tuple { elements, .. } => {
                         new_pats.extend(elements);
                     }
-                    TypedPattern::Wildcard { ty, span } | TypedPattern::Var { ty, span, .. } => {
+                    TypedPattern::Var { name, ty, span } => {
+                        extra.push((name, scrut_at_col.clone(), ty.clone()));
+                        for _ in 0..arity {
+                            new_pats.push(TypedPattern::Wildcard { ty: ty.clone(), span });
+                        }
+                    }
+                    TypedPattern::Wildcard { ty, span } => {
                         for _ in 0..arity {
                             new_pats.push(TypedPattern::Wildcard { ty: ty.clone(), span });
                         }
@@ -1725,6 +1787,7 @@ impl LowerCtx {
         Clause {
             patterns: new_pats,
             body: clause.body,
+            extra_bindings: extra,
         }
     }
 
@@ -1734,8 +1797,10 @@ impl LowerCtx {
         clause: Clause,
         col: usize,
         canonical_fields: &[(String, Type)],
+        scrut_at_col: &Atom,
     ) -> Clause {
         let mut new_pats = Vec::new();
+        let mut extra = clause.extra_bindings;
         for (i, p) in clause.patterns.into_iter().enumerate() {
             if i == col {
                 match p {
@@ -1752,7 +1817,16 @@ impl LowerCtx {
                             }
                         }
                     }
-                    TypedPattern::Wildcard { ty: _, span } | TypedPattern::Var { span, .. } => {
+                    TypedPattern::Var { name, ty, span } => {
+                        extra.push((name, scrut_at_col.clone(), ty));
+                        for (_, fty) in canonical_fields {
+                            new_pats.push(TypedPattern::Wildcard {
+                                ty: fty.clone(),
+                                span,
+                            });
+                        }
+                    }
+                    TypedPattern::Wildcard { ty: _, span } => {
                         for (_, fty) in canonical_fields {
                             new_pats.push(TypedPattern::Wildcard {
                                 ty: fty.clone(),
@@ -1771,11 +1845,12 @@ impl LowerCtx {
         Clause {
             patterns: new_pats,
             body: clause.body,
+            extra_bindings: extra,
         }
     }
 
     /// Get the type of a tuple element from the patterns in a column.
-    fn tuple_element_type(&self, clauses: &[Clause], col: usize, index: usize) -> Type {
+    fn tuple_element_type(&self, clauses: &[Clause], col: usize, index: usize, scrut_ty: &Type) -> Type {
         for clause in clauses {
             if let TypedPattern::Tuple { elements, .. } = &clause.patterns[col] {
                 if let Some(elem) = elements.get(index) {
@@ -1783,7 +1858,13 @@ impl LowerCtx {
                 }
             }
         }
-        Type::Unit // fallback
+        // Fallback: extract from scrutinee type
+        if let Type::Tuple(elems) = scrut_ty {
+            if let Some(ty) = elems.get(index) {
+                return ty.clone();
+            }
+        }
+        Type::Unit
     }
 
     /// Get the equality PrimOp for a literal pattern.

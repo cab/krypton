@@ -15,7 +15,7 @@ fn main() -> Unit =
       let v2: Dict = get_dict Show[String]
       let v3: Unit = call println(v2, "None")
       v3
-    0 (v4: a) ->
+    0 (v4: b) ->
       let v5: Dict = get_dict Show[String]
       let v6: Unit = call println(v5, "FAIL")
       v6

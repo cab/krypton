@@ -108,6 +108,9 @@ pub enum SimpleExpr {
         ty: Type,
         sub_dicts: Vec<Atom>,
     },
+
+    /// A trivial atom (used for binding literal scrutinees to variables).
+    Atom(Atom),
 }
 
 /// Trivial values — no computation, no side effects.

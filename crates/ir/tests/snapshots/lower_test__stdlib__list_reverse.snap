@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 67
 expression: ir_module.to_string()
 ---
 module stdlib__list_reverse
@@ -15,7 +14,7 @@ fn main() -> Unit =
   let v3: ~List[Int] = construct List::Cons#0(1, v2)
   let v4: List[Int] = call reverse(v3)
   switch v4 {
-    0 (v5: d, v6: List[d]) ->
+    0 (v5: b, v6: List[b]) ->
       let v7: Unit = call println(v5)
       v7
     1 ->

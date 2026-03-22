@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 67
 expression: ir_module.to_string()
 ---
 module json__json_nested
@@ -30,15 +29,15 @@ fn main() -> Unit =
   let v15: String = call json_to_string(v9)
   let v16: Result[String, Json] = call parse_json(v15)
   switch v16 {
-    0 (v17: d) ->
+    0 (v17: b) ->
       let v18: Option[Json] = call json_get(v17, "a")
       switch v18 {
-        0 (v19: a) ->
+        0 (v19: d) ->
           switch v19 {
             5 (v20: Map[String, Json]) ->
               let v21: Option[Json] = call json_get(v17, "list")
               switch v21 {
-                0 (v22: a) ->
+                0 (v22: d) ->
                   switch v22 {
                     4 (v23: List[Json]) ->
                       let v24: Dict = get_dict Show[String]
@@ -64,7 +63,7 @@ fn main() -> Unit =
           let v33: Unit = call println(v32, "FAIL a")
           v33
       }
-    1 (v34: c) ->
+    1 (v34: a) ->
       let v35: Dict = get_dict Show[String]
       let v36: Unit = call println(v35, v34)
       v36
