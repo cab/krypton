@@ -142,9 +142,14 @@ impl Compiler {
                 },
             );
 
-            let struct_bytes =
-                generate_struct_class(&qualified, &jvm_fields, &self.types.class_descriptors)?;
-            result_classes.push((qualified.clone(), struct_bytes));
+            // Only emit bytecode for types defined in this module (not imports)
+            let is_imported = typed_module.type_provenance.get(struct_name)
+                .is_some_and(|src| typed_module.module_path.as_deref() != Some(src.as_str()));
+            if !is_imported {
+                let struct_bytes =
+                    generate_struct_class(&qualified, &jvm_fields, &self.types.class_descriptors)?;
+                result_classes.push((qualified.clone(), struct_bytes));
+            }
         }
         Ok(result_classes)
     }
@@ -156,6 +161,10 @@ impl Compiler {
         let mut result_classes = Vec::new();
         for (sum_name, type_params, variants) in &typed_module.sum_decls {
             let qualified_sum = qualify_type_for(typed_module, sum_name);
+
+            // Check if this sum type is imported from another module
+            let is_imported = typed_module.type_provenance.get(sum_name)
+                .is_some_and(|src| typed_module.module_path.as_deref() != Some(src.as_str()));
 
             let interface_class_index = self.cp.add_class(&qualified_sum)?;
             let interface_desc = format!("L{qualified_sum};");
@@ -240,9 +249,12 @@ impl Compiler {
                     },
                 );
 
-                let variant_bytes =
-                    generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields, &self.types.class_descriptors)?;
-                result_classes.push((qualified_variant.clone(), variant_bytes));
+                // Only emit bytecode for types defined in this module
+                if !is_imported {
+                    let variant_bytes =
+                        generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields, &self.types.class_descriptors)?;
+                    result_classes.push((qualified_variant.clone(), variant_bytes));
+                }
             }
 
             self.types.sum_type_info.insert(
@@ -253,9 +265,12 @@ impl Compiler {
                 },
             );
 
-            let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
-            let interface_bytes = generate_sealed_interface_class(&qualified_sum, &variant_name_refs)?;
-            result_classes.push((qualified_sum.clone(), interface_bytes));
+            // Only emit bytecode for types defined in this module
+            if !is_imported {
+                let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
+                let interface_bytes = generate_sealed_interface_class(&qualified_sum, &variant_name_refs)?;
+                result_classes.push((qualified_sum.clone(), interface_bytes));
+            }
         }
         Ok(result_classes)
     }
@@ -361,18 +376,25 @@ impl Compiler {
         typed_module: &TypedModule,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
+        // Only emit bytecode for traits defined locally (not imported)
+        let local_traits: std::collections::HashSet<&str> = typed_module.trait_defs.iter()
+            .filter(|td| !td.is_imported)
+            .map(|td| td.name.as_str())
+            .collect();
         let registry = intrinsics::IntrinsicRegistry::new();
         for entry in registry.iter() {
             if self.traits.trait_dispatch.contains_key(entry.trait_name) {
                 let q_trait = qualify_type_for(typed_module, entry.trait_name);
                 let class_name = format!("{q_trait}$${}", entry.type_name);
 
-                let bytes = if entry.is_show() {
-                    generate_builtin_show_instance_class(&class_name, &q_trait, entry)?
-                } else {
-                    generate_builtin_trait_instance_class(&class_name, &q_trait, entry)?
-                };
-                result_classes.push((class_name.clone(), bytes));
+                if local_traits.contains(entry.trait_name) {
+                    let bytes = if entry.is_show() {
+                        generate_builtin_show_instance_class(&class_name, &q_trait, entry)?
+                    } else {
+                        generate_builtin_trait_instance_class(&class_name, &q_trait, entry)?
+                    };
+                    result_classes.push((class_name.clone(), bytes));
+                }
 
                 let inst_class_idx = self.cp.add_class(&class_name)?;
                 let inst_desc = format!("L{class_name};");
@@ -734,7 +756,7 @@ impl Compiler {
                     other => {
                         return Err(CodegenError::TypeError(format!(
                             "unsupported extern param type: {other:?}"
-                        )));
+                        ), None));
                     }
                 }
             }
@@ -756,7 +778,7 @@ impl Compiler {
                     other => {
                         return Err(CodegenError::TypeError(format!(
                             "unsupported extern return type: {other:?}"
-                        )));
+                        ), None));
                     }
                 }
             };
