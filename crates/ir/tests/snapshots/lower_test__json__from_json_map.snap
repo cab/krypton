@@ -21,12 +21,12 @@ fn main() -> Unit =
   let v9: Dict = get_dict FromJson[Map[String, Int]]
   let v8: Result[String, Map[String, Int]] = call from_json(v9, v0)
   switch v8 {
-    0 (v10: d) ->
+    0 (v10: c) ->
       let v11: Dict = get_dict Eq[String]
       let v12: Dict = get_dict Hash[String]
       let v13: Option[Int] = call get(v11, v12, v10, "x")
       switch v13 {
-        0 (v14: a) ->
+        0 (v14: d) ->
           let v15: Dict = get_dict Show[Int]
           let v16: Unit = call println(v15, v14)
           v16
@@ -35,7 +35,7 @@ fn main() -> Unit =
           let v18: Unit = call println(v17, "missing")
           v18
       }
-    1 (v19: c) ->
+    1 (v19: b) ->
       let v20: Dict = get_dict Show[String]
       let v21: Unit = call println(v20, v19)
       v21

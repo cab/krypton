@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__monoid_empty
+
+declare combine: (Dict, g, g) -> g
+declare empty: (Dict) -> r7
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: Dict = get_dict Monoid[Int]
+  let v1: Int = call empty(v0)
+  let v2: Unit = call println(v1)
+  let v3: Dict = get_dict Monoid[Int]
+  let v4: Int = call empty(v3)
+  let v5: Dict = get_dict Semigroup[Int]
+  let v6: Int = call combine(v5, v4, 1)
+  let v7: Unit = call println(v6)
+  v7

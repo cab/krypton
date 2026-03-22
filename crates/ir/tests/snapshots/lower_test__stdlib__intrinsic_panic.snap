@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__intrinsic_panic
+
+declare panic: (String) -> Unit
+
+fn main() -> Int =
+  switch true {
+    1 ->
+      42
+    _ ->
+      let v0: Int = call panic("oops")
+      v0
+  }

@@ -31,10 +31,10 @@ fn caller() -> Result[String, Int] =
 fn main() -> Unit =
   let v11: Result[String, Int] = call caller()
   switch v11 {
-    0 (v12: b) ->
+    0 (v12: d) ->
       let v13: Unit = call println(v12)
       v13
-    1 (v14: a) ->
+    1 (v14: c) ->
       let v15: Unit = call println(v14)
       v15
   }

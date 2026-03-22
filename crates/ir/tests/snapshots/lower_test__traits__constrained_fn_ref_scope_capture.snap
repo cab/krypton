@@ -4,6 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__constrained_fn_ref_scope_capture
 
+declare eq: (Dict, g, g) -> Bool
 declare println: (Dict, m) -> Unit
 declare show: (Dict, g) -> String
 
@@ -20,9 +21,13 @@ fn use_it(v3: Dict, v4: w7) -> String =
   jump v8(v6)
 
 fn main() -> Unit =
-  let v10: Dict = get_dict Show[Int]
-  let v11: String = call use_it(v10, 42)
-  let v12: Bool = eq_string(v11, "42")
-  let v9: Dict = get_dict Show[Bool]
-  let v13: Unit = call println(v9, v12)
-  v13
+  let_join v16(v14: Bool) =
+    let v9: Dict = get_dict Show[Bool]
+    let v15: Unit = call println(v9, v14)
+    v15
+  in
+  let v10: Dict = get_dict Eq[String]
+  let v11: Dict = get_dict Show[Int]
+  let v12: String = call use_it(v11, 42)
+  let v13: Bool = call eq(v10, v12, "42")
+  jump v16(v13)

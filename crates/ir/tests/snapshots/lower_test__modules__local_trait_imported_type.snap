@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__local_trait_imported_type
+
+declare describe: (Dict, q7) -> String
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Point = construct Point::MkPoint#0(1, 2)
+  let v2: Dict = get_dict Describable[Point]
+  let v3: String = call describe(v2, v1)
+  let v0: Dict = get_dict Show[String]
+  let v4: Unit = call println(v0, v3)
+  v4

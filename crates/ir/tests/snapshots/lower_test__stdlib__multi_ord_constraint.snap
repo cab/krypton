@@ -1,0 +1,38 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__multi_ord_constraint
+
+declare lt: (Dict, h, h) -> Bool
+declare println: (Dict, m) -> Unit
+declare show: (Dict, g) -> String
+
+fn both_less(v0: Dict, v1: Dict, v2: r7, v3: r7, v4: s7, v5: s7) -> Bool =
+  let_join v13(v6: Bool) =
+    let_join v12(v8: Bool) =
+      let_join v11(v10: Bool) =
+        switch v10 {
+          1 ->
+            v8
+          _ ->
+            false
+        }
+      in
+      jump v11(v6)
+    in
+    let v9: Bool = call lt(v1, v4, v5)
+    jump v12(v9)
+  in
+  let v7: Bool = call lt(v0, v2, v3)
+  jump v13(v7)
+
+fn main() -> Unit =
+  let v15: Dict = get_dict Ord[Int]
+  let v16: Dict = get_dict Ord[Float]
+  let v17: Bool = call both_less(v15, v16, 1, 2, 3.0, 4.0)
+  let v18: Dict = get_dict Show[Bool]
+  let v19: String = call show(v18, v17)
+  let v14: Dict = get_dict Show[String]
+  let v20: Unit = call println(v14, v19)
+  v20

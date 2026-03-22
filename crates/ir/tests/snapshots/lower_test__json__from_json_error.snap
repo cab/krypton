@@ -12,11 +12,11 @@ fn main() -> Unit =
   let v2: Dict = get_dict FromJson[String]
   let v0: Result[String, String] = call from_json(v2, v1)
   switch v0 {
-    0 (v3: b) ->
+    0 (v3: c) ->
       let v4: Dict = get_dict Show[String]
       let v5: Unit = call println(v4, "ok")
       v5
-    1 (v6: a) ->
+    1 (v6: b) ->
       let v7: Dict = get_dict Show[String]
       let v8: Unit = call println(v7, "error")
       v8

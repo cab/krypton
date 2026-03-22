@@ -9,9 +9,9 @@ fn ok(v0: (r7) -> String, v1: r7) -> String =
   v2
 
 fn test() -> String =
-  let v3: (Int) -> ~String = make_closure(lambda$49, [])
+  let v3: (Int) -> ~String = make_closure(lambda$50, [])
   let v5: String = call ok(v3, 42)
   v5
 
-fn lambda$49(v4: Int) -> ~String =
+fn lambda$50(v4: Int) -> ~String =
   "hi"

@@ -8,17 +8,17 @@ fn consume(v0: ~String) -> String =
   v0
 
 fn test(v1: ~String) -> String =
-  let v4: ~() -> String = make_closure(lambda$49, [v1])
+  let v4: ~() -> String = make_closure(lambda$50, [v1])
   let v5: ~List[~() -> String] = construct List::Nil#1()
   let v6: ~List[~() -> String] = construct List::Cons#0(v4, v5)
   switch v6 {
-    0 (v7: a, v8: List[a]) ->
+    0 (v7: d, v8: List[d]) ->
       let v9: String = call_closure v7()
       v9
     1 ->
       "empty"
   }
 
-fn lambda$49(v2: ~String) -> String =
+fn lambda$50(v2: ~String) -> String =
   let v3: String = call consume(v2)
   v3

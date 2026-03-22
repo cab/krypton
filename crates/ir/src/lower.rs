@@ -581,15 +581,51 @@ impl LowerCtx {
                     });
                     Ok((all_bindings, Atom::Var(var)))
                 }
-                LoweredValue::Expr(_) => {
-                    // Compound expression in atom position (e.g. `(if b {1} else {2}) + 3`).
-                    // This is rare in real code. We can't express it as flat let-bindings.
-                    // Report as not-yet-lowered for now; proper handling requires
-                    // restructuring callers to use join points.
-                    Err(LowerError::InternalError(format!(
-                        "compound expression in atom position not yet supported: {:?}",
-                        std::mem::discriminant(&expr.kind)
-                    )))
+                LoweredValue::Expr(compound) => {
+                    // Compound expression in atom position (e.g. comparison
+                    // as function argument). Use lower_to_atom_then with an
+                    // identity continuation is not possible here because we
+                    // must return (Vec<LetBinding>, Atom). Instead, we error
+                    // — callers should use lower_to_atom_then for CPS.
+                    // However, this path is reached from lower_app via
+                    // lower_to_simple, so we handle it by synthesising an
+                    // extra let-binding via inline_compound_let.
+                    let var = self.fresh_var();
+                    let atom_expr = Expr {
+                        ty: expr.ty.clone(),
+                        kind: ExprKind::Atom(Atom::Var(var)),
+                    };
+                    let wrapper = self.inline_compound_let(
+                        var,
+                        expr.ty.clone(),
+                        compound,
+                        atom_expr,
+                    );
+                    // Re-wrap into a single binding using a lifted thunk
+                    // Actually, we need to return bindings + atom, but we have
+                    // a full Expr tree. Convert to a thunk call.
+                    let thunk_id = self.fresh_fn();
+                    let thunk_name = format!("$thunk_{}", thunk_id.0);
+                    self.fn_ids.insert(thunk_name.clone(), thunk_id);
+                    self.lifted_fns.push(FnDef {
+                        id: thunk_id,
+                        debug_name: thunk_name,
+                        params: vec![],
+                        return_type: expr.ty.clone(),
+                        body: wrapper,
+                    });
+                    let result_var = self.fresh_var();
+                    Ok((
+                        vec![LetBinding {
+                            bind: result_var,
+                            ty: expr.ty.clone(),
+                            value: SimpleExpr::Call {
+                                func: thunk_id,
+                                args: vec![],
+                            },
+                        }],
+                        Atom::Var(result_var),
+                    ))
                 }
             },
         }
@@ -713,10 +749,10 @@ impl LowerCtx {
             }
             TypedExprKind::TypeApp { expr: inner, .. } => self.lower_to_simple(inner),
             TypedExprKind::BinaryOp {
-                op: BinOp::And | BinOp::Or,
+                op: BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge,
                 ..
             } => Err(LowerError::InternalError(
-                "And/Or must be lowered as compound expr (short-circuit)".to_string(),
+                "And/Or/comparison ops must be lowered as compound expr".to_string(),
             )),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
@@ -977,6 +1013,12 @@ impl LowerCtx {
                 lhs,
                 rhs,
             } => self.lower_short_circuit(lhs, rhs, false),
+
+            TypedExprKind::BinaryOp {
+                op: op @ (BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge),
+                lhs,
+                rhs,
+            } => self.lower_trait_comparison(op, lhs, rhs, &expr.ty),
 
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let op = op.clone();
@@ -1307,6 +1349,10 @@ impl LowerCtx {
             | TypedExprKind::QuestionMark { .. }
             | TypedExprKind::BinaryOp {
                 op: BinOp::And | BinOp::Or,
+                ..
+            }
+            | TypedExprKind::BinaryOp {
+                op: BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge,
                 ..
             } => {
                 let e = self.lower_expr(expr)?;
@@ -2245,6 +2291,78 @@ impl LowerCtx {
 
         // Bind lhs result to lhs_var, then switch on it
         Ok(self.inline_compound_let(lhs_var, Type::Bool, lhs_expr, switch))
+    }
+
+    /// Desugar comparison operators to trait method calls (Eq.eq / Ord.lt).
+    fn lower_trait_comparison(
+        &mut self,
+        op: &BinOp,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        let (trait_name, method_name, swap, negate) = match op {
+            BinOp::Eq => ("Eq", "eq", false, false),
+            BinOp::Neq => ("Eq", "eq", false, true),
+            BinOp::Lt => ("Ord", "lt", false, false),
+            BinOp::Gt => ("Ord", "lt", true, false),
+            BinOp::Le => ("Ord", "lt", true, true),
+            BinOp::Ge => ("Ord", "lt", false, true),
+            _ => unreachable!(),
+        };
+
+        let (lhs_arg, rhs_arg) = if swap { (rhs, lhs) } else { (lhs, rhs) };
+        let dict_ty = strip_own(&lhs.ty).clone();
+
+        // Resolve dict + method fn_id BEFORE entering CPS chain
+        let fn_id = self
+            .lookup_fn(method_name)
+            .ok_or_else(|| LowerError::UnresolvedVar(method_name.to_string()))?;
+        let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dict_ty)?;
+
+        let result_ty = result_ty.clone();
+        // CPS chain for operands; wrap dict_bindings OUTSIDE
+        let inner = self.lower_to_atom_then(lhs_arg, |ctx, l| {
+            ctx.lower_to_atom_then(rhs_arg, |ctx, r| {
+                let var = ctx.fresh_var();
+                let call_body = if negate {
+                    let neg_var = ctx.fresh_var();
+                    Expr {
+                        ty: Type::Bool,
+                        kind: ExprKind::Let {
+                            bind: neg_var,
+                            ty: Type::Bool,
+                            value: SimpleExpr::PrimOp {
+                                op: PrimOp::Not,
+                                args: vec![Atom::Var(var)],
+                            },
+                            body: Box::new(Expr {
+                                ty: Type::Bool,
+                                kind: ExprKind::Atom(Atom::Var(neg_var)),
+                            }),
+                        },
+                    }
+                } else {
+                    Expr {
+                        ty: result_ty,
+                        kind: ExprKind::Atom(Atom::Var(var)),
+                    }
+                };
+                Ok(Expr {
+                    ty: call_body.ty.clone(),
+                    kind: ExprKind::Let {
+                        bind: var,
+                        ty: Type::Bool,
+                        value: SimpleExpr::Call {
+                            func: fn_id,
+                            args: vec![dict_atom.clone(), l, r],
+                        },
+                        body: Box::new(call_body),
+                    },
+                })
+            })
+        })?;
+        Ok(Self::wrap_bindings(dict_bindings, inner))
     }
 
     /// Lower a function application.
@@ -3347,6 +3465,28 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
+    // 3b. Allocate FnIds for locally-defined trait methods.
+    // Imported trait methods already have FnIds from fn_types entries.
+    // Local trait methods are stripped from fn_types by the typechecker,
+    // so we must register them from trait_defs.
+    for trait_def in &typed.trait_defs {
+        if trait_def.is_imported {
+            continue;
+        }
+        for (method_name, _param_count) in &trait_def.methods {
+            if !ctx.fn_ids.contains_key(method_name) {
+                let fn_id = ctx.fresh_fn();
+                ctx.fn_ids.insert(method_name.clone(), fn_id);
+            }
+        }
+    }
+
+    // 3c. Register panic intrinsic
+    if !ctx.fn_ids.contains_key("panic") {
+        let fn_id = ctx.fresh_fn();
+        ctx.fn_ids.insert("panic".to_string(), fn_id);
+    }
+
     // 4. Lower struct definitions (skip imported types)
     let structs: Vec<StructDef> = typed
         .struct_decls
@@ -3456,6 +3596,32 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 };
                 extern_fn_types.insert(fn_id, ty);
             }
+        }
+    }
+
+    // Also register locally-defined trait methods in extern_fn_types
+    for trait_def in &typed.trait_defs {
+        if trait_def.is_imported {
+            continue;
+        }
+        for (method_name, _) in &trait_def.methods {
+            if let Some(&fn_id) = ctx.fn_ids.get(method_name) {
+                if !extern_fn_types.contains_key(&fn_id) {
+                    if let Some((_, method_types)) = ctx.trait_method_types.get(&trait_def.name) {
+                        if let Some((param_tys, ret_ty)) = method_types.get(method_name) {
+                            let fn_ty = Type::Fn(param_tys.clone(), Box::new(ret_ty.clone()));
+                            extern_fn_types.insert(fn_id, prepend_n_dicts(1, &fn_ty));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Register panic intrinsic extern type
+    if let Some(&fn_id) = ctx.fn_ids.get("panic") {
+        if !extern_fn_types.contains_key(&fn_id) {
+            extern_fn_types.insert(fn_id, Type::Fn(vec![Type::String], Box::new(Type::Unit)));
         }
     }
 
@@ -3607,23 +3773,8 @@ fn resolve_binop(op: &BinOp, operand_ty: &Type) -> Result<PrimOp, LowerError> {
         (BinOp::Mul, Type::Float) => Ok(PrimOp::MulFloat),
         (BinOp::Div, Type::Int) => Ok(PrimOp::DivInt),
         (BinOp::Div, Type::Float) => Ok(PrimOp::DivFloat),
-        (BinOp::Eq, Type::Int) => Ok(PrimOp::EqInt),
-        (BinOp::Eq, Type::Float) => Ok(PrimOp::EqFloat),
-        (BinOp::Eq, Type::String) => Ok(PrimOp::EqString),
-        (BinOp::Eq, Type::Bool) => Ok(PrimOp::EqInt), // bools represented as 0/1 ints
-        (BinOp::Neq, Type::Int) => Ok(PrimOp::NeqInt),
-        (BinOp::Neq, Type::Float) => Ok(PrimOp::NeqFloat),
-        (BinOp::Neq, Type::String) => Ok(PrimOp::NeqString),
-        (BinOp::Neq, Type::Bool) => Ok(PrimOp::NeqInt), // bools represented as 0/1 ints
-        (BinOp::Lt, Type::Int) => Ok(PrimOp::LtInt),
-        (BinOp::Lt, Type::Float) => Ok(PrimOp::LtFloat),
-        (BinOp::Le, Type::Int) => Ok(PrimOp::LeInt),
-        (BinOp::Le, Type::Float) => Ok(PrimOp::LeFloat),
-        (BinOp::Gt, Type::Int) => Ok(PrimOp::GtInt),
-        (BinOp::Gt, Type::Float) => Ok(PrimOp::GtFloat),
-        (BinOp::Ge, Type::Int) => Ok(PrimOp::GeInt),
-        (BinOp::Ge, Type::Float) => Ok(PrimOp::GeFloat),
-        // And/Or handled as Switch in lower_expr (short-circuit semantics)
+        // Comparison ops (Eq/Neq/Lt/Le/Gt/Ge) are desugared to trait calls in lower_trait_comparison.
+        // And/Or handled as Switch in lower_expr (short-circuit semantics).
         _ => Err(LowerError::UnsupportedOp(format!(
             "{op:?} on {operand_ty:?}"
         ))),

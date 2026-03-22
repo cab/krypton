@@ -45,10 +45,10 @@ fn process(v5: Int) -> Result[String, Int] =
 fn main() -> Unit =
   let v21: Result[String, Int] = call process(21)
   switch v21 {
-    0 (v22: c) ->
+    0 (v22: b) ->
       let v23: Unit = call println(v22)
       v23
-    1 (v24: b) ->
+    1 (v24: a) ->
       let v25: Unit = call println(v24)
       v25
   }

@@ -21,11 +21,15 @@ fn eq_and_show(v0: Dict, v1: Dict, v2: t7, v3: t7) -> String =
   }
 
 fn main() -> Unit =
-  let v6: ~Box = call Box(1)
+  let_join v15(v13: Bool) =
+    let v14: Unit = call println(v13)
+    v14
+  in
+  let v6: Dict = get_dict Eq[String]
   let v7: ~Box = call Box(1)
-  let v8: Dict = get_dict Eq[Box]
-  let v9: Dict = get_dict Show[Box]
-  let v10: String = call eq_and_show(v8, v9, v6, v7)
-  let v11: Bool = eq_string(v10, "Box")
-  let v12: Unit = call println(v11)
-  v12
+  let v8: ~Box = call Box(1)
+  let v9: Dict = get_dict Eq[Box]
+  let v10: Dict = get_dict Show[Box]
+  let v11: String = call eq_and_show(v9, v10, v7, v8)
+  let v12: Bool = call eq(v6, v11, "Box")
+  jump v15(v12)

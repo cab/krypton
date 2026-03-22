@@ -5,10 +5,10 @@ expression: ir_module.to_string()
 module inference__let_poly
 
 fn main() -> Bool =
-  let v0: (s7) -> s7 = make_closure(lambda$48, [])
+  let v0: (s7) -> s7 = make_closure(lambda$49, [])
   let v2: Int = call_closure v0(1)
   let v3: Bool = call_closure v0(true)
   v3
 
-fn lambda$48(v1: s7) -> s7 =
+fn lambda$49(v1: s7) -> s7 =
   v1

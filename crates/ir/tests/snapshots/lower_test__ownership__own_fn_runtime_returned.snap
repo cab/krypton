@@ -7,7 +7,7 @@ module ownership__own_fn_runtime_returned
 declare println: (Dict, m) -> Unit
 
 fn make_fn(v0: ~String) -> ~() -> String =
-  let v2: ~() -> ~String = make_closure(lambda$49, [v0])
+  let v2: ~() -> ~String = make_closure(lambda$50, [v0])
   v2
 
 fn main() -> Unit =
@@ -17,5 +17,5 @@ fn main() -> Unit =
   let v6: Unit = call println(v3, v5)
   v6
 
-fn lambda$49(v1: ~String) -> ~String =
+fn lambda$50(v1: ~String) -> ~String =
   v1

@@ -11,11 +11,11 @@ fn apply_fn(v0: (t7) -> v7, v1: t7) -> v7 =
   v2
 
 fn main() -> Unit =
-  let v5: (Int) -> Int = make_closure(lambda$49, [])
+  let v5: (Int) -> Int = make_closure(lambda$50, [])
   let v6: Int = call apply_fn(v5, 5)
   let v7: Unit = call println(v6)
   v7
 
-fn lambda$49(v3: Int) -> Int =
+fn lambda$50(v3: Int) -> Int =
   let v4: Int = add_int(v3, 1)
   v4

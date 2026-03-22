@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__trait_zero_arg
+
+type MyStruct = MyStruct#0(Int)
+declare default: (Dict) -> r7
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: Dict = get_dict Default[Int]
+  let v1: Int = call default(v0)
+  let v2: Unit = call println(v1)
+  let v3: Dict = get_dict Default[MyStruct]
+  let v4: MyStruct = call default(v3)
+  let v5: Unit = call println(v4)
+  v5

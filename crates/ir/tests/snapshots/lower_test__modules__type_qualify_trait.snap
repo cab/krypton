@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__type_qualify_trait
+
+declare my_eq: (Dict, r7, r7) -> Bool
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: Dict = get_dict MyEq[Int]
+  let v1: Bool = call my_eq(v0, 42, 42)
+  let v2: Unit = call println(v1)
+  v2

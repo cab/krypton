@@ -13,10 +13,10 @@ fn double(v3: Int) -> Int =
   v4
 
 fn main() -> Int =
-  let v7: (Int) -> Int = make_closure(lambda$49, [])
+  let v7: (Int) -> Int = make_closure(lambda$50, [])
   let v8: Int = call map(5, v7)
   v8
 
-fn lambda$49(v5: Int) -> Int =
+fn lambda$50(v5: Int) -> Int =
   let v6: Int = call double(v5)
   v6

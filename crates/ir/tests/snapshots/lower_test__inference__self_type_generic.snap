@@ -1,0 +1,19 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module inference__self_type_generic
+
+struct Wrapper[a] { value: a }
+declare my_eq: (Dict, r7, r7) -> Bool
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v0: ~Wrapper[String] = construct Wrapper("hello")
+  let v1: ~Wrapper[String] = construct Wrapper("hello")
+  let v3: Dict = get_dict MyEq[String]
+  let v4: Dict = make_dict MyEq[Wrapper[String]](v3)
+  let v5: Bool = call my_eq(v4, v0, v1)
+  let v2: Dict = get_dict Show[Bool]
+  let v6: Unit = call println(v2, v5)
+  v6

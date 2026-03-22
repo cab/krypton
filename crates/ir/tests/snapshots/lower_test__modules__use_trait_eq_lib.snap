@@ -1,0 +1,26 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__use_trait_eq_lib
+
+declare eq: (Dict, g, g) -> Bool
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let_join v11(v9: Bool) =
+    let v0: Dict = get_dict Show[Bool]
+    let v10: Unit = call println(v0, v9)
+    v10
+  in
+  let v1: Dict = get_dict Eq[Dir]
+  let_join v8(v3: ~Dir) =
+    let_join v7(v5: ~Dir) =
+      let v6: Bool = call eq(v1, v3, v5)
+      jump v11(v6)
+    in
+    let v4: ~Dir = construct Dir::North#0()
+    jump v7(v4)
+  in
+  let v2: ~Dir = construct Dir::North#0()
+  jump v8(v2)

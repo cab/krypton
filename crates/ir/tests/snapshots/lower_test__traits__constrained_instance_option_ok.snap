@@ -5,14 +5,19 @@ expression: ir_module.to_string()
 module traits__constrained_instance_option_ok
 
 type Option[a] = Some#0(a) | None#1
+declare eq: (Dict, g, g) -> Bool
 declare println: (m) -> Unit
 declare show: (Dict, g) -> String
 
 fn main() -> Unit =
-  let v0: ~Option[Int] = construct Option::Some#0(42)
-  let v1: Dict = get_dict Show[Int]
-  let v2: Dict = make_dict Show[Option[Int]](v1)
-  let v3: String = call show(v2, v0)
-  let v4: Bool = eq_string(v3, "ok")
-  let v5: Unit = call println(v4)
-  v5
+  let_join v8(v6: Bool) =
+    let v7: Unit = call println(v6)
+    v7
+  in
+  let v0: Dict = get_dict Eq[String]
+  let v1: ~Option[Int] = construct Option::Some#0(42)
+  let v2: Dict = get_dict Show[Int]
+  let v3: Dict = make_dict Show[Option[Int]](v2)
+  let v4: String = call show(v3, v1)
+  let v5: Bool = call eq(v0, v4, "ok")
+  jump v8(v5)

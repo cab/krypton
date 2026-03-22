@@ -1,0 +1,26 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__derive_eq_sum
+
+type Color = Red#0 | Green#1 | Blue#2
+declare eq: (Dict, g, g) -> Bool
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let_join v10(v8: Bool) =
+    let v9: Unit = call println(v8)
+    v9
+  in
+  let v0: Dict = get_dict Eq[Color]
+  let_join v7(v2: ~Color) =
+    let_join v6(v4: ~Color) =
+      let v5: Bool = call eq(v0, v2, v4)
+      jump v10(v5)
+    in
+    let v3: ~Color = construct Color::Green#1()
+    jump v6(v3)
+  in
+  let v1: ~Color = construct Color::Red#0()
+  jump v7(v1)

@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__trait_method_shadows_prelude
+
+declare println: (m) -> Unit
+declare show: (Dict, g) -> String
+declare times: (Dict, r7, r7) -> r7
+
+fn main() -> Unit =
+  let v0: Dict = get_dict Multiply[Int]
+  let v1: Int = call times(v0, 2, 3)
+  let v2: Dict = get_dict Show[Int]
+  let v3: String = call show(v2, v1)
+  let v4: Unit = call println(v3)
+  let v5: Int = add_int(1, 2)
+  let v6: Dict = get_dict Show[Int]
+  let v7: String = call show(v6, v5)
+  let v8: Unit = call println(v7)
+  v8

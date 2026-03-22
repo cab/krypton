@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__trait_zero_arg_constrained_vec
+
+declare name: (Dict) -> String
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: Dict = get_dict Test[Int]
+  let v1: Dict = make_dict Test[Vec[Int]](v0)
+  let v2: String = call name(v1)
+  let v3: Unit = call println(v2)
+  v3

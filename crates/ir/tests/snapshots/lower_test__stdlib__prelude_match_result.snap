@@ -6,9 +6,9 @@ module stdlib__prelude_match_result
 
 fn handle(v0: Result[v7, Int]) -> Int =
   switch v0 {
-    0 (v1: c) ->
+    0 (v1: d) ->
       v1
-    1 (v2: b) ->
+    1 (v2: c) ->
       0
   }
 

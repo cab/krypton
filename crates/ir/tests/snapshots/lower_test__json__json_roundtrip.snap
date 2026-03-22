@@ -24,20 +24,20 @@ fn main() -> Unit =
   let v11: String = call json_to_string(v0)
   let v12: Result[String, Json] = call parse_json(v11)
   switch v12 {
-    0 (v13: c) ->
+    0 (v13: b) ->
       let v14: String = call json_to_string(v13)
       let v15: Result[String, Json] = call parse_json(v14)
       switch v15 {
-        0 (v16: c) ->
+        0 (v16: b) ->
           let v17: Dict = get_dict Show[String]
           let v18: Unit = call println(v17, "true")
           v18
-        1 (v19: b) ->
+        1 (v19: a) ->
           let v20: Dict = get_dict Show[String]
           let v21: Unit = call println(v20, v19)
           v21
       }
-    1 (v22: b) ->
+    1 (v22: a) ->
       let v23: Dict = get_dict Show[String]
       let v24: Unit = call println(v23, v22)
       v24

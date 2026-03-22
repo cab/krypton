@@ -44,7 +44,7 @@ fn process(v4: Int) -> Option[Int] =
 fn main() -> Unit =
   let v18: Option[Int] = call process(21)
   switch v18 {
-    0 (v19: c) ->
+    0 (v19: d) ->
       let v20: Unit = call println(v19)
       v20
     1 ->

@@ -6,25 +6,30 @@ module data_types__branch_with_struct
 
 struct Wrapper { value: Int }
 declare Wrapper: (Int) -> Wrapper
+declare lt: (Dict, h, h) -> Bool
 declare println: (m) -> Unit
 
 fn pick(v0: Int) -> Wrapper =
-  let v1: Bool = gt_int(v0, 0)
-  switch v1 {
-    1 ->
-      let v2: ~Wrapper = call Wrapper(100)
-      v2
-    _ ->
-      let v3: ~Wrapper = call Wrapper(42)
-      v3
-  }
+  let_join v6(v3: Bool) =
+    switch v3 {
+      1 ->
+        let v4: ~Wrapper = call Wrapper(100)
+        v4
+      _ ->
+        let v5: ~Wrapper = call Wrapper(42)
+        v5
+    }
+  in
+  let v1: Dict = get_dict Ord[Int]
+  let v2: Bool = call lt(v1, 0, v0)
+  jump v6(v2)
 
 fn main() -> Unit =
-  let v4: Wrapper = call pick(1)
-  let v6: Int = neg_int(1)
-  let v5: Wrapper = call pick(v6)
-  let v7: Int = project v4.0
-  let v8: Unit = call println(v7)
-  let v9: Int = project v5.0
-  let v10: Unit = call println(v9)
-  v10
+  let v7: Wrapper = call pick(1)
+  let v9: Int = neg_int(1)
+  let v8: Wrapper = call pick(v9)
+  let v10: Int = project v7.0
+  let v11: Unit = call println(v10)
+  let v12: Int = project v8.0
+  let v13: Unit = call println(v12)
+  v13

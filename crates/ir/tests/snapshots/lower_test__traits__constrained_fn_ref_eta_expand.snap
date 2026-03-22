@@ -4,6 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__constrained_fn_ref_eta_expand
 
+declare eq: (Dict, g, g) -> Bool
 declare println: (Dict, m) -> Unit
 declare show: (Dict, g) -> String
 
@@ -12,14 +13,18 @@ fn show_it(v0: Dict, v1: r7) -> String =
   v2
 
 fn main() -> Unit =
-  let v3: (Int) -> String = make_closure(lambda$49, [])
-  let v8: String = call_closure v3(42)
-  let v9: Bool = eq_string(v8, "42")
-  let v7: Dict = get_dict Show[Bool]
-  let v10: Unit = call println(v7, v9)
-  v10
+  let v3: (Int) -> String = make_closure(lambda$50, [])
+  let_join v13(v11: Bool) =
+    let v7: Dict = get_dict Show[Bool]
+    let v12: Unit = call println(v7, v11)
+    v12
+  in
+  let v8: Dict = get_dict Eq[String]
+  let v9: String = call_closure v3(42)
+  let v10: Bool = call eq(v8, v9, "42")
+  jump v13(v10)
 
-fn lambda$49(v4: Int) -> String =
+fn lambda$50(v4: Int) -> String =
   let v5: Dict = get_dict Show[Int]
   let v6: String = call show_it(v5, v4)
   v6

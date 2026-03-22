@@ -4,21 +4,26 @@ expression: ir_module.to_string()
 ---
 module functions__factorial
 
+declare eq: (Dict, g, g) -> Bool
 declare println: (m) -> Unit
 
 fn factorial(v0: Int) -> Int =
-  let v1: Bool = eq_int(v0, 0)
-  switch v1 {
-    1 ->
-      1
-    _ ->
-      let v2: Int = sub_int(v0, 1)
-      let v3: Int = call factorial(v2)
-      let v4: Int = mul_int(v0, v3)
-      v4
-  }
+  let_join v7(v3: Bool) =
+    switch v3 {
+      1 ->
+        1
+      _ ->
+        let v4: Int = sub_int(v0, 1)
+        let v5: Int = call factorial(v4)
+        let v6: Int = mul_int(v0, v5)
+        v6
+    }
+  in
+  let v1: Dict = get_dict Eq[Int]
+  let v2: Bool = call eq(v1, v0, 0)
+  jump v7(v2)
 
 fn main() -> Unit =
-  let v5: Int = call factorial(10)
-  let v6: Unit = call println(v5)
-  v6
+  let v8: Int = call factorial(10)
+  let v9: Unit = call println(v8)
+  v9

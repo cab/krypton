@@ -4,13 +4,18 @@ expression: ir_module.to_string()
 ---
 module modules__constrained_ref_import
 
+declare eq: (Dict, g, g) -> Bool
 declare println: (Dict, m) -> Unit
 declare render_it: (Dict, r7) -> String
 
 fn main() -> Unit =
   let v0: (Int) -> String = make_closure(render_it, [])
-  let v2: String = call_closure v0(42)
-  let v3: Bool = eq_string(v2, "42")
-  let v1: Dict = get_dict Show[Bool]
-  let v4: Unit = call println(v1, v3)
-  v4
+  let_join v7(v5: Bool) =
+    let v1: Dict = get_dict Show[Bool]
+    let v6: Unit = call println(v1, v5)
+    v6
+  in
+  let v2: Dict = get_dict Eq[String]
+  let v3: String = call_closure v0(42)
+  let v4: Bool = call eq(v2, v3, "42")
+  jump v7(v4)

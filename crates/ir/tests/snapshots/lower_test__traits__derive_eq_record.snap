@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__derive_eq_record
+
+struct Point { x: Int, y: Int }
+declare Point: (Int, Int) -> Point
+declare eq: (Dict, g, g) -> Bool
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let_join v6(v4: Bool) =
+    let v5: Unit = call println(v4)
+    v5
+  in
+  let v0: Dict = get_dict Eq[Point]
+  let v1: ~Point = call Point(1, 2)
+  let v2: ~Point = call Point(1, 2)
+  let v3: Bool = call eq(v0, v1, v2)
+  jump v6(v3)

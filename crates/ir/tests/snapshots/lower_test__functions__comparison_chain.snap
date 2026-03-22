@@ -4,19 +4,68 @@ expression: ir_module.to_string()
 ---
 module functions__comparison_chain
 
+declare eq: (Dict, g, g) -> Bool
+declare lt: (Dict, h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: Bool = lt_int(10, 20)
-  let v1: Unit = call println(v0)
-  let v2: Bool = gt_int(10, 20)
-  let v3: Unit = call println(v2)
-  let v4: Bool = le_int(10, 20)
+  let v4: Bool = call $thunk_49()
   let v5: Unit = call println(v4)
-  let v6: Bool = ge_int(10, 20)
-  let v7: Unit = call println(v6)
-  let v8: Bool = eq_int(10, 10)
-  let v9: Unit = call println(v8)
-  let v10: Bool = neq_int(10, 10)
+  let v10: Bool = call $thunk_50()
   let v11: Unit = call println(v10)
-  v11
+  let v17: Bool = call $thunk_51()
+  let v18: Unit = call println(v17)
+  let v24: Bool = call $thunk_52()
+  let v25: Unit = call println(v24)
+  let v30: Bool = call $thunk_53()
+  let v31: Unit = call println(v30)
+  let_join v37(v35: Bool) =
+    let v36: Unit = call println(v35)
+    v36
+  in
+  let v32: Dict = get_dict Eq[Int]
+  let v33: Bool = call eq(v32, 10, 10)
+  let v34: Bool = not(v33)
+  jump v37(v34)
+
+fn $thunk_49() -> Bool =
+  let_join v3(v2: Bool) =
+    v2
+  in
+  let v0: Dict = get_dict Ord[Int]
+  let v1: Bool = call lt(v0, 10, 20)
+  jump v3(v1)
+
+fn $thunk_50() -> Bool =
+  let_join v9(v8: Bool) =
+    v8
+  in
+  let v6: Dict = get_dict Ord[Int]
+  let v7: Bool = call lt(v6, 20, 10)
+  jump v9(v7)
+
+fn $thunk_51() -> Bool =
+  let_join v16(v15: Bool) =
+    v15
+  in
+  let v12: Dict = get_dict Ord[Int]
+  let v13: Bool = call lt(v12, 20, 10)
+  let v14: Bool = not(v13)
+  jump v16(v14)
+
+fn $thunk_52() -> Bool =
+  let_join v23(v22: Bool) =
+    v22
+  in
+  let v19: Dict = get_dict Ord[Int]
+  let v20: Bool = call lt(v19, 10, 20)
+  let v21: Bool = not(v20)
+  jump v23(v21)
+
+fn $thunk_53() -> Bool =
+  let_join v29(v28: Bool) =
+    v28
+  in
+  let v26: Dict = get_dict Eq[Int]
+  let v27: Bool = call eq(v26, 10, 10)
+  jump v29(v27)

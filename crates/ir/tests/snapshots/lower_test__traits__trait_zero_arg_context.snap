@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__trait_zero_arg_context
+
+declare default: (Dict) -> r7
+declare println: (m) -> Unit
+
+fn int_default() -> Int =
+  let v0: Dict = get_dict Default[Int]
+  let v1: Int = call default(v0)
+  v1
+
+fn default2(v2: Dict) -> y7 =
+  let v3: y7 = call default(v2)
+  v3
+
+fn main() -> Unit =
+  let v4: Int = call int_default()
+  let v5: Unit = call println(v4)
+  let v6: Dict = get_dict Default[Int]
+  let v7: Int = call default2(v6)
+  let v8: Unit = call println(v7)
+  v8

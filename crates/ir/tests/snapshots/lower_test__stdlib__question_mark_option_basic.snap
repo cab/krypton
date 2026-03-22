@@ -31,7 +31,7 @@ fn process(v2: Int) -> Option[Int] =
 fn main() -> Unit =
   let v12: Option[Int] = call process(21)
   switch v12 {
-    0 (v13: a) ->
+    0 (v13: b) ->
       let v14: Unit = call println(v13)
       v14
     1 ->

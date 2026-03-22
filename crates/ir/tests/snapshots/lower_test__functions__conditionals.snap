@@ -4,17 +4,22 @@ expression: ir_module.to_string()
 ---
 module functions__conditionals
 
+declare eq: (Dict, g, g) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v3(v1: ~String) =
-    let v2: Unit = call println(v1)
-    v2
+  let_join v6(v4: ~String) =
+    let v5: Unit = call println(v4)
+    v5
   in
-  let v0: Bool = eq_int(1, 1)
-  switch v0 {
-    1 ->
-      jump v3("yes")
-    _ ->
-      jump v3("no")
-  }
+  let_join v3(v2: Bool) =
+    switch v2 {
+      1 ->
+        jump v6("yes")
+      _ ->
+        jump v6("no")
+    }
+  in
+  let v0: Dict = get_dict Eq[Int]
+  let v1: Bool = call eq(v0, 1, 1)
+  jump v3(v1)

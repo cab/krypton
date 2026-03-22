@@ -9,13 +9,13 @@ declare sort_by: (Dict, List[v5], (v5) -> k5) -> List[v5]
 
 fn main() -> Unit =
   let v1: ~List[Int] = construct List::Nil#1()
-  let v3: (Int) -> Int = make_closure(lambda$49, [])
+  let v3: (Int) -> Int = make_closure(lambda$50, [])
   let v4: Dict = get_dict Ord[Int]
   let v0: List[Int] = call sort_by(v4, v1, v3)
   let_join v41(v9: Unit) =
     let v11: ~List[Int] = construct List::Nil#1()
     let v12: ~List[Int] = construct List::Cons#0(42, v11)
-    let v14: (Int) -> Int = make_closure(lambda$50, [])
+    let v14: (Int) -> Int = make_closure(lambda$51, [])
     let v15: Dict = get_dict Ord[Int]
     let v10: List[Int] = call sort_by(v15, v12, v14)
     let_join v40(v24: Unit) =
@@ -24,11 +24,11 @@ fn main() -> Unit =
       let v28: ~List[Int] = construct List::Cons#0(2, v27)
       let v29: ~List[Int] = construct List::Cons#0(1, v28)
       let v30: ~List[Int] = construct List::Cons#0(3, v29)
-      let v32: (Int) -> Int = make_closure(lambda$51, [])
+      let v32: (Int) -> Int = make_closure(lambda$52, [])
       let v33: Dict = get_dict Ord[Int]
       let v25: List[Int] = call sort_by(v33, v30, v32)
       switch v25 {
-        0 (v34: c, v35: List[c]) ->
+        0 (v34: a, v35: List[a]) ->
           let v36: Dict = get_dict Show[Int]
           let v37: Unit = call println(v36, v34)
           v37
@@ -39,7 +39,7 @@ fn main() -> Unit =
       }
     in
     switch v10 {
-      0 (v16: c, v17: List[c]) ->
+      0 (v16: a, v17: List[a]) ->
         switch v17 {
           1 ->
             let v18: Dict = get_dict Show[Int]
@@ -67,11 +67,11 @@ fn main() -> Unit =
       jump v41(v8)
   }
 
-fn lambda$49(v2: Int) -> Int =
+fn lambda$50(v2: Int) -> Int =
   v2
 
-fn lambda$50(v13: Int) -> Int =
+fn lambda$51(v13: Int) -> Int =
   v13
 
-fn lambda$51(v31: Int) -> Int =
+fn lambda$52(v31: Int) -> Int =
   v31

@@ -4,6 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__constrained_fn_ref_local
 
+declare eq: (Dict, g, g) -> Bool
 declare println: (Dict, m) -> Unit
 declare show: (Dict, g) -> String
 
@@ -13,8 +14,12 @@ fn show_it(v0: Dict, v1: r7) -> String =
 
 fn main() -> Unit =
   let v3: (Int) -> String = make_closure(show_it, [])
-  let v5: String = call_closure v3(42)
-  let v6: Bool = eq_string(v5, "42")
-  let v4: Dict = get_dict Show[Bool]
-  let v7: Unit = call println(v4, v6)
-  v7
+  let_join v10(v8: Bool) =
+    let v4: Dict = get_dict Show[Bool]
+    let v9: Unit = call println(v4, v8)
+    v9
+  in
+  let v5: Dict = get_dict Eq[String]
+  let v6: String = call_closure v3(42)
+  let v7: Bool = call eq(v5, v6, "42")
+  jump v10(v7)

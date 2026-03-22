@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__intrinsic_panic_codegen
+
+declare panic: (String) -> Unit
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let_join v3(v0: Int) =
+    let v2: Unit = call println(v0)
+    v2
+  in
+  switch true {
+    1 ->
+      jump v3(42)
+    _ ->
+      let v1: Int = call panic("oops")
+      jump v3(v1)
+  }

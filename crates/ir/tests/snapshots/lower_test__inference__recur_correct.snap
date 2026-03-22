@@ -4,15 +4,21 @@ expression: ir_module.to_string()
 ---
 module inference__recur_correct
 
+declare eq: (Dict, g, g) -> Bool
+
 fn countdown(v0: Int) -> Int =
   let_join v1(v2: Int) =
-    let v3: Bool = eq_int(v2, 0)
-    switch v3 {
-      1 ->
-        0
-      _ ->
-        let v4: Int = sub_int(v2, 1)
-        jump v1(v4)
-    }
+    let_join v7(v5: Bool) =
+      switch v5 {
+        1 ->
+          0
+        _ ->
+          let v6: Int = sub_int(v2, 1)
+          jump v1(v6)
+      }
+    in
+    let v3: Dict = get_dict Eq[Int]
+    let v4: Bool = call eq(v3, v2, 0)
+    jump v7(v4)
   in
   jump v1(v0)

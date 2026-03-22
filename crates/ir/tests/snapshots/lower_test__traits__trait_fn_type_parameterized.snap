@@ -1,0 +1,27 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__trait_fn_type_parameterized
+
+declare println: (Dict, m) -> Unit
+declare test: (Dict, q7) -> String
+
+fn f() -> String =
+  "hello"
+
+fn g(v0: Int) -> String =
+  "world"
+
+fn main() -> Unit =
+  let v1: () -> String = make_closure(f, [])
+  let v2: Dict = get_dict Test[() -> String]
+  let v3: String = call test(v2, v1)
+  let v4: Dict = get_dict Show[String]
+  let v5: Unit = call println(v4, v3)
+  let v7: (Int) -> String = make_closure(g, [])
+  let v8: Dict = get_dict Test[(Int) -> String]
+  let v9: String = call test(v8, v7)
+  let v6: Dict = get_dict Show[String]
+  let v10: Unit = call println(v6, v9)
+  v10

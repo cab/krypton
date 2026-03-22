@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module inference__self_type_impl
+
+struct Point { x: Int, y: Int }
+declare my_eq: (Dict, q7, q7) -> Bool
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v0: ~Point = construct Point(1, 2)
+  let v1: ~Point = construct Point(1, 2)
+  let v3: Dict = get_dict MyEq[Point]
+  let v4: Bool = call my_eq(v3, v0, v1)
+  let v2: Dict = get_dict Show[Bool]
+  let v5: Unit = call println(v2, v4)
+  v5
