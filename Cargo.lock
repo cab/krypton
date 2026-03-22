@@ -788,6 +788,7 @@ dependencies = [
  "insta",
  "krypton-test-harness",
  "serde",
+ "stacker",
  "strip-ansi-escapes",
  "tracing",
 ]

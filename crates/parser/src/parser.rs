@@ -1393,6 +1393,13 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
 
 #[tracing::instrument(skip(source), fields(len = source.len()))]
 pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
+    // Chumsky uses stacker internally (64KB red zone), but in debug builds
+    // combinator frames are large enough to overshoot that guard. Use a larger
+    // red zone so stacker grows the stack before chumsky's check is too late.
+    stacker::maybe_grow(4 * 1024 * 1024, 8 * 1024 * 1024, || parse_inner(source))
+}
+
+fn parse_inner(source: &str) -> (Module, Vec<ParseError>) {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
     let tokens = tokens.unwrap_or_default();
     tracing::debug!(tokens = tokens.len(), lex_errors = lex_errors.len(), "lexing complete");

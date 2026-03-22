@@ -207,14 +207,7 @@ fn a_fixtures() {
 
 #[test]
 fn m20_fixtures() {
-    // Json type is recursive (JArr(List[Json]), JObj(Map[String, Json]))
-    // which causes deep recursion in the typechecker, requiring a larger stack.
-    std::thread::Builder::new()
-        .stack_size(16 * 1024 * 1024)
-        .spawn(|| run_codegen_fixtures("m20"))
-        .unwrap()
-        .join()
-        .unwrap();
+    run_codegen_fixtures("m20");
 }
 
 #[test]
