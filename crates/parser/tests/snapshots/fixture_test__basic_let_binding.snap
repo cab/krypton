@@ -1,0 +1,101 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: simple_let
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: x
+                ty: ~
+                value:
+                  Lit:
+                    value:
+                      Int: 42
+                    span:
+                      - 44
+                      - 46
+                body: ~
+                span:
+                  - 36
+                  - 46
+            - Var:
+                name: x
+                span:
+                  - 52
+                  - 53
+          span:
+            - 30
+            - 55
+      span:
+        - 13
+        - 55
+  - DefFn:
+      name: nested_let
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: x
+                ty: ~
+                value:
+                  Lit:
+                    value:
+                      Int: 1
+                    span:
+                      - 88
+                      - 89
+                body: ~
+                span:
+                  - 80
+                  - 89
+            - Let:
+                name: y
+                ty: ~
+                value:
+                  Lit:
+                    value:
+                      Int: 2
+                    span:
+                      - 103
+                      - 104
+                body: ~
+                span:
+                  - 95
+                  - 104
+            - BinaryOp:
+                op: Add
+                lhs:
+                  Var:
+                    name: x
+                    span:
+                      - 110
+                      - 111
+                rhs:
+                  Var:
+                    name: y
+                    span:
+                      - 114
+                      - 115
+                span:
+                  - 110
+                  - 115
+          span:
+            - 74
+            - 117
+      span:
+        - 57
+        - 117

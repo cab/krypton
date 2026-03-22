@@ -20,7 +20,7 @@ fn krypton_bin() -> Command {
 #[test]
 fn test_parse_prints_ast() {
     let output = krypton_bin()
-        .args(["parse", "tests/fixtures/m1/hello.kr"])
+        .args(["parse", "tests/fixtures/parser/basic_hello.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
@@ -31,7 +31,7 @@ fn test_parse_prints_ast() {
 #[test]
 fn test_parse_surface_format() {
     let output = krypton_bin()
-        .args(["parse", "--format", "surface", "tests/fixtures/m1/hello.kr"])
+        .args(["parse", "--format", "surface", "tests/fixtures/parser/basic_hello.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
@@ -45,7 +45,7 @@ fn test_parse_surface_format() {
 #[test]
 fn test_parse_errors_exit_1() {
     let output = krypton_bin()
-        .args(["parse", "tests/fixtures/m1/bad.kr"])
+        .args(["parse", "tests/fixtures/parser/bad.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
@@ -59,7 +59,7 @@ fn test_parse_errors_exit_1() {
 #[test]
 fn test_check_identity() {
     let output = krypton_bin()
-        .args(["check", "tests/fixtures/m2/identity.kr"])
+        .args(["check", "tests/fixtures/inference/identity.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
@@ -73,7 +73,7 @@ fn test_check_identity() {
 #[test]
 fn test_check_type_error() {
     let output = krypton_bin()
-        .args(["check", "tests/fixtures/m2/type_error_check.kr"])
+        .args(["check", "tests/fixtures/inference/type_error_check.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
@@ -87,7 +87,7 @@ fn test_check_type_error() {
 #[test]
 fn test_check_prints_multiple_defs() {
     let output = krypton_bin()
-        .args(["check", "tests/fixtures/m2/multi_def.kr"])
+        .args(["check", "tests/fixtures/inference/multi_def.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
@@ -101,7 +101,7 @@ fn test_check_prints_multiple_defs() {
 #[test]
 fn test_fmt_pretty_prints() {
     let output = krypton_bin()
-        .args(["fmt", "tests/fixtures/m1/hello.kr"])
+        .args(["fmt", "tests/fixtures/parser/basic_hello.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
@@ -115,7 +115,7 @@ fn test_fmt_pretty_prints() {
 #[test]
 fn test_compile_produces_jar() {
     let dir = tempdir().expect("failed to create temp dir");
-    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    let fixture = workspace_root().join("tests/fixtures/functions/hello.kr");
     std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
@@ -130,7 +130,7 @@ fn test_compile_produces_jar() {
 #[test]
 fn test_compile_jar_runs_with_java() {
     let dir = tempdir().expect("failed to create temp dir");
-    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    let fixture = workspace_root().join("tests/fixtures/functions/hello.kr");
     std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
 
     let compile = Command::new(env!("CARGO_BIN_EXE_krypton"))
@@ -153,7 +153,7 @@ fn test_compile_jar_runs_with_java() {
 #[test]
 fn test_compile_custom_output() {
     let dir = tempdir().expect("failed to create temp dir");
-    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    let fixture = workspace_root().join("tests/fixtures/functions/hello.kr");
     std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
@@ -168,7 +168,7 @@ fn test_compile_custom_output() {
 #[test]
 fn test_run_hello_world() {
     let output = krypton_bin()
-        .args(["run", "tests/fixtures/m4/hello.kr"])
+        .args(["run", "tests/fixtures/functions/hello.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
@@ -182,7 +182,7 @@ fn test_run_hello_world() {
 #[test]
 fn test_run_factorial() {
     let output = krypton_bin()
-        .args(["run", "tests/fixtures/m4/factorial.kr"])
+        .args(["run", "tests/fixtures/functions/factorial.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
@@ -208,7 +208,7 @@ fn test_run_parse_error_exits_1() {
 #[test]
 fn test_run_type_error_exits_1() {
     let output = krypton_bin()
-        .args(["run", "tests/fixtures/m2/type_error_check.kr"])
+        .args(["run", "tests/fixtures/inference/type_error_check.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");

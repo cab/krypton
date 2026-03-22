@@ -1,0 +1,27 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - Import:
+      is_pub: true
+      path: core/option
+      names:
+        - name: Option
+          alias: ~
+        - name: Some
+          alias: ~
+        - name: None
+          alias: ~
+      span:
+        - 13
+        - 56
+  - Import:
+      is_pub: true
+      path: core/result
+      names:
+        - name: Result
+          alias: ~
+      span:
+        - 57
+        - 88

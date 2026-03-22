@@ -4,133 +4,111 @@ expression: module
 ---
 decls:
   - DefFn:
-      name: int_lit
+      name: test_int
       visibility: Private
       type_params: []
       params: []
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 31
+            - 34
       body:
         Lit:
           value:
             Int: 42
           span:
-            - 29
-            - 31
+            - 37
+            - 39
       span:
         - 13
-        - 31
+        - 39
   - DefFn:
-      name: neg_int
+      name: test_float
       visibility: Private
       type_params: []
       params: []
       constraints: []
-      return_type: ~
-      body:
-        BinaryOp:
-          op: Sub
-          lhs:
-            Lit:
-              value:
-                Int: 0
-              span:
-                - 49
-                - 50
-          rhs:
-            Lit:
-              value:
-                Int: 1
-              span:
-                - 53
-                - 54
+      return_type:
+        Named:
+          name: Float
           span:
-            - 49
-            - 54
-      span:
-        - 33
-        - 54
-  - DefFn:
-      name: float_lit
-      visibility: Private
-      type_params: []
-      params: []
-      constraints: []
-      return_type: ~
+            - 60
+            - 65
       body:
         Lit:
           value:
             Float: 3.14
           span:
-            - 74
-            - 78
+            - 68
+            - 72
       span:
-        - 56
-        - 78
+        - 40
+        - 72
   - DefFn:
-      name: bool_true
+      name: test_bool
       visibility: Private
       type_params: []
       params: []
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: Bool
+          span:
+            - 92
+            - 96
       body:
         Lit:
           value:
             Bool: true
           span:
-            - 98
-            - 102
+            - 99
+            - 103
       span:
-        - 80
-        - 102
+        - 73
+        - 103
   - DefFn:
-      name: bool_false
+      name: test_string
       visibility: Private
       type_params: []
       params: []
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: String
+          span:
+            - 125
+            - 131
       body:
         Lit:
           value:
-            Bool: false
+            String: hello
           span:
-            - 123
-            - 128
+            - 134
+            - 141
       span:
         - 104
-        - 128
+        - 141
   - DefFn:
-      name: string_lit
+      name: test_unit
       visibility: Private
       type_params: []
       params: []
       constraints: []
-      return_type: ~
-      body:
-        Lit:
-          value:
-            String: hello world
+      return_type:
+        Named:
+          name: Unit
           span:
-            - 149
-            - 162
-      span:
-        - 130
-        - 162
-  - DefFn:
-      name: unit_lit
-      visibility: Private
-      type_params: []
-      params: []
-      constraints: []
-      return_type: ~
+            - 161
+            - 165
       body:
         Lit:
           value: Unit
           span:
-            - 181
-            - 183
+            - 168
+            - 170
       span:
-        - 164
-        - 183
+        - 142
+        - 170

@@ -1,72 +1,82 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use krypton_parser::parser::parse;
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_test_harness::{load_fixture, Expectation};
+use rstest::rstest;
 
-fn run_parser_fixtures(subdir: &str) {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(format!("tests/fixtures/{}", subdir));
+#[rstest]
+fn parser_fixture(
+    #[files("tests/fixtures/parser/*.kr")]
+    #[base_dir = "../.."]
+    path: PathBuf,
+) {
+    let fixture = load_fixture(&path);
+    if fixture.expectations.is_empty() {
+        return;
+    }
 
-    let fixtures = discover_fixtures(&fixture_dir);
-    assert!(
-        !fixtures.is_empty(),
-        "no fixtures found in {}",
-        fixture_dir.display()
-    );
+    let name = path.file_stem().unwrap().to_string_lossy().to_string();
+    let (module, errors) = parse(&fixture.source);
 
-    for fixture_path in fixtures {
-        let fixture = load_fixture(&fixture_path);
-        let name = fixture_path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        let (module, errors) = parse(&fixture.source);
-
-        for expectation in &fixture.expectations {
-            match expectation {
-                Expectation::Ok => {
-                    assert!(
-                        errors.is_empty(),
-                        "fixture {name}: expected ok but got errors: {errors:?}"
-                    );
-                    insta::assert_yaml_snapshot!(name.clone(), module);
-                }
-                Expectation::Error(code) => {
-                    // Skip non-parser error codes (e.g. E0001 is a typechecker error)
-                    if !code.starts_with('P') {
-                        continue;
-                    }
-                    assert!(
-                        !errors.is_empty(),
-                        "fixture {name}: expected error {code} but got no errors"
-                    );
-                    let codes: Vec<String> =
-                        errors.iter().map(|e| e.code.to_string()).collect();
-                    assert!(
-                        codes.iter().any(|c| c == code),
-                        "fixture {name}: expected error {code} but got {codes:?}"
-                    );
-                }
-                Expectation::Output(_) => {
-                    // Output expectations are for runtime, not parsing
-                }
+    for expectation in &fixture.expectations {
+        match expectation {
+            Expectation::Ok => {
+                assert!(
+                    errors.is_empty(),
+                    "fixture {name}: expected ok but got errors: {errors:?}"
+                );
+                insta::assert_yaml_snapshot!(name.clone(), module);
             }
+            Expectation::Error(code) => {
+                if !code.starts_with('P') {
+                    continue;
+                }
+                assert!(
+                    !errors.is_empty(),
+                    "fixture {name}: expected error {code} but got no errors"
+                );
+                let codes: Vec<String> = errors.iter().map(|e| e.code.to_string()).collect();
+                assert!(
+                    codes.iter().any(|c| c == code),
+                    "fixture {name}: expected error {code} but got {codes:?}"
+                );
+            }
+            Expectation::Output(_) => {}
         }
     }
 }
 
-#[test]
-fn m1_fixtures() {
-    run_parser_fixtures("m1");
-}
+#[rstest]
+fn parser_stdlib_fixture(
+    #[files("tests/fixtures/stdlib/*.kr")]
+    #[base_dir = "../.."]
+    path: PathBuf,
+) {
+    let fixture = load_fixture(&path);
+    if fixture.expectations.is_empty() {
+        return;
+    }
 
-#[test]
-fn m9_fixtures() {
-    run_parser_fixtures("m9");
+    let name = path.file_stem().unwrap().to_string_lossy().to_string();
+    let (_, errors) = parse(&fixture.source);
+
+    for expectation in &fixture.expectations {
+        match expectation {
+            Expectation::Ok | Expectation::Output(_) => {
+                assert!(
+                    errors.is_empty(),
+                    "fixture {name}: expected ok but got parse errors: {errors:?}"
+                );
+            }
+            Expectation::Error(code) => {
+                if !code.starts_with('P') {
+                    continue;
+                }
+                assert!(
+                    !errors.is_empty(),
+                    "fixture {name}: expected error {code} but got no errors"
+                );
+            }
+        }
+    }
 }

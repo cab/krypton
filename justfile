@@ -8,6 +8,11 @@ build-runtime:
 
 # Run all tests (Rust + Java)
 test: build-runtime
+    cargo nextest run
+    ./gradlew :runtime:test
+
+# Run all tests with cargo test (no nextest)
+test-cargo: build-runtime
     cargo test --workspace
     ./gradlew :runtime:test
 

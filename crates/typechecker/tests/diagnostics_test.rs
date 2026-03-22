@@ -154,7 +154,7 @@ fn own_fn_capture_note_correct_name() {
 
 #[test]
 fn test_qualifier_mismatch_diagnostic() {
-    let output = render_fixture_error("../../tests/fixtures/m6/qualifier_dup_error.kr");
+    let output = render_fixture_error("../../tests/fixtures/ownership/qualifier_dup_error.kr");
     insta::assert_snapshot!(output);
     // No type-theory jargon in error/help lines (exclude file path lines)
     let message_lines: String = output
@@ -178,7 +178,7 @@ fn test_qualifier_mismatch_diagnostic() {
 
 #[test]
 fn test_e0101_shows_first_use() {
-    let output = render_fixture_error("../../tests/fixtures/m6/own_double_use.kr");
+    let output = render_fixture_error("../../tests/fixtures/ownership/own_double_use.kr");
     insta::assert_snapshot!(output);
     assert!(
         output.contains("first use here"),
@@ -188,7 +188,7 @@ fn test_e0101_shows_first_use() {
 
 #[test]
 fn test_e0102_shows_consuming_branch() {
-    let output = render_fixture_error("../../tests/fixtures/m6/branch_if_one.kr");
+    let output = render_fixture_error("../../tests/fixtures/ownership/branch_if_one.kr");
     insta::assert_snapshot!(output);
     assert!(
         output.contains("consumed here"),
@@ -198,7 +198,7 @@ fn test_e0102_shows_consuming_branch() {
 
 #[test]
 fn test_e0103_shows_prior_use() {
-    let output = render_fixture_error("../../tests/fixtures/m6/own_capture_moved.kr");
+    let output = render_fixture_error("../../tests/fixtures/closures/own_capture_moved.kr");
     insta::assert_snapshot!(output);
     assert!(
         output.contains("consumed here"),
@@ -229,7 +229,7 @@ fn error_codes_present() {
 
 #[test]
 fn undeclared_typevar_suggestion() {
-    let output = render_fixture_error("../../tests/fixtures/m11/undeclared_typevar.kr");
+    let output = render_fixture_error("../../tests/fixtures/inference/undeclared_typevar.kr");
     insta::assert_snapshot!(output);
     assert!(
         output.contains("did you mean `String`?"),
@@ -522,7 +522,7 @@ fn type_error_in_imported_module() {
 
 #[test]
 fn nullary_constructor_call_diagnostic() {
-    let output = render_fixture_error("../../tests/fixtures/m6/nullary_ctor_call.kr");
+    let output = render_fixture_error("../../tests/fixtures/ownership/nullary_ctor_call.kr");
     insta::assert_snapshot!(output);
     assert!(
         output.contains("E0004"),
@@ -562,7 +562,7 @@ fn nullary_constructor_call_qualified_diagnostic() {
 
 #[test]
 fn unsolved_type_var_diagnostic() {
-    let output = render_fixture_error("../../tests/fixtures/m6/unsolved_type_display.kr");
+    let output = render_fixture_error("../../tests/fixtures/ownership/unsolved_type_display.kr");
     insta::assert_snapshot!(output);
     // Should not contain raw inference variable names like z3, a4, etc.
     // Type vars in errors should be sequential: a, b, c, ...

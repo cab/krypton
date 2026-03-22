@@ -15,6 +15,7 @@ krypton-test-harness = { path = "../test-harness" }
 insta.workspace = true
 criterion.workspace = true
 krypton-modules = { path = "../modules" }
+rstest.workspace = true
 
 [[bench]]
 name = "typecheck_bench"

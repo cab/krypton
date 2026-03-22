@@ -1,0 +1,10 @@
+# expect: error E0101
+fun consume(buf: ~String) -> String = buf
+fun make_nested(x: ~String) -> ~() -> ~() -> String =
+    () -> () -> consume(x)
+fun test(s: ~String) -> String {
+    let outer = make_nested(s)
+    let inner1 = outer()
+    let inner2 = outer()
+    inner1()
+}

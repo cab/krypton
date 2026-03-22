@@ -5,9 +5,10 @@ use std::process::Command;
 use krypton_codegen::emit::compile_modules;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
-use krypton_test_harness::{discover_fixtures, load_fixture, Expectation};
+use krypton_test_harness::{load_fixture, Expectation};
 use krypton_typechecker::diagnostics::render_infer_error;
 use krypton_typechecker::infer::infer_module;
+use rstest::rstest;
 
 fn build_classpath(class_dir: &Path) -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
@@ -26,13 +27,15 @@ fn run_program_with_resolver(
     fixture_name: &str,
 ) -> String {
     let (module, errors) = parse(source);
-    assert!(errors.is_empty(), "fixture {fixture_name}: parse errors: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "fixture {fixture_name}: parse errors: {errors:?}"
+    );
 
-    let typed_modules = infer_module(&module, resolver)
-        .unwrap_or_else(|e| {
-            let rendered = render_infer_error(fixture_name, source, &e);
-            panic!("fixture {fixture_name}: type check failed:\n{rendered}");
-        });
+    let typed_modules = infer_module(&module, resolver).unwrap_or_else(|e| {
+        let rendered = render_infer_error(fixture_name, source, &e);
+        panic!("fixture {fixture_name}: type check failed:\n{rendered}");
+    });
     let classes = compile_modules(&typed_modules, "Kr$Test")
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
@@ -64,158 +67,104 @@ fn run_program_with_resolver(
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
-fn run_codegen_fixtures(subdir: &str) {
-    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(format!("tests/fixtures/{}", subdir));
+const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
 
-    let fixtures = discover_fixtures(&fixture_dir);
-    assert!(
-        !fixtures.is_empty(),
-        "no fixtures found in {}",
-        fixture_dir.display()
-    );
+fn should_skip(path: &PathBuf) -> bool {
+    path.components().any(|c| {
+        SKIP_DIRS
+            .iter()
+            .any(|d| c.as_os_str() == std::ffi::OsStr::new(d))
+    })
+}
 
-    let mut ran = 0;
-    let mut failures: Vec<String> = Vec::new();
-    for fixture_path in fixtures {
-        let fixture = load_fixture(&fixture_path);
-        let name = fixture_path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+#[rstest]
+fn codegen_fixture(
+    #[files("tests/fixtures/**/*.kr")]
+    #[base_dir = "../.."]
+    path: PathBuf,
+) {
+    if should_skip(&path) {
+        return;
+    }
 
-        let resolver =
-            CompositeResolver::with_source_root(fixture_path.parent().unwrap().to_path_buf());
+    let fixture = load_fixture(&path);
+    if fixture.expectations.is_empty() {
+        return;
+    }
 
-        for expectation in &fixture.expectations {
-            match expectation {
-                Expectation::Output(expected) => {
-                    let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
-                    if actual != *expected {
-                        failures.push(format!(
-                            "{name}: expected output {expected:?} but got {actual:?}"
-                        ));
-                    }
-                    ran += 1;
-                }
-                Expectation::Ok => {
-                    let (module, errors) = parse(&fixture.source);
-                    if !errors.is_empty() {
-                        failures.push(format!("{name}: expected ok but parse errors: {errors:?}"));
-                        continue;
-                    }
-                    let typed_modules = match infer_module(&module, &resolver) {
-                        Ok(tm) => tm,
-                        Err(e) => {
-                            let rendered = render_infer_error(&name, &fixture.source, &e);
-                            failures.push(format!("{name}: expected ok but typecheck failed:\n{rendered}"));
-                            continue;
-                        }
-                    };
-                    match compile_modules(&typed_modules, "Kr$Test") {
-                        Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
-                        Err(e) => {
-                            failures.push(format!("{name}: expected ok but compile failed: {e}"));
-                        }
-                    }
-                    ran += 1;
-                }
-                Expectation::Error(_) => {}
+    let name = path.file_stem().unwrap().to_string_lossy().to_string();
+    let resolver =
+        CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
+
+    for expectation in &fixture.expectations {
+        match expectation {
+            Expectation::Output(expected) => {
+                let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
+                assert_eq!(
+                    actual, *expected,
+                    "fixture {name}: output mismatch"
+                );
             }
+            Expectation::Ok => {
+                let (module, errors) = parse(&fixture.source);
+                assert!(
+                    errors.is_empty(),
+                    "fixture {name}: expected ok but parse errors: {errors:?}"
+                );
+                let typed_modules = infer_module(&module, &resolver).unwrap_or_else(|e| {
+                    let rendered = render_infer_error(&name, &fixture.source, &e);
+                    panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                });
+                match compile_modules(&typed_modules, "Kr$Test") {
+                    Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
+                    Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
+                }
+            }
+            Expectation::Error(_) => {}
         }
     }
+}
 
-    assert!(ran > 0, "no output/ok fixtures were found to run {subdir}");
-    if !failures.is_empty() {
-        panic!(
-            "{} fixture(s) failed:\n  {}",
-            failures.len(),
-            failures.join("\n  ")
-        );
+#[rstest]
+fn codegen_module(
+    #[files("tests/fixtures/modules/*.kr")]
+    #[base_dir = "../.."]
+    path: PathBuf,
+) {
+    let fixture = load_fixture(&path);
+    if fixture.expectations.is_empty() {
+        return;
     }
-}
 
-#[test]
-fn m4_fixtures() {
-    run_codegen_fixtures("m4");
-}
+    let name = path.file_stem().unwrap().to_string_lossy().to_string();
+    let resolver =
+        CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
-#[test]
-fn m5_fixtures() {
-    run_codegen_fixtures("m5");
-}
-
-#[test]
-fn m8_fixtures() {
-    run_codegen_fixtures("m8");
-}
-
-#[test]
-fn m9_fixtures() {
-    run_codegen_fixtures("m9");
-}
-
-#[test]
-fn m10_fixtures() {
-    run_codegen_fixtures("m10");
-}
-
-#[test]
-fn m11_fixtures() {
-    run_codegen_fixtures("m11");
-}
-
-#[test]
-fn m11_module_fixtures() {
-    run_codegen_fixtures("m11/modules");
-}
-
-#[test]
-fn m18_fixtures() {
-    run_codegen_fixtures("m18");
-}
-
-#[test]
-fn m18_module_fixtures() {
-    run_codegen_fixtures("m18/modules");
-}
-
-#[test]
-fn m19_fixtures() {
-    run_codegen_fixtures("m19");
-}
-
-#[test]
-fn m6_fixtures() {
-    run_codegen_fixtures("m6");
-}
-
-#[test]
-fn m7_fixtures() {
-    run_codegen_fixtures("m7");
-}
-
-#[test]
-fn a_fixtures() {
-    run_codegen_fixtures("a");
-}
-
-#[test]
-fn m20_fixtures() {
-    run_codegen_fixtures("m20");
-}
-
-#[test]
-fn m21_fixtures() {
-    run_codegen_fixtures("m21");
-}
-
-#[test]
-fn codegen_fixtures() {
-    run_codegen_fixtures("codegen");
+    for expectation in &fixture.expectations {
+        match expectation {
+            Expectation::Output(expected) => {
+                let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
+                assert_eq!(
+                    actual, *expected,
+                    "fixture {name}: output mismatch"
+                );
+            }
+            Expectation::Ok => {
+                let (module, errors) = parse(&fixture.source);
+                assert!(
+                    errors.is_empty(),
+                    "fixture {name}: expected ok but parse errors: {errors:?}"
+                );
+                let typed_modules = infer_module(&module, &resolver).unwrap_or_else(|e| {
+                    let rendered = render_infer_error(&name, &fixture.source, &e);
+                    panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                });
+                match compile_modules(&typed_modules, "Kr$Test") {
+                    Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
+                    Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
+                }
+            }
+            Expectation::Error(_) => {}
+        }
+    }
 }

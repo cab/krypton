@@ -1,0 +1,385 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: add
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 21
+            - 22
+        - name: y
+          ty: ~
+          span:
+            - 24
+            - 25
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: x
+              span:
+                - 29
+                - 30
+          rhs:
+            Var:
+              name: y
+              span:
+                - 33
+                - 34
+          span:
+            - 29
+            - 34
+      span:
+        - 13
+        - 34
+  - DefFn:
+      name: sub
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 44
+            - 45
+        - name: y
+          ty: ~
+          span:
+            - 47
+            - 48
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Sub
+          lhs:
+            Var:
+              name: x
+              span:
+                - 52
+                - 53
+          rhs:
+            Var:
+              name: y
+              span:
+                - 56
+                - 57
+          span:
+            - 52
+            - 57
+      span:
+        - 36
+        - 57
+  - DefFn:
+      name: mul
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 67
+            - 68
+        - name: y
+          ty: ~
+          span:
+            - 70
+            - 71
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Mul
+          lhs:
+            Var:
+              name: x
+              span:
+                - 75
+                - 76
+          rhs:
+            Var:
+              name: y
+              span:
+                - 79
+                - 80
+          span:
+            - 75
+            - 80
+      span:
+        - 59
+        - 80
+  - DefFn:
+      name: div
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 90
+            - 91
+        - name: y
+          ty: ~
+          span:
+            - 93
+            - 94
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Div
+          lhs:
+            Var:
+              name: x
+              span:
+                - 98
+                - 99
+          rhs:
+            Var:
+              name: y
+              span:
+                - 102
+                - 103
+          span:
+            - 98
+            - 103
+      span:
+        - 82
+        - 103
+  - DefFn:
+      name: eq
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 112
+            - 113
+        - name: y
+          ty: ~
+          span:
+            - 115
+            - 116
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Eq
+          lhs:
+            Var:
+              name: x
+              span:
+                - 120
+                - 121
+          rhs:
+            Var:
+              name: y
+              span:
+                - 125
+                - 126
+          span:
+            - 120
+            - 126
+      span:
+        - 105
+        - 126
+  - DefFn:
+      name: neq
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 136
+            - 137
+        - name: y
+          ty: ~
+          span:
+            - 139
+            - 140
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Neq
+          lhs:
+            Var:
+              name: x
+              span:
+                - 144
+                - 145
+          rhs:
+            Var:
+              name: y
+              span:
+                - 149
+                - 150
+          span:
+            - 144
+            - 150
+      span:
+        - 128
+        - 150
+  - DefFn:
+      name: lt
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 159
+            - 160
+        - name: y
+          ty: ~
+          span:
+            - 162
+            - 163
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Lt
+          lhs:
+            Var:
+              name: x
+              span:
+                - 167
+                - 168
+          rhs:
+            Var:
+              name: y
+              span:
+                - 171
+                - 172
+          span:
+            - 167
+            - 172
+      span:
+        - 152
+        - 172
+  - DefFn:
+      name: gt
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 181
+            - 182
+        - name: y
+          ty: ~
+          span:
+            - 184
+            - 185
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Gt
+          lhs:
+            Var:
+              name: x
+              span:
+                - 189
+                - 190
+          rhs:
+            Var:
+              name: y
+              span:
+                - 193
+                - 194
+          span:
+            - 189
+            - 194
+      span:
+        - 174
+        - 194
+  - DefFn:
+      name: le
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 203
+            - 204
+        - name: y
+          ty: ~
+          span:
+            - 206
+            - 207
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Le
+          lhs:
+            Var:
+              name: x
+              span:
+                - 211
+                - 212
+          rhs:
+            Var:
+              name: y
+              span:
+                - 216
+                - 217
+          span:
+            - 211
+            - 217
+      span:
+        - 196
+        - 217
+  - DefFn:
+      name: ge
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 226
+            - 227
+        - name: y
+          ty: ~
+          span:
+            - 229
+            - 230
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Ge
+          lhs:
+            Var:
+              name: x
+              span:
+                - 234
+                - 235
+          rhs:
+            Var:
+              name: y
+              span:
+                - 239
+                - 240
+          span:
+            - 234
+            - 240
+      span:
+        - 219
+        - 240

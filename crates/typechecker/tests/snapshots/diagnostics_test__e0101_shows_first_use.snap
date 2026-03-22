@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: output
 ---
 [E0101] Error: value already moved: `x`
-   ╭─[ ../../tests/fixtures/m6/own_double_use.kr:6:13 ]
+   ╭─[ ../../tests/fixtures/ownership/own_double_use.kr:6:13 ]
    │
  5 │     consume(x);
    │             ┬  

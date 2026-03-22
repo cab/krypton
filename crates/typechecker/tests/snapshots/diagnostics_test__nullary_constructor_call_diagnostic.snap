@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: output
 ---
 [E0004] Error: not a function: type ~Option[a] is not callable
-   ╭─[ ../../tests/fixtures/m6/nullary_ctor_call.kr:3:21 ]
+   ╭─[ ../../tests/fixtures/ownership/nullary_ctor_call.kr:3:21 ]
    │
  3 │ fun main() -> Int = None()
    │                     ───┬──  

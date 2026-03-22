@@ -1,0 +1,3 @@
+# expect: output "hello"
+fun make_fn(x: ~String) -> ~() -> String = () -> x
+fun main() = println(make_fn("hello")())

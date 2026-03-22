@@ -1,0 +1,10 @@
+# expect: error E0001
+trait Apply[a] {
+    fun apply(x: a, n: Int) -> Int
+}
+
+impl Apply[(Int) -> Int] {
+    fun apply(x, n) = x
+}
+
+fun main() = 0

@@ -1,0 +1,8 @@
+# expect: error E0101
+fun consume(buf: ~String) -> String = buf
+fun make_owned_fn(x: ~String) -> ~() -> String = () -> consume(x)
+fun test(s: ~String) -> String {
+    let f = make_owned_fn(s)
+    f()
+    f()
+}

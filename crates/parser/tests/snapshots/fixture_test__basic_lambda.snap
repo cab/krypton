@@ -1,0 +1,163 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: identity
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 26
+            - 27
+      constraints: []
+      return_type: ~
+      body:
+        Var:
+          name: x
+          span:
+            - 31
+            - 32
+      span:
+        - 13
+        - 32
+  - DefFn:
+      name: multi_param
+      visibility: Private
+      type_params: []
+      params:
+        - name: a
+          ty: ~
+          span:
+            - 50
+            - 51
+        - name: b
+          ty: ~
+          span:
+            - 53
+            - 54
+        - name: c
+          ty: ~
+          span:
+            - 56
+            - 57
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Add
+          lhs:
+            Var:
+              name: a
+              span:
+                - 61
+                - 62
+          rhs:
+            BinaryOp:
+              op: Add
+              lhs:
+                Var:
+                  name: b
+                  span:
+                    - 66
+                    - 67
+              rhs:
+                Var:
+                  name: c
+                  span:
+                    - 70
+                    - 71
+              span:
+                - 66
+                - 71
+          span:
+            - 61
+            - 72
+      span:
+        - 34
+        - 72
+  - DefFn:
+      name: higher_order
+      visibility: Private
+      type_params: []
+      params:
+        - name: f
+          ty: ~
+          span:
+            - 91
+            - 92
+        - name: x
+          ty: ~
+          span:
+            - 94
+            - 95
+      constraints: []
+      return_type: ~
+      body:
+        App:
+          func:
+            Var:
+              name: f
+              span:
+                - 99
+                - 100
+          args:
+            - Var:
+                name: x
+                span:
+                  - 101
+                  - 102
+          is_ufcs: false
+          span:
+            - 99
+            - 103
+      span:
+        - 74
+        - 103
+  - DefFn:
+      name: closure
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty: ~
+          span:
+            - 117
+            - 118
+      constraints: []
+      return_type: ~
+      body:
+        Lambda:
+          params:
+            - name: y
+              ty: ~
+              span:
+                - 122
+                - 123
+          body:
+            BinaryOp:
+              op: Add
+              lhs:
+                Var:
+                  name: x
+                  span:
+                    - 127
+                    - 128
+              rhs:
+                Var:
+                  name: y
+                  span:
+                    - 131
+                    - 132
+              span:
+                - 127
+                - 132
+          span:
+            - 122
+            - 132
+      span:
+        - 105
+        - 132

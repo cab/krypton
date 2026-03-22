@@ -31,24 +31,24 @@ fn run_inspect(fixture: &str) -> String {
 
 #[test]
 fn inspect_basic() {
-    let output = run_inspect("tests/fixtures/m18/inspect_basic.kr");
+    let output = run_inspect("tests/fixtures/inspect/inspect_basic.kr");
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn inspect_shadow() {
-    let output = run_inspect("tests/fixtures/m18/inspect_shadow.kr");
+    let output = run_inspect("tests/fixtures/inspect/inspect_shadow.kr");
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn inspect_question_mark() {
-    let output = run_inspect("tests/fixtures/m18/inspect_question_mark.kr");
+    let output = run_inspect("tests/fixtures/inspect/inspect_question_mark.kr");
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn inspect_consumed() {
-    let output = run_inspect("tests/fixtures/m18/inspect_consumed.kr");
+    let output = run_inspect("tests/fixtures/inspect/inspect_consumed.kr");
     insta::assert_snapshot!(output);
 }

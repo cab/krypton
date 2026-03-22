@@ -1,0 +1,7 @@
+# expect: ok
+fun consume(buf: ~String) -> String = buf
+fun test(x: ~String) -> String =
+    match Cons(() -> consume(x), Nil) {
+        Cons(f, _) => f(),
+        Nil => "empty",
+    }

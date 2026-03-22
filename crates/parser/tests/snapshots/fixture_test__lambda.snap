@@ -4,139 +4,100 @@ expression: module
 ---
 decls:
   - DefFn:
-      name: identity
-      visibility: Private
-      type_params: []
-      params:
-        - name: x
-          ty: ~
-          span:
-            - 26
-            - 27
-      constraints: []
-      return_type: ~
-      body:
-        Var:
-          name: x
-          span:
-            - 31
-            - 32
-      span:
-        - 13
-        - 32
-  - DefFn:
-      name: multi_param
-      visibility: Private
-      type_params: []
-      params:
-        - name: a
-          ty: ~
-          span:
-            - 50
-            - 51
-        - name: b
-          ty: ~
-          span:
-            - 53
-            - 54
-        - name: c
-          ty: ~
-          span:
-            - 56
-            - 57
-      constraints: []
-      return_type: ~
-      body:
-        BinaryOp:
-          op: Add
-          lhs:
-            Var:
-              name: a
-              span:
-                - 61
-                - 62
-          rhs:
-            BinaryOp:
-              op: Add
-              lhs:
-                Var:
-                  name: b
-                  span:
-                    - 66
-                    - 67
-              rhs:
-                Var:
-                  name: c
-                  span:
-                    - 70
-                    - 71
-              span:
-                - 66
-                - 71
-          span:
-            - 61
-            - 72
-      span:
-        - 34
-        - 72
-  - DefFn:
-      name: higher_order
+      name: apply
       visibility: Private
       type_params: []
       params:
         - name: f
-          ty: ~
+          ty:
+            Fn:
+              params:
+                - Named:
+                    name: Int
+                    span:
+                      - 27
+                      - 30
+              ret:
+                Named:
+                  name: Int
+                  span:
+                    - 35
+                    - 38
+              span:
+                - 26
+                - 38
           span:
-            - 91
-            - 92
+            - 23
+            - 38
         - name: x
-          ty: ~
+          ty:
+            Named:
+              name: Int
+              span:
+                - 43
+                - 46
           span:
-            - 94
-            - 95
+            - 40
+            - 46
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 51
+            - 54
       body:
         App:
           func:
             Var:
               name: f
               span:
-                - 99
-                - 100
+                - 57
+                - 58
           args:
             - Var:
                 name: x
                 span:
-                  - 101
-                  - 102
+                  - 59
+                  - 60
           is_ufcs: false
           span:
-            - 99
-            - 103
+            - 57
+            - 61
       span:
-        - 74
-        - 103
+        - 13
+        - 61
   - DefFn:
-      name: closure
+      name: inc
       visibility: Private
       type_params: []
-      params:
-        - name: x
-          ty: ~
-          span:
-            - 117
-            - 118
+      params: []
       constraints: []
-      return_type: ~
+      return_type:
+        Fn:
+          params:
+            - Named:
+                name: Int
+                span:
+                  - 76
+                  - 79
+          ret:
+            Named:
+              name: Int
+              span:
+                - 84
+                - 87
+          span:
+            - 75
+            - 87
       body:
         Lambda:
           params:
-            - name: y
+            - name: x
               ty: ~
               span:
-                - 122
-                - 123
+                - 90
+                - 91
           body:
             BinaryOp:
               op: Add
@@ -144,20 +105,86 @@ decls:
                 Var:
                   name: x
                   span:
-                    - 127
-                    - 128
+                    - 95
+                    - 96
+              rhs:
+                Lit:
+                  value:
+                    Int: 1
+                  span:
+                    - 99
+                    - 100
+              span:
+                - 95
+                - 100
+          span:
+            - 90
+            - 100
+      span:
+        - 62
+        - 100
+  - DefFn:
+      name: add_pair
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Fn:
+          params:
+            - Named:
+                name: Int
+                span:
+                  - 120
+                  - 123
+            - Named:
+                name: Int
+                span:
+                  - 125
+                  - 128
+          ret:
+            Named:
+              name: Int
+              span:
+                - 133
+                - 136
+          span:
+            - 119
+            - 136
+      body:
+        Lambda:
+          params:
+            - name: a
+              ty: ~
+              span:
+                - 140
+                - 141
+            - name: b
+              ty: ~
+              span:
+                - 143
+                - 144
+          body:
+            BinaryOp:
+              op: Add
+              lhs:
+                Var:
+                  name: a
+                  span:
+                    - 149
+                    - 150
               rhs:
                 Var:
-                  name: y
+                  name: b
                   span:
-                    - 131
-                    - 132
+                    - 153
+                    - 154
               span:
-                - 127
-                - 132
+                - 149
+                - 154
           span:
-            - 122
-            - 132
+            - 139
+            - 154
       span:
-        - 105
-        - 132
+        - 101
+        - 154

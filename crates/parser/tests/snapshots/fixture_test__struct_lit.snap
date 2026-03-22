@@ -1,0 +1,109 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Point
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 31
+                    - 34
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 39
+                    - 42
+      deriving: []
+      span:
+        - 13
+        - 44
+  - DefFn:
+      name: make
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Point
+          span:
+            - 59
+            - 64
+      body:
+        StructLit:
+          name: Point
+          fields:
+            - - x
+              - Lit:
+                  value:
+                    Int: 1
+                  span:
+                    - 79
+                    - 80
+            - - y
+              - Lit:
+                  value:
+                    Int: 2
+                  span:
+                    - 86
+                    - 87
+          span:
+            - 67
+            - 89
+      span:
+        - 45
+        - 89
+  - DefFn:
+      name: with_punning
+      visibility: Private
+      type_params: []
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 110
+                - 113
+          span:
+            - 107
+            - 113
+      constraints: []
+      return_type:
+        Named:
+          name: Point
+          span:
+            - 118
+            - 123
+      body:
+        StructLit:
+          name: Point
+          fields:
+            - - x
+              - Var:
+                  name: x
+                  span:
+                    - 0
+                    - 0
+            - - y
+              - Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 141
+                    - 142
+          span:
+            - 126
+            - 144
+      span:
+        - 90
+        - 144

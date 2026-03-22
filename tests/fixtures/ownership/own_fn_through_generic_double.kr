@@ -1,0 +1,7 @@
+# expect: error E0104
+fun call_twice(f, x) -> String {
+    f(x)
+    f(x)
+}
+fun consume(buf: ~String) -> String = buf
+fun test(s: ~String) -> String = call_twice(x -> consume(x), s)

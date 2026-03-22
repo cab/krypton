@@ -4,93 +4,105 @@ expression: module
 ---
 decls:
   - DefFn:
-      name: untyped
+      name: add
       visibility: Private
       type_params: []
       params:
-        - name: x
-          ty: ~
-          span:
-            - 25
-            - 26
-      constraints: []
-      return_type: ~
-      body:
-        Var:
-          name: x
-          span:
-            - 30
-            - 31
-      span:
-        - 13
-        - 31
-  - DefFn:
-      name: typed
-      visibility: Private
-      type_params: []
-      params:
-        - name: x
+        - name: a
           ty:
             Named:
               name: Int
               span:
-                - 46
-                - 49
+                - 24
+                - 27
           span:
-            - 43
-            - 49
-        - name: y
+            - 21
+            - 27
+        - name: b
           ty:
             Named:
               name: Int
               span:
-                - 54
-                - 57
+                - 32
+                - 35
           span:
-            - 51
-            - 57
+            - 29
+            - 35
       constraints: []
       return_type:
         Named:
           name: Int
           span:
-            - 62
-            - 65
+            - 40
+            - 43
       body:
         BinaryOp:
           op: Add
           lhs:
             Var:
-              name: x
+              name: a
               span:
-                - 68
-                - 69
+                - 46
+                - 47
           rhs:
             Var:
-              name: y
+              name: b
               span:
-                - 72
-                - 73
+                - 50
+                - 51
           span:
-            - 68
-            - 73
+            - 46
+            - 51
       span:
-        - 33
-        - 73
+        - 13
+        - 51
   - DefFn:
-      name: no_args
+      name: greet
       visibility: Private
       type_params: []
-      params: []
-      constraints: []
-      return_type: ~
-      body:
-        Lit:
-          value:
-            Int: 42
+      params:
+        - name: name
+          ty:
+            Named:
+              name: String
+              span:
+                - 68
+                - 74
           span:
-            - 91
-            - 93
+            - 62
+            - 74
+      constraints: []
+      return_type:
+        Named:
+          name: String
+          span:
+            - 79
+            - 85
+      body:
+        Do:
+          exprs:
+            - Let:
+                name: msg
+                ty: ~
+                value:
+                  Lit:
+                    value:
+                      String: hello
+                    span:
+                      - 102
+                      - 109
+                body: ~
+                span:
+                  - 92
+                  - 109
+            - Var:
+                name: msg
+                span:
+                  - 115
+                  - 118
+          span:
+            - 86
+            - 120
       span:
-        - 75
-        - 93
+        - 52
+        - 120

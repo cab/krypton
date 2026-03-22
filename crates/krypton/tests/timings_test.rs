@@ -20,7 +20,7 @@ fn krypton_bin() -> Command {
 #[test]
 fn timings_flag_prints_phase_durations_for_compile() {
     let dir = tempdir().expect("failed to create temp dir");
-    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    let fixture = workspace_root().join("tests/fixtures/functions/hello.kr");
     std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
@@ -38,7 +38,7 @@ fn timings_flag_prints_phase_durations_for_compile() {
 #[test]
 fn timings_flag_with_run_includes_jvm() {
     let output = krypton_bin()
-        .args(["--timings", "run", "tests/fixtures/m4/hello.kr"])
+        .args(["--timings", "run", "tests/fixtures/functions/hello.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "run should succeed: {}", String::from_utf8_lossy(&output.stderr));
@@ -49,7 +49,7 @@ fn timings_flag_with_run_includes_jvm() {
 #[test]
 fn no_timings_flag_prints_nothing_extra() {
     let dir = tempdir().expect("failed to create temp dir");
-    let fixture = workspace_root().join("tests/fixtures/m4/hello.kr");
+    let fixture = workspace_root().join("tests/fixtures/functions/hello.kr");
     std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
@@ -66,7 +66,7 @@ fn no_timings_flag_prints_nothing_extra() {
 #[test]
 fn timings_with_check_subcommand() {
     let output = krypton_bin()
-        .args(["--timings", "check", "tests/fixtures/m4/arithmetic.kr"])
+        .args(["--timings", "check", "tests/fixtures/functions/arithmetic.kr"])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "check should succeed: {}", String::from_utf8_lossy(&output.stderr));

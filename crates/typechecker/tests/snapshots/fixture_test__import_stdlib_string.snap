@@ -1,5 +1,0 @@
----
-source: crates/typechecker/tests/fixture_test.rs
-expression: snapshot
----
-main: fn() -> List[String]

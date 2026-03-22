@@ -1,0 +1,93 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      name: Color
+      visibility: Private
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Red
+              fields: []
+              span:
+                - 26
+                - 29
+            - name: Green
+              fields: []
+              span:
+                - 32
+                - 37
+            - name: Blue
+              fields: []
+              span:
+                - 40
+                - 44
+      deriving: []
+      span:
+        - 13
+        - 44
+  - DefType:
+      name: Option
+      visibility: Private
+      type_params:
+        - a
+      kind:
+        Sum:
+          variants:
+            - name: None
+              fields: []
+              span:
+                - 63
+                - 67
+            - name: Some
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 75
+                      - 76
+              span:
+                - 70
+                - 77
+      deriving: []
+      span:
+        - 46
+        - 77
+  - DefType:
+      name: Result
+      visibility: Private
+      type_params:
+        - a
+        - b
+      kind:
+        Sum:
+          variants:
+            - name: Ok
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 102
+                      - 103
+              span:
+                - 99
+                - 104
+            - name: Err
+              fields:
+                - Var:
+                    name: b
+                    span:
+                      - 111
+                      - 112
+              span:
+                - 107
+                - 113
+      deriving:
+        - Eq
+        - Show
+      span:
+        - 79
+        - 133

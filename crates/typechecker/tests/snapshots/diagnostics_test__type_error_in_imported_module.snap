@@ -1,6 +1,5 @@
 ---
 source: crates/typechecker/tests/diagnostics_test.rs
-assertion_line: 510
 expression: output
 ---
 [E0001] Error: type mismatch: expected Int, found String

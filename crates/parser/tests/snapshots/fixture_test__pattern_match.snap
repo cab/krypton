@@ -3,167 +3,80 @@ source: crates/parser/tests/fixture_test.rs
 expression: module
 ---
 decls:
-  - DefFn:
-      name: match_wildcard
+  - DefType:
+      name: Option
       visibility: Private
-      type_params: []
-      params:
-        - name: x
-          ty: ~
-          span:
-            - 32
-            - 33
-      constraints: []
-      return_type: ~
-      body:
-        Match:
-          scrutinee:
-            Var:
-              name: x
+      type_params:
+        - a
+      kind:
+        Sum:
+          variants:
+            - name: Some
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 35
+                      - 36
               span:
-                - 43
+                - 30
+                - 37
+            - name: None
+              fields: []
+              span:
+                - 40
                 - 44
-          arms:
-            - pattern:
-                Wildcard:
-                  span:
-                    - 51
-                    - 52
-              guard: ~
-              body:
-                Lit:
-                  value:
-                    Int: 0
-                  span:
-                    - 56
-                    - 57
-              span:
-                - 51
-                - 57
-          span:
-            - 37
-            - 60
+      deriving: []
       span:
         - 13
-        - 60
+        - 44
   - DefFn:
-      name: match_literal
-      visibility: Private
-      type_params: []
-      params:
-        - name: x
-          ty: ~
-          span:
-            - 80
-            - 81
-      constraints: []
-      return_type: ~
-      body:
-        Match:
-          scrutinee:
-            Var:
-              name: x
-              span:
-                - 91
-                - 92
-          arms:
-            - pattern:
-                Lit:
-                  value:
-                    Int: 1
-                  span:
-                    - 99
-                    - 100
-              guard: ~
-              body:
-                Lit:
-                  value:
-                    String: one
-                  span:
-                    - 104
-                    - 109
-              span:
-                - 99
-                - 109
-            - pattern:
-                Lit:
-                  value:
-                    Int: 2
-                  span:
-                    - 115
-                    - 116
-              guard: ~
-              body:
-                Lit:
-                  value:
-                    String: two
-                  span:
-                    - 120
-                    - 125
-              span:
-                - 115
-                - 125
-            - pattern:
-                Wildcard:
-                  span:
-                    - 131
-                    - 132
-              guard: ~
-              body:
-                Lit:
-                  value:
-                    String: other
-                  span:
-                    - 136
-                    - 143
-              span:
-                - 131
-                - 143
-          span:
-            - 85
-            - 146
-      span:
-        - 62
-        - 146
-  - DefFn:
-      name: match_constructor
+      name: unwrap_or
       visibility: Private
       type_params: []
       params:
         - name: opt
-          ty: ~
+          ty:
+            App:
+              name: Option
+              args:
+                - Named:
+                    name: Int
+                    span:
+                      - 71
+                      - 74
+              span:
+                - 64
+                - 75
           span:
-            - 170
-            - 173
+            - 59
+            - 75
+        - name: default
+          ty:
+            Named:
+              name: Int
+              span:
+                - 86
+                - 89
+          span:
+            - 77
+            - 89
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 94
+            - 97
       body:
         Match:
           scrutinee:
             Var:
               name: opt
               span:
-                - 183
-                - 186
+                - 106
+                - 109
           arms:
-            - pattern:
-                Constructor:
-                  name: None
-                  args: []
-                  span:
-                    - 193
-                    - 197
-              guard: ~
-              body:
-                Lit:
-                  value:
-                    Int: 0
-                  span:
-                    - 201
-                    - 202
-              span:
-                - 193
-                - 202
             - pattern:
                 Constructor:
                   name: Some
@@ -171,89 +84,57 @@ decls:
                     - Var:
                         name: x
                         span:
-                          - 213
-                          - 214
+                          - 121
+                          - 122
                   span:
-                    - 208
-                    - 215
+                    - 116
+                    - 123
               guard: ~
               body:
                 Var:
                   name: x
                   span:
-                    - 219
-                    - 220
+                    - 127
+                    - 128
               span:
-                - 208
-                - 220
-          span:
-            - 177
-            - 223
-      span:
-        - 148
-        - 223
-  - DefFn:
-      name: match_tuple
-      visibility: Private
-      type_params: []
-      params:
-        - name: pair
-          ty: ~
-          span:
-            - 241
-            - 245
-      constraints: []
-      return_type: ~
-      body:
-        Match:
-          scrutinee:
-            Var:
-              name: pair
-              span:
-                - 255
-                - 259
-          arms:
+                - 116
+                - 128
             - pattern:
-                Tuple:
-                  elements:
-                    - Var:
-                        name: a
-                        span:
-                          - 267
-                          - 268
-                    - Var:
-                        name: b
-                        span:
-                          - 270
-                          - 271
+                Constructor:
+                  name: None
+                  args: []
                   span:
-                    - 266
-                    - 272
+                    - 134
+                    - 138
               guard: ~
               body:
-                BinaryOp:
-                  op: Add
-                  lhs:
-                    Var:
-                      name: a
-                      span:
-                        - 276
-                        - 277
-                  rhs:
-                    Var:
-                      name: b
-                      span:
-                        - 280
-                        - 281
+                Var:
+                  name: default
                   span:
-                    - 276
-                    - 281
+                    - 142
+                    - 149
               span:
-                - 266
-                - 281
+                - 134
+                - 149
+            - pattern:
+                Wildcard:
+                  span:
+                    - 155
+                    - 156
+              guard: ~
+              body:
+                Lit:
+                  value:
+                    Int: 0
+                  span:
+                    - 160
+                    - 161
+              span:
+                - 155
+                - 161
           span:
-            - 249
-            - 284
+            - 100
+            - 164
       span:
-        - 225
-        - 284
+        - 45
+        - 164

@@ -4,23 +4,24 @@ expression: module
 ---
 decls:
   - DefType:
-      name: Color
+      name: Option
       visibility: Private
-      type_params: []
+      type_params:
+        - a
       kind:
         Sum:
           variants:
-            - name: Red
-              fields: []
+            - name: Some
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 35
+                      - 36
               span:
-                - 26
-                - 29
-            - name: Green
-              fields: []
-              span:
-                - 32
+                - 30
                 - 37
-            - name: Blue
+            - name: None
               fields: []
               span:
                 - 40
@@ -30,34 +31,7 @@ decls:
         - 13
         - 44
   - DefType:
-      name: Option
-      visibility: Private
-      type_params:
-        - a
-      kind:
-        Sum:
-          variants:
-            - name: None
-              fields: []
-              span:
-                - 63
-                - 67
-            - name: Some
-              fields:
-                - Var:
-                    name: a
-                    span:
-                      - 75
-                      - 76
-              span:
-                - 70
-                - 77
-      deriving: []
-      span:
-        - 46
-        - 77
-  - DefType:
-      name: Result
+      name: Either
       visibility: Private
       type_params:
         - a
@@ -65,29 +39,27 @@ decls:
       kind:
         Sum:
           variants:
-            - name: Ok
+            - name: Left
               fields:
                 - Var:
                     name: a
                     span:
-                      - 102
-                      - 103
+                      - 70
+                      - 71
               span:
-                - 99
-                - 104
-            - name: Err
+                - 65
+                - 72
+            - name: Right
               fields:
                 - Var:
                     name: b
                     span:
-                      - 111
-                      - 112
+                      - 81
+                      - 82
               span:
-                - 107
-                - 113
-      deriving:
-        - Eq
-        - Show
+                - 75
+                - 83
+      deriving: []
       span:
-        - 79
-        - 133
+        - 45
+        - 83

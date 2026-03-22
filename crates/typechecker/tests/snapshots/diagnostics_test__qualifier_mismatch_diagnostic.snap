@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: output
 ---
 [E0104] Error: ownership mismatch: expected `~String`, found `String`
-   ╭─[ ../../tests/fixtures/m6/qualifier_dup_error.kr:4:1 ]
+   ╭─[ ../../tests/fixtures/ownership/qualifier_dup_error.kr:4:1 ]
    │
  4 │ fun test(buf: ~String) -> (~String, ~String) = dup(buf)
    │ ───────────────────────────┬───────────────────────────  

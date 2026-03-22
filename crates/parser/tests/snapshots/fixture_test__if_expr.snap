@@ -4,17 +4,27 @@ expression: module
 ---
 decls:
   - DefFn:
-      name: simple_if
+      name: abs
       visibility: Private
       type_params: []
       params:
         - name: x
-          ty: ~
+          ty:
+            Named:
+              name: Int
+              span:
+                - 24
+                - 27
           span:
+            - 21
             - 27
-            - 28
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 32
+            - 35
       body:
         If:
           cond:
@@ -24,50 +34,64 @@ decls:
                 Var:
                   name: x
                   span:
-                    - 35
-                    - 36
+                    - 41
+                    - 42
               rhs:
                 Lit:
                   value:
                     Int: 0
                   span:
-                    - 39
-                    - 40
-              span:
-                - 35
-                - 40
-          then_:
-            Lit:
-              value:
-                Int: 1
+                    - 45
+                    - 46
               span:
                 - 41
                 - 46
-          else_:
-            Lit:
-              value:
-                Int: 0
+          then_:
+            Var:
+              name: x
               span:
+                - 47
                 - 52
-                - 57
+          else_:
+            UnaryOp:
+              op: Neg
+              operand:
+                Var:
+                  name: x
+                  span:
+                    - 61
+                    - 62
+              span:
+                - 58
+                - 64
           span:
-            - 32
-            - 57
+            - 38
+            - 64
       span:
         - 13
-        - 57
+        - 64
   - DefFn:
-      name: nested_if
+      name: positive
       visibility: Private
       type_params: []
       params:
         - name: x
-          ty: ~
+          ty:
+            Named:
+              name: Int
+              span:
+                - 81
+                - 84
           span:
-            - 73
-            - 74
+            - 78
+            - 84
       constraints: []
-      return_type: ~
+      return_type:
+        Named:
+          name: Bool
+          span:
+            - 89
+            - 93
       body:
         If:
           cond:
@@ -77,66 +101,35 @@ decls:
                 Var:
                   name: x
                   span:
-                    - 81
-                    - 82
+                    - 99
+                    - 100
               rhs:
                 Lit:
                   value:
-                    Int: 10
+                    Int: 0
                   span:
-                    - 85
-                    - 87
+                    - 103
+                    - 104
               span:
-                - 81
-                - 87
+                - 99
+                - 104
           then_:
             Lit:
               value:
-                String: big
+                Bool: true
               span:
-                - 88
-                - 97
+                - 105
+                - 113
           else_:
-            If:
-              cond:
-                BinaryOp:
-                  op: Gt
-                  lhs:
-                    Var:
-                      name: x
-                      span:
-                        - 108
-                        - 109
-                  rhs:
-                    Lit:
-                      value:
-                        Int: 0
-                      span:
-                        - 112
-                        - 113
-                  span:
-                    - 108
-                    - 113
-              then_:
-                Lit:
-                  value:
-                    String: small
-                  span:
-                    - 114
-                    - 125
-              else_:
-                Lit:
-                  value:
-                    String: non-positive
-                  span:
-                    - 131
-                    - 149
+            Lit:
+              value:
+                Bool: false
               span:
-                - 103
-                - 151
+                - 119
+                - 128
           span:
-            - 78
-            - 151
+            - 96
+            - 128
       span:
-        - 59
-        - 151
+        - 65
+        - 128

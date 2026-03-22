@@ -1,0 +1,136 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefFn:
+      name: int_lit
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Int: 42
+          span:
+            - 29
+            - 31
+      span:
+        - 13
+        - 31
+  - DefFn:
+      name: neg_int
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        BinaryOp:
+          op: Sub
+          lhs:
+            Lit:
+              value:
+                Int: 0
+              span:
+                - 49
+                - 50
+          rhs:
+            Lit:
+              value:
+                Int: 1
+              span:
+                - 53
+                - 54
+          span:
+            - 49
+            - 54
+      span:
+        - 33
+        - 54
+  - DefFn:
+      name: float_lit
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Float: 3.14
+          span:
+            - 74
+            - 78
+      span:
+        - 56
+        - 78
+  - DefFn:
+      name: bool_true
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Bool: true
+          span:
+            - 98
+            - 102
+      span:
+        - 80
+        - 102
+  - DefFn:
+      name: bool_false
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            Bool: false
+          span:
+            - 123
+            - 128
+      span:
+        - 104
+        - 128
+  - DefFn:
+      name: string_lit
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value:
+            String: hello world
+          span:
+            - 149
+            - 162
+      span:
+        - 130
+        - 162
+  - DefFn:
+      name: unit_lit
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type: ~
+      body:
+        Lit:
+          value: Unit
+          span:
+            - 181
+            - 183
+      span:
+        - 164
+        - 183

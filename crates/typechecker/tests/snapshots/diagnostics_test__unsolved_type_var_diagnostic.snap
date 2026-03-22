@@ -3,7 +3,7 @@ source: crates/typechecker/tests/diagnostics_test.rs
 expression: output
 ---
 [E0007] Error: infinite type: variable a occurs in (a) -> b
-   ╭─[ ../../tests/fixtures/m6/unsolved_type_display.kr:2:14 ]
+   ╭─[ ../../tests/fixtures/ownership/unsolved_type_display.kr:2:14 ]
    │
  2 │ fun bad(x) = x(x)
    │              ──┬─  
