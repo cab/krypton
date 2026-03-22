@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_fabrication_generic_ok
+
+fn ok(v0: (r7) -> String, v1: r7) -> String =
+  let v2: String = call_closure v0(v1)
+  v2
+
+fn test() -> String =
+  let v3: (Int) -> ~String = make_closure(lambda$49, [])
+  let v5: String = call ok(v3, 42)
+  v5
+
+fn lambda$49(v4: Int) -> ~String =
+  "hi"

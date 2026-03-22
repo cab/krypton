@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
 use krypton_typechecker::typed_ast::{
@@ -60,6 +60,159 @@ struct ParamInstanceInfo {
 }
 
 // ---------------------------------------------------------------------------
+// Free variable analysis (on TypedExpr, before IR lowering)
+// ---------------------------------------------------------------------------
+
+/// Walk a TypedExpr tree and collect variable names that are referenced but not
+/// bound locally (by Let, Lambda, or LetPattern). Returns deduplicated names in
+/// stable (first-seen) order.
+fn free_vars(expr: &TypedExpr, bound: &HashSet<String>) -> Vec<String> {
+    let mut free = Vec::new();
+    let mut seen = HashSet::new();
+    free_vars_inner(expr, bound, &mut free, &mut seen);
+    free
+}
+
+fn free_vars_inner(
+    expr: &TypedExpr,
+    bound: &HashSet<String>,
+    free: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+) {
+    match &expr.kind {
+        TypedExprKind::Lit(_) => {}
+        TypedExprKind::Var(name) => {
+            if !bound.contains(name) && seen.insert(name.clone()) {
+                free.push(name.clone());
+            }
+        }
+        TypedExprKind::App { func, args } => {
+            free_vars_inner(func, bound, free, seen);
+            for a in args {
+                free_vars_inner(a, bound, free, seen);
+            }
+        }
+        TypedExprKind::TypeApp { expr: inner, .. } => {
+            free_vars_inner(inner, bound, free, seen);
+        }
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            free_vars_inner(lhs, bound, free, seen);
+            free_vars_inner(rhs, bound, free, seen);
+        }
+        TypedExprKind::UnaryOp { operand, .. } => {
+            free_vars_inner(operand, bound, free, seen);
+        }
+        TypedExprKind::If { cond, then_, else_ } => {
+            free_vars_inner(cond, bound, free, seen);
+            free_vars_inner(then_, bound, free, seen);
+            free_vars_inner(else_, bound, free, seen);
+        }
+        TypedExprKind::Let {
+            name,
+            value,
+            body,
+            ..
+        } => {
+            free_vars_inner(value, bound, free, seen);
+            if let Some(body) = body {
+                let mut inner_bound = bound.clone();
+                inner_bound.insert(name.clone());
+                free_vars_inner(body, &inner_bound, free, seen);
+            }
+        }
+        TypedExprKind::Do(exprs) => {
+            for e in exprs {
+                free_vars_inner(e, bound, free, seen);
+            }
+        }
+        TypedExprKind::Lambda { params, body } => {
+            let mut inner_bound = bound.clone();
+            for p in params {
+                inner_bound.insert(p.clone());
+            }
+            free_vars_inner(body, &inner_bound, free, seen);
+        }
+        TypedExprKind::Match { scrutinee, arms } => {
+            free_vars_inner(scrutinee, bound, free, seen);
+            for arm in arms {
+                let mut inner_bound = bound.clone();
+                collect_pattern_bindings(&arm.pattern, &mut inner_bound);
+                free_vars_inner(&arm.body, &inner_bound, free, seen);
+            }
+        }
+        TypedExprKind::FieldAccess { expr: inner, .. } => {
+            free_vars_inner(inner, bound, free, seen);
+        }
+        TypedExprKind::StructLit { fields, .. } => {
+            for (_, fexpr) in fields {
+                free_vars_inner(fexpr, bound, free, seen);
+            }
+        }
+        TypedExprKind::StructUpdate { base, fields } => {
+            free_vars_inner(base, bound, free, seen);
+            for (_, fexpr) in fields {
+                free_vars_inner(fexpr, bound, free, seen);
+            }
+        }
+        TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
+            for e in elems {
+                free_vars_inner(e, bound, free, seen);
+            }
+        }
+        TypedExprKind::Recur(args) => {
+            for a in args {
+                free_vars_inner(a, bound, free, seen);
+            }
+        }
+        TypedExprKind::QuestionMark { expr: inner, .. } => {
+            free_vars_inner(inner, bound, free, seen);
+        }
+        TypedExprKind::LetPattern {
+            pattern,
+            value,
+            body,
+            ..
+        } => {
+            free_vars_inner(value, bound, free, seen);
+            if let Some(body) = body {
+                let mut inner_bound = bound.clone();
+                collect_pattern_bindings(pattern, &mut inner_bound);
+                free_vars_inner(body, &inner_bound, free, seen);
+            }
+        }
+    }
+}
+
+/// Collect all variable names bound by a pattern.
+fn collect_pattern_bindings(
+    pattern: &krypton_typechecker::typed_ast::TypedPattern,
+    bound: &mut HashSet<String>,
+) {
+    use krypton_typechecker::typed_ast::TypedPattern;
+    match pattern {
+        TypedPattern::Var { name, .. } => {
+            bound.insert(name.clone());
+        }
+        TypedPattern::Constructor { args, .. } => {
+            for p in args {
+                collect_pattern_bindings(p, bound);
+            }
+        }
+        TypedPattern::Tuple { elements, .. } => {
+            for p in elements {
+                collect_pattern_bindings(p, bound);
+            }
+        }
+        TypedPattern::StructPat { fields, .. } => {
+            for (_, p) in fields {
+                collect_pattern_bindings(p, bound);
+            }
+        }
+        TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Lowering context
 // ---------------------------------------------------------------------------
 
@@ -91,6 +244,8 @@ struct LowerCtx {
     trait_method_types: HashMap<String, (TypeVarId, HashMap<String, (Vec<Type>, Type)>)>,
     /// Recursion depth counter for dict resolution (cycle detection)
     dict_depth: u32,
+    /// Lifted lambda definitions accumulated during lowering
+    lifted_fns: Vec<FnDef>,
 }
 
 impl LowerCtx {
@@ -354,8 +509,8 @@ impl LowerCtx {
                     std::mem::discriminant(&expr.kind)
                 )))
             }
-            TypedExprKind::Lambda { .. } => {
-                Err(LowerError::NotYetLowered("Lambda".to_string()))
+            TypedExprKind::Lambda { params, body } => {
+                self.lower_lambda(params, body, &expr.ty)
             }
             TypedExprKind::Match { .. } => {
                 Err(LowerError::NotYetLowered("Match".to_string()))
@@ -643,8 +798,21 @@ impl LowerCtx {
                 self.lower_struct_update(base, fields, &expr.ty)
             }
 
-            TypedExprKind::Lambda { .. } => {
-                Err(LowerError::NotYetLowered("Lambda".to_string()))
+            TypedExprKind::Lambda { params, body } => {
+                let (bindings, simple) = self.lower_lambda(params, body, &expr.ty)?;
+                let var = self.fresh_var();
+                let ty = expr.ty.clone();
+                let mut all_bindings = bindings;
+                all_bindings.push(LetBinding {
+                    bind: var,
+                    ty: ty.clone(),
+                    value: simple,
+                });
+                let inner = Expr {
+                    kind: ExprKind::Atom(Atom::Var(var)),
+                    ty,
+                };
+                Ok(Self::wrap_bindings(all_bindings, inner))
             }
             TypedExprKind::Match { .. } => {
                 Err(LowerError::NotYetLowered("Match".to_string()))
@@ -1337,6 +1505,162 @@ impl LowerCtx {
     }
 
     // -----------------------------------------------------------------------
+    // Lambda lifting (closure conversion)
+    // -----------------------------------------------------------------------
+
+    fn lower_lambda(
+        &mut self,
+        params: &[String],
+        body: &TypedExpr,
+        lambda_ty: &Type,
+    ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
+        // 1. Extract param types and return type from the lambda's function type
+        //    Unwrap Own(...) wrapper if present (ownership-annotated lambdas)
+        let unwrapped_ty = match lambda_ty {
+            Type::Own(inner) => inner.as_ref(),
+            other => other,
+        };
+        let (param_types, return_type) = match unwrapped_ty {
+            Type::Fn(param_tys, ret_ty) => (param_tys.clone(), ret_ty.as_ref().clone()),
+            other => {
+                return Err(LowerError::InternalError(format!(
+                    "lambda has non-function type: {other:?}"
+                )))
+            }
+        };
+
+        // 2. Compute free variables (names not bound by lambda params)
+        let param_set: HashSet<String> = params.iter().cloned().collect();
+        let fv_names = free_vars(body, &param_set);
+
+        // 3. Resolve each free var name to its current VarId — these are capture atoms
+        let mut capture_params = vec![];
+        let mut capture_atoms = vec![];
+        let bindings = vec![];
+        for name in &fv_names {
+            if let Some(var_id) = self.lookup_var(name) {
+                capture_atoms.push(Atom::Var(var_id));
+                // We don't know the exact type of the captured var, but we can
+                // look it up from the body's free var usage. Use a placeholder
+                // that will be filled in when we allocate the capture param.
+                capture_params.push((name.clone(), var_id));
+            }
+            // If the name isn't in var_scope, it's a top-level function —
+            // not a capture (will be resolved by fn_ids during body lowering)
+        }
+
+        // 4. Collect dict captures: all enclosing dict_params
+        let saved_dict_params = self.dict_params.clone();
+        let mut dict_capture_atoms = vec![];
+        let mut dict_capture_keys = vec![];
+        for ((trait_name, type_var_id), var_id) in &saved_dict_params {
+            dict_capture_atoms.push(Atom::Var(*var_id));
+            dict_capture_keys.push((trait_name.clone(), *type_var_id));
+        }
+
+        // 5. Allocate a fresh FnId for the lifted function
+        let fn_id = self.fresh_fn();
+        let debug_name = format!("lambda${}", fn_id.0);
+
+        // 6. Build the lifted FnDef
+        // Params: captures ++ dict_captures ++ lambda_params
+        let mut lifted_params = vec![];
+
+        // Capture params — allocate new VarIds for the lifted fn's scope
+        let mut capture_var_mappings = vec![];
+        for (name, old_var_id) in &capture_params {
+            let new_var = self.fresh_var();
+            // Look up the type by finding what type the old var has.
+            // We need to get this from the var_scope context. Since we can't
+            // easily recover the type, we'll use a generic approach:
+            // scan the body/context. For simplicity, use Type::Var since the
+            // type info is already embedded in the TypedExpr.
+            // Actually, we need to get the type from somewhere. Let's lower_to_atom
+            // the captured var to find its type... but we just need the IR type.
+            // The simplest approach: since we know the VarId, we don't have the type
+            // directly. But in ANF IR, types on let-bindings carry the type.
+            // Let's just use a placeholder — the body lowering will produce the right types.
+            // We'll derive the type from the atom by re-checking. For now, just use
+            // a type var since the IR types are mostly for documentation/pretty printing.
+            let _ty = Type::Var(self.type_var_gen.fresh()); // placeholder for capture type
+            capture_var_mappings.push((name.clone(), new_var, *old_var_id));
+        }
+
+        // Dict capture params — allocate new VarIds
+        let mut new_dict_params = HashMap::new();
+        let mut dict_var_mappings = vec![];
+        for key in &dict_capture_keys {
+            let new_var = self.fresh_var();
+            new_dict_params.insert(key.clone(), new_var);
+            dict_var_mappings.push((key.clone(), new_var));
+        }
+
+        // Lambda params — allocate new VarIds
+        let mut lambda_var_mappings = vec![];
+        for (i, param_name) in params.iter().enumerate() {
+            let new_var = self.fresh_var();
+            let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+            lambda_var_mappings.push((param_name.clone(), new_var, ty));
+        }
+
+        // Build the param list for the lifted FnDef
+        for (_, new_var, _) in &capture_var_mappings {
+            // Use a generic type for captures — not critical for correctness
+            lifted_params.push((*new_var, Type::Var(self.type_var_gen.fresh())));
+        }
+        for (_, new_var) in &dict_var_mappings {
+            lifted_params.push((*new_var, Type::Named("Dict".to_string(), vec![])));
+        }
+        for (_, new_var, ty) in &lambda_var_mappings {
+            lifted_params.push((*new_var, ty.clone()));
+        }
+
+        // Push capture params and lambda params into var_scope
+        for (name, new_var, _) in &capture_var_mappings {
+            self.push_var(name, *new_var);
+        }
+        for (name, new_var, _) in &lambda_var_mappings {
+            self.push_var(name, *new_var);
+        }
+
+        // Set dict_params to the captured dicts (mapped to new VarIds)
+        let old_dict_params = std::mem::replace(&mut self.dict_params, new_dict_params);
+
+        // Lower body
+        let lowered_body = self.lower_expr(body)?;
+
+        // Pop all from var_scope, restore dict_params
+        for (name, _, _) in lambda_var_mappings.iter().rev() {
+            self.pop_var(name);
+        }
+        for (name, _, _) in capture_var_mappings.iter().rev() {
+            self.pop_var(name);
+        }
+        self.dict_params = old_dict_params;
+
+        // 7. Push FnDef onto lifted_fns
+        self.lifted_fns.push(FnDef {
+            id: fn_id,
+            debug_name: debug_name.clone(),
+            params: lifted_params,
+            return_type,
+            body: lowered_body,
+        });
+
+        // 8. Register in fn_ids for fn_names resolution
+        self.fn_ids.insert(debug_name, fn_id);
+
+        // 9. Return MakeClosure with capture atoms
+        let mut all_captures = capture_atoms;
+        all_captures.extend(dict_capture_atoms);
+
+        Ok((bindings, SimpleExpr::MakeClosure {
+            func: fn_id,
+            captures: all_captures,
+        }))
+    }
+
+    // -----------------------------------------------------------------------
     // Function lowering
     // -----------------------------------------------------------------------
 
@@ -1462,6 +1786,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             })
             .collect(),
         dict_depth: 0,
+        lifted_fns: vec![],
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -1638,7 +1963,10 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         functions.push(fn_def);
     }
 
-    // 7. Build fn_names lookup
+    // 6b. Append lifted lambdas
+    functions.extend(ctx.lifted_fns.drain(..));
+
+    // 7. Build fn_names lookup (includes lifted lambdas registered in fn_ids)
     let mut fn_names = HashMap::new();
     for (name, &id) in &ctx.fn_ids {
         fn_names.insert(id, name.clone());

@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__constrained_fn_ref_eta_expand
+
+declare println: (Dict, m) -> Unit
+declare show: (Dict, g) -> String
+
+fn show_it(v0: Dict, v1: r7) -> String =
+  let v2: String = call show(v0, v1)
+  v2
+
+fn main() -> Unit =
+  let v3: (Int) -> String = make_closure(lambda$49, [])
+  let v7: String = call_closure v3(42)
+  let v8: Bool = eq_string(v7, "42")
+  let v9: Dict = get_dict Show[Bool]
+  let v10: Unit = call println(v9, v8)
+  v10
+
+fn lambda$49(v4: Int) -> String =
+  let v5: Dict = get_dict Show[Int]
+  let v6: String = call show_it(v5, v4)
+  v6

@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__ufcs_trait_unaffected
+
+fn map(v0: List[v], v1: (v) -> x) -> List[x] =
+  let v2: Int = call_closure v1(v0)
+  v2
+
+fn double(v3: Int) -> Int =
+  let v4: Int = add_int(v3, v3)
+  v4
+
+fn main() -> Int =
+  let v7: (Int) -> Int = make_closure(lambda$49, [])
+  let v8: Int = call map(5, v7)
+  v8
+
+fn lambda$49(v5: Int) -> Int =
+  let v6: Int = call double(v5)
+  v6

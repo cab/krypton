@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__list_fold
+
+declare fold: (List[s1], t1, (t1, s1) -> t1) -> t1
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: ~List[Int] = construct List::Nil#1()
+  let v1: ~List[Int] = construct List::Cons#0(3, v0)
+  let v2: ~List[Int] = construct List::Cons#0(2, v1)
+  let v3: ~List[Int] = construct List::Cons#0(1, v2)
+  let v7: (Int, Int) -> Int = make_closure(lambda$48, [])
+  let v8: Int = call fold(v3, 0, v7)
+  let v9: Unit = call println(v8)
+  v9
+
+fn lambda$48(v4: Int, v5: Int) -> Int =
+  let v6: Int = add_int(v4, v5)
+  v6

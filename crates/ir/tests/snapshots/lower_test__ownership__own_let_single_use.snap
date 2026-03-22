@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_let_single_use
+
+fn consume(v0: ~String) -> String =
+  v0
+
+fn good(v1: ~String) -> String =
+  let v2: ~() -> String = make_closure(lambda$49, [v1])
+  let v5: String = call_closure v2()
+  v5
+
+fn lambda$49(v3: f) -> String =
+  let v4: String = call consume(v3)
+  v4
