@@ -8,6 +8,7 @@ krypton-parser = { path = "../parser" }
 krypton-modules = { path = "../modules" }
 krypton-typechecker = { path = "../typechecker" }
 krypton-codegen = { path = "../codegen" }
+krypton-ir = { path = "../ir" }
 clap = { workspace = true }
 tempfile = { workspace = true }
 tracing.workspace = true

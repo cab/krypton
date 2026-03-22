@@ -70,6 +70,10 @@ enum Commands {
     Run {
         file: String,
     },
+    /// Pretty-print the ANF intermediate representation
+    DumpIr {
+        file: String,
+    },
     /// Inspect resource ownership: show close and move insertion points
     Inspect {
         file: String,
@@ -391,6 +395,59 @@ fn main() {
                     let diag =
                         krypton_typechecker::diagnostics::render_infer_error(&file, &source, &e);
                     eprint!("{}", diag);
+                    process::exit(1);
+                }
+            }
+
+            if timings {
+                print_timings(&phases);
+            }
+        }
+        Commands::DumpIr { file } => {
+            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", file, e);
+                process::exit(1);
+            });
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+            let t = Instant::now();
+            let (module, errors) = do_parse(&source);
+            phases.push(("parse", t.elapsed()));
+            if !errors.is_empty() {
+                let diag = krypton_parser::diagnostics::render_errors(&file, &source, &errors);
+                eprint!("{}", diag);
+                process::exit(1);
+            }
+
+            let file_path = std::path::Path::new(&file);
+            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+            let t = Instant::now();
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver) {
+                Ok(modules) => modules,
+                Err(e) => {
+                    let diag =
+                        krypton_typechecker::diagnostics::render_infer_error(&file, &source, &e);
+                    eprint!("{}", diag);
+                    process::exit(1);
+                }
+            };
+            phases.push(("typecheck", t.elapsed()));
+
+            let stem = std::path::Path::new(&file)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("main");
+
+            let t = Instant::now();
+            match krypton_ir::lower::lower_module(&typed_modules[0], stem) {
+                Ok(ir_module) => {
+                    phases.push(("lower", t.elapsed()));
+                    print!("{}", ir_module);
+                }
+                Err(e) => {
+                    eprintln!("IR lowering error: {}", e);
                     process::exit(1);
                 }
             }
