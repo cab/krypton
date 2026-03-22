@@ -89,6 +89,8 @@ struct LowerCtx {
     param_instances: Vec<ParamInstanceInfo>,
     /// trait_name → (type_var_id, method_name → (param_types, return_type))
     trait_method_types: HashMap<String, (TypeVarId, HashMap<String, (Vec<Type>, Type)>)>,
+    /// Recursion depth counter for dict resolution (cycle detection)
+    dict_depth: u32,
 }
 
 impl LowerCtx {
@@ -959,8 +961,10 @@ impl LowerCtx {
                         all_args.extend(arg_atoms);
                         return Ok((bindings, SimpleExpr::Call { func: fn_id, args: all_args }));
                     }
-                    // Fallthrough: if we can't resolve, emit without dict
-                    return Ok((bindings, SimpleExpr::Call { func: fn_id, args: arg_atoms }));
+                    return Err(LowerError::InternalError(format!(
+                        "could not resolve trait dispatch type for {}.{}",
+                        trait_id.name, name
+                    )));
                 }
             }
         }
@@ -1137,6 +1141,23 @@ impl LowerCtx {
         trait_name: &str,
         ty: &Type,
     ) -> Result<(Vec<LetBinding>, Atom), LowerError> {
+        const MAX_DICT_DEPTH: u32 = 64;
+        if self.dict_depth >= MAX_DICT_DEPTH {
+            return Err(LowerError::InternalError(format!(
+                "dict resolution depth exceeded for {trait_name}[{ty}]"
+            )));
+        }
+        self.dict_depth += 1;
+        let result = self.resolve_dict_inner(trait_name, ty);
+        self.dict_depth -= 1;
+        result
+    }
+
+    fn resolve_dict_inner(
+        &mut self,
+        trait_name: &str,
+        ty: &Type,
+    ) -> Result<(Vec<LetBinding>, Atom), LowerError> {
         let ty = strip_own(ty);
 
         // Strategy 1: Type variable — look up dict param
@@ -1181,25 +1202,22 @@ impl LowerCtx {
         trait_name: &str,
         ty: &Type,
     ) -> Result<Option<(Vec<LetBinding>, Atom)>, LowerError> {
-        // Find a matching instance with constraints
-        let matching = self
-            .param_instances
-            .iter()
-            .find(|inst| {
-                inst.trait_name == trait_name && {
-                    let mut bindings = HashMap::new();
-                    bind_type_vars(&inst.target_type, ty, &mut bindings)
-                }
-            })
-            .cloned();
+        // Find a matching instance with constraints, keeping the bindings
+        let matching = self.param_instances.iter().find_map(|inst| {
+            if inst.trait_name != trait_name {
+                return None;
+            }
+            let mut bindings = HashMap::new();
+            if bind_type_vars(&inst.target_type, ty, &mut bindings) {
+                Some((inst.clone(), bindings))
+            } else {
+                None
+            }
+        });
 
-        let Some(inst) = matching else {
+        let Some((inst, type_bindings)) = matching else {
             return Ok(None);
         };
-
-        // Bind type vars from the instance pattern against the concrete type
-        let mut type_bindings = HashMap::new();
-        bind_type_vars(&inst.target_type, ty, &mut type_bindings);
 
         // Resolve sub-dicts for each constraint
         let mut all_bindings = vec![];
@@ -1255,13 +1273,10 @@ impl LowerCtx {
             }
 
             // Bind from argument types matched against param patterns
-            if let Type::Fn(ref param_patterns, ref ret_pattern) = scheme.ty {
+            if let Type::Fn(ref param_patterns, _) = scheme.ty {
                 for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
                     bind_type_vars(pattern, &arg.ty, &mut type_bindings);
                 }
-                // Also try binding from return type if the func expr has a resolved type
-                // (handled implicitly by having enough bindings from params)
-                let _ = ret_pattern; // may be needed for zero-arg fns
             }
         }
 
@@ -1446,6 +1461,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 )
             })
             .collect(),
+        dict_depth: 0,
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -1882,9 +1898,8 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
                     .zip(a_elems.iter())
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
-        (Type::Own(p_inner), ty) | (ty, Type::Own(p_inner)) => {
-            bind_type_vars(p_inner, ty, bindings)
-        }
+        (Type::Own(p), Type::Own(a)) => bind_type_vars(p, a, bindings),
+        (Type::Own(p), a) | (a, Type::Own(p)) => bind_type_vars(p, a, bindings),
         (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
             bind_type_vars(p_ctor, a_ctor, bindings)
                 && p_args.len() == a_args.len()
@@ -1899,6 +1914,9 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
 
 /// Prepend N Dict params to a function type.
 fn prepend_n_dicts(n: usize, ty: &Type) -> Type {
+    if n == 0 {
+        return ty.clone();
+    }
     match ty {
         Type::Fn(params, ret) => {
             let mut new_params = vec![Type::Named("Dict".to_string(), vec![]); n];
@@ -1919,16 +1937,6 @@ fn prepend_dict_params(
         .get(name)
         .map(|c| c.len())
         .unwrap_or(0);
-    if dict_count == 0 {
-        return ty.clone();
-    }
-    match ty {
-        Type::Fn(params, ret) => {
-            let mut new_params = vec![Type::Named("Dict".to_string(), vec![]); dict_count];
-            new_params.extend(params.iter().cloned());
-            Type::Fn(new_params, ret.clone())
-        }
-        other => other.clone(),
-    }
+    prepend_n_dicts(dict_count, ty)
 }
 
