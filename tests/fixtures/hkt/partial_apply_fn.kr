@@ -1,0 +1,19 @@
+# expect: output "22"
+extern "krypton.runtime.KryptonIO" {
+  fun println(Object) -> Unit
+}
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl[r] Functor[(r) -> _] {
+  fun fmap[a, b](fa: (r) -> a, g: (a) -> b) -> (r) -> b =
+    x -> g(fa(x))
+}
+
+fun main() -> Unit = {
+  let f: (Int) -> Int = x -> x + 1
+  let g = fmap(f, x -> x * 2)
+  println(g(10))
+}

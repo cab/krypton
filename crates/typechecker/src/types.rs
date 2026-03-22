@@ -57,6 +57,16 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
             ctor_args.extend(args);
             Type::Named(name, ctor_args)
         }
+        // Partial fn application: Fn([r], Unit) applied to [a] → Fn([r], a)
+        Type::Fn(params, _) if args.len() == 1 => {
+            Type::Fn(params, Box::new(args.into_iter().next().unwrap()))
+        }
+        Type::Fn(mut params, _) => {
+            // Multiple holes: first args extend params, last becomes ret
+            let ret = args.last().unwrap().clone();
+            params.extend(args[..args.len() - 1].iter().cloned());
+            Type::Fn(params, Box::new(ret))
+        }
         _ => Type::App(Box::new(ctor), args),
     }
 }

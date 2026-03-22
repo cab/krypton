@@ -142,8 +142,19 @@ impl TraitRegistry {
                         return false;
                     }
 
-                    let ctor_binding =
-                        Type::Named(actual_ctor.clone(), actual_bound_args[..inst_len].to_vec());
+                    let bound = &actual_bound_args[..inst_len];
+                    let ctor_binding = if actual_ctor.starts_with("$Fun") {
+                        if bound.is_empty() {
+                            Type::Fn(vec![], Box::new(Type::Unit))
+                        } else {
+                            Type::Fn(
+                                bound[..bound.len() - 1].to_vec(),
+                                Box::new(bound.last().unwrap().clone()),
+                            )
+                        }
+                    } else {
+                        Type::Named(actual_ctor.clone(), bound.to_vec())
+                    };
 
                     inst.constraints.iter().all(|constraint| {
                         let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
@@ -276,8 +287,19 @@ impl TraitRegistry {
                         continue;
                     }
 
-                    let ctor_binding =
-                        Type::Named(actual_ctor.clone(), actual_bound_args[..inst_len].to_vec());
+                    let bound = &actual_bound_args[..inst_len];
+                    let ctor_binding = if actual_ctor.starts_with("$Fun") {
+                        if bound.is_empty() {
+                            Type::Fn(vec![], Box::new(Type::Unit))
+                        } else {
+                            Type::Fn(
+                                bound[..bound.len() - 1].to_vec(),
+                                Box::new(bound.last().unwrap().clone()),
+                            )
+                        }
+                    } else {
+                        Type::Named(actual_ctor.clone(), bound.to_vec())
+                    };
 
                     let unsatisfied: Vec<UnsatisfiedBound> = inst
                         .constraints
@@ -491,6 +513,11 @@ fn types_match_with_bindings(
 fn split_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
     match ty {
         Type::Named(name, args) => Some((name.clone(), args.clone())),
+        Type::Fn(params, ret) => {
+            let mut args: Vec<Type> = params.clone();
+            args.push(*ret.clone());
+            Some((format!("$Fun{}", params.len()), args))
+        }
         Type::Own(inner) => split_type_constructor(inner),
         _ => None,
     }
@@ -499,6 +526,11 @@ fn split_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
 fn split_instance_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
     match ty {
         Type::Named(name, args) => Some((name.clone(), args.clone())),
+        Type::Fn(params, ret) => {
+            let mut args: Vec<Type> = params.clone();
+            args.push(*ret.clone());
+            Some((format!("$Fun{}", params.len()), args))
+        }
         Type::App(ctor, args) => {
             let (ctor_name, mut ctor_args) = split_instance_type_constructor(ctor)?;
             ctor_args.extend(args.iter().cloned());

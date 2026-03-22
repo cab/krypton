@@ -62,6 +62,19 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
                 bind_type_vars_simple(p, a, bindings);
             }
         }
+        // Cross-arm for HKT: pattern App(Var(f), [a]) vs actual Fn([Int], Int)
+        (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret)) if p_args.len() <= a_params.len() + 1 => {
+            let ctor_count = a_params.len() + 1 - p_args.len();
+            let ctor_params = &a_params[..ctor_count.min(a_params.len())];
+            bind_type_vars_simple(p_ctor, &Type::Fn(ctor_params.to_vec(), Box::new(Type::Unit)), bindings);
+            let mut remaining: Vec<&Type> = a_params[ctor_count.min(a_params.len())..].iter().collect();
+            if ctor_count <= a_params.len() {
+                remaining.push(a_ret);
+            }
+            for (p, a) in p_args.iter().zip(remaining.iter()) {
+                bind_type_vars_simple(p, a, bindings);
+            }
+        }
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) if p_name == a_name => {
             for (p, a) in p_args.iter().zip(a_args.iter()) {
                 bind_type_vars_simple(p, a, bindings);

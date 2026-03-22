@@ -599,6 +599,25 @@ impl Compiler {
                             Self::bind_type_vars(pattern_arg, actual_arg, bindings)
                         })
             }
+            // Cross-arm for HKT: App(Var(f), [a]) vs Fn([Int], Int)
+            (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
+                if p_args.len() <= a_params.len() + 1 =>
+            {
+                let ctor_count = a_params.len() + 1 - p_args.len();
+                let ctor_params = &a_params[..ctor_count.min(a_params.len())];
+                let ctor_fn = Type::Fn(ctor_params.to_vec(), Box::new(Type::Unit));
+                if !Self::bind_type_vars(p_ctor, &ctor_fn, bindings) {
+                    return false;
+                }
+                let mut remaining: Vec<&Type> = a_params[ctor_count.min(a_params.len())..].iter().collect();
+                if ctor_count <= a_params.len() {
+                    remaining.push(a_ret);
+                }
+                remaining.len() == p_args.len()
+                    && p_args.iter().zip(remaining.iter()).all(|(p, a)| {
+                        Self::bind_type_vars(p, a, bindings)
+                    })
+            }
             (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
             (ty, Type::Own(actual_inner)) => Self::bind_type_vars(ty, actual_inner, bindings),
             (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {

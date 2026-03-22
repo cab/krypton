@@ -275,6 +275,30 @@ fn validate_impl_wildcards(texpr: &krypton_parser::ast::TypeExpr) -> Result<usiz
             }
             Ok(wildcard_count)
         }
+        krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
+            let mut wildcard_count = 0;
+            for param in params {
+                match param {
+                    krypton_parser::ast::TypeExpr::Wildcard { .. } => wildcard_count += 1,
+                    other => {
+                        if contains_wildcard(other) {
+                            let span = wildcard_span(other).unwrap_or((0, 0));
+                            return Err(TypeError::NestedWildcard { span });
+                        }
+                    }
+                }
+            }
+            match ret.as_ref() {
+                krypton_parser::ast::TypeExpr::Wildcard { .. } => wildcard_count += 1,
+                other => {
+                    if contains_wildcard(other) {
+                        let span = wildcard_span(other).unwrap_or((0, 0));
+                        return Err(TypeError::NestedWildcard { span });
+                    }
+                }
+            }
+            Ok(wildcard_count)
+        }
         krypton_parser::ast::TypeExpr::Wildcard { span } => {
             Err(TypeError::WildcardNotAllowed { span: *span })
         }
@@ -367,6 +391,38 @@ fn resolve_impl_target(
                 resolved_args,
             ))
         }
+        krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
+            let mut resolved_params = Vec::new();
+            for p in params {
+                match p {
+                    krypton_parser::ast::TypeExpr::Wildcard { .. } => {
+                        resolved_params.push(Type::Var(gen.fresh()));
+                    }
+                    other => {
+                        resolved_params.push(type_registry::resolve_type_expr(
+                            other,
+                            type_param_map,
+                            type_param_arity,
+                            registry,
+                            type_registry::ResolutionContext::UserAnnotation,
+                            None,
+                        )?);
+                    }
+                }
+            }
+            let resolved_ret = match ret.as_ref() {
+                krypton_parser::ast::TypeExpr::Wildcard { .. } => Type::Var(gen.fresh()),
+                other => type_registry::resolve_type_expr(
+                    other,
+                    type_param_map,
+                    type_param_arity,
+                    registry,
+                    type_registry::ResolutionContext::UserAnnotation,
+                    None,
+                )?,
+            };
+            Ok(Type::Fn(resolved_params, Box::new(resolved_ret)))
+        }
         // No wildcards: delegate to normal resolution
         other => type_registry::resolve_type_expr(
             other,
@@ -393,6 +449,19 @@ fn strip_anon_type_args(ty: &Type, type_var_ids: &HashMap<String, TypeVarId>) ->
                 }
             }).cloned().collect();
             Type::Named(name.clone(), kept)
+        }
+        Type::Fn(params, ret) => {
+            let kept_params: Vec<Type> = params.iter().filter(|p| {
+                match p {
+                    Type::Var(id) => known_var_ids.contains(id),
+                    _ => true,
+                }
+            }).cloned().collect();
+            let kept_ret = match ret.as_ref() {
+                Type::Var(id) if !known_var_ids.contains(id) => Box::new(Type::Unit),
+                _ => ret.clone(),
+            };
+            Type::Fn(kept_params, kept_ret)
         }
         _ => ty.clone(),
     }
