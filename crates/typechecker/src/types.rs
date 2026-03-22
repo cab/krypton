@@ -45,6 +45,10 @@ pub enum Type {
     App(Box<Type>, Vec<Type>),
     Own(Box<Type>),
     Tuple(Vec<Type>),
+    /// Sentinel for unfilled return positions in partially-applied function type
+    /// constructors. Used by HKT machinery — never appears in user-facing types.
+    /// Consumed by `normalize_app` when applying type arguments.
+    FnHole,
 }
 
 /// Normalize a type application: if the constructor is a zero-arg Named type,
@@ -57,11 +61,13 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
             ctor_args.extend(args);
             Type::Named(name, ctor_args)
         }
-        // Partial fn application: Fn([r], Unit) applied to [a] → Fn([r], a)
-        Type::Fn(params, _) if args.len() == 1 => {
+        // Partial fn application: Fn([r], FnHole) applied to [a] → Fn([r], a)
+        Type::Fn(params, hole) if args.len() == 1 => {
+            debug_assert_eq!(*hole, Type::FnHole, "normalize_app: expected FnHole sentinel in partial fn constructor");
             Type::Fn(params, Box::new(args.into_iter().next().unwrap()))
         }
-        Type::Fn(mut params, _) => {
+        Type::Fn(mut params, hole) => {
+            debug_assert_eq!(*hole, Type::FnHole, "normalize_app: expected FnHole sentinel in partial fn constructor");
             // Multiple holes: first args extend params, last becomes ret
             let ret = args.last().unwrap().clone();
             params.extend(args[..args.len() - 1].iter().cloned());
@@ -69,6 +75,26 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
         }
         _ => Type::App(Box::new(ctor), args),
     }
+}
+
+/// Decompose a concrete `Fn` type into (partial_ctor, remaining_args) for matching
+/// against `App(ctor, args)` in HKT contexts.
+///
+/// Given `Fn([P, Q, R], S)` and `applied_count = 2`:
+///   - partial_ctor = `Fn([P], FnHole)` (the partial fn constructor)
+///   - remaining = `[R, S]` (the applied arguments)
+///
+/// Returns `None` if `applied_count` is 0 or exceeds total arity (params + ret).
+pub fn decompose_fn_for_app(params: &[Type], ret: &Type, applied_count: usize) -> Option<(Type, Vec<Type>)> {
+    let total = params.len() + 1;
+    if applied_count == 0 || applied_count > total {
+        return None;
+    }
+    let ctor_count = total - applied_count;
+    let ctor = Type::Fn(params[..ctor_count].to_vec(), Box::new(Type::FnHole));
+    let mut remaining: Vec<Type> = params[ctor_count..].to_vec();
+    remaining.push(ret.clone());
+    Some((ctor, remaining))
 }
 
 impl Type {
@@ -199,6 +225,7 @@ impl fmt::Display for Type {
                 }
                 write!(f, ")")
             }
+            Type::FnHole => write!(f, "_"),
         }
     }
 }
@@ -368,6 +395,7 @@ fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
             let es: Vec<String> = elems.iter().map(|e| format_type_impl(e, names)).collect();
             format!("({})", es.join(", "))
         }
+        Type::FnHole => "_".to_string(),
     }
 }
 
@@ -721,6 +749,7 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
             let idx = *var_map.entry(*id).or_insert(next);
             format!("T{idx}")
         }
+        Type::FnHole => "$FnHole".to_string(),
         other => unreachable!("unexpected type in canonical_name_inner: {other:?}"),
     }
 }

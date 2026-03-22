@@ -17,6 +17,7 @@
 
 use std::collections::HashSet;
 
+use crate::types;
 use crate::types::{Substitution, Type, TypeVarId};
 pub use crate::type_error::{TypeError, TypeErrorCode, SpannedTypeError, SecondaryLabel};
 
@@ -177,20 +178,10 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         // App(Var(f), [arg]) vs Fn(params, ret): bind f to partial fn constructor
         (Type::App(ctor, args), Type::Fn(params, ret))
         | (Type::Fn(params, ret), Type::App(ctor, args))
-            if args.len() <= params.len() + 1 =>
+            if types::decompose_fn_for_app(params, ret, args.len()).is_some() =>
         {
-            // Flatten fn components: [p1, ..., pm, ret]
-            let total = params.len() + 1;
-            let ctor_count = total - args.len();
-            // The first ctor_count components form the partial fn constructor
-            let ctor_params = &params[..ctor_count.min(params.len())];
-            let ctor_fn = Type::Fn(ctor_params.to_vec(), Box::new(Type::Unit));
+            let (ctor_fn, remaining) = types::decompose_fn_for_app(params, ret, args.len()).unwrap();
             unify(ctor, &ctor_fn, subst)?;
-            // The remaining components unify with the App args
-            let mut remaining: Vec<Type> = params[ctor_count.min(params.len())..].to_vec();
-            if ctor_count <= params.len() {
-                remaining.push(*ret.clone());
-            }
             if remaining.len() != args.len() {
                 return Err(TypeError::WrongArity {
                     expected: remaining.len(),

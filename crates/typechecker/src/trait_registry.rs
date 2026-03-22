@@ -143,18 +143,7 @@ impl TraitRegistry {
                     }
 
                     let bound = &actual_bound_args[..inst_len];
-                    let ctor_binding = if actual_ctor.starts_with("$Fun") {
-                        if bound.is_empty() {
-                            Type::Fn(vec![], Box::new(Type::Unit))
-                        } else {
-                            Type::Fn(
-                                bound[..bound.len() - 1].to_vec(),
-                                Box::new(bound.last().unwrap().clone()),
-                            )
-                        }
-                    } else {
-                        Type::Named(actual_ctor.clone(), bound.to_vec())
-                    };
+                    let ctor_binding = reconstruct_ctor_type(&actual_ctor, bound);
 
                     inst.constraints.iter().all(|constraint| {
                         let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
@@ -288,18 +277,7 @@ impl TraitRegistry {
                     }
 
                     let bound = &actual_bound_args[..inst_len];
-                    let ctor_binding = if actual_ctor.starts_with("$Fun") {
-                        if bound.is_empty() {
-                            Type::Fn(vec![], Box::new(Type::Unit))
-                        } else {
-                            Type::Fn(
-                                bound[..bound.len() - 1].to_vec(),
-                                Box::new(bound.last().unwrap().clone()),
-                            )
-                        }
-                    } else {
-                        Type::Named(actual_ctor.clone(), bound.to_vec())
-                    };
+                    let ctor_binding = reconstruct_ctor_type(&actual_ctor, bound);
 
                     let unsatisfied: Vec<UnsatisfiedBound> = inst
                         .constraints
@@ -510,31 +488,55 @@ fn types_match_with_bindings(
     }
 }
 
-fn split_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
+/// Identifies a type constructor for HKT instance matching.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CtorId {
+    Named(String),
+    /// Function type constructor with the given parameter arity.
+    /// `(a, b) -> c` has arity 2.
+    Fn(usize),
+}
+
+/// Reconstruct a type from a split constructor and bound args.
+fn reconstruct_ctor_type(ctor: &CtorId, bound_args: &[Type]) -> Type {
+    match ctor {
+        CtorId::Fn(_) => {
+            if bound_args.is_empty() {
+                Type::Fn(vec![], Box::new(Type::FnHole))
+            } else {
+                let (params, ret) = bound_args.split_at(bound_args.len() - 1);
+                Type::Fn(params.to_vec(), Box::new(ret[0].clone()))
+            }
+        }
+        CtorId::Named(name) => Type::Named(name.clone(), bound_args.to_vec()),
+    }
+}
+
+fn split_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
     match ty {
-        Type::Named(name, args) => Some((name.clone(), args.clone())),
+        Type::Named(name, args) => Some((CtorId::Named(name.clone()), args.clone())),
         Type::Fn(params, ret) => {
             let mut args: Vec<Type> = params.clone();
             args.push(*ret.clone());
-            Some((format!("$Fun{}", params.len()), args))
+            Some((CtorId::Fn(params.len()), args))
         }
         Type::Own(inner) => split_type_constructor(inner),
         _ => None,
     }
 }
 
-fn split_instance_type_constructor(ty: &Type) -> Option<(String, Vec<Type>)> {
+fn split_instance_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
     match ty {
-        Type::Named(name, args) => Some((name.clone(), args.clone())),
+        Type::Named(name, args) => Some((CtorId::Named(name.clone()), args.clone())),
         Type::Fn(params, ret) => {
             let mut args: Vec<Type> = params.clone();
             args.push(*ret.clone());
-            Some((format!("$Fun{}", params.len()), args))
+            Some((CtorId::Fn(params.len()), args))
         }
         Type::App(ctor, args) => {
-            let (ctor_name, mut ctor_args) = split_instance_type_constructor(ctor)?;
+            let (ctor_id, mut ctor_args) = split_instance_type_constructor(ctor)?;
             ctor_args.extend(args.iter().cloned());
-            Some((ctor_name, ctor_args))
+            Some((ctor_id, ctor_args))
         }
         Type::Own(inner) => split_instance_type_constructor(inner),
         _ => None,

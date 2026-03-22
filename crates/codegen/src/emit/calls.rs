@@ -601,17 +601,11 @@ impl Compiler {
             }
             // Cross-arm for HKT: App(Var(f), [a]) vs Fn([Int], Int)
             (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
-                if p_args.len() <= a_params.len() + 1 =>
+                if types::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
             {
-                let ctor_count = a_params.len() + 1 - p_args.len();
-                let ctor_params = &a_params[..ctor_count.min(a_params.len())];
-                let ctor_fn = Type::Fn(ctor_params.to_vec(), Box::new(Type::Unit));
+                let (ctor_fn, remaining) = types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
                 if !Self::bind_type_vars(p_ctor, &ctor_fn, bindings) {
                     return false;
-                }
-                let mut remaining: Vec<&Type> = a_params[ctor_count.min(a_params.len())..].iter().collect();
-                if ctor_count <= a_params.len() {
-                    remaining.push(a_ret);
                 }
                 remaining.len() == p_args.len()
                     && p_args.iter().zip(remaining.iter()).all(|(p, a)| {

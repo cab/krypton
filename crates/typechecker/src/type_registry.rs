@@ -585,6 +585,6 @@ fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
                 args.iter().map(|a| remap_vars(a, mapping)).collect(),
             )
         }
-        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit => ty.clone(),
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => ty.clone(),
     }
 }

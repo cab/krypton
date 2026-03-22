@@ -458,7 +458,7 @@ fn strip_anon_type_args(ty: &Type, type_var_ids: &HashMap<String, TypeVarId>) ->
                 }
             }).cloned().collect();
             let kept_ret = match ret.as_ref() {
-                Type::Var(id) if !known_var_ids.contains(id) => Box::new(Type::Unit),
+                Type::Var(id) if !known_var_ids.contains(id) => Box::new(Type::FnHole),
                 _ => ret.clone(),
             };
             Type::Fn(kept_params, kept_ret)
@@ -778,7 +778,7 @@ pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
 fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type {
     match ty {
         Type::Var(id) if *id == var_id => replacement.clone(),
-        Type::Var(_) | Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit => {
+        Type::Var(_) | Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => {
             ty.clone()
         }
         Type::Fn(params, ret) => {

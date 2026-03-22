@@ -51,6 +51,7 @@ fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
             let es: Vec<String> = elems.iter().map(|e| type_to_source(e, var_names)).collect();
             format!("({})", es.join(", "))
         }
+        Type::FnHole => "_".to_string(),
     }
 }
 

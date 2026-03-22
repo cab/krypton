@@ -4,6 +4,7 @@ use krypton_parser::ast::{BinOp, UnaryOp};
 
 use crate::trait_registry::TraitRegistry;
 use crate::typed_ast::{TraitId, TypedExpr, TypedExprKind};
+use crate::types;
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -63,14 +64,11 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
             }
         }
         // Cross-arm for HKT: pattern App(Var(f), [a]) vs actual Fn([Int], Int)
-        (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret)) if p_args.len() <= a_params.len() + 1 => {
-            let ctor_count = a_params.len() + 1 - p_args.len();
-            let ctor_params = &a_params[..ctor_count.min(a_params.len())];
-            bind_type_vars_simple(p_ctor, &Type::Fn(ctor_params.to_vec(), Box::new(Type::Unit)), bindings);
-            let mut remaining: Vec<&Type> = a_params[ctor_count.min(a_params.len())..].iter().collect();
-            if ctor_count <= a_params.len() {
-                remaining.push(a_ret);
-            }
+        (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
+            if types::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
+        {
+            let (ctor_fn, remaining) = types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+            bind_type_vars_simple(p_ctor, &ctor_fn, bindings);
             for (p, a) in p_args.iter().zip(remaining.iter()) {
                 bind_type_vars_simple(p, a, bindings);
             }
