@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__extern_typecheck_object
 
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Unit = call println(42)

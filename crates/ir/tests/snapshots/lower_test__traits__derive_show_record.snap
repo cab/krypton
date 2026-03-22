@@ -5,9 +5,9 @@ expression: ir_module.to_string()
 module traits__derive_show_record
 
 struct Point { x: Int, y: Int }
-; extern Point
-; extern println
-; extern show
+declare Point: (Int, Int) -> Point
+declare println: (m) -> Unit
+declare show: (Dict, g) -> String
 
 fn main() -> Unit =
   let v0: ~Point = call Point(1, 2)

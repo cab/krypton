@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module data_types__struct_field_access
 
 struct Point { x: Int, y: Int }
-; extern Point
+declare Point: (Int, Int) -> Point
 
 fn get_x() -> Int =
   let v0: ~Point = call Point(1, 2)

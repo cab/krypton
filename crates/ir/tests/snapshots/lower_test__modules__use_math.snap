@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__use_math
 
-; extern println
-; extern sum
+declare println: (m) -> Unit
+declare sum: (Int, Int) -> Int
 
 fn main() -> Unit =
   let v0: Int = call sum(3, 5)

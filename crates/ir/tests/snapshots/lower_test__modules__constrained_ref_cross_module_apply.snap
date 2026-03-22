@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module modules__constrained_ref_cross_module_apply
 
-; extern apply_to_int
-; extern println
-; extern render_it
+declare apply_to_int: ((Int) -> String, Int) -> String
+declare println: (Dict, m) -> Unit
+declare render_it: (Dict, r7) -> String
 
 fn main() -> Unit =
   let v0: (Int) -> String = make_closure(render_it, [])

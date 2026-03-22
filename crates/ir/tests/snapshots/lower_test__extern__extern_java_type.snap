@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module extern__extern_java_type
 
-; extern raw_send
+declare raw_send
 
 fn use_ref(v0: Ref[Int]) -> Ref[Int] =
   v0

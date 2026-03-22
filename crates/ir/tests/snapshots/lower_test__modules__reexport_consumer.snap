@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__reexport_consumer
 
-; extern println
-; extern public_fn
+declare println: (m) -> Unit
+declare public_fn: (Int) -> Int
 
 fn main() -> Unit =
   let v0: Int = call public_fn(5)

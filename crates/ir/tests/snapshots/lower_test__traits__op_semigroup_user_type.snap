@@ -5,9 +5,9 @@ expression: ir_module.to_string()
 module traits__op_semigroup_user_type
 
 struct Vec2 { x: Int, y: Int }
-; extern Vec2
-; extern combine
-; extern println
+declare Vec2: (Int, Int) -> Vec2
+declare combine: (Dict, g, g) -> g
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Vec2 = call Vec2(1, 1)

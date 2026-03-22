@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__op_string_concat
 
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: String = concat_string("hello", "world")

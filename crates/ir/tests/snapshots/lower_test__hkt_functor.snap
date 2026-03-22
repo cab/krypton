@@ -1,7 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module hkt_functor
-
-type Box[a] = Box#0(a)

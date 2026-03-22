@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__bare_import
 
-; extern __qual$helpers_a$compute
-; extern println
+declare __qual$helpers_a$compute: (Int) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Int = neg_int(5)

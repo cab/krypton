@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__transitive_leak_reexport
 
-; extern println
-; extern re_exported
+declare println: (m) -> Unit
+declare re_exported: (Int) -> Int
 
 fn main() -> Unit =
   let v0: Int = call re_exported(3)

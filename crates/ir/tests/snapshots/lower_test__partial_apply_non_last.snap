@@ -1,7 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module partial_apply_non_last
-
-struct Predicate[a, b] { check: (a) -> b }

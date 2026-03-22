@@ -1628,12 +1628,38 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_names.insert(id, name.clone());
     }
 
+    // 8. Build extern_fn_types for non-local functions, prepending Dict
+    //    params for constrained functions and trait methods to match the
+    //    IR calling convention.
+    let local_names: std::collections::HashSet<&str> =
+        typed.functions.iter().map(|d| d.name.as_str()).collect();
+    let mut extern_fn_types = HashMap::new();
+    for entry in &typed.fn_types {
+        if !local_names.contains(entry.name.as_str()) {
+            if let Some(&fn_id) = ctx.fn_ids.get(&entry.name) {
+                let ty = if entry.origin.is_some() {
+                    // Trait methods always take a Dict as first arg
+                    prepend_n_dicts(1, &entry.scheme.ty)
+                } else {
+                    // Regular constrained functions get Dict per constraint
+                    prepend_dict_params(
+                        &entry.name,
+                        &ctx.fn_constraints,
+                        &entry.scheme.ty,
+                    )
+                };
+                extern_fn_types.insert(fn_id, ty);
+            }
+        }
+    }
+
     Ok(Module {
         name: module_name.to_string(),
         structs,
         sum_types,
         functions,
         fn_names,
+        extern_fn_types,
     })
 }
 
@@ -1868,6 +1894,41 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
         _ => pattern == actual,
+    }
+}
+
+/// Prepend N Dict params to a function type.
+fn prepend_n_dicts(n: usize, ty: &Type) -> Type {
+    match ty {
+        Type::Fn(params, ret) => {
+            let mut new_params = vec![Type::Named("Dict".to_string(), vec![]); n];
+            new_params.extend(params.iter().cloned());
+            Type::Fn(new_params, ret.clone())
+        }
+        other => other.clone(),
+    }
+}
+
+/// Prepend Dict params to a function type if it has trait constraints.
+fn prepend_dict_params(
+    name: &str,
+    fn_constraints: &HashMap<String, Vec<(String, TypeVarId)>>,
+    ty: &Type,
+) -> Type {
+    let dict_count = fn_constraints
+        .get(name)
+        .map(|c| c.len())
+        .unwrap_or(0);
+    if dict_count == 0 {
+        return ty.clone();
+    }
+    match ty {
+        Type::Fn(params, ret) => {
+            let mut new_params = vec![Type::Named("Dict".to_string(), vec![]); dict_count];
+            new_params.extend(params.iter().cloned());
+            Type::Fn(new_params, ret.clone())
+        }
+        other => other.clone(),
     }
 }
 

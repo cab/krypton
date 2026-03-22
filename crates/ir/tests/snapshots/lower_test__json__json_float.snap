@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module json__json_float
 
-; extern json_to_string
-; extern println
+declare json_to_string: (Json) -> String
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(1.5)

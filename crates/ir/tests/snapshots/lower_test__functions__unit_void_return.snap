@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module functions__unit_void_return
 
-; extern println
+declare println: (Dict, m) -> Unit
 
 fn side_effect() -> Unit =
   let_join v1(v0: ~Int) =

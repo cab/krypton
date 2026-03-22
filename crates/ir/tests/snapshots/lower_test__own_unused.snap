@@ -1,8 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module own_unused
-
-fn good(v0: ~String) -> Int =
-  42

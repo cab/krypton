@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__op_semigroup_direct_call
 
-; extern combine
-; extern println
+declare combine: (Dict, g, g) -> g
+declare println: (m) -> Unit
 
 fn apply_combine(v0: Dict, v1: w7, v2: w7) -> w7 =
   let v3: w7 = call combine(v0, v1, v2)

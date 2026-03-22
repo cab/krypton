@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module functions__factorial
 
-; extern println
+declare println: (m) -> Unit
 
 fn factorial(v0: Int) -> Int =
   let v1: Bool = eq_int(v0, 0)

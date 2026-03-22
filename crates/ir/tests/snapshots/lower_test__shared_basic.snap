@@ -1,8 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module shared_basic
-
-fn inspect(v0: r7, v1: r7) -> r7 =
-  v0

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_non_resource_shadow
 
 type Box = MkBox#0(Int)
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Box = construct Box::MkBox#0(1)

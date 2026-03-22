@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module stdlib__hash_basic
 
-; extern hash
-; extern println
+declare hash: (Dict, g) -> Int
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v1: Dict = get_dict Hash[Int]

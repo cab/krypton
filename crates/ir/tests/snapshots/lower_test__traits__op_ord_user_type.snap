@@ -5,9 +5,9 @@ expression: ir_module.to_string()
 module traits__op_ord_user_type
 
 struct Wrapper { val: Int }
-; extern Wrapper
-; extern lt
-; extern println
+declare Wrapper: (Int) -> Wrapper
+declare lt: (Dict, h, h) -> Bool
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Wrapper = call Wrapper(1)

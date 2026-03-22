@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__leak_caller_ok
 
-; extern exported
-; extern println
+declare exported: (Int) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Int = call exported(5)

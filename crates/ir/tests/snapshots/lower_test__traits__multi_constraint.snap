@@ -5,10 +5,10 @@ expression: ir_module.to_string()
 module traits__multi_constraint
 
 struct Box { val: Int }
-; extern Box
-; extern eq
-; extern println
-; extern show
+declare Box: (Int) -> Box
+declare eq: (Dict, g, g) -> Bool
+declare println: (m) -> Unit
+declare show: (Dict, g) -> String
 
 fn eq_and_show(v0: Dict, v1: Dict, v2: t7, v3: t7) -> String =
   let v4: Bool = call eq(v0, v2, v3)

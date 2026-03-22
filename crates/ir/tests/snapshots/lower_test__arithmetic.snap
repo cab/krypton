@@ -1,9 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module arithmetic
-
-fn add(v0: Int, v1: Int) -> Int =
-  let v2: Int = add_int(v0, v1)
-  v2

@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module stdlib__hash_deriving
 
 struct Point { x: Int, y: Int }
-; extern hash
-; extern println
+declare hash: (Dict, g) -> Int
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)

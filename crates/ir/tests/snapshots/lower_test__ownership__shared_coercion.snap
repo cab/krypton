@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__shared_coercion
 
-; extern println
+declare println: (Dict, m) -> Unit
 
 fn identity(v0: r7) -> r7 =
   v0

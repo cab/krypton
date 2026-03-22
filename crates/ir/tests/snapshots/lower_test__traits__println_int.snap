@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__println_int
 
-; extern println
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v0: Dict = get_dict Show[Int]

@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module modules__use_both
 
-; extern add10
-; extern mul10
-; extern println
+declare add10: (Int) -> Int
+declare mul10: (Int) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Int = call mul10(1)

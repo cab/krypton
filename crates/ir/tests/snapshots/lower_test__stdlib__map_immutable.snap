@@ -4,10 +4,10 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_immutable
 
-; extern contains
-; extern empty
-; extern println
-; extern put
+declare contains: (Dict, Dict, Map[j10, k10], j10) -> Bool
+declare empty: () -> Map[n8, o8]
+declare println: (Dict, m) -> Unit
+declare put: (Dict, Dict, Map[s8, t8], s8, t8) -> Map[s8, t8]
 
 fn main() -> Unit =
   let v0: Map[x10, y10] = call empty()

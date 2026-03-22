@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module functions__comparison_chain
 
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Bool = lt_int(10, 20)

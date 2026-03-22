@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__import_aliases
 
-; extern magnitude
-; extern println
+declare magnitude: (Int) -> Int
+declare println: (m) -> Unit
 
 fn keep(v0: Option[Int]) -> Int =
   0

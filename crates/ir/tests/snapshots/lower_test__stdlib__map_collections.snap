@@ -4,12 +4,12 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_collections
 
-; extern empty
-; extern from_list
-; extern merge
-; extern println
-; extern put
-; extern size
+declare empty: () -> Map[n8, o8]
+declare from_list: (Dict, Dict, List[(y12, z12)]) -> Map[y12, z12]
+declare merge: (Dict, Dict, Map[l13, m13], Map[l13, m13]) -> Map[l13, m13]
+declare println: (Dict, m) -> Unit
+declare put: (Dict, Dict, Map[s8, t8], s8, t8) -> Map[s8, t8]
+declare size: (Map[f13, g13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

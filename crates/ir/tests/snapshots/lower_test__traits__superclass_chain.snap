@@ -5,9 +5,9 @@ expression: ir_module.to_string()
 module traits__superclass_chain
 
 struct Num { n: Int }
-; extern Num
-; extern lt
-; extern println
+declare Num: (Int) -> Num
+declare lt: (Dict, h, h) -> Bool
+declare println: (m) -> Unit
 
 fn is_less(v0: Dict, v1: t7, v2: t7) -> Bool =
   let v3: Bool = call lt(v0, v1, v2)

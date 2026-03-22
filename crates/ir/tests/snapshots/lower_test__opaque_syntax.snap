@@ -1,8 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module opaque_syntax
-
-struct Opaque { inner: Int }
-type Color = Red#0 | Green#1 | Blue#2

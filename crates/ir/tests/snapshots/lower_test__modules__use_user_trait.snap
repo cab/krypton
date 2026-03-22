@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module modules__use_user_trait
 
 type Greeting = MkGreeting#0(String)
-; extern display
-; extern println
+declare display: (Dict, q7) -> String
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Greeting = construct Greeting::MkGreeting#0("hi")

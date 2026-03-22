@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module data_types__branch_with_struct
 
 struct Wrapper { value: Int }
-; extern Wrapper
-; extern println
+declare Wrapper: (Int) -> Wrapper
+declare println: (m) -> Unit
 
 fn pick(v0: Int) -> Wrapper =
   let v1: Bool = gt_int(v0, 0)

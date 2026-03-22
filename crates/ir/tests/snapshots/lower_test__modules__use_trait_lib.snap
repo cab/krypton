@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__use_trait_lib
 
-; extern println
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let_join v4(v0: ~Color) =

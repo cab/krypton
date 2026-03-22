@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module data_types__struct_basic
 
 struct Point { x: Int, y: Int }
-; extern Point
-; extern println
+declare Point: (Int, Int) -> Point
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = call Point(10, 20)

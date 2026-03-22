@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module data_types__struct_update
 
 struct Point { x: Int, y: Int }
-; extern Point
+declare Point: (Int, Int) -> Point
 
 fn move_x() -> Point =
   let v0: ~Point = call Point(1, 2)

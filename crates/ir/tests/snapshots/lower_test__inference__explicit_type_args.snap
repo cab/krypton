@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module inference__explicit_type_args
 
-; extern map
+declare map: (List[v], (v) -> x) -> List[x]
 
 fn identity(v0: r7) -> r7 =
   v0

@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__constrained_instance_multi_bound_ok
 
 type Pair[a, b] = Pair#0(a, b)
-; extern println
-; extern show
+declare println: (m) -> Unit
+declare show: (Dict, g) -> String
 
 fn main() -> Unit =
   let v0: ~Pair[Int, String] = construct Pair::Pair#0(1, "ok")

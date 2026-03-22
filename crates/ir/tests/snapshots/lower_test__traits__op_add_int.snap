@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__op_add_int
 
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Int = add_int(1, 2)

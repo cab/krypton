@@ -4,12 +4,12 @@ expression: ir_module.to_string()
 ---
 module stdlib__intrinsic_conversions
 
-; extern concat
-; extern intToString
-; extern length
-; extern println
-; extern toFloat
-; extern toInt
+declare concat
+declare intToString
+declare length
+declare println: (m) -> Unit
+declare toFloat
+declare toInt
 
 fn main() -> Unit =
   let v0: Float = call toFloat(1)

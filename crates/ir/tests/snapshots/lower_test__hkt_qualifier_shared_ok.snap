@@ -1,8 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module hkt_qualifier_shared_ok
-
-fn map_shared(v0: r7[s7], v1: r7[s7]) -> r7[s7] =
-  v0

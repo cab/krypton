@@ -6,7 +6,7 @@ module resources__resource_lifo
 
 type HandleA = MkHandleA#0(Int)
 type HandleB = MkHandleB#0(Int)
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~HandleA = construct HandleA::MkHandleA#0(1)

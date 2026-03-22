@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__trait_basic
 
 struct Point { x: Int, y: Int }
-; extern Point
-; extern eq
+declare Point: (Int, Int) -> Point
+declare eq: (Dict, g, g) -> Bool
 
 fn main() -> Bool =
   let v0: ~Point = call Point(1, 2)

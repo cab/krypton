@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module json__json_string
 
-; extern json_object
-; extern json_to_string
-; extern println
+declare json_object: (List[(String, Json)]) -> Json
+declare json_to_string: (Json) -> String
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JStr#3("hello")

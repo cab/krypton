@@ -1,8 +1,0 @@
----
-source: crates/ir/tests/lower_test.rs
-expression: ir_module.to_string()
----
-module return_annotation_upgrade_error
-
-fn f() -> ~String =
-  "hello"

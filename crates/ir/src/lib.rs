@@ -33,6 +33,8 @@ pub struct Module {
     pub functions: Vec<FnDef>,
     /// FnId → debug name for all known functions (local + extern + imported).
     pub fn_names: HashMap<FnId, String>,
+    /// FnId → type for extern/imported functions (not locally defined).
+    pub extern_fn_types: HashMap<FnId, Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -203,6 +205,7 @@ mod tests {
         let _module = Module {
             name: "test".into(),
             fn_names: HashMap::new(),
+            extern_fn_types: HashMap::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__println_show_derived
 
 type MyOption[a] = MySome#0(a) | MyNone#1
-; extern println
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v0: ~MyOption[Int] = construct MyOption::MySome#0(1)

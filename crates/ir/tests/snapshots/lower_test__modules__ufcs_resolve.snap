@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__ufcs_resolve
 
-; extern abs
-; extern println
+declare abs: (Float) -> Float
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Int = neg_int(5)

@@ -400,24 +400,28 @@ impl fmt::Display for Module {
             writeln!(f, "{s}")?;
         }
 
-        // Print extern declarations only for functions actually referenced in bodies
+        // Print declarations for imported/extern functions referenced in bodies
         let local_fn_ids: HashSet<FnId> = self.functions.iter().map(|func| func.id).collect();
         let mut referenced = HashSet::new();
         for func in &self.functions {
             collect_referenced_fns(&func.body, &mut referenced);
         }
-        let mut externs: Vec<_> = self
+        let mut declares: Vec<_> = self
             .fn_names
             .iter()
             .filter(|(id, _)| !local_fn_ids.contains(id) && referenced.contains(id))
-            .map(|(_, name)| name.as_str())
+            .map(|(id, name)| (name.as_str(), *id))
             .collect();
-        externs.sort();
-        for name in &externs {
-            writeln!(f, "; extern {name}")?;
+        declares.sort_by_key(|(name, _)| *name);
+        for (name, id) in &declares {
+            if let Some(ty) = self.extern_fn_types.get(id) {
+                writeln!(f, "declare {name}: {ty}")?;
+            } else {
+                writeln!(f, "declare {name}")?;
+            }
         }
 
-        if !self.structs.is_empty() || !self.sum_types.is_empty() || !externs.is_empty() {
+        if !self.structs.is_empty() || !self.sum_types.is_empty() || !declares.is_empty() {
             writeln!(f)?;
         }
 
@@ -779,6 +783,7 @@ mod tests {
         let module = Module {
             name: "test".into(),
             fn_names: std::collections::HashMap::new(),
+            extern_fn_types: std::collections::HashMap::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],

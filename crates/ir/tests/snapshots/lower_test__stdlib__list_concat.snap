@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_concat
 
-; extern concat
-; extern length
-; extern println
+declare concat: (List[a2], List[a2]) -> List[a2]
+declare length: (List[n]) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~List[Int] = construct List::Nil#1()

@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__constrained_fn_ref_scope_capture
 
-; extern println
-; extern show
+declare println: (Dict, m) -> Unit
+declare show: (Dict, g) -> String
 
 fn show_it(v0: Dict, v1: r7) -> String =
   let v2: String = call show(v0, v1)

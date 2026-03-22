@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__constrained_instance_unconstrained_regression
 
 type Box = Box#0(Int)
-; extern println
-; extern show
+declare println: (m) -> Unit
+declare show: (Dict, g) -> String
 
 fn main() -> Unit =
   let v0: ~Box = construct Box::Box#0(1)

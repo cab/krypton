@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_basic
 
 type Handle = MkHandle#0(String)
-; extern println
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Handle = construct Handle::MkHandle#0("test")

@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module modules__trait_import_with_methods
 
-; extern describe
-; extern println
+declare describe: (Dict, q7) -> String
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Widget = construct Widget::MkWidget#0("x")

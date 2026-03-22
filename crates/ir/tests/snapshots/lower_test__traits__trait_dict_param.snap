@@ -5,9 +5,9 @@ expression: ir_module.to_string()
 module traits__trait_dict_param
 
 struct Point { x: Int, y: Int }
-; extern Point
-; extern eq
-; extern println
+declare Point: (Int, Int) -> Point
+declare eq: (Dict, g, g) -> Bool
+declare println: (m) -> Unit
 
 fn are_equal(v0: Dict, v1: t7, v2: t7) -> Bool =
   let v3: Bool = call eq(v0, v1, v2)

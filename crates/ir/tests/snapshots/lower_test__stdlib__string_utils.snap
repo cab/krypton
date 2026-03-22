@@ -4,16 +4,16 @@ expression: ir_module.to_string()
 ---
 module stdlib__string_utils
 
-; extern char_at
-; extern contains
-; extern ends_with
-; extern index_of
-; extern join
-; extern println
-; extern replace
-; extern starts_with
-; extern to_lower
-; extern to_upper
+declare char_at: (String, Int) -> Option[String]
+declare contains: (String, String) -> Bool
+declare ends_with: (String, String) -> Bool
+declare index_of: (String, String) -> Option[Int]
+declare join: (List[String], String) -> String
+declare println: (Dict, m) -> Unit
+declare replace: (String, String, String) -> String
+declare starts_with: (String, String) -> Bool
+declare to_lower: (String) -> String
+declare to_upper: (String) -> String
 
 fn main() -> Unit =
   let v0: Bool = call contains("hello world", "world")

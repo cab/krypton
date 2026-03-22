@@ -5,9 +5,9 @@ expression: ir_module.to_string()
 module modules__type_qualify
 
 struct Point { x: Int, y: Int }
-; extern Point
-; extern length
-; extern println
+declare Point: (Int, Int) -> Point
+declare length: (List[n]) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = call Point(1, 2)

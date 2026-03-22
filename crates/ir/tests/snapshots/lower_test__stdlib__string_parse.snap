@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module stdlib__string_parse
 
-; extern parse_float
-; extern parse_int
-; extern println
+declare parse_float: (String) -> Option[Float]
+declare parse_int: (String) -> Option[Int]
+declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
   let v0: Option[Int] = call parse_int("42")
