@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module constrained_instance_nested_ok
 
-type Option[e] = Some#0(a) | None#1
+type Option[a] = Some#0(a) | None#1
 ; extern println
 ; extern show
 

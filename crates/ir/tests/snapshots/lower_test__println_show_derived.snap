@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module println_show_derived
 
-type MyOption[f] = MySome#0(a) | MyNone#1
+type MyOption[a] = MySome#0(a) | MyNone#1
 ; extern println
 
 fn main() -> Unit =

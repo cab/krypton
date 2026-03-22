@@ -21,7 +21,7 @@ pub enum LowerError {
     UnresolvedVar(String),
     UnresolvedStruct(String),
     UnresolvedField(String, String),
-    UnsupportedBinOp(String),
+    UnsupportedOp(String),
     InternalError(String),
 }
 
@@ -34,7 +34,7 @@ impl std::fmt::Display for LowerError {
             LowerError::UnresolvedField(t, field) => {
                 write!(f, "unresolved field {field} on {t}")
             }
-            LowerError::UnsupportedBinOp(s) => write!(f, "unsupported binary op: {s}"),
+            LowerError::UnsupportedOp(s) => write!(f, "unsupported op: {s}"),
             LowerError::InternalError(s) => write!(f, "internal error: {s}"),
         }
     }
@@ -67,6 +67,8 @@ struct LowerCtx {
     struct_fields: HashMap<String, Vec<(String, Type)>>,
     /// variant name → (type_name, tag, field_types)
     sum_variants: HashMap<String, (String, u32, Vec<Type>)>,
+    /// Cached type_params for private types (avoids double build_type_param_map)
+    private_type_params: HashMap<String, Vec<TypeVarId>>,
 }
 
 impl LowerCtx {
@@ -254,6 +256,12 @@ impl LowerCtx {
                 )))
             }
             TypedExprKind::TypeApp { expr: inner, .. } => self.lower_to_simple(inner),
+            TypedExprKind::BinaryOp {
+                op: BinOp::And | BinOp::Or,
+                ..
+            } => Err(LowerError::InternalError(
+                "And/Or must be lowered as compound expr (short-circuit)".to_string(),
+            )),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
                 let (rhs_bindings, rhs_atom) = self.lower_to_atom(rhs)?;
@@ -489,6 +497,20 @@ impl LowerCtx {
                 Ok(Self::wrap_bindings(bindings, inner))
             }
 
+            // Short-circuit: lhs && rhs → switch lhs { 1 -> rhs | _ -> false }
+            TypedExprKind::BinaryOp {
+                op: BinOp::And,
+                lhs,
+                rhs,
+            } => self.lower_short_circuit(lhs, rhs, true),
+
+            // Short-circuit: lhs || rhs → switch lhs { 1 -> true | _ -> rhs }
+            TypedExprKind::BinaryOp {
+                op: BinOp::Or,
+                lhs,
+                rhs,
+            } => self.lower_short_circuit(lhs, rhs, false),
+
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
                 let (rhs_bindings, rhs_atom) = self.lower_to_atom(rhs)?;
@@ -631,13 +653,17 @@ impl LowerCtx {
         expr: &TypedExpr,
     ) -> Result<LoweredValue, LowerError> {
         match &expr.kind {
-            // Atoms and compound expressions produce Expr trees
+            // Atoms, compound expressions, and short-circuit ops produce Expr trees
             TypedExprKind::Lit(_)
             | TypedExprKind::Var(_)
             | TypedExprKind::If { .. }
             | TypedExprKind::Do(_)
             | TypedExprKind::Let { .. }
-            | TypedExprKind::StructUpdate { .. } => {
+            | TypedExprKind::StructUpdate { .. }
+            | TypedExprKind::BinaryOp {
+                op: BinOp::And | BinOp::Or,
+                ..
+            } => {
                 let e = self.lower_expr(expr)?;
                 Ok(LoweredValue::Expr(e))
             }
@@ -825,6 +851,52 @@ impl LowerCtx {
                 Ok(self.inline_compound_let(discard, expr.ty.clone(), value_expr, rest_expr))
             }
         }
+    }
+
+    /// Lower short-circuit `&&` / `||`.
+    ///
+    /// `is_and = true`:  `lhs && rhs` → `let v = lhs; switch v { 1 -> rhs | _ -> false }`
+    /// `is_and = false`: `lhs || rhs` → `let v = lhs; switch v { 1 -> true | _ -> rhs }`
+    ///
+    /// LHS is always lowered as a full expression (it may itself be a compound
+    /// expression like another `&&`), bound to a var, then used as the Switch
+    /// scrutinee. RHS is lowered lazily in the appropriate branch.
+    fn lower_short_circuit(
+        &mut self,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
+        is_and: bool,
+    ) -> Result<Expr, LowerError> {
+        let lhs_expr = self.lower_expr(lhs)?;
+        let lhs_var = self.fresh_var();
+
+        let (true_branch, false_branch) = if is_and {
+            (self.lower_expr(rhs)?, Expr {
+                kind: ExprKind::Atom(Atom::Lit(Literal::Bool(false))),
+                ty: Type::Bool,
+            })
+        } else {
+            (Expr {
+                kind: ExprKind::Atom(Atom::Lit(Literal::Bool(true))),
+                ty: Type::Bool,
+            }, self.lower_expr(rhs)?)
+        };
+
+        let switch = Expr {
+            ty: Type::Bool,
+            kind: ExprKind::Switch {
+                scrutinee: Atom::Var(lhs_var),
+                branches: vec![SwitchBranch {
+                    tag: 1,
+                    bindings: vec![],
+                    body: true_branch,
+                }],
+                default: Some(Box::new(false_branch)),
+            },
+        };
+
+        // Bind lhs result to lhs_var, then switch on it
+        Ok(self.inline_compound_let(lhs_var, Type::Bool, lhs_expr, switch))
     }
 
     /// Lower a function application.
@@ -1021,7 +1093,7 @@ impl LowerCtx {
             .ok_or_else(|| LowerError::InternalError(format!("no FnId for {}", decl.name)))?;
 
         // Get param types from fn_types
-        let (param_types, return_type) = get_fn_param_types(&decl.name, fn_types);
+        let (param_types, return_type) = get_fn_param_types(&decl.name, fn_types)?;
 
         // Allocate VarIds for params
         let mut params = vec![];
@@ -1073,6 +1145,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_ids: HashMap::new(),
         struct_fields: HashMap::new(),
         sum_variants: HashMap::new(),
+        private_type_params: HashMap::new(),
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -1085,6 +1158,13 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     for decl in &typed.struct_decls {
         if !ctx.struct_fields.contains_key(&decl.name) {
             let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
+            let ordered_params: Vec<TypeVarId> = decl
+                .type_params
+                .iter()
+                .map(|name| type_param_map[name])
+                .collect();
+            ctx.private_type_params
+                .insert(decl.name.clone(), ordered_params);
             let fields: Vec<(String, Type)> = decl
                 .fields
                 .iter()
@@ -1116,6 +1196,13 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .any(|v| ctx.sum_variants.contains_key(&v.name));
         if !already {
             let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
+            let ordered_params: Vec<TypeVarId> = decl
+                .type_params
+                .iter()
+                .map(|name| type_param_map[name])
+                .collect();
+            ctx.private_type_params
+                .insert(decl.name.clone(), ordered_params);
             for (tag, variant) in decl.variants.iter().enumerate() {
                 let fields: Vec<Type> = variant
                     .fields
@@ -1169,14 +1256,12 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                         ctx.struct_fields.get(&decl.name).cloned().unwrap_or_default();
                     (info.type_param_vars.clone(), fields)
                 } else {
-                    // Private type — use fields we already resolved with fresh TypeVarIds
-                    let type_params: Vec<TypeVarId> = build_type_param_map(
-                        &decl.type_params,
-                        &mut ctx.type_var_gen,
-                    )
-                    .values()
-                    .copied()
-                    .collect();
+                    // Private type — reuse cached TypeVarIds from step 1
+                    let type_params = ctx
+                        .private_type_params
+                        .get(&decl.name)
+                        .cloned()
+                        .unwrap_or_default();
                     let fields =
                         ctx.struct_fields.get(&decl.name).cloned().unwrap_or_default();
                     (type_params, fields)
@@ -1199,10 +1284,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 if let Some(info) = typed.exported_type_infos.get(&decl.name) {
                     info.type_param_vars.clone()
                 } else {
-                    build_type_param_map(&decl.type_params, &mut ctx.type_var_gen)
-                        .values()
-                        .copied()
-                        .collect()
+                    // Reuse cached TypeVarIds from step 2
+                    ctx.private_type_params
+                        .get(&decl.name)
+                        .cloned()
+                        .unwrap_or_default()
                 };
             let variants = decl
                 .variants
@@ -1308,11 +1394,11 @@ fn resolve_binop(op: &BinOp, operand_ty: &Type) -> Result<PrimOp, LowerError> {
         (BinOp::Eq, Type::Int) => Ok(PrimOp::EqInt),
         (BinOp::Eq, Type::Float) => Ok(PrimOp::EqFloat),
         (BinOp::Eq, Type::String) => Ok(PrimOp::EqString),
-        (BinOp::Eq, Type::Bool) => Ok(PrimOp::EqInt),
+        (BinOp::Eq, Type::Bool) => Ok(PrimOp::EqInt), // bools represented as 0/1 ints
         (BinOp::Neq, Type::Int) => Ok(PrimOp::NeqInt),
         (BinOp::Neq, Type::Float) => Ok(PrimOp::NeqFloat),
         (BinOp::Neq, Type::String) => Ok(PrimOp::NeqString),
-        (BinOp::Neq, Type::Bool) => Ok(PrimOp::NeqInt),
+        (BinOp::Neq, Type::Bool) => Ok(PrimOp::NeqInt), // bools represented as 0/1 ints
         (BinOp::Lt, Type::Int) => Ok(PrimOp::LtInt),
         (BinOp::Lt, Type::Float) => Ok(PrimOp::LtFloat),
         (BinOp::Le, Type::Int) => Ok(PrimOp::LeInt),
@@ -1321,9 +1407,8 @@ fn resolve_binop(op: &BinOp, operand_ty: &Type) -> Result<PrimOp, LowerError> {
         (BinOp::Gt, Type::Float) => Ok(PrimOp::GtFloat),
         (BinOp::Ge, Type::Int) => Ok(PrimOp::GeInt),
         (BinOp::Ge, Type::Float) => Ok(PrimOp::GeFloat),
-        (BinOp::And, _) => Ok(PrimOp::And),
-        (BinOp::Or, _) => Ok(PrimOp::Or),
-        _ => Err(LowerError::UnsupportedBinOp(format!(
+        // And/Or handled as Switch in lower_expr (short-circuit semantics)
+        _ => Err(LowerError::UnsupportedOp(format!(
             "{op:?} on {operand_ty:?}"
         ))),
     }
@@ -1336,23 +1421,28 @@ fn resolve_unaryop(op: &UnaryOp, operand_ty: &Type) -> Result<PrimOp, LowerError
         (UnaryOp::Neg, Type::Int) => Ok(PrimOp::NegInt),
         (UnaryOp::Neg, Type::Float) => Ok(PrimOp::NegFloat),
         (UnaryOp::Not, _) => Ok(PrimOp::Not),
-        _ => Err(LowerError::UnsupportedBinOp(format!(
+        _ => Err(LowerError::UnsupportedOp(format!(
             "{op:?} on {operand_ty:?}"
         ))),
     }
 }
 
 /// Get parameter types and return type for a function from fn_types.
-fn get_fn_param_types(name: &str, fn_types: &[FnTypeEntry]) -> (Vec<Type>, Type) {
+fn get_fn_param_types(
+    name: &str,
+    fn_types: &[FnTypeEntry],
+) -> Result<(Vec<Type>, Type), LowerError> {
     for entry in fn_types {
         if entry.name == name {
             match &entry.scheme.ty {
-                Type::Fn(params, ret) => return (params.clone(), *ret.clone()),
-                other => return (vec![], other.clone()),
+                Type::Fn(params, ret) => return Ok((params.clone(), *ret.clone())),
+                other => return Ok((vec![], other.clone())),
             }
         }
     }
-    (vec![], Type::Unit)
+    Err(LowerError::InternalError(format!(
+        "no fn_types entry for function '{name}'"
+    )))
 }
 
 /// Build a TypeVarId map from type parameter names using a shared TypeVarGen.

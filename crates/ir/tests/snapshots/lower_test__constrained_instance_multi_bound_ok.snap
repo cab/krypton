@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module constrained_instance_multi_bound_ok
 
-type Pair[h, g] = Pair#0(a, b)
+type Pair[a, b] = Pair#0(a, b)
 ; extern println
 ; extern show
 

@@ -4,4 +4,4 @@ expression: ir_module.to_string()
 ---
 module partial_apply_result
 
-type Result[f, e] = Ok#0(b) | Err#1(a)
+type Result[a, b] = Ok#0(b) | Err#1(a)

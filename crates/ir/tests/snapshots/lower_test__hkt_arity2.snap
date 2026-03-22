@@ -4,4 +4,4 @@ expression: ir_module.to_string()
 ---
 module hkt_arity2
 
-type Pair[g, h] = Pair#0(a, b)
+type Pair[a, b] = Pair#0(a, b)

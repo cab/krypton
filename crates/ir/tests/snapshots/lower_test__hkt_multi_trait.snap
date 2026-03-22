@@ -4,4 +4,4 @@ expression: ir_module.to_string()
 ---
 module hkt_multi_trait
 
-type Box[f] = Box#0(a)
+type Box[a] = Box#0(a)

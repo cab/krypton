@@ -4,4 +4,4 @@ expression: ir_module.to_string()
 ---
 module partial_apply_non_last
 
-struct Predicate[g, h] { check: (a) -> b }
+struct Predicate[a, b] { check: (a) -> b }

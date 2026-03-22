@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module prelude_shadow
 
-type Option[e] = MyVariant#0(a) | MyNone#1
+type Option[a] = MyVariant#0(a) | MyNone#1
 
 fn main() -> Option[Int] =
   let v0: ~Option[Int] = construct Option::MyVariant#0(42)
