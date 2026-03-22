@@ -821,6 +821,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "krypton-ir"
+version = "0.1.0"
+dependencies = [
+ "krypton-typechecker",
+]
+
+[[package]]
 name = "krypton-modules"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,7 @@
+[package]
+name = "krypton-ir"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+krypton-typechecker = { path = "../typechecker" }
