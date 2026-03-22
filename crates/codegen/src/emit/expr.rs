@@ -845,9 +845,8 @@ impl Compiler {
 
         // Getfield value0
         let field_ref = success_field_refs[0];
-        let (_fname, field_jvm_type, is_erased) = &success_fields[0];
-        let field_jvm_type = *field_jvm_type;
-        let is_erased = *is_erased;
+        let field_jvm_type = success_fields[0].jvm_type;
+        let is_erased = success_fields[0].is_erased;
         self.builder.emit(Instruction::Getfield(field_ref));
         self.builder.frame.pop_type(); // pop checkcast ref
         if is_erased {

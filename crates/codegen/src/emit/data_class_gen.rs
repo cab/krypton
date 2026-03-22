@@ -7,7 +7,7 @@ use ristretto_classfile::{
 };
 
 use super::{JAVA_21, jvm_type_to_field_descriptor, jvm_type_to_base_field_type};
-use super::compiler::{JvmType, CodegenError};
+use super::compiler::{JvmType, CodegenError, VariantField};
 
 pub(super) fn generate_struct_class(
     name: &str,
@@ -200,7 +200,7 @@ pub(super) fn generate_variant_class(
     variant_name: &str,
     interface_name: &str,
     display_name: &str,
-    fields: &[(String, JvmType, bool)], // (name, jvm_type, is_erased)
+    fields: &[VariantField],
     class_descriptors: &HashMap<u16, String>,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
@@ -214,15 +214,15 @@ pub(super) fn generate_variant_class(
 
     // Build constructor descriptor — erased fields use Ljava/lang/Object;
     let mut ctor_desc = String::from("(");
-    for (_, jt, is_erased) in fields {
-        if *is_erased {
+    for f in fields {
+        if f.is_erased {
             ctor_desc.push_str("Ljava/lang/Object;");
         } else {
-            let desc = match jt {
-                JvmType::StructRef(idx) => class_descriptors.get(idx)
+            let desc = match f.jvm_type {
+                JvmType::StructRef(idx) => class_descriptors.get(&idx)
                     .cloned()
-                    .unwrap_or_else(|| jvm_type_to_field_descriptor(*jt)),
-                _ => jvm_type_to_field_descriptor(*jt),
+                    .unwrap_or_else(|| jvm_type_to_field_descriptor(f.jvm_type)),
+                _ => jvm_type_to_field_descriptor(f.jvm_type),
             };
             ctor_desc.push_str(&desc);
         }
@@ -233,30 +233,30 @@ pub(super) fn generate_variant_class(
     // Build fields and field refs
     let mut field_refs = Vec::new();
     let mut jvm_fields = Vec::new();
-    for (fname, jt, is_erased) in fields {
-        let fdesc = if *is_erased {
+    for f in fields {
+        let fdesc = if f.is_erased {
             "Ljava/lang/Object;".to_string()
         } else {
-            match jt {
-                JvmType::StructRef(idx) => class_descriptors.get(idx)
+            match f.jvm_type {
+                JvmType::StructRef(idx) => class_descriptors.get(&idx)
                     .cloned()
-                    .unwrap_or_else(|| jvm_type_to_field_descriptor(*jt)),
-                _ => jvm_type_to_field_descriptor(*jt),
+                    .unwrap_or_else(|| jvm_type_to_field_descriptor(f.jvm_type)),
+                _ => jvm_type_to_field_descriptor(f.jvm_type),
             }
         };
-        let field_ref = cp.add_field_ref(this_class, fname, &fdesc)?;
+        let field_ref = cp.add_field_ref(this_class, &f.name, &fdesc)?;
         field_refs.push(field_ref);
 
-        let name_idx = cp.add_utf8(fname)?;
+        let name_idx = cp.add_utf8(&f.name)?;
         let desc_idx = cp.add_utf8(&fdesc)?;
-        let field_type = if *is_erased {
+        let field_type = if f.is_erased {
             FieldType::Object("java/lang/Object".to_string())
         } else {
-            match jt {
+            match f.jvm_type {
                 JvmType::StructRef(_) => {
                     FieldType::Object(fdesc[1..fdesc.len()-1].to_string())
                 }
-                _ => jvm_type_to_base_field_type(*jt),
+                _ => jvm_type_to_base_field_type(f.jvm_type),
             }
         };
         jvm_fields.push(Field {
@@ -275,20 +275,20 @@ pub(super) fn generate_variant_class(
     ];
 
     let mut param_slot: u16 = 1;
-    for (i, (_, jt, is_erased)) in fields.iter().enumerate() {
+    for (i, f) in fields.iter().enumerate() {
         ctor_code.push(Instruction::Aload_0);
-        if *is_erased {
+        if f.is_erased {
             ctor_code.push(Instruction::Aload(param_slot as u8));
             param_slot += 1;
         } else {
-            let load = match jt {
+            let load = match f.jvm_type {
                 JvmType::Long => Instruction::Lload(param_slot as u8),
                 JvmType::Double => Instruction::Dload(param_slot as u8),
                 JvmType::Int => Instruction::Iload(param_slot as u8),
                 JvmType::StructRef(_) => Instruction::Aload(param_slot as u8),
             };
             ctor_code.push(load);
-            param_slot += match jt {
+            param_slot += match f.jvm_type {
                 JvmType::Long | JvmType::Double => 2,
                 _ => 1,
             };

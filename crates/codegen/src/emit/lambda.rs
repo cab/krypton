@@ -290,31 +290,31 @@ impl Compiler {
 
             self.builder.emit_new_dup(class_index);
 
-            for (i, ((_field_name, field_type, is_erased), actual_type)) in
+            for (i, (f, actual_type)) in
                 fields.iter().zip(param_jvm_types.iter().copied()).enumerate()
             {
                 self.load_bridge_arg(i as u16, actual_type);
-                if *is_erased {
+                if f.is_erased {
                     self.builder.box_if_needed(actual_type);
                 } else if matches!(
-                    (field_type, actual_type),
+                    (f.jvm_type, actual_type),
                     (JvmType::StructRef(a), JvmType::StructRef(b))
-                    if *a == self.builder.refs.object_class || b == self.builder.refs.object_class
+                    if a == self.builder.refs.object_class || b == self.builder.refs.object_class
                 ) {
                     // Erased generic (Object) is compatible with any concrete StructRef
-                } else if *field_type != actual_type {
+                } else if f.jvm_type != actual_type {
                     return Err(CodegenError::TypeError(format!(
-                        "variant reference `{name}` expected bridge arg type {field_type:?}, got {actual_type:?}"
+                        "variant reference `{name}` expected bridge arg type {:?}, got {actual_type:?}", f.jvm_type
                     ), None));
                 }
             }
 
             self.builder.emit(Instruction::Invokespecial(constructor_ref));
-            for (_field_name, actual_type, is_erased) in fields.iter().rev() {
-                if *is_erased {
+            for f in fields.iter().rev() {
+                if f.is_erased {
                     self.builder.frame.pop_type();
                 } else {
-                    self.builder.pop_jvm_type(*actual_type);
+                    self.builder.pop_jvm_type(f.jvm_type);
                 }
             }
             self.builder.frame.pop_type();

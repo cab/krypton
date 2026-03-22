@@ -382,7 +382,7 @@ impl Compiler {
                         if matches!(sub_pat, TypedPattern::Wildcard { .. }) {
                             continue;
                         }
-                        let (_fname, field_jvm_type, is_erased) = &fields[j];
+                        let f = &fields[j];
                         let field_ref = field_refs[j];
 
                         self.builder.emit(Instruction::Aload(cast_slot as u8));
@@ -391,12 +391,12 @@ impl Compiler {
                         });
                         self.builder.emit(Instruction::Getfield(field_ref));
                         self.builder.frame.pop_type();
-                        if *is_erased {
+                        if f.is_erased {
                             self.builder.frame.push_type(VerificationType::Object {
                                 cpool_index: self.builder.refs.string_class,
                             });
                         } else {
-                            self.builder.push_jvm_type(*field_jvm_type);
+                            self.builder.push_jvm_type(f.jvm_type);
                         }
 
                         match sub_pat {
@@ -407,14 +407,14 @@ impl Compiler {
                             } => {
                                 // For erased fields, resolve actual type from the pattern
                                 // variable's typechecker type and emit cast/unbox.
-                                let actual_type = if *is_erased {
+                                let actual_type = if f.is_erased {
                                     self.type_to_jvm(var_tc_type)
                                         .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
                                 } else {
-                                    *field_jvm_type
+                                    f.jvm_type
                                 };
 
-                                if *is_erased {
+                                if f.is_erased {
                                     match actual_type {
                                         JvmType::StructRef(class_idx)
                                             if class_idx != self.builder.refs.object_class =>
@@ -472,10 +472,10 @@ impl Compiler {
                             }
                             TypedPattern::Constructor { .. } => {
                                 // Nested constructor: store in local, recurse with same mode
-                                let nested_type = if *is_erased {
+                                let nested_type = if f.is_erased {
                                     JvmType::StructRef(self.get_pattern_class_index(sub_pat)?)
                                 } else {
-                                    *field_jvm_type
+                                    f.jvm_type
                                 };
                                 let nested_slot = self.builder.next_local;
                                 self.builder.next_local += 1;

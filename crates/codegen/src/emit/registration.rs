@@ -24,7 +24,7 @@ use super::trait_class_gen::{
     generate_parameterized_instance_class,
 };
 use super::compiler::{
-    Compiler, CodegenError, JvmType, FunctionInfo, StructInfo, VariantInfo, SumTypeInfo,
+    Compiler, CodegenError, JvmType, FunctionInfo, StructInfo, VariantField, VariantInfo, SumTypeInfo,
     TraitDispatchInfo, DictRequirement, InstanceSingletonInfo, ParameterizedInstanceInfo, VecInfo,
 };
 use super::intrinsics;
@@ -96,7 +96,8 @@ impl Compiler {
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         let empty_map = HashMap::new();
-        for (struct_name, _type_params, ast_fields) in &typed_module.struct_decls {
+        for struct_decl in &typed_module.struct_decls {
+            let (struct_name, ast_fields) = (&struct_decl.name, &struct_decl.fields);
             let qualified = qualify_type_for(typed_module, struct_name);
 
             let type_param_map = struct_type_param_maps.get(struct_name).unwrap_or(&empty_map);
@@ -157,7 +158,8 @@ impl Compiler {
         typed_module: &TypedModule,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
-        for (sum_name, type_params, variants) in &typed_module.sum_decls {
+        for sum_decl in &typed_module.sum_decls {
+            let (sum_name, type_params, variants) = (&sum_decl.name, &sum_decl.type_params, &sum_decl.variants);
             let qualified_sum = qualify_type_for(typed_module, sum_name);
 
             // Check if this sum type is imported from another module
@@ -173,19 +175,19 @@ impl Compiler {
             let variant_names: Vec<String> = variants.iter().map(|v| format!("{}${}", qualified_sum, v.name)).collect();
 
             for variant in variants {
-                let fields: Vec<(String, JvmType, bool)> = variant
+                let fields: Vec<VariantField> = variant
                     .fields
                     .iter()
                     .enumerate()
                     .map(|(i, texpr)| {
-                        let field_name = format!("field{i}");
+                        let name = format!("field{i}");
                         let is_erased = type_expr_uses_type_params(texpr, type_params);
-                        let jt = if is_erased {
+                        let jvm_type = if is_erased {
                             JvmType::StructRef(self.builder.refs.object_class)
                         } else {
                             type_expr_to_jvm_basic(texpr, self)?
                         };
-                        Ok((field_name, jt, is_erased))
+                        Ok(VariantField { name, jvm_type, is_erased })
                     })
                     .collect::<Result<_, CodegenError>>()?;
 
@@ -197,11 +199,11 @@ impl Compiler {
                     .insert(variant_class_index, variant_desc);
 
                 let mut ctor_desc = String::from("(");
-                for (_, jt, is_erased) in &fields {
-                    if *is_erased {
+                for f in &fields {
+                    if f.is_erased {
                         ctor_desc.push_str("Ljava/lang/Object;");
                     } else {
-                        ctor_desc.push_str(&self.types.jvm_type_descriptor(*jt));
+                        ctor_desc.push_str(&self.types.jvm_type_descriptor(f.jvm_type));
                     }
                 }
                 ctor_desc.push_str(")V");
@@ -213,13 +215,13 @@ impl Compiler {
                 )?;
 
                 let mut main_field_refs = Vec::new();
-                for (fname, jt, is_erased) in &fields {
-                    let fdesc = if *is_erased {
+                for f in &fields {
+                    let fdesc = if f.is_erased {
                         "Ljava/lang/Object;".to_string()
                     } else {
-                        self.types.jvm_type_descriptor(*jt)
+                        self.types.jvm_type_descriptor(f.jvm_type)
                     };
-                    let fr = self.cp.add_field_ref(variant_class_index, fname, &fdesc)?;
+                    let fr = self.cp.add_field_ref(variant_class_index, &f.name, &fdesc)?;
                     main_field_refs.push(fr);
                 }
 

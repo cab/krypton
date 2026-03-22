@@ -159,11 +159,19 @@ pub(super) struct StructInfo {
     pub(super) accessor_refs: HashMap<String, u16>,
 }
 
+/// A single field in a sum-type variant.
+#[derive(Clone)]
+pub(super) struct VariantField {
+    pub(super) name: String,
+    pub(super) jvm_type: JvmType,
+    pub(super) is_erased: bool,
+}
+
 /// Info about a single variant of a sum type.
 pub(super) struct VariantInfo {
     pub(super) class_index: u16,
     pub(super) class_name: String,
-    pub(super) fields: Vec<(String, JvmType, bool)>, // (name, jvm_type, is_erased)
+    pub(super) fields: Vec<VariantField>,
     pub(super) constructor_ref: u16,
     pub(super) field_refs: Vec<u16>, // field ref indices in main cpool
     pub(super) singleton_field_ref: Option<u16>, // Some(field_ref) for nullary variants

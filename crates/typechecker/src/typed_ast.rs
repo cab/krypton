@@ -316,6 +316,18 @@ impl TypedPattern {
     }
 }
 
+pub struct StructDecl {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub fields: Vec<(String, TypeExpr)>,
+}
+
+pub struct SumDecl {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub variants: Vec<Variant>,
+}
+
 pub struct TypedModule {
     pub module_path: Option<String>,
     pub fn_types: Vec<FnTypeEntry>,
@@ -333,8 +345,8 @@ pub struct TypedModule {
     /// Extern java type bindings: (krypton_name, java_class_dotted).
     pub extern_java_types: Vec<(String, String)>,
     pub imported_extern_java_types: Vec<(String, String)>,
-    pub struct_decls: Vec<(String, Vec<String>, Vec<(String, TypeExpr)>)>,
-    pub sum_decls: Vec<(String, Vec<String>, Vec<Variant>)>,
+    pub struct_decls: Vec<StructDecl>,
+    pub sum_decls: Vec<SumDecl>,
     /// Maps type_name → source_module_path for types originating from other modules.
     /// Used by codegen to qualify type class names (e.g., `core/list/List`).
     pub type_provenance: HashMap<String, String>,

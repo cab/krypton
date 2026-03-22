@@ -9,6 +9,12 @@ use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeE
 
 use super::QualifiedModuleBinding;
 
+struct OverloadOption {
+    scheme: TypeScheme,
+    origin: Option<TraitId>,
+    module: String,
+}
+
 pub(crate) struct InferenceContext<'a> {
     pub(super) env: &'a mut TypeEnv,
     pub(super) subst: &'a mut Substitution,
@@ -92,18 +98,22 @@ impl<'a> InferenceContext<'a> {
     /// Returns empty if fewer than 2 distinct modules provide the name (no overload).
     /// Prelude entries are excluded: if the user explicitly imports a name that the prelude
     /// also provides, that's a shadow, not an overload.
-    fn find_overloaded_candidates(&self, name: &str) -> Vec<(TypeScheme, Option<TraitId>, String)> {
+    fn find_overloaded_candidates(&self, name: &str) -> Vec<OverloadOption> {
         let all: Vec<_> = self.imported_fn_types
             .iter()
             .filter(|f| f.name == name)
-            .map(|f| (f.scheme.clone(), f.origin.clone(), f.source_module.clone()))
+            .map(|f| OverloadOption {
+                scheme: f.scheme.clone(),
+                origin: f.origin.clone(),
+                module: f.source_module.clone(),
+            })
             .collect();
         // Deduplicate by module — only flag overload if distinct modules
         let mut seen_modules = HashSet::new();
         let mut candidates = Vec::new();
-        for (scheme, origin, module) in all {
-            if seen_modules.insert(module.clone()) {
-                candidates.push((scheme, origin, module));
+        for opt in all {
+            if seen_modules.insert(opt.module.clone()) {
+                candidates.push(opt);
             }
         }
         if candidates.len() > 1 {
@@ -550,13 +560,13 @@ impl<'a> InferenceContext<'a> {
             return None;
         }
         // All candidates are trait methods → let typeclass dispatch handle it
-        let all_trait_methods = candidates.iter().all(|(_, origin, _)| origin.is_some());
+        let all_trait_methods = candidates.iter().all(|c| c.origin.is_some());
         if all_trait_methods {
             return None;
         }
         if !is_ufcs {
             // Prefix call with ambiguous name → error
-            let modules: Vec<String> = candidates.into_iter().map(|(_, _, m)| m).collect();
+            let modules: Vec<String> = candidates.into_iter().map(|c| c.module).collect();
             return Some(Err(super::spanned(
                 TypeError::AmbiguousCall {
                     name: name.clone(),
@@ -572,42 +582,54 @@ impl<'a> InferenceContext<'a> {
         };
         let recv_ty = self.subst.apply(&recv_typed.ty);
 
-        let mut matches_found: Vec<(usize, Substitution, Type, Option<TraitId>, String)> = Vec::new();
-        for (i, (scheme, origin, module)) in candidates.iter().enumerate() {
+        struct OverloadCandidate {
+            subst: Substitution,
+            func_type: Type,
+            origin: Option<TraitId>,
+            module: String,
+        }
+
+        let mut matches_found: Vec<OverloadCandidate> = Vec::new();
+        for candidate in candidates.iter() {
             let mut trial_subst = self.subst.clone();
-            let trial_ty = scheme.instantiate(&mut || self.gen.fresh());
+            let trial_ty = candidate.scheme.instantiate(&mut || self.gen.fresh());
             if let Type::Fn(params, _) = &trial_ty {
                 if let Some(first_param) = params.first() {
                     if unify(first_param, &recv_ty, &mut trial_subst).is_ok() {
-                        matches_found.push((i, trial_subst, trial_ty, origin.clone(), module.clone()));
+                        matches_found.push(OverloadCandidate {
+                            subst: trial_subst,
+                            func_type: trial_ty,
+                            origin: candidate.origin.clone(),
+                            module: candidate.module.clone(),
+                        });
                     }
                 }
             }
         }
 
         if matches_found.len() == 1 {
-            let (_, winning_subst, func_ty, origin, _) = matches_found.remove(0);
-            if origin.is_some() {
+            let winner = matches_found.remove(0);
+            if winner.origin.is_some() {
                 // Single match is a trait method → fall through to general path
                 return None;
             }
             // Single free function match: use this candidate
-            *self.subst = winning_subst;
+            *self.subst = winner.subst;
             let func_typed = TypedExpr {
                 kind: TypedExprKind::Var(name.clone()),
-                ty: func_ty.clone(),
+                ty: winner.func_type.clone(),
                 span,
                 origin: None,
             };
             return Some(self.infer_call_args_and_unify(
                 func_typed,
-                &func_ty,
+                &winner.func_type,
                 args,
                 false,
                 span,
             ));
         } else if matches_found.len() > 1 {
-            let modules: Vec<String> = matches_found.into_iter().map(|(_, _, _, _, m)| m).collect();
+            let modules: Vec<String> = matches_found.into_iter().map(|c| c.module).collect();
             return Some(Err(super::spanned(
                 TypeError::AmbiguousCall {
                     name: name.clone(),
@@ -863,7 +885,7 @@ impl<'a> InferenceContext<'a> {
                     // Check for ambiguous overloaded name (bare reference)
                     let candidates = self.find_overloaded_candidates(name);
                     if candidates.len() > 1 {
-                        let modules: Vec<String> = candidates.iter().map(|(_, _, m)| m.clone()).collect();
+                        let modules: Vec<String> = candidates.iter().map(|c| c.module.clone()).collect();
                         return Err(super::spanned(
                             TypeError::AmbiguousCall {
                                 name: name.clone(),

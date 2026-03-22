@@ -206,7 +206,8 @@ pub fn compile_modules(
     // Detect collisions when two different library modules define the same bare name.
     let mut global_sum_types: HashMap<String, String> = HashMap::new();
     for module in typed_modules {
-        for (sum_name, _, _) in &module.sum_decls {
+        for sum_decl in &module.sum_decls {
+            let sum_name = &sum_decl.name;
             let qualified = qualify_type_for(module, sum_name);
             match global_sum_types.entry(sum_name.clone()) {
                 std::collections::hash_map::Entry::Occupied(e) => {
@@ -277,7 +278,8 @@ fn compile_module_inner(
     let mut field_type_registry = type_registry::TypeRegistry::new();
     field_type_registry.register_builtins(&mut TypeVarGen::new());
     let mut struct_type_param_maps: HashMap<String, HashMap<String, krypton_typechecker::types::TypeVarId>> = HashMap::new();
-    for (struct_name, type_params, ast_fields) in &typed_module.struct_decls {
+    for struct_decl in &typed_module.struct_decls {
+        let (struct_name, type_params, ast_fields) = (&struct_decl.name, &struct_decl.type_params, &struct_decl.fields);
         // Build type param map so parameterized records (e.g., Predicate[a, b])
         // can resolve their field types
         let mut gen = TypeVarGen::new();

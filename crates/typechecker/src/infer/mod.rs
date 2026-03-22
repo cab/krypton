@@ -9,8 +9,8 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, TraitId,
-    TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, StructDecl,
+    SumDecl, TraitId, TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
@@ -1525,20 +1525,28 @@ impl ModuleInferenceState {
             .iter()
             .filter_map(|decl| match decl {
                 Decl::DefType(td) => match &td.kind {
-                    TypeDeclKind::Record { fields } => Some((td.name.clone(), td.type_params.clone(), fields.clone())),
+                    TypeDeclKind::Record { fields } => Some(StructDecl {
+                        name: td.name.clone(),
+                        type_params: td.type_params.clone(),
+                        fields: fields.clone(),
+                    }),
                     _ => None,
                 },
                 _ => None,
             })
             .collect();
 
-        let mut sum_decls: Vec<(String, Vec<String>, Vec<Variant>)> = module
+        let mut sum_decls: Vec<SumDecl> = module
             .decls
             .iter()
             .filter_map(|decl| match decl {
                 Decl::DefType(td) => match &td.kind {
                     TypeDeclKind::Sum { variants } => {
-                        Some((td.name.clone(), td.type_params.clone(), variants.clone()))
+                        Some(SumDecl {
+                            name: td.name.clone(),
+                            type_params: td.type_params.clone(),
+                            variants: variants.clone(),
+                        })
                     }
                     _ => None,
                 },
@@ -1548,7 +1556,7 @@ impl ModuleInferenceState {
 
         {
             let existing_type_names: HashSet<String> =
-                sum_decls.iter().map(|(n, _, _)| n.clone()).collect();
+                sum_decls.iter().map(|d| d.name.clone()).collect();
             for (type_name, (source_path, vis)) in &self.imports.imported_type_info {
                 if existing_type_names.contains(type_name) || !matches!(vis, Visibility::Pub) {
                     continue;
@@ -1560,7 +1568,11 @@ impl ModuleInferenceState {
                             for v in variants {
                                 self.type_provenance.insert(v.name.clone(), source_path.clone());
                             }
-                            sum_decls.push((td.name.clone(), td.type_params.clone(), variants.clone()));
+                            sum_decls.push(SumDecl {
+                                name: td.name.clone(),
+                                type_params: td.type_params.clone(),
+                                variants: variants.clone(),
+                            });
                         }
                     }
                 }

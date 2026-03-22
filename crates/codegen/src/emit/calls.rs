@@ -6,7 +6,7 @@ use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
 use krypton_typechecker::types::{self, Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
-use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo};
+use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo, VariantField};
 
 /// Resolved calling convention for a function application.
 pub(super) enum CallTarget {
@@ -20,7 +20,7 @@ pub(super) enum CallTarget {
         class_index: u16,
         constructor_ref: u16,
         interface_class_index: u16,
-        fields: Vec<(String, JvmType, bool)>, // (name, type, is_erased)
+        fields: Vec<VariantField>,
     },
     HigherOrder {
         slot: u16,
@@ -401,16 +401,15 @@ impl Compiler {
                 self.builder.emit_new_dup(class_index);
                 for (i, arg) in args.iter().enumerate() {
                     let arg_type = self.compile_expr(arg, false)?;
-                    let (_fname, _field_jvm_type, is_erased) = &fields[i];
-                    if *is_erased {
+                    if fields[i].is_erased {
                         self.builder.box_if_needed(arg_type);
                     }
                 }
-                for (_, ft, is_erased) in &fields {
-                    if *is_erased {
+                for f in &fields {
+                    if f.is_erased {
                         self.builder.frame.pop_type(); // Object ref
                     } else {
-                        self.builder.pop_jvm_type(*ft);
+                        self.builder.pop_jvm_type(f.jvm_type);
                     }
                 }
                 self.builder.frame.pop_type(); // dup'd uninit

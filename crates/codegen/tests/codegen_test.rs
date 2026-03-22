@@ -3,8 +3,9 @@ use krypton_parser::ast::{BinOp, Lit, TypeConstraint, TypeExpr, Variant, Visibil
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
-    AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, TraitDefInfo, TraitId,
-    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, SumDecl,
+    TraitDefInfo, TraitId, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule,
+    TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
 
@@ -407,10 +408,10 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         extern_java_types: vec![],
         imported_extern_java_types: vec![],
         struct_decls: vec![],
-        sum_decls: vec![(
-            "Wrap".to_string(),
-            vec!["a".to_string()],
-            vec![
+        sum_decls: vec![SumDecl {
+            name: "Wrap".to_string(),
+            type_params: vec!["a".to_string()],
+            variants: vec![
                 Variant {
                     name: "Wrap".to_string(),
                     fields: vec![TypeExpr::Var {
@@ -425,7 +426,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                     span: (0, 0),
                 },
             ],
-        )],
+        }],
         type_provenance: HashMap::new(),
         type_visibility: HashMap::new(),
         reexported_fn_types: vec![],
