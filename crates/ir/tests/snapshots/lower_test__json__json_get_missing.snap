@@ -1,0 +1,28 @@
+---
+source: crates/ir/tests/lower_test.rs
+assertion_line: 67
+expression: ir_module.to_string()
+---
+module json__json_get_missing
+
+declare json_get: (Json, String) -> Option[Json]
+declare json_object: (List[(String, Json)]) -> Json
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(1.0)
+  let v2: (~String, ~Json) = tuple("a", v1)
+  let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
+  let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v0: Json = call json_object(v4)
+  let v5: Option[Json] = call json_get(v0, "missing")
+  switch v5 {
+    1 ->
+      let v6: Dict = get_dict Show[String]
+      let v7: Unit = call println(v6, "None")
+      v7
+    0 (v8: b) ->
+      let v9: Dict = get_dict Show[String]
+      let v10: Unit = call println(v9, "FAIL")
+      v10
+  }

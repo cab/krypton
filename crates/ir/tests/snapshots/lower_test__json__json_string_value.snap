@@ -1,0 +1,37 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__json_string_value
+
+declare json_get: (Json, String) -> Option[Json]
+declare parse_json: (String) -> Result[String, Json]
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v0: Result[String, Json] = call parse_json("{"name":"alice"}")
+  switch v0 {
+    0 (v1: c) ->
+      let v2: Option[Json] = call json_get(v1, "name")
+      switch v2 {
+        0 (v3: a) ->
+          switch v3 {
+            3 (v4: String) ->
+              let v5: Dict = get_dict Show[String]
+              let v6: Unit = call println(v5, v4)
+              v6
+            _ ->
+              let v7: Dict = get_dict Show[String]
+              let v8: Unit = call println(v7, "FAIL get")
+              v8
+          }
+        _ ->
+          let v9: Dict = get_dict Show[String]
+          let v10: Unit = call println(v9, "FAIL get")
+          v10
+      }
+    1 (v11: b) ->
+      let v12: Dict = get_dict Show[String]
+      let v13: Unit = call println(v12, v11)
+      v13
+  }

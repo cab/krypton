@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__match_nested
+
+type List[a] = Cons#0(a, List[a]) | Nil#1
+
+fn sum_first_two(v0: List[Int]) -> Int =
+  switch v0 {
+    0 (v1: a, v2: List[a]) ->
+      switch v2 {
+        0 (v3: a, v4: List[a]) ->
+          let v5: Int = add_int(v1, v3)
+          v5
+        _ ->
+          0
+      }
+    _ ->
+      0
+  }

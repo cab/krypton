@@ -1,0 +1,27 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module tuples__tuple8
+
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: (~Int, ~Int, ~Int, ~Int, ~Int, ~Int, ~Int, ~Int) = tuple(1, 2, 3, 4, 5, 6, 7, 8)
+  let v1: Int = tuple_project v0.0
+  let v2: Int = tuple_project v0.1
+  let v3: Int = tuple_project v0.2
+  let v4: Int = tuple_project v0.3
+  let v5: Int = tuple_project v0.4
+  let v6: Int = tuple_project v0.5
+  let v7: Int = tuple_project v0.6
+  let v8: Int = tuple_project v0.7
+  let v9: Int = add_int(v1, v2)
+  let v10: Int = add_int(v9, v3)
+  let v11: Int = add_int(v10, v4)
+  let v12: Int = add_int(v11, v5)
+  let v13: Int = add_int(v12, v6)
+  let v14: Int = add_int(v13, v7)
+  let v15: Int = add_int(v14, v8)
+  let v16: Unit = call println(v15)
+  v16

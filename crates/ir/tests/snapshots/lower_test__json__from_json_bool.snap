@@ -1,0 +1,23 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__from_json_bool
+
+declare from_json: (Dict, Json) -> Result[String, j14]
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JBool#1(true)
+  let v2: Dict = get_dict FromJson[Bool]
+  let v0: Result[String, Bool] = call from_json(v2, v1)
+  switch v0 {
+    0 (v3: b) ->
+      let v4: Dict = get_dict Show[Bool]
+      let v5: Unit = call println(v4, v3)
+      v5
+    1 (v6: a) ->
+      let v7: Dict = get_dict Show[String]
+      let v8: Unit = call println(v7, v6)
+      v8
+  }

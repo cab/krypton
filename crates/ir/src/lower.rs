@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
 use krypton_typechecker::typed_ast::{
-    ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr, TypedExprKind, TypedFnDecl, TypedModule,
+    ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm,
+    TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -57,6 +58,53 @@ struct ParamInstanceInfo {
     target_type: Type,
     type_var_ids: HashMap<String, TypeVarId>,
     constraints: Vec<(String, String)>, // (trait_name, type_var_name)
+}
+
+// ---------------------------------------------------------------------------
+// Pattern match compilation types
+// ---------------------------------------------------------------------------
+
+/// A clause in the pattern matrix: a row of patterns + the RHS body.
+struct Clause {
+    patterns: Vec<TypedPattern>,
+    body: TypedExpr,
+}
+
+/// What kind of head constructors appear in a column.
+enum ColumnKind {
+    Constructor,
+    Literal,
+    Tuple(usize),
+    Struct(String),
+}
+
+/// Check if a pattern is a wildcard or variable (always matches).
+fn is_wildcard_or_var(pat: &TypedPattern) -> bool {
+    matches!(pat, TypedPattern::Wildcard { .. } | TypedPattern::Var { .. })
+}
+
+/// Get the type annotation from a pattern.
+fn pattern_type(pat: &TypedPattern) -> Type {
+    match pat {
+        TypedPattern::Wildcard { ty, .. }
+        | TypedPattern::Var { ty, .. }
+        | TypedPattern::Constructor { ty, .. }
+        | TypedPattern::Lit { ty, .. }
+        | TypedPattern::Tuple { ty, .. }
+        | TypedPattern::StructPat { ty, .. } => ty.clone(),
+    }
+}
+
+/// Compare two Lit values for equality.
+fn lit_eq(a: &Lit, b: &Lit) -> bool {
+    match (a, b) {
+        (Lit::Int(x), Lit::Int(y)) => x == y,
+        (Lit::Float(x), Lit::Float(y)) => x == y,
+        (Lit::Bool(x), Lit::Bool(y)) => x == y,
+        (Lit::String(x), Lit::String(y)) => x == y,
+        (Lit::Unit, Lit::Unit) => true,
+        _ => false,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -606,17 +654,19 @@ impl LowerCtx {
             TypedExprKind::Lambda { params, body } => {
                 self.lower_lambda(params, body, &expr.ty)
             }
-            TypedExprKind::Match { .. } => {
-                Err(LowerError::NotYetLowered("Match".to_string()))
+            TypedExprKind::Match { .. }
+            | TypedExprKind::LetPattern { .. } => {
+                // These are compound expressions — must go through lower_expr
+                Err(LowerError::InternalError(format!(
+                    "lower_to_simple called on compound expr {:?}",
+                    std::mem::discriminant(&expr.kind)
+                )))
             }
             TypedExprKind::Recur(_) => {
                 Err(LowerError::NotYetLowered("Recur".to_string()))
             }
             TypedExprKind::QuestionMark { .. } => {
                 Err(LowerError::NotYetLowered("QuestionMark".to_string()))
-            }
-            TypedExprKind::LetPattern { .. } => {
-                Err(LowerError::NotYetLowered("LetPattern".to_string()))
             }
             TypedExprKind::VecLit(_) => {
                 Err(LowerError::NotYetLowered("VecLit".to_string()))
@@ -909,17 +959,23 @@ impl LowerCtx {
                 };
                 Ok(Self::wrap_bindings(all_bindings, inner))
             }
-            TypedExprKind::Match { .. } => {
-                Err(LowerError::NotYetLowered("Match".to_string()))
+            TypedExprKind::Match { scrutinee, arms } => {
+                self.lower_match(scrutinee, arms, &expr.ty)
             }
+
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body,
+            } => {
+                self.lower_let_pattern(pattern, value, body.as_deref(), &expr.ty)
+            }
+
             TypedExprKind::Recur(_) => {
                 Err(LowerError::NotYetLowered("Recur".to_string()))
             }
             TypedExprKind::QuestionMark { .. } => {
                 Err(LowerError::NotYetLowered("QuestionMark".to_string()))
-            }
-            TypedExprKind::LetPattern { .. } => {
-                Err(LowerError::NotYetLowered("LetPattern".to_string()))
             }
             TypedExprKind::VecLit(_) => {
                 Err(LowerError::NotYetLowered("VecLit".to_string()))
@@ -944,6 +1000,8 @@ impl LowerCtx {
             | TypedExprKind::If { .. }
             | TypedExprKind::Do(_)
             | TypedExprKind::Let { .. }
+            | TypedExprKind::Match { .. }
+            | TypedExprKind::LetPattern { .. }
             | TypedExprKind::StructUpdate { .. }
             | TypedExprKind::BinaryOp {
                 op: BinOp::And | BinOp::Or,
@@ -1064,6 +1122,681 @@ impl LowerCtx {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Pattern match compilation (clause-matrix algorithm)
+    // -----------------------------------------------------------------------
+
+    /// Lower a match expression into a Switch decision tree.
+    fn lower_match(
+        &mut self,
+        scrutinee: &TypedExpr,
+        arms: &[TypedMatchArm],
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        // ANF-normalize scrutinee to an atom
+        let (bindings, scrut_atom) = self.lower_to_atom(scrutinee)?;
+
+        // Convert arms to clauses (single-column pattern matrix)
+        let clauses: Vec<Clause> = arms
+            .iter()
+            .map(|arm| Clause {
+                patterns: vec![arm.pattern.clone()],
+                body: arm.body.clone(),
+            })
+            .collect();
+
+        let decision = self.compile_clauses(vec![scrut_atom], clauses, result_ty)?;
+        Ok(Self::wrap_bindings(bindings, decision))
+    }
+
+    /// Lower a let-pattern binding as an irrefutable single-arm match.
+    fn lower_let_pattern(
+        &mut self,
+        pattern: &TypedPattern,
+        value: &TypedExpr,
+        body: Option<&TypedExpr>,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        let (bindings, val_atom) = self.lower_to_atom(value)?;
+
+        let body_expr = if let Some(body) = body {
+            body.clone()
+        } else {
+            // LetPattern with no body: the value is the result
+            // This shouldn't normally happen; produce Unit
+            TypedExpr {
+                kind: TypedExprKind::Lit(Lit::Unit),
+                ty: Type::Unit,
+                span: (0, 0),
+                origin: None,
+            }
+        };
+
+        let clause = Clause {
+            patterns: vec![pattern.clone()],
+            body: body_expr,
+        };
+
+        let decision = self.compile_clauses(vec![val_atom], vec![clause], result_ty)?;
+        Ok(Self::wrap_bindings(bindings, decision))
+    }
+
+    /// Core clause-matrix compilation.
+    ///
+    /// `scrutinees` - atoms to match against (one per column)
+    /// `clauses` - rows of patterns + body
+    /// `result_ty` - type of the overall match expression
+    fn compile_clauses(
+        &mut self,
+        scrutinees: Vec<Atom>,
+        clauses: Vec<Clause>,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        // Base case: no clauses — unreachable (typechecker ensures exhaustiveness)
+        if clauses.is_empty() {
+            // Emit a unit atom as a placeholder for unreachable code
+            return Ok(Expr {
+                kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
+                ty: result_ty.clone(),
+            });
+        }
+
+        // Base case: first row is all wildcards/vars — it matches
+        if clauses[0].patterns.iter().all(is_wildcard_or_var) {
+            return self.bind_and_lower_body(&scrutinees, &clauses[0]);
+        }
+
+        // Pick the first column with a non-wildcard pattern
+        let col = self.pick_column(&clauses);
+
+        // Determine what kind of head constructors appear in this column
+        let head_kind = self.classify_column(&clauses, col);
+
+        match head_kind {
+            ColumnKind::Constructor => self.compile_constructor_column(&scrutinees, clauses, col, result_ty),
+            ColumnKind::Literal => self.compile_literal_column(&scrutinees, clauses, col, result_ty),
+            ColumnKind::Tuple(arity) => self.compile_tuple_column(&scrutinees, clauses, col, result_ty, arity),
+            ColumnKind::Struct(name) => self.compile_struct_column(&scrutinees, clauses, col, result_ty, &name),
+        }
+    }
+
+    /// Bind variables from an all-wildcard/var row, then lower the body.
+    fn bind_and_lower_body(
+        &mut self,
+        scrutinees: &[Atom],
+        clause: &Clause,
+    ) -> Result<Expr, LowerError> {
+        // Push variable bindings: map pattern var names directly to scrutinee VarIds
+        let mut bound_names = Vec::new();
+        for (pat, scrut) in clause.patterns.iter().zip(scrutinees.iter()) {
+            if let TypedPattern::Var { name, ty, .. } = pat {
+                match scrut {
+                    Atom::Var(scrut_id) => {
+                        // Alias: reuse the scrutinee's VarId for this pattern variable
+                        self.var_types.insert(*scrut_id, ty.clone());
+                        self.push_var(name, *scrut_id);
+                        bound_names.push(name.clone());
+                    }
+                    Atom::Lit(_) => {
+                        // Literal scrutinee — need a fresh var bound to the literal
+                        let var = self.fresh_var();
+                        self.var_types.insert(var, ty.clone());
+                        self.push_var(name, var);
+                        bound_names.push(name.clone());
+                    }
+                }
+            }
+        }
+
+        let body_expr = self.lower_expr(&clause.body)?;
+
+        // Pop variable bindings
+        for name in bound_names.iter().rev() {
+            self.pop_var(name);
+        }
+
+        Ok(body_expr)
+    }
+
+    /// Pick the first column that has a non-wildcard/var pattern.
+    fn pick_column(&self, clauses: &[Clause]) -> usize {
+        let ncols = clauses[0].patterns.len();
+        for col in 0..ncols {
+            for clause in clauses {
+                if !is_wildcard_or_var(&clause.patterns[col]) {
+                    return col;
+                }
+            }
+        }
+        0 // fallback (shouldn't happen — handled by all-wildcards base case)
+    }
+
+    /// Classify what kind of patterns appear in a column.
+    fn classify_column(&self, clauses: &[Clause], col: usize) -> ColumnKind {
+        for clause in clauses {
+            match &clause.patterns[col] {
+                TypedPattern::Constructor { .. } => return ColumnKind::Constructor,
+                TypedPattern::Lit { .. } => return ColumnKind::Literal,
+                TypedPattern::Tuple { elements, .. } => return ColumnKind::Tuple(elements.len()),
+                TypedPattern::StructPat { name, .. } => return ColumnKind::Struct(name.clone()),
+                TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => continue,
+            }
+        }
+        // All wildcards — shouldn't happen since we chose a non-wildcard column
+        ColumnKind::Constructor
+    }
+
+    /// Compile a column with constructor patterns into a Switch.
+    fn compile_constructor_column(
+        &mut self,
+        scrutinees: &[Atom],
+        clauses: Vec<Clause>,
+        col: usize,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        // Collect all constructor heads that appear
+        let mut seen_tags: Vec<(String, u32, Vec<Type>)> = Vec::new();
+        let mut seen_names: HashSet<String> = HashSet::new();
+        for clause in &clauses {
+            if let TypedPattern::Constructor { name, .. } = &clause.patterns[col] {
+                if seen_names.insert(name.clone()) {
+                    // Look up tag and field types from sum_variants
+                    if let Some((type_name, tag, field_types)) = self.sum_variants.get(name.as_str()).cloned() {
+                        let _ = type_name;
+                        seen_tags.push((name.clone(), tag, field_types));
+                    } else {
+                        return Err(LowerError::InternalError(format!(
+                            "unknown variant in pattern: {name}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        let scrut = scrutinees[col].clone();
+        let mut branches = Vec::new();
+
+        for (ctor_name, tag, field_types) in &seen_tags {
+            // Create fresh bindings for variant fields
+            let mut field_bindings = Vec::new();
+            let mut field_atoms = Vec::new();
+            for ft in field_types {
+                let v = self.fresh_var();
+                self.var_types.insert(v, ft.clone());
+                field_bindings.push((v, ft.clone()));
+                field_atoms.push(Atom::Var(v));
+            }
+
+            // Specialize the clause matrix for this constructor
+            let specialized = self.specialize_for_constructor(&clauses, col, ctor_name, field_types.len());
+
+            // Build new scrutinee list: replace col with field atoms
+            let mut new_scrutinees = Vec::new();
+            for (i, s) in scrutinees.iter().enumerate() {
+                if i == col {
+                    new_scrutinees.extend(field_atoms.clone());
+                } else {
+                    new_scrutinees.push(s.clone());
+                }
+            }
+
+            let body = self.compile_clauses(new_scrutinees, specialized, result_ty)?;
+
+            branches.push(SwitchBranch {
+                tag: *tag,
+                bindings: field_bindings,
+                body,
+            });
+        }
+
+        // Default matrix: rows with wildcard/var at col, remove that column
+        let default_clauses = self.default_matrix(&clauses, col);
+        let default = if default_clauses.is_empty() {
+            None
+        } else {
+            let mut new_scrutinees: Vec<Atom> = Vec::new();
+            for (i, s) in scrutinees.iter().enumerate() {
+                if i != col {
+                    new_scrutinees.push(s.clone());
+                }
+            }
+            Some(Box::new(self.compile_clauses(new_scrutinees, default_clauses, result_ty)?))
+        };
+
+        Ok(Expr {
+            ty: result_ty.clone(),
+            kind: ExprKind::Switch {
+                scrutinee: scrut,
+                branches,
+                default,
+            },
+        })
+    }
+
+    /// Compile a column with literal patterns into chained equality checks.
+    fn compile_literal_column(
+        &mut self,
+        scrutinees: &[Atom],
+        clauses: Vec<Clause>,
+        col: usize,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        let scrut = scrutinees[col].clone();
+
+        // Collect distinct literals
+        let mut lit_values: Vec<Lit> = Vec::new();
+        let mut seen_lits: HashSet<String> = HashSet::new();
+        for clause in &clauses {
+            if let TypedPattern::Lit { value, .. } = &clause.patterns[col] {
+                let key = format!("{value:?}");
+                if seen_lits.insert(key) {
+                    lit_values.push(value.clone());
+                }
+            }
+        }
+
+        // Build from the bottom up: start with default, then chain if-else for each literal
+        let default_clauses = self.default_matrix(&clauses, col);
+        let mut new_scrutinees_for_default: Vec<Atom> = Vec::new();
+        for (i, s) in scrutinees.iter().enumerate() {
+            if i != col {
+                new_scrutinees_for_default.push(s.clone());
+            }
+        }
+
+        let mut result = if default_clauses.is_empty() {
+            // Unreachable
+            Expr {
+                kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
+                ty: result_ty.clone(),
+            }
+        } else {
+            self.compile_clauses(new_scrutinees_for_default.clone(), default_clauses, result_ty)?
+        };
+
+        // Chain literals in reverse order so the first literal tested is the first one encountered
+        for lit in lit_values.iter().rev() {
+            let specialized = self.specialize_for_literal(&clauses, col, lit);
+            // Literals have no sub-patterns, so just remove the column
+            let mut new_scrutinees: Vec<Atom> = Vec::new();
+            for (i, s) in scrutinees.iter().enumerate() {
+                if i != col {
+                    new_scrutinees.push(s.clone());
+                }
+            }
+            let then_body = self.compile_clauses(new_scrutinees, specialized, result_ty)?;
+
+            // Emit: let eq = EqInt(scrut, lit_val) in switch eq { 1 -> then | _ -> else }
+            let eq_op = self.eq_op_for_lit(lit)?;
+            let lit_atom = Atom::Lit(convert_lit(lit));
+            let eq_var = self.fresh_var();
+
+            result = Expr {
+                ty: result_ty.clone(),
+                kind: ExprKind::Let {
+                    bind: eq_var,
+                    ty: Type::Bool,
+                    value: SimpleExpr::PrimOp {
+                        op: eq_op,
+                        args: vec![scrut.clone(), lit_atom],
+                    },
+                    body: Box::new(Expr {
+                        ty: result_ty.clone(),
+                        kind: ExprKind::Switch {
+                            scrutinee: Atom::Var(eq_var),
+                            branches: vec![SwitchBranch {
+                                tag: 1, // true
+                                bindings: vec![],
+                                body: then_body,
+                            }],
+                            default: Some(Box::new(result)),
+                        },
+                    }),
+                },
+            };
+        }
+
+        Ok(result)
+    }
+
+    /// Compile a column with tuple patterns — expand with projections, no Switch needed.
+    fn compile_tuple_column(
+        &mut self,
+        scrutinees: &[Atom],
+        clauses: Vec<Clause>,
+        col: usize,
+        result_ty: &Type,
+        arity: usize,
+    ) -> Result<Expr, LowerError> {
+        let scrut = scrutinees[col].clone();
+
+        // Project each element
+        let mut proj_vars = Vec::new();
+        let mut proj_bindings = Vec::new();
+        for i in 0..arity {
+            let elem_ty = self.tuple_element_type(&clauses, col, i);
+            let v = self.fresh_var();
+            self.var_types.insert(v, elem_ty.clone());
+            proj_bindings.push(LetBinding {
+                bind: v,
+                ty: elem_ty,
+                value: SimpleExpr::TupleProject {
+                    value: scrut.clone(),
+                    index: i,
+                },
+            });
+            proj_vars.push(Atom::Var(v));
+        }
+
+        // Expand columns: replace col with element sub-patterns
+        let expanded: Vec<Clause> = clauses
+            .into_iter()
+            .map(|c| self.expand_tuple_clause(c, col, arity))
+            .collect();
+
+        // Build new scrutinee list
+        let mut new_scrutinees = Vec::new();
+        for (i, s) in scrutinees.iter().enumerate() {
+            if i == col {
+                new_scrutinees.extend(proj_vars.clone());
+            } else {
+                new_scrutinees.push(s.clone());
+            }
+        }
+
+        let body = self.compile_clauses(new_scrutinees, expanded, result_ty)?;
+        Ok(Self::wrap_bindings(proj_bindings, body))
+    }
+
+    /// Compile a column with struct patterns — expand with field projections.
+    fn compile_struct_column(
+        &mut self,
+        scrutinees: &[Atom],
+        clauses: Vec<Clause>,
+        col: usize,
+        result_ty: &Type,
+        struct_name: &str,
+    ) -> Result<Expr, LowerError> {
+        let scrut = scrutinees[col].clone();
+
+        let canonical_fields = self
+            .struct_fields
+            .get(struct_name)
+            .ok_or_else(|| LowerError::UnresolvedStruct(struct_name.to_string()))?
+            .clone();
+
+        // Project each field
+        let mut proj_vars = Vec::new();
+        let mut proj_bindings = Vec::new();
+        for (i, (_, fty)) in canonical_fields.iter().enumerate() {
+            let v = self.fresh_var();
+            self.var_types.insert(v, fty.clone());
+            proj_bindings.push(LetBinding {
+                bind: v,
+                ty: fty.clone(),
+                value: SimpleExpr::Project {
+                    value: scrut.clone(),
+                    field_index: i,
+                },
+            });
+            proj_vars.push(Atom::Var(v));
+        }
+
+        // Expand columns: replace col with field sub-patterns in canonical order
+        let expanded: Vec<Clause> = clauses
+            .into_iter()
+            .map(|c| self.expand_struct_clause(c, col, &canonical_fields))
+            .collect();
+
+        let mut new_scrutinees = Vec::new();
+        for (i, s) in scrutinees.iter().enumerate() {
+            if i == col {
+                new_scrutinees.extend(proj_vars.clone());
+            } else {
+                new_scrutinees.push(s.clone());
+            }
+        }
+
+        let body = self.compile_clauses(new_scrutinees, expanded, result_ty)?;
+        Ok(Self::wrap_bindings(proj_bindings, body))
+    }
+
+    /// Specialize clause matrix for a given constructor.
+    fn specialize_for_constructor(
+        &self,
+        clauses: &[Clause],
+        col: usize,
+        ctor_name: &str,
+        arity: usize,
+    ) -> Vec<Clause> {
+        let mut result = Vec::new();
+        for clause in clauses {
+            match &clause.patterns[col] {
+                TypedPattern::Constructor { name, args, .. } if name == ctor_name => {
+                    // Replace column with sub-patterns
+                    let mut new_pats = Vec::new();
+                    for (i, p) in clause.patterns.iter().enumerate() {
+                        if i == col {
+                            new_pats.extend(args.clone());
+                        } else {
+                            new_pats.push(p.clone());
+                        }
+                    }
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                    });
+                }
+                TypedPattern::Wildcard { ty, span } => {
+                    // Expand wildcard to `arity` wildcards
+                    let mut new_pats = Vec::new();
+                    for (i, p) in clause.patterns.iter().enumerate() {
+                        if i == col {
+                            for _ in 0..arity {
+                                new_pats.push(TypedPattern::Wildcard {
+                                    ty: ty.clone(),
+                                    span: *span,
+                                });
+                            }
+                        } else {
+                            new_pats.push(p.clone());
+                        }
+                    }
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                    });
+                }
+                TypedPattern::Var { name: _, ty, span } => {
+                    // Treat as wildcard but we need to bind the original scrutinee
+                    // Since the var was for the whole value, not the sub-fields,
+                    // we keep it as wildcards in the expanded pattern.
+                    // The binding will happen at the base case.
+                    let mut new_pats = Vec::new();
+                    for (i, p) in clause.patterns.iter().enumerate() {
+                        if i == col {
+                            for _ in 0..arity {
+                                new_pats.push(TypedPattern::Wildcard {
+                                    ty: ty.clone(),
+                                    span: *span,
+                                });
+                            }
+                        } else {
+                            new_pats.push(p.clone());
+                        }
+                    }
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                    });
+                }
+                _ => {
+                    // Different constructor — skip this row
+                }
+            }
+        }
+        result
+    }
+
+    /// Specialize clause matrix for a given literal value.
+    fn specialize_for_literal(
+        &self,
+        clauses: &[Clause],
+        col: usize,
+        lit: &Lit,
+    ) -> Vec<Clause> {
+        let mut result = Vec::new();
+        for clause in clauses {
+            match &clause.patterns[col] {
+                TypedPattern::Lit { value, .. } if lit_eq(value, lit) => {
+                    // Literals have no sub-patterns; just remove the column
+                    let mut new_pats = Vec::new();
+                    for (i, p) in clause.patterns.iter().enumerate() {
+                        if i != col {
+                            new_pats.push(p.clone());
+                        }
+                    }
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                    });
+                }
+                TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => {
+                    let mut new_pats = Vec::new();
+                    for (i, p) in clause.patterns.iter().enumerate() {
+                        if i != col {
+                            new_pats.push(p.clone());
+                        }
+                    }
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+
+    /// Default matrix: keep rows with wildcard/var at col, remove that column.
+    fn default_matrix(&self, clauses: &[Clause], col: usize) -> Vec<Clause> {
+        let mut result = Vec::new();
+        for clause in clauses {
+            if is_wildcard_or_var(&clause.patterns[col]) {
+                let mut new_pats = Vec::new();
+                for (i, p) in clause.patterns.iter().enumerate() {
+                    if i != col {
+                        new_pats.push(p.clone());
+                    }
+                }
+                result.push(Clause {
+                    patterns: new_pats,
+                    body: clause.body.clone(),
+                });
+            }
+        }
+        result
+    }
+
+    /// Expand a clause's tuple pattern at `col` into element sub-patterns.
+    fn expand_tuple_clause(&self, clause: Clause, col: usize, arity: usize) -> Clause {
+        let mut new_pats = Vec::new();
+        for (i, p) in clause.patterns.into_iter().enumerate() {
+            if i == col {
+                match p {
+                    TypedPattern::Tuple { elements, .. } => {
+                        new_pats.extend(elements);
+                    }
+                    TypedPattern::Wildcard { ty, span } | TypedPattern::Var { ty, span, .. } => {
+                        for _ in 0..arity {
+                            new_pats.push(TypedPattern::Wildcard { ty: ty.clone(), span });
+                        }
+                    }
+                    _ => {
+                        // Shouldn't happen
+                        new_pats.push(p);
+                    }
+                }
+            } else {
+                new_pats.push(p);
+            }
+        }
+        Clause {
+            patterns: new_pats,
+            body: clause.body,
+        }
+    }
+
+    /// Expand a clause's struct pattern at `col` into field sub-patterns (canonical order).
+    fn expand_struct_clause(
+        &self,
+        clause: Clause,
+        col: usize,
+        canonical_fields: &[(String, Type)],
+    ) -> Clause {
+        let mut new_pats = Vec::new();
+        for (i, p) in clause.patterns.into_iter().enumerate() {
+            if i == col {
+                match p {
+                    TypedPattern::StructPat { fields, span, .. } => {
+                        let field_map: HashMap<String, TypedPattern> = fields.into_iter().collect();
+                        for (fname, fty) in canonical_fields {
+                            if let Some(fp) = field_map.get(fname) {
+                                new_pats.push(fp.clone());
+                            } else {
+                                new_pats.push(TypedPattern::Wildcard {
+                                    ty: fty.clone(),
+                                    span,
+                                });
+                            }
+                        }
+                    }
+                    TypedPattern::Wildcard { ty: _, span } | TypedPattern::Var { span, .. } => {
+                        for (_, fty) in canonical_fields {
+                            new_pats.push(TypedPattern::Wildcard {
+                                ty: fty.clone(),
+                                span,
+                            });
+                        }
+                    }
+                    _ => {
+                        new_pats.push(p);
+                    }
+                }
+            } else {
+                new_pats.push(p);
+            }
+        }
+        Clause {
+            patterns: new_pats,
+            body: clause.body,
+        }
+    }
+
+    /// Get the type of a tuple element from the patterns in a column.
+    fn tuple_element_type(&self, clauses: &[Clause], col: usize, index: usize) -> Type {
+        for clause in clauses {
+            if let TypedPattern::Tuple { elements, .. } = &clause.patterns[col] {
+                if let Some(elem) = elements.get(index) {
+                    return pattern_type(elem);
+                }
+            }
+        }
+        Type::Unit // fallback
+    }
+
+    /// Get the equality PrimOp for a literal pattern.
+    fn eq_op_for_lit(&self, lit: &Lit) -> Result<PrimOp, LowerError> {
+        match lit {
+            Lit::Int(_) => Ok(PrimOp::EqInt),
+            Lit::Float(_) => Ok(PrimOp::EqFloat),
+            Lit::Bool(_) => Ok(PrimOp::EqInt), // booleans compared as ints
+            Lit::String(_) => Ok(PrimOp::EqString),
+            Lit::Unit => Err(LowerError::UnsupportedOp("matching on Unit literal".to_string())),
+        }
+    }
+
     /// Lower a Do block (sequence of expressions).
     /// Processes left-to-right so Let bindings are in scope for subsequent exprs.
     fn lower_do(&mut self, exprs: &[TypedExpr], _result_ty: &Type) -> Result<Expr, LowerError> {
@@ -1113,6 +1846,28 @@ impl LowerCtx {
                     Ok(self.inline_compound_let(bind, value.ty.clone(), value_expr, body_expr))
                 }
             };
+        }
+
+        // Special case: LetPattern { body: None } in a Do block — the body is the rest
+        if let TypedExprKind::LetPattern {
+            pattern,
+            value,
+            body: None,
+        } = &expr.kind
+        {
+            let rest_ty = exprs.last().map(|e| e.ty.clone()).unwrap_or(Type::Unit);
+            // Synthesize a body that is the rest of the do block as a Do expr
+            let rest_body = if rest.len() == 1 {
+                rest[0].clone()
+            } else {
+                TypedExpr {
+                    kind: TypedExprKind::Do(rest.to_vec()),
+                    ty: rest_ty.clone(),
+                    span: rest[0].span,
+                    origin: None,
+                }
+            };
+            return self.lower_let_pattern(pattern, value, Some(&rest_body), &rest_ty);
         }
 
         // Non-let statement: lower as discarded binding, then continue with rest

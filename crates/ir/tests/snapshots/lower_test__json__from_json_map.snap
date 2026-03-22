@@ -1,0 +1,43 @@
+---
+source: crates/ir/tests/lower_test.rs
+assertion_line: 67
+expression: ir_module.to_string()
+---
+module json__from_json_map
+
+declare from_json: (Dict, Json) -> Result[String, j14]
+declare from_list: (Dict, Dict, List[(y12, z12)]) -> Map[y12, z12]
+declare get: (Dict, Dict, Map[l9, y9], l9) -> Option[y9]
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(42.0)
+  let v2: (~String, ~Json) = tuple("x", v1)
+  let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
+  let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v5: Dict = get_dict Eq[y12]
+  let v6: Dict = get_dict Hash[y12]
+  let v7: Map[String, Json] = call from_list(v5, v6, v4)
+  let v0: ~Json = construct Json::JObj#5(v7)
+  let v9: Dict = get_dict FromJson[Map[String, Int]]
+  let v8: Result[String, Map[String, Int]] = call from_json(v9, v0)
+  switch v8 {
+    0 (v10: c) ->
+      let v11: Dict = get_dict Eq[String]
+      let v12: Dict = get_dict Hash[String]
+      let v13: Option[Int] = call get(v11, v12, v10, "x")
+      switch v13 {
+        0 (v14: a) ->
+          let v15: Dict = get_dict Show[Int]
+          let v16: Unit = call println(v15, v14)
+          v16
+        1 ->
+          let v17: Dict = get_dict Show[String]
+          let v18: Unit = call println(v17, "missing")
+          v18
+      }
+    1 (v19: b) ->
+      let v20: Dict = get_dict Show[String]
+      let v21: Unit = call println(v20, v19)
+      v21
+  }

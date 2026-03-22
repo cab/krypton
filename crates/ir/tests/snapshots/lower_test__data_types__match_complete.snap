@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__match_complete
+
+type Option[a] = Some#0(a) | None#1
+
+fn test(v0: Option[Int]) -> Int =
+  switch v0 {
+    0 (v1: a) ->
+      v1
+    1 ->
+      0
+  }

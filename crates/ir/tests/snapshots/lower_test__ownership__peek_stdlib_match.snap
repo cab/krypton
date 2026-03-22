@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__peek_stdlib_match
+
+type Choice = A#0 | B#1
+declare peek: (h) -> h
+
+fn classify(v0: String) -> Choice =
+  let v1: ~Choice = construct Choice::A#0()
+  v1
+
+fn test(v2: ~String) -> String =
+  let_join v6(v5: ~Int) =
+    v2
+  in
+  let v3: String = call peek(v2)
+  let v4: Choice = call classify(v3)
+  switch v4 {
+    0 ->
+      jump v6(0)
+    1 ->
+      jump v6(0)
+  }

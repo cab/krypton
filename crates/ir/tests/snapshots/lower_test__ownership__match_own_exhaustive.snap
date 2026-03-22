@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__match_own_exhaustive
+
+type Color = Red#0 | Green#1 | Blue#2
+
+fn test(v0: ~Color) -> Int =
+  switch v0 {
+    0 ->
+      1
+    1 ->
+      2
+    2 ->
+      3
+  }

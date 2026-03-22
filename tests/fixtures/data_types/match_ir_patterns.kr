@@ -1,0 +1,37 @@
+# expect: ok
+type Option[a] = Some(a) | None
+
+fun simple_match(opt) = match opt {
+    Some(x) => x,
+    None => 0,
+}
+
+fun nested_match(opt) = match opt {
+    Some(Some(x)) => x,
+    Some(None) => -1,
+    None => 0,
+}
+
+fun wildcard_match(opt) = match opt {
+    Some(x) => x,
+    _ => 42,
+}
+
+fun literal_match(n) = match n {
+    0 => 100,
+    1 => 200,
+    _ => 300,
+}
+
+fun let_tuple() = {
+    let (a, b) = (1, 2)
+    a + b
+}
+
+fun match_as_value(opt) = {
+    let result = match opt {
+        Some(x) => x,
+        None => 0,
+    }
+    result + 1
+}

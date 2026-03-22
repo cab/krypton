@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module tuples__tuple_return
+
+declare println: (m) -> Unit
+
+fn make_pair() -> (Int, String) =
+  let v0: (~Int, ~String) = tuple(3, "hello")
+  v0
+
+fn main() -> Unit =
+  let v1: (Int, String) = call make_pair()
+  let v2: Int = tuple_project v1.0
+  let v3: String = tuple_project v1.1
+  let v4: Unit = call println(v2)
+  v4

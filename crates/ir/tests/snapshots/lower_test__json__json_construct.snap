@@ -1,0 +1,27 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__json_construct
+
+declare json_get: (Json, String) -> Option[Json]
+declare json_object: (List[(String, Json)]) -> Json
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JStr#3("val")
+  let v2: (~String, ~Json) = tuple("key", v1)
+  let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
+  let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v0: Json = call json_object(v4)
+  let v5: Option[Json] = call json_get(v0, "key")
+  switch v5 {
+    0 (v6: a) ->
+      let v7: Dict = get_dict Show[String]
+      let v8: Unit = call println(v7, "found")
+      v8
+    1 ->
+      let v9: Dict = get_dict Show[String]
+      let v10: Unit = call println(v9, "FAIL")
+      v10
+  }

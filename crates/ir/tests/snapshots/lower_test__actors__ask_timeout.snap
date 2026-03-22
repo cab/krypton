@@ -1,0 +1,32 @@
+---
+source: crates/ir/tests/lower_test.rs
+assertion_line: 67
+expression: ir_module.to_string()
+---
+module actors__ask_timeout
+
+type Msg = Get#0(Ref[Int])
+declare Get: (Ref[Int]) -> Msg
+declare ask: (Ref[j10], (Ref[k10]) -> j10, Int) -> Result[Timeout, k10]
+declare println: (m) -> Unit
+declare spawn: ((Mailbox[l8]) -> Unit) -> Ref[l8]
+
+fn dead_actor(v0: Mailbox[Msg]) -> Unit =
+  ()
+
+fn main() -> Unit =
+  let v2: (Mailbox[Msg]) -> Unit = make_closure(dead_actor, [])
+  let v1: Ref[Msg] = call spawn(v2)
+  let v3: (Ref[Int]) -> Msg = make_closure(Get, [])
+  let v4: Result[Timeout, Int] = call ask(v1, v3, 100)
+  switch v4 {
+    0 (v5: c) ->
+      let v6: Unit = call println(v5)
+      v6
+    1 (v7: b) ->
+      switch v7 {
+        0 ->
+          let v8: Unit = call println("timeout")
+          v8
+      }
+  }

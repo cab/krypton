@@ -1,0 +1,29 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__map_basic
+
+declare empty: () -> Map[n8, o8]
+declare get: (Dict, Dict, Map[l9, y9], l9) -> Option[y9]
+declare println: (Dict, m) -> Unit
+declare put: (Dict, Dict, Map[s8, t8], s8, t8) -> Map[s8, t8]
+
+fn main() -> Unit =
+  let v1: Map[String, Int] = call empty()
+  let v2: Dict = get_dict Eq[String]
+  let v3: Dict = get_dict Hash[String]
+  let v0: Map[String, Int] = call put(v2, v3, v1, "key", 42)
+  let v4: Dict = get_dict Eq[String]
+  let v5: Dict = get_dict Hash[String]
+  let v6: Option[Int] = call get(v4, v5, v0, "key")
+  switch v6 {
+    0 (v7: d) ->
+      let v8: Dict = get_dict Show[Int]
+      let v9: Unit = call println(v8, v7)
+      v9
+    1 ->
+      let v10: Dict = get_dict Show[Int]
+      let v11: Unit = call println(v10, 0)
+      v11
+  }

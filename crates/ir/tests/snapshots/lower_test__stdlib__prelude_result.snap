@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__prelude_result
+
+fn ok_val() -> Result[s7, Int] =
+  let v0: ~Result[s7, Int] = construct Result::Ok#0(42)
+  v0
+
+fn err_val() -> Result[String, y7] =
+  let v1: ~Result[String, y7] = construct Result::Err#1("oops")
+  v1
+
+fn main() -> Int =
+  let v2: Result[g8, Int] = call ok_val()
+  switch v2 {
+    0 (v3: c) ->
+      v3
+    1 (v4: b) ->
+      0
+  }

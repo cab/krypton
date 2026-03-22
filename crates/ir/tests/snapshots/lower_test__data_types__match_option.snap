@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__match_option
+
+type Option[a] = Some#0(a) | None#1
+
+fn unwrap_or(v0: Option[t7], v1: t7) -> t7 =
+  switch v0 {
+    0 (v2: a) ->
+      v2
+    1 ->
+      v1
+  }

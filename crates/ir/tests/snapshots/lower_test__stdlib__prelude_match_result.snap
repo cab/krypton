@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__prelude_match_result
+
+fn handle(v0: Result[v7, Int]) -> Int =
+  switch v0 {
+    0 (v1: b) ->
+      v1
+    1 (v2: a) ->
+      0
+  }
+
+fn main() -> Int =
+  let v3: ~Result[a8, Int] = construct Result::Ok#0(10)
+  let v4: Int = call handle(v3)
+  v4

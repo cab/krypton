@@ -1,0 +1,71 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__match_ir_patterns
+
+type Option[a] = Some#0(a) | None#1
+
+fn simple_match(v0: Option[Int]) -> Int =
+  switch v0 {
+    0 (v1: a) ->
+      v1
+    1 ->
+      0
+  }
+
+fn nested_match(v2: Option[Option[Int]]) -> Int =
+  switch v2 {
+    0 (v3: a) ->
+      switch v3 {
+        0 (v4: a) ->
+          v4
+        1 ->
+          let v5: Int = neg_int(1)
+          v5
+      }
+    1 ->
+      0
+  }
+
+fn wildcard_match(v6: Option[Int]) -> Int =
+  switch v6 {
+    0 (v7: a) ->
+      v7
+    _ ->
+      42
+  }
+
+fn literal_match(v8: Int) -> Int =
+  let v10: Bool = eq_int(v8, 0)
+  switch v10 {
+    1 ->
+      100
+    _ ->
+      let v9: Bool = eq_int(v8, 1)
+      switch v9 {
+        1 ->
+          200
+        _ ->
+          300
+      }
+  }
+
+fn let_tuple() -> Int =
+  let v11: (~Int, ~Int) = tuple(1, 2)
+  let v12: ~Int = tuple_project v11.0
+  let v13: ~Int = tuple_project v11.1
+  let v14: Int = add_int(v12, v13)
+  v14
+
+fn match_as_value(v15: Option[Int]) -> Int =
+  let_join v19(v16: Int) =
+    let v18: Int = add_int(v16, 1)
+    v18
+  in
+  switch v15 {
+    0 (v17: a) ->
+      jump v19(v17)
+    1 ->
+      jump v19(0)
+  }

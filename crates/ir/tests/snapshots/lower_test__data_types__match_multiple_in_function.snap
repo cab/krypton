@@ -1,0 +1,51 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__match_multiple_in_function
+
+type Option[a] = Some#0(a) | None#1
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let_join v19(v0: Int) =
+    let v3: Unit = call println(v0)
+    let_join v18(v4: Int) =
+      let v7: Unit = call println(v4)
+      let_join v17(v8: Int) =
+        let v11: Unit = call println(v8)
+        let_join v16(v12: Int) =
+          let v15: Unit = call println(v12)
+          v15
+        in
+        let v13: ~Option[Int] = construct Option::Some#0(4)
+        switch v13 {
+          0 (v14: a) ->
+            jump v16(v14)
+          1 ->
+            jump v16(0)
+        }
+      in
+      let v9: ~Option[Int] = construct Option::Some#0(3)
+      switch v9 {
+        0 (v10: a) ->
+          jump v17(v10)
+        1 ->
+          jump v17(0)
+      }
+    in
+    let v5: ~Option[Int] = construct Option::Some#0(2)
+    switch v5 {
+      0 (v6: a) ->
+        jump v18(v6)
+      1 ->
+        jump v18(0)
+    }
+  in
+  let v1: ~Option[Int] = construct Option::Some#0(1)
+  switch v1 {
+    0 (v2: a) ->
+      jump v19(v2)
+    1 ->
+      jump v19(0)
+  }

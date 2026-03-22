@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_let_pattern_shared_coerce
+
+struct Box { value: ~String }
+
+fn test(v0: Box) -> (String, String) =
+  let v1: ~String = project v0.0
+  let v2: (String, String) = tuple(v1, v1)
+  v2

@@ -1,0 +1,39 @@
+---
+source: crates/ir/tests/lower_test.rs
+assertion_line: 67
+expression: ir_module.to_string()
+---
+module actors__ask_ok
+
+type Msg = Get#0(Ref[Int])
+declare Get: (Ref[Int]) -> Msg
+declare ask: (Ref[j10], (Ref[k10]) -> j10, Int) -> Result[Timeout, k10]
+declare println: (m) -> Unit
+declare receive: (Mailbox[c9]) -> c9
+declare send: (Ref[r8], r8) -> Unit
+declare spawn: ((Mailbox[l8]) -> Unit) -> Ref[l8]
+
+fn value_actor(v0: Mailbox[Msg]) -> Unit =
+  let v1: Msg = call receive(v0)
+  switch v1 {
+    0 (v2: Ref[Int]) ->
+      let v3: Unit = call send(v2, 42)
+      v3
+  }
+
+fn main() -> Unit =
+  let v5: (Mailbox[Msg]) -> Unit = make_closure(value_actor, [])
+  let v4: Ref[Msg] = call spawn(v5)
+  let v6: (Ref[Int]) -> Msg = make_closure(Get, [])
+  let v7: Result[Timeout, Int] = call ask(v4, v6, 5000)
+  switch v7 {
+    0 (v8: b) ->
+      let v9: Unit = call println(v8)
+      v9
+    1 (v10: a) ->
+      switch v10 {
+        0 ->
+          let v11: Unit = call println("timeout")
+          v11
+      }
+  }

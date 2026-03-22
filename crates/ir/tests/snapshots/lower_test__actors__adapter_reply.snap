@@ -1,0 +1,40 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module actors__adapter_reply
+
+type Msg = Get#0(Ref[Int])
+type MainMsg = Reply#0(Int)
+declare Reply: (Int) -> MainMsg
+declare actor_ref: (Mailbox[l9]) -> Ref[l9]
+declare adapter: (Ref[a10], (b10) -> a10) -> Ref[b10]
+declare mailbox: () -> Mailbox[w9]
+declare println: (m) -> Unit
+declare receive: (Mailbox[c9]) -> c9
+declare send: (Ref[r8], r8) -> Unit
+declare spawn: ((Mailbox[l8]) -> Unit) -> Ref[l8]
+
+fn value_actor(v0: Mailbox[Msg]) -> Unit =
+  let v1: Msg = call receive(v0)
+  switch v1 {
+    0 (v2: Ref[Int]) ->
+      let v3: Unit = call send(v2, 42)
+      v3
+  }
+
+fn main() -> Unit =
+  let v5: (Mailbox[Msg]) -> Unit = make_closure(value_actor, [])
+  let v4: Ref[Msg] = call spawn(v5)
+  let v6: Mailbox[MainMsg] = call mailbox()
+  let v8: Ref[MainMsg] = call actor_ref(v6)
+  let v9: (Int) -> MainMsg = make_closure(Reply, [])
+  let v7: Ref[Int] = call adapter(v8, v9)
+  let v10: ~Msg = construct Msg::Get#0(v7)
+  let v11: Unit = call send(v4, v10)
+  let v12: MainMsg = call receive(v6)
+  switch v12 {
+    0 (v13: Int) ->
+      let v14: Unit = call println(v13)
+      v14
+  }

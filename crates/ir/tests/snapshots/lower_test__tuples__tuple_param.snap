@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module tuples__tuple_param
+
+declare println: (m) -> Unit
+
+fn fst(v0: (Int, String)) -> Int =
+  let v1: Int = tuple_project v0.0
+  let v2: String = tuple_project v0.1
+  v1
+
+fn main() -> Unit =
+  let v3: (~Int, ~String) = tuple(5, "x")
+  let v4: Int = call fst(v3)
+  let v5: Unit = call println(v4)
+  v5

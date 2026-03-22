@@ -1,0 +1,29 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__list_recursive_codegen
+
+type List[a] = Cons#0(a, List[a]) | Nil#1
+declare println: (m) -> Unit
+
+fn second(v0: List[Int]) -> Int =
+  switch v0 {
+    0 (v1: a, v2: List[a]) ->
+      switch v2 {
+        0 (v3: a, v4: List[a]) ->
+          v3
+        _ ->
+          0
+      }
+    _ ->
+      0
+  }
+
+fn main() -> Unit =
+  let v5: ~List[Int] = construct List::Nil#1()
+  let v6: ~List[Int] = construct List::Cons#0(20, v5)
+  let v7: ~List[Int] = construct List::Cons#0(10, v6)
+  let v8: Int = call second(v7)
+  let v9: Unit = call println(v8)
+  v9

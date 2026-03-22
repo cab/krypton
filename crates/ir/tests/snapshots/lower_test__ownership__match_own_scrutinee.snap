@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__match_own_scrutinee
+
+type Option[a] = Some#0(a) | None#1
+
+fn test(v0: ~Option[String]) -> String =
+  switch v0 {
+    0 (v1: a) ->
+      v1
+    1 ->
+      "default"
+  }

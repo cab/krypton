@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module tuples__tuple_basic
+
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: (~Int, ~String) = tuple(1, "hi")
+  let v1: Int = tuple_project v0.0
+  let v2: ~String = tuple_project v0.1
+  let v3: Unit = call println(v1)
+  v3

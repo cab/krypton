@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__option_basic
+
+type Option[a] = Some#0(a) | None#1
+
+fn unwrap(v0: Option[Int]) -> Int =
+  switch v0 {
+    0 (v1: a) ->
+      v1
+    1 ->
+      0
+  }
+
+fn test() -> Int =
+  let v2: ~Option[Int] = construct Option::Some#0(42)
+  let v3: Int = call unwrap(v2)
+  v3

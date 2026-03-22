@@ -1,0 +1,57 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module inference__type_qualification
+
+struct Pos { x: Int, y: Int }
+declare Pos: (Int, Int) -> Pos
+declare eq: (Dict, g, g) -> Bool
+declare println: (Dict, m) -> Unit
+declare show: (Dict, g) -> String
+
+fn main() -> Unit =
+  let v0: ~Pos = call Pos(1, 2)
+  let v1: Dict = get_dict Show[Pos]
+  let v2: String = call show(v1, v0)
+  let v3: Dict = get_dict Show[String]
+  let v4: Unit = call println(v3, v2)
+  let v5: Dict = get_dict Eq[Int]
+  let v6: Bool = call eq(v5, 1, 1)
+  let v7: Dict = get_dict Show[Bool]
+  let v8: Unit = call println(v7, v6)
+  let v10: ~List[Int] = construct List::Nil#1()
+  let v11: ~List[Int] = construct List::Cons#0(3, v10)
+  let v12: ~List[Int] = construct List::Cons#0(2, v11)
+  let v9: ~List[Int] = construct List::Cons#0(1, v12)
+  switch v9 {
+    0 (v13: d, v14: List[d]) ->
+      switch v14 {
+        0 (v15: d, v16: List[d]) ->
+          switch v16 {
+            0 (v17: d, v18: List[d]) ->
+              switch v18 {
+                1 ->
+                  let v19: Dict = get_dict Show[Int]
+                  let v20: Unit = call println(v19, v17)
+                  v20
+                _ ->
+                  let v21: Dict = get_dict Show[Int]
+                  let v22: Unit = call println(v21, 0)
+                  v22
+              }
+            _ ->
+              let v23: Dict = get_dict Show[Int]
+              let v24: Unit = call println(v23, 0)
+              v24
+          }
+        _ ->
+          let v25: Dict = get_dict Show[Int]
+          let v26: Unit = call println(v25, 0)
+          v26
+      }
+    _ ->
+      let v27: Dict = get_dict Show[Int]
+      let v28: Unit = call println(v27, 0)
+      v28
+  }

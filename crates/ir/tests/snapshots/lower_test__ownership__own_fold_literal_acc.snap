@@ -1,0 +1,28 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_fold_literal_acc
+
+fn fold(v0: List[s1], v1: t1, v2: (t1, s1) -> t1) -> t1 =
+  switch v0 {
+    1 ->
+      v1
+    0 (v3: b, v4: List[b]) ->
+      let v5: z7 = call_closure v2(v1, v3)
+      let v6: z7 = call fold(v4, v5, v2)
+      v6
+  }
+
+fn test() -> Int =
+  let v7: ~List[Int] = construct List::Nil#1()
+  let v8: ~List[Int] = construct List::Cons#0(3, v7)
+  let v9: ~List[Int] = construct List::Cons#0(2, v8)
+  let v10: ~List[Int] = construct List::Cons#0(1, v9)
+  let v14: (Int, Int) -> Int = make_closure(lambda$48, [])
+  let v15: Int = call fold(v10, 0, v14)
+  v15
+
+fn lambda$48(v11: Int, v12: Int) -> Int =
+  let v13: Int = add_int(v11, v12)
+  v13

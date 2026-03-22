@@ -1,0 +1,31 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__json_array_nested
+
+declare json_to_string: (Json) -> String
+declare parse_json: (String) -> Result[String, Json]
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v0: Result[String, Json] = call parse_json("[1,2,3]")
+  switch v0 {
+    0 (v1: d) ->
+      switch v1 {
+        4 (v2: List[Json]) ->
+          let v3: ~Json = construct Json::JArr#4(v2)
+          let v4: String = call json_to_string(v3)
+          let v5: Dict = get_dict Show[String]
+          let v6: Unit = call println(v5, v4)
+          v6
+        _ ->
+          let v7: Dict = get_dict Show[String]
+          let v8: Unit = call println(v7, "FAIL")
+          v8
+      }
+    _ ->
+      let v9: Dict = get_dict Show[String]
+      let v10: Unit = call println(v9, "FAIL")
+      v10
+  }

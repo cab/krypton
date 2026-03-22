@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__enum_own_constructor
+
+type Option[a] = Some#0(a) | None#1
+
+fn f() -> ~Option[Int] =
+  let v0: ~Option[Int] = construct Option::Some#0(42)
+  v0
+
+fn main() -> Int =
+  let v1: ~Option[Int] = call f()
+  switch v1 {
+    0 (v2: a) ->
+      v2
+    1 ->
+      0
+  }

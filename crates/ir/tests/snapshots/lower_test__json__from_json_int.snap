@@ -1,0 +1,23 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__from_json_int
+
+declare from_json: (Dict, Json) -> Result[String, j14]
+declare println: (Dict, m) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(42.0)
+  let v2: Dict = get_dict FromJson[Int]
+  let v0: Result[String, Int] = call from_json(v2, v1)
+  switch v0 {
+    0 (v3: c) ->
+      let v4: Dict = get_dict Show[Int]
+      let v5: Unit = call println(v4, v3)
+      v5
+    1 (v6: b) ->
+      let v7: Dict = get_dict Show[String]
+      let v8: Unit = call println(v7, v6)
+      v8
+  }

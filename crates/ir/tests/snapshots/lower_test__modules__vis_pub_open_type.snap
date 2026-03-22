@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__vis_pub_open_type
+
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: ~Color = construct Color::Red#0()
+  switch v0 {
+    0 ->
+      let v1: Unit = call println("Red")
+      v1
+    1 ->
+      let v2: Unit = call println("Blue")
+      v2
+  }
