@@ -1,4 +1,5 @@
 pub mod expr;
+pub mod pretty;
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 pub use krypton_typechecker::types::{Type, TypeVarId};

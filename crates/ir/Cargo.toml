@@ -5,3 +5,6 @@ edition.workspace = true
 
 [dependencies]
 krypton-typechecker = { path = "../typechecker" }
+
+[dev-dependencies]
+insta = "1"
