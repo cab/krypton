@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module literal_shared_return
+
+type Result[f, e] = Ok#0(b) | Err#1(a)
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[h] = Some#0(d) | None#1
+
+fn f0 f() -> String =
+  "hello"
+
+fn f1 main() -> String =
+  let v0: String = call f0()
+  v0

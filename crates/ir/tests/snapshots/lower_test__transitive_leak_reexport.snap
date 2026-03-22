@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module transitive_leak_reexport
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[g] = Some#0(c) | None#1
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Unit =
+  let v0: Int = call f48(3)
+  let v1: Unit = call f1(v0)
+  v1

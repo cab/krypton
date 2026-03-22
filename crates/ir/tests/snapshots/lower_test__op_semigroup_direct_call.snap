@@ -1,0 +1,19 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module op_semigroup_direct_call
+
+type Option[e] = Some#0(a) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 apply_combine(v0: w7, v1: w7) -> w7 =
+  let v2: w7 = call f25(v0, v1)
+  v2
+
+fn f1 main() -> Unit =
+  let v3: Int = call f0(3, 5)
+  let v4: Unit = call f2(v3)
+  v4

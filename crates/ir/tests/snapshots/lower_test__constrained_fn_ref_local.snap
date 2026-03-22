@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module constrained_fn_ref_local
+
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 show_it(v0: r7) -> String =
+  let v1: String = call f29(v0)
+  v1
+
+fn f1 main() -> Unit =
+  let v2: (Int) -> String = make_closure(f0, [])
+  let v3: String = call_closure v2(42)
+  let v4: Bool = eq_string(v3, "42")
+  let v5: Unit = call f48(v4)
+  v5

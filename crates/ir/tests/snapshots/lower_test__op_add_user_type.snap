@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module op_add_user_type
+
+struct Vec2 { x: Int, y: Int }
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[h] = Some#0(d) | None#1
+
+fn f0 main() -> Unit =
+  let v0: ~Vec2 = call f48(1, 1)
+  let v1: ~Vec2 = call f48(3, 2)
+  let v2: Vec2 = call f24(v0, v1)
+  let v3: Int = project v2.0
+  let v4: Unit = call f1(v3)
+  v4

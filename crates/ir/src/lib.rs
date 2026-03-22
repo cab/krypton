@@ -1,4 +1,5 @@
 pub mod expr;
+pub mod lower;
 pub mod pretty;
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};

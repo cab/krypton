@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module trait_selective_method_only
+
+type Option[e] = Some#0(a) | None#1
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Widget = MkWidget#0(String)
+type Result[h, g] = Ok#0(d) | Err#1(c)
+
+fn f0 main() -> Unit =
+  let v0: ~Widget = construct Widget::MkWidget#0("x")
+  let v1: String = call f49(v0)
+  let v2: Unit = call f47(v1)
+  v2

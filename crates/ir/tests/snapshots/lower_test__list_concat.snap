@@ -1,0 +1,24 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module list_concat
+
+type Option[e] = Some#0(a) | None#1
+type Result[g, f] = Ok#0(c) | Err#1(b)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Unit =
+  let v0: ~List[Int] = construct List::Nil#1()
+  let v1: ~List[Int] = construct List::Cons#0(3, v0)
+  let v2: ~List[Int] = construct List::Cons#0(2, v1)
+  let v3: ~List[Int] = construct List::Cons#0(1, v2)
+  let v4: ~List[Int] = construct List::Nil#1()
+  let v5: ~List[Int] = construct List::Cons#0(6, v4)
+  let v6: ~List[Int] = construct List::Cons#0(5, v5)
+  let v7: ~List[Int] = construct List::Cons#0(4, v6)
+  let v8: List[Int] = call f49(v3, v7)
+  let v9: Int = call f48(v8)
+  let v10: Unit = call f1(v9)
+  v10

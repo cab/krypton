@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module own_if_mixed_join
+
+type Option[e] = Some#0(a) | None#1
+type Result[g, f] = Ok#0(c) | Err#1(b)
+type List[h] = Cons#0(d, List[d]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 test(v0: ~String, v1: String) -> String =
+  switch true {
+    1 ->
+      v0
+    _ ->
+      v1
+  }

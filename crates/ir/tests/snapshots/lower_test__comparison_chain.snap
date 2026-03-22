@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module comparison_chain
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Option[g] = Some#0(c) | None#1
+type List[h] = Cons#0(d, List[d]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 main() -> Unit =
+  let v0: Bool = lt_int(10, 20)
+  let v1: Unit = call f1(v0)
+  let v2: Bool = gt_int(10, 20)
+  let v3: Unit = call f1(v2)
+  let v4: Bool = le_int(10, 20)
+  let v5: Unit = call f1(v4)
+  let v6: Bool = ge_int(10, 20)
+  let v7: Unit = call f1(v6)
+  let v8: Bool = eq_int(10, 10)
+  let v9: Unit = call f1(v8)
+  let v10: Bool = neq_int(10, 10)
+  let v11: Unit = call f1(v10)
+  v11

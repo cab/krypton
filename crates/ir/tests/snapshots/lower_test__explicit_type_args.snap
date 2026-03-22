@@ -1,0 +1,30 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module explicit_type_args
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Option[f] = Some#0(b) | None#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 identity(v0: r7) -> r7 =
+  v0
+
+fn f1 stringify(v1: Int) -> String =
+  "n"
+
+fn f2 call_site() -> Int =
+  let v2: Int = call f0(42)
+  v2
+
+fn f3 standalone() -> Int =
+  let v3: (Int) -> Int = make_closure(f0, [])
+  let v4: Int = call_closure v3(42)
+  v4
+
+fn f4 method_site(v5: List[Int]) -> List[String] =
+  let v6: (Int) -> String = make_closure(f1, [])
+  let v7: List[String] = call f51(v5, v6)
+  v7

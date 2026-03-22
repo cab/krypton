@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module extern_java_type
+
+type Option[e] = Some#0(a) | None#1
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[h, g] = Ok#0(d) | Err#1(c)
+
+fn f0 use_ref(v0: Ref[Int]) -> Ref[Int] =
+  v0
+
+fn f1 send_msg(v1: Ref[Int], v2: Int) -> Unit =
+  let v3: Unit = call f2(v1, v2)
+  v3

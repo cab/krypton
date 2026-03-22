@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module op_add_int
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Option[f] = Some#0(b) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[g, h] = Ok#0(d) | Err#1(c)
+
+fn f0 main() -> Unit =
+  let v0: Int = add_int(1, 2)
+  let v1: Unit = call f1(v0)
+  v1

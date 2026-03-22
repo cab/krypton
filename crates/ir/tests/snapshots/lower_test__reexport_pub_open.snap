@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module reexport_pub_open
+
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type Color = Red#0 | Blue#1
+type List[h] = Cons#0(d, List[d]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 main() -> Unit =
+  let v0: ~Color = construct Color::Red#0()
+  let v1: Unit = call f1(v0)
+  v1

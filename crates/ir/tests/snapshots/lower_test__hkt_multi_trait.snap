@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt_multi_trait
+
+type Box[f] = Box#0(a)
+type List[g] = Cons#0(b, List[b]) | Nil#1
+type Result[h, i] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[j] = Some#0(e) | None#1

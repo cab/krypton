@@ -1,0 +1,24 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json_array
+
+type Option[e] = Some#0(a) | None#1
+type Json = JNull#0 | JBool#1(Bool) | JNum#2(Float) | JStr#3(String) | JArr#4(List[Json]) | JObj#5(Map[String, Json])
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(1.0)
+  let v2: ~Json = construct Json::JNum#2(2.0)
+  let v3: ~Json = construct Json::JNum#2(3.0)
+  let v4: ~List[Json] = construct List::Nil#1()
+  let v5: ~List[Json] = construct List::Cons#0(v3, v4)
+  let v6: ~List[Json] = construct List::Cons#0(v2, v5)
+  let v7: ~List[Json] = construct List::Cons#0(v1, v6)
+  let v0: ~Json = construct Json::JArr#4(v7)
+  let v8: String = call f68(v0)
+  let v9: Unit = call f56(v8)
+  v9

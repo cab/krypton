@@ -1,0 +1,31 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module map_collections
+
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[e] = Some#0(a) | None#1
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+
+fn f0 main() -> Unit =
+  let v1: Map[String, Int] = call f48()
+  let v2: Map[String, Int] = call f49(v1, "a", 1)
+  let v0: Map[String, Int] = call f49(v2, "b", 2)
+  let v4: Map[String, Int] = call f48()
+  let v3: Map[String, Int] = call f49(v4, "c", 3)
+  let v5: Map[String, Int] = call f52(v0, v3)
+  let v6: Int = call f51(v5)
+  let v7: Unit = call f38(v6)
+  let v9: (~String, ~Int) = tuple("x", 10)
+  let v10: (~String, ~Int) = tuple("y", 20)
+  let v11: (~String, ~Int) = tuple("z", 30)
+  let v12: ~List[(~String, ~Int)] = construct List::Nil#1()
+  let v13: ~List[(~String, ~Int)] = construct List::Cons#0(v11, v12)
+  let v14: ~List[(~String, ~Int)] = construct List::Cons#0(v10, v13)
+  let v15: ~List[(~String, ~Int)] = construct List::Cons#0(v9, v14)
+  let v8: Map[String, Int] = call f50(v15)
+  let v16: Int = call f51(v8)
+  let v17: Unit = call f38(v16)
+  v17

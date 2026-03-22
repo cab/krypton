@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json_serialize
+
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Option[g] = Some#0(c) | None#1
+type Json = JNull#0 | JBool#1(Bool) | JNum#2(Float) | JStr#3(String) | JArr#4(List[Json]) | JObj#5(Map[String, Json])
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(1.0)
+  let v2: (~String, ~Json) = tuple("a", v1)
+  let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
+  let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v0: Json = call f68(v4)
+  let v5: String = call f67(v0)
+  let v6: Unit = call f56(v5)
+  v6

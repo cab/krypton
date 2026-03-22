@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module opaque_syntax
+
+struct Opaque { inner: Int }
+
+type Color = Red#0 | Green#1 | Blue#2
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type List[h] = Cons#0(d, List[d]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2

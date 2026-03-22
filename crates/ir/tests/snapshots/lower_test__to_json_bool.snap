@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module to_json_bool
+
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type Json = JNull#0 | JBool#1(Bool) | JNum#2(Float) | JStr#3(String) | JArr#4(List[Json]) | JObj#5(Map[String, Json])
+type List[h] = Cons#0(d, List[d]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 main() -> Unit =
+  let v0: Json = call f67(true)
+  let v1: String = call f66(v0)
+  let v2: Unit = call f56(v1)
+  v2

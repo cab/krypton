@@ -1,0 +1,19 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module qualified_option_none
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Option[f] = Some#0(b) | None#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 main() -> Unit =
+  let_join v4(v0: ~Option[t7]) =
+    let v2: ~Option[Int] = construct Option::Some#0(42)
+    let v3: Unit = call f1(v0)
+    v3
+  in
+  let v1: ~Option[t7] = construct Option::None#1()
+  jump v4(v1)

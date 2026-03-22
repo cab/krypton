@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module prelude_option
+
+type Option[e] = Some#0(a) | None#1
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[g, h] = Ok#0(d) | Err#1(c)
+
+fn f0 main() -> Option[Int] =
+  let v0: ~Option[Int] = construct Option::Some#0(42)
+  v0

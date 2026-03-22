@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt_functor
+
+type Box[f] = Box#0(a)
+type Option[g] = Some#0(b) | None#1
+type Result[h, i] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[j] = Cons#0(e, List[e]) | Nil#1

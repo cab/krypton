@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module extern_java_actor
+
+type Option[e] = Some#0(a) | None#1
+type Timeout = Timeout#0
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Result[g, h] = Ok#0(d) | Err#1(c)
+
+fn f0 echo(v0: Mailbox[Int]) -> Unit =
+  let v1: Int = call f61(v0)
+  let v2: Ref[Int] = call f62(v0)
+  let v3: Unit = call f60(v2, v1)
+  v3
+
+fn f1 use_ref(v4: Ref[Int]) -> Unit =
+  let v5: Unit = call f60(v4, 42)
+  v5
+
+fn f2 main() -> (Mailbox[Int]) -> Unit =
+  let v6: (Mailbox[Int]) -> Unit = make_closure(f0, [])
+  v6

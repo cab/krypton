@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module coerce_borrow_then_consume
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Option[f] = Some#0(b) | None#1
+type Result[g, h] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 len(v0: String) -> Int =
+  42
+
+fn f1 consume(v1: ~String) -> String =
+  v1
+
+fn f2 test(v2: ~String) -> String =
+  let v3: Int = call f0(v2)
+  let v4: String = call f1(v2)
+  v4

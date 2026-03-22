@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module unit_void_return
+
+type Option[e] = Some#0(a) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+
+fn f0 side_effect() -> Unit =
+  let_join v1(v0: ~Int) =
+    v0
+  in
+  jump v1(1)
+
+fn f1 explicit_unit() -> Unit =
+  ()
+
+fn f2 multi_let() -> Unit =
+  let_join v5(v2: ~Int) =
+    let_join v4(v3: ~Int) =
+      v3
+    in
+    jump v4(2)
+  in
+  jump v5(1)
+
+fn f3 call_void() -> Unit =
+  let v6: Unit = call f0()
+  v6
+
+fn f4 expr_discarded() -> Unit =
+  let_join v8(v7: ~String) =
+    v7
+  in
+  jump v8("hi")
+
+fn f5 main() -> Unit =
+  let v9: Unit = call f0()
+  let v10: Unit = call f1()
+  let v11: Unit = call f2()
+  let v12: Unit = call f3()
+  let v13: Unit = call f4()
+  let v14: Unit = call f52("done")
+  v14

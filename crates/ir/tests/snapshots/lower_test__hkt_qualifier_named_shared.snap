@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt_qualifier_named_shared
+
+type Box[f] = Box#0(a)
+type Option[g] = Some#0(b) | None#1
+type List[h] = Cons#0(c, List[c]) | Nil#1
+type Result[i, j] = Ok#0(e) | Err#1(d)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 inspect_box(v0: Box[s7], v1: Box[s7]) -> Box[s7] =
+  v0

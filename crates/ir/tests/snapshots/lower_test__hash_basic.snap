@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hash_basic
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1
+
+fn f0 main() -> Unit =
+  let v0: Int = call f29(42)
+  let v1: Int = call f29(42)
+  let v2: Bool = eq_int(v0, v1)
+  let v3: Unit = call f38(v2)
+  v3

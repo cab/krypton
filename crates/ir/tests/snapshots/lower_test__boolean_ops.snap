@@ -1,0 +1,42 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module boolean_ops
+
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Unit =
+  let v0: Bool = and(true, true)
+  let v1: Bool = and(true, false)
+  let v2: Bool = and(false, true)
+  let v3: Bool = and(false, false)
+  let v4: Bool = or(true, true)
+  let v5: Bool = or(true, false)
+  let v6: Bool = or(false, true)
+  let v7: Bool = or(false, false)
+  let v8: Bool = not(true)
+  let v9: Bool = not(false)
+  let v11: Bool = and(true, false)
+  let v12: Bool = not(false)
+  let v10: Bool = or(v11, v12)
+  let v14: Bool = not(v1)
+  let v15: Bool = and(v0, v14)
+  let v16: Bool = not(v2)
+  let v17: Bool = and(v15, v16)
+  let v18: Bool = not(v3)
+  let v19: Bool = and(v17, v18)
+  let v20: Bool = and(v19, v4)
+  let v21: Bool = and(v20, v5)
+  let v22: Bool = and(v21, v6)
+  let v23: Bool = not(v7)
+  let v24: Bool = and(v22, v23)
+  let v25: Bool = not(v8)
+  let v26: Bool = and(v24, v25)
+  let v27: Bool = and(v26, v9)
+  let v13: Bool = and(v27, v10)
+  let v28: Unit = call f1(v13)
+  v28

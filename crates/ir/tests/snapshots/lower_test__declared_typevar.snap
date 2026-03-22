@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module declared_typevar
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Option[f] = Some#0(b) | None#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 id(v0: r7) -> r7 =
+  v0

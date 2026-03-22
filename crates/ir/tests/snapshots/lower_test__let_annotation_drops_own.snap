@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module let_annotation_drops_own
+
+type Option[e] = Some#0(a) | None#1
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Result[g, h] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 id(v0: Int) -> Int =
+  v0
+
+fn f1 test() -> Int =
+  let_join v4(v1: ~Int) =
+    let v2: Int = call f0(v1)
+    let v3: Int = call f0(v1)
+    v3
+  in
+  jump v4(2)

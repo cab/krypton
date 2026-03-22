@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module branch_if_none
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[g, f] = Ok#0(c) | Err#1(b)
+type Option[h] = Some#0(d) | None#1
+
+fn f0 consume(v0: ~String) -> String =
+  v0
+
+fn f1 test(v1: ~String) -> String =
+  let_join v4(v2: ~String) =
+    let v3: String = call f0(v1)
+    v3
+  in
+  switch true {
+    1 ->
+      jump v4("a")
+    _ ->
+      jump v4("b")
+  }

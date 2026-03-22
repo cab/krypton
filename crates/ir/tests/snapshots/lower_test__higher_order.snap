@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module higher_order
+
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[f, e] = Ok#0(b) | Err#1(a)
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1
+
+fn f0 apply(v0: (s7) -> u7, v1: s7) -> u7 =
+  let v2: u7 = call_closure v0(v1)
+  v2

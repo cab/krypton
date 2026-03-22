@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module extern_codegen_void
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[f] = Some#0(b) | None#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+
+fn f0 main() -> Int =
+  let v0: Unit = call f1()
+  0

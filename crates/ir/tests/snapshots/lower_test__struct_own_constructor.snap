@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module struct_own_constructor
+
+struct Point { x: Int, y: Int }
+
+type Option[e] = Some#0(a) | None#1
+type List[f] = Cons#0(b, List[b]) | Nil#1
+type Result[h, g] = Ok#0(d) | Err#1(c)
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 f() -> ~Point =
+  let v0: ~Point = construct Point(1, 2)
+  v0
+
+fn f1 main() -> Int =
+  let v1: ~Point = call f0()
+  let v2: Int = project v1.0
+  v2

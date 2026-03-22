@@ -1,0 +1,21 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module struct_update_replaces_own
+
+struct Buf { name: String, data: ~String }
+
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type List[h] = Cons#0(d, List[d]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 test(v0: ~Buf, v1: ~String) -> String =
+  let_join v6(v2: ~Buf) =
+    let v5: String = project v0.0
+    v5
+  in
+  let v3: String = project v0.0
+  let v4: ~Buf = construct Buf(v3, v1)
+  jump v6(v4)

@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module vis_pub_fn
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Color = Red#0 | Blue#1
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[h] = Some#0(d) | None#1
+
+fn f0 main() -> Unit =
+  let v0: Int = call f48(5)
+  let v1: Unit = call f1(v0)
+  v1

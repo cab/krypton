@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module own_single_use
+
+type Result[f, e] = Ok#0(b) | Err#1(a)
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 consume(v0: ~String) -> String =
+  v0
+
+fn f1 good(v1: ~String) -> String =
+  let v2: String = call f0(v1)
+  v2

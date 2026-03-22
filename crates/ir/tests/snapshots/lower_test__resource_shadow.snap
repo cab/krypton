@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module resource_shadow
+
+type Handle = MkHandle#0(String)
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1
+
+fn f0 main() -> Unit =
+  let v0: ~Handle = construct Handle::MkHandle#0("1")
+  let v1: Unit = call f1("open1")
+  let v2: ~Handle = construct Handle::MkHandle#0("2")
+  let v3: Unit = call f1("open2")
+  v3

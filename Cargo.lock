@@ -825,7 +825,11 @@ name = "krypton-ir"
 version = "0.1.0"
 dependencies = [
  "insta",
+ "krypton-modules",
+ "krypton-parser",
+ "krypton-test-harness",
  "krypton-typechecker",
+ "rstest",
 ]
 
 [[package]]

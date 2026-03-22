@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module literal_in_ops
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[f] = Some#0(b) | None#1
+type Result[g, h] = Ok#0(d) | Err#1(c)
+
+fn f0 main() -> Int =
+  let v0: Int = mul_int(2, 3)
+  let v1: Int = sub_int(10, 4)
+  let v2: Int = add_int(v0, v1)
+  v2

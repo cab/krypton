@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module to_json_float
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type Json = JNull#0 | JBool#1(Bool) | JNum#2(Float) | JStr#3(String) | JArr#4(List[Json]) | JObj#5(Map[String, Json])
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 main() -> Unit =
+  let v0: Json = call f67(3.14)
+  let v1: String = call f66(v0)
+  let v2: Unit = call f56(v1)
+  v2

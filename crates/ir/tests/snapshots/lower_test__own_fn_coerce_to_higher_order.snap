@@ -1,0 +1,23 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module own_fn_coerce_to_higher_order
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 apply(v0: ~(r7) -> v7, v1: r7) -> v7 =
+  let v2: v7 = call_closure v0(v1)
+  v2
+
+fn f1 double(v3: Int) -> Int =
+  let v4: Int = mul_int(v3, 2)
+  v4
+
+fn f2 test() -> Int =
+  let v5: (Int) -> Int = make_closure(f1, [])
+  let v6: Int = call f0(v5, 21)
+  v6

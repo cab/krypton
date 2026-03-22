@@ -1,0 +1,10 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module partial_apply_result
+
+type Result[e, f] = Ok#0(b) | Err#1(a)
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Option[h] = Some#0(d) | None#1

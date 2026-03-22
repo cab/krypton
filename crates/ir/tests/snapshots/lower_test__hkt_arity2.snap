@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt_arity2
+
+type Pair[g, h] = Pair#0(a, b)
+type List[i] = Cons#0(c, List[c]) | Nil#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[j, k] = Ok#0(e) | Err#1(d)
+type Option[l] = Some#0(f) | None#1

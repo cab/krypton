@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module shared_compose
+
+type List[e] = Cons#0(a, List[a]) | Nil#1
+type Result[g, f] = Ok#0(c) | Err#1(b)
+type Option[h] = Some#0(d) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+
+fn f0 assert_eq_show(v0: r7, v1: r7) -> r7 =
+  v0

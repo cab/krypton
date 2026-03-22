@@ -1,0 +1,26 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hash_deriving
+
+struct Point { x: Int, y: Int }
+
+type Option[e] = Some#0(a) | None#1
+type Result[f, g] = Ok#0(c) | Err#1(b)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Unit =
+  let v0: ~Point = construct Point(1, 2)
+  let v1: ~Point = construct Point(1, 2)
+  let v2: ~Point = construct Point(3, 4)
+  let v3: Int = call f29(v0)
+  let v4: Int = call f29(v1)
+  let v5: Bool = eq_int(v3, v4)
+  let v6: Unit = call f38(v5)
+  let v7: Int = call f29(v0)
+  let v8: Int = call f29(v2)
+  let v9: Bool = neq_int(v7, v8)
+  let v10: Unit = call f38(v9)
+  v10

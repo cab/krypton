@@ -5,6 +5,10 @@ edition.workspace = true
 
 [dependencies]
 krypton-typechecker = { path = "../typechecker" }
+krypton-parser = { path = "../parser" }
 
 [dev-dependencies]
+krypton-test-harness = { path = "../test-harness" }
+krypton-modules = { path = "../modules" }
+rstest.workspace = true
 insta = "1"

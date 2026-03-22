@@ -1,0 +1,10 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module extern_multiple_methods
+
+type Result[f, e] = Ok#0(b) | Err#1(a)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[g] = Cons#0(c, List[c]) | Nil#1
+type Option[h] = Some#0(d) | None#1

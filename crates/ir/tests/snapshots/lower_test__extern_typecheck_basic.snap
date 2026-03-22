@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module extern_typecheck_basic
+
+type Option[e] = Some#0(a) | None#1
+type Result[g, f] = Ok#0(c) | Err#1(b)
+type Ordering = LT#0 | EQ#1 | GT#2
+type List[h] = Cons#0(d, List[d]) | Nil#1
+
+fn f0 main() -> Int =
+  let v0: Int = call f1(42)
+  v0
