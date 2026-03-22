@@ -15,8 +15,10 @@ use super::{
     type_expr_uses_type_params, qualify_type_for,
     ImportedInstanceInfo, dict_requirements_for_instance,
 };
-use super::class_gen::{
+use super::data_class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
+};
+use super::trait_class_gen::{
     generate_trait_interface_class, generate_instance_class,
     generate_builtin_show_instance_class, generate_builtin_trait_instance_class,
     generate_parameterized_instance_class,

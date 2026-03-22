@@ -2,7 +2,8 @@
 
 mod builder;
 mod calls;
-mod class_gen;
+mod data_class_gen;
+mod trait_class_gen;
 mod compiler;
 mod expr;
 mod intrinsics;

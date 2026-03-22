@@ -7,6 +7,7 @@ pub mod ownership;
 pub mod scc;
 pub mod trait_registry;
 pub mod type_registry;
+pub mod type_error;
 pub mod typed_ast;
 pub mod types;
 pub mod unify;
