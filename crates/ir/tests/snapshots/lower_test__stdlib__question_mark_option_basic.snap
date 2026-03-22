@@ -1,0 +1,40 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__question_mark_option_basic
+
+declare println: (m) -> Unit
+
+fn lookup(v0: Int) -> Option[Int] =
+  let v1: ~Option[Int] = construct Option::Some#0(v0)
+  v1
+
+fn process(v2: Int) -> Option[Int] =
+  let_join v3(v4: Option[Int]) =
+    v4
+  in
+  let_join v11(v5: Int) =
+    let v9: Int = mul_int(v5, 2)
+    let v10: ~Option[Int] = construct Option::Some#0(v9)
+    v10
+  in
+  let v6: Option[Int] = call lookup(v2)
+  switch v6 {
+    0 (v7: Int) ->
+      jump v11(v7)
+    1 ->
+      let v8: Option[Int] = construct Option::None#1()
+      jump v3(v8)
+  }
+
+fn main() -> Unit =
+  let v12: Option[Int] = call process(21)
+  switch v12 {
+    0 (v13: a) ->
+      let v14: Unit = call println(v13)
+      v14
+    1 ->
+      let v15: Unit = call println(0)
+      v15
+  }

@@ -1,0 +1,41 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt__hkt_codegen_erasure
+
+type Box[a] = Box#0(a)
+declare println: (m) -> Unit
+declare to_list: (Vec[f7]) -> List[f7]
+
+fn fold_box(v0: List[c8], v1: w7[c8], v2: (w7[c8], c8) -> w7[c8]) -> w7[c8] =
+  let_join v3(v4: List[c8], v5: w7[c8], v6: (w7[c8], c8) -> w7[c8]) =
+    switch v4 {
+      1 ->
+        v5
+      0 (v7: c, v8: List[c]) ->
+        let v9: w7[c8] = call_closure v6(v5, v7)
+        jump v3(v8, v9, v6)
+    }
+  in
+  jump v3(v0, v1, v2)
+
+fn main() -> Unit =
+  let v11: Vec[Int] = make_vec(1, 2, 4)
+  let v12: List[Int] = call to_list(v11)
+  let v13: ~Box[Int] = construct Box::Box#0(0)
+  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$50, [])
+  let v10: Box[Int] = call fold_box(v12, v13, v19)
+  switch v10 {
+    0 (v20: a) ->
+      let v21: Unit = call println(v20)
+      v21
+  }
+
+fn lambda$50(v14: Box[Int], v15: Int) -> ~Box[Int] =
+  switch v14 {
+    0 (v16: a) ->
+      let v17: Int = add_int(v16, v15)
+      let v18: ~Box[Int] = construct Box::Box#0(v17)
+      v18
+  }

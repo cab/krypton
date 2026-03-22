@@ -109,6 +109,9 @@ pub enum SimpleExpr {
         sub_dicts: Vec<Atom>,
     },
 
+    /// Construct a Vec from elements.
+    MakeVec { element_type: Type, elements: Vec<Atom> },
+
     /// A trivial atom (used for binding literal scrutinees to variables).
     Atom(Atom),
 }

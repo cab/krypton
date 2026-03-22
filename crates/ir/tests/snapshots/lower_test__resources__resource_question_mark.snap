@@ -1,0 +1,42 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module resources__resource_question_mark
+
+type Handle = MkHandle#0(String)
+declare println: (m) -> Unit
+
+fn fallible() -> Result[String, Int] =
+  let v0: ~Result[String, Int] = construct Result::Err#1("fail")
+  v0
+
+fn work() -> Result[String, Int] =
+  let_join v1(v2: Result[String, Int]) =
+    v2
+  in
+  let v3: ~Handle = construct Handle::MkHandle#0("test")
+  let v4: Unit = call println("opened")
+  let_join v11(v5: Int) =
+    let v10: ~Result[String, Int] = construct Result::Ok#0(v5)
+    v10
+  in
+  let v6: Result[String, Int] = call fallible()
+  switch v6 {
+    0 (v7: Int) ->
+      jump v11(v7)
+    1 (v8: String) ->
+      let v9: Result[String, Int] = construct Result::Err#1(v8)
+      jump v1(v9)
+  }
+
+fn main() -> Unit =
+  let v12: Result[String, Int] = call work()
+  switch v12 {
+    0 (v13: c) ->
+      let v14: Unit = call println(v13)
+      v14
+    1 (v15: b) ->
+      let v16: Unit = call println("err")
+      v16
+  }

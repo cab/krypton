@@ -1,0 +1,8 @@
+# expect: output 0
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun countdown(n) = if n == 0 { 0 } else { recur(n - 1) }
+
+fun main() = println(countdown(10))

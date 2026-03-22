@@ -1,0 +1,40 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__question_mark_result_basic
+
+declare println: (m) -> Unit
+
+fn parse(v0: Int) -> Result[String, Int] =
+  let v1: ~Result[String, Int] = construct Result::Ok#0(v0)
+  v1
+
+fn process(v2: Int) -> Result[String, Int] =
+  let_join v3(v4: Result[String, Int]) =
+    v4
+  in
+  let_join v12(v5: Int) =
+    let v10: Int = mul_int(v5, 2)
+    let v11: ~Result[String, Int] = construct Result::Ok#0(v10)
+    v11
+  in
+  let v6: Result[String, Int] = call parse(v2)
+  switch v6 {
+    0 (v7: Int) ->
+      jump v12(v7)
+    1 (v8: String) ->
+      let v9: Result[String, Int] = construct Result::Err#1(v8)
+      jump v3(v9)
+  }
+
+fn main() -> Unit =
+  let v13: Result[String, Int] = call process(21)
+  switch v13 {
+    0 (v14: c) ->
+      let v15: Unit = call println(v14)
+      v15
+    1 (v16: b) ->
+      let v17: Unit = call println(v16)
+      v17
+  }

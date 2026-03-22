@@ -1,0 +1,26 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module functions__recur_sum
+
+declare println: (m) -> Unit
+
+fn sum(v0: Int, v1: Int) -> Int =
+  let_join v2(v3: Int, v4: Int) =
+    let v5: Bool = eq_int(v3, 0)
+    switch v5 {
+      1 ->
+        v4
+      _ ->
+        let v6: Int = sub_int(v3, 1)
+        let v7: Int = add_int(v4, v3)
+        jump v2(v6, v7)
+    }
+  in
+  jump v2(v0, v1)
+
+fn main() -> Unit =
+  let v8: Int = call sum(100, 0)
+  let v9: Unit = call println(v8)
+  v9

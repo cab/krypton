@@ -262,6 +262,68 @@ fn collect_pattern_bindings(
 }
 
 // ---------------------------------------------------------------------------
+// Expression-kind detection (on TypedExpr, before IR lowering)
+// ---------------------------------------------------------------------------
+
+/// Walk a TypedExpr tree and return true if any node matches the predicate.
+fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -> bool {
+    if pred(&expr.kind) {
+        return true;
+    }
+    match &expr.kind {
+        TypedExprKind::Lit(_) | TypedExprKind::Var(_) => false,
+        TypedExprKind::App { func, args } => {
+            contains_expr_kind(func, pred) || args.iter().any(|a| contains_expr_kind(a, pred))
+        }
+        TypedExprKind::TypeApp { expr: inner, .. }
+        | TypedExprKind::UnaryOp { operand: inner, .. }
+        | TypedExprKind::FieldAccess { expr: inner, .. }
+        | TypedExprKind::QuestionMark { expr: inner, .. } => contains_expr_kind(inner, pred),
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            contains_expr_kind(lhs, pred) || contains_expr_kind(rhs, pred)
+        }
+        TypedExprKind::If { cond, then_, else_ } => {
+            contains_expr_kind(cond, pred)
+                || contains_expr_kind(then_, pred)
+                || contains_expr_kind(else_, pred)
+        }
+        TypedExprKind::Let { value, body, .. } => {
+            contains_expr_kind(value, pred)
+                || body.as_deref().map_or(false, |b| contains_expr_kind(b, pred))
+        }
+        TypedExprKind::Do(exprs) => exprs.iter().any(|e| contains_expr_kind(e, pred)),
+        TypedExprKind::Lambda { body, .. } => contains_expr_kind(body, pred),
+        TypedExprKind::Match { scrutinee, arms } => {
+            contains_expr_kind(scrutinee, pred)
+                || arms.iter().any(|a| contains_expr_kind(&a.body, pred))
+        }
+        TypedExprKind::StructLit { fields, .. } => {
+            fields.iter().any(|(_, e)| contains_expr_kind(e, pred))
+        }
+        TypedExprKind::StructUpdate { base, fields } => {
+            contains_expr_kind(base, pred)
+                || fields.iter().any(|(_, e)| contains_expr_kind(e, pred))
+        }
+        TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
+            elems.iter().any(|e| contains_expr_kind(e, pred))
+        }
+        TypedExprKind::Recur(args) => args.iter().any(|a| contains_expr_kind(a, pred)),
+        TypedExprKind::LetPattern { value, body, .. } => {
+            contains_expr_kind(value, pred)
+                || body.as_deref().map_or(false, |b| contains_expr_kind(b, pred))
+        }
+    }
+}
+
+fn contains_recur(expr: &TypedExpr) -> bool {
+    contains_expr_kind(expr, &|kind| matches!(kind, TypedExprKind::Recur(_)))
+}
+
+fn contains_question_mark(expr: &TypedExpr) -> bool {
+    contains_expr_kind(expr, &|kind| matches!(kind, TypedExprKind::QuestionMark { .. }))
+}
+
+// ---------------------------------------------------------------------------
 // Referenced-var collection (on lowered IR Expr)
 // ---------------------------------------------------------------------------
 
@@ -339,6 +401,9 @@ fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
         SimpleExpr::MakeDict { sub_dicts, .. } => {
             for atom in sub_dicts { referenced_vars_atom(atom, vars); }
         }
+        SimpleExpr::MakeVec { elements, .. } => {
+            for atom in elements { referenced_vars_atom(atom, vars); }
+        }
         SimpleExpr::Atom(atom) => referenced_vars_atom(atom, vars),
     }
 }
@@ -385,6 +450,10 @@ struct LowerCtx {
     lifted_fns: Vec<FnDef>,
     /// VarId → Type, populated at binding sites for capture type lookups
     var_types: HashMap<VarId, Type>,
+    /// Join point for `recur` jumps in the current function
+    recur_join: Option<(VarId, Vec<VarId>)>,
+    /// Join point for `?` early returns in the current function
+    early_return_join: Option<VarId>,
 }
 
 impl LowerCtx {
@@ -659,14 +728,34 @@ impl LowerCtx {
                     std::mem::discriminant(&expr.kind)
                 )))
             }
-            TypedExprKind::Recur(_) => {
-                Err(LowerError::NotYetLowered("Recur".to_string()))
+            TypedExprKind::Recur(_)
+            | TypedExprKind::QuestionMark { .. } => {
+                // These are compound expressions — must go through lower_expr
+                Err(LowerError::InternalError(format!(
+                    "lower_to_simple called on compound expr {:?}",
+                    std::mem::discriminant(&expr.kind)
+                )))
             }
-            TypedExprKind::QuestionMark { .. } => {
-                Err(LowerError::NotYetLowered("QuestionMark".to_string()))
-            }
-            TypedExprKind::VecLit(_) => {
-                Err(LowerError::NotYetLowered("VecLit".to_string()))
+            TypedExprKind::VecLit(elems) => {
+                let mut bindings = vec![];
+                let mut atoms = vec![];
+                for elem in elems {
+                    let (bs, atom) = self.lower_to_atom(elem)?;
+                    bindings.extend(bs);
+                    atoms.push(atom);
+                }
+                let element_type = if let Type::Named(_, args) = &expr.ty {
+                    args.first().cloned().unwrap_or(Type::Unit)
+                } else if let Type::Own(inner) = &expr.ty {
+                    if let Type::Named(_, args) = inner.as_ref() {
+                        args.first().cloned().unwrap_or(Type::Unit)
+                    } else {
+                        Type::Unit
+                    }
+                } else {
+                    Type::Unit
+                };
+                Ok((bindings, SimpleExpr::MakeVec { element_type, elements: atoms }))
             }
         }
     }
@@ -968,14 +1057,174 @@ impl LowerCtx {
                 self.lower_let_pattern(pattern, value, body.as_deref(), &expr.ty)
             }
 
-            TypedExprKind::Recur(_) => {
-                Err(LowerError::NotYetLowered("Recur".to_string()))
+            TypedExprKind::Recur(args) => {
+                let (join_name, _join_params) = self.recur_join.clone().ok_or_else(|| {
+                    LowerError::InternalError("recur outside of a recur-enabled function".to_string())
+                })?;
+                let mut bindings = vec![];
+                let mut jump_args = vec![];
+                for arg in args {
+                    let (bs, atom) = self.lower_to_atom(arg)?;
+                    bindings.extend(bs);
+                    jump_args.push(atom);
+                }
+                let jump = Expr {
+                    ty: expr.ty.clone(),
+                    kind: ExprKind::Jump {
+                        target: join_name,
+                        args: jump_args,
+                    },
+                };
+                Ok(Self::wrap_bindings(bindings, jump))
             }
-            TypedExprKind::QuestionMark { .. } => {
-                Err(LowerError::NotYetLowered("QuestionMark".to_string()))
+
+            TypedExprKind::QuestionMark { expr: inner, is_option } => {
+                let early_return = self.early_return_join.ok_or_else(|| {
+                    LowerError::InternalError("? outside of a ?-enabled function".to_string())
+                })?;
+                let (bindings, scrut_atom) = self.lower_to_atom(inner)?;
+
+                let inner_ty = strip_own(&inner.ty);
+
+                // Extract types and build the switch
+                let success_var = self.fresh_var();
+
+                let switch = if *is_option {
+                    // Option[T]: Some#0(T) | None#1
+                    let t = match inner_ty {
+                        Type::Named(_, args) if !args.is_empty() => args[0].clone(),
+                        _ => Type::Unit,
+                    };
+                    let wrap_var = self.fresh_var();
+                    Expr {
+                        ty: t.clone(),
+                        kind: ExprKind::Switch {
+                            scrutinee: scrut_atom,
+                            branches: vec![
+                                SwitchBranch {
+                                    tag: 0,
+                                    bindings: vec![(success_var, t.clone())],
+                                    body: Expr {
+                                        ty: t,
+                                        kind: ExprKind::Atom(Atom::Var(success_var)),
+                                    },
+                                },
+                                SwitchBranch {
+                                    tag: 1,
+                                    bindings: vec![],
+                                    body: Expr {
+                                        ty: inner.ty.clone(),
+                                        kind: ExprKind::Let {
+                                            bind: wrap_var,
+                                            ty: inner.ty.clone(),
+                                            value: SimpleExpr::ConstructVariant {
+                                                type_name: "Option".to_string(),
+                                                variant: "None".to_string(),
+                                                tag: 1,
+                                                fields: vec![],
+                                            },
+                                            body: Box::new(Expr {
+                                                ty: inner.ty.clone(),
+                                                kind: ExprKind::Jump {
+                                                    target: early_return,
+                                                    args: vec![Atom::Var(wrap_var)],
+                                                },
+                                            }),
+                                        },
+                                    },
+                                },
+                            ],
+                            default: None,
+                        },
+                    }
+                } else {
+                    // Result[E, T]: Ok#0(T) | Err#1(E)
+                    let (err_ty, ok_ty) = match inner_ty {
+                        Type::Named(_, args) if args.len() >= 2 => (args[0].clone(), args[1].clone()),
+                        _ => (Type::Unit, Type::Unit),
+                    };
+                    let err_var = self.fresh_var();
+                    let wrap_var = self.fresh_var();
+                    Expr {
+                        ty: ok_ty.clone(),
+                        kind: ExprKind::Switch {
+                            scrutinee: scrut_atom,
+                            branches: vec![
+                                SwitchBranch {
+                                    tag: 0,
+                                    bindings: vec![(success_var, ok_ty.clone())],
+                                    body: Expr {
+                                        ty: ok_ty,
+                                        kind: ExprKind::Atom(Atom::Var(success_var)),
+                                    },
+                                },
+                                SwitchBranch {
+                                    tag: 1,
+                                    bindings: vec![(err_var, err_ty)],
+                                    body: Expr {
+                                        ty: inner.ty.clone(),
+                                        kind: ExprKind::Let {
+                                            bind: wrap_var,
+                                            ty: inner.ty.clone(),
+                                            value: SimpleExpr::ConstructVariant {
+                                                type_name: "Result".to_string(),
+                                                variant: "Err".to_string(),
+                                                tag: 1,
+                                                fields: vec![Atom::Var(err_var)],
+                                            },
+                                            body: Box::new(Expr {
+                                                ty: inner.ty.clone(),
+                                                kind: ExprKind::Jump {
+                                                    target: early_return,
+                                                    args: vec![Atom::Var(wrap_var)],
+                                                },
+                                            }),
+                                        },
+                                    },
+                                },
+                            ],
+                            default: None,
+                        },
+                    }
+                };
+
+                Ok(Self::wrap_bindings(bindings, switch))
             }
-            TypedExprKind::VecLit(_) => {
-                Err(LowerError::NotYetLowered("VecLit".to_string()))
+
+            TypedExprKind::VecLit(elems) => {
+                let mut bindings = vec![];
+                let mut atoms = vec![];
+                for elem in elems {
+                    let (bs, atom) = self.lower_to_atom(elem)?;
+                    bindings.extend(bs);
+                    atoms.push(atom);
+                }
+                let element_type = if let Type::Named(_, args) = &expr.ty {
+                    args.first().cloned().unwrap_or(Type::Unit)
+                } else if let Type::Own(inner) = &expr.ty {
+                    if let Type::Named(_, args) = inner.as_ref() {
+                        args.first().cloned().unwrap_or(Type::Unit)
+                    } else {
+                        Type::Unit
+                    }
+                } else {
+                    Type::Unit
+                };
+                let var = self.fresh_var();
+                let ty = expr.ty.clone();
+                bindings.push(LetBinding {
+                    bind: var,
+                    ty: ty.clone(),
+                    value: SimpleExpr::MakeVec {
+                        element_type,
+                        elements: atoms,
+                    },
+                });
+                let inner = Expr {
+                    ty,
+                    kind: ExprKind::Atom(Atom::Var(var)),
+                };
+                Ok(Self::wrap_bindings(bindings, inner))
             }
         }
     }
@@ -1000,6 +1249,8 @@ impl LowerCtx {
             | TypedExprKind::Match { .. }
             | TypedExprKind::LetPattern { .. }
             | TypedExprKind::StructUpdate { .. }
+            | TypedExprKind::Recur(_)
+            | TypedExprKind::QuestionMark { .. }
             | TypedExprKind::BinaryOp {
                 op: BinOp::And | BinOp::Or,
                 ..
@@ -2622,6 +2873,7 @@ impl LowerCtx {
         }
 
         // Allocate VarIds for regular params
+        let mut regular_param_vars = vec![];
         for (i, param_name) in decl.params.iter().enumerate() {
             let var = self.fresh_var();
             let ty = param_types
@@ -2631,13 +2883,102 @@ impl LowerCtx {
             self.var_types.insert(var, ty.clone());
             self.push_var(param_name, var);
             params.push((var, ty));
+            regular_param_vars.push(var);
         }
 
-        let body = self.lower_expr(&decl.body)?;
+        let has_recur = contains_recur(&decl.body);
+        let has_qm = contains_question_mark(&decl.body);
 
-        // Pop params
+        // Set up recur join point if needed
+        let recur_join_info = if has_recur {
+            let join_name = self.fresh_var();
+            let mut join_param_vars = vec![];
+            for (i, param_name) in decl.params.iter().enumerate() {
+                let join_var = self.fresh_var();
+                let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+                self.var_types.insert(join_var, ty);
+                // Shadow the original param with the join param
+                self.push_var(param_name, join_var);
+                join_param_vars.push(join_var);
+            }
+            self.recur_join = Some((join_name, join_param_vars.clone()));
+            Some((join_name, join_param_vars))
+        } else {
+            None
+        };
+
+        // Set up early return join point if needed
+        let early_return_info = if has_qm {
+            let join_name = self.fresh_var();
+            let result_var = self.fresh_var();
+            self.early_return_join = Some(join_name);
+            Some((join_name, result_var))
+        } else {
+            None
+        };
+
+        let mut body = self.lower_expr(&decl.body)?;
+
+        // Pop recur join params (they were pushed on top of regular params)
+        if recur_join_info.is_some() {
+            for param_name in decl.params.iter().rev() {
+                self.pop_var(param_name);
+            }
+        }
+        self.recur_join = None;
+        self.early_return_join = None;
+
+        // Pop regular params
         for param_name in decl.params.iter().rev() {
             self.pop_var(param_name);
+        }
+
+        // Wrap body with early return join if needed
+        if let Some((join_name, result_var)) = early_return_info {
+            body = Expr {
+                ty: return_type.clone(),
+                kind: ExprKind::LetJoin {
+                    name: join_name,
+                    params: vec![(result_var, return_type.clone())],
+                    join_body: Box::new(Expr {
+                        ty: return_type.clone(),
+                        kind: ExprKind::Atom(Atom::Var(result_var)),
+                    }),
+                    body: Box::new(body),
+                },
+            };
+        }
+
+        // Wrap body with recur join if needed
+        if let Some((join_name, join_param_vars)) = recur_join_info {
+            let join_params: Vec<(VarId, Type)> = join_param_vars
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+                    (v, ty)
+                })
+                .collect();
+            // Original param atoms for the initial jump
+            let original_atoms: Vec<Atom> = regular_param_vars
+                .iter()
+                .map(|&v| Atom::Var(v))
+                .collect();
+            body = Expr {
+                ty: return_type.clone(),
+                kind: ExprKind::LetJoin {
+                    name: join_name,
+                    params: join_params,
+                    join_body: Box::new(body),
+                    body: Box::new(Expr {
+                        ty: return_type.clone(),
+                        kind: ExprKind::Jump {
+                            target: join_name,
+                            args: original_atoms,
+                        },
+                    }),
+                },
+            };
         }
 
         Ok(FnDef {
@@ -2718,6 +3059,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         dict_depth: 0,
         lifted_fns: vec![],
         var_types: HashMap::new(),
+        recur_join: None,
+        early_return_join: None,
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)

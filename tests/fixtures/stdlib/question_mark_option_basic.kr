@@ -1,0 +1,11 @@
+# expect: output "42"
+extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+fun lookup(x) -> Option[Int] = Some(x)
+fun process(x) -> Option[Int] = {
+  let a = lookup(x)?;
+  Some(a * 2)
+}
+fun main() = match process(21) {
+  Some(v) => println(v),
+  None => println(0),
+}

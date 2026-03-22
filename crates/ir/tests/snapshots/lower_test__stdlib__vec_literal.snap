@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__vec_literal
+
+declare len: (Vec[b6]) -> Int
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: Vec[Int] = make_vec(1, 2, 3)
+  let v1: Int = call len(v0)
+  let v2: Unit = call println(v1)
+  v2

@@ -1,0 +1,28 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module resources__resource_recur
+
+type Handle = MkHandle#0(Int)
+declare println: (m) -> Unit
+
+fn loop(v0: Int) -> Unit =
+  let_join v1(v2: Int) =
+    let v3: Bool = ge_int(v2, 3)
+    switch v3 {
+      1 ->
+        let v4: Unit = call println("done")
+        v4
+      _ ->
+        let v5: ~Handle = construct Handle::MkHandle#0(v2)
+        let v6: Unit = call println("iter")
+        let v7: Int = add_int(v2, 1)
+        jump v1(v7)
+    }
+  in
+  jump v1(v0)
+
+fn main() -> Unit =
+  let v8: Unit = call loop(0)
+  v8

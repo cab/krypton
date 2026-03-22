@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__vec_from_list
+
+declare length: (List[n]) -> Int
+declare println: (m) -> Unit
+declare to_list: (Vec[f7]) -> List[f7]
+
+fn main() -> Unit =
+  let v0: Vec[Int] = make_vec(1, 2, 3)
+  let v1: List[Int] = call to_list(v0)
+  let v2: Int = call length(v1)
+  let v3: Unit = call println(v2)
+  v3
