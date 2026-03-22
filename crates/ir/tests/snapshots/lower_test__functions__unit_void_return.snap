@@ -1,0 +1,45 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module functions__unit_void_return
+
+; extern println
+
+fn side_effect() -> Unit =
+  let_join v1(v0: ~Int) =
+    v0
+  in
+  jump v1(1)
+
+fn explicit_unit() -> Unit =
+  ()
+
+fn multi_let() -> Unit =
+  let_join v5(v2: ~Int) =
+    let_join v4(v3: ~Int) =
+      v3
+    in
+    jump v4(2)
+  in
+  jump v5(1)
+
+fn call_void() -> Unit =
+  let v6: Unit = call side_effect()
+  v6
+
+fn expr_discarded() -> Unit =
+  let_join v8(v7: ~String) =
+    v7
+  in
+  jump v8("hi")
+
+fn main() -> Unit =
+  let v9: Unit = call side_effect()
+  let v10: Unit = call explicit_unit()
+  let v11: Unit = call multi_let()
+  let v12: Unit = call call_void()
+  let v13: Unit = call expr_discarded()
+  let v14: Dict = get_dict Show[String]
+  let v15: Unit = call println(v14, "done")
+  v15

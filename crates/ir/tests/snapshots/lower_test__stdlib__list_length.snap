@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__list_length
+
+; extern length
+; extern println
+
+fn main() -> Unit =
+  let v0: ~List[Int] = construct List::Nil#1()
+  let v1: ~List[Int] = construct List::Cons#0(3, v0)
+  let v2: ~List[Int] = construct List::Cons#0(2, v1)
+  let v3: ~List[Int] = construct List::Cons#0(1, v2)
+  let v4: Int = call length(v3)
+  let v5: Unit = call println(v4)
+  v5

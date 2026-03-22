@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module resources__resource_non_resource_shadow
+
+type Box = MkBox#0(Int)
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Box = construct Box::MkBox#0(1)
+  let v1: ~Box = construct Box::MkBox#0(2)
+  let v2: Unit = call println("done")
+  v2

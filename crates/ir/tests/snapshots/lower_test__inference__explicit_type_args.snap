@@ -1,0 +1,27 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module inference__explicit_type_args
+
+; extern map
+
+fn identity(v0: r7) -> r7 =
+  v0
+
+fn stringify(v1: Int) -> String =
+  "n"
+
+fn call_site() -> Int =
+  let v2: Int = call identity(42)
+  v2
+
+fn standalone() -> Int =
+  let v3: (Int) -> Int = make_closure(identity, [])
+  let v4: Int = call_closure v3(42)
+  v4
+
+fn method_site(v5: List[Int]) -> List[String] =
+  let v6: (Int) -> String = make_closure(stringify, [])
+  let v7: List[String] = call map(v5, v6)
+  v7

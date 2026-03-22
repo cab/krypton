@@ -1,0 +1,8 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module inference__declared_typevar
+
+fn id(v0: r7) -> r7 =
+  v0

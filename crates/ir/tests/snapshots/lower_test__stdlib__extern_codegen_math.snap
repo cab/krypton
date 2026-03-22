@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__extern_codegen_math
+
+; extern abs
+; extern println
+
+fn main() -> Int =
+  let v0: Int = sub_int(0, 42)
+  let v1: Int = call abs(v0)
+  let v2: Unit = call println(v1)
+  0

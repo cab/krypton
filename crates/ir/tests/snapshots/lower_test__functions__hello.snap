@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module functions__hello
+
+; extern println
+
+fn main() -> Unit =
+  let v0: Unit = call println("hello world")
+  v0

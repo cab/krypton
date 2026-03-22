@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_data_field_access_shared_coerce
+
+struct Config { timeout: ~Int }
+struct Task { config: ~Config }
+
+fn get_timeout(v0: Task) -> Int =
+  let v1: Config = project v0.0
+  let v2: Int = project v1.0
+  v2

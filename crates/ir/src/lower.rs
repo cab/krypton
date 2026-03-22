@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
 use krypton_typechecker::typed_ast::{
-    ExportedTypeKind, FnTypeEntry, TypedExpr, TypedExprKind, TypedFnDecl, TypedModule,
+    ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr, TypedExprKind, TypedFnDecl, TypedModule,
 };
-use krypton_typechecker::types::{Type, TypeVarGen, TypeVarId};
+use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 
 use crate::{
     Atom, Expr, ExprKind, FnDef, FnId, Literal, Module, PrimOp, SimpleExpr, StructDef,
@@ -50,6 +50,15 @@ struct LetBinding {
     value: SimpleExpr,
 }
 
+/// Extracted info about a parameterized trait instance (for dict construction).
+#[derive(Clone)]
+struct ParamInstanceInfo {
+    trait_name: String,
+    target_type: Type,
+    type_var_ids: HashMap<String, TypeVarId>,
+    constraints: Vec<(String, String)>, // (trait_name, type_var_name)
+}
+
 // ---------------------------------------------------------------------------
 // Lowering context
 // ---------------------------------------------------------------------------
@@ -69,6 +78,17 @@ struct LowerCtx {
     sum_variants: HashMap<String, (String, u32, Vec<Type>)>,
     /// Cached type_params for private types (avoids double build_type_param_map)
     private_type_params: HashMap<String, Vec<TypeVarId>>,
+    /// fn_name → [(trait_name, TypeVarId)] — required trait dicts
+    fn_constraints: HashMap<String, Vec<(String, TypeVarId)>>,
+    /// (trait_name, TypeVarId) → VarId — dict param variables for the current function
+    dict_params: HashMap<(String, TypeVarId), VarId>,
+    /// fn_name → TypeScheme for resolving type var bindings at call sites
+    fn_schemes: HashMap<String, TypeScheme>,
+    /// Instance defs for parameterized dict resolution:
+    /// (trait_name, target_type, type_var_ids, constraints)
+    param_instances: Vec<ParamInstanceInfo>,
+    /// trait_name → (type_var_id, method_name → (param_types, return_type))
+    trait_method_types: HashMap<String, (TypeVarId, HashMap<String, (Vec<Type>, Type)>)>,
 }
 
 impl LowerCtx {
@@ -905,8 +925,8 @@ impl LowerCtx {
         func: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
-        // Peel TypeApp to get the function name
-        let func_name = extract_call_name(func);
+        // Peel TypeApp to get the function name, origin, and type args
+        let (func_name, origin, type_args) = extract_call_info(func);
 
         // ANF-normalize all arguments
         let mut bindings = vec![];
@@ -915,6 +935,34 @@ impl LowerCtx {
             let (bs, atom) = self.lower_to_atom(arg)?;
             bindings.extend(bs);
             arg_atoms.push(atom);
+        }
+
+        // Handle trait method dispatch (origin-tagged calls)
+        if let Some(ref trait_id) = origin {
+            if let Some(ref name) = func_name {
+                if let Some(fn_id) = self.lookup_fn(name) {
+                    // Resolve the dispatch type from trait method type patterns
+                    let dict_ty = self.resolve_trait_dispatch_type(
+                        &trait_id.name,
+                        name,
+                        args,
+                        &type_args,
+                        func,
+                    );
+                    if let Some(dict_ty) = dict_ty {
+                        let (dict_bindings, dict_atom) =
+                            self.resolve_dict(&trait_id.name, &dict_ty)?;
+                        bindings.extend(dict_bindings);
+
+                        // Dict is prepended as first argument
+                        let mut all_args = vec![dict_atom];
+                        all_args.extend(arg_atoms);
+                        return Ok((bindings, SimpleExpr::Call { func: fn_id, args: all_args }));
+                    }
+                    // Fallthrough: if we can't resolve, emit without dict
+                    return Ok((bindings, SimpleExpr::Call { func: fn_id, args: arg_atoms }));
+                }
+            }
         }
 
         if let Some(name) = &func_name {
@@ -934,13 +982,14 @@ impl LowerCtx {
 
             // Check if it's a known top-level function
             if let Some(fn_id) = self.lookup_fn(name) {
-                return Ok((
-                    bindings,
-                    SimpleExpr::Call {
-                        func: fn_id,
-                        args: arg_atoms,
-                    },
-                ));
+                // Resolve dict arguments for constrained functions
+                let (dict_bindings, dict_atoms) =
+                    self.resolve_call_dicts(name, args, &type_args)?;
+                bindings.extend(dict_bindings);
+
+                let mut all_args = dict_atoms;
+                all_args.extend(arg_atoms);
+                return Ok((bindings, SimpleExpr::Call { func: fn_id, args: all_args }));
             }
 
             // Local variable with function type — closure call
@@ -1078,6 +1127,201 @@ impl LowerCtx {
     }
 
     // -----------------------------------------------------------------------
+    // Dict resolution
+    // -----------------------------------------------------------------------
+
+    /// Resolve a trait dictionary for a given trait and concrete type.
+    /// Returns let-bindings and an atom referencing the dict value.
+    fn resolve_dict(
+        &mut self,
+        trait_name: &str,
+        ty: &Type,
+    ) -> Result<(Vec<LetBinding>, Atom), LowerError> {
+        let ty = strip_own(ty);
+
+        // Strategy 1: Type variable — look up dict param
+        if let Some(var_id) = self.lookup_dict_var(trait_name, ty) {
+            return Ok((vec![], Atom::Var(var_id)));
+        }
+
+        // Strategy 2: Check for parameterized instance with where-constraints
+        if let Some(result) = self.try_resolve_parameterized_dict(trait_name, ty)? {
+            return Ok(result);
+        }
+
+        // Strategy 3: Concrete singleton dict
+        let var = self.fresh_var();
+        Ok((
+            vec![LetBinding {
+                bind: var,
+                ty: Type::Named("Dict".to_string(), vec![]),
+                value: SimpleExpr::GetDict {
+                    trait_name: trait_name.to_string(),
+                    ty: ty.clone(),
+                },
+            }],
+            Atom::Var(var),
+        ))
+    }
+
+    /// Look up a dict param VarId for a type variable.
+    fn lookup_dict_var(&self, trait_name: &str, ty: &Type) -> Option<VarId> {
+        match ty {
+            Type::Var(id) => self
+                .dict_params
+                .get(&(trait_name.to_string(), *id))
+                .copied(),
+            _ => None,
+        }
+    }
+
+    /// Try to resolve a parameterized instance dict (e.g., Show[Option[a]] where a: Show).
+    fn try_resolve_parameterized_dict(
+        &mut self,
+        trait_name: &str,
+        ty: &Type,
+    ) -> Result<Option<(Vec<LetBinding>, Atom)>, LowerError> {
+        // Find a matching instance with constraints
+        let matching = self
+            .param_instances
+            .iter()
+            .find(|inst| {
+                inst.trait_name == trait_name && {
+                    let mut bindings = HashMap::new();
+                    bind_type_vars(&inst.target_type, ty, &mut bindings)
+                }
+            })
+            .cloned();
+
+        let Some(inst) = matching else {
+            return Ok(None);
+        };
+
+        // Bind type vars from the instance pattern against the concrete type
+        let mut type_bindings = HashMap::new();
+        bind_type_vars(&inst.target_type, ty, &mut type_bindings);
+
+        // Resolve sub-dicts for each constraint
+        let mut all_bindings = vec![];
+        let mut sub_dict_atoms = vec![];
+        for (constraint_trait, constraint_type_var) in &inst.constraints {
+            if let Some(&type_var_id) = inst.type_var_ids.get(constraint_type_var) {
+                let sub_type = type_bindings
+                    .get(&type_var_id)
+                    .cloned()
+                    .unwrap_or(Type::Var(type_var_id));
+                let (bs, atom) = self.resolve_dict(constraint_trait, &sub_type)?;
+                all_bindings.extend(bs);
+                sub_dict_atoms.push(atom);
+            }
+        }
+
+        let var = self.fresh_var();
+        all_bindings.push(LetBinding {
+            bind: var,
+            ty: Type::Named("Dict".to_string(), vec![]),
+            value: SimpleExpr::MakeDict {
+                trait_name: trait_name.to_string(),
+                ty: ty.clone(),
+                sub_dicts: sub_dict_atoms,
+            },
+        });
+        Ok(Some((all_bindings, Atom::Var(var))))
+    }
+
+    /// Resolve dict arguments for a call to a constrained function.
+    /// Returns let-bindings and dict atom args to prepend.
+    fn resolve_call_dicts(
+        &mut self,
+        name: &str,
+        args: &[TypedExpr],
+        type_args: &[Type],
+    ) -> Result<(Vec<LetBinding>, Vec<Atom>), LowerError> {
+        let constraints = match self.fn_constraints.get(name) {
+            Some(c) if !c.is_empty() => c.clone(),
+            _ => return Ok((vec![], vec![])),
+        };
+
+        // Get the function's type scheme to extract param type patterns
+        let scheme = self.fn_schemes.get(name).cloned();
+
+        // Build type var bindings from type_args and argument types
+        let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
+
+        if let Some(ref scheme) = scheme {
+            // Bind from explicit type args
+            for (var_id, ty) in scheme.vars.iter().zip(type_args.iter()) {
+                type_bindings.insert(*var_id, ty.clone());
+            }
+
+            // Bind from argument types matched against param patterns
+            if let Type::Fn(ref param_patterns, ref ret_pattern) = scheme.ty {
+                for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
+                    bind_type_vars(pattern, &arg.ty, &mut type_bindings);
+                }
+                // Also try binding from return type if the func expr has a resolved type
+                // (handled implicitly by having enough bindings from params)
+                let _ = ret_pattern; // may be needed for zero-arg fns
+            }
+        }
+
+        let mut all_bindings = vec![];
+        let mut dict_atoms = vec![];
+
+        for (trait_name, type_var_id) in &constraints {
+            let concrete_ty = type_bindings
+                .get(type_var_id)
+                .cloned()
+                .unwrap_or(Type::Var(*type_var_id));
+            let (bs, atom) = self.resolve_dict(trait_name, &concrete_ty)?;
+            all_bindings.extend(bs);
+            dict_atoms.push(atom);
+        }
+
+        Ok((all_bindings, dict_atoms))
+    }
+
+    /// Resolve the dispatch type for a trait method call.
+    /// Uses trait_defs to get the method's param type patterns, then binds
+    /// type vars from the actual args to determine the concrete dispatch type.
+    fn resolve_trait_dispatch_type(
+        &self,
+        trait_name: &str,
+        method_name: &str,
+        args: &[TypedExpr],
+        type_args: &[Type],
+        func: &TypedExpr,
+    ) -> Option<Type> {
+        // Find the trait's type var and method types
+        let (type_var_id, method_types) = self.trait_method_types.get(trait_name)?;
+        let type_var_id = *type_var_id;
+
+        // Get method type patterns
+        let (param_patterns, ret_pattern) = method_types.get(method_name)?;
+
+        let mut bindings = HashMap::new();
+
+        // Bind from params
+        for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
+            bind_type_vars(pattern, &arg.ty, &mut bindings);
+        }
+
+        // Bind from return type
+        let actual_ret = match &func.ty {
+            Type::Fn(_, ret) => ret.as_ref().clone(),
+            other => other.clone(),
+        };
+        bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
+
+        // Bind from explicit type application
+        if !type_args.is_empty() {
+            bindings.entry(type_var_id).or_insert_with(|| type_args[0].clone());
+        }
+
+        bindings.get(&type_var_id).cloned()
+    }
+
+    // -----------------------------------------------------------------------
     // Function lowering
     // -----------------------------------------------------------------------
 
@@ -1095,8 +1339,21 @@ impl LowerCtx {
         // Get param types from fn_types
         let (param_types, return_type) = get_fn_param_types(&decl.name, fn_types)?;
 
-        // Allocate VarIds for params
+        // Clear dict_params from any previous function
+        self.dict_params.clear();
+
+        // Prepend dict params for constrained functions
         let mut params = vec![];
+        if let Some(constraints) = self.fn_constraints.get(&decl.name).cloned() {
+            for (trait_name, type_var_id) in &constraints {
+                let var = self.fresh_var();
+                self.dict_params
+                    .insert((trait_name.clone(), *type_var_id), var);
+                params.push((var, Type::Named("Dict".to_string(), vec![])));
+            }
+        }
+
+        // Allocate VarIds for regular params
         for (i, param_name) in decl.params.iter().enumerate() {
             let var = self.fresh_var();
             let ty = param_types
@@ -1137,6 +1394,21 @@ enum LoweredValue {
 // ---------------------------------------------------------------------------
 
 pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, LowerError> {
+    // Build fn_constraints from both local and imported requirements
+    let mut fn_constraints: HashMap<String, Vec<(String, TypeVarId)>> = HashMap::new();
+    for (name, reqs) in &typed.fn_constraint_requirements {
+        fn_constraints.insert(name.clone(), reqs.clone());
+    }
+    for (name, reqs) in &typed.imported_fn_constraint_requirements {
+        fn_constraints.entry(name.clone()).or_insert_with(|| reqs.clone());
+    }
+
+    // Build fn_schemes from fn_types
+    let mut fn_schemes: HashMap<String, TypeScheme> = HashMap::new();
+    for entry in &typed.fn_types {
+        fn_schemes.insert(entry.name.clone(), entry.scheme.clone());
+    }
+
     let mut ctx = LowerCtx {
         next_var: 0,
         next_fn: 0,
@@ -1146,6 +1418,34 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         struct_fields: HashMap::new(),
         sum_variants: HashMap::new(),
         private_type_params: HashMap::new(),
+        fn_constraints,
+        dict_params: HashMap::new(),
+        fn_schemes,
+        param_instances: typed
+            .instance_defs
+            .iter()
+            .filter(|inst| !inst.constraints.is_empty())
+            .map(|inst| ParamInstanceInfo {
+                trait_name: inst.trait_name.clone(),
+                target_type: inst.target_type.clone(),
+                type_var_ids: inst.type_var_ids.clone(),
+                constraints: inst
+                    .constraints
+                    .iter()
+                    .map(|c| (c.trait_name.clone(), c.type_var.clone()))
+                    .collect(),
+            })
+            .collect(),
+        trait_method_types: typed
+            .trait_defs
+            .iter()
+            .map(|t| {
+                (
+                    t.name.clone(),
+                    (t.type_var_id, t.method_tc_types.clone()),
+                )
+            })
+            .collect(),
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -1341,12 +1641,21 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
 // Free helper functions
 // ---------------------------------------------------------------------------
 
-/// Extract the function name from a call expression, peeling through TypeApp.
-fn extract_call_name(expr: &TypedExpr) -> Option<String> {
+/// Extract function name, origin, and type_args from a call expression,
+/// peeling through TypeApp wrappers. Collects the outermost type_args.
+fn extract_call_info(expr: &TypedExpr) -> (Option<String>, Option<TraitId>, Vec<Type>) {
     match &expr.kind {
-        TypedExprKind::Var(name) => Some(name.clone()),
-        TypedExprKind::TypeApp { expr: inner, .. } => extract_call_name(inner),
-        _ => None,
+        TypedExprKind::Var(name) => (Some(name.clone()), expr.origin.clone(), vec![]),
+        TypedExprKind::TypeApp {
+            expr: inner,
+            type_args,
+        } => {
+            let (name, origin, _) = extract_call_info(inner);
+            // Use origin from inner if present, else from this node
+            let origin = origin.or_else(|| expr.origin.clone());
+            (name, origin, type_args.clone())
+        }
+        _ => (None, expr.origin.clone(), vec![]),
     }
 }
 
@@ -1515,3 +1824,50 @@ fn resolve_type_expr_simple(
         TypeExpr::Wildcard { .. } | TypeExpr::Qualified { .. } => Type::Unit,
     }
 }
+
+/// Match a type pattern against a concrete type to bind type variables.
+/// Ported from codegen's `bind_type_vars` (calls.rs).
+fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) -> bool {
+    match (pattern, actual) {
+        (Type::Var(id), _) => {
+            bindings.entry(*id).or_insert_with(|| actual.clone());
+            true
+        }
+        (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
+            p_name == a_name
+                && p_args.len() == a_args.len()
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
+            p_params.len() == a_params.len()
+                && p_params
+                    .iter()
+                    .zip(a_params.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+                && bind_type_vars(p_ret, a_ret, bindings)
+        }
+        (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
+            p_elems.len() == a_elems.len()
+                && p_elems
+                    .iter()
+                    .zip(a_elems.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        (Type::Own(p_inner), ty) | (ty, Type::Own(p_inner)) => {
+            bind_type_vars(p_inner, ty, bindings)
+        }
+        (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
+            bind_type_vars(p_ctor, a_ctor, bindings)
+                && p_args.len() == a_args.len()
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        _ => pattern == actual,
+    }
+}
+

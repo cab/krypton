@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__println_int
+
+; extern println
+
+fn main() -> Unit =
+  let v0: Dict = get_dict Show[Int]
+  let v1: Unit = call println(v0, 42)
+  v1

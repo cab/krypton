@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__hash_basic
+
+; extern hash
+; extern println
+
+fn main() -> Unit =
+  let v1: Dict = get_dict Hash[Int]
+  let v0: Int = call hash(v1, 42)
+  let v2: Dict = get_dict Hash[Int]
+  let v3: Int = call hash(v2, 42)
+  let v4: Bool = eq_int(v0, v3)
+  let v5: Dict = get_dict Show[Bool]
+  let v6: Unit = call println(v5, v4)
+  v6

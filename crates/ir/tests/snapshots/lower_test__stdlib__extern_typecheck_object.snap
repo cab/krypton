@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__extern_typecheck_object
+
+; extern println
+
+fn main() -> Unit =
+  let v0: Unit = call println(42)
+  v0

@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__op_semigroup_direct_call
+
+; extern combine
+; extern println
+
+fn apply_combine(v0: Dict, v1: w7, v2: w7) -> w7 =
+  let v3: w7 = call combine(v0, v1, v2)
+  v3
+
+fn main() -> Unit =
+  let v4: Dict = get_dict Semigroup[Int]
+  let v5: Int = call apply_combine(v4, 3, 5)
+  let v6: Unit = call println(v5)
+  v6

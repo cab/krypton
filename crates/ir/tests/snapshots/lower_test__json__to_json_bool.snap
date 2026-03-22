@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__to_json_bool
+
+; extern json_to_string
+; extern println
+; extern to_json
+
+fn main() -> Unit =
+  let v0: Dict = get_dict ToJson[Bool]
+  let v1: Json = call to_json(v0, true)
+  let v2: String = call json_to_string(v1)
+  let v3: Dict = get_dict Show[String]
+  let v4: Unit = call println(v3, v2)
+  v4

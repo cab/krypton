@@ -1,0 +1,29 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__hash_deriving
+
+struct Point { x: Int, y: Int }
+; extern hash
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Point = construct Point(1, 2)
+  let v1: ~Point = construct Point(1, 2)
+  let v2: ~Point = construct Point(3, 4)
+  let v3: Dict = get_dict Hash[Point]
+  let v4: Int = call hash(v3, v0)
+  let v5: Dict = get_dict Hash[Point]
+  let v6: Int = call hash(v5, v1)
+  let v7: Bool = eq_int(v4, v6)
+  let v8: Dict = get_dict Show[Bool]
+  let v9: Unit = call println(v8, v7)
+  let v10: Dict = get_dict Hash[Point]
+  let v11: Int = call hash(v10, v0)
+  let v12: Dict = get_dict Hash[Point]
+  let v13: Int = call hash(v12, v2)
+  let v14: Bool = neq_int(v11, v13)
+  let v15: Dict = get_dict Show[Bool]
+  let v16: Unit = call println(v15, v14)
+  v16

@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__record_basic
+
+struct Point { x: Int, y: Int }
+; extern Point
+
+fn make_point(v0: Int, v1: Int) -> Point =
+  let v2: ~Point = call Point(v0, v1)
+  v2

@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__op_string_concat
+
+; extern println
+
+fn main() -> Unit =
+  let v0: String = concat_string("hello", "world")
+  let v1: Unit = call println(v0)
+  v1

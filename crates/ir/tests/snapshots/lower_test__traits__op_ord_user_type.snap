@@ -1,0 +1,18 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__op_ord_user_type
+
+struct Wrapper { val: Int }
+; extern Wrapper
+; extern lt
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Wrapper = call Wrapper(1)
+  let v1: ~Wrapper = call Wrapper(2)
+  let v2: Dict = get_dict Ord[Wrapper]
+  let v3: Bool = call lt(v2, v0, v1)
+  let v4: Unit = call println(v3)
+  v4

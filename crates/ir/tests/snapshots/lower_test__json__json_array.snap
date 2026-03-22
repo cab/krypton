@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__json_array
+
+; extern json_to_string
+; extern println
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(1.0)
+  let v2: ~Json = construct Json::JNum#2(2.0)
+  let v3: ~Json = construct Json::JNum#2(3.0)
+  let v4: ~List[Json] = construct List::Nil#1()
+  let v5: ~List[Json] = construct List::Cons#0(v3, v4)
+  let v6: ~List[Json] = construct List::Cons#0(v2, v5)
+  let v7: ~List[Json] = construct List::Cons#0(v1, v6)
+  let v0: ~Json = construct Json::JArr#4(v7)
+  let v8: String = call json_to_string(v0)
+  let v9: Dict = get_dict Show[String]
+  let v10: Unit = call println(v9, v8)
+  v10

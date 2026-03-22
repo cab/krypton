@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__peek_stdlib_no_consume
+
+; extern peek
+
+fn test(v0: ~String) -> String =
+  let v1: String = call peek(v0)
+  v0

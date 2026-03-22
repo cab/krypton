@@ -1,0 +1,14 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module extern__extern_java_type
+
+; extern raw_send
+
+fn use_ref(v0: Ref[Int]) -> Ref[Int] =
+  v0
+
+fn send_msg(v1: Ref[Int], v2: Int) -> Unit =
+  let v3: Unit = call raw_send(v1, v2)
+  v3

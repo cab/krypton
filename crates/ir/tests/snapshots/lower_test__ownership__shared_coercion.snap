@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__shared_coercion
+
+; extern println
+
+fn identity(v0: r7) -> r7 =
+  v0
+
+fn use_it(v1: ~String) -> Unit =
+  let v2: String = call identity(v1)
+  let v3: Dict = get_dict Show[String]
+  let v4: Unit = call println(v3, v1)
+  v4

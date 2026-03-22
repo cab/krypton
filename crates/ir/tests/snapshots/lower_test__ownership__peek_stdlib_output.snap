@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__peek_stdlib_output
+
+; extern peek
+; extern println
+
+fn main() -> Unit =
+  let_join v4(v0: ~String) =
+    let v1: String = call peek(v0)
+    let v2: Dict = get_dict Show[String]
+    let v3: Unit = call println(v2, v1)
+    v3
+  in
+  jump v4("hello")

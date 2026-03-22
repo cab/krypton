@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__constrained_instance_nested_ok
+
+type Option[a] = Some#0(a) | None#1
+; extern println
+; extern show
+
+fn main() -> Unit =
+  let v0: ~Option[Int] = construct Option::Some#0(42)
+  let v1: ~Option[Option[Int]] = construct Option::Some#0(v0)
+  let v2: Dict = get_dict Show[Int]
+  let v3: Dict = make_dict Show[Option[Int]](v2)
+  let v4: Dict = make_dict Show[Option[Option[Int]]](v3)
+  let v5: String = call show(v4, v1)
+  let v6: Bool = eq_string(v5, "nested")
+  let v7: Unit = call println(v6)
+  v7

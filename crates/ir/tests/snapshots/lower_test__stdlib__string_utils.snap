@@ -1,0 +1,61 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__string_utils
+
+; extern char_at
+; extern contains
+; extern ends_with
+; extern index_of
+; extern join
+; extern println
+; extern replace
+; extern starts_with
+; extern to_lower
+; extern to_upper
+
+fn main() -> Unit =
+  let v0: Bool = call contains("hello world", "world")
+  let v1: Dict = get_dict Show[Bool]
+  let v2: Unit = call println(v1, v0)
+  let v3: Bool = call contains("hello world", "xyz")
+  let v4: Dict = get_dict Show[Bool]
+  let v5: Unit = call println(v4, v3)
+  let v6: Bool = call starts_with("hello world", "hello")
+  let v7: Dict = get_dict Show[Bool]
+  let v8: Unit = call println(v7, v6)
+  let v9: Bool = call ends_with("hello world", "world")
+  let v10: Dict = get_dict Show[Bool]
+  let v11: Unit = call println(v10, v9)
+  let v12: Bool = call ends_with("hello world", "hello")
+  let v13: Dict = get_dict Show[Bool]
+  let v14: Unit = call println(v13, v12)
+  let v15: String = call to_lower("Hello World")
+  let v16: Dict = get_dict Show[String]
+  let v17: Unit = call println(v16, v15)
+  let v18: String = call to_upper("hello world")
+  let v19: Dict = get_dict Show[String]
+  let v20: Unit = call println(v19, v18)
+  let v21: String = call replace("hello world", "world", "earth")
+  let v22: Dict = get_dict Show[String]
+  let v23: Unit = call println(v22, v21)
+  let v24: Option[Int] = call index_of("hello world", "world")
+  let v25: Dict = get_dict Show[Option[Int]]
+  let v26: Unit = call println(v25, v24)
+  let v27: Option[Int] = call index_of("hello world", "xyz")
+  let v28: Dict = get_dict Show[Option[Int]]
+  let v29: Unit = call println(v28, v27)
+  let v31: ~List[String] = construct List::Nil#1()
+  let v32: ~List[String] = construct List::Cons#0("world", v31)
+  let v30: ~List[String] = construct List::Cons#0("hello", v32)
+  let v33: String = call join(v30, ", ")
+  let v34: Dict = get_dict Show[String]
+  let v35: Unit = call println(v34, v33)
+  let v36: Option[String] = call char_at("hello", 1)
+  let v37: Dict = get_dict Show[Option[String]]
+  let v38: Unit = call println(v37, v36)
+  let v39: Option[String] = call char_at("hello", 10)
+  let v40: Dict = get_dict Show[Option[String]]
+  let v41: Unit = call println(v40, v39)
+  v41

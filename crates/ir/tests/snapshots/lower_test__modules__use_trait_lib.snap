@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__use_trait_lib
+
+; extern println
+
+fn main() -> Unit =
+  let_join v4(v0: ~Color) =
+    let v2: Dict = get_dict Show[Color]
+    let v3: Unit = call println(v2, v0)
+    v3
+  in
+  let v1: ~Color = construct Color::Red#0()
+  jump v4(v1)

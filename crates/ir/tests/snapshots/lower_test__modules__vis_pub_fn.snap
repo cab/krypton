@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__vis_pub_fn
+
+; extern println
+; extern public_fn
+
+fn main() -> Unit =
+  let v0: Int = call public_fn(5)
+  let v1: Unit = call println(v0)
+  v1

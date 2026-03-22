@@ -39,7 +39,17 @@ fn ir_lower(
         return;
     }
 
-    let name = path.file_stem().unwrap().to_string_lossy().to_string();
+    let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+    let parent = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let name = if parent.is_empty() || parent == "fixtures" {
+        stem.clone()
+    } else {
+        format!("{parent}__{stem}")
+    };
     let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
     let (module, errors) = parse(&fixture.source);

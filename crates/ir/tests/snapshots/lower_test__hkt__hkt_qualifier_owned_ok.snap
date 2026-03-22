@@ -1,0 +1,8 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt__hkt_qualifier_owned_ok
+
+fn use_once(v0: r7[~s7]) -> r7[~s7] =
+  v0

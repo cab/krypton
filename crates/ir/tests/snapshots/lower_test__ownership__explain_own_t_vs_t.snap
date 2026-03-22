@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__explain_own_t_vs_t
+
+struct Box { value: String }
+; extern Box
+
+fn bad(v0: ~String) -> Box =
+  let v1: ~Box = call Box(v0)
+  v1

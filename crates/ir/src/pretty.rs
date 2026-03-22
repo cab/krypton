@@ -135,6 +135,16 @@ impl fmt::Display for SimpleExpr {
             SimpleExpr::PrimOp { op, args } => {
                 write!(f, "{op}({})", fmt_atoms(args))
             }
+            SimpleExpr::GetDict { trait_name, ty } => {
+                write!(f, "get_dict {trait_name}[{ty}]")
+            }
+            SimpleExpr::MakeDict {
+                trait_name,
+                ty,
+                sub_dicts,
+            } => {
+                write!(f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
+            }
         }
     }
 }
@@ -198,6 +208,12 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             }
             SimpleExpr::PrimOp { op, args } => {
                 write!(self.f, "{op}({})", fmt_atoms(args))
+            }
+            SimpleExpr::GetDict { trait_name, ty } => {
+                write!(self.f, "get_dict {trait_name}[{ty}]")
+            }
+            SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
+                write!(self.f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
             }
         }
     }

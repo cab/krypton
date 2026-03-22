@@ -1,0 +1,19 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__op_add_user_type
+
+struct Vec2 { x: Int, y: Int }
+; extern Vec2
+; extern combine
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Vec2 = call Vec2(1, 1)
+  let v1: ~Vec2 = call Vec2(3, 2)
+  let v2: Dict = get_dict Semigroup[Vec2]
+  let v3: Vec2 = call combine(v2, v0, v1)
+  let v4: Int = project v3.0
+  let v5: Unit = call println(v4)
+  v5

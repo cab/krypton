@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__constrained_instance_unconstrained_regression
+
+type Box = Box#0(Int)
+; extern println
+; extern show
+
+fn main() -> Unit =
+  let v0: ~Box = construct Box::Box#0(1)
+  let v1: Dict = get_dict Show[Box]
+  let v2: String = call show(v1, v0)
+  let v3: Bool = eq_string(v2, "box")
+  let v4: Unit = call println(v3)
+  v4

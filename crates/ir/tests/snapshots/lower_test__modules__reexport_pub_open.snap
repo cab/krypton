@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__reexport_pub_open
+
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Color = construct Color::Red#0()
+  let v1: Unit = call println(v0)
+  v1

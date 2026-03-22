@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__extern_codegen_void
+
+; extern gc
+
+fn main() -> Int =
+  let v0: Unit = call gc()
+  0

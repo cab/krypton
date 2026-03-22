@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__constrained_fn_ref_local
+
+; extern println
+; extern show
+
+fn show_it(v0: Dict, v1: r7) -> String =
+  let v2: String = call show(v0, v1)
+  v2
+
+fn main() -> Unit =
+  let v3: (Int) -> String = make_closure(show_it, [])
+  let v4: String = call_closure v3(42)
+  let v5: Bool = eq_string(v4, "42")
+  let v6: Dict = get_dict Show[Bool]
+  let v7: Unit = call println(v6, v5)
+  v7

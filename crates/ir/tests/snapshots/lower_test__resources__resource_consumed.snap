@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module resources__resource_consumed
+
+type Handle = MkHandle#0(String)
+; extern close
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Handle = construct Handle::MkHandle#0("test")
+  let v1: Unit = call println("opened")
+  let v2: Dict = get_dict Resource[Handle]
+  let v3: Unit = call close(v2, v0)
+  v3

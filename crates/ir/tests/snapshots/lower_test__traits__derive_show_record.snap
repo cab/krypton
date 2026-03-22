@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__derive_show_record
+
+struct Point { x: Int, y: Int }
+; extern Point
+; extern println
+; extern show
+
+fn main() -> Unit =
+  let v0: ~Point = call Point(1, 2)
+  let v1: Dict = get_dict Show[Point]
+  let v2: String = call show(v1, v0)
+  let v3: Unit = call println(v2)
+  v3

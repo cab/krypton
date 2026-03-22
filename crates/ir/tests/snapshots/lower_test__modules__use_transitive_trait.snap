@@ -1,0 +1,16 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__use_transitive_trait
+
+; extern println
+; extern render
+
+fn main() -> Unit =
+  let v0: ~Msg = construct Msg::MkMsg#0("hi")
+  let v1: Dict = get_dict Render[Msg]
+  let v2: String = call render(v1, v0)
+  let v3: Dict = get_dict Show[String]
+  let v4: Unit = call println(v3, v2)
+  v4

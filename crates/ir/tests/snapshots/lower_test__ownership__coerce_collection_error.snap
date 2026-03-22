@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__coerce_collection_error
+
+type MyList = Cons#0(String, MyList) | Nil#1
+
+fn test(v0: ~String) -> MyList =
+  let v1: ~MyList = construct MyList::Nil#1()
+  let v2: ~MyList = construct MyList::Cons#0(v0, v1)
+  v2

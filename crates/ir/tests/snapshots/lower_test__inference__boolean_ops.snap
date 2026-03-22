@@ -1,0 +1,209 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module inference__boolean_ops
+
+; extern println
+
+fn main() -> Unit =
+  let_join v68(v0: Bool) =
+    let_join v67(v3: Bool) =
+      let_join v66(v6: Bool) =
+        let_join v65(v9: Bool) =
+          let_join v64(v12: Bool) =
+            let_join v63(v15: Bool) =
+              let_join v62(v18: Bool) =
+                let_join v61(v21: Bool) =
+                  let v24: Bool = not(true)
+                  let v25: Bool = not(false)
+                  let_join v60(v26: Bool) =
+                    let_join v59(v32: Bool) =
+                      let v58: Unit = call println(v32)
+                      v58
+                    in
+                    let_join v57(v56: Bool) =
+                      switch v56 {
+                        1 ->
+                          jump v59(v26)
+                        _ ->
+                          jump v59(false)
+                      }
+                    in
+                    let_join v55(v54: Bool) =
+                      switch v54 {
+                        1 ->
+                          jump v57(v25)
+                        _ ->
+                          jump v57(false)
+                      }
+                    in
+                    let_join v53(v51: Bool) =
+                      switch v51 {
+                        1 ->
+                          let v52: Bool = not(v24)
+                          jump v55(v52)
+                        _ ->
+                          jump v55(false)
+                      }
+                    in
+                    let_join v50(v48: Bool) =
+                      switch v48 {
+                        1 ->
+                          let v49: Bool = not(v21)
+                          jump v53(v49)
+                        _ ->
+                          jump v53(false)
+                      }
+                    in
+                    let_join v47(v46: Bool) =
+                      switch v46 {
+                        1 ->
+                          jump v50(v18)
+                        _ ->
+                          jump v50(false)
+                      }
+                    in
+                    let_join v45(v44: Bool) =
+                      switch v44 {
+                        1 ->
+                          jump v47(v15)
+                        _ ->
+                          jump v47(false)
+                      }
+                    in
+                    let_join v43(v42: Bool) =
+                      switch v42 {
+                        1 ->
+                          jump v45(v12)
+                        _ ->
+                          jump v45(false)
+                      }
+                    in
+                    let_join v41(v39: Bool) =
+                      switch v39 {
+                        1 ->
+                          let v40: Bool = not(v9)
+                          jump v43(v40)
+                        _ ->
+                          jump v43(false)
+                      }
+                    in
+                    let_join v38(v36: Bool) =
+                      switch v36 {
+                        1 ->
+                          let v37: Bool = not(v6)
+                          jump v41(v37)
+                        _ ->
+                          jump v41(false)
+                      }
+                    in
+                    let_join v35(v33: Bool) =
+                      switch v33 {
+                        1 ->
+                          let v34: Bool = not(v3)
+                          jump v38(v34)
+                        _ ->
+                          jump v38(false)
+                      }
+                    in
+                    jump v35(v0)
+                  in
+                  let_join v31(v29: Bool) =
+                    switch v29 {
+                      1 ->
+                        jump v60(true)
+                      _ ->
+                        let v30: Bool = not(false)
+                        jump v60(v30)
+                    }
+                  in
+                  let_join v28(v27: Bool) =
+                    switch v27 {
+                      1 ->
+                        jump v31(false)
+                      _ ->
+                        jump v31(false)
+                    }
+                  in
+                  jump v28(true)
+                in
+                let_join v23(v22: Bool) =
+                  switch v22 {
+                    1 ->
+                      jump v61(true)
+                    _ ->
+                      jump v61(false)
+                  }
+                in
+                jump v23(false)
+              in
+              let_join v20(v19: Bool) =
+                switch v19 {
+                  1 ->
+                    jump v62(true)
+                  _ ->
+                    jump v62(true)
+                }
+              in
+              jump v20(false)
+            in
+            let_join v17(v16: Bool) =
+              switch v16 {
+                1 ->
+                  jump v63(true)
+                _ ->
+                  jump v63(false)
+              }
+            in
+            jump v17(true)
+          in
+          let_join v14(v13: Bool) =
+            switch v13 {
+              1 ->
+                jump v64(true)
+              _ ->
+                jump v64(true)
+            }
+          in
+          jump v14(true)
+        in
+        let_join v11(v10: Bool) =
+          switch v10 {
+            1 ->
+              jump v65(false)
+            _ ->
+              jump v65(false)
+          }
+        in
+        jump v11(false)
+      in
+      let_join v8(v7: Bool) =
+        switch v7 {
+          1 ->
+            jump v66(true)
+          _ ->
+            jump v66(false)
+        }
+      in
+      jump v8(false)
+    in
+    let_join v5(v4: Bool) =
+      switch v4 {
+        1 ->
+          jump v67(false)
+        _ ->
+          jump v67(false)
+      }
+    in
+    jump v5(true)
+  in
+  let_join v2(v1: Bool) =
+    switch v1 {
+      1 ->
+        jump v68(true)
+      _ ->
+        jump v68(false)
+    }
+  in
+  jump v2(true)

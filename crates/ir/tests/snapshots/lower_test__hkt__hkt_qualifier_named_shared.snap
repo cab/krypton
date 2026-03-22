@@ -1,0 +1,10 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt__hkt_qualifier_named_shared
+
+type Box[a] = Box#0(a)
+
+fn inspect_box(v0: Box[s7], v1: Box[s7]) -> Box[s7] =
+  v0

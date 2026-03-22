@@ -98,6 +98,16 @@ pub enum SimpleExpr {
 
     /// Primitive operation (fully resolved, no overloading).
     PrimOp { op: PrimOp, args: Vec<Atom> },
+
+    /// Reference a singleton trait dictionary (concrete type, no type vars).
+    GetDict { trait_name: String, ty: Type },
+
+    /// Construct a parameterized trait dictionary from sub-dicts.
+    MakeDict {
+        trait_name: String,
+        ty: Type,
+        sub_dicts: Vec<Atom>,
+    },
 }
 
 /// Trivial values — no computation, no side effects.

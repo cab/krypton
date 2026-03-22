@@ -1,0 +1,7 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt__partial_apply_result
+
+type Result[a, b] = Ok#0(b) | Err#1(a)

@@ -1,0 +1,12 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_valid_own_to_own
+
+fn consume(v0: ~String) -> String =
+  v0
+
+fn test(v1: ~String) -> String =
+  let v2: String = call consume(v1)
+  v2

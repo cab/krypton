@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__multi_new_objects
+
+struct Point { x: Int, y: Int }
+; extern Point
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Point = call Point(10, 20)
+  let v1: ~Point = call Point(30, 40)
+  let v2: Int = project v0.0
+  let v3: Unit = call println(v2)
+  let v4: Int = project v0.1
+  let v5: Unit = call println(v4)
+  let v6: Int = project v1.0
+  let v7: Unit = call println(v6)
+  let v8: Int = project v1.1
+  let v9: Unit = call println(v8)
+  v9

@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module json__json_serialize
+
+; extern json_object
+; extern json_to_string
+; extern println
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(1.0)
+  let v2: (~String, ~Json) = tuple("a", v1)
+  let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
+  let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v0: Json = call json_object(v4)
+  let v5: String = call json_to_string(v0)
+  let v6: Dict = get_dict Show[String]
+  let v7: Unit = call println(v6, v5)
+  v7

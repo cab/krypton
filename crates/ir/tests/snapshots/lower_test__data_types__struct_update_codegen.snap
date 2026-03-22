@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__struct_update_codegen
+
+struct Point { x: Int, y: Int }
+; extern Point
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Point = call Point(1, 2)
+  let_join v6(v1: ~Point) =
+    let v4: Int = project v1.0
+    let v5: Unit = call println(v4)
+    v5
+  in
+  let v2: Int = project v0.1
+  let v3: ~Point = construct Point(99, v2)
+  jump v6(v3)

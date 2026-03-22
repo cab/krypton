@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module functions__arithmetic
+
+; extern println
+
+fn main() -> Unit =
+  let v0: Int = mul_int(3, 4)
+  let v1: Int = sub_int(v0, 2)
+  let v2: Unit = call println(v1)
+  v2

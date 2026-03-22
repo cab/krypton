@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_if_mixed_join
+
+fn test(v0: ~String, v1: String) -> String =
+  switch true {
+    1 ->
+      v0
+    _ ->
+      v1
+  }

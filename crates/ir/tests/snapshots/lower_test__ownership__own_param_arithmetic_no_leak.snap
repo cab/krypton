@@ -1,0 +1,9 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_param_arithmetic_no_leak
+
+fn double(v0: Int) -> Int =
+  let v1: Int = mul_int(v0, 2)
+  v1

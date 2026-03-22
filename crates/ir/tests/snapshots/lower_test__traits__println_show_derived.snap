@@ -1,0 +1,15 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__println_show_derived
+
+type MyOption[a] = MySome#0(a) | MyNone#1
+; extern println
+
+fn main() -> Unit =
+  let v0: ~MyOption[Int] = construct MyOption::MySome#0(1)
+  let v1: Dict = get_dict Show[Int]
+  let v2: Dict = make_dict Show[MyOption[Int]](v1)
+  let v3: Unit = call println(v2, v0)
+  v3

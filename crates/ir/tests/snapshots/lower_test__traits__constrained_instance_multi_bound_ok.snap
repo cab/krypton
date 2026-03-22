@@ -1,0 +1,19 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__constrained_instance_multi_bound_ok
+
+type Pair[a, b] = Pair#0(a, b)
+; extern println
+; extern show
+
+fn main() -> Unit =
+  let v0: ~Pair[Int, String] = construct Pair::Pair#0(1, "ok")
+  let v1: Dict = get_dict Eq[Int]
+  let v2: Dict = get_dict Show[String]
+  let v3: Dict = make_dict Show[Pair[Int, String]](v1, v2)
+  let v4: String = call show(v3, v0)
+  let v5: Bool = eq_string(v4, "pair")
+  let v6: Unit = call println(v5)
+  v6

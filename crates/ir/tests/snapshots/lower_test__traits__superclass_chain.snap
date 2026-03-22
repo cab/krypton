@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__superclass_chain
+
+struct Num { n: Int }
+; extern Num
+; extern lt
+; extern println
+
+fn is_less(v0: Dict, v1: t7, v2: t7) -> Bool =
+  let v3: Bool = call lt(v0, v1, v2)
+  v3
+
+fn main() -> Unit =
+  let v4: ~Num = call Num(1)
+  let v5: ~Num = call Num(2)
+  let v6: Dict = get_dict Ord[Num]
+  let v7: Bool = call is_less(v6, v4, v5)
+  let v8: Unit = call println(v7)
+  v8

@@ -1,0 +1,8 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__return_annotation_own_coerce
+
+fn f(v0: ~String) -> String =
+  v0

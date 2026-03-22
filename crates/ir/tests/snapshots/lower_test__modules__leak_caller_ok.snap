@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__leak_caller_ok
+
+; extern exported
+; extern println
+
+fn main() -> Unit =
+  let v0: Int = call exported(5)
+  let v1: Unit = call println(v0)
+  v1

@@ -1,0 +1,17 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__use_user_trait
+
+type Greeting = MkGreeting#0(String)
+; extern display
+; extern println
+
+fn main() -> Unit =
+  let v0: ~Greeting = construct Greeting::MkGreeting#0("hi")
+  let v1: Dict = get_dict Printable[Greeting]
+  let v2: String = call display(v1, v0)
+  let v3: Dict = get_dict Show[String]
+  let v4: Unit = call println(v3, v2)
+  v4

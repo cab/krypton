@@ -1,0 +1,9 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_param_binop_with_literal
+
+fn add_one(v0: Int) -> Int =
+  let v1: Int = add_int(v0, 1)
+  v1

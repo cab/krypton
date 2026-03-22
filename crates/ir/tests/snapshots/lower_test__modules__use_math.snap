@@ -1,0 +1,13 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__use_math
+
+; extern println
+; extern sum
+
+fn main() -> Unit =
+  let v0: Int = call sum(3, 5)
+  let v1: Unit = call println(v0)
+  v1

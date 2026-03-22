@@ -1,0 +1,11 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__prelude_shadow_fn
+
+; extern println
+
+fn main() -> Int =
+  let v0: Int = call println(42)
+  v0
