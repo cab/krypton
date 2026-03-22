@@ -1,0 +1,36 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__constrained_polymorphism
+
+struct A { x: Int }
+struct B { y: Int }
+declare A: (Int) -> A
+declare B: (Int) -> B
+declare eq: (Dict, g, g) -> Bool
+declare println: (m) -> Unit
+
+fn same(v0: Dict, v1: t7, v2: t7) -> Bool =
+  let v3: Bool = call eq(v0, v1, v2)
+  v3
+
+fn main() -> Unit =
+  let_join v14(v12: Bool) =
+    let v13: Unit = call println(v12)
+    v13
+  in
+  let v4: ~A = call A(1)
+  let v5: ~A = call A(1)
+  let v6: Dict = get_dict Eq[A]
+  let v7: Bool = call same(v6, v4, v5)
+  switch v7 {
+    1 ->
+      let v9: ~B = call B(2)
+      let v10: ~B = call B(2)
+      let v8: Dict = get_dict Eq[B]
+      let v11: Bool = call same(v8, v9, v10)
+      jump v14(v11)
+    _ ->
+      jump v14(false)
+  }

@@ -16,7 +16,7 @@ fn main() -> Unit =
   let v0: Json = call json_object(v4)
   let v5: Option[Json] = call json_get(v0, "key")
   switch v5 {
-    0 (v6: c) ->
+    0 (v6: a) ->
       let v7: Dict = get_dict Show[String]
       let v8: Unit = call println(v7, "found")
       v8

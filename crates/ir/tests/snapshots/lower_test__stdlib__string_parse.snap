@@ -18,7 +18,7 @@ fn main() -> Unit =
   let v6: Option[Float] = call parse_float("3.14")
   let v7: Dict = get_dict Show[Option[Float]]
   let v8: Unit = call println(v7, v6)
-  let v9: Option[Float] = call parse_float("xyz")
-  let v10: Dict = get_dict Show[Option[Float]]
-  let v11: Unit = call println(v10, v9)
+  let v10: Option[Float] = call parse_float("xyz")
+  let v9: Dict = get_dict Show[Option[Float]]
+  let v11: Unit = call println(v9, v10)
   v11

@@ -14,8 +14,8 @@ fn make_fn() -> String =
   "hello"
 
 fn main() -> Unit =
-  let v2: () -> String = make_closure(make_fn, [])
-  let v3: String = call call_once(v2)
-  let v4: Dict = get_dict Show[String]
-  let v5: Unit = call println(v4, v3)
+  let v3: () -> String = make_closure(make_fn, [])
+  let v4: String = call call_once(v3)
+  let v2: Dict = get_dict Show[String]
+  let v5: Unit = call println(v2, v4)
   v5

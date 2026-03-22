@@ -13,8 +13,8 @@ fn show_it(v0: Dict, v1: r7) -> String =
 
 fn main() -> Unit =
   let v3: (String) -> String = make_closure(show_it, [])
-  let v4: String = call_closure v3("hello")
-  let v5: Bool = eq_string(v4, "hello")
-  let v6: Dict = get_dict Show[Bool]
-  let v7: Unit = call println(v6, v5)
+  let v5: String = call_closure v3("hello")
+  let v6: Bool = eq_string(v5, "hello")
+  let v4: Dict = get_dict Show[Bool]
+  let v7: Unit = call println(v4, v6)
   v7

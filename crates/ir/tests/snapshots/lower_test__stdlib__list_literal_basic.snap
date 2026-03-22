@@ -10,7 +10,7 @@ fn main() -> Int =
   let v2: ~List[Int] = construct List::Cons#0(2, v1)
   let v3: ~List[Int] = construct List::Cons#0(1, v2)
   switch v3 {
-    0 (v4: d, v5: List[d]) ->
+    0 (v4: c, v5: List[c]) ->
       v4
     1 ->
       0

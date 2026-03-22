@@ -28,7 +28,7 @@ fn main() -> Unit =
       let v33: Dict = get_dict Ord[Int]
       let v25: List[Int] = call sort_by(v33, v30, v32)
       switch v25 {
-        0 (v34: d, v35: List[d]) ->
+        0 (v34: c, v35: List[c]) ->
           let v36: Dict = get_dict Show[Int]
           let v37: Unit = call println(v36, v34)
           v37
@@ -39,7 +39,7 @@ fn main() -> Unit =
       }
     in
     switch v10 {
-      0 (v16: d, v17: List[d]) ->
+      0 (v16: c, v17: List[c]) ->
         switch v17 {
           1 ->
             let v18: Dict = get_dict Show[Int]

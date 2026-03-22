@@ -7,12 +7,15 @@ module modules__vis_pub_open_type
 declare println: (m) -> Unit
 
 fn main() -> Unit =
+  let_join v4(v1: ~Color) =
+    switch v1 {
+      0 ->
+        let v2: Unit = call println("Red")
+        v2
+      1 ->
+        let v3: Unit = call println("Blue")
+        v3
+    }
+  in
   let v0: ~Color = construct Color::Red#0()
-  switch v0 {
-    0 ->
-      let v1: Unit = call println("Red")
-      v1
-    1 ->
-      let v2: Unit = call println("Blue")
-      v2
-  }
+  jump v4(v0)

@@ -1,0 +1,20 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_valid_if_branches
+
+fn consume(v0: ~String) -> String =
+  v0
+
+fn test(v1: ~String, v2: ~String) -> String =
+  let_join v5(v3: ~String) =
+    let v4: String = call consume(v3)
+    v4
+  in
+  switch true {
+    1 ->
+      jump v5(v1)
+    _ ->
+      jump v5(v2)
+  }

@@ -15,8 +15,8 @@ fn err_val() -> Result[String, y7] =
 fn main() -> Int =
   let v2: Result[g8, Int] = call ok_val()
   switch v2 {
-    0 (v3: d) ->
+    0 (v3: c) ->
       v3
-    1 (v4: c) ->
+    1 (v4: b) ->
       0
   }

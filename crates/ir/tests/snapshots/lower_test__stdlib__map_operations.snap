@@ -32,7 +32,7 @@ fn main() -> Unit =
   let v17: Bool = call contains(v15, v16, v12, "a")
   let v18: Dict = get_dict Show[Bool]
   let v19: Unit = call println(v18, v17)
-  let v20: Int = call size(v0)
-  let v21: Dict = get_dict Show[Int]
-  let v22: Unit = call println(v21, v20)
+  let v21: Int = call size(v0)
+  let v20: Dict = get_dict Show[Int]
+  let v22: Unit = call println(v20, v21)
   v22

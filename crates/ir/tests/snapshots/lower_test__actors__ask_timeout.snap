@@ -19,10 +19,10 @@ fn main() -> Unit =
   let v3: (Ref[Int]) -> Msg = make_closure(Get, [])
   let v4: Result[Timeout, Int] = call ask(v1, v3, 100)
   switch v4 {
-    0 (v5: b) ->
+    0 (v5: d) ->
       let v6: Unit = call println(v5)
       v6
-    1 (v7: a) ->
+    1 (v7: c) ->
       switch v7 {
         0 ->
           let v8: Unit = call println("timeout")

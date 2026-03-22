@@ -9,8 +9,8 @@ declare Point: (Int, Int) -> Point
 declare eq: (Dict, g, g) -> Bool
 
 fn main() -> Bool =
-  let v0: ~Point = call Point(1, 2)
   let v1: ~Point = call Point(1, 2)
-  let v2: Dict = get_dict Eq[Point]
-  let v3: Bool = call eq(v2, v0, v1)
+  let v2: ~Point = call Point(1, 2)
+  let v0: Dict = get_dict Eq[Point]
+  let v3: Bool = call eq(v0, v1, v2)
   v3

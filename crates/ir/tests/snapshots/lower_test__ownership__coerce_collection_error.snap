@@ -7,6 +7,9 @@ module ownership__coerce_collection_error
 type MyList = Cons#0(String, MyList) | Nil#1
 
 fn test(v0: ~String) -> MyList =
+  let_join v4(v2: ~MyList) =
+    let v3: ~MyList = construct MyList::Cons#0(v0, v2)
+    v3
+  in
   let v1: ~MyList = construct MyList::Nil#1()
-  let v2: ~MyList = construct MyList::Cons#0(v0, v1)
-  v2
+  jump v4(v1)

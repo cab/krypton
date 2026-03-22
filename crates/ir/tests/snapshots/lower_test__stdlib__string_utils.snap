@@ -55,7 +55,7 @@ fn main() -> Unit =
   let v36: Option[String] = call char_at("hello", 1)
   let v37: Dict = get_dict Show[Option[String]]
   let v38: Unit = call println(v37, v36)
-  let v39: Option[String] = call char_at("hello", 10)
-  let v40: Dict = get_dict Show[Option[String]]
-  let v41: Unit = call println(v40, v39)
+  let v40: Option[String] = call char_at("hello", 10)
+  let v39: Dict = get_dict Show[Option[String]]
+  let v41: Unit = call println(v39, v40)
   v41

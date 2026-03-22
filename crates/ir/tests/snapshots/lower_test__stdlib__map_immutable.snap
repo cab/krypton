@@ -19,9 +19,9 @@ fn main() -> Unit =
   let v6: Bool = call contains(v4, v5, v0, "x")
   let v7: Dict = get_dict Show[Bool]
   let v8: Unit = call println(v7, v6)
-  let v9: Dict = get_dict Eq[String]
-  let v10: Dict = get_dict Hash[String]
-  let v11: Bool = call contains(v9, v10, v1, "x")
-  let v12: Dict = get_dict Show[Bool]
-  let v13: Unit = call println(v12, v11)
+  let v10: Dict = get_dict Eq[String]
+  let v11: Dict = get_dict Hash[String]
+  let v12: Bool = call contains(v10, v11, v1, "x")
+  let v9: Dict = get_dict Show[Bool]
+  let v13: Unit = call println(v9, v12)
   v13

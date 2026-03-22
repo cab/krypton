@@ -2,14 +2,19 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module modules__reexport_pub_open
+module functions__conditionals
 
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v3(v1: ~Color) =
+  let_join v3(v1: ~String) =
     let v2: Unit = call println(v1)
     v2
   in
-  let v0: ~Color = construct Color::Red#0()
-  jump v3(v0)
+  let v0: Bool = eq_int(1, 1)
+  switch v0 {
+    1 ->
+      jump v3("yes")
+    _ ->
+      jump v3("no")
+  }

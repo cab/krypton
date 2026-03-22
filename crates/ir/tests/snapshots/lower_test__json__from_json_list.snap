@@ -20,12 +20,12 @@ fn main() -> Unit =
   let v9: Dict = get_dict FromJson[List[Int]]
   let v8: Result[String, List[Int]] = call from_json(v9, v0)
   switch v8 {
-    0 (v10: b) ->
-      let v11: Int = call length(v10)
-      let v12: Dict = get_dict Show[Int]
-      let v13: Unit = call println(v12, v11)
+    0 (v10: d) ->
+      let v12: Int = call length(v10)
+      let v11: Dict = get_dict Show[Int]
+      let v13: Unit = call println(v11, v12)
       v13
-    1 (v14: a) ->
+    1 (v14: c) ->
       let v15: Dict = get_dict Show[String]
       let v16: Unit = call println(v15, v14)
       v16

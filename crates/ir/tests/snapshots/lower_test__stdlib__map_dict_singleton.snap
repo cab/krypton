@@ -34,16 +34,16 @@ fn main() -> Unit =
     let v27: Dict = get_dict Eq[y12]
     let v28: Dict = get_dict Hash[y12]
     let v21: Map[String, Int] = call from_list(v27, v28, v26)
-    let v29: Int = call size(v21)
-    let v30: Dict = get_dict Show[Int]
-    let v31: Unit = call println(v30, v29)
+    let v30: Int = call size(v21)
+    let v29: Dict = get_dict Show[Int]
+    let v31: Unit = call println(v29, v30)
     v31
   in
   let v7: Dict = get_dict Eq[String]
   let v8: Dict = get_dict Hash[String]
   let v9: Option[Int] = call get(v7, v8, v0, "a")
   switch v9 {
-    0 (v10: d) ->
+    0 (v10: a) ->
       let v11: Dict = get_dict Show[Int]
       let v12: Unit = call println(v11, v10)
       jump v32(v12)

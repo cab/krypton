@@ -13,6 +13,9 @@ fn double(v3: Int) -> Int =
   v4
 
 fn test() -> Int =
+  let_join v8(v6: (Int) -> Int) =
+    let v7: Int = call apply(v6, 21)
+    v7
+  in
   let v5: (Int) -> Int = make_closure(double, [])
-  let v6: Int = call apply(v5, 21)
-  v6
+  jump v8(v5)

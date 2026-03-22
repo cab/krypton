@@ -16,7 +16,7 @@ fn main() -> Unit =
   let v6: ~List[Json] = construct List::Cons#0(v2, v5)
   let v7: ~List[Json] = construct List::Cons#0(v1, v6)
   let v0: ~Json = construct Json::JArr#4(v7)
-  let v8: String = call json_to_string(v0)
-  let v9: Dict = get_dict Show[String]
-  let v10: Unit = call println(v9, v8)
+  let v9: String = call json_to_string(v0)
+  let v8: Dict = get_dict Show[String]
+  let v10: Unit = call println(v8, v9)
   v10

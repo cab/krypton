@@ -39,7 +39,7 @@ fn main() -> Unit =
   let v25: Dict = get_dict Eq[y12]
   let v26: Dict = get_dict Hash[y12]
   let v17: Map[String, Int] = call from_list(v25, v26, v24)
-  let v27: Int = call size(v17)
-  let v28: Dict = get_dict Show[Int]
-  let v29: Unit = call println(v28, v27)
+  let v28: Int = call size(v17)
+  let v27: Dict = get_dict Show[Int]
+  let v29: Unit = call println(v27, v28)
   v29

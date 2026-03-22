@@ -33,10 +33,10 @@ fn work() -> Result[String, Int] =
 fn main() -> Unit =
   let v12: Result[String, Int] = call work()
   switch v12 {
-    0 (v13: c) ->
+    0 (v13: b) ->
       let v14: Unit = call println(v13)
       v14
-    1 (v15: b) ->
+    1 (v15: a) ->
       let v16: Unit = call println("err")
       v16
   }

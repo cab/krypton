@@ -15,12 +15,12 @@ fn main() -> Unit =
     let v4: String = call json_to_string(v3)
     let v5: Dict = get_dict Show[String]
     let v6: Unit = call println(v5, v4)
-    let v7: ~Option[Int] = construct Option::Some#0(42)
-    let v8: Dict = get_dict ToJson[Option[Int]]
-    let v9: Json = call to_json(v8, v7)
-    let v10: String = call json_to_string(v9)
-    let v11: Dict = get_dict Show[String]
-    let v12: Unit = call println(v11, v10)
+    let v8: ~Option[Int] = construct Option::Some#0(42)
+    let v9: Dict = get_dict ToJson[Option[Int]]
+    let v10: Json = call to_json(v9, v8)
+    let v11: String = call json_to_string(v10)
+    let v7: Dict = get_dict Show[String]
+    let v12: Unit = call println(v7, v11)
     v12
   in
   let v1: ~Option[Int] = construct Option::None#1()

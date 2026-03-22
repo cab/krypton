@@ -8,9 +8,9 @@ declare println: (Dict, m) -> Unit
 declare render: (Dict, q7) -> String
 
 fn main() -> Unit =
-  let v0: ~Msg = construct Msg::MkMsg#0("hi")
-  let v1: Dict = get_dict Render[Msg]
-  let v2: String = call render(v1, v0)
-  let v3: Dict = get_dict Show[String]
-  let v4: Unit = call println(v3, v2)
+  let v1: ~Msg = construct Msg::MkMsg#0("hi")
+  let v2: Dict = get_dict Render[Msg]
+  let v3: String = call render(v2, v1)
+  let v0: Dict = get_dict Show[String]
+  let v4: Unit = call println(v0, v3)
   v4

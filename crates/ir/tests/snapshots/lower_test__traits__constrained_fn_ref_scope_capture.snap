@@ -20,9 +20,9 @@ fn use_it(v3: Dict, v4: w7) -> String =
   jump v8(v6)
 
 fn main() -> Unit =
-  let v9: Dict = get_dict Show[Int]
-  let v10: String = call use_it(v9, 42)
-  let v11: Bool = eq_string(v10, "42")
-  let v12: Dict = get_dict Show[Bool]
-  let v13: Unit = call println(v12, v11)
+  let v10: Dict = get_dict Show[Int]
+  let v11: String = call use_it(v10, 42)
+  let v12: Bool = eq_string(v11, "42")
+  let v9: Dict = get_dict Show[Bool]
+  let v13: Unit = call println(v9, v12)
   v13

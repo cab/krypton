@@ -595,6 +595,77 @@ impl LowerCtx {
         }
     }
 
+    /// Lower an expression to an atom, then call `cont` with that atom to build the rest.
+    /// Handles compound sub-expressions (If, Do, Match, etc.) naturally via join points.
+    fn lower_to_atom_then<F>(&mut self, expr: &TypedExpr, cont: F) -> Result<Expr, LowerError>
+    where
+        F: FnOnce(&mut Self, Atom) -> Result<Expr, LowerError>,
+    {
+        // Fast path: already atomic
+        match &expr.kind {
+            TypedExprKind::Lit(lit) => return cont(self, Atom::Lit(convert_lit(lit))),
+            TypedExprKind::Var(name) => {
+                // Nullary variant → needs binding (not atomic)
+                if let Some((_, _, ref fields)) = self.sum_variants.get(name.as_str()) {
+                    if fields.is_empty() {
+                        // fall through to general path
+                    } else if let Some(id) = self.lookup_var(name) {
+                        return cont(self, Atom::Var(id));
+                    }
+                } else if let Some(id) = self.lookup_var(name) {
+                    return cont(self, Atom::Var(id));
+                }
+                // fn ref or nullary variant → fall through to general path
+            }
+            TypedExprKind::TypeApp { expr: inner, .. } => {
+                return self.lower_to_atom_then(inner, cont);
+            }
+            _ => {}
+        }
+        // General path: try_lower_as_simple
+        match self.try_lower_as_simple(expr)? {
+            LoweredValue::Simple(bindings, simple) => {
+                let var = self.fresh_var();
+                let body = cont(self, Atom::Var(var))?;
+                let let_expr = Expr {
+                    ty: body.ty.clone(),
+                    kind: ExprKind::Let {
+                        bind: var,
+                        ty: expr.ty.clone(),
+                        value: simple,
+                        body: Box::new(body),
+                    },
+                };
+                Ok(Self::wrap_bindings(bindings, let_expr))
+            }
+            LoweredValue::Expr(compound) => {
+                let var = self.fresh_var();
+                let body = cont(self, Atom::Var(var))?;
+                Ok(self.inline_compound_let(var, expr.ty.clone(), compound, body))
+            }
+        }
+    }
+
+    /// Lower N expressions to atoms left-to-right, then call `cont` with all atoms.
+    fn lower_atoms_then<F>(
+        &mut self,
+        exprs: &[TypedExpr],
+        acc: Vec<Atom>,
+        cont: F,
+    ) -> Result<Expr, LowerError>
+    where
+        F: FnOnce(&mut Self, Vec<Atom>) -> Result<Expr, LowerError>,
+    {
+        if exprs.is_empty() {
+            return cont(self, acc);
+        }
+        self.lower_to_atom_then(&exprs[0], |ctx, atom| {
+            let mut acc = acc;
+            acc.push(atom);
+            ctx.lower_atoms_then(&exprs[1..], acc, cont)
+        })
+    }
+
     /// Lower an expression to a SimpleExpr (one step of computation).
     /// Returns prefix let-bindings and the SimpleExpr.
     fn lower_to_simple(
@@ -870,39 +941,27 @@ impl LowerCtx {
             TypedExprKind::Do(exprs) => self.lower_do(exprs, &expr.ty),
 
             TypedExprKind::If { cond, then_, else_ } => {
-                let (bindings, cond_atom) = self.lower_to_atom(cond)?;
-                let then_body = self.lower_expr(then_)?;
-                let else_body = self.lower_expr(else_)?;
-
-                let switch = Expr {
-                    ty: expr.ty.clone(),
-                    kind: ExprKind::Switch {
-                        scrutinee: cond_atom,
-                        branches: vec![SwitchBranch {
-                            tag: 1, // true
-                            bindings: vec![],
-                            body: then_body,
-                        }],
-                        default: Some(Box::new(else_body)),
-                    },
-                };
-                Ok(Self::wrap_bindings(bindings, switch))
+                let result_ty = expr.ty.clone();
+                self.lower_to_atom_then(cond, |ctx, cond_atom| {
+                    let then_body = ctx.lower_expr(then_)?;
+                    let else_body = ctx.lower_expr(else_)?;
+                    Ok(Expr {
+                        ty: result_ty,
+                        kind: ExprKind::Switch {
+                            scrutinee: cond_atom,
+                            branches: vec![SwitchBranch {
+                                tag: 1, // true
+                                bindings: vec![],
+                                body: then_body,
+                            }],
+                            default: Some(Box::new(else_body)),
+                        },
+                    })
+                })
             }
 
             TypedExprKind::App { func, args } => {
-                let (mut bindings, simple) = self.lower_app(func, args)?;
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: simple,
-                });
-                let inner = Expr {
-                    ty: ty.clone(),
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                self.lower_app_expr(func, args, &expr.ty)
             }
 
             // Short-circuit: lhs && rhs → switch lhs { 1 -> rhs | _ -> false }
@@ -920,113 +979,117 @@ impl LowerCtx {
             } => self.lower_short_circuit(lhs, rhs, false),
 
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
-                let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
-                let (rhs_bindings, rhs_atom) = self.lower_to_atom(rhs)?;
-                bindings.extend(rhs_bindings);
-                let prim_op = resolve_binop(op, &lhs.ty)?;
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: SimpleExpr::PrimOp {
-                        op: prim_op,
-                        args: vec![lhs_atom, rhs_atom],
-                    },
-                });
-                let inner = Expr {
-                    ty,
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                let op = op.clone();
+                let result_ty = expr.ty.clone();
+                let lhs_ty = lhs.ty.clone();
+                self.lower_to_atom_then(lhs, |ctx, l| {
+                    ctx.lower_to_atom_then(rhs, |ctx, r| {
+                        let prim_op = resolve_binop(&op, &lhs_ty)?;
+                        let var = ctx.fresh_var();
+                        let ty = result_ty;
+                        Ok(Expr {
+                            ty: ty.clone(),
+                            kind: ExprKind::Let {
+                                bind: var,
+                                ty: ty.clone(),
+                                value: SimpleExpr::PrimOp {
+                                    op: prim_op,
+                                    args: vec![l, r],
+                                },
+                                body: Box::new(Expr {
+                                    ty,
+                                    kind: ExprKind::Atom(Atom::Var(var)),
+                                }),
+                            },
+                        })
+                    })
+                })
             }
 
             TypedExprKind::UnaryOp { op, operand } => {
-                let (mut bindings, atom) = self.lower_to_atom(operand)?;
-                let prim_op = resolve_unaryop(op, &operand.ty)?;
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: SimpleExpr::PrimOp {
-                        op: prim_op,
-                        args: vec![atom],
-                    },
-                });
-                let inner = Expr {
-                    ty,
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                let op = op.clone();
+                let result_ty = expr.ty.clone();
+                let operand_ty = operand.ty.clone();
+                self.lower_to_atom_then(operand, |ctx, atom| {
+                    let prim_op = resolve_unaryop(&op, &operand_ty)?;
+                    let var = ctx.fresh_var();
+                    let ty = result_ty;
+                    Ok(Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::PrimOp {
+                                op: prim_op,
+                                args: vec![atom],
+                            },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    })
+                })
             }
 
             TypedExprKind::Tuple(elems) => {
-                let mut bindings = vec![];
-                let mut atoms = vec![];
-                for elem in elems {
-                    let (bs, atom) = self.lower_to_atom(elem)?;
-                    bindings.extend(bs);
-                    atoms.push(atom);
-                }
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: SimpleExpr::MakeTuple { elements: atoms },
-                });
-                let inner = Expr {
-                    ty,
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                let result_ty = expr.ty.clone();
+                self.lower_atoms_then(elems, vec![], |ctx, atoms| {
+                    let var = ctx.fresh_var();
+                    let ty = result_ty;
+                    Ok(Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::MakeTuple { elements: atoms },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    })
+                })
             }
 
             TypedExprKind::StructLit { name, fields } => {
-                let (mut bindings, simple) = self.lower_struct_lit(name, fields)?;
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: simple,
-                });
-                let inner = Expr {
-                    ty,
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                self.lower_struct_lit_expr(name, fields, &expr.ty)
             }
 
             TypedExprKind::FieldAccess { expr: base, field } => {
-                let (mut bindings, base_atom) = self.lower_to_atom(base)?;
-                let type_name = type_name_of(&base.ty).ok_or_else(|| {
-                    LowerError::InternalError(format!(
-                        "FieldAccess on non-named type: {:?}",
-                        base.ty
-                    ))
-                })?;
-                let idx = self.field_index(&type_name, field)?;
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: SimpleExpr::Project {
-                        value: base_atom,
-                        field_index: idx,
-                    },
-                });
-                let inner = Expr {
-                    ty,
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                let result_ty = expr.ty.clone();
+                let base_ty = base.ty.clone();
+                let field = field.clone();
+                self.lower_to_atom_then(base, |ctx, base_atom| {
+                    let type_name = type_name_of(&base_ty).ok_or_else(|| {
+                        LowerError::InternalError(format!(
+                            "FieldAccess on non-named type: {:?}",
+                            base_ty
+                        ))
+                    })?;
+                    let idx = ctx.field_index(&type_name, &field)?;
+                    let var = ctx.fresh_var();
+                    let ty = result_ty;
+                    Ok(Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::Project {
+                                value: base_atom,
+                                field_index: idx,
+                            },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    })
+                })
             }
 
             TypedExprKind::StructUpdate { base, fields } => {
-                self.lower_struct_update(base, fields, &expr.ty)
+                self.lower_struct_update_expr(base, fields, &expr.ty)
             }
 
             TypedExprKind::Lambda { params, body } => {
@@ -1061,144 +1124,131 @@ impl LowerCtx {
                 let (join_name, _join_params) = self.recur_join.clone().ok_or_else(|| {
                     LowerError::InternalError("recur outside of a recur-enabled function".to_string())
                 })?;
-                let mut bindings = vec![];
-                let mut jump_args = vec![];
-                for arg in args {
-                    let (bs, atom) = self.lower_to_atom(arg)?;
-                    bindings.extend(bs);
-                    jump_args.push(atom);
-                }
-                let jump = Expr {
-                    ty: expr.ty.clone(),
-                    kind: ExprKind::Jump {
-                        target: join_name,
-                        args: jump_args,
-                    },
-                };
-                Ok(Self::wrap_bindings(bindings, jump))
+                let result_ty = expr.ty.clone();
+                self.lower_atoms_then(args, vec![], |_ctx, jump_args| {
+                    Ok(Expr {
+                        ty: result_ty,
+                        kind: ExprKind::Jump {
+                            target: join_name,
+                            args: jump_args,
+                        },
+                    })
+                })
             }
 
             TypedExprKind::QuestionMark { expr: inner, is_option } => {
                 let early_return = self.early_return_join.ok_or_else(|| {
                     LowerError::InternalError("? outside of a ?-enabled function".to_string())
                 })?;
-                let (bindings, scrut_atom) = self.lower_to_atom(inner)?;
-
-                let inner_ty = strip_own(&inner.ty);
-
-                // Extract types and build the switch
-                let success_var = self.fresh_var();
-
-                let switch = if *is_option {
-                    // Option[T]: Some#0(T) | None#1
-                    let t = match inner_ty {
-                        Type::Named(_, args) if !args.is_empty() => args[0].clone(),
-                        _ => Type::Unit,
-                    };
-                    let wrap_var = self.fresh_var();
-                    Expr {
-                        ty: t.clone(),
-                        kind: ExprKind::Switch {
-                            scrutinee: scrut_atom,
-                            branches: vec![
-                                SwitchBranch {
-                                    tag: 0,
-                                    bindings: vec![(success_var, t.clone())],
-                                    body: Expr {
-                                        ty: t,
-                                        kind: ExprKind::Atom(Atom::Var(success_var)),
-                                    },
-                                },
-                                SwitchBranch {
-                                    tag: 1,
-                                    bindings: vec![],
-                                    body: Expr {
-                                        ty: inner.ty.clone(),
-                                        kind: ExprKind::Let {
-                                            bind: wrap_var,
-                                            ty: inner.ty.clone(),
-                                            value: SimpleExpr::ConstructVariant {
-                                                type_name: "Option".to_string(),
-                                                variant: "None".to_string(),
-                                                tag: 1,
-                                                fields: vec![],
-                                            },
-                                            body: Box::new(Expr {
-                                                ty: inner.ty.clone(),
-                                                kind: ExprKind::Jump {
-                                                    target: early_return,
-                                                    args: vec![Atom::Var(wrap_var)],
-                                                },
-                                            }),
+                let is_option = *is_option;
+                let inner_full_ty = inner.ty.clone();
+                let inner_stripped_ty = strip_own(&inner.ty).clone();
+                self.lower_to_atom_then(inner, |ctx, scrut_atom| {
+                    let success_var = ctx.fresh_var();
+                    let switch = if is_option {
+                        // Option[T]: Some#0(T) | None#1
+                        let t = match &inner_stripped_ty {
+                            Type::Named(_, args) if !args.is_empty() => args[0].clone(),
+                            _ => Type::Unit,
+                        };
+                        let wrap_var = ctx.fresh_var();
+                        Expr {
+                            ty: t.clone(),
+                            kind: ExprKind::Switch {
+                                scrutinee: scrut_atom,
+                                branches: vec![
+                                    SwitchBranch {
+                                        tag: 0,
+                                        bindings: vec![(success_var, t.clone())],
+                                        body: Expr {
+                                            ty: t,
+                                            kind: ExprKind::Atom(Atom::Var(success_var)),
                                         },
                                     },
-                                },
-                            ],
-                            default: None,
-                        },
-                    }
-                } else {
-                    // Result[E, T]: Ok#0(T) | Err#1(E)
-                    let (err_ty, ok_ty) = match inner_ty {
-                        Type::Named(_, args) if args.len() >= 2 => (args[0].clone(), args[1].clone()),
-                        _ => (Type::Unit, Type::Unit),
-                    };
-                    let err_var = self.fresh_var();
-                    let wrap_var = self.fresh_var();
-                    Expr {
-                        ty: ok_ty.clone(),
-                        kind: ExprKind::Switch {
-                            scrutinee: scrut_atom,
-                            branches: vec![
-                                SwitchBranch {
-                                    tag: 0,
-                                    bindings: vec![(success_var, ok_ty.clone())],
-                                    body: Expr {
-                                        ty: ok_ty,
-                                        kind: ExprKind::Atom(Atom::Var(success_var)),
-                                    },
-                                },
-                                SwitchBranch {
-                                    tag: 1,
-                                    bindings: vec![(err_var, err_ty)],
-                                    body: Expr {
-                                        ty: inner.ty.clone(),
-                                        kind: ExprKind::Let {
-                                            bind: wrap_var,
-                                            ty: inner.ty.clone(),
-                                            value: SimpleExpr::ConstructVariant {
-                                                type_name: "Result".to_string(),
-                                                variant: "Err".to_string(),
-                                                tag: 1,
-                                                fields: vec![Atom::Var(err_var)],
-                                            },
-                                            body: Box::new(Expr {
-                                                ty: inner.ty.clone(),
-                                                kind: ExprKind::Jump {
-                                                    target: early_return,
-                                                    args: vec![Atom::Var(wrap_var)],
+                                    SwitchBranch {
+                                        tag: 1,
+                                        bindings: vec![],
+                                        body: Expr {
+                                            ty: inner_full_ty.clone(),
+                                            kind: ExprKind::Let {
+                                                bind: wrap_var,
+                                                ty: inner_full_ty.clone(),
+                                                value: SimpleExpr::ConstructVariant {
+                                                    type_name: "Option".to_string(),
+                                                    variant: "None".to_string(),
+                                                    tag: 1,
+                                                    fields: vec![],
                                                 },
-                                            }),
+                                                body: Box::new(Expr {
+                                                    ty: inner_full_ty,
+                                                    kind: ExprKind::Jump {
+                                                        target: early_return,
+                                                        args: vec![Atom::Var(wrap_var)],
+                                                    },
+                                                }),
+                                            },
                                         },
                                     },
-                                },
-                            ],
-                            default: None,
-                        },
-                    }
-                };
-
-                Ok(Self::wrap_bindings(bindings, switch))
+                                ],
+                                default: None,
+                            },
+                        }
+                    } else {
+                        // Result[E, T]: Ok#0(T) | Err#1(E)
+                        let (err_ty, ok_ty) = match &inner_stripped_ty {
+                            Type::Named(_, args) if args.len() >= 2 => (args[0].clone(), args[1].clone()),
+                            _ => (Type::Unit, Type::Unit),
+                        };
+                        let err_var = ctx.fresh_var();
+                        let wrap_var = ctx.fresh_var();
+                        Expr {
+                            ty: ok_ty.clone(),
+                            kind: ExprKind::Switch {
+                                scrutinee: scrut_atom,
+                                branches: vec![
+                                    SwitchBranch {
+                                        tag: 0,
+                                        bindings: vec![(success_var, ok_ty.clone())],
+                                        body: Expr {
+                                            ty: ok_ty,
+                                            kind: ExprKind::Atom(Atom::Var(success_var)),
+                                        },
+                                    },
+                                    SwitchBranch {
+                                        tag: 1,
+                                        bindings: vec![(err_var, err_ty)],
+                                        body: Expr {
+                                            ty: inner_full_ty.clone(),
+                                            kind: ExprKind::Let {
+                                                bind: wrap_var,
+                                                ty: inner_full_ty.clone(),
+                                                value: SimpleExpr::ConstructVariant {
+                                                    type_name: "Result".to_string(),
+                                                    variant: "Err".to_string(),
+                                                    tag: 1,
+                                                    fields: vec![Atom::Var(err_var)],
+                                                },
+                                                body: Box::new(Expr {
+                                                    ty: inner_full_ty,
+                                                    kind: ExprKind::Jump {
+                                                        target: early_return,
+                                                        args: vec![Atom::Var(wrap_var)],
+                                                    },
+                                                }),
+                                            },
+                                        },
+                                    },
+                                ],
+                                default: None,
+                            },
+                        }
+                    };
+                    Ok(switch)
+                })
             }
 
             TypedExprKind::VecLit(elems) => {
-                let mut bindings = vec![];
-                let mut atoms = vec![];
-                for elem in elems {
-                    let (bs, atom) = self.lower_to_atom(elem)?;
-                    bindings.extend(bs);
-                    atoms.push(atom);
-                }
+                let result_ty = expr.ty.clone();
                 let element_type = if let Type::Named(_, args) = &expr.ty {
                     args.first().cloned().unwrap_or(Type::Unit)
                 } else if let Type::Own(inner) = &expr.ty {
@@ -1210,21 +1260,25 @@ impl LowerCtx {
                 } else {
                     Type::Unit
                 };
-                let var = self.fresh_var();
-                let ty = expr.ty.clone();
-                bindings.push(LetBinding {
-                    bind: var,
-                    ty: ty.clone(),
-                    value: SimpleExpr::MakeVec {
-                        element_type,
-                        elements: atoms,
-                    },
-                });
-                let inner = Expr {
-                    ty,
-                    kind: ExprKind::Atom(Atom::Var(var)),
-                };
-                Ok(Self::wrap_bindings(bindings, inner))
+                self.lower_atoms_then(elems, vec![], |ctx, atoms| {
+                    let var = ctx.fresh_var();
+                    let ty = result_ty;
+                    Ok(Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::MakeVec {
+                                element_type,
+                                elements: atoms,
+                            },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    })
+                })
             }
         }
     }
@@ -1283,7 +1337,7 @@ impl LowerCtx {
     ) -> Expr {
         let join_name = self.fresh_var();
         let result_ty = body.ty.clone();
-        let rewritten = self.replace_tail_with_jump(value_expr, join_name);
+        let rewritten = replace_tail_with_jump(value_expr, join_name);
         Expr {
             ty: result_ty.clone(),
             kind: ExprKind::LetJoin {
@@ -1292,81 +1346,6 @@ impl LowerCtx {
                 join_body: Box::new(body),
                 body: Box::new(rewritten),
             },
-        }
-    }
-
-    /// Replace tail positions of an expression with `jump target(tail_value)`.
-    fn replace_tail_with_jump(&self, expr: Expr, target: VarId) -> Expr {
-        let result_ty = expr.ty.clone();
-        match expr.kind {
-            ExprKind::Atom(atom) => Expr {
-                ty: result_ty,
-                kind: ExprKind::Jump {
-                    target,
-                    args: vec![atom],
-                },
-            },
-            ExprKind::Let {
-                bind,
-                ty,
-                value,
-                body,
-            } => {
-                let new_body = self.replace_tail_with_jump(*body, target);
-                Expr {
-                    ty: result_ty,
-                    kind: ExprKind::Let {
-                        bind,
-                        ty,
-                        value,
-                        body: Box::new(new_body),
-                    },
-                }
-            }
-            ExprKind::Switch {
-                scrutinee,
-                branches,
-                default,
-            } => {
-                let new_branches: Vec<_> = branches
-                    .into_iter()
-                    .map(|b| SwitchBranch {
-                        tag: b.tag,
-                        bindings: b.bindings,
-                        body: self.replace_tail_with_jump(b.body, target),
-                    })
-                    .collect();
-                let new_default = default
-                    .map(|d| Box::new(self.replace_tail_with_jump(*d, target)));
-                Expr {
-                    ty: result_ty,
-                    kind: ExprKind::Switch {
-                        scrutinee,
-                        branches: new_branches,
-                        default: new_default,
-                    },
-                }
-            }
-            ExprKind::LetJoin {
-                name,
-                params,
-                join_body,
-                body: join_scope,
-            } => {
-                let new_join_body = self.replace_tail_with_jump(*join_body, target);
-                let new_scope = self.replace_tail_with_jump(*join_scope, target);
-                Expr {
-                    ty: result_ty,
-                    kind: ExprKind::LetJoin {
-                        name,
-                        params,
-                        join_body: Box::new(new_join_body),
-                        body: Box::new(new_scope),
-                    },
-                }
-            }
-            // Jump and LetRec shouldn't appear as compound value tails
-            _ => expr,
         }
     }
 
@@ -1381,21 +1360,19 @@ impl LowerCtx {
         arms: &[TypedMatchArm],
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
-        // ANF-normalize scrutinee to an atom
-        let (bindings, scrut_atom) = self.lower_to_atom(scrutinee)?;
-
-        // Convert arms to clauses (single-column pattern matrix)
-        let clauses: Vec<Clause> = arms
-            .iter()
-            .map(|arm| Clause {
-                patterns: vec![arm.pattern.clone()],
-                body: arm.body.clone(),
-                extra_bindings: vec![],
-            })
-            .collect();
-
-        let decision = self.compile_clauses(vec![scrut_atom], clauses, result_ty)?;
-        Ok(Self::wrap_bindings(bindings, decision))
+        let result_ty = result_ty.clone();
+        let arms = arms.to_vec();
+        self.lower_to_atom_then(scrutinee, |ctx, scrut_atom| {
+            let clauses: Vec<Clause> = arms
+                .iter()
+                .map(|arm| Clause {
+                    patterns: vec![arm.pattern.clone()],
+                    body: arm.body.clone(),
+                    extra_bindings: vec![],
+                })
+                .collect();
+            ctx.compile_clauses(vec![scrut_atom], clauses, &result_ty)
+        })
     }
 
     /// Lower a let-pattern binding as an irrefutable single-arm match.
@@ -1406,13 +1383,11 @@ impl LowerCtx {
         body: Option<&TypedExpr>,
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
-        let (bindings, val_atom) = self.lower_to_atom(value)?;
-
+        let result_ty = result_ty.clone();
+        let pattern = pattern.clone();
         let body_expr = if let Some(body) = body {
             body.clone()
         } else {
-            // LetPattern with no body: the value is the result
-            // This shouldn't normally happen; produce Unit
             TypedExpr {
                 kind: TypedExprKind::Lit(Lit::Unit),
                 ty: Type::Unit,
@@ -1421,14 +1396,14 @@ impl LowerCtx {
             }
         };
 
-        let clause = Clause {
-            patterns: vec![pattern.clone()],
-            body: body_expr,
-            extra_bindings: vec![],
-        };
-
-        let decision = self.compile_clauses(vec![val_atom], vec![clause], result_ty)?;
-        Ok(Self::wrap_bindings(bindings, decision))
+        self.lower_to_atom_then(value, |ctx, val_atom| {
+            let clause = Clause {
+                patterns: vec![pattern],
+                body: body_expr,
+                extra_bindings: vec![],
+            };
+            ctx.compile_clauses(vec![val_atom], vec![clause], &result_ty)
+        })
     }
 
     /// Core clause-matrix compilation.
@@ -2412,8 +2387,216 @@ impl LowerCtx {
         ))
     }
 
-    /// Lower a struct update expression.
-    fn lower_struct_update(
+    // -----------------------------------------------------------------------
+    // CPS-based expression lowering (compound-safe)
+    // -----------------------------------------------------------------------
+
+    /// Lower a function application as a full Expr, handling compound args.
+    fn lower_app_expr(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        // Peel TypeApp to get function name, origin, type args
+        let (func_name, origin, type_args) = extract_call_info(func);
+
+        let result_ty = result_ty.clone();
+
+        // Handle trait method dispatch
+        if let Some(ref trait_id) = origin {
+            if let Some(ref name) = func_name {
+                if let Some(fn_id) = self.lookup_fn(name) {
+                    let dict_ty = self.resolve_trait_dispatch_type(
+                        &trait_id.name,
+                        name,
+                        args,
+                        &type_args,
+                        func,
+                    );
+                    if let Some(dict_ty) = dict_ty {
+                        let (dict_bindings, dict_atom) =
+                            self.resolve_dict(&trait_id.name, &dict_ty)?;
+
+                        return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                            let mut all_args = vec![dict_atom];
+                            all_args.extend(arg_atoms);
+                            let var = ctx.fresh_var();
+                            let ty = result_ty;
+                            let call_expr = Expr {
+                                ty: ty.clone(),
+                                kind: ExprKind::Let {
+                                    bind: var,
+                                    ty: ty.clone(),
+                                    value: SimpleExpr::Call { func: fn_id, args: all_args },
+                                    body: Box::new(Expr {
+                                        ty,
+                                        kind: ExprKind::Atom(Atom::Var(var)),
+                                    }),
+                                },
+                            };
+                            Ok(Self::wrap_bindings(dict_bindings, call_expr))
+                        });
+                    }
+                    return Err(LowerError::InternalError(format!(
+                        "could not resolve trait dispatch type for {}.{}",
+                        trait_id.name, name
+                    )));
+                }
+            }
+        }
+
+        if let Some(name) = &func_name {
+            // Variant constructor
+            if let Some((type_name, tag, _fields)) = self.sum_variants.get(name.as_str()).cloned() {
+                let name = name.clone();
+                return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                    let var = ctx.fresh_var();
+                    let ty = result_ty.clone();
+                    Ok(Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::ConstructVariant {
+                                type_name: type_name.clone(),
+                                variant: name,
+                                tag,
+                                fields: arg_atoms,
+                            },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    })
+                });
+            }
+
+            // Known top-level function
+            if let Some(fn_id) = self.lookup_fn(name) {
+                let (dict_bindings, dict_atoms) =
+                    self.resolve_call_dicts(name, args, &type_args)?;
+
+                return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                    let mut all_args = dict_atoms;
+                    all_args.extend(arg_atoms);
+                    let var = ctx.fresh_var();
+                    let ty = result_ty;
+                    let call_expr = Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::Call { func: fn_id, args: all_args },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    };
+                    Ok(Self::wrap_bindings(dict_bindings, call_expr))
+                });
+            }
+
+            // Local variable — closure call
+            if let Some(var_id) = self.lookup_var(name) {
+                return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                    let var = ctx.fresh_var();
+                    let ty = result_ty.clone();
+                    Ok(Expr {
+                        ty: ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone(),
+                            value: SimpleExpr::CallClosure {
+                                closure: Atom::Var(var_id),
+                                args: arg_atoms,
+                            },
+                            body: Box::new(Expr {
+                                ty,
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    })
+                });
+            }
+
+            return Err(LowerError::UnresolvedVar(name.clone()));
+        }
+
+        // General case: func is a complex expression
+        self.lower_to_atom_then(func, |ctx, func_atom| {
+            ctx.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                let var = ctx.fresh_var();
+                let ty = result_ty.clone();
+                Ok(Expr {
+                    ty: ty.clone(),
+                    kind: ExprKind::Let {
+                        bind: var,
+                        ty: ty.clone(),
+                        value: SimpleExpr::CallClosure {
+                            closure: func_atom.clone(),
+                            args: arg_atoms,
+                        },
+                        body: Box::new(Expr {
+                            ty,
+                            kind: ExprKind::Atom(Atom::Var(var)),
+                        }),
+                    },
+                })
+            })
+        })
+    }
+
+    /// Lower a struct literal as a full Expr, handling compound field values.
+    fn lower_struct_lit_expr(
+        &mut self,
+        name: &str,
+        fields: &[(String, TypedExpr)],
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        let canonical_fields = self
+            .struct_fields
+            .get(name)
+            .ok_or_else(|| LowerError::UnresolvedStruct(name.to_string()))?
+            .clone();
+
+        // Reorder field expressions to canonical order
+        let field_map: HashMap<&str, &TypedExpr> = fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
+        let mut ordered_exprs = vec![];
+        for (fname, _) in &canonical_fields {
+            let fexpr = field_map.get(fname.as_str()).ok_or_else(|| {
+                LowerError::UnresolvedField(name.to_string(), fname.clone())
+            })?;
+            ordered_exprs.push((*fexpr).clone());
+        }
+
+        let result_ty = result_ty.clone();
+        let type_name = name.to_string();
+        self.lower_atoms_then(&ordered_exprs, vec![], |ctx, atoms| {
+            let var = ctx.fresh_var();
+            let ty = result_ty;
+            Ok(Expr {
+                ty: ty.clone(),
+                kind: ExprKind::Let {
+                    bind: var,
+                    ty: ty.clone(),
+                    value: SimpleExpr::Construct {
+                        type_name,
+                        fields: atoms,
+                    },
+                    body: Box::new(Expr {
+                        ty,
+                        kind: ExprKind::Atom(Atom::Var(var)),
+                    }),
+                },
+            })
+        })
+    }
+
+    /// Lower a struct update expression, handling compound sub-expressions.
+    fn lower_struct_update_expr(
         &mut self,
         base: &TypedExpr,
         updates: &[(String, TypedExpr)],
@@ -2432,53 +2615,55 @@ impl LowerCtx {
             .ok_or_else(|| LowerError::UnresolvedStruct(type_name.clone()))?
             .clone();
 
-        // Lower base expression to atom
-        let (mut all_bindings, base_atom) = self.lower_to_atom(base)?;
+        let result_ty = result_ty.clone();
+        let update_names: Vec<String> = updates.iter().map(|(n, _)| n.clone()).collect();
+        let update_exprs: Vec<TypedExpr> = updates.iter().map(|(_, e)| e.clone()).collect();
 
-        // Lower update expressions
-        let mut update_map: HashMap<String, Atom> = HashMap::new();
-        for (fname, fexpr) in updates {
-            let (bs, atom) = self.lower_to_atom(fexpr)?;
-            all_bindings.extend(bs);
-            update_map.insert(fname.clone(), atom);
-        }
+        // Lower base first, then update field values
+        self.lower_to_atom_then(base, |ctx, base_atom| {
+            ctx.lower_atoms_then(&update_exprs, vec![], |ctx, update_atoms| {
+                let mut update_map: HashMap<String, Atom> = update_names
+                    .iter()
+                    .cloned()
+                    .zip(update_atoms)
+                    .collect();
 
-        // For each field: use updated value if present, otherwise Project from base
-        let mut field_atoms = vec![];
-        for (i, (fname, fty)) in canonical_fields.iter().enumerate() {
-            if let Some(atom) = update_map.remove(fname) {
-                field_atoms.push(atom);
-            } else {
-                // Project unchanged field from base
-                let proj_var = self.fresh_var();
-                all_bindings.push(LetBinding {
-                    bind: proj_var,
-                    ty: fty.clone(),
-                    value: SimpleExpr::Project {
-                        value: base_atom.clone(),
-                        field_index: i,
+                let mut bindings = vec![];
+                let mut field_atoms = vec![];
+                for (i, (fname, fty)) in canonical_fields.iter().enumerate() {
+                    if let Some(atom) = update_map.remove(fname) {
+                        field_atoms.push(atom);
+                    } else {
+                        let proj_var = ctx.fresh_var();
+                        bindings.push(LetBinding {
+                            bind: proj_var,
+                            ty: fty.clone(),
+                            value: SimpleExpr::Project {
+                                value: base_atom.clone(),
+                                field_index: i,
+                            },
+                        });
+                        field_atoms.push(Atom::Var(proj_var));
+                    }
+                }
+
+                let construct_var = ctx.fresh_var();
+                bindings.push(LetBinding {
+                    bind: construct_var,
+                    ty: result_ty.clone(),
+                    value: SimpleExpr::Construct {
+                        type_name: type_name.clone(),
+                        fields: field_atoms,
                     },
                 });
-                field_atoms.push(Atom::Var(proj_var));
-            }
-        }
 
-        // Construct the new struct
-        let construct_var = self.fresh_var();
-        all_bindings.push(LetBinding {
-            bind: construct_var,
-            ty: result_ty.clone(),
-            value: SimpleExpr::Construct {
-                type_name,
-                fields: field_atoms,
-            },
-        });
-
-        let inner = Expr {
-            ty: result_ty.clone(),
-            kind: ExprKind::Atom(Atom::Var(construct_var)),
-        };
-        Ok(Self::wrap_bindings(all_bindings, inner))
+                let inner = Expr {
+                    ty: result_ty,
+                    kind: ExprKind::Atom(Atom::Var(construct_var)),
+                };
+                Ok(Self::wrap_bindings(bindings, inner))
+            })
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -3064,9 +3249,12 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
-    for (name, info) in &typed.exported_type_infos {
+    //    Sort by name for deterministic TypeVarId allocation order.
+    let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
+    sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
+    for (name, info) in &sorted_type_infos {
         if let ExportedTypeKind::Record { fields } = &info.kind {
-            ctx.struct_fields.insert(name.clone(), fields.clone());
+            ctx.struct_fields.insert((*name).clone(), fields.clone());
         }
     }
     // Fallback: private structs not in exported_type_infos
@@ -3093,12 +3281,12 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     }
 
     // 2. Build sum_variants from exported_type_infos
-    for (name, info) in &typed.exported_type_infos {
+    for (name, info) in &sorted_type_infos {
         if let ExportedTypeKind::Sum { variants } = &info.kind {
             for (tag, variant) in variants.iter().enumerate() {
                 ctx.sum_variants.insert(
                     variant.name.clone(),
-                    (name.clone(), tag as u32, variant.fields.clone()),
+                    ((*name).clone(), tag as u32, variant.fields.clone()),
                 );
             }
         }
@@ -3284,6 +3472,81 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
 // ---------------------------------------------------------------------------
 // Free helper functions
 // ---------------------------------------------------------------------------
+
+/// Replace tail positions of an expression with `jump target(tail_value)`.
+fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
+    let result_ty = expr.ty.clone();
+    match expr.kind {
+        ExprKind::Atom(atom) => Expr {
+            ty: result_ty,
+            kind: ExprKind::Jump {
+                target,
+                args: vec![atom],
+            },
+        },
+        ExprKind::Let {
+            bind,
+            ty,
+            value,
+            body,
+        } => {
+            let new_body = replace_tail_with_jump(*body, target);
+            Expr {
+                ty: result_ty,
+                kind: ExprKind::Let {
+                    bind,
+                    ty,
+                    value,
+                    body: Box::new(new_body),
+                },
+            }
+        }
+        ExprKind::Switch {
+            scrutinee,
+            branches,
+            default,
+        } => {
+            let new_branches: Vec<_> = branches
+                .into_iter()
+                .map(|b| SwitchBranch {
+                    tag: b.tag,
+                    bindings: b.bindings,
+                    body: replace_tail_with_jump(b.body, target),
+                })
+                .collect();
+            let new_default = default
+                .map(|d| Box::new(replace_tail_with_jump(*d, target)));
+            Expr {
+                ty: result_ty,
+                kind: ExprKind::Switch {
+                    scrutinee,
+                    branches: new_branches,
+                    default: new_default,
+                },
+            }
+        }
+        ExprKind::LetJoin {
+            name,
+            params,
+            join_body,
+            body: join_scope,
+        } => {
+            let new_join_body = replace_tail_with_jump(*join_body, target);
+            let new_scope = replace_tail_with_jump(*join_scope, target);
+            Expr {
+                ty: result_ty,
+                kind: ExprKind::LetJoin {
+                    name,
+                    params,
+                    join_body: Box::new(new_join_body),
+                    body: Box::new(new_scope),
+                },
+            }
+        }
+        // Jump and LetRec shouldn't appear as compound value tails
+        _ => expr,
+    }
+}
 
 /// Extract function name, origin, and type_args from a call expression,
 /// peeling through TypeApp wrappers. Collects the outermost type_args.

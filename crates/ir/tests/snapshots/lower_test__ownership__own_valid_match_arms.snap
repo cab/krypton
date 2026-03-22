@@ -1,0 +1,24 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_valid_match_arms
+
+type Color = Red#0 | Green#1 | Blue#2
+
+fn consume(v0: ~String) -> String =
+  v0
+
+fn test(v1: Color) -> String =
+  let_join v4(v2: ~String) =
+    let v3: String = call consume(v2)
+    v3
+  in
+  switch v1 {
+    0 ->
+      jump v4("red")
+    1 ->
+      jump v4("green")
+    2 ->
+      jump v4("blue")
+  }

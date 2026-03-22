@@ -12,6 +12,9 @@ fn make_fn() -> String =
   "hello"
 
 fn test() -> String =
+  let_join v5(v3: () -> String) =
+    let v4: String = call call_once(v3)
+    v4
+  in
   let v2: () -> String = make_closure(make_fn, [])
-  let v3: String = call call_once(v2)
-  v3
+  jump v5(v2)

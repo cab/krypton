@@ -11,9 +11,9 @@ declare to_json: (Dict, i14) -> Json
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
-  let v1: Dict = get_dict ToJson[Point]
-  let v2: Json = call to_json(v1, v0)
-  let v3: String = call json_to_string(v2)
-  let v4: Dict = get_dict Show[String]
-  let v5: Unit = call println(v4, v3)
+  let v2: Dict = get_dict ToJson[Point]
+  let v3: Json = call to_json(v2, v0)
+  let v4: String = call json_to_string(v3)
+  let v1: Dict = get_dict Show[String]
+  let v5: Unit = call println(v1, v4)
   v5
