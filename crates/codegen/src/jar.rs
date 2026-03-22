@@ -49,9 +49,10 @@ pub fn write_jar(
     let mut written: HashSet<String> = HashSet::new();
     for (name, bytes) in classes {
         let entry_name = format!("{name}.class");
-        if written.contains(&entry_name) {
-            continue;
-        }
+        assert!(
+            !written.contains(&entry_name),
+            "duplicate class name in codegen output: {entry_name}"
+        );
         writer.start_file(&entry_name, options)?;
         writer.write_all(bytes)?;
         written.insert(entry_name);
