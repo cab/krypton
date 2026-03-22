@@ -4,38 +4,37 @@ use crate::emit::CodegenError;
 
 /// Render a codegen error as an ariadne diagnostic string.
 pub fn render_codegen_error(filename: &str, source: &str, error: &CodegenError) -> String {
-    let mut output = Vec::new();
-    let fname = filename.to_string();
+    // Use the error's own source info if present (for errors from imported modules),
+    // otherwise fall back to the caller-provided filename/source.
+    let (fname, src) = if let Some((ref f, ref s)) = error.error_source {
+        (f.as_str(), s.as_str())
+    } else {
+        (filename, source)
+    };
+
     let code = error.error_code();
     let message = error.to_string();
 
     if let Some((start, end)) = error.span() {
-        let report = Report::build(ReportKind::Error, (fname.clone(), start..end))
+        let mut output = Vec::new();
+        let report = Report::build(ReportKind::Error, (fname.to_string(), start..end))
             .with_config(Config::new().with_index_type(IndexType::Byte))
             .with_code(code)
             .with_message(&message)
             .with_label(
-                Label::new((fname.clone(), start..end))
+                Label::new((fname.to_string(), start..end))
                     .with_message(format!("{code}: {message}"))
                     .with_color(Color::Red),
             )
             .finish();
         report
-            .write(sources([(fname, source.to_string())]), &mut output)
+            .write(sources([(fname.to_string(), src.to_string())]), &mut output)
             .unwrap();
+        String::from_utf8(output).unwrap()
     } else {
-        // No span: emit a report without a source label
-        let report = Report::build(ReportKind::Error, (fname.clone(), 0..0))
-            .with_config(Config::new().with_index_type(IndexType::Byte))
-            .with_code(code)
-            .with_message(&message)
-            .finish();
-        report
-            .write(sources([(fname, source.to_string())]), &mut output)
-            .unwrap();
+        // No span: emit a plain error line instead of a misleading 0..0 report
+        format!("error[{code}]: {message}\n")
     }
-
-    String::from_utf8(output).unwrap()
 }
 
 #[cfg(test)]
@@ -54,10 +53,12 @@ mod tests {
 
     #[test]
     fn render_error_without_span() {
-        let error = CodegenError::NoMainFunction;
+        let error = CodegenError::NoMainFunction();
         let output = render_codegen_error("test.kr", "fun foo() = 1", &error);
         assert!(output.contains("C0002"), "should contain error code: {output}");
         assert!(output.contains("no main function found"), "should contain message: {output}");
+        // Should be a plain error line, not an ariadne report
+        assert!(output.starts_with("error["), "should be plain format: {output}");
     }
 
     #[test]
@@ -84,5 +85,6 @@ mod tests {
         let output = render_codegen_error("test.kr", "fun main() = 1", &error);
         assert!(output.contains("C0005"), "should contain error code: {output}");
         assert!(output.contains("type error"), "should contain message: {output}");
+        assert!(output.starts_with("error["), "should be plain format: {output}");
     }
 }

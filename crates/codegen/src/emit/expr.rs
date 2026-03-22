@@ -209,10 +209,10 @@ impl Compiler {
         let lookup_type = lhs.ty.strip_own();
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"), None)
+            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"), Some(lhs.span))
         })?;
         let iface_method_ref = *dispatch.method_refs.get(method_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"), None)
+            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"), Some(lhs.span))
         })?;
         let iface_class = dispatch.interface_class;
 
@@ -226,7 +226,7 @@ impl Compiler {
             } else {
                 return Err(CodegenError::UndefinedVariable(format!(
                     "no dict local for {trait_name} (type var {})", lhs.ty
-                ), None));
+                ), Some(lhs.span)));
             }
         } else {
             let singleton = self
@@ -236,7 +236,7 @@ impl Compiler {
                 .ok_or_else(|| {
                     CodegenError::UndefinedVariable(format!(
                         "no instance of {trait_name} for {}", lhs.ty
-                    ), None)
+                    ), Some(lhs.span))
                 })?;
             let field_ref = singleton.instance_field_ref;
 
@@ -280,10 +280,10 @@ impl Compiler {
         let lookup_type = operand.ty.strip_own();
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"), None)
+            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"), Some(operand.span))
         })?;
         let iface_method_ref = *dispatch.method_refs.get(method_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"), None)
+            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"), Some(operand.span))
         })?;
         let iface_class = dispatch.interface_class;
 
@@ -294,7 +294,7 @@ impl Compiler {
             .ok_or_else(|| {
                 CodegenError::UndefinedVariable(format!(
                     "no instance of {trait_name} for {}", operand.ty
-                ), None)
+                ), Some(operand.span))
             })?;
         let field_ref = singleton.instance_field_ref;
 
@@ -631,11 +631,12 @@ impl Compiler {
 
     pub(super) fn compile_tuple(&mut self, elems: &[TypedExpr], _ty: &Type) -> Result<JvmType, CodegenError> {
         let arity = elems.len();
+        let span = elems.first().map(|e| e.span);
         let info = self
             .types
             .tuple_info
             .get(&arity)
-            .ok_or_else(|| CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None))?;
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown tuple arity: {arity}"), span))?;
         let class_index = info.class_index;
         let constructor_ref = info.constructor_ref;
 
@@ -742,33 +743,34 @@ impl Compiler {
         expr: &TypedExpr,
         field: &str,
     ) -> Result<JvmType, CodegenError> {
+        let expr_span = expr.span;
         let base_type = self.compile_expr(expr, false)?;
         let class_idx = match base_type {
             JvmType::StructRef(idx) => idx,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "field access on non-struct type".to_string(), None))
+                    "field access on non-struct type".to_string(), Some(expr_span)))
             }
         };
 
         // Find struct info by class index
-        let (struct_name, accessor_ref, field_type) = {
+        let (_struct_name, accessor_ref, field_type) = {
             let si = self
                 .types
                 .struct_info
                 .values()
                 .find(|s| s.class_index == class_idx)
-                .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), None))?;
+                .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), Some(expr_span)))?;
             let accessor_ref = *si
                 .accessor_refs
                 .get(field)
-                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}"), None))?;
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}"), Some(expr_span)))?;
             let field_type = si
                 .fields
                 .iter()
                 .find(|(n, _)| n == field)
                 .map(|(_, t)| *t)
-                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}"), None))?;
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}"), Some(expr_span)))?;
             (si.class_name.clone(), accessor_ref, field_type)
         };
 
@@ -796,10 +798,10 @@ impl Compiler {
             .types
             .sum_type_info
             .get(sum_name)
-            .ok_or_else(|| CodegenError::TypeError(format!("unknown sum type: {sum_name}"), None))?;
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown sum type: {sum_name}"), Some(span)))?;
         let interface_class_index = sum_info.interface_class_index;
         let success_vi = sum_info.variants.get(success_variant).ok_or_else(|| {
-            CodegenError::TypeError(format!("unknown variant: {success_variant}"), None)
+            CodegenError::TypeError(format!("unknown variant: {success_variant}"), Some(span))
         })?;
         let success_class_index = success_vi.class_index;
         let success_field_refs = success_vi.field_refs.clone();
@@ -908,12 +910,13 @@ impl Compiler {
         updates: &[(String, TypedExpr)],
     ) -> Result<JvmType, CodegenError> {
         // Compile base expression and store in temp local
+        let base_span = base.span;
         let base_type = self.compile_expr(base, false)?;
         let class_idx = match base_type {
             JvmType::StructRef(idx) => idx,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "struct update on non-struct type".to_string(), None))
+                    "struct update on non-struct type".to_string(), Some(base_span)))
             }
         };
 
@@ -926,7 +929,7 @@ impl Compiler {
             .struct_info
             .values()
             .find(|s| s.class_index == class_idx)
-            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), None))?;
+            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), Some(base_span)))?;
         let constructor_ref = si.constructor_ref;
         let fields = si.fields.clone();
         let accessor_refs = si.accessor_refs.clone();
@@ -973,12 +976,13 @@ impl Compiler {
         fields: &[(String, TypedExpr)],
         struct_ty: &Type,
     ) -> Result<JvmType, CodegenError> {
+        let span = fields.first().map(|(_, e)| e.span);
         let struct_jvm = self.type_to_jvm(struct_ty)?;
         let class_idx = match struct_jvm {
             JvmType::StructRef(idx) => idx,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "struct literal for non-struct type".to_string(), None))
+                    "struct literal for non-struct type".to_string(), span))
             }
         };
 
@@ -987,7 +991,7 @@ impl Compiler {
             .struct_info
             .values()
             .find(|s| s.class_index == class_idx)
-            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), None))?;
+            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), span))?;
         let constructor_ref = si.constructor_ref;
         let ordered_fields = si.fields.clone();
 
@@ -1000,7 +1004,7 @@ impl Compiler {
 
         for (field_name, field_type) in &ordered_fields {
             let value = field_values.get(field_name.as_str()).ok_or_else(|| {
-                CodegenError::TypeError(format!("missing struct field: {field_name}"), None)
+                CodegenError::TypeError(format!("missing struct field: {field_name}"), span)
             })?;
             let actual_type = self.compile_expr(value, false)?;
             // Box primitives when the field is erased to Object (generic type param)

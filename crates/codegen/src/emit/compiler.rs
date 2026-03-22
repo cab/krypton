@@ -29,7 +29,14 @@ impl JvmType {
 
 /// Error type for codegen failures.
 #[derive(Debug)]
-pub enum CodegenError {
+pub struct CodegenError {
+    pub kind: CodegenErrorKind,
+    /// Originating module's (filename, source text), if different from the main file.
+    pub error_source: Option<(String, String)>,
+}
+
+#[derive(Debug)]
+pub enum CodegenErrorKind {
     ClassFile(ristretto_classfile::Error),
     NoMainFunction,
     UnsupportedExpr(String, Option<Span>),
@@ -40,42 +47,93 @@ pub enum CodegenError {
 
 impl CodegenError {
     pub fn error_code(&self) -> &'static str {
+        self.kind.error_code()
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        self.kind.span()
+    }
+
+    /// Attach originating module source info for diagnostic rendering.
+    pub fn with_source(mut self, filename: String, source: String) -> Self {
+        self.error_source = Some((filename, source));
+        self
+    }
+}
+
+impl CodegenErrorKind {
+    pub fn error_code(&self) -> &'static str {
         match self {
-            CodegenError::ClassFile(_) => "C0001",
-            CodegenError::NoMainFunction => "C0002",
-            CodegenError::UnsupportedExpr(..) => "C0003",
-            CodegenError::UndefinedVariable(..) => "C0004",
-            CodegenError::TypeError(..) => "C0005",
-            CodegenError::RecurNotInTailPosition(_) => "C0006",
+            CodegenErrorKind::ClassFile(_) => "C0001",
+            CodegenErrorKind::NoMainFunction => "C0002",
+            CodegenErrorKind::UnsupportedExpr(..) => "C0003",
+            CodegenErrorKind::UndefinedVariable(..) => "C0004",
+            CodegenErrorKind::TypeError(..) => "C0005",
+            CodegenErrorKind::RecurNotInTailPosition(_) => "C0006",
         }
     }
 
     pub fn span(&self) -> Option<Span> {
         match self {
-            CodegenError::ClassFile(_) | CodegenError::NoMainFunction => None,
-            CodegenError::UnsupportedExpr(_, s)
-            | CodegenError::UndefinedVariable(_, s)
-            | CodegenError::TypeError(_, s) => *s,
-            CodegenError::RecurNotInTailPosition(s) => *s,
+            CodegenErrorKind::ClassFile(_) | CodegenErrorKind::NoMainFunction => None,
+            CodegenErrorKind::UnsupportedExpr(_, s)
+            | CodegenErrorKind::UndefinedVariable(_, s)
+            | CodegenErrorKind::TypeError(_, s) => *s,
+            CodegenErrorKind::RecurNotInTailPosition(s) => *s,
         }
+    }
+}
+
+// Convenience constructors to minimize churn at call sites.
+#[allow(non_snake_case)]
+impl CodegenError {
+    pub fn ClassFile(e: ristretto_classfile::Error) -> Self {
+        CodegenErrorKind::ClassFile(e).into()
+    }
+    pub fn NoMainFunction() -> Self {
+        CodegenErrorKind::NoMainFunction.into()
+    }
+    pub fn UnsupportedExpr(msg: String, span: Option<Span>) -> Self {
+        CodegenErrorKind::UnsupportedExpr(msg, span).into()
+    }
+    pub fn UndefinedVariable(msg: String, span: Option<Span>) -> Self {
+        CodegenErrorKind::UndefinedVariable(msg, span).into()
+    }
+    pub fn TypeError(msg: String, span: Option<Span>) -> Self {
+        CodegenErrorKind::TypeError(msg, span).into()
+    }
+    pub fn RecurNotInTailPosition(span: Option<Span>) -> Self {
+        CodegenErrorKind::RecurNotInTailPosition(span).into()
+    }
+}
+
+impl From<CodegenErrorKind> for CodegenError {
+    fn from(kind: CodegenErrorKind) -> Self {
+        CodegenError { kind, error_source: None }
     }
 }
 
 impl From<ristretto_classfile::Error> for CodegenError {
     fn from(e: ristretto_classfile::Error) -> Self {
-        CodegenError::ClassFile(e)
+        CodegenErrorKind::ClassFile(e).into()
     }
 }
 
 impl std::fmt::Display for CodegenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl std::fmt::Display for CodegenErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CodegenError::ClassFile(e) => write!(f, "class file error: {e}"),
-            CodegenError::NoMainFunction => write!(f, "no main function found"),
-            CodegenError::UnsupportedExpr(s, _) => write!(f, "unsupported expression: {s}"),
-            CodegenError::UndefinedVariable(s, _) => write!(f, "undefined variable: {s}"),
-            CodegenError::TypeError(s, _) => write!(f, "type error: {s}"),
-            CodegenError::RecurNotInTailPosition(_) => {
+            CodegenErrorKind::ClassFile(e) => write!(f, "class file error: {e}"),
+            CodegenErrorKind::NoMainFunction => write!(f, "no main function found"),
+            CodegenErrorKind::UnsupportedExpr(s, _) => write!(f, "unsupported expression: {s}"),
+            CodegenErrorKind::UndefinedVariable(s, _) => write!(f, "undefined variable: {s}"),
+            CodegenErrorKind::TypeError(s, _) => write!(f, "type error: {s}"),
+            CodegenErrorKind::RecurNotInTailPosition(_) => {
                 write!(f, "recur must be in tail position")
             }
         }

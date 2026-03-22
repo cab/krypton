@@ -924,6 +924,11 @@ pub fn infer_module(
                 let error_source = source_text.map(|s| (resolved.path.clone(), s));
                 InferError::TypeError { error: e, error_source }
             })?;
+            let mut typed = typed;
+            // Attach source text for diagnostic rendering of downstream codegen errors
+            typed.module_source = StdlibLoader::get_source(&resolved.path)
+                .map(|s| s.to_string())
+                .or_else(|| resolver.resolve(&resolved.path));
             cache.insert(resolved.path.clone(), typed);
         }
     }
@@ -1656,6 +1661,7 @@ impl ModuleInferenceState {
             exported_type_infos,
             auto_close,
             exported_fn_qualifiers,
+            module_source: None,
         })
     }
 }

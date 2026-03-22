@@ -116,7 +116,7 @@ fn codegen_fixture(
                     panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                 });
                 match compile_modules(&typed_modules, "Kr$Test") {
-                    Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
+                    Ok(_) | Err(krypton_codegen::emit::CodegenError { kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction, .. }) => {}
                     Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
                 }
             }
@@ -160,7 +160,7 @@ fn codegen_module(
                     panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                 });
                 match compile_modules(&typed_modules, "Kr$Test") {
-                    Ok(_) | Err(krypton_codegen::emit::CodegenError::NoMainFunction) => {}
+                    Ok(_) | Err(krypton_codegen::emit::CodegenError { kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction, .. }) => {}
                     Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
                 }
             }

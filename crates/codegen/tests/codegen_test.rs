@@ -435,6 +435,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         exported_type_infos: HashMap::new(),
         auto_close: AutoCloseInfo::default(),
         exported_fn_qualifiers: HashMap::new(),
+        module_source: None,
     }
 }
 

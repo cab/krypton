@@ -23,7 +23,7 @@ use ristretto_classfile::{
     MethodAccessFlags, Version,
 };
 
-pub use compiler::{CodegenError, JvmType};
+pub use compiler::{CodegenError, CodegenErrorKind, JvmType};
 
 use compiler::{Compiler, DictRequirement};
 
@@ -233,7 +233,14 @@ pub fn compile_modules(
     // Compile all library modules
     for module in typed_modules {
         if let Some(path) = &module.module_path {
-            let classes = compile_library_module(module, path, &global_sum_types)?;
+            let classes = compile_library_module(module, path, &global_sum_types)
+                .map_err(|e| {
+                    if let (Some(p), Some(s)) = (&module.module_path, &module.module_source) {
+                        e.with_source(p.clone(), s.clone())
+                    } else {
+                        e
+                    }
+                })?;
             all_classes.extend(classes);
         }
     }
@@ -257,7 +264,7 @@ fn compile_module_inner(
     global_sum_types: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     if is_main && !typed_module.functions.iter().any(|f| f.name == "main") {
-        return Err(CodegenError::NoMainFunction);
+        return Err(CodegenError::NoMainFunction());
     }
 
     let mut compiler = Compiler::new(class_name)?;

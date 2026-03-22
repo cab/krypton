@@ -26,7 +26,7 @@ impl Compiler {
         // Only support irrefutable patterns (Tuple, Var, Wildcard)
         if let TypedPattern::Constructor { .. } = pattern {
             return Err(CodegenError::UnsupportedExpr(
-                "refutable let-pattern (constructor) not yet supported".into(), None));
+                "refutable let-pattern (constructor) not yet supported".into(), Some(pattern.span())));
         }
 
         // Compile the value expression
@@ -67,17 +67,17 @@ impl Compiler {
                 self.builder.emit_store(var_slot, scrutinee_type);
                 Ok(())
             }
-            TypedPattern::Tuple { elements, .. } => {
+            TypedPattern::Tuple { elements, span, .. } => {
                 let elem_types = match value_ty {
                     Type::Tuple(elems) => elems,
                     _ => {
                         return Err(CodegenError::TypeError(
-                            "expected tuple type for tuple pattern".into(), None))
+                            "expected tuple type for tuple pattern".into(), Some(*span)))
                     }
                 };
                 let arity = elements.len();
                 let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
+                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"), Some(*span))
                 })?;
                 let tuple_class = tuple_info.class_index;
                 let field_refs: Vec<u16> = tuple_info.field_refs.clone();
@@ -144,7 +144,7 @@ impl Compiler {
                         }
                         _ => {
                             return Err(CodegenError::UnsupportedExpr(
-                                "unsupported sub-pattern in tuple destructuring".into(), None));
+                                "unsupported sub-pattern in tuple destructuring".into(), Some(sub_pat.span())));
                         }
                     }
                 }
@@ -152,7 +152,7 @@ impl Compiler {
             }
             _ => Err(CodegenError::UnsupportedExpr(format!(
                 "unsupported pattern in let: {pattern:?}"
-            ), None)),
+            ), Some(pattern.span()))),
         }
     }
 
@@ -332,13 +332,13 @@ impl Compiler {
                 self.builder.locals.insert(name.clone(), (var_slot, scrutinee_type));
                 Ok(None)
             }
-            TypedPattern::Constructor { name, args, .. } => {
+            TypedPattern::Constructor { name, args, span, .. } => {
                 let sum_name = self
                     .types
                     .variant_to_sum
                     .get(name)
                     .cloned()
-                    .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}"), None))?;
+                    .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {name}"), Some(*span)))?;
                 let sum_info = &self.types.sum_type_info[&sum_name];
                 let vi = &sum_info.variants[name];
                 let variant_class_index = vi.class_index;
@@ -453,7 +453,7 @@ impl Compiler {
                                         .variant_to_sum
                                         .get(sub_name)
                                         .cloned()
-                                        .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {sub_name}"), None))?;
+                                        .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {sub_name}"), Some(sub_pat.span())))?;
                                     let sub_sum_info = &self.types.sum_type_info[&sub_sum_name];
                                     let sub_vi = &sub_sum_info.variants[sub_name];
                                     let sub_class_index = sub_vi.class_index;
@@ -513,17 +513,17 @@ impl Compiler {
 
                 Ok(ifeq_idx)
             }
-            TypedPattern::Tuple { elements, .. } => {
+            TypedPattern::Tuple { elements, span: pat_span, .. } => {
                 let elem_types = match scrutinee_tc_type {
                     Type::Tuple(elems) => elems,
                     _ => {
                         return Err(CodegenError::TypeError(
-                            "expected tuple type for tuple pattern".into(), None))
+                            "expected tuple type for tuple pattern".into(), Some(*pat_span)))
                     }
                 };
                 let arity = elements.len();
                 let tuple_info = self.types.tuple_info.get(&arity).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
+                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"), Some(*pat_span))
                 })?;
                 let tuple_class = tuple_info.class_index;
                 let field_refs: Vec<u16> = tuple_info.field_refs.clone();
@@ -638,7 +638,7 @@ impl Compiler {
                         _ => {
                             return Err(CodegenError::UnsupportedExpr(format!(
                                 "unsupported literal pattern: {value:?}"
-                            ), None));
+                            ), Some(pattern.span())));
                         }
                     }
                 } else {
@@ -648,7 +648,7 @@ impl Compiler {
             }
             _ => Err(CodegenError::UnsupportedExpr(format!(
                 "unsupported pattern: {pattern:?}"
-            ), None)),
+            ), Some(pattern.span()))),
         }
     }
 
@@ -658,13 +658,13 @@ impl Compiler {
             TypedPattern::Constructor { name, .. } => {
                 let sum_name =
                     self.types.variant_to_sum.get(name).ok_or_else(|| {
-                        CodegenError::TypeError(format!("unknown variant: {name}"), None)
+                        CodegenError::TypeError(format!("unknown variant: {name}"), Some(pattern.span()))
                     })?;
                 let sum_info = &self.types.sum_type_info[sum_name];
                 Ok(sum_info.interface_class_index)
             }
             _ => Err(CodegenError::TypeError(
-                "expected constructor pattern".to_string(), None)),
+                "expected constructor pattern".to_string(), Some(pattern.span()))),
         }
     }
 }

@@ -143,9 +143,7 @@ impl Compiler {
             );
 
             // Only emit bytecode for types defined in this module (not imports)
-            let is_imported = typed_module.type_provenance.get(struct_name)
-                .is_some_and(|src| typed_module.module_path.as_deref() != Some(src.as_str()));
-            if !is_imported {
+            if !typed_module.is_type_imported(struct_name) {
                 let struct_bytes =
                     generate_struct_class(&qualified, &jvm_fields, &self.types.class_descriptors)?;
                 result_classes.push((qualified.clone(), struct_bytes));
@@ -163,8 +161,7 @@ impl Compiler {
             let qualified_sum = qualify_type_for(typed_module, sum_name);
 
             // Check if this sum type is imported from another module
-            let is_imported = typed_module.type_provenance.get(sum_name)
-                .is_some_and(|src| typed_module.module_path.as_deref() != Some(src.as_str()));
+            let is_imported = typed_module.is_type_imported(sum_name);
 
             let interface_class_index = self.cp.add_class(&qualified_sum)?;
             let interface_desc = format!("L{qualified_sum};");
@@ -840,7 +837,7 @@ impl Compiler {
     }
 
     pub(super) fn emit_main_wrapper(&mut self) -> Result<(), CodegenError> {
-        let main_info = self.types.get_function("main").ok_or(CodegenError::NoMainFunction)?;
+        let main_info = self.types.get_function("main").ok_or(CodegenError::NoMainFunction())?;
         let krypton_main_ref = main_info.method_ref;
         let main_return_type = main_info.return_type;
 

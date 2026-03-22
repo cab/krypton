@@ -303,6 +303,19 @@ pub struct ExportedVariantInfo {
     pub fields: Vec<Type>,
 }
 
+impl TypedPattern {
+    pub fn span(&self) -> Span {
+        match self {
+            TypedPattern::Wildcard { span, .. }
+            | TypedPattern::Var { span, .. }
+            | TypedPattern::Constructor { span, .. }
+            | TypedPattern::Lit { span, .. }
+            | TypedPattern::Tuple { span, .. }
+            | TypedPattern::StructPat { span, .. } => *span,
+        }
+    }
+}
+
 pub struct TypedModule {
     pub module_path: Option<String>,
     pub fn_types: Vec<FnTypeEntry>,
@@ -343,6 +356,16 @@ pub struct TypedModule {
     /// Pre-computed per-param qualifier info for exported functions.
     /// Downstream modules use this for cross-module ownership checking.
     pub exported_fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
+    /// Source text of this module (for diagnostic rendering of codegen errors).
+    pub module_source: Option<String>,
+}
+
+impl TypedModule {
+    /// Check whether a type name was imported from another module.
+    pub fn is_type_imported(&self, name: &str) -> bool {
+        self.type_provenance.get(name)
+            .is_some_and(|src| self.module_path.as_deref() != Some(src.as_str()))
+    }
 }
 
 /// Build the JVM-mangled name for a trait instance method.
