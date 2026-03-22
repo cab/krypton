@@ -535,6 +535,17 @@ pub fn check_ownership(
     })
 }
 
+/// Walks a typed function body tracking affine (single-use) bindings.
+///
+/// Two parallel maps track call-site requirements:
+/// - `fn_param_info`: syntactic — does a parameter carry the `~` qualifier?
+/// - `fn_qualifiers`: semantic — computed by `compute_fn_qualifiers` from use-count
+///   analysis on the surface AST (which preserves type parameter names needed for
+///   the `shared` constraint check). A param is `Unlimited` if it may be called
+///   multiple times with the same argument.
+///
+/// `owned` is the live set of bindings subject to move tracking (grows via let-binding).
+/// `affine` is the frozen set of params with affine type (used for qualifier mismatch errors).
 struct OwnershipChecker<'a> {
     owned: &'a mut HashSet<String>,
     consumed: HashMap<String, Span>,

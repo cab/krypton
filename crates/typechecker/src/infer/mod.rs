@@ -1684,15 +1684,79 @@ fn process_traits_and_deriving(
 > {
     let mut trait_registry = TraitRegistry::new();
 
+    // Phase 1: Import instances from cached modules via orphan-rule lookup
+    import_cached_instances(
+        &mut trait_registry,
+        &state.type_provenance,
+        &state.imports.imported_type_info,
+        cache,
+        is_prelude_tree,
+        prelude_tree_paths,
+    );
+
+    // Phase 2: Register imported trait definitions
+    register_imported_trait_defs(
+        &mut trait_registry,
+        &state.imported_trait_defs,
+        &mut state.gen,
+    );
+
+    // Phase 3: Process local DefTrait declarations
+    let exported_trait_defs = register_local_traits(
+        state,
+        &mut trait_registry,
+        module,
+        module_path,
+    )?;
+
+    // Phase 4: Deriving pass
+    let derived_instance_defs = process_deriving(
+        &mut trait_registry,
+        module,
+        &state.registry,
+        module_path,
+    )?;
+
+    // Phase 5: Process DefImpl declarations (register instances)
+    register_impl_instances(
+        state,
+        &mut trait_registry,
+        module,
+        module_path,
+    )?;
+
+    // Compute trait_method_map between phases 5 and 6
+    let trait_method_map: HashMap<String, TraitId> =
+        trait_registry.trait_method_names().into_iter().collect();
+
+    // Phase 6: Conflict and reserved-name checks
+    check_trait_name_conflicts(
+        module,
+        &trait_method_map,
+        is_core_module,
+    )?;
+
+    Ok((trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map))
+}
+
+/// Phase 1: Import instances from cached modules via orphan-rule lookup.
+fn import_cached_instances(
+    trait_registry: &mut TraitRegistry,
+    type_provenance: &HashMap<String, String>,
+    imported_type_info: &HashMap<String, (String, Visibility)>,
+    cache: &HashMap<String, TypedModule>,
+    is_prelude_tree: bool,
+    prelude_tree_paths: &HashSet<String>,
+) {
     // Structural instance lookup: for each type/trait in scope, look up instances
     // in the defining module. The orphan rule guarantees instances live in the
     // module defining the type or the trait.
     {
         let mut source_modules: HashSet<&str> = HashSet::new();
-        for (_, source_path) in &state.type_provenance {
+        for (_, source_path) in type_provenance {
             source_modules.insert(source_path.as_str());
         }
-        for (_, (source_path, _)) in &state.imports.imported_type_info {
+        for (_, (source_path, _)) in imported_type_info {
             source_modules.insert(source_path.as_str());
         }
 
@@ -1730,13 +1794,20 @@ fn process_traits_and_deriving(
             }
         }
     }
+}
 
+/// Phase 2: Register trait definitions imported from other modules.
+fn register_imported_trait_defs(
+    trait_registry: &mut TraitRegistry,
+    imported_trait_defs: &[ExportedTraitDef],
+    gen: &mut TypeVarGen,
+) {
     // Register trait definitions imported from other modules
-    for trait_def in &state.imported_trait_defs {
+    for trait_def in imported_trait_defs {
         if trait_registry.lookup_trait(&trait_def.name).is_some() {
             continue;
         }
-        let new_tv_id = state.gen.fresh();
+        let new_tv_id = gen.fresh();
         let old_tv_id = trait_def.type_var_id;
 
         let mut trait_methods = Vec::new();
@@ -1768,7 +1839,15 @@ fn process_traits_and_deriving(
             })
             .expect("imported trait should not already be registered (checked above)");
     }
+}
 
+/// Phase 3: Process local DefTrait declarations.
+fn register_local_traits(
+    state: &mut ModuleInferenceState,
+    trait_registry: &mut TraitRegistry,
+    module: &Module,
+    module_path: &Option<String>,
+) -> Result<Vec<ExportedTraitDef>, SpannedTypeError> {
     // Process DefTrait declarations
     let mut exported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
     for decl in &module.decls {
@@ -1889,7 +1968,16 @@ fn process_traits_and_deriving(
             });
         }
     }
+    Ok(exported_trait_defs)
+}
 
+/// Phase 4: Process deriving declarations.
+fn process_deriving(
+    trait_registry: &mut TraitRegistry,
+    module: &Module,
+    registry: &TypeRegistry,
+    module_path: &Option<String>,
+) -> Result<Vec<InstanceDefInfo>, SpannedTypeError> {
     // Deriving pass
     let mut derived_instance_defs: Vec<InstanceDefInfo> = Vec::new();
     for decl in &module.decls {
@@ -1897,7 +1985,7 @@ fn process_traits_and_deriving(
             if type_decl.deriving.is_empty() {
                 continue;
             }
-            let type_info = state.registry.lookup_type(&type_decl.name).unwrap();
+            let type_info = registry.lookup_type(&type_decl.name).unwrap();
 
             for trait_name in &type_decl.deriving {
                 if trait_registry.lookup_trait(trait_name).is_none() {
@@ -1935,7 +2023,7 @@ fn process_traits_and_deriving(
 
                 for ft in &field_types {
                     if !derive::collect_derived_constraints_for_type(
-                        &trait_registry,
+                        trait_registry,
                         trait_name,
                         ft,
                         &local_type_params,
@@ -2026,7 +2114,16 @@ fn process_traits_and_deriving(
             }
         }
     }
+    Ok(derived_instance_defs)
+}
 
+/// Phase 5: Process DefImpl declarations (register instances).
+fn register_impl_instances(
+    state: &mut ModuleInferenceState,
+    trait_registry: &mut TraitRegistry,
+    module: &Module,
+    _module_path: &Option<String>,
+) -> Result<(), SpannedTypeError> {
     // Collect locally-defined trait names for orphan check
     let local_trait_names: HashSet<String> = module
         .decls
@@ -2253,10 +2350,15 @@ fn process_traits_and_deriving(
                 .map_err(|e| spanned(e, *span))?;
         }
     }
+    Ok(())
+}
 
-    let trait_method_map: HashMap<String, TraitId> =
-        trait_registry.trait_method_names().into_iter().collect();
-
+/// Phase 6: Check for trait method name conflicts and reserved name usage.
+fn check_trait_name_conflicts(
+    module: &Module,
+    trait_method_map: &HashMap<String, TraitId>,
+    is_core_module: bool,
+) -> Result<(), SpannedTypeError> {
     // Check for top-level def names conflicting with trait method names
     {
         let has_trait_usage = module
@@ -2329,7 +2431,7 @@ fn process_traits_and_deriving(
         }
     }
 
-    Ok((trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map))
+    Ok(())
 }
 
 /// Phase: SCC-based function body inference.

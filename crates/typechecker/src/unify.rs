@@ -1,3 +1,20 @@
+//! Unification algorithms for the Krypton type system.
+//!
+//! Three functions, each for a different context:
+//!
+//! - `unify(t1, t2)` — symmetric structural unification. Use for internal
+//!   constraints where neither side has priority (e.g., recursive function
+//!   pre-binding, type annotation matching).
+//!
+//! - `coerce_unify(actual, expected)` — directional. Allows Own(T) → T
+//!   (dropping ownership) but not T → Own(T) (fabrication). Also allows
+//!   fn → ~fn (multi-use satisfies single-use). Use at value-flow sites:
+//!   argument → parameter, value → annotation, body → return type.
+//!
+//! - `join_types(a, b)` — peer merge at branch join points (if/match arms,
+//!   list elements). Strips Own from either side to find the common type.
+//!   join(~T, ~T) preserves Own; join(~T, T) strips it.
+
 use std::collections::HashSet;
 
 use crate::types::{Substitution, Type, TypeVarId};

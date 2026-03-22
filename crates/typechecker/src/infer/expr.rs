@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Expr, Lit, Span, UnaryOp};
+use krypton_parser::ast::{BinOp, Expr, Lit, Span, TypeExpr, UnaryOp};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{TraitId, TypedExpr, TypedExprKind, TypedMatchArm};
@@ -265,6 +265,577 @@ impl<'a> InferenceContext<'a> {
         self.gen.fresh()
     }
 
+    // ── Expr::App dispatch paths ─────────────────────────────────────────
+
+    /// Path 1: Intercept `trait_dict(TraitName)` intrinsic calls.
+    fn infer_trait_dict_call(
+        &mut self,
+        func: &Expr,
+        args: &[Expr],
+        span: Span,
+    ) -> Option<Result<TypedExpr, SpannedTypeError>> {
+        let Expr::Var { name, .. } = func else {
+            return None;
+        };
+        if name != "trait_dict" {
+            return None;
+        }
+        Some(self.infer_trait_dict_call_inner(args, span))
+    }
+
+    fn infer_trait_dict_call_inner(
+        &mut self,
+        args: &[Expr],
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        if args.len() != 1 {
+            return Err(super::spanned(
+                TypeError::UnsupportedExpr {
+                    description: "trait_dict requires exactly one argument".to_string(),
+                },
+                span,
+            ));
+        }
+        let trait_name = match &args[0] {
+            Expr::Var { name, .. } => name.clone(),
+            _ => {
+                return Err(super::spanned(
+                    TypeError::UnsupportedExpr {
+                        description: "trait_dict argument must be a trait name".to_string(),
+                    },
+                    span,
+                ));
+            }
+        };
+        // Validate the trait exists
+        if let Some(reg) = self.registry {
+            if reg.lookup_type(&trait_name).is_none() {
+                // Check if it's a known trait via env lookup
+                // (trait names are bound as types in the registry or as functions)
+            }
+        }
+        // Validate enclosing function has a where constraint for this trait
+        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t == &trait_name);
+        if !has_constraint {
+            return Err(super::spanned(
+                TypeError::UnsupportedExpr {
+                    description: format!(
+                        "trait_dict({trait_name}) requires a `where` constraint for {trait_name} on the enclosing function"
+                    ),
+                },
+                span,
+            ));
+        }
+        // Type it as Object (opaque dict reference)
+        let ret_var = Type::Var(self.fresh());
+        let func_typed = TypedExpr {
+            kind: TypedExprKind::Var("trait_dict".to_string()),
+            ty: Type::Fn(vec![ret_var.clone()], Box::new(Type::Var(self.fresh()))),
+            span,
+            origin: None,
+        };
+        let arg_typed = TypedExpr {
+            kind: TypedExprKind::Var(trait_name),
+            ty: ret_var,
+            span,
+            origin: None,
+        };
+        let result_ty = Type::Var(self.fresh());
+        Ok(TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(func_typed),
+                args: vec![arg_typed],
+            },
+            ty: result_ty,
+            span,
+            origin: None,
+        })
+    }
+
+    /// Path 2: Qualified module call via Var syntax — `receiver.fn(args...)` where
+    /// `receiver` is a module qualifier not bound in the local env.
+    fn infer_qualified_var_call(
+        &mut self,
+        func: &Expr,
+        args: &[Expr],
+        span: Span,
+    ) -> Option<Result<TypedExpr, SpannedTypeError>> {
+        let qualified_call = match (func, args.first()) {
+            (
+                Expr::Var { name: export_name, .. },
+                Some(Expr::Var {
+                    name: qualifier, ..
+                }),
+            ) => Some((qualifier.clone(), export_name.clone(), Vec::new())),
+            (
+                Expr::TypeApp {
+                    expr,
+                    type_args,
+                    ..
+                },
+                Some(Expr::Var {
+                    name: qualifier, ..
+                }),
+            ) => match expr.as_ref() {
+                Expr::Var { name: export_name, .. } => Some((
+                    qualifier.clone(),
+                    export_name.clone(),
+                    type_args.clone(),
+                )),
+                _ => None,
+            },
+            _ => None,
+        };
+        let (qualifier, export_name, explicit_type_args) = qualified_call?;
+        if self.env.lookup(&qualifier).is_some() {
+            return None;
+        }
+        let binding = self.qualified_modules.get(&qualifier)?;
+        Some(self.infer_qualified_var_call_inner(binding, &qualifier, &export_name, &explicit_type_args, args, span))
+    }
+
+    fn infer_qualified_var_call_inner(
+        &mut self,
+        binding: &super::QualifiedModuleBinding,
+        qualifier: &str,
+        export_name: &str,
+        explicit_type_args: &[TypeExpr],
+        args: &[Expr],
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        let Some(export) = binding.exports.get(export_name) else {
+            return Err(super::spanned(
+                TypeError::UnknownQualifiedExport {
+                    qualifier: qualifier.to_string(),
+                    module_path: binding.module_path.clone(),
+                    name: export_name.to_string(),
+                },
+                span,
+            ));
+        };
+
+        let is_constructor =
+            self.registry.is_some_and(|r| r.is_constructor(export_name));
+        let resolved_name = if is_constructor {
+            export_name.to_string()
+        } else {
+            export.local_name.clone()
+        };
+        let func_ty = if explicit_type_args.is_empty() {
+            export.scheme.instantiate(&mut || self.gen.fresh())
+        } else {
+            let reg = self.registry.ok_or_else(|| {
+                super::spanned(
+                    TypeError::UnsupportedExpr {
+                        description:
+                            "explicit type application requires the type registry"
+                                .to_string(),
+                    },
+                    span,
+                )
+            })?;
+            let explicit_types = explicit_type_args
+                .iter()
+                .map(|type_arg| {
+                    type_registry::resolve_type_expr(
+                        type_arg,
+                        self.type_param_map,
+                        self.type_param_arity,
+                        reg,
+                        ResolutionContext::UserAnnotation,
+                        self.self_type.as_ref(),
+                    )
+                    .map_err(|e| super::spanned(e, span))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            super::instantiate_scheme_with_types(
+                &export.scheme,
+                &explicit_types,
+                span,
+                self.gen,
+            )?
+        };
+        let func_typed = TypedExpr {
+            kind: TypedExprKind::Var(resolved_name),
+            ty: func_ty.clone(),
+            span,
+            origin: None,
+        };
+        let actual_args = &args[1..];
+        self.infer_call_args_and_unify(
+            func_typed,
+            &func_ty,
+            actual_args,
+            is_constructor,
+            span,
+        )
+    }
+
+    /// Path 3: Qualified module call via field-access syntax — `Module.fn(args...)`.
+    fn infer_qualified_field_call(
+        &mut self,
+        func: &Expr,
+        args: &[Expr],
+        span: Span,
+    ) -> Option<Result<TypedExpr, SpannedTypeError>> {
+        let Expr::FieldAccess {
+            expr: qualifier_expr,
+            field,
+            ..
+        } = func else {
+            return None;
+        };
+        let Expr::Var {
+            name: qualifier, ..
+        } = qualifier_expr.as_ref() else {
+            return None;
+        };
+        if self.env.lookup(qualifier).is_some() {
+            return None;
+        }
+        let binding = self.qualified_modules.get(qualifier)?;
+        let Some(export) = binding.exports.get(field) else {
+            return Some(Err(super::spanned(
+                TypeError::UnknownQualifiedExport {
+                    qualifier: qualifier.clone(),
+                    module_path: binding.module_path.clone(),
+                    name: field.clone(),
+                },
+                span,
+            )));
+        };
+        let is_constructor =
+            self.registry.is_some_and(|r| r.is_constructor(field));
+        let resolved_name = if is_constructor {
+            field.clone()
+        } else {
+            export.local_name.clone()
+        };
+        let func_ty = export.scheme.instantiate(&mut || self.gen.fresh());
+        let func_typed = TypedExpr {
+            kind: TypedExprKind::Var(resolved_name),
+            ty: if is_constructor && !matches!(&func_ty, Type::Fn(_, _))
+            {
+                Type::Own(Box::new(func_ty.clone()))
+            } else {
+                func_ty.clone()
+            },
+            span,
+            origin: None,
+        };
+
+        Some(self.infer_call_args_and_unify(
+            func_typed,
+            &func_ty,
+            args,
+            is_constructor,
+            span,
+        ))
+    }
+
+    /// Path 4: UFCS overload resolution — when multiple same-named imports exist,
+    /// resolve by unifying the receiver type against each candidate's first parameter.
+    fn infer_ufcs_call(
+        &mut self,
+        func: &Expr,
+        args: &[Expr],
+        is_ufcs: bool,
+        span: Span,
+    ) -> Option<Result<TypedExpr, SpannedTypeError>> {
+        let Expr::Var { name, .. } = func else {
+            return None;
+        };
+        let candidates = self.find_overloaded_candidates(name);
+        if candidates.len() <= 1 {
+            return None;
+        }
+        // All candidates are trait methods → let typeclass dispatch handle it
+        let all_trait_methods = candidates.iter().all(|(_, origin, _)| origin.is_some());
+        if all_trait_methods {
+            return None;
+        }
+        if !is_ufcs {
+            // Prefix call with ambiguous name → error
+            let modules: Vec<String> = candidates.into_iter().map(|(_, _, m)| m).collect();
+            return Some(Err(super::spanned(
+                TypeError::AmbiguousCall {
+                    name: name.clone(),
+                    modules,
+                },
+                span,
+            )));
+        }
+        // UFCS dot-call: resolve by receiver type
+        let recv_typed = match self.infer_expr_inner(&args[0], None) {
+            Ok(t) => t,
+            Err(e) => return Some(Err(e)),
+        };
+        let recv_ty = self.subst.apply(&recv_typed.ty);
+
+        let mut matches_found: Vec<(usize, Substitution, Type, Option<TraitId>, String)> = Vec::new();
+        for (i, (scheme, origin, module)) in candidates.iter().enumerate() {
+            let mut trial_subst = self.subst.clone();
+            let trial_ty = scheme.instantiate(&mut || self.gen.fresh());
+            if let Type::Fn(params, _) = &trial_ty {
+                if let Some(first_param) = params.first() {
+                    if unify(first_param, &recv_ty, &mut trial_subst).is_ok() {
+                        matches_found.push((i, trial_subst, trial_ty, origin.clone(), module.clone()));
+                    }
+                }
+            }
+        }
+
+        if matches_found.len() == 1 {
+            let (_, winning_subst, func_ty, origin, _) = matches_found.remove(0);
+            if origin.is_some() {
+                // Single match is a trait method → fall through to general path
+                return None;
+            }
+            // Single free function match: use this candidate
+            *self.subst = winning_subst;
+            let func_typed = TypedExpr {
+                kind: TypedExprKind::Var(name.clone()),
+                ty: func_ty.clone(),
+                span,
+                origin: None,
+            };
+            return Some(self.infer_call_args_and_unify(
+                func_typed,
+                &func_ty,
+                args,
+                false,
+                span,
+            ));
+        } else if matches_found.len() > 1 {
+            let modules: Vec<String> = matches_found.into_iter().map(|(_, _, _, _, m)| m).collect();
+            return Some(Err(super::spanned(
+                TypeError::AmbiguousCall {
+                    name: name.clone(),
+                    modules,
+                },
+                span,
+            )));
+        }
+        // 0 matches: fall through to general path (will error naturally)
+        None
+    }
+
+    /// Path 5: General HM function application — infer func, infer args with
+    /// bidirectional lambda propagation, per-arg coerce_unify, return type unify.
+    fn infer_general_call(
+        &mut self,
+        func: &Expr,
+        args: &[Expr],
+        is_ufcs: bool,
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        let func_typed = self.infer_expr_inner(func, None)?;
+        // Extract expected parameter types from the function signature
+        // so we can propagate them into lambda arguments for bidirectional checking.
+        let func_param_types: Option<Vec<Type>> = {
+            let resolved_func_ty = self.subst.apply(&func_typed.ty);
+            let unwrapped = match &resolved_func_ty {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            if let Type::Fn(params, _) = unwrapped {
+                Some(params.clone())
+            } else {
+                None
+            }
+        };
+
+        let callee_name = if let Expr::Var { name, .. } = func {
+            Some(name.as_str())
+        } else {
+            None
+        };
+
+        let mut args_typed = Vec::new();
+        let mut arg_types = Vec::new();
+        for (i, a) in args.iter().enumerate() {
+            // For lambda arguments, resolve the expected parameter type from the
+            // function signature and pass it as expected_type for bidirectional checking.
+            let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
+                func_param_types.as_ref().and_then(|fparams| {
+                    fparams
+                        .get(i)
+                        .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
+                })
+            } else {
+                None
+            };
+            let a_typed = self.infer_expr_inner(
+                a,
+                arg_expected_type.as_ref(),
+            ).map_err(|mut err| {
+                if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
+                    if let Some(cname) = callee_name {
+                        if let Some(def) = self.env.get_def_span(cname) {
+                            let resolved_fn_ty = self.subst.apply(&func_typed.ty);
+                            err.secondary_span = Some(SecondaryLabel {
+                                span: def.span,
+                                message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
+                                source_file: def.source_module.clone(),
+                            });
+                        }
+                    }
+                }
+                err
+            })?;
+            let a_ty = a_typed.ty.clone();
+            arg_types.push(a_ty.clone());
+            args_typed.push(a_typed);
+            // Eagerly unify non-lambda args with their expected parameter types.
+            // This resolves generic type variables (e.g., T -> Player) before
+            // we process subsequent lambda arguments that depend on them.
+            if !matches!(a, Expr::Lambda { .. }) {
+                if let Some(ref fparams) = func_param_types {
+                    if let Some(expected_param_ty) = fparams.get(i) {
+                        let _ = coerce_unify(&a_ty, expected_param_ty, self.subst);
+                    }
+                }
+            }
+        }
+
+        let ret_var = Type::Var(self.fresh());
+        let is_constructor = if let Expr::Var { name, .. } = func {
+            self.registry.is_some_and(|r| r.is_constructor(name))
+        } else {
+            false
+        };
+
+        // Resolve function type and extract params + return for per-arg coerce_unify
+        let resolved_func = self.subst.apply(&func_typed.ty);
+        let unwrapped = self.unwrap_own_fn(&resolved_func);
+        match &unwrapped {
+            Type::Fn(param_types, ret_type) => {
+                if param_types.len() != arg_types.len() {
+                    return Err(super::spanned(
+                        TypeError::WrongArity {
+                            expected: param_types.len(),
+                            actual: arg_types.len(),
+                        },
+                        span,
+                    ));
+                }
+                // Per-arg coerce_unify: directional, catches fabrication structurally
+                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
+                    coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
+                        let mut err = super::spanned(e, span);
+                        // Add ownership-specific notes
+                        if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
+                            if let Some(cname) = callee_name {
+                                let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
+                                    format!("`{cname}` requires an owned argument, but `{arg_name}` is not owned")
+                                } else {
+                                    format!("`{cname}` requires an owned argument at position {}", i + 1)
+                                };
+                                err.note = Some(note);
+                            }
+                        }
+                        if matches!(&err.error, TypeError::Mismatch { .. }) {
+                            if let Some(ref captures) = self.lambda_own_captures {
+                                for arg in args.iter() {
+                                    if let Expr::Lambda { span: lspan, .. } = arg {
+                                        if let Some(cap_name) = captures.get(lspan) {
+                                            err.note = Some(format!(
+                                                "closure is single-use because it captures `~` value `{}`",
+                                                cap_name
+                                            ));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if err.note.is_none() && is_ufcs && !self.shadowed_prelude_fns.is_empty() {
+                                let shadows: Vec<String> = self.shadowed_prelude_fns.iter()
+                                    .map(|(name, module)| format!("`{name}` from {module}"))
+                                    .collect();
+                                err.note = Some(format!(
+                                    "{} {} shadowed by an explicit import — this may affect the types flowing through the method chain",
+                                    shadows.join(", "),
+                                    if shadows.len() == 1 { "is" } else { "are" },
+                                ));
+                            }
+                        }
+                        if err.secondary_span.is_none() {
+                            if let Some(cname) = callee_name {
+                                if let Some(def) = self.env.get_def_span(cname) {
+                                    let resolved_fn_ty = self.subst.apply(&func_typed.ty);
+                                    err.secondary_span = Some(SecondaryLabel {
+                                        span: def.span,
+                                        message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
+                                        source_file: def.source_module.clone(),
+                                    });
+                                }
+                            }
+                        }
+                        err
+                    })?;
+                }
+                // Propagate return type — plain unify preserves Own from resolved type
+                unify(ret_type, &ret_var, self.subst)
+                    .map_err(|e| super::spanned(e, span))?;
+            }
+            _ => {
+                if super::is_concrete_non_function(&func_typed.ty, self.subst) {
+                    let actual = self.subst.apply(&func_typed.ty);
+                    return Err(super::spanned(TypeError::NotAFunction { actual }, span));
+                }
+                // Function type not yet resolved — fall back to building expected Fn and unifying.
+                // Strip Own from arg types to avoid baking ownership into the function's type
+                // variable (ownership is handled by coerce_unify at resolved call sites).
+                let stripped_args: Vec<Type> = arg_types.iter().map(|t| super::strip_own(t)).collect();
+                let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
+                unify(&unwrapped, &expected_fn, self.subst)
+                    .map_err(|e| super::spanned(e, span))?;
+            }
+        }
+
+        let ty = self.subst.apply(&ret_var);
+        let ty = if is_constructor {
+            Type::Own(Box::new(ty))
+        } else {
+            ty
+        };
+
+        // Enforce: trait_dict(...) can only appear as an argument to extern functions
+        if let Expr::Var { name: call_name, .. } = func {
+            if !self.extern_fn_names.contains(call_name) {
+                for arg in &args_typed {
+                    if let TypedExprKind::App {
+                        func: inner_func, ..
+                    } = &arg.kind
+                    {
+                        if let TypedExprKind::Var(fn_name) = &inner_func.kind {
+                            if fn_name == "trait_dict" {
+                                return Err(super::spanned(
+                                    TypeError::UnsupportedExpr {
+                                        description: format!(
+                                            "trait_dict(...) can only be used as an argument to extern functions, not `{call_name}`"
+                                        ),
+                                    },
+                                    span,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(func_typed),
+                args: args_typed,
+            },
+            ty,
+            span,
+            origin: None,
+        })
+    }
+
     pub(crate) fn infer_expr_inner(
         &mut self,
         expr: &Expr,
@@ -404,508 +975,21 @@ impl<'a> InferenceContext<'a> {
             Expr::App {
                 func, args, is_ufcs, span, ..
             } => {
-                // Intercept trait_dict(TraitName) intrinsic
-                if let Expr::Var { name, .. } = func.as_ref() {
-                    if name == "trait_dict" {
-                        if args.len() != 1 {
-                            return Err(super::spanned(
-                                TypeError::UnsupportedExpr {
-                                    description: "trait_dict requires exactly one argument".to_string(),
-                                },
-                                *span,
-                            ));
-                        }
-                        let trait_name = match &args[0] {
-                            Expr::Var { name, .. } => name.clone(),
-                            _ => {
-                                return Err(super::spanned(
-                                    TypeError::UnsupportedExpr {
-                                        description: "trait_dict argument must be a trait name".to_string(),
-                                    },
-                                    *span,
-                                ));
-                            }
-                        };
-                        // Validate the trait exists
-                        if let Some(reg) = self.registry {
-                            if reg.lookup_type(&trait_name).is_none() {
-                                // Check if it's a known trait via env lookup
-                                // (trait names are bound as types in the registry or as functions)
-                            }
-                        }
-                        // Validate enclosing function has a where constraint for this trait
-                        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t == &trait_name);
-                        if !has_constraint {
-                            return Err(super::spanned(
-                                TypeError::UnsupportedExpr {
-                                    description: format!(
-                                        "trait_dict({trait_name}) requires a `where` constraint for {trait_name} on the enclosing function"
-                                    ),
-                                },
-                                *span,
-                            ));
-                        }
-                        // Type it as Object (opaque dict reference)
-                        let ret_var = Type::Var(self.fresh());
-                        let func_typed = TypedExpr {
-                            kind: TypedExprKind::Var("trait_dict".to_string()),
-                            ty: Type::Fn(vec![ret_var.clone()], Box::new(Type::Var(self.fresh()))),
-                            span: *span,
-                            origin: None,
-                        };
-                        let arg_typed = TypedExpr {
-                            kind: TypedExprKind::Var(trait_name),
-                            ty: ret_var,
-                            span: *span,
-                            origin: None,
-                        };
-                        let result_ty = Type::Var(self.fresh());
-                        return Ok(TypedExpr {
-                            kind: TypedExprKind::App {
-                                func: Box::new(func_typed),
-                                args: vec![arg_typed],
-                            },
-                            ty: result_ty,
-                            span: *span,
-                            origin: None,
-                        });
-                    }
+                // Dispatch: trait_dict intrinsic → qualified Mod.fn → qualified field access
+                //         → UFCS overload resolution → general HM application
+                if let Some(result) = self.infer_trait_dict_call(func, args, *span) {
+                    return result;
                 }
-
-                let qualified_call = match (func.as_ref(), args.first()) {
-                    (
-                        Expr::Var { name: export_name, .. },
-                        Some(Expr::Var {
-                            name: qualifier, ..
-                        }),
-                    ) => Some((qualifier.clone(), export_name.clone(), Vec::new())),
-                    (
-                        Expr::TypeApp {
-                            expr,
-                            type_args,
-                            ..
-                        },
-                        Some(Expr::Var {
-                            name: qualifier, ..
-                        }),
-                    ) => match expr.as_ref() {
-                        Expr::Var { name: export_name, .. } => Some((
-                            qualifier.clone(),
-                            export_name.clone(),
-                            type_args.clone(),
-                        )),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some((qualifier, export_name, explicit_type_args)) = qualified_call {
-                    if self.env.lookup(&qualifier).is_none() {
-                        if let Some(binding) = self.qualified_modules.get(&qualifier) {
-                            let Some(export) = binding.exports.get(&export_name) else {
-                                return Err(super::spanned(
-                                    TypeError::UnknownQualifiedExport {
-                                        qualifier,
-                                        module_path: binding.module_path.clone(),
-                                        name: export_name,
-                                    },
-                                    *span,
-                                ));
-                            };
-
-                            let is_constructor =
-                                self.registry.is_some_and(|r| r.is_constructor(&export_name));
-                            let resolved_name = if is_constructor {
-                                export_name.clone()
-                            } else {
-                                export.local_name.clone()
-                            };
-                            let func_ty = if explicit_type_args.is_empty() {
-                                export.scheme.instantiate(&mut || self.gen.fresh())
-                            } else {
-                                let reg = self.registry.ok_or_else(|| {
-                                    super::spanned(
-                                        TypeError::UnsupportedExpr {
-                                            description:
-                                                "explicit type application requires the type registry"
-                                                    .to_string(),
-                                        },
-                                        *span,
-                                    )
-                                })?;
-                                let explicit_types = explicit_type_args
-                                    .iter()
-                                    .map(|type_arg| {
-                                        type_registry::resolve_type_expr(
-                                            type_arg,
-                                            self.type_param_map,
-                                            self.type_param_arity,
-                                            reg,
-                                            ResolutionContext::UserAnnotation,
-                                            self.self_type.as_ref(),
-                                        )
-                                        .map_err(|e| super::spanned(e, *span))
-                                    })
-                                    .collect::<Result<Vec<_>, _>>()?;
-                                super::instantiate_scheme_with_types(
-                                    &export.scheme,
-                                    &explicit_types,
-                                    *span,
-                                    self.gen,
-                                )?
-                            };
-                            let func_typed = TypedExpr {
-                                kind: TypedExprKind::Var(resolved_name),
-                                ty: func_ty.clone(),
-                                span: *span,
-                                origin: None,
-                            };
-                            let actual_args = &args[1..];
-                            return self.infer_call_args_and_unify(
-                                func_typed,
-                                &func_ty,
-                                actual_args,
-                                is_constructor,
-                                *span,
-                            );
-                        }
-                    }
+                if let Some(result) = self.infer_qualified_var_call(func, args, *span) {
+                    return result;
                 }
-
-                if let Expr::FieldAccess {
-                    expr: qualifier_expr,
-                    field,
-                    ..
-                } = func.as_ref()
-                {
-                    if let Expr::Var {
-                        name: qualifier, ..
-                    } = qualifier_expr.as_ref()
-                    {
-                        if self.env.lookup(qualifier).is_none() {
-                            if let Some(binding) = self.qualified_modules.get(qualifier) {
-                                let Some(export) = binding.exports.get(field) else {
-                                    return Err(super::spanned(
-                                        TypeError::UnknownQualifiedExport {
-                                            qualifier: qualifier.clone(),
-                                            module_path: binding.module_path.clone(),
-                                            name: field.clone(),
-                                        },
-                                        *span,
-                                    ));
-                                };
-                                let is_constructor =
-                                    self.registry.is_some_and(|r| r.is_constructor(field));
-                                let resolved_name = if is_constructor {
-                                    field.clone()
-                                } else {
-                                    export.local_name.clone()
-                                };
-                                let func_ty = export.scheme.instantiate(&mut || self.gen.fresh());
-                                let func_typed = TypedExpr {
-                                    kind: TypedExprKind::Var(resolved_name),
-                                    ty: if is_constructor && !matches!(&func_ty, Type::Fn(_, _))
-                                    {
-                                        Type::Own(Box::new(func_ty.clone()))
-                                    } else {
-                                        func_ty.clone()
-                                    },
-                                    span: *span,
-                                    origin: None,
-                                };
-
-                                return self.infer_call_args_and_unify(
-                                    func_typed,
-                                    &func_ty,
-                                    args,
-                                    is_constructor,
-                                    *span,
-                                );
-                            }
-                        }
-                    }
+                if let Some(result) = self.infer_qualified_field_call(func, args, *span) {
+                    return result;
                 }
-
-                // UFCS same-name resolution: check for overloaded imported functions
-                if let Expr::Var { name, .. } = func.as_ref() {
-                    let candidates = self.find_overloaded_candidates(name);
-                    if candidates.len() > 1 {
-                        // Check if all candidates are trait methods — if so, skip and let typeclass dispatch handle it
-                        let all_trait_methods = candidates.iter().all(|(_, origin, _)| origin.is_some());
-                        if all_trait_methods {
-                            // Fall through to normal path
-                        } else if !is_ufcs {
-                            // Prefix call with ambiguous name → error
-                            let modules: Vec<String> = candidates.into_iter().map(|(_, _, m)| m).collect();
-                            return Err(super::spanned(
-                                TypeError::AmbiguousCall {
-                                    name: name.clone(),
-                                    modules,
-                                },
-                                *span,
-                            ));
-                        } else {
-                            // UFCS dot-call: resolve by receiver type
-                            let recv_typed = self.infer_expr_inner(&args[0], None)?;
-                            let recv_ty = self.subst.apply(&recv_typed.ty);
-
-                            let mut matches_found: Vec<(usize, Substitution, Type, Option<TraitId>, String)> = Vec::new();
-                            for (i, (scheme, origin, module)) in candidates.iter().enumerate() {
-                                let mut trial_subst = self.subst.clone();
-                                let trial_ty = scheme.instantiate(&mut || self.gen.fresh());
-                                if let Type::Fn(params, _) = &trial_ty {
-                                    if let Some(first_param) = params.first() {
-                                        if unify(first_param, &recv_ty, &mut trial_subst).is_ok() {
-                                            matches_found.push((i, trial_subst, trial_ty, origin.clone(), module.clone()));
-                                        }
-                                    }
-                                }
-                            }
-
-                            if matches_found.len() == 1 {
-                                let (_, winning_subst, func_ty, origin, _) = matches_found.remove(0);
-                                if origin.is_some() {
-                                    // Single match is a trait method → fall through to normal
-                                    // typeclass dispatch (don't resolve via UFCS)
-                                } else {
-                                    // Single free function match: use this candidate
-                                    *self.subst = winning_subst;
-                                    let func_typed = TypedExpr {
-                                        kind: TypedExprKind::Var(name.clone()),
-                                        ty: func_ty.clone(),
-                                        span: *span,
-                                        origin: None,
-                                    };
-                                    // Pass all args (including receiver) — the function type
-                                    // includes the receiver as its first parameter.
-                                    return self.infer_call_args_and_unify(
-                                        func_typed,
-                                        &func_ty,
-                                        args,
-                                        false,
-                                        *span,
-                                    );
-                                }
-                            } else if matches_found.len() > 1 {
-                                // Multiple matches → ambiguous
-                                let modules: Vec<String> = matches_found.into_iter().map(|(_, _, _, _, m)| m).collect();
-                                return Err(super::spanned(
-                                    TypeError::AmbiguousCall {
-                                        name: name.clone(),
-                                        modules,
-                                    },
-                                    *span,
-                                ));
-                            }
-                            // 0 matches: fall through to normal path (will error naturally)
-                        }
-                    }
+                if let Some(result) = self.infer_ufcs_call(func, args, *is_ufcs, *span) {
+                    return result;
                 }
-
-                let func_typed = self.infer_expr_inner(func, None)?;
-                // Extract expected parameter types from the function signature
-                // so we can propagate them into lambda arguments for bidirectional checking.
-                let func_param_types: Option<Vec<Type>> = {
-                    let resolved_func_ty = self.subst.apply(&func_typed.ty);
-                    let unwrapped = match &resolved_func_ty {
-                        Type::Own(inner) => inner.as_ref(),
-                        other => other,
-                    };
-                    if let Type::Fn(params, _) = unwrapped {
-                        Some(params.clone())
-                    } else {
-                        None
-                    }
-                };
-
-                let callee_name = if let Expr::Var { name, .. } = func.as_ref() {
-                    Some(name.as_str())
-                } else {
-                    None
-                };
-
-                let mut args_typed = Vec::new();
-                let mut arg_types = Vec::new();
-                for (i, a) in args.iter().enumerate() {
-                    // For lambda arguments, resolve the expected parameter type from the
-                    // function signature and pass it as expected_type for bidirectional checking.
-                    let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
-                        func_param_types.as_ref().and_then(|fparams| {
-                            fparams
-                                .get(i)
-                                .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
-                        })
-                    } else {
-                        None
-                    };
-                    let a_typed = self.infer_expr_inner(
-                        a,
-                        arg_expected_type.as_ref(),
-                    ).map_err(|mut err| {
-                        if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
-                            if let Some(cname) = callee_name {
-                                if let Some(def) = self.env.get_def_span(cname) {
-                                    let resolved_fn_ty = self.subst.apply(&func_typed.ty);
-                                    err.secondary_span = Some(SecondaryLabel {
-                                        span: def.span,
-                                        message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
-                                        source_file: def.source_module.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        err
-                    })?;
-                    let a_ty = a_typed.ty.clone();
-                    arg_types.push(a_ty.clone());
-                    args_typed.push(a_typed);
-                    // Eagerly unify non-lambda args with their expected parameter types.
-                    // This resolves generic type variables (e.g., T -> Player) before
-                    // we process subsequent lambda arguments that depend on them.
-                    if !matches!(a, Expr::Lambda { .. }) {
-                        if let Some(ref fparams) = func_param_types {
-                            if let Some(expected_param_ty) = fparams.get(i) {
-                                let _ = coerce_unify(&a_ty, expected_param_ty, self.subst);
-                            }
-                        }
-                    }
-                }
-
-                let ret_var = Type::Var(self.fresh());
-                let is_constructor = if let Expr::Var { name, .. } = func.as_ref() {
-                    self.registry.is_some_and(|r| r.is_constructor(name))
-                } else {
-                    false
-                };
-
-                // Resolve function type and extract params + return for per-arg coerce_unify
-                let resolved_func = self.subst.apply(&func_typed.ty);
-                let unwrapped = self.unwrap_own_fn(&resolved_func);
-                match &unwrapped {
-                    Type::Fn(param_types, ret_type) => {
-                        if param_types.len() != arg_types.len() {
-                            return Err(super::spanned(
-                                TypeError::WrongArity {
-                                    expected: param_types.len(),
-                                    actual: arg_types.len(),
-                                },
-                                *span,
-                            ));
-                        }
-                        // Per-arg coerce_unify: directional, catches fabrication structurally
-                        for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
-                            coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
-                                let mut err = super::spanned(e, *span);
-                                // Add ownership-specific notes
-                                if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
-                                    if let Some(cname) = callee_name {
-                                        let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
-                                            format!("`{cname}` requires an owned argument, but `{arg_name}` is not owned")
-                                        } else {
-                                            format!("`{cname}` requires an owned argument at position {}", i + 1)
-                                        };
-                                        err.note = Some(note);
-                                    }
-                                }
-                                if matches!(&err.error, TypeError::Mismatch { .. }) {
-                                    if let Some(ref captures) = self.lambda_own_captures {
-                                        for arg in args.iter() {
-                                            if let Expr::Lambda { span: lspan, .. } = arg {
-                                                if let Some(cap_name) = captures.get(lspan) {
-                                                    err.note = Some(format!(
-                                                        "closure is single-use because it captures `~` value `{}`",
-                                                        cap_name
-                                                    ));
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if err.note.is_none() && *is_ufcs && !self.shadowed_prelude_fns.is_empty() {
-                                        let shadows: Vec<String> = self.shadowed_prelude_fns.iter()
-                                            .map(|(name, module)| format!("`{name}` from {module}"))
-                                            .collect();
-                                        err.note = Some(format!(
-                                            "{} {} shadowed by an explicit import — this may affect the types flowing through the method chain",
-                                            shadows.join(", "),
-                                            if shadows.len() == 1 { "is" } else { "are" },
-                                        ));
-                                    }
-                                }
-                                if err.secondary_span.is_none() {
-                                    if let Some(cname) = callee_name {
-                                        if let Some(def) = self.env.get_def_span(cname) {
-                                            let resolved_fn_ty = self.subst.apply(&func_typed.ty);
-                                            err.secondary_span = Some(SecondaryLabel {
-                                                span: def.span,
-                                                message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
-                                                source_file: def.source_module.clone(),
-                                            });
-                                        }
-                                    }
-                                }
-                                err
-                            })?;
-                        }
-                        // Propagate return type — plain unify preserves Own from resolved type
-                        unify(ret_type, &ret_var, self.subst)
-                            .map_err(|e| super::spanned(e, *span))?;
-                    }
-                    _ => {
-                        if super::is_concrete_non_function(&func_typed.ty, self.subst) {
-                            let actual = self.subst.apply(&func_typed.ty);
-                            return Err(super::spanned(TypeError::NotAFunction { actual }, *span));
-                        }
-                        // Function type not yet resolved — fall back to building expected Fn and unifying.
-                        // Strip Own from arg types to avoid baking ownership into the function's type
-                        // variable (ownership is handled by coerce_unify at resolved call sites).
-                        let stripped_args: Vec<Type> = arg_types.iter().map(|t| super::strip_own(t)).collect();
-                        let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
-                        unify(&unwrapped, &expected_fn, self.subst)
-                            .map_err(|e| super::spanned(e, *span))?;
-                    }
-                }
-
-                let ty = self.subst.apply(&ret_var);
-                let ty = if is_constructor {
-                    Type::Own(Box::new(ty))
-                } else {
-                    ty
-                };
-
-                // Enforce: trait_dict(...) can only appear as an argument to extern functions
-                if let Expr::Var { name: call_name, .. } = func.as_ref() {
-                    if !self.extern_fn_names.contains(call_name) {
-                        for arg in &args_typed {
-                            if let TypedExprKind::App {
-                                func: inner_func, ..
-                            } = &arg.kind
-                            {
-                                if let TypedExprKind::Var(fn_name) = &inner_func.kind {
-                                    if fn_name == "trait_dict" {
-                                        return Err(super::spanned(
-                                            TypeError::UnsupportedExpr {
-                                                description: format!(
-                                                    "trait_dict(...) can only be used as an argument to extern functions, not `{call_name}`"
-                                                ),
-                                            },
-                                            *span,
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Ok(TypedExpr {
-                    kind: TypedExprKind::App {
-                        func: Box::new(func_typed),
-                        args: args_typed,
-                    },
-                    ty,
-                    span: *span,
-                    origin: None,
-                })
+                self.infer_general_call(func, args, *is_ufcs, *span)
             }
 
             Expr::TypeApp {
