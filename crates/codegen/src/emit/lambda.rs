@@ -157,7 +157,7 @@ impl Compiler {
             other => {
                 return Err(CodegenError::TypeError(format!(
                     "function reference has non-function type: {other}"
-                )))
+                ), None))
             }
         };
         let param_jvm_types = param_types
@@ -210,7 +210,7 @@ impl Compiler {
             if param_types.len() != dict_requirements.len() + param_jvm_types.len() {
                 return Err(CodegenError::UnsupportedExpr(format!(
                     "function reference `{name}` has mismatched parameter metadata"
-                )));
+                ), None));
             }
 
             let mut bridge_slot = 0u16;
@@ -305,7 +305,7 @@ impl Compiler {
                 } else if *field_type != actual_type {
                     return Err(CodegenError::TypeError(format!(
                         "variant reference `{name}` expected bridge arg type {field_type:?}, got {actual_type:?}"
-                    )));
+                    ), None));
                 }
             }
 
@@ -321,7 +321,7 @@ impl Compiler {
             self.builder.frame.pop_type();
             self.builder.push_jvm_type(JvmType::StructRef(interface_class_index));
         } else {
-            return Err(CodegenError::UndefinedVariable(name.to_string()));
+            return Err(CodegenError::UndefinedVariable(name.to_string(), None));
         }
 
         let bridge_result = self.builder.box_if_needed(ret_jvm);
@@ -358,7 +358,7 @@ impl Compiler {
                     CodegenError::UndefinedVariable(format!(
                         "could not resolve function reference dictionary requirement {} for {name}",
                         requirement.trait_name()
-                    ))
+                    ), None)
                 })?;
                 self.emit_dict_argument_for_type(
                     requirement.trait_name(),
@@ -398,8 +398,7 @@ impl Compiler {
                 .collect::<Result<Vec<_>, _>>()?,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "lambda has non-function type".to_string(),
-                ))
+                    "lambda has non-function type".to_string(), None))
             }
         };
 

@@ -806,6 +806,7 @@ dependencies = [
 name = "krypton-codegen"
 version = "0.1.0"
 dependencies = [
+ "ariadne",
  "criterion",
  "insta",
  "krypton-modules",

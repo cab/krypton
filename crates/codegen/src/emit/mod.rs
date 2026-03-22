@@ -67,7 +67,7 @@ fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
         Type::Unit => Ok(JvmType::Int),
         other => Err(CodegenError::TypeError(format!(
             "cannot map type to JVM: {other:?}"
-        ))),
+        ), None)),
     }
 }
 
@@ -106,7 +106,7 @@ fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmTy
         TypeExpr::App { .. } => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
         _ => Err(CodegenError::TypeError(format!(
             "unsupported type expr in struct field: {texpr:?}"
-        ))),
+        ), None)),
     }
 }
 
@@ -133,7 +133,7 @@ fn type_expr_to_jvm_with_params(
         ResolutionContext::InternalDecl,
         None,
     )
-    .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+    .map_err(|e| CodegenError::TypeError(format!("type error: {e}"), None))?;
     compiler.type_to_jvm(&resolved)
 }
 
@@ -220,7 +220,7 @@ pub fn compile_modules(
                         return Err(CodegenError::TypeError(format!(
                             "sum type name collision: '{}' defined as both '{}' and '{}'",
                             sum_name, existing, qualified
-                        )));
+                        ), None));
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(e) => {
@@ -291,7 +291,7 @@ fn compile_module_inner(
                 )
             })
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+            .map_err(|e| CodegenError::TypeError(format!("type error: {e}"), None))?;
         struct_type_param_maps.insert(struct_name.clone(), type_param_map);
         field_type_registry
             .register_type(type_registry::TypeInfo {
@@ -307,7 +307,7 @@ fn compile_module_inner(
                 },
                 is_prelude: false,
             })
-            .map_err(|e| CodegenError::TypeError(format!("type error: {e}")))?;
+            .map_err(|e| CodegenError::TypeError(format!("type error: {e}"), None))?;
     }
 
     // Phase 1: Register types

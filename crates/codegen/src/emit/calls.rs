@@ -74,8 +74,7 @@ impl Compiler {
                     TypedExprKind::Var(name) => name.clone(),
                     _ => {
                         return Err(CodegenError::UnsupportedExpr(
-                            "trait_dict argument must be a trait name".to_string(),
-                        ));
+                            "trait_dict argument must be a trait name".to_string(), None));
                     }
                 };
                 let object_class = self.builder.refs.object_class;
@@ -88,7 +87,7 @@ impl Compiler {
                 } else {
                     Err(CodegenError::UndefinedVariable(format!(
                         "no dict local for trait_dict({trait_name})"
-                    )))
+                    ), None))
                 }
             }
             "is_null" => {
@@ -116,7 +115,7 @@ impl Compiler {
             }
             _ => Err(CodegenError::UnsupportedExpr(format!(
                 "unknown intrinsic: {name}"
-            ))),
+            ), None)),
         }
     }
 
@@ -148,11 +147,11 @@ impl Compiler {
                 Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
                 other => return Err(CodegenError::TypeError(format!(
                     "expression call on non-function type: {other:?}"
-                ))),
+                ), None)),
             },
             other => return Err(CodegenError::TypeError(format!(
                 "expression call on non-function type: {other:?}"
-            ))),
+            ), None)),
         };
         let ret_jvm = self.type_to_jvm(&ret_ty)?;
 
@@ -201,11 +200,11 @@ impl Compiler {
                 TypedExprKind::Var(name) => Ok(name.as_str()),
                 other => Err(CodegenError::UnsupportedExpr(format!(
                     "non-variable function call: {other:?}"
-                ))),
+                ), None)),
             },
             other => Err(CodegenError::UnsupportedExpr(format!(
                 "non-variable function call: {other:?}"
-            ))),
+            ), None)),
         }
     }
 
@@ -295,7 +294,7 @@ impl Compiler {
                 if is_type_var && !self.traits.has_dict_for_trait(trait_name) {
                     return Err(CodegenError::UndefinedVariable(format!(
                         "no dict local for trait {trait_name}"
-                    )));
+                    ), None));
                 }
                 return Ok((name.to_string(), CallTarget::TraitMethod {
                     trait_name: trait_name.to_string(),
@@ -326,7 +325,7 @@ impl Compiler {
             .types
             .get_function_by_params(name, &func_params)
             .or_else(|| self.types.get_function(name))
-            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
+            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string(), None))?;
 
         Ok((name.to_string(), CallTarget::StaticCall {
             method_ref: info.method_ref,
@@ -505,7 +504,7 @@ impl Compiler {
                                 CodegenError::UndefinedVariable(format!(
                                     "could not resolve function dictionary requirement {} for {name}",
                                     requirement.trait_name()
-                                ))
+                                ), None)
                             })?;
                             self.emit_dict_argument_for_type(
                                 requirement.trait_name(),
@@ -763,7 +762,7 @@ impl Compiler {
                             CodegenError::UndefinedVariable(format!(
                                 "could not resolve dictionary requirement {} for {ty}",
                                 requirement.trait_name()
-                            ))
+                            ), None)
                         })?;
                 self.emit_dict_argument_for_type(
                     requirement.trait_name(),
@@ -781,6 +780,6 @@ impl Compiler {
 
         Err(CodegenError::UndefinedVariable(format!(
             "no instance of {trait_name} for {ty}"
-        )))
+        ), None))
     }
 }

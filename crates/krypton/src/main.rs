@@ -104,6 +104,24 @@ fn print_timings(phases: &[(&str, Duration)]) {
 }
 
 fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+
+        eprintln!("error: internal compiler error: {message}");
+        if let Some(loc) = info.location() {
+            eprintln!("  --> {}:{}:{}", loc.file(), loc.line(), loc.column());
+        }
+        eprintln!();
+        eprintln!("This is a bug in the Krypton compiler. Please report it.");
+        process::exit(101);
+    }));
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_env("KRYPTON_LOG")
@@ -233,7 +251,8 @@ fn main() {
                     phases.push(("emit", t.elapsed()));
                 }
                 Err(e) => {
-                    eprintln!("Codegen error: {}", e);
+                    let diag = krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
+                    eprint!("{}", diag);
                     process::exit(1);
                 }
             }
@@ -333,7 +352,8 @@ fn main() {
                     process::exit(status.code().unwrap_or(1));
                 }
                 Err(e) => {
-                    eprintln!("Codegen error: {}", e);
+                    let diag = krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
+                    eprint!("{}", diag);
                     process::exit(1);
                 }
             }

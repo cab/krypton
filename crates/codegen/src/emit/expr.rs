@@ -29,7 +29,7 @@ impl Compiler {
             .builder.locals
             .get(name)
             .copied()
-            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string()))?;
+            .ok_or_else(|| CodegenError::UndefinedVariable(name.to_string(), None))?;
 
         self.builder.emit_load(slot, ty);
 
@@ -209,10 +209,10 @@ impl Compiler {
         let lookup_type = lhs.ty.strip_own();
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
+            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"), None)
         })?;
         let iface_method_ref = *dispatch.method_refs.get(method_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"))
+            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"), None)
         })?;
         let iface_class = dispatch.interface_class;
 
@@ -226,7 +226,7 @@ impl Compiler {
             } else {
                 return Err(CodegenError::UndefinedVariable(format!(
                     "no dict local for {trait_name} (type var {})", lhs.ty
-                )));
+                ), None));
             }
         } else {
             let singleton = self
@@ -236,7 +236,7 @@ impl Compiler {
                 .ok_or_else(|| {
                     CodegenError::UndefinedVariable(format!(
                         "no instance of {trait_name} for {}", lhs.ty
-                    ))
+                    ), None)
                 })?;
             let field_ref = singleton.instance_field_ref;
 
@@ -280,10 +280,10 @@ impl Compiler {
         let lookup_type = operand.ty.strip_own();
 
         let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"))
+            CodegenError::UndefinedVariable(format!("no trait dispatch for {trait_name}"), None)
         })?;
         let iface_method_ref = *dispatch.method_refs.get(method_name).ok_or_else(|| {
-            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"))
+            CodegenError::UndefinedVariable(format!("no method {method_name} in {trait_name}"), None)
         })?;
         let iface_class = dispatch.interface_class;
 
@@ -294,7 +294,7 @@ impl Compiler {
             .ok_or_else(|| {
                 CodegenError::UndefinedVariable(format!(
                     "no instance of {trait_name} for {}", operand.ty
-                ))
+                ), None)
             })?;
         let field_ref = singleton.instance_field_ref;
 
@@ -635,7 +635,7 @@ impl Compiler {
             .types
             .tuple_info
             .get(&arity)
-            .ok_or_else(|| CodegenError::TypeError(format!("unknown tuple arity: {arity}")))?;
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None))?;
         let class_index = info.class_index;
         let constructor_ref = info.constructor_ref;
 
@@ -689,7 +689,7 @@ impl Compiler {
         let info = self
             .vec_info
             .as_ref()
-            .ok_or_else(|| CodegenError::TypeError("Vec info not registered".to_string()))?
+            .ok_or_else(|| CodegenError::TypeError("Vec info not registered".to_string(), None))?
             .clone();
 
         let arr_vtype = VerificationType::Object {
@@ -747,8 +747,7 @@ impl Compiler {
             JvmType::StructRef(idx) => idx,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "field access on non-struct type".to_string(),
-                ))
+                    "field access on non-struct type".to_string(), None))
             }
         };
 
@@ -759,17 +758,17 @@ impl Compiler {
                 .struct_info
                 .values()
                 .find(|s| s.class_index == class_idx)
-                .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
+                .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), None))?;
             let accessor_ref = *si
                 .accessor_refs
                 .get(field)
-                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}")))?;
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}"), None))?;
             let field_type = si
                 .fields
                 .iter()
                 .find(|(n, _)| n == field)
                 .map(|(_, t)| *t)
-                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}")))?;
+                .ok_or_else(|| CodegenError::TypeError(format!("unknown field: {field}"), None))?;
             (si.class_name.clone(), accessor_ref, field_type)
         };
 
@@ -797,10 +796,10 @@ impl Compiler {
             .types
             .sum_type_info
             .get(sum_name)
-            .ok_or_else(|| CodegenError::TypeError(format!("unknown sum type: {sum_name}")))?;
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown sum type: {sum_name}"), None))?;
         let interface_class_index = sum_info.interface_class_index;
         let success_vi = sum_info.variants.get(success_variant).ok_or_else(|| {
-            CodegenError::TypeError(format!("unknown variant: {success_variant}"))
+            CodegenError::TypeError(format!("unknown variant: {success_variant}"), None)
         })?;
         let success_class_index = success_vi.class_index;
         let success_field_refs = success_vi.field_refs.clone();
@@ -914,8 +913,7 @@ impl Compiler {
             JvmType::StructRef(idx) => idx,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "struct update on non-struct type".to_string(),
-                ))
+                    "struct update on non-struct type".to_string(), None))
             }
         };
 
@@ -928,7 +926,7 @@ impl Compiler {
             .struct_info
             .values()
             .find(|s| s.class_index == class_idx)
-            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
+            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), None))?;
         let constructor_ref = si.constructor_ref;
         let fields = si.fields.clone();
         let accessor_refs = si.accessor_refs.clone();
@@ -980,8 +978,7 @@ impl Compiler {
             JvmType::StructRef(idx) => idx,
             _ => {
                 return Err(CodegenError::TypeError(
-                    "struct literal for non-struct type".to_string(),
-                ))
+                    "struct literal for non-struct type".to_string(), None))
             }
         };
 
@@ -990,7 +987,7 @@ impl Compiler {
             .struct_info
             .values()
             .find(|s| s.class_index == class_idx)
-            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string()))?;
+            .ok_or_else(|| CodegenError::TypeError("unknown struct class".to_string(), None))?;
         let constructor_ref = si.constructor_ref;
         let ordered_fields = si.fields.clone();
 
@@ -1003,7 +1000,7 @@ impl Compiler {
 
         for (field_name, field_type) in &ordered_fields {
             let value = field_values.get(field_name.as_str()).ok_or_else(|| {
-                CodegenError::TypeError(format!("missing struct field: {field_name}"))
+                CodegenError::TypeError(format!("missing struct field: {field_name}"), None)
             })?;
             let actual_type = self.compile_expr(value, false)?;
             // Box primitives when the field is erased to Object (generic type param)
@@ -1031,11 +1028,11 @@ impl Compiler {
         expr_span: krypton_parser::ast::Span,
     ) -> Result<JvmType, CodegenError> {
         if !in_tail {
-            return Err(CodegenError::RecurNotInTailPosition);
+            return Err(CodegenError::RecurNotInTailPosition(Some(expr_span)));
         }
         let return_type = self
             .builder.fn_return_type
-            .ok_or_else(|| CodegenError::UnsupportedExpr("recur outside function".to_string()))?;
+            .ok_or_else(|| CodegenError::UnsupportedExpr("recur outside function".to_string(), Some(expr_span)))?;
         let fn_params = self.builder.fn_params.clone();
 
         // Auto-close live resources before recur
@@ -1117,18 +1114,18 @@ impl Compiler {
     ) -> Result<(), CodegenError> {
         let key = ("Resource".to_string(), Type::Named(binding.type_name.clone(), vec![]));
         let singleton = self.traits.instance_singletons.get(&key).ok_or_else(|| {
-            CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name))
+            CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name), None)
         })?;
         let instance_field_ref = singleton.instance_field_ref;
         let dispatch =
             self.traits.trait_dispatch.get("Resource").ok_or_else(|| {
-                CodegenError::TypeError("Resource trait dispatch not found".into())
+                CodegenError::TypeError("Resource trait dispatch not found".into(), None)
             })?;
         let interface_class = dispatch.interface_class;
         let method_ref = *dispatch
             .method_refs
             .get("close")
-            .ok_or_else(|| CodegenError::TypeError("close method ref not found".into()))?;
+            .ok_or_else(|| CodegenError::TypeError("close method ref not found".into(), None))?;
 
         // getstatic Resource$Type.INSTANCE
         self.builder.emit(Instruction::Getstatic(instance_field_ref));
@@ -1141,7 +1138,7 @@ impl Compiler {
             .builder.locals
             .get(&binding.name)
             .copied()
-            .ok_or_else(|| CodegenError::UndefinedVariable(binding.name.clone()))?;
+            .ok_or_else(|| CodegenError::UndefinedVariable(binding.name.clone(), None))?;
         self.builder.emit(Instruction::Aload(slot as u8));
         self.builder.frame.push_type(VerificationType::Object {
             cpool_index: self.builder.refs.object_class,

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use krypton_parser::ast::Span;
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl};
 use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
@@ -31,10 +32,33 @@ impl JvmType {
 pub enum CodegenError {
     ClassFile(ristretto_classfile::Error),
     NoMainFunction,
-    UnsupportedExpr(String),
-    UndefinedVariable(String),
-    TypeError(String),
-    RecurNotInTailPosition,
+    UnsupportedExpr(String, Option<Span>),
+    UndefinedVariable(String, Option<Span>),
+    TypeError(String, Option<Span>),
+    RecurNotInTailPosition(Option<Span>),
+}
+
+impl CodegenError {
+    pub fn error_code(&self) -> &'static str {
+        match self {
+            CodegenError::ClassFile(_) => "C0001",
+            CodegenError::NoMainFunction => "C0002",
+            CodegenError::UnsupportedExpr(..) => "C0003",
+            CodegenError::UndefinedVariable(..) => "C0004",
+            CodegenError::TypeError(..) => "C0005",
+            CodegenError::RecurNotInTailPosition(_) => "C0006",
+        }
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            CodegenError::ClassFile(_) | CodegenError::NoMainFunction => None,
+            CodegenError::UnsupportedExpr(_, s)
+            | CodegenError::UndefinedVariable(_, s)
+            | CodegenError::TypeError(_, s) => *s,
+            CodegenError::RecurNotInTailPosition(s) => *s,
+        }
+    }
 }
 
 impl From<ristretto_classfile::Error> for CodegenError {
@@ -48,10 +72,10 @@ impl std::fmt::Display for CodegenError {
         match self {
             CodegenError::ClassFile(e) => write!(f, "class file error: {e}"),
             CodegenError::NoMainFunction => write!(f, "no main function found"),
-            CodegenError::UnsupportedExpr(s) => write!(f, "unsupported expression: {s}"),
-            CodegenError::UndefinedVariable(s) => write!(f, "undefined variable: {s}"),
-            CodegenError::TypeError(s) => write!(f, "type error: {s}"),
-            CodegenError::RecurNotInTailPosition => {
+            CodegenError::UnsupportedExpr(s, _) => write!(f, "unsupported expression: {s}"),
+            CodegenError::UndefinedVariable(s, _) => write!(f, "undefined variable: {s}"),
+            CodegenError::TypeError(s, _) => write!(f, "type error: {s}"),
+            CodegenError::RecurNotInTailPosition(_) => {
                 write!(f, "recur must be in tail position")
             }
         }
@@ -376,7 +400,7 @@ impl Compiler {
                 } else {
                     Err(CodegenError::TypeError(format!(
                         "unknown named type: {name}"
-                    )))
+                    ), None))
                 }
             }
             Type::Var(_) => Ok(JvmType::StructRef(self.builder.refs.object_class)),
@@ -395,7 +419,7 @@ impl Compiler {
                 } else {
                     Err(CodegenError::TypeError(format!(
                         "unknown tuple arity: {arity}"
-                    )))
+                    ), None))
                 }
             }
             Type::String => Ok(JvmType::StructRef(self.builder.refs.string_class)),
@@ -406,7 +430,7 @@ impl Compiler {
             Type::App(_, _) => {
                 Err(CodegenError::TypeError(format!(
                     "unexpected unreduced concrete type application during codegen erasure: {ty}"
-                )))
+                ), None))
             }
             other => type_to_jvm_basic(other),
         }
@@ -503,7 +527,7 @@ impl Compiler {
                 is_option,
             } => self.compile_question_mark(inner, *is_option, &expr.ty, expr.span),
             TypedExprKind::VecLit(elems) => self.compile_vec_lit(elems),
-            other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"))),
+            other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"), Some(expr.span))),
         }
     }
 
@@ -515,7 +539,7 @@ impl Compiler {
         let info = self
             .types
             .get_function(&decl.name)
-            .ok_or_else(|| CodegenError::UndefinedVariable(decl.name.clone()))?;
+            .ok_or_else(|| CodegenError::UndefinedVariable(decl.name.clone(), None))?;
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
