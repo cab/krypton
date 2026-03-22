@@ -53,50 +53,7 @@ pub enum TypeErrorCode {
 
 impl fmt::Display for TypeErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TypeErrorCode::E0001 => write!(f, "E0001"),
-            TypeErrorCode::E0002 => write!(f, "E0002"),
-            TypeErrorCode::E0003 => write!(f, "E0003"),
-            TypeErrorCode::E0004 => write!(f, "E0004"),
-            TypeErrorCode::E0005 => write!(f, "E0005"),
-            TypeErrorCode::E0006 => write!(f, "E0006"),
-            TypeErrorCode::E0007 => write!(f, "E0007"),
-            TypeErrorCode::E0008 => write!(f, "E0008"),
-            TypeErrorCode::E0009 => write!(f, "E0009"),
-            TypeErrorCode::E0010 => write!(f, "E0010"),
-            TypeErrorCode::E0101 => write!(f, "E0101"),
-            TypeErrorCode::E0102 => write!(f, "E0102"),
-            TypeErrorCode::E0103 => write!(f, "E0103"),
-            TypeErrorCode::E0104 => write!(f, "E0104"),
-            TypeErrorCode::E0301 => write!(f, "E0301"),
-            TypeErrorCode::E0302 => write!(f, "E0302"),
-            TypeErrorCode::E0303 => write!(f, "E0303"),
-            TypeErrorCode::E0304 => write!(f, "E0304"),
-            TypeErrorCode::E0305 => write!(f, "E0305"),
-            TypeErrorCode::E0306 => write!(f, "E0306"),
-            TypeErrorCode::E0011 => write!(f, "E0011"),
-            TypeErrorCode::E0401 => write!(f, "E0401"),
-            TypeErrorCode::E0402 => write!(f, "E0402"),
-            TypeErrorCode::E0403 => write!(f, "E0403"),
-            TypeErrorCode::E0501 => write!(f, "E0501"),
-            TypeErrorCode::E0502 => write!(f, "E0502"),
-            TypeErrorCode::E0503 => write!(f, "E0503"),
-            TypeErrorCode::E0504 => write!(f, "E0504"),
-            TypeErrorCode::E0505 => write!(f, "E0505"),
-            TypeErrorCode::E0506 => write!(f, "E0506"),
-            TypeErrorCode::E0507 => write!(f, "E0507"),
-            TypeErrorCode::E0508 => write!(f, "E0508"),
-            TypeErrorCode::E0105 => write!(f, "E0105"),
-            TypeErrorCode::E0106 => write!(f, "E0106"),
-            TypeErrorCode::E0012 => write!(f, "E0012"),
-            TypeErrorCode::E0509 => write!(f, "E0509"),
-            TypeErrorCode::E0510 => write!(f, "E0510"),
-            TypeErrorCode::E0013 => write!(f, "E0013"),
-            TypeErrorCode::E0511 => write!(f, "E0511"),
-            TypeErrorCode::E0512 => write!(f, "E0512"),
-            TypeErrorCode::E0307 => write!(f, "E0307"),
-            TypeErrorCode::E0308 => write!(f, "E0308"),
-        }
+        fmt::Debug::fmt(self, f)
     }
 }
 

@@ -233,7 +233,7 @@ pub(super) fn generate_variant_class(
     // Build fields and field refs
     let mut field_refs = Vec::new();
     let mut jvm_fields = Vec::new();
-    for (i, (fname, jt, is_erased)) in fields.iter().enumerate() {
+    for (fname, jt, is_erased) in fields {
         let fdesc = if *is_erased {
             "Ljava/lang/Object;".to_string()
         } else {
@@ -266,7 +266,6 @@ pub(super) fn generate_variant_class(
             field_type,
             attributes: vec![],
         });
-        let _ = i; // suppress unused
     }
 
     // Constructor code
