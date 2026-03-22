@@ -5,26 +5,25 @@ expression: ir_module.to_string()
 module multi_constraint
 
 struct Box { val: Int }
+; extern Box
+; extern eq
+; extern println
+; extern show
 
-type Result[f, e] = Ok#0(b) | Err#1(a)
-type Option[g] = Some#0(c) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 eq_and_show(v0: t7, v1: t7) -> String =
-  let v2: Bool = call f23(v0, v1)
+fn eq_and_show(v0: t7, v1: t7) -> String =
+  let v2: Bool = call eq(v0, v1)
   switch v2 {
     1 ->
-      let v3: String = call f30(v0)
+      let v3: String = call show(v0)
       v3
     _ ->
       "not equal"
   }
 
-fn f1 main() -> Unit =
-  let v4: ~Box = call f49(1)
-  let v5: ~Box = call f49(1)
-  let v6: String = call f0(v4, v5)
+fn main() -> Unit =
+  let v4: ~Box = call Box(1)
+  let v5: ~Box = call Box(1)
+  let v6: String = call eq_and_show(v4, v5)
   let v7: Bool = eq_string(v6, "Box")
-  let v8: Unit = call f2(v7)
+  let v8: Unit = call println(v7)
   v8

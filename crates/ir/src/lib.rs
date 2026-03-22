@@ -2,6 +2,8 @@ pub mod expr;
 pub mod lower;
 pub mod pretty;
 
+use std::collections::HashMap;
+
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 pub use krypton_typechecker::types::{Type, TypeVarId};
 
@@ -29,6 +31,8 @@ pub struct Module {
     pub structs: Vec<StructDef>,
     pub sum_types: Vec<SumTypeDef>,
     pub functions: Vec<FnDef>,
+    /// FnId → debug name for all known functions (local + extern + imported).
+    pub fn_names: HashMap<FnId, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +202,7 @@ mod tests {
     fn module_structure() {
         let _module = Module {
             name: "test".into(),
+            fn_names: HashMap::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],

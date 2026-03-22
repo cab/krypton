@@ -4,13 +4,8 @@ expression: ir_module.to_string()
 ---
 module multi_def
 
-type Option[e] = Some#0(a) | None#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 id(v0: r7) -> r7 =
+fn id(v0: r7) -> r7 =
   v0
 
-fn f1 always(v1: u7, v2: v7) -> u7 =
+fn always(v1: u7, v2: v7) -> u7 =
   v1

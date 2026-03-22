@@ -4,12 +4,9 @@ expression: ir_module.to_string()
 ---
 module boolean_ops
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[e] = Some#0(a) | None#1
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type List[h] = Cons#0(d, List[d]) | Nil#1
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: Bool = and(true, true)
   let v1: Bool = and(true, false)
   let v2: Bool = and(false, true)
@@ -38,5 +35,5 @@ fn f0 main() -> Unit =
   let v26: Bool = and(v24, v25)
   let v27: Bool = and(v26, v9)
   let v13: Bool = and(v27, v10)
-  let v28: Unit = call f1(v13)
+  let v28: Unit = call println(v13)
   v28

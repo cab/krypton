@@ -5,15 +5,13 @@ expression: ir_module.to_string()
 module op_eq_user_type
 
 struct Point { x: Int, y: Int }
+; extern Point
+; extern eq
+; extern println
 
-type Result[f, e] = Ok#0(b) | Err#1(a)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 main() -> Unit =
-  let v0: ~Point = call f48(1, 2)
-  let v1: ~Point = call f48(1, 2)
-  let v2: Bool = call f22(v0, v1)
-  let v3: Unit = call f1(v2)
+fn main() -> Unit =
+  let v0: ~Point = call Point(1, 2)
+  let v1: ~Point = call Point(1, 2)
+  let v2: Bool = call eq(v0, v1)
+  let v3: Unit = call println(v2)
   v3

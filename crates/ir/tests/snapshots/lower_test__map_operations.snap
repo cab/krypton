@@ -4,20 +4,22 @@ expression: ir_module.to_string()
 ---
 module map_operations
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
+; extern contains
+; extern delete
+; extern empty
+; extern println
+; extern put
+; extern size
 
-fn f0 main() -> Unit =
-  let v1: Map[String, Int] = call f48()
-  let v2: Map[String, Int] = call f49(v1, "a", 10)
-  let v0: Map[String, Int] = call f49(v2, "b", 11)
-  let v3: Bool = call f51(v0, "a")
-  let v4: Unit = call f38(v3)
-  let v5: Map[String, Int] = call f50(v0, "a")
-  let v6: Bool = call f51(v5, "a")
-  let v7: Unit = call f38(v6)
-  let v8: Int = call f52(v0)
-  let v9: Unit = call f38(v8)
+fn main() -> Unit =
+  let v1: Map[String, Int] = call empty()
+  let v2: Map[String, Int] = call put(v1, "a", 10)
+  let v0: Map[String, Int] = call put(v2, "b", 11)
+  let v3: Bool = call contains(v0, "a")
+  let v4: Unit = call println(v3)
+  let v5: Map[String, Int] = call delete(v0, "a")
+  let v6: Bool = call contains(v5, "a")
+  let v7: Unit = call println(v6)
+  let v8: Int = call size(v0)
+  let v9: Unit = call println(v8)
   v9

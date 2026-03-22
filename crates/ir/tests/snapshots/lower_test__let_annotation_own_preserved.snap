@@ -4,17 +4,12 @@ expression: ir_module.to_string()
 ---
 module let_annotation_own_preserved
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[h] = Some#0(d) | None#1
-
-fn f0 consume(v0: ~Int) -> Int =
+fn consume(v0: ~Int) -> Int =
   v0
 
-fn f1 test() -> Int =
+fn test() -> Int =
   let_join v3(v1: ~Int) =
-    let v2: Int = call f0(v1)
+    let v2: Int = call consume(v1)
     v2
   in
   jump v3(2)

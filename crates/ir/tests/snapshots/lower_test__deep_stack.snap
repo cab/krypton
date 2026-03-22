@@ -4,12 +4,9 @@ expression: ir_module.to_string()
 ---
 module deep_stack
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[f] = Some#0(b) | None#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let_join v62(v0: ~Int) =
     let v1: Int = add_int(v0, 1)
     let v2: Int = add_int(v1, 1)
@@ -71,7 +68,7 @@ fn f0 main() -> Unit =
     let v58: Int = add_int(v57, 1)
     let v59: Int = add_int(v58, 1)
     let v60: Int = add_int(v59, 1)
-    let v61: Unit = call f1(v60)
+    let v61: Unit = call println(v60)
     v61
   in
   jump v62(0)

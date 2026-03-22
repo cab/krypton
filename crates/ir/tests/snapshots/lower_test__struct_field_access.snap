@@ -5,13 +5,9 @@ expression: ir_module.to_string()
 module struct_field_access
 
 struct Point { x: Int, y: Int }
+; extern Point
 
-type Result[f, e] = Ok#0(b) | Err#1(a)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[g] = Cons#0(c, List[c]) | Nil#1
-type Option[h] = Some#0(d) | None#1
-
-fn f0 get_x() -> Int =
-  let v0: ~Point = call f48(1, 2)
+fn get_x() -> Int =
+  let v0: ~Point = call Point(1, 2)
   let v1: Int = project v0.0
   v1

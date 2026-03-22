@@ -4,25 +4,23 @@ expression: ir_module.to_string()
 ---
 module constrained_fn_ref_scope_capture
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Option[h] = Some#0(d) | None#1
+; extern println
+; extern show
 
-fn f0 show_it(v0: r7) -> String =
-  let v1: String = call f30(v0)
+fn show_it(v0: r7) -> String =
+  let v1: String = call show(v0)
   v1
 
-fn f1 use_it(v2: w7) -> String =
+fn use_it(v2: w7) -> String =
   let_join v6(v3: (y7) -> String) =
     let v5: String = call_closure v3(v2)
     v5
   in
-  let v4: (y7) -> String = make_closure(f0, [])
+  let v4: (y7) -> String = make_closure(show_it, [])
   jump v6(v4)
 
-fn f2 main() -> Unit =
-  let v7: String = call f1(42)
+fn main() -> Unit =
+  let v7: String = call use_it(42)
   let v8: Bool = eq_string(v7, "42")
-  let v9: Unit = call f49(v8)
+  let v9: Unit = call println(v8)
   v9

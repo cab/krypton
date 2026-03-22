@@ -4,12 +4,7 @@ expression: ir_module.to_string()
 ---
 module nested_let
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-
-fn f0 main() -> Int =
+fn main() -> Int =
   let_join v2(v0: ~Int) =
     let v1: Int = add_int(v0, 2)
     v1

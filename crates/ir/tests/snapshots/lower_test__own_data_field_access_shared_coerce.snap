@@ -7,12 +7,7 @@ module own_data_field_access_shared_coerce
 struct Config { timeout: ~Int }
 struct Task { config: ~Config }
 
-type Option[e] = Some#0(a) | None#1
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 get_timeout(v0: Task) -> Int =
+fn get_timeout(v0: Task) -> Int =
   let v1: Config = project v0.0
   let v2: Int = project v1.0
   v2

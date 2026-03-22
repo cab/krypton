@@ -1157,10 +1157,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 4. Lower struct definitions
+    // 4. Lower struct definitions (skip imported types)
     let structs: Vec<StructDef> = typed
         .struct_decls
         .iter()
+        .filter(|decl| !typed.type_provenance.contains_key(&decl.name))
         .map(|decl| {
             let (type_params, fields) =
                 if let Some(info) = typed.exported_type_infos.get(&decl.name) {
@@ -1188,10 +1189,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         })
         .collect();
 
-    // 5. Lower sum type definitions
+    // 5. Lower sum type definitions (skip imported types)
     let sum_types: Vec<SumTypeDef> = typed
         .sum_decls
         .iter()
+        .filter(|decl| !typed.type_provenance.contains_key(&decl.name))
         .map(|decl| {
             let type_params =
                 if let Some(info) = typed.exported_type_infos.get(&decl.name) {
@@ -1234,11 +1236,18 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         functions.push(fn_def);
     }
 
+    // 7. Build fn_names lookup
+    let mut fn_names = HashMap::new();
+    for (name, &id) in &ctx.fn_ids {
+        fn_names.insert(id, name.clone());
+    }
+
     Ok(Module {
         name: module_name.to_string(),
         structs,
         sum_types,
         functions,
+        fn_names,
     })
 }
 

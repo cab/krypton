@@ -4,11 +4,6 @@ expression: ir_module.to_string()
 ---
 module arithmetic
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 add(v0: Int, v1: Int) -> Int =
+fn add(v0: Int, v1: Int) -> Int =
   let v2: Int = add_int(v0, v1)
   v2

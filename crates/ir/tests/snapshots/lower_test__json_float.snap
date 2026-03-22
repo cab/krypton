@@ -4,19 +4,16 @@ expression: ir_module.to_string()
 ---
 module json_float
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Json = JNull#0 | JBool#1(Bool) | JNum#2(Float) | JStr#3(String) | JArr#4(List[Json]) | JObj#5(Map[String, Json])
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
+; extern json_to_string
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(1.5)
   let v2: ~Json = construct Json::JNum#2(2.75)
   let v3: ~List[Json] = construct List::Nil#1()
   let v4: ~List[Json] = construct List::Cons#0(v2, v3)
   let v5: ~List[Json] = construct List::Cons#0(v1, v4)
   let v0: ~Json = construct Json::JArr#4(v5)
-  let v6: String = call f68(v0)
-  let v7: Unit = call f56(v6)
+  let v6: String = call json_to_string(v0)
+  let v7: Unit = call println(v6)
   v7

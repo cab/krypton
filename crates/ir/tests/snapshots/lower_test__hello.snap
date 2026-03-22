@@ -4,11 +4,8 @@ expression: ir_module.to_string()
 ---
 module hello
 
-type Option[e] = Some#0(a) | None#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[h] = Cons#0(d, List[d]) | Nil#1
+; extern println
 
-fn f0 main() -> Unit =
-  let v0: Unit = call f1("hello world")
+fn main() -> Unit =
+  let v0: Unit = call println("hello world")
   v0

@@ -4,14 +4,9 @@ expression: ir_module.to_string()
 ---
 module own_through_generics
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-
-fn f0 identity(v0: ~String) -> String =
+fn identity(v0: ~String) -> String =
   v0
 
-fn f1 passthrough(v1: ~String) -> String =
-  let v2: String = call f0(v1)
+fn passthrough(v1: ~String) -> String =
+  let v2: String = call identity(v1)
   v2

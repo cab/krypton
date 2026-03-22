@@ -5,19 +5,17 @@ expression: ir_module.to_string()
 module superclass_chain
 
 struct Num { n: Int }
+; extern Num
+; extern lt
+; extern println
 
-type Option[e] = Some#0(a) | None#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 is_less(v0: t7, v1: t7) -> Bool =
-  let v2: Bool = call f24(v0, v1)
+fn is_less(v0: t7, v1: t7) -> Bool =
+  let v2: Bool = call lt(v0, v1)
   v2
 
-fn f1 main() -> Unit =
-  let v3: ~Num = call f49(1)
-  let v4: ~Num = call f49(2)
-  let v5: Bool = call f0(v3, v4)
-  let v6: Unit = call f2(v5)
+fn main() -> Unit =
+  let v3: ~Num = call Num(1)
+  let v4: ~Num = call Num(2)
+  let v5: Bool = call is_less(v3, v4)
+  let v6: Unit = call println(v5)
   v6

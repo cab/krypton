@@ -5,29 +5,26 @@ expression: ir_module.to_string()
 module branch_with_struct
 
 struct Wrapper { value: Int }
+; extern Wrapper
+; extern println
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[f, e] = Ok#0(b) | Err#1(a)
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 pick(v0: Int) -> Wrapper =
+fn pick(v0: Int) -> Wrapper =
   let v1: Bool = gt_int(v0, 0)
   switch v1 {
     1 ->
-      let v2: ~Wrapper = call f49(100)
+      let v2: ~Wrapper = call Wrapper(100)
       v2
     _ ->
-      let v3: ~Wrapper = call f49(42)
+      let v3: ~Wrapper = call Wrapper(42)
       v3
   }
 
-fn f1 main() -> Unit =
-  let v4: Wrapper = call f0(1)
+fn main() -> Unit =
+  let v4: Wrapper = call pick(1)
   let v6: Int = neg_int(1)
-  let v5: Wrapper = call f0(v6)
+  let v5: Wrapper = call pick(v6)
   let v7: Int = project v4.0
-  let v8: Unit = call f2(v7)
+  let v8: Unit = call println(v7)
   let v9: Int = project v5.0
-  let v10: Unit = call f2(v9)
+  let v10: Unit = call println(v9)
   v10

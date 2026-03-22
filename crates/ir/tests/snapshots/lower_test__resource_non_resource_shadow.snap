@@ -5,13 +5,10 @@ expression: ir_module.to_string()
 module resource_non_resource_shadow
 
 type Box = MkBox#0(Int)
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[h] = Some#0(d) | None#1
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: ~Box = construct Box::MkBox#0(1)
   let v1: ~Box = construct Box::MkBox#0(2)
-  let v2: Unit = call f1("done")
+  let v2: Unit = call println("done")
   v2

@@ -4,15 +4,12 @@ expression: ir_module.to_string()
 ---
 module shared_coercion
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type Option[h] = Some#0(d) | None#1
+; extern println
 
-fn f0 identity(v0: r7) -> r7 =
+fn identity(v0: r7) -> r7 =
   v0
 
-fn f1 use_it(v1: ~String) -> Unit =
-  let v2: String = call f0(v1)
-  let v3: Unit = call f39(v1)
+fn use_it(v1: ~String) -> Unit =
+  let v2: String = call identity(v1)
+  let v3: Unit = call println(v1)
   v3

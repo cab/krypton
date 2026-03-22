@@ -5,12 +5,11 @@ expression: ir_module.to_string()
 module derive_show_option
 
 type Option[e] = Some#0(a) | None#1
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[h, g] = Ok#0(d) | Err#1(c)
+; extern println
+; extern show
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: ~Option[Int] = construct Option::Some#0(42)
-  let v1: String = call f29(v0)
-  let v2: Unit = call f1(v1)
+  let v1: String = call show(v0)
+  let v2: Unit = call println(v1)
   v2

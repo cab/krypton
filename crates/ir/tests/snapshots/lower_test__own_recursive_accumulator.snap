@@ -4,12 +4,7 @@ expression: ir_module.to_string()
 ---
 module own_recursive_accumulator
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Option[h] = Some#0(d) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 sum_to(v0: Int, v1: Int) -> Int =
+fn sum_to(v0: Int, v1: Int) -> Int =
   let v2: Bool = eq_int(v0, 0)
   switch v2 {
     1 ->
@@ -17,6 +12,6 @@ fn f0 sum_to(v0: Int, v1: Int) -> Int =
     _ ->
       let v3: Int = sub_int(v0, 1)
       let v4: Int = add_int(v1, v0)
-      let v5: Int = call f0(v3, v4)
+      let v5: Int = call sum_to(v3, v4)
       v5
   }

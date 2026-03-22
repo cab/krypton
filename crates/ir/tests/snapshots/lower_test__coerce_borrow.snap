@@ -4,15 +4,10 @@ expression: ir_module.to_string()
 ---
 module coerce_borrow
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[h] = Some#0(d) | None#1
-
-fn f0 len(v0: String) -> Int =
+fn len(v0: String) -> Int =
   42
 
-fn f1 test(v1: ~String) -> Int =
-  let v2: Int = call f0(v1)
-  let v3: Int = call f0(v1)
+fn test(v1: ~String) -> Int =
+  let v2: Int = call len(v1)
+  let v3: Int = call len(v1)
   v3

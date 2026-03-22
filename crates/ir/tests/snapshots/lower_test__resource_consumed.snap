@@ -5,13 +5,11 @@ expression: ir_module.to_string()
 module resource_consumed
 
 type Handle = MkHandle#0(String)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[e] = Some#0(a) | None#1
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
+; extern close
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: ~Handle = construct Handle::MkHandle#0("test")
-  let v1: Unit = call f1("opened")
-  let v2: Unit = call f31(v0)
+  let v1: Unit = call println("opened")
+  let v2: Unit = call close(v0)
   v2

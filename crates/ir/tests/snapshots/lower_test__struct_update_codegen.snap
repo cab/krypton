@@ -5,17 +5,14 @@ expression: ir_module.to_string()
 module struct_update_codegen
 
 struct Point { x: Int, y: Int }
+; extern Point
+; extern println
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-
-fn f0 main() -> Unit =
-  let v0: ~Point = call f48(1, 2)
+fn main() -> Unit =
+  let v0: ~Point = call Point(1, 2)
   let_join v6(v1: ~Point) =
     let v4: Int = project v1.0
-    let v5: Unit = call f1(v4)
+    let v5: Unit = call println(v4)
     v5
   in
   let v2: Int = project v0.1

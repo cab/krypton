@@ -4,12 +4,10 @@ expression: ir_module.to_string()
 ---
 module use_math
 
-type Option[e] = Some#0(a) | None#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type List[h] = Cons#0(d, List[d]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
+; extern println
+; extern sum
 
-fn f0 main() -> Unit =
-  let v0: Int = call f48(3, 5)
-  let v1: Unit = call f1(v0)
+fn main() -> Unit =
+  let v0: Int = call sum(3, 5)
+  let v1: Unit = call println(v0)
   v1

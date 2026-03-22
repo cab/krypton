@@ -4,12 +4,9 @@ expression: ir_module.to_string()
 ---
 module op_string_concat
 
-type Option[e] = Some#0(a) | None#1
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: String = concat_string("hello", "world")
-  let v1: Unit = call f1(v0)
+  let v1: Unit = call println(v0)
   v1

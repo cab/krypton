@@ -4,14 +4,11 @@ expression: ir_module.to_string()
 ---
 module use_transitive_trait
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Msg = MkMsg#0(String)
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type List[h] = Cons#0(d, List[d]) | Nil#1
+; extern println
+; extern render
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: ~Msg = construct Msg::MkMsg#0("hi")
-  let v1: String = call f48(v0)
-  let v2: Unit = call f49(v1)
+  let v1: String = call render(v0)
+  let v2: Unit = call println(v1)
   v2

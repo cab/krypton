@@ -3,8 +3,3 @@ source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
 module hkt_explicit_kind
-
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type Option[h] = Some#0(d) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2

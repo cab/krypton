@@ -4,10 +4,5 @@ expression: ir_module.to_string()
 ---
 module shared_basic
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type Option[h] = Some#0(d) | None#1
-
-fn f0 inspect(v0: r7, v1: r7) -> r7 =
+fn inspect(v0: r7, v1: r7) -> r7 =
   v0

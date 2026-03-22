@@ -4,11 +4,8 @@ expression: ir_module.to_string()
 ---
 module peek_stdlib_no_consume
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[g] = Cons#0(c, List[c]) | Nil#1
-type Option[h] = Some#0(d) | None#1
+; extern peek
 
-fn f0 test(v0: ~String) -> String =
-  let v1: String = call f31(v0)
+fn test(v0: ~String) -> String =
+  let v1: String = call peek(v0)
   v0

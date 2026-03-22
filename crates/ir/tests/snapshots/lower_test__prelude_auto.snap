@@ -4,29 +4,24 @@ expression: ir_module.to_string()
 ---
 module prelude_auto
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 test_option() -> Option[Int] =
+fn test_option() -> Option[Int] =
   let v0: ~Option[Int] = construct Option::Some#0(42)
   v0
 
-fn f1 test_list() -> List[Int] =
+fn test_list() -> List[Int] =
   let v1: ~List[Int] = construct List::Nil#1()
   let v2: ~List[Int] = construct List::Cons#0(2, v1)
   let v3: ~List[Int] = construct List::Cons#0(1, v2)
   v3
 
-fn f2 test_result() -> Result[String, Int] =
+fn test_result() -> Result[String, Int] =
   let v4: ~Result[String, Int] = construct Result::Ok#0(42)
   v4
 
-fn f3 test_ordering() -> Ordering =
+fn test_ordering() -> Ordering =
   let v5: ~Ordering = construct Ordering::LT#0()
   v5
 
-fn f4 main() -> Option[Int] =
-  let v6: Option[Int] = call f0()
+fn main() -> Option[Int] =
+  let v6: Option[Int] = call test_option()
   v6

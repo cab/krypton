@@ -5,12 +5,8 @@ expression: ir_module.to_string()
 module record_basic
 
 struct Point { x: Int, y: Int }
+; extern Point
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 make_point(v0: Int, v1: Int) -> Point =
-  let v2: ~Point = call f48(v0, v1)
+fn make_point(v0: Int, v1: Int) -> Point =
+  let v2: ~Point = call Point(v0, v1)
   v2

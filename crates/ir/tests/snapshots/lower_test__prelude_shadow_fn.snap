@@ -4,11 +4,8 @@ expression: ir_module.to_string()
 ---
 module prelude_shadow_fn
 
-type Result[f, e] = Ok#0(b) | Err#1(a)
-type Option[g] = Some#0(c) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[h] = Cons#0(d, List[d]) | Nil#1
+; extern println
 
-fn f0 main() -> Int =
-  let v0: Int = call f47(42)
+fn main() -> Int =
+  let v0: Int = call println(42)
   v0

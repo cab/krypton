@@ -4,14 +4,9 @@ expression: ir_module.to_string()
 ---
 module own_coerce_to_non_own_param
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type List[g] = Cons#0(c, List[c]) | Nil#1
-type Option[h] = Some#0(d) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 len(v0: String) -> Int =
+fn len(v0: String) -> Int =
   42
 
-fn f1 test(v1: ~String) -> Int =
-  let v2: Int = call f0(v1)
+fn test(v1: ~String) -> Int =
+  let v2: Int = call len(v1)
   v2

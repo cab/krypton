@@ -4,15 +4,10 @@ expression: ir_module.to_string()
 ---
 module hkt_qualifier_shared_to_requ
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 dup(v0: r7) -> (r7, r7) =
+fn dup(v0: r7) -> (r7, r7) =
   let v1: (r7, r7) = tuple(v0, v0)
   v1
 
-fn f1 test_shared(v2: u7[v7]) -> (u7[v7], u7[v7]) =
-  let v3: (u7[v7], u7[v7]) = call f0(v2)
+fn test_shared(v2: u7[v7]) -> (u7[v7], u7[v7]) =
+  let v3: (u7[v7], u7[v7]) = call dup(v2)
   v3

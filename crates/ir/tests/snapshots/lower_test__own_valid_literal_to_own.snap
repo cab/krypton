@@ -6,22 +6,17 @@ module own_valid_literal_to_own
 
 struct Box { value: Int }
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 consume(v0: ~Int) -> Int =
+fn consume(v0: ~Int) -> Int =
   v0
 
-fn f1 consume_box(v1: ~Box) -> Box =
+fn consume_box(v1: ~Box) -> Box =
   v1
 
-fn f2 test_lit() -> Int =
-  let v2: Int = call f0(42)
+fn test_lit() -> Int =
+  let v2: Int = call consume(42)
   v2
 
-fn f3 test_ctor() -> Box =
+fn test_ctor() -> Box =
   let v3: ~Box = construct Box(1)
-  let v4: Box = call f1(v3)
+  let v4: Box = call consume_box(v3)
   v4

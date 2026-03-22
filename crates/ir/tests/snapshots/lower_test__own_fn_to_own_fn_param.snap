@@ -4,19 +4,14 @@ expression: ir_module.to_string()
 ---
 module own_fn_to_own_fn_param
 
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 call_once(v0: ~() -> String) -> String =
+fn call_once(v0: ~() -> String) -> String =
   let v1: String = call_closure v0()
   v1
 
-fn f1 make_fn() -> String =
+fn make_fn() -> String =
   "hello"
 
-fn f2 test() -> String =
-  let v2: () -> String = make_closure(f1, [])
-  let v3: String = call f0(v2)
+fn test() -> String =
+  let v2: () -> String = make_closure(make_fn, [])
+  let v3: String = call call_once(v2)
   v3

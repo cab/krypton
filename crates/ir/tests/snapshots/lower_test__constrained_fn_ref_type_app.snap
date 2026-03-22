@@ -4,18 +4,16 @@ expression: ir_module.to_string()
 ---
 module constrained_fn_ref_type_app
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
+; extern println
+; extern show
 
-fn f0 show_it(v0: r7) -> String =
-  let v1: String = call f29(v0)
+fn show_it(v0: r7) -> String =
+  let v1: String = call show(v0)
   v1
 
-fn f1 main() -> Unit =
-  let v2: (String) -> String = make_closure(f0, [])
+fn main() -> Unit =
+  let v2: (String) -> String = make_closure(show_it, [])
   let v3: String = call_closure v2("hello")
   let v4: Bool = eq_string(v3, "hello")
-  let v5: Unit = call f48(v4)
+  let v5: Unit = call println(v4)
   v5

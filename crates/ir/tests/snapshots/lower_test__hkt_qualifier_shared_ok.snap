@@ -4,10 +4,5 @@ expression: ir_module.to_string()
 ---
 module hkt_qualifier_shared_ok
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[f] = Some#0(b) | None#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-
-fn f0 map_shared(v0: r7[s7], v1: r7[s7]) -> r7[s7] =
+fn map_shared(v0: r7[s7], v1: r7[s7]) -> r7[s7] =
   v0

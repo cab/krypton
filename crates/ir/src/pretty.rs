@@ -1,5 +1,7 @@
 use std::fmt;
 
+use std::collections::{HashMap, HashSet};
+
 use crate::{
     expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch},
     FnDef, FnId, Module, StructDef, SumTypeDef, VarId,
@@ -150,11 +152,54 @@ fn fmt_atoms(atoms: &[Atom]) -> String {
 struct IndentWriter<'a, 'b> {
     f: &'a mut fmt::Formatter<'b>,
     indent: usize,
+    fn_names: &'a HashMap<FnId, String>,
 }
 
 impl<'a, 'b> IndentWriter<'a, 'b> {
-    fn new(f: &'a mut fmt::Formatter<'b>, indent: usize) -> Self {
-        Self { f, indent }
+    fn new(f: &'a mut fmt::Formatter<'b>, indent: usize, fn_names: &'a HashMap<FnId, String>) -> Self {
+        Self { f, indent, fn_names }
+    }
+
+    fn fmt_fn(&self, id: &FnId) -> String {
+        self.fn_names
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| format!("{id}"))
+    }
+
+    fn write_simple_expr(&mut self, expr: &SimpleExpr) -> fmt::Result {
+        match expr {
+            SimpleExpr::Call { func, args } => {
+                write!(self.f, "call {}({})", self.fmt_fn(func), fmt_atoms(args))
+            }
+            SimpleExpr::CallClosure { closure, args } => {
+                write!(self.f, "call_closure {closure}({})", fmt_atoms(args))
+            }
+            SimpleExpr::MakeClosure { func, captures } => {
+                write!(self.f, "make_closure({}, [{}])", self.fmt_fn(func), fmt_atoms(captures))
+            }
+            SimpleExpr::Construct { type_name, fields } => {
+                write!(self.f, "construct {type_name}({})", fmt_atoms(fields))
+            }
+            SimpleExpr::ConstructVariant { type_name, variant, tag, fields } => {
+                write!(self.f, "construct {type_name}::{variant}#{tag}({})", fmt_atoms(fields))
+            }
+            SimpleExpr::Project { value, field_index } => {
+                write!(self.f, "project {value}.{field_index}")
+            }
+            SimpleExpr::Tag { value } => {
+                write!(self.f, "tag {value}")
+            }
+            SimpleExpr::MakeTuple { elements } => {
+                write!(self.f, "tuple({})", fmt_atoms(elements))
+            }
+            SimpleExpr::TupleProject { value, index } => {
+                write!(self.f, "tuple_project {value}.{index}")
+            }
+            SimpleExpr::PrimOp { op, args } => {
+                write!(self.f, "{op}({})", fmt_atoms(args))
+            }
+        }
     }
 
     fn write_indent(&mut self) -> fmt::Result {
@@ -173,7 +218,9 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 body,
             } => {
                 self.write_indent()?;
-                writeln!(self.f, "let {bind}: {ty} = {value}")?;
+                write!(self.f, "let {bind}: {ty} = ")?;
+                self.write_simple_expr(value)?;
+                writeln!(self.f)?;
                 self.write_expr(body)
             }
             ExprKind::LetRec { bindings, body } => {
@@ -186,7 +233,8 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     }
                     writeln!(
                         self.f,
-                        "{var}: {ty} = make_closure({fn_id}, [{}])",
+                        "{var}: {ty} = make_closure({}, [{}])",
+                        self.fmt_fn(fn_id),
                         fmt_atoms(captures)
                     )?;
                 }
@@ -202,7 +250,7 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             } => {
                 self.write_indent()?;
                 writeln!(self.f, "let_join {name}({}) =", fmt_params(params))?;
-                let mut inner = IndentWriter::new(self.f, self.indent + 1);
+                let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
                 inner.write_expr(join_body)?;
                 self.write_indent()?;
                 writeln!(self.f, "in")?;
@@ -225,7 +273,7 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 if let Some(default_expr) = default {
                     self.write_indent()?;
                     writeln!(self.f, "  _ ->")?;
-                    let mut inner = IndentWriter::new(self.f, self.indent + 2);
+                    let mut inner = IndentWriter::new(self.f, self.indent + 2, self.fn_names);
                     inner.write_expr(default_expr)?;
                 }
                 self.write_indent()?;
@@ -245,7 +293,7 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             write!(self.f, "({}) ", fmt_params(&branch.bindings))?;
         }
         writeln!(self.f, "->")?;
-        let mut inner = IndentWriter::new(self.f, self.indent + 2);
+        let mut inner = IndentWriter::new(self.f, self.indent + 2, self.fn_names);
         inner.write_expr(&branch.body)
     }
 }
@@ -306,15 +354,21 @@ impl fmt::Display for SumTypeDef {
 
 impl fmt::Display for FnDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let empty = HashMap::new();
+        self.fmt_with_names(f, &empty)
+    }
+}
+
+impl FnDef {
+    fn fmt_with_names(&self, f: &mut fmt::Formatter<'_>, fn_names: &HashMap<FnId, String>) -> fmt::Result {
         writeln!(
             f,
-            "fn {} {}({}) -> {} =",
-            self.id,
+            "fn {}({}) -> {} =",
             self.debug_name,
             fmt_params(&self.params),
             self.return_type,
         )?;
-        let mut writer = IndentWriter::new(f, 1);
+        let mut writer = IndentWriter::new(f, 1, fn_names);
         writer.write_expr(&self.body)
     }
 }
@@ -326,22 +380,76 @@ impl fmt::Display for Module {
         for s in &self.structs {
             writeln!(f, "{s}")?;
         }
-        if !self.structs.is_empty() && (!self.sum_types.is_empty() || !self.functions.is_empty()) {
-            writeln!(f)?;
-        }
         for s in &self.sum_types {
             writeln!(f, "{s}")?;
         }
-        if !self.sum_types.is_empty() && !self.functions.is_empty() {
+
+        // Print extern declarations only for functions actually referenced in bodies
+        let local_fn_ids: HashSet<FnId> = self.functions.iter().map(|func| func.id).collect();
+        let mut referenced = HashSet::new();
+        for func in &self.functions {
+            collect_referenced_fns(&func.body, &mut referenced);
+        }
+        let mut externs: Vec<_> = self
+            .fn_names
+            .iter()
+            .filter(|(id, _)| !local_fn_ids.contains(id) && referenced.contains(id))
+            .map(|(_, name)| name.as_str())
+            .collect();
+        externs.sort();
+        for name in &externs {
+            writeln!(f, "; extern {name}")?;
+        }
+
+        if !self.structs.is_empty() || !self.sum_types.is_empty() || !externs.is_empty() {
             writeln!(f)?;
         }
+
         for (i, func) in self.functions.iter().enumerate() {
             if i > 0 {
                 writeln!(f)?;
             }
-            write!(f, "{func}")?;
+            func.fmt_with_names(f, &self.fn_names)?;
         }
         Ok(())
+    }
+}
+
+/// Collect all FnIds referenced in Call and MakeClosure nodes.
+fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
+    match &expr.kind {
+        ExprKind::Let { value, body, .. } => {
+            collect_referenced_fns_simple(value, ids);
+            collect_referenced_fns(body, ids);
+        }
+        ExprKind::LetRec { bindings, body } => {
+            for (_, _, fn_id, _) in bindings {
+                ids.insert(*fn_id);
+            }
+            collect_referenced_fns(body, ids);
+        }
+        ExprKind::LetJoin { join_body, body, .. } => {
+            collect_referenced_fns(join_body, ids);
+            collect_referenced_fns(body, ids);
+        }
+        ExprKind::Switch { branches, default, .. } => {
+            for branch in branches {
+                collect_referenced_fns(&branch.body, ids);
+            }
+            if let Some(d) = default {
+                collect_referenced_fns(d, ids);
+            }
+        }
+        ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
+    }
+}
+
+fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashSet<FnId>) {
+    match expr {
+        SimpleExpr::Call { func, .. } | SimpleExpr::MakeClosure { func, .. } => {
+            ids.insert(*func);
+        }
+        _ => {}
     }
 }
 
@@ -495,7 +603,7 @@ mod tests {
             return_type: Type::Int,
             body: expr,
         }.to_string(), @r"
-        fn f0 add() -> Int =
+        fn add() -> Int =
           let v0: Int = add_int(1, 2)
           v0
         ");
@@ -522,7 +630,7 @@ mod tests {
             return_type: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
             body: expr,
         }.to_string(), @r"
-        fn f0 test() -> (Int) -> Int =
+        fn test() -> (Int) -> Int =
           let_rec v0: (Int) -> Int = make_closure(f1, [])
           in
           v0
@@ -556,7 +664,7 @@ mod tests {
             return_type: Type::Int,
             body: expr,
         }.to_string(), @r"
-        fn f0 test() -> Int =
+        fn test() -> Int =
           let_join v10(v11: Int) =
             v11
           in
@@ -593,7 +701,7 @@ mod tests {
             return_type: Type::Int,
             body: expr,
         }.to_string(), @r"
-        fn f0 test(v0: Option[Int]) -> Int =
+        fn test(v0: Option[Int]) -> Int =
           switch v0 {
             0 (v1: Int) ->
               v1
@@ -654,6 +762,7 @@ mod tests {
         let ids = gen_type_var_ids(1);
         let module = Module {
             name: "test".into(),
+            fn_names: std::collections::HashMap::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],
@@ -690,10 +799,9 @@ mod tests {
         module test
 
         struct Point { x: Int, y: Int }
-
         type Option[a] = Some#0(a) | None#1
 
-        fn f0 main() -> Unit =
+        fn main() -> Unit =
           ()
         ");
     }

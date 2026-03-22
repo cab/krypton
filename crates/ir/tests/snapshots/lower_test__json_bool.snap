@@ -4,17 +4,14 @@ expression: ir_module.to_string()
 ---
 module json_bool
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type Option[h] = Some#0(d) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Json = JNull#0 | JBool#1(Bool) | JNum#2(Float) | JStr#3(String) | JArr#4(List[Json]) | JObj#5(Map[String, Json])
+; extern json_to_string
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: ~Json = construct Json::JBool#1(true)
-  let v1: String = call f67(v0)
-  let v2: Unit = call f56(v1)
+  let v1: String = call json_to_string(v0)
+  let v2: Unit = call println(v1)
   let v3: ~Json = construct Json::JBool#1(false)
-  let v4: String = call f67(v3)
-  let v5: Unit = call f56(v4)
+  let v4: String = call json_to_string(v3)
+  let v5: Unit = call println(v4)
   v5

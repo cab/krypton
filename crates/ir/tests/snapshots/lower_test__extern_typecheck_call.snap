@@ -4,12 +4,10 @@ expression: ir_module.to_string()
 ---
 module extern_typecheck_call
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[g] = Cons#0(c, List[c]) | Nil#1
-type Option[h] = Some#0(d) | None#1
+; extern abs
+; extern max
 
-fn f0 main() -> Int =
-  let v0: Int = call f1(5)
-  let v1: Int = call f2(v0, 3)
+fn main() -> Int =
+  let v0: Int = call abs(5)
+  let v1: Int = call max(v0, 3)
   v1

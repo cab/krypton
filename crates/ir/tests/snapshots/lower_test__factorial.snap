@@ -4,24 +4,21 @@ expression: ir_module.to_string()
 ---
 module factorial
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
+; extern println
 
-fn f0 factorial(v0: Int) -> Int =
+fn factorial(v0: Int) -> Int =
   let v1: Bool = eq_int(v0, 0)
   switch v1 {
     1 ->
       1
     _ ->
       let v2: Int = sub_int(v0, 1)
-      let v3: Int = call f0(v2)
+      let v3: Int = call factorial(v2)
       let v4: Int = mul_int(v0, v3)
       v4
   }
 
-fn f1 main() -> Unit =
-  let v5: Int = call f0(10)
-  let v6: Unit = call f2(v5)
+fn main() -> Unit =
+  let v5: Int = call factorial(10)
+  let v6: Unit = call println(v5)
   v6

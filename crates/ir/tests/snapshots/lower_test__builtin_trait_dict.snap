@@ -4,16 +4,14 @@ expression: ir_module.to_string()
 ---
 module builtin_trait_dict
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[f, e] = Ok#0(b) | Err#1(a)
-type List[g] = Cons#0(c, List[c]) | Nil#1
-type Option[h] = Some#0(d) | None#1
+; extern combine
+; extern println
 
-fn f0 apply_combine(v0: w7, v1: w7) -> w7 =
-  let v2: w7 = call f25(v0, v1)
+fn apply_combine(v0: w7, v1: w7) -> w7 =
+  let v2: w7 = call combine(v0, v1)
   v2
 
-fn f1 main() -> Unit =
-  let v3: Int = call f0(3, 5)
-  let v4: Unit = call f2(v3)
+fn main() -> Unit =
+  let v3: Int = call apply_combine(3, 5)
+  let v4: Unit = call println(v3)
   v4

@@ -5,12 +5,8 @@ expression: ir_module.to_string()
 module explain_own_t_vs_t
 
 struct Box { value: String }
+; extern Box
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 bad(v0: ~String) -> Box =
-  let v1: ~Box = call f48(v0)
+fn bad(v0: ~String) -> Box =
+  let v1: ~Box = call Box(v0)
   v1

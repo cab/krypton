@@ -4,9 +4,4 @@ expression: ir_module.to_string()
 ---
 module partial_apply_non_last
 
-struct Predicate[h, g] { check: (a) -> b }
-
-type Result[i, j] = Ok#0(d) | Err#1(c)
-type List[k] = Cons#0(e, List[e]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[l] = Some#0(f) | None#1
+struct Predicate[g, h] { check: (a) -> b }

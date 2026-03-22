@@ -6,14 +6,9 @@ module qualifier_struct_identity_ok
 
 struct Buffer { data: ~String }
 
-type Option[e] = Some#0(a) | None#1
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 identity(v0: r7) -> r7 =
+fn identity(v0: r7) -> r7 =
   v0
 
-fn f1 test(v1: Buffer) -> Buffer =
-  let v2: Buffer = call f0(v1)
+fn test(v1: Buffer) -> Buffer =
+  let v2: Buffer = call identity(v1)
   v2

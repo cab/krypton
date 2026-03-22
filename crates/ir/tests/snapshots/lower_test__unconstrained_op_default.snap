@@ -4,17 +4,15 @@ expression: ir_module.to_string()
 ---
 module unconstrained_op_default
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-type Ordering = LT#0 | EQ#1 | GT#2
+; extern println
+; extern show
 
-fn f0 add_ints(v0: Int, v1: Int) -> Int =
+fn add_ints(v0: Int, v1: Int) -> Int =
   let v2: Int = add_int(v0, v1)
   v2
 
-fn f1 main() -> Unit =
-  let v3: Int = call f0(1, 2)
-  let v4: String = call f29(v3)
-  let v5: Unit = call f48(v4)
+fn main() -> Unit =
+  let v3: Int = call add_ints(1, 2)
+  let v4: String = call show(v3)
+  let v5: Unit = call println(v4)
   v5

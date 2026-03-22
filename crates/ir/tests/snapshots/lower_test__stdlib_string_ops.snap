@@ -4,13 +4,12 @@ expression: ir_module.to_string()
 ---
 module stdlib_string_ops
 
-type Option[e] = Some#0(a) | None#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type List[h] = Cons#0(d, List[d]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
+; extern concat
+; extern println
+; extern trim
 
-fn f0 main() -> Int =
-  let v0: String = call f23("  hello", " world  ")
-  let v1: String = call f24(v0)
-  let v2: Unit = call f1(v1)
+fn main() -> Int =
+  let v0: String = call concat("  hello", " world  ")
+  let v1: String = call trim(v0)
+  let v2: Unit = call println(v1)
   0

@@ -5,12 +5,8 @@ expression: ir_module.to_string()
 module coerce_collection_error
 
 type MyList = Cons#0(String, MyList) | Nil#1
-type List[d] = Cons#0(String, MyList) | Nil#1
-type Option[e] = Some#0(a) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[f, g] = Ok#0(c) | Err#1(b)
 
-fn f0 test(v0: ~String) -> MyList =
+fn test(v0: ~String) -> MyList =
   let v1: ~MyList = construct MyList::Nil#1()
   let v2: ~MyList = construct MyList::Cons#0(v0, v1)
   v2

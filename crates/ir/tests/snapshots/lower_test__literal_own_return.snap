@@ -4,14 +4,9 @@ expression: ir_module.to_string()
 ---
 module literal_own_return
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Option[f] = Some#0(b) | None#1
-type Result[g, h] = Ok#0(d) | Err#1(c)
-
-fn f0 f() -> ~String =
+fn f() -> ~String =
   "hello"
 
-fn f1 main() -> String =
-  let v0: ~String = call f0()
+fn main() -> String =
+  let v0: ~String = call f()
   v0

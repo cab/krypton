@@ -4,14 +4,9 @@ expression: ir_module.to_string()
 ---
 module return_annotation_omitted
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-
-fn f0 id(v0: r7) -> r7 =
+fn id(v0: r7) -> r7 =
   v0
 
-fn f1 main() -> Int =
-  let v1: Int = call f0(42)
+fn main() -> Int =
+  let v1: Int = call id(42)
   v1

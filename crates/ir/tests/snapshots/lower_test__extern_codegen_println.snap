@@ -4,11 +4,8 @@ expression: ir_module.to_string()
 ---
 module extern_codegen_println
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type List[g] = Cons#0(c, List[c]) | Nil#1
-type Option[h] = Some#0(d) | None#1
+; extern println
 
-fn f0 main() -> Int =
-  let v0: Unit = call f1("hello")
+fn main() -> Int =
+  let v0: Unit = call println("hello")
   0

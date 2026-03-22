@@ -4,18 +4,13 @@ expression: ir_module.to_string()
 ---
 module own_explicit_typeapp_propagation
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 identity(v0: r7) -> r7 =
+fn identity(v0: r7) -> r7 =
   v0
 
-fn f1 consume(v1: ~String) -> String =
+fn consume(v1: ~String) -> String =
   v1
 
-fn f2 test(v2: ~String) -> String =
-  let v3: ~String = call f0(v2)
-  let v4: String = call f1(v3)
+fn test(v2: ~String) -> String =
+  let v3: ~String = call identity(v2)
+  let v4: String = call consume(v3)
   v4

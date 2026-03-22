@@ -4,10 +4,5 @@ expression: ir_module.to_string()
 ---
 module return_annotation_own_coerce
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[e] = Some#0(a) | None#1
-type Result[g, f] = Ok#0(c) | Err#1(b)
-type List[h] = Cons#0(d, List[d]) | Nil#1
-
-fn f0 f(v0: ~String) -> String =
+fn f(v0: ~String) -> String =
   v0

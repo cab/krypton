@@ -5,10 +5,7 @@ expression: ir_module.to_string()
 module sum_basic
 
 type Option[e] = Some#0(a) | None#1
-type Result[f, g] = Ok#0(c) | Err#1(b)
-type Ordering = LT#0 | EQ#1 | GT#2
-type List[h] = Cons#0(d, List[d]) | Nil#1
 
-fn f0 wrap(v0: s7) -> Option[s7] =
+fn wrap(v0: s7) -> Option[s7] =
   let v1: ~Option[s7] = construct Option::Some#0(v0)
   v1

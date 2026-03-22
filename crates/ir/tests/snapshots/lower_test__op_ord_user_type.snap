@@ -5,15 +5,13 @@ expression: ir_module.to_string()
 module op_ord_user_type
 
 struct Wrapper { val: Int }
+; extern Wrapper
+; extern lt
+; extern println
 
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[e] = Some#0(a) | None#1
-type List[f] = Cons#0(b, List[b]) | Nil#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-
-fn f0 main() -> Unit =
-  let v0: ~Wrapper = call f48(1)
-  let v1: ~Wrapper = call f48(2)
-  let v2: Bool = call f23(v0, v1)
-  let v3: Unit = call f1(v2)
+fn main() -> Unit =
+  let v0: ~Wrapper = call Wrapper(1)
+  let v1: ~Wrapper = call Wrapper(2)
+  let v2: Bool = call lt(v0, v1)
+  let v3: Unit = call println(v2)
   v3

@@ -5,14 +5,10 @@ expression: ir_module.to_string()
 module struct_update
 
 struct Point { x: Int, y: Int }
+; extern Point
 
-type List[e] = Cons#0(a, List[a]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Option[f] = Some#0(b) | None#1
-type Result[h, g] = Ok#0(d) | Err#1(c)
-
-fn f0 move_x() -> Point =
-  let v0: ~Point = call f48(1, 2)
+fn move_x() -> Point =
+  let v0: ~Point = call Point(1, 2)
   let v1: Int = project v0.1
   let v2: ~Point = construct Point(42, v1)
   v2

@@ -4,13 +4,11 @@ expression: ir_module.to_string()
 ---
 module bare_import
 
-type Result[e, f] = Ok#0(b) | Err#1(a)
-type Option[g] = Some#0(c) | None#1
-type List[h] = Cons#0(d, List[d]) | Nil#1
-type Ordering = LT#0 | EQ#1 | GT#2
+; extern __qual$helpers_a$compute
+; extern println
 
-fn f0 main() -> Unit =
+fn main() -> Unit =
   let v0: Int = neg_int(5)
-  let v1: Int = call f48(v0)
-  let v2: Unit = call f1(v1)
+  let v1: Int = call __qual$helpers_a$compute(v0)
+  let v2: Unit = call println(v1)
   v2
