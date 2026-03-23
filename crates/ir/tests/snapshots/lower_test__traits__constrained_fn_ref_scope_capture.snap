@@ -8,16 +8,16 @@ declare eq: (Dict, g, g) -> Bool
 declare println: (Dict, m) -> Unit
 declare show: (Dict, g) -> String
 
-fn show_it(v0: Dict, v1: r7) -> String =
+fn show_it(v0: Dict, v1: t7) -> String =
   let v2: String = call show(v0, v1)
   v2
 
-fn use_it(v3: Dict, v4: w7) -> String =
-  let_join v8(v5: (y7) -> String) =
+fn use_it(v3: Dict, v4: y7) -> String =
+  let_join v8(v5: (a8) -> String) =
     let v7: String = call_closure v5(v4)
     v7
   in
-  let v6: (y7) -> String = make_closure(show_it, [])
+  let v6: (a8) -> String = make_closure(show_it, [])
   jump v8(v6)
 
 fn main() -> Unit =

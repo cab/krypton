@@ -6,9 +6,9 @@ module actors__ask_timeout
 
 type Msg = Get#0(Ref[Int])
 declare Get: (Ref[Int]) -> Msg
-declare ask: (Ref[j10], (Ref[k10]) -> j10, Int) -> Result[Timeout, k10]
+declare ask: (Ref[l10], (Ref[m10]) -> l10, Int) -> Result[Timeout, m10]
 declare println: (m) -> Unit
-declare spawn: ((Mailbox[l8]) -> Unit) -> Ref[l8]
+declare spawn: ((Mailbox[n8]) -> Unit) -> Ref[n8]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()

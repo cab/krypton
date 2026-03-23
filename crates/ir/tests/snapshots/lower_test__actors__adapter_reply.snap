@@ -7,13 +7,13 @@ module actors__adapter_reply
 type Msg = Get#0(Ref[Int])
 type MainMsg = Reply#0(Int)
 declare Reply: (Int) -> MainMsg
-declare actor_ref: (Mailbox[l9]) -> Ref[l9]
-declare adapter: (Ref[a10], (b10) -> a10) -> Ref[b10]
-declare mailbox: () -> Mailbox[w9]
+declare actor_ref: (Mailbox[n9]) -> Ref[n9]
+declare adapter: (Ref[c10], (d10) -> c10) -> Ref[d10]
+declare mailbox: () -> Mailbox[y9]
 declare println: (m) -> Unit
-declare receive: (Mailbox[c9]) -> c9
-declare send: (Ref[r8], r8) -> Unit
-declare spawn: ((Mailbox[l8]) -> Unit) -> Ref[l8]
+declare receive: (Mailbox[e9]) -> e9
+declare send: (Ref[t8], t8) -> Unit
+declare spawn: ((Mailbox[n8]) -> Unit) -> Ref[n8]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

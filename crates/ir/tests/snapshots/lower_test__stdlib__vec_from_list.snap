@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module stdlib__vec_from_list
 
-declare length: (List[n]) -> Int
+declare length: (List[o]) -> Int
 declare println: (m) -> Unit
-declare to_list: (Vec[f7]) -> List[f7]
+declare to_list: (Vec[h7]) -> List[h7]
 
 fn main() -> Unit =
   let v0: Vec[Int] = make_vec(1, 2, 3)

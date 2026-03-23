@@ -6,7 +6,7 @@ module ownership__shared_coercion
 
 declare println: (Dict, m) -> Unit
 
-fn identity(v0: r7) -> r7 =
+fn identity(v0: t7) -> t7 =
   v0
 
 fn use_it(v1: ~String) -> Unit =

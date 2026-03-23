@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module ownership__own_fn_coerce_to_higher_order
 
-fn apply(v0: ~(r7) -> v7, v1: r7) -> v7 =
-  let v2: v7 = call_closure v0(v1)
+fn apply(v0: ~(t7) -> x7, v1: t7) -> x7 =
+  let v2: x7 = call_closure v0(v1)
   v2
 
 fn double(v3: Int) -> Int =

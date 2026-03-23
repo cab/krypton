@@ -4,6 +4,6 @@ expression: ir_module.to_string()
 ---
 module inference__higher_order
 
-fn apply(v0: (s7) -> u7, v1: s7) -> u7 =
-  let v2: u7 = call_closure v0(v1)
+fn apply(v0: (u7) -> w7, v1: u7) -> w7 =
+  let v2: w7 = call_closure v0(v1)
   v2

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_zero_arg_inferred
 
 type MyStruct = MyStruct#0(Int)
-declare default: (Dict) -> r7
+declare default: (Dict) -> t7
 declare println: (m) -> Unit
 
 fn main() -> Unit =

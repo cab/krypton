@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module inference__multi_def
 
-fn id(v0: r7) -> r7 =
+fn id(v0: t7) -> t7 =
   v0
 
-fn always(v1: u7, v2: v7) -> u7 =
+fn always(v1: w7, v2: x7) -> w7 =
   v1

@@ -9,7 +9,7 @@ declare Point: (Int, Int) -> Point
 declare eq: (Dict, g, g) -> Bool
 declare println: (m) -> Unit
 
-fn are_equal(v0: Dict, v1: t7, v2: t7) -> Bool =
+fn are_equal(v0: Dict, v1: v7, v2: v7) -> Bool =
   let v3: Bool = call eq(v0, v1, v2)
   v3
 

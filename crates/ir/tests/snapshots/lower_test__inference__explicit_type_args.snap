@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module inference__explicit_type_args
 
-declare map: (List[v], (v) -> x) -> List[x]
+declare map: (List[w], (w) -> y) -> List[y]
 
-fn identity(v0: r7) -> r7 =
+fn identity(v0: t7) -> t7 =
   v0
 
 fn stringify(v1: Int) -> String =

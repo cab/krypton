@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module json__from_json_map
 
-declare from_json: (Dict, Json) -> Result[String, k14]
-declare from_list: (Dict, Dict, List[(z12, a13)]) -> Map[z12, a13]
-declare get: (Dict, Dict, Map[m9, z9], m9) -> Option[z9]
+declare from_json: (Dict, Json) -> Result[String, n14]
+declare from_list: (Dict, Dict, List[(c13, d13)]) -> Map[c13, d13]
+declare get: (Dict, Dict, Map[p9, c10], p9) -> Option[c10]
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
@@ -14,8 +14,8 @@ fn main() -> Unit =
   let v2: (~String, ~Json) = tuple("x", v1)
   let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
   let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
-  let v5: Dict = get_dict Eq[z12]
-  let v6: Dict = get_dict Hash[z12]
+  let v5: Dict = get_dict Eq[c13]
+  let v6: Dict = get_dict Hash[c13]
   let v7: Map[String, Json] = call from_list(v5, v6, v4)
   let v0: ~Json = construct Json::JObj#5(v7)
   let v9: Dict = get_dict FromJson[Map[String, Int]]

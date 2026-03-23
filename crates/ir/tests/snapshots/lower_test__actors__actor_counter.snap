@@ -5,10 +5,10 @@ expression: ir_module.to_string()
 module actors__actor_counter
 
 type CounterMsg = Inc#0 | Dec#1 | Get#2(Ref[Int])
-declare receive: (Mailbox[c9]) -> c9
-declare send: (Ref[r8], r8) -> Unit
+declare receive: (Mailbox[e9]) -> e9
+declare send: (Ref[t8], t8) -> Unit
 
-fn counter(v0: Mailbox[CounterMsg], v1: Int) -> x9 =
+fn counter(v0: Mailbox[CounterMsg], v1: Int) -> z9 =
   let_join v2(v3: Mailbox[CounterMsg], v4: Int) =
     let v5: CounterMsg = call receive(v3)
     switch v5 {
@@ -25,6 +25,6 @@ fn counter(v0: Mailbox[CounterMsg], v1: Int) -> x9 =
   in
   jump v2(v0, v1)
 
-fn main() -> (Mailbox[CounterMsg], Int) -> a10 =
-  let v10: (Mailbox[CounterMsg], Int) -> a10 = make_closure(counter, [])
+fn main() -> (Mailbox[CounterMsg], Int) -> c10 =
+  let v10: (Mailbox[CounterMsg], Int) -> c10 = make_closure(counter, [])
   v10

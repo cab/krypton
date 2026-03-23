@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-declare fmap: (Dict, r7[s7], (s7) -> t7) -> r7[t7]
+declare fmap: (Dict, t7[u7], (u7) -> v7) -> t7[v7]
 
 fn main() -> Int =
   let v0: ~Box[Int] = construct Box::Box#0(42)

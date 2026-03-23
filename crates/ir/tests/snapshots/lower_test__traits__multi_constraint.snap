@@ -10,7 +10,7 @@ declare eq: (Dict, g, g) -> Bool
 declare println: (m) -> Unit
 declare show: (Dict, g) -> String
 
-fn eq_and_show(v0: Dict, v1: Dict, v2: t7, v3: t7) -> String =
+fn eq_and_show(v0: Dict, v1: Dict, v2: v7, v3: v7) -> String =
   let v4: Bool = call eq(v0, v2, v3)
   switch v4 {
     1 ->

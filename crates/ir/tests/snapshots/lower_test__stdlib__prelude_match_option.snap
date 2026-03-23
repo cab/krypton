@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__prelude_match_option
 
-fn unwrap_or(v0: Option[s7], v1: s7) -> s7 =
+fn unwrap_or(v0: Option[u7], v1: u7) -> u7 =
   switch v0 {
     0 (v2: b) ->
       v2

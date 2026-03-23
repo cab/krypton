@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_fold
 
-declare fold: (List[s1], t1, (t1, s1) -> t1) -> t1
+declare fold: (List[t1], u1, (u1, t1) -> u1) -> u1
 declare println: (m) -> Unit
 
 fn main() -> Unit =

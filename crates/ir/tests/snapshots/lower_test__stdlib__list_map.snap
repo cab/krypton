@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_map
 
-declare fold: (List[s1], t1, (t1, s1) -> t1) -> t1
-declare map: (List[v], (v) -> x) -> List[x]
+declare fold: (List[t1], u1, (u1, t1) -> u1) -> u1
+declare map: (List[w], (w) -> y) -> List[y]
 declare println: (m) -> Unit
 
 fn main() -> Unit =

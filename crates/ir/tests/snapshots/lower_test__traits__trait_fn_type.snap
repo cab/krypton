@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type
 
-declare call: (Dict, q7) -> String
+declare call: (Dict, s7) -> String
 declare println: (Dict, m) -> Unit
 
 fn greet(v0: Int) -> String =

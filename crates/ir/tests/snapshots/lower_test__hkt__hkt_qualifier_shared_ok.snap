@@ -4,5 +4,5 @@ expression: ir_module.to_string()
 ---
 module hkt__hkt_qualifier_shared_ok
 
-fn map_shared(v0: r7[s7], v1: r7[s7]) -> r7[s7] =
+fn map_shared(v0: t7[u7], v1: t7[u7]) -> t7[u7] =
   v0

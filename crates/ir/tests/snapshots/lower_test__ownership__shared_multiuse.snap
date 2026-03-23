@@ -6,8 +6,8 @@ module ownership__shared_multiuse
 
 declare println: (Dict, m) -> Unit
 
-fn dup(v0: r7) -> (r7, r7) =
-  let v1: (r7, r7) = tuple(v0, v0)
+fn dup(v0: t7) -> (t7, t7) =
+  let v1: (t7, t7) = tuple(v0, v0)
   v1
 
 fn test(v2: ~String) -> Unit =

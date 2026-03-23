@@ -6,7 +6,7 @@ module modules__type_qualify
 
 struct Point { x: Int, y: Int }
 declare Point: (Int, Int) -> Point
-declare length: (List[n]) -> Int
+declare length: (List[o]) -> Int
 declare println: (m) -> Unit
 
 fn main() -> Unit =

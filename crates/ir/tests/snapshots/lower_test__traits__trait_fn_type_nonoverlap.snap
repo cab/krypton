@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_nonoverlap
 
-declare convert: (Dict, q7) -> String
+declare convert: (Dict, s7) -> String
 declare println: (Dict, m) -> Unit
 
 fn f(v0: String) -> Int =

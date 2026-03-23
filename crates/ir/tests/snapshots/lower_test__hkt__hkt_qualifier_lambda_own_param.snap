@@ -4,6 +4,6 @@ expression: ir_module.to_string()
 ---
 module hkt__hkt_qualifier_lambda_own_param
 
-fn consume_once(v0: r7[~s7], v1: (r7[~s7]) -> r7[~s7]) -> r7[~s7] =
-  let v2: r7[~s7] = call_closure v1(v0)
+fn consume_once(v0: t7[~u7], v1: (t7[~u7]) -> t7[~u7]) -> t7[~u7] =
+  let v2: t7[~u7] = call_closure v1(v0)
   v2

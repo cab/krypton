@@ -6,15 +6,15 @@ module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
 declare println: (m) -> Unit
-declare to_list: (Vec[f7]) -> List[f7]
+declare to_list: (Vec[h7]) -> List[h7]
 
-fn fold_box(v0: List[c8], v1: w7[c8], v2: (w7[c8], c8) -> w7[c8]) -> w7[c8] =
-  let_join v3(v4: List[c8], v5: w7[c8], v6: (w7[c8], c8) -> w7[c8]) =
+fn fold_box(v0: List[e8], v1: y7[e8], v2: (y7[e8], e8) -> y7[e8]) -> y7[e8] =
+  let_join v3(v4: List[e8], v5: y7[e8], v6: (y7[e8], e8) -> y7[e8]) =
     switch v4 {
       1 ->
         v5
       0 (v7: b, v8: List[b]) ->
-        let v9: w7[c8] = call_closure v6(v5, v7)
+        let v9: y7[e8] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }
   in

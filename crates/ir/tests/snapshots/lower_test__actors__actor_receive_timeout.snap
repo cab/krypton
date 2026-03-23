@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module actors__actor_receive_timeout
 
 type Msg = Ping#0 | Pong#1
-declare receive_timeout: (Mailbox[e9], Int) -> Option[e9]
+declare receive_timeout: (Mailbox[g9], Int) -> Option[g9]
 
 fn actor(v0: Mailbox[Msg]) -> Unit =
   let_join v1(v2: Mailbox[Msg]) =

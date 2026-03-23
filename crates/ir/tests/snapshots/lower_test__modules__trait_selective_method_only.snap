@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__trait_selective_method_only
 
-declare describe: (Dict, q7) -> String
+declare describe: (Dict, s7) -> String
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =

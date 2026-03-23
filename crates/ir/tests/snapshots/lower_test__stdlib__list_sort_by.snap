@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module stdlib__list_sort_by
 
 declare println: (m) -> Unit
-declare sort_by: (Dict, List[v5], (v5) -> k5) -> List[v5]
+declare sort_by: (Dict, List[w5], (w5) -> l5) -> List[w5]
 
 fn main() -> Unit =
   let v0: ~List[Int] = construct List::Nil#1()

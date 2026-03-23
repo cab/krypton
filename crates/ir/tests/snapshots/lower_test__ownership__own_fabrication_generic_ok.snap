@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__own_fabrication_generic_ok
 
-fn ok(v0: (r7) -> String, v1: r7) -> String =
+fn ok(v0: (t7) -> String, v1: t7) -> String =
   let v2: String = call_closure v0(v1)
   v2
 

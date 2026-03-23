@@ -8,7 +8,7 @@ declare lt: (Dict, h, h) -> Bool
 declare println: (Dict, m) -> Unit
 declare show: (Dict, g) -> String
 
-fn both_less(v0: Dict, v1: Dict, v2: r7, v3: r7, v4: s7, v5: s7) -> Bool =
+fn both_less(v0: Dict, v1: Dict, v2: t7, v3: t7, v4: u7, v5: u7) -> Bool =
   let_join v13(v6: Bool) =
     let_join v12(v8: Bool) =
       let_join v11(v10: Bool) =

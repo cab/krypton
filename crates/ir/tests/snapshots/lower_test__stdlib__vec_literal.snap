@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__vec_literal
 
-declare len: (Vec[b6]) -> Int
+declare len: (Vec[d6]) -> Int
 declare println: (m) -> Unit
 
 fn main() -> Unit =

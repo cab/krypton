@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_filter
 
-declare filter: (List[g1], (g1) -> Bool) -> List[g1]
-declare length: (List[n]) -> Int
+declare filter: (List[h1], (h1) -> Bool) -> List[h1]
+declare length: (List[o]) -> Int
 declare lt: (Dict, h, h) -> Bool
 declare println: (m) -> Unit
 

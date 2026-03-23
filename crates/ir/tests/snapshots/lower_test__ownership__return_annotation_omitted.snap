@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__return_annotation_omitted
 
-fn id(v0: r7) -> r7 =
+fn id(v0: t7) -> t7 =
   v0
 
 fn main() -> Int =

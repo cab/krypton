@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__own_explicit_typeapp_propagation
 
-fn identity(v0: r7) -> r7 =
+fn identity(v0: t7) -> t7 =
   v0
 
 fn consume(v1: ~String) -> String =

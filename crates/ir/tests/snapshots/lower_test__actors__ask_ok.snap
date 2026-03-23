@@ -6,11 +6,11 @@ module actors__ask_ok
 
 type Msg = Get#0(Ref[Int])
 declare Get: (Ref[Int]) -> Msg
-declare ask: (Ref[j10], (Ref[k10]) -> j10, Int) -> Result[Timeout, k10]
+declare ask: (Ref[l10], (Ref[m10]) -> l10, Int) -> Result[Timeout, m10]
 declare println: (m) -> Unit
-declare receive: (Mailbox[c9]) -> c9
-declare send: (Ref[r8], r8) -> Unit
-declare spawn: ((Mailbox[l8]) -> Unit) -> Ref[l8]
+declare receive: (Mailbox[e9]) -> e9
+declare send: (Ref[t8], t8) -> Unit
+declare spawn: ((Mailbox[n8]) -> Unit) -> Ref[n8]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

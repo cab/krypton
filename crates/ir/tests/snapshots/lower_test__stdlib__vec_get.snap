@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__vec_get
 
-declare nth: (Vec[o6], Int) -> Option[o6]
+declare nth: (Vec[q6], Int) -> Option[q6]
 declare println: (m) -> Unit
 
 fn main() -> Unit =

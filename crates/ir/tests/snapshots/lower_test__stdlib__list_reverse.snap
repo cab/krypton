@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module stdlib__list_reverse
 
 declare println: (m) -> Unit
-declare reverse: (List[j2]) -> List[j2]
+declare reverse: (List[k2]) -> List[k2]
 
 fn main() -> Unit =
   let v0: ~List[Int] = construct List::Nil#1()

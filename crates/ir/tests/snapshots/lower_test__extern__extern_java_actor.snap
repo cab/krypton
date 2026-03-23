@@ -4,9 +4,9 @@ expression: ir_module.to_string()
 ---
 module extern__extern_java_actor
 
-declare actor_ref: (Mailbox[l9]) -> Ref[l9]
-declare receive: (Mailbox[c9]) -> c9
-declare send: (Ref[r8], r8) -> Unit
+declare actor_ref: (Mailbox[n9]) -> Ref[n9]
+declare receive: (Mailbox[e9]) -> e9
+declare send: (Ref[t8], t8) -> Unit
 
 fn echo(v0: Mailbox[Int]) -> Unit =
   let v1: Int = call receive(v0)

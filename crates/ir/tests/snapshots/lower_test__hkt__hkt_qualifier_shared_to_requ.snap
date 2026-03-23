@@ -4,10 +4,10 @@ expression: ir_module.to_string()
 ---
 module hkt__hkt_qualifier_shared_to_requ
 
-fn dup(v0: r7) -> (r7, r7) =
-  let v1: (r7, r7) = tuple(v0, v0)
+fn dup(v0: t7) -> (t7, t7) =
+  let v1: (t7, t7) = tuple(v0, v0)
   v1
 
-fn test_shared(v2: u7[v7]) -> (u7[v7], u7[v7]) =
-  let v3: (u7[v7], u7[v7]) = call dup(v2)
+fn test_shared(v2: w7[x7]) -> (w7[x7], w7[x7]) =
+  let v3: (w7[x7], w7[x7]) = call dup(v2)
   v3

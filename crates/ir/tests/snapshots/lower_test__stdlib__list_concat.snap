@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_concat
 
-declare concat: (List[a2], List[a2]) -> List[a2]
-declare length: (List[n]) -> Int
+declare concat: (List[b2], List[b2]) -> List[b2]
+declare length: (List[o]) -> Int
 declare println: (m) -> Unit
 
 fn main() -> Unit =

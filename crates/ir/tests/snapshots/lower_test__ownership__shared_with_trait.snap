@@ -6,6 +6,6 @@ module ownership__shared_with_trait
 
 declare show: (Dict, g) -> String
 
-fn f(v0: Dict, v1: r7) -> String =
+fn f(v0: Dict, v1: t7) -> String =
   let v2: String = call show(v0, v1)
   v2

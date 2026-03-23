@@ -8,12 +8,12 @@ type List[h] = Cons#0(h, List[h]) | Nil#1
 type Option[g] = Some#0(g) | None#1
 type Ordering = LT#0 | EQ#1 | GT#2
 type Result[g, h] = Ok#0(h) | Err#1(g)
-declare core/map/vec_to_list: (Vec[f7]) -> List[f7]
-declare core/vec/list_filter: (List[g1], (g1) -> Bool) -> List[g1]
-declare core/vec/list_fold: (List[s1], t1, (t1, s1) -> t1) -> t1
-declare core/vec/list_length: (List[n]) -> Int
-declare core/vec/list_map: (List[v], (v) -> x) -> List[x]
-declare core/vec/list_sort_by: (Dict, List[v5], (v5) -> k5) -> List[v5]
+declare core/map/vec_to_list: (Vec[h7]) -> List[h7]
+declare core/vec/list_filter: (List[h1], (h1) -> Bool) -> List[h1]
+declare core/vec/list_fold: (List[t1], u1, (u1, t1) -> u1) -> u1
+declare core/vec/list_length: (List[o]) -> Int
+declare core/vec/list_map: (List[w], (w) -> y) -> List[y]
+declare core/vec/list_sort_by: (Dict, List[w5], (w5) -> l5) -> List[w5]
 declare lt: (Dict, h, h) -> Bool
 declare magnitude: (Int) -> Int
 declare panic: (String) -> e
@@ -57,7 +57,7 @@ fn core/io/print(v10: Dict, v11: u) -> Unit =
   let v13: Unit = call raw_print(v12)
   v13
 
-fn core/list/length(v14: List[n]) -> Int =
+fn core/list/length(v14: List[o]) -> Int =
   switch v14 {
     1 ->
       0
@@ -67,137 +67,137 @@ fn core/list/length(v14: List[n]) -> Int =
       v18
   }
 
-fn core/list/map(v19: List[v], v20: (v) -> x) -> List[x] =
+fn core/list/map(v19: List[w], v20: (w) -> y) -> List[y] =
   switch v19 {
     1 ->
-      let v21: ~List[x] = construct List::Nil#1()
+      let v21: ~List[y] = construct List::Nil#1()
       v21
     0 (v22: h, v23: List[h]) ->
-      let v24: x = call_closure v20(v22)
-      let v25: List[x] = call map(v23, v20)
-      let v26: ~List[x] = construct List::Cons#0(v24, v25)
+      let v24: y = call_closure v20(v22)
+      let v25: List[y] = call map(v23, v20)
+      let v26: ~List[y] = construct List::Cons#0(v24, v25)
       v26
   }
 
-fn core/list/filter(v27: List[g1], v28: (g1) -> Bool) -> List[g1] =
+fn core/list/filter(v27: List[h1], v28: (h1) -> Bool) -> List[h1] =
   switch v27 {
     1 ->
-      let v29: ~List[g1] = construct List::Nil#1()
+      let v29: ~List[h1] = construct List::Nil#1()
       v29
     0 (v30: h, v31: List[h]) ->
       let v32: Bool = call_closure v28(v30)
       switch v32 {
         1 ->
-          let v33: List[g1] = call filter(v31, v28)
-          let v34: ~List[g1] = construct List::Cons#0(v30, v33)
+          let v33: List[h1] = call filter(v31, v28)
+          let v34: ~List[h1] = construct List::Cons#0(v30, v33)
           v34
         _ ->
-          let v35: List[g1] = call filter(v31, v28)
+          let v35: List[h1] = call filter(v31, v28)
           v35
       }
   }
 
-fn core/list/fold(v36: List[s1], v37: t1, v38: (t1, s1) -> t1) -> t1 =
+fn core/list/fold(v36: List[t1], v37: u1, v38: (u1, t1) -> u1) -> u1 =
   switch v36 {
     1 ->
       v37
     0 (v39: h, v40: List[h]) ->
-      let v41: t1 = call_closure v38(v37, v39)
-      let v42: t1 = call fold(v40, v41, v38)
+      let v41: u1 = call_closure v38(v37, v39)
+      let v42: u1 = call fold(v40, v41, v38)
       v42
   }
 
-fn core/list/concat(v43: List[a2], v44: List[a2]) -> List[a2] =
+fn core/list/concat(v43: List[b2], v44: List[b2]) -> List[b2] =
   switch v43 {
     1 ->
       v44
     0 (v45: h, v46: List[h]) ->
-      let v47: List[a2] = call core/list/concat(v46, v44)
-      let v48: ~List[a2] = construct List::Cons#0(v45, v47)
+      let v47: List[b2] = call core/list/concat(v46, v44)
+      let v48: ~List[b2] = construct List::Cons#0(v45, v47)
       v48
   }
 
-fn core/list/reverse(v49: List[j2]) -> List[j2] =
-  let_join v57(v51: ~List[j2]) =
-    let v55: (List[j2], j2) -> ~List[j2] = make_closure(core/list/lambda$18, [])
-    let v56: List[j2] = call fold(v49, v51, v55)
+fn core/list/reverse(v49: List[k2]) -> List[k2] =
+  let_join v57(v51: ~List[k2]) =
+    let v55: (List[k2], k2) -> ~List[k2] = make_closure(core/list/lambda$19, [])
+    let v56: List[k2] = call fold(v49, v51, v55)
     v56
   in
-  let v50: ~List[j2] = construct List::Nil#1()
+  let v50: ~List[k2] = construct List::Nil#1()
   jump v57(v50)
 
-fn core/list/head(v58: List[x2]) -> Option[x2] =
+fn core/list/head(v58: List[y2]) -> Option[y2] =
   switch v58 {
     0 (v59: h, v60: List[h]) ->
-      let v61: ~Option[x2] = construct Option::Some#0(v59)
+      let v61: ~Option[y2] = construct Option::Some#0(v59)
       v61
     1 ->
-      let v62: ~Option[x2] = construct Option::None#1()
+      let v62: ~Option[y2] = construct Option::None#1()
       v62
   }
 
-fn core/list/tail(v63: List[e3]) -> Option[List[e3]] =
+fn core/list/tail(v63: List[f3]) -> Option[List[f3]] =
   switch v63 {
     0 (v64: h, v65: List[h]) ->
-      let v66: ~Option[List[e3]] = construct Option::Some#0(v65)
+      let v66: ~Option[List[f3]] = construct Option::Some#0(v65)
       v66
     1 ->
-      let v67: ~Option[List[e3]] = construct Option::None#1()
+      let v67: ~Option[List[f3]] = construct Option::None#1()
       v67
   }
 
-fn core/list/last(v68: List[q3]) -> Option[q3] =
+fn core/list/last(v68: List[r3]) -> Option[r3] =
   switch v68 {
     0 (v69: h, v70: List[h]) ->
       switch v70 {
         1 ->
-          let v71: ~Option[q3] = construct Option::Some#0(v69)
+          let v71: ~Option[r3] = construct Option::Some#0(v69)
           v71
         _ ->
-          let v72: Option[q3] = call last(v70)
+          let v72: Option[r3] = call last(v70)
           v72
       }
     1 ->
-      let v73: ~Option[q3] = construct Option::None#1()
+      let v73: ~Option[r3] = construct Option::None#1()
       v73
   }
 
-fn core/list/split(v74: List[e4]) -> (List[e4], List[e4]) =
+fn core/list/split(v74: List[f4]) -> (List[f4], List[f4]) =
   switch v74 {
     1 ->
-      let_join v81(v76: ~List[e4]) =
-        let_join v80(v78: ~List[e4]) =
-          let v79: (~List[e4], ~List[e4]) = tuple(v76, v78)
+      let_join v81(v76: ~List[f4]) =
+        let_join v80(v78: ~List[f4]) =
+          let v79: (~List[f4], ~List[f4]) = tuple(v76, v78)
           v79
         in
-        let v77: ~List[e4] = construct List::Nil#1()
+        let v77: ~List[f4] = construct List::Nil#1()
         jump v80(v77)
       in
-      let v75: ~List[e4] = construct List::Nil#1()
+      let v75: ~List[f4] = construct List::Nil#1()
       jump v81(v75)
     0 (v82: h, v83: List[h]) ->
       switch v83 {
         1 ->
-          let v84: ~List[e4] = construct List::Nil#1()
-          let v85: ~List[e4] = construct List::Cons#0(v82, v84)
-          let_join v89(v87: ~List[e4]) =
-            let v88: (~List[e4], ~List[e4]) = tuple(v85, v87)
+          let v84: ~List[f4] = construct List::Nil#1()
+          let v85: ~List[f4] = construct List::Cons#0(v82, v84)
+          let_join v89(v87: ~List[f4]) =
+            let v88: (~List[f4], ~List[f4]) = tuple(v85, v87)
             v88
           in
-          let v86: ~List[e4] = construct List::Nil#1()
+          let v86: ~List[f4] = construct List::Nil#1()
           jump v89(v86)
         0 (v90: h, v91: List[h]) ->
-          let v92: (List[e4], List[e4]) = call core/list/split(v91)
-          let v93: List[e4] = tuple_project v92.0
-          let v94: List[e4] = tuple_project v92.1
-          let v95: ~List[e4] = construct List::Cons#0(v82, v93)
-          let v96: ~List[e4] = construct List::Cons#0(v90, v94)
-          let v97: (~List[e4], ~List[e4]) = tuple(v95, v96)
+          let v92: (List[f4], List[f4]) = call core/list/split(v91)
+          let v93: List[f4] = tuple_project v92.0
+          let v94: List[f4] = tuple_project v92.1
+          let v95: ~List[f4] = construct List::Cons#0(v82, v93)
+          let v96: ~List[f4] = construct List::Cons#0(v90, v94)
+          let v97: (~List[f4], ~List[f4]) = tuple(v95, v96)
           v97
       }
   }
 
-fn core/list/merge_by(v98: Dict, v99: List[v4], v100: List[v4], v101: (v4) -> x4) -> List[v4] =
+fn core/list/merge_by(v98: Dict, v99: List[w4], v100: List[w4], v101: (w4) -> y4) -> List[w4] =
   switch v99 {
     1 ->
       v100
@@ -209,97 +209,97 @@ fn core/list/merge_by(v98: Dict, v99: List[v4], v100: List[v4], v101: (v4) -> x4
           let_join v116(v109: Bool) =
             switch v109 {
               1 ->
-                let v110: ~List[v4] = construct List::Cons#0(v104, v105)
-                let v111: List[v4] = call core/list/merge_by(v98, v103, v110, v101)
-                let v112: ~List[v4] = construct List::Cons#0(v102, v111)
+                let v110: ~List[w4] = construct List::Cons#0(v104, v105)
+                let v111: List[w4] = call core/list/merge_by(v98, v103, v110, v101)
+                let v112: ~List[w4] = construct List::Cons#0(v102, v111)
                 v112
               _ ->
-                let v113: ~List[v4] = construct List::Cons#0(v102, v103)
-                let v114: List[v4] = call core/list/merge_by(v98, v113, v105, v101)
-                let v115: ~List[v4] = construct List::Cons#0(v104, v114)
+                let v113: ~List[w4] = construct List::Cons#0(v102, v103)
+                let v114: List[w4] = call core/list/merge_by(v98, v113, v105, v101)
+                let v115: ~List[w4] = construct List::Cons#0(v104, v114)
                 v115
             }
           in
-          let v106: x4 = call_closure v101(v102)
-          let v107: x4 = call_closure v101(v104)
+          let v106: y4 = call_closure v101(v102)
+          let v107: y4 = call_closure v101(v104)
           let v108: Bool = call lt(v98, v106, v107)
           jump v116(v108)
       }
   }
 
-fn core/list/sort_by(v117: Dict, v118: List[v5], v119: (v5) -> k5) -> List[v5] =
+fn core/list/sort_by(v117: Dict, v118: List[w5], v119: (w5) -> l5) -> List[w5] =
   switch v118 {
     1 ->
-      let v120: ~List[v5] = construct List::Nil#1()
+      let v120: ~List[w5] = construct List::Nil#1()
       v120
     0 (v121: h, v122: List[h]) ->
       switch v122 {
         1 ->
           v118
         _ ->
-          let v123: (List[v5], List[v5]) = call core/list/split(v118)
-          let v124: List[v5] = tuple_project v123.0
-          let v125: List[v5] = tuple_project v123.1
-          let v126: List[v5] = call sort_by(v117, v124, v119)
-          let v127: List[v5] = call sort_by(v117, v125, v119)
-          let v128: List[v5] = call core/list/merge_by(v117, v126, v127, v119)
+          let v123: (List[w5], List[w5]) = call core/list/split(v118)
+          let v124: List[w5] = tuple_project v123.0
+          let v125: List[w5] = tuple_project v123.1
+          let v126: List[w5] = call sort_by(v117, v124, v119)
+          let v127: List[w5] = call sort_by(v117, v125, v119)
+          let v128: List[w5] = call core/list/merge_by(v117, v126, v127, v119)
           v128
       }
     _ ->
-      let v129: (List[v5], List[v5]) = call core/list/split(v118)
-      let v130: List[v5] = tuple_project v129.0
-      let v131: List[v5] = tuple_project v129.1
-      let v132: List[v5] = call sort_by(v117, v130, v119)
-      let v133: List[v5] = call sort_by(v117, v131, v119)
-      let v134: List[v5] = call core/list/merge_by(v117, v132, v133, v119)
+      let v129: (List[w5], List[w5]) = call core/list/split(v118)
+      let v130: List[w5] = tuple_project v129.0
+      let v131: List[w5] = tuple_project v129.1
+      let v132: List[w5] = call sort_by(v117, v130, v119)
+      let v133: List[w5] = call sort_by(v117, v131, v119)
+      let v134: List[w5] = call core/list/merge_by(v117, v132, v133, v119)
       v134
   }
 
-fn core/list/lambda$18(v52: List[j2], v53: j2) -> ~List[j2] =
-  let v54: ~List[j2] = construct List::Cons#0(v53, v52)
+fn core/list/lambda$19(v52: List[k2], v53: k2) -> ~List[k2] =
+  let v54: ~List[k2] = construct List::Cons#0(v53, v52)
   v54
 
-fn core/map/empty() -> Map[o8, p8] =
-  let v135: Map[o8, p8] = call staticEmpty()
+fn core/map/empty() -> Map[r8, s8] =
+  let v135: Map[r8, s8] = call staticEmpty()
   v135
 
-fn core/map/put(v136: Dict, v137: Dict, v138: Map[t8, u8], v139: t8, v140: u8) -> Map[t8, u8] =
-  let v141: g9 = v136
-  let v142: j9 = v137
-  let v143: Map[t8, u8] = call staticPut(v138, v139, v140, v141, v142)
+fn core/map/put(v136: Dict, v137: Dict, v138: Map[w8, x8], v139: w8, v140: x8) -> Map[w8, x8] =
+  let v141: j9 = v136
+  let v142: m9 = v137
+  let v143: Map[w8, x8] = call staticPut(v138, v139, v140, v141, v142)
   v143
 
-fn core/map/get(v144: Dict, v145: Dict, v146: Map[m9, z9], v147: m9) -> Option[z9] =
+fn core/map/get(v144: Dict, v145: Dict, v146: Map[p9, c10], v147: p9) -> Option[c10] =
   let v148: Bool = call staticContainsKey(v146, v147)
   switch v148 {
     1 ->
-      let v149: z9 = call staticGetUnsafe(v146, v147)
-      let v150: ~Option[z9] = construct Option::Some#0(v149)
+      let v149: c10 = call staticGetUnsafe(v146, v147)
+      let v150: ~Option[c10] = construct Option::Some#0(v149)
       v150
     _ ->
-      let v151: ~Option[z9] = construct Option::None#1()
+      let v151: ~Option[c10] = construct Option::None#1()
       v151
   }
 
-fn core/map/delete(v152: Dict, v153: Dict, v154: Map[b10, c10], v155: b10) -> Map[b10, c10] =
-  let v156: Map[b10, c10] = call staticDelete(v154, v155)
+fn core/map/delete(v152: Dict, v153: Dict, v154: Map[e10, f10], v155: e10) -> Map[e10, f10] =
+  let v156: Map[e10, f10] = call staticDelete(v154, v155)
   v156
 
-fn core/map/contains(v157: Dict, v158: Dict, v159: Map[k10, l10], v160: k10) -> Bool =
+fn core/map/contains(v157: Dict, v158: Dict, v159: Map[n10, o10], v160: n10) -> Bool =
   let v161: Bool = call staticContainsKey(v159, v160)
   v161
 
-fn core/map/keys(v162: Map[v10, t10]) -> List[v10] =
-  let v163: Vec[v10] = call staticKeys(v162)
-  let v164: List[v10] = call core/map/vec_to_list(v163)
+fn core/map/keys(v162: Map[y10, w10]) -> List[y10] =
+  let v163: Vec[y10] = call staticKeys(v162)
+  let v164: List[y10] = call core/map/vec_to_list(v163)
   v164
 
-fn core/map/values(v165: Map[b11, e11]) -> List[e11] =
-  let v166: Vec[e11] = call staticValues(v165)
-  let v167: List[e11] = call core/map/vec_to_list(v166)
+fn core/map/values(v165: Map[e11, h11]) -> List[h11] =
+  let v166: Vec[h11] = call staticValues(v165)
+  let v167: List[h11] = call core/map/vec_to_list(v166)
   v167
 
-fn core/map/entries_go(v168: Object, v169: Int, v170: List[(k11, l11)]) -> List[(k11, l11)] =
+fn core/map/entries_go(v168: Object, v169: Int, v170: List[(n11, o11)]) -> List[(n11, o11)] =
   let_join v181(v173: Bool) =
     switch v173 {
       1 ->
@@ -307,11 +307,11 @@ fn core/map/entries_go(v168: Object, v169: Int, v170: List[(k11, l11)]) -> List[
       _ ->
         let v174: Int = sub_int(v169, 2)
         let v175: Int = sub_int(v169, 1)
-        let v176: k11 = call staticGet(v168, v175)
-        let v177: l11 = call staticGet(v168, v169)
-        let v178: (k11, l11) = tuple(v176, v177)
-        let v179: ~List[(k11, l11)] = construct List::Cons#0(v178, v170)
-        let v180: List[(k11, l11)] = call core/map/entries_go(v168, v174, v179)
+        let v176: n11 = call staticGet(v168, v175)
+        let v177: o11 = call staticGet(v168, v169)
+        let v178: (n11, o11) = tuple(v176, v177)
+        let v179: ~List[(n11, o11)] = construct List::Cons#0(v178, v170)
+        let v180: List[(n11, o11)] = call core/map/entries_go(v168, v174, v179)
         v180
     }
   in
@@ -319,35 +319,35 @@ fn core/map/entries_go(v168: Object, v169: Int, v170: List[(k11, l11)]) -> List[
   let v172: Bool = call lt(v171, v169, 0)
   jump v181(v172)
 
-fn core/map/entries(v182: Map[f12, g12]) -> List[(f12, g12)] =
-  let v183: e12 = call staticEntries(v182)
+fn core/map/entries(v182: Map[i12, j12]) -> List[(i12, j12)] =
+  let v183: h12 = call staticEntries(v182)
   let v184: Int = call staticLength(v183)
   let v185: Int = sub_int(v184, 1)
-  let_join v189(v187: ~List[(f12, g12)]) =
-    let v188: List[(f12, g12)] = call core/map/entries_go(v183, v185, v187)
+  let_join v189(v187: ~List[(i12, j12)]) =
+    let v188: List[(i12, j12)] = call core/map/entries_go(v183, v185, v187)
     v188
   in
-  let v186: ~List[(f12, g12)] = construct List::Nil#1()
+  let v186: ~List[(i12, j12)] = construct List::Nil#1()
   jump v189(v186)
 
-fn core/map/from_list(v190: Dict, v191: Dict, v192: List[(z12, a13)]) -> Map[z12, a13] =
-  let v193: Map[z12, a13] = call core/map/empty()
-  let v201: (Map[z12, a13], (z12, a13)) -> Map[z12, a13] = make_closure(core/map/lambda$37, [v190, v191])
-  let v202: Map[z12, a13] = call fold(v192, v193, v201)
+fn core/map/from_list(v190: Dict, v191: Dict, v192: List[(c13, d13)]) -> Map[c13, d13] =
+  let v193: Map[c13, d13] = call core/map/empty()
+  let v201: (Map[c13, d13], (c13, d13)) -> Map[c13, d13] = make_closure(core/map/lambda$38, [v190, v191])
+  let v202: Map[c13, d13] = call fold(v192, v193, v201)
   v202
 
-fn core/map/size(v203: Map[g13, h13]) -> Int =
+fn core/map/size(v203: Map[j13, k13]) -> Int =
   let v204: Int = call staticSize(v203)
   v204
 
-fn core/map/merge(v205: Dict, v206: Dict, v207: Map[m13, n13], v208: Map[m13, n13]) -> Map[m13, n13] =
-  let v209: Map[m13, n13] = call staticMerge(v207, v208)
+fn core/map/merge(v205: Dict, v206: Dict, v207: Map[p13, q13], v208: Map[p13, q13]) -> Map[p13, q13] =
+  let v209: Map[p13, q13] = call staticMerge(v207, v208)
   v209
 
-fn core/map/lambda$37(v194: Dict, v195: Dict, v196: Map[z12, a13], v197: (z12, a13)) -> Map[z12, a13] =
-  let v198: z12 = tuple_project v197.0
-  let v199: a13 = tuple_project v197.1
-  let v200: Map[z12, a13] = call core/map/put(v194, v195, v196, v198, v199)
+fn core/map/lambda$38(v194: Dict, v195: Dict, v196: Map[c13, d13], v197: (c13, d13)) -> Map[c13, d13] =
+  let v198: c13 = tuple_project v197.0
+  let v199: d13 = tuple_project v197.1
+  let v200: Map[c13, d13] = call core/map/put(v194, v195, v196, v198, v199)
   v200
 
 fn core/option/unwrap(v210: Option[o]) -> o =
@@ -362,25 +362,25 @@ fn core/option/unwrap(v210: Option[o]) -> o =
 fn core/peek/peek(v213: h) -> h =
   v213
 
-fn core/vec/len(v214: Vec[b6]) -> Int =
+fn core/vec/len(v214: Vec[d6]) -> Int =
   let v215: Int = call staticLength(v214)
   v215
 
-fn core/vec/nth(v216: Vec[o6], v217: Int) -> Option[o6] =
+fn core/vec/nth(v216: Vec[q6], v217: Int) -> Option[q6] =
   let_join v230(v220: Bool) =
     switch v220 {
       1 ->
-        let v221: ~Option[o6] = construct Option::None#1()
+        let v221: ~Option[q6] = construct Option::None#1()
         v221
       _ ->
         let_join v229(v225: Bool) =
           switch v225 {
             1 ->
-              let v226: o6 = call staticGet(v216, v217)
-              let v227: ~Option[o6] = construct Option::Some#0(v226)
+              let v226: q6 = call staticGet(v216, v217)
+              let v227: ~Option[q6] = construct Option::Some#0(v226)
               v227
             _ ->
-              let v228: ~Option[o6] = construct Option::None#1()
+              let v228: ~Option[q6] = construct Option::None#1()
               v228
           }
         in
@@ -394,16 +394,16 @@ fn core/vec/nth(v216: Vec[o6], v217: Int) -> Option[o6] =
   let v219: Bool = call lt(v218, v217, 0)
   jump v230(v219)
 
-fn core/vec/vec_from_vec_go(v231: Vec[w6], v232: Int, v233: List[w6]) -> List[w6] =
+fn core/vec/vec_from_vec_go(v231: Vec[y6], v232: Int, v233: List[y6]) -> List[y6] =
   let_join v241(v236: Bool) =
     switch v236 {
       1 ->
         v233
       _ ->
         let v237: Int = sub_int(v232, 1)
-        let v238: w6 = call staticGet(v231, v232)
-        let v239: ~List[w6] = construct List::Cons#0(v238, v233)
-        let v240: List[w6] = call core/vec/vec_from_vec_go(v231, v237, v239)
+        let v238: y6 = call staticGet(v231, v232)
+        let v239: ~List[y6] = construct List::Cons#0(v238, v233)
+        let v240: List[y6] = call core/vec/vec_from_vec_go(v231, v237, v239)
         v240
     }
   in
@@ -411,45 +411,45 @@ fn core/vec/vec_from_vec_go(v231: Vec[w6], v232: Int, v233: List[w6]) -> List[w6
   let v235: Bool = call lt(v234, v232, 0)
   jump v241(v235)
 
-fn core/vec/to_list(v242: Vec[f7]) -> List[f7] =
+fn core/vec/to_list(v242: Vec[h7]) -> List[h7] =
   let v243: Int = call staticLength(v242)
   let v244: Int = sub_int(v243, 1)
-  let_join v248(v246: ~List[f7]) =
-    let v247: List[f7] = call core/vec/vec_from_vec_go(v242, v244, v246)
+  let_join v248(v246: ~List[h7]) =
+    let v247: List[h7] = call core/vec/vec_from_vec_go(v242, v244, v246)
     v247
   in
-  let v245: ~List[f7] = construct List::Nil#1()
+  let v245: ~List[h7] = construct List::Nil#1()
   jump v248(v245)
 
-fn core/vec/from_list_go(v249: List[p7], v250: Vec[p7], v251: Int) -> Vec[p7] =
+fn core/vec/from_list_go(v249: List[r7], v250: Vec[r7], v251: Int) -> Vec[r7] =
   switch v249 {
     1 ->
-      let v252: Vec[p7] = call staticFreeze(v250)
+      let v252: Vec[r7] = call staticFreeze(v250)
       v252
     0 (v253: a, v254: List[a]) ->
       let v255: Unit = call staticSet(v250, v251, v253)
       let v256: Int = add_int(v251, 1)
-      let v257: Vec[p7] = call core/vec/from_list_go(v254, v250, v256)
+      let v257: Vec[r7] = call core/vec/from_list_go(v254, v250, v256)
       v257
   }
 
-fn core/vec/from_list(v258: List[b8]) -> Vec[b8] =
+fn core/vec/from_list(v258: List[d8]) -> Vec[d8] =
   let v259: Int = call core/vec/list_length(v258)
-  let v260: Vec[y7] = call staticNew(v259)
-  let v261: Vec[b8] = call core/vec/from_list_go(v258, v260, 0)
+  let v260: Vec[a8] = call staticNew(v259)
+  let v261: Vec[d8] = call core/vec/from_list_go(v258, v260, 0)
   v261
 
-fn core/vec/last(v262: Vec[l8]) -> Option[l8] =
+fn core/vec/last(v262: Vec[n8]) -> Option[n8] =
   let v263: Int = call staticLength(v262)
   let_join v271(v266: Bool) =
     switch v266 {
       1 ->
-        let v267: ~Option[l8] = construct Option::None#1()
+        let v267: ~Option[n8] = construct Option::None#1()
         v267
       _ ->
         let v268: Int = sub_int(v263, 1)
-        let v269: l8 = call staticGet(v262, v268)
-        let v270: ~Option[l8] = construct Option::Some#0(v269)
+        let v269: n8 = call staticGet(v262, v268)
+        let v270: ~Option[n8] = construct Option::Some#0(v269)
         v270
     }
   in
@@ -457,27 +457,27 @@ fn core/vec/last(v262: Vec[l8]) -> Option[l8] =
   let v265: Bool = call lt(v264, v263, 1)
   jump v271(v265)
 
-fn core/vec/filter(v272: Vec[t8], v273: (t8) -> Bool) -> Vec[t8] =
-  let v274: List[t8] = call to_list(v272)
-  let v275: List[t8] = call core/vec/list_filter(v274, v273)
-  let v276: Vec[t8] = call core/vec/from_list(v275)
+fn core/vec/filter(v272: Vec[v8], v273: (v8) -> Bool) -> Vec[v8] =
+  let v274: List[v8] = call to_list(v272)
+  let v275: List[v8] = call core/vec/list_filter(v274, v273)
+  let v276: Vec[v8] = call core/vec/from_list(v275)
   v276
 
-fn core/vec/map(v277: Vec[e9], v278: (e9) -> d9) -> Vec[d9] =
-  let v279: List[e9] = call to_list(v277)
-  let v280: List[d9] = call core/vec/list_map(v279, v278)
-  let v281: Vec[d9] = call core/vec/from_list(v280)
+fn core/vec/map(v277: Vec[g9], v278: (g9) -> f9) -> Vec[f9] =
+  let v279: List[g9] = call to_list(v277)
+  let v280: List[f9] = call core/vec/list_map(v279, v278)
+  let v281: Vec[f9] = call core/vec/from_list(v280)
   v281
 
-fn core/vec/fold(v282: Vec[p9], v283: r9, v284: (r9, p9) -> r9) -> r9 =
-  let v285: List[p9] = call to_list(v282)
-  let v286: r9 = call core/vec/list_fold(v285, v283, v284)
+fn core/vec/fold(v282: Vec[r9], v283: t9, v284: (t9, r9) -> t9) -> t9 =
+  let v285: List[r9] = call to_list(v282)
+  let v286: t9 = call core/vec/list_fold(v285, v283, v284)
   v286
 
-fn core/vec/sort_by(v287: Dict, v288: Vec[t9], v289: (t9) -> u9) -> Vec[t9] =
-  let v290: List[t9] = call to_list(v288)
-  let v291: List[t9] = call core/vec/list_sort_by(v287, v290, v289)
-  let v292: Vec[t9] = call core/vec/from_list(v291)
+fn core/vec/sort_by(v287: Dict, v288: Vec[v9], v289: (v9) -> w9) -> Vec[v9] =
+  let v290: List[v9] = call to_list(v288)
+  let v291: List[v9] = call core/vec/list_sort_by(v287, v290, v289)
+  let v292: Vec[v9] = call core/vec/from_list(v291)
   v292
 
 fn helpers_a/compute(v293: Int) -> Int =

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_length
 
-declare length: (List[n]) -> Int
+declare length: (List[o]) -> Int
 declare println: (m) -> Unit
 
 fn main() -> Unit =

@@ -6,7 +6,7 @@ module data_types__result_basic
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
 
-fn extract(v0: Result[x7, Int]) -> Int =
+fn extract(v0: Result[z7, Int]) -> Int =
   switch v0 {
     0 (v1: b) ->
       v1
@@ -16,6 +16,6 @@ fn extract(v0: Result[x7, Int]) -> Int =
   }
 
 fn test() -> Int =
-  let v4: ~Result[c8, Int] = construct Result::Ok#0(42)
+  let v4: ~Result[e8, Int] = construct Result::Ok#0(42)
   let v5: Int = call extract(v4)
   v5

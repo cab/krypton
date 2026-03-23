@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__impl_vec_distinct_params
 
 declare println: (Dict, m) -> Unit
-declare tag: (Dict, q7) -> String
+declare tag: (Dict, s7) -> String
 
 fn main() -> Unit =
   let v0: Vec[Int] = make_vec(1, 2, 3)

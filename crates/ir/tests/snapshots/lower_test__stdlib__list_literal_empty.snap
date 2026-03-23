@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module stdlib__list_literal_empty
 
 fn main() -> Int =
-  let_join v4(v1: ~List[u7]) =
+  let_join v4(v1: ~List[w7]) =
     switch v1 {
       0 (v2: a, v3: List[a]) ->
         1
@@ -13,5 +13,5 @@ fn main() -> Int =
         0
     }
   in
-  let v0: ~List[u7] = construct List::Nil#1()
+  let v0: ~List[w7] = construct List::Nil#1()
   jump v4(v0)

@@ -6,13 +6,13 @@ module data_types__generic_function
 
 type Option[a] = Some#0(a) | None#1
 
-fn map_option(v0: Option[z7], v1: (z7) -> a8) -> Option[a8] =
+fn map_option(v0: Option[b8], v1: (b8) -> c8) -> Option[c8] =
   switch v0 {
     0 (v2: a) ->
-      let v3: a8 = call_closure v1(v2)
-      let v4: ~Option[a8] = construct Option::Some#0(v3)
+      let v3: c8 = call_closure v1(v2)
+      let v4: ~Option[c8] = construct Option::Some#0(v3)
       v4
     1 ->
-      let v5: ~Option[a8] = construct Option::None#1()
+      let v5: ~Option[c8] = construct Option::None#1()
       v5
   }

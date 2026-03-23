@@ -6,7 +6,7 @@ module traits__trait_method_shadows_prelude
 
 declare println: (m) -> Unit
 declare show: (Dict, g) -> String
-declare times: (Dict, r7, r7) -> r7
+declare times: (Dict, t7, t7) -> t7
 
 fn main() -> Unit =
   let v0: Dict = get_dict Multiply[Int]

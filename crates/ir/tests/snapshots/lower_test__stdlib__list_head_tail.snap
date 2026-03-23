@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_head_tail
 
-declare head: (List[x2]) -> Option[x2]
+declare head: (List[y2]) -> Option[y2]
 declare println: (m) -> Unit
 
 fn main() -> Unit =

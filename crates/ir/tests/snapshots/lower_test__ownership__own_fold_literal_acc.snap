@@ -4,13 +4,13 @@ expression: ir_module.to_string()
 ---
 module ownership__own_fold_literal_acc
 
-fn fold(v0: List[s1], v1: t1, v2: (t1, s1) -> t1) -> t1 =
+fn fold(v0: List[t1], v1: u1, v2: (u1, t1) -> u1) -> u1 =
   switch v0 {
     1 ->
       v1
     0 (v3: a, v4: List[a]) ->
-      let v5: z7 = call_closure v2(v1, v3)
-      let v6: z7 = call fold(v4, v5, v2)
+      let v5: b8 = call_closure v2(v1, v3)
+      let v6: b8 = call fold(v4, v5, v2)
       v6
   }
 

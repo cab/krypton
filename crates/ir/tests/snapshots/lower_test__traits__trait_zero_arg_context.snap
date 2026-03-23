@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_context
 
-declare default: (Dict) -> r7
+declare default: (Dict) -> t7
 declare println: (m) -> Unit
 
 fn int_default() -> Int =
@@ -12,8 +12,8 @@ fn int_default() -> Int =
   let v1: Int = call default(v0)
   v1
 
-fn default2(v2: Dict) -> y7 =
-  let v3: y7 = call default(v2)
+fn default2(v2: Dict) -> a8 =
+  let v3: a8 = call default(v2)
   v3
 
 fn main() -> Unit =

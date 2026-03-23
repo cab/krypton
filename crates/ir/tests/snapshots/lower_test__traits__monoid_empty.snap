@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__monoid_empty
 
 declare combine: (Dict, g, g) -> g
-declare empty: (Dict) -> r7
+declare empty: (Dict) -> t7
 declare println: (m) -> Unit
 
 fn main() -> Unit =

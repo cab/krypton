@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__local_trait_imported_type
 
-declare describe: (Dict, q7) -> String
+declare describe: (Dict, s7) -> String
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =

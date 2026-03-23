@@ -7,10 +7,10 @@ module modules__qualified_option_none
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v4(v0: ~Option[t7]) =
+  let_join v4(v0: ~Option[v7]) =
     let v2: ~Option[Int] = construct Option::Some#0(42)
     let v3: Unit = call println(v0)
     v3
   in
-  let v1: ~Option[t7] = construct Option::None#1()
+  let v1: ~Option[v7] = construct Option::None#1()
   jump v4(v1)

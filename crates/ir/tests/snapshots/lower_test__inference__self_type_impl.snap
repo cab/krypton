@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
-declare my_eq: (Dict, q7, q7) -> Bool
+declare my_eq: (Dict, s7, s7) -> Bool
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =

@@ -7,7 +7,7 @@ module data_types__nullary_singleton
 type Option[a] = None#0 | Some#1(a)
 declare println: (m) -> Unit
 
-fn unwrap_or(v0: Option[x7], v1: x7) -> x7 =
+fn unwrap_or(v0: Option[z7], v1: z7) -> z7 =
   switch v0 {
     0 ->
       v1
@@ -16,12 +16,12 @@ fn unwrap_or(v0: Option[x7], v1: x7) -> x7 =
   }
 
 fn main() -> Unit =
-  let_join v9(v3: ~Option[a8]) =
+  let_join v9(v3: ~Option[c8]) =
     let v5: ~Option[Int] = construct Option::Some#1(42)
     let v6: Int = call unwrap_or(v5, 0)
     let v7: Int = call unwrap_or(v3, v6)
     let v8: Unit = call println(v7)
     v8
   in
-  let v4: ~Option[a8] = construct Option::None#0()
+  let v4: ~Option[c8] = construct Option::None#0()
   jump v9(v4)

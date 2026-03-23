@@ -1759,8 +1759,6 @@ fn process_traits_and_deriving(
     module: &Module,
     cache: &HashMap<String, TypedModule>,
     module_path: &Option<String>,
-    is_prelude_tree: bool,
-    prelude_tree_paths: &HashSet<String>,
     is_core_module: bool,
 ) -> Result<
     (
@@ -1779,8 +1777,6 @@ fn process_traits_and_deriving(
         &state.type_provenance,
         &state.imports.imported_type_info,
         cache,
-        is_prelude_tree,
-        prelude_tree_paths,
     );
 
     // Phase 2: Register imported trait definitions
@@ -1834,8 +1830,6 @@ fn import_cached_instances(
     type_provenance: &HashMap<String, String>,
     imported_type_info: &HashMap<String, (String, Visibility)>,
     cache: &HashMap<String, TypedModule>,
-    is_prelude_tree: bool,
-    prelude_tree_paths: &HashSet<String>,
 ) {
     // Structural instance lookup: for each type/trait in scope, look up instances
     // in the defining module. The orphan rule guarantees instances live in the
@@ -1847,13 +1841,6 @@ fn import_cached_instances(
         }
         for (_, (source_path, _)) in imported_type_info {
             source_modules.insert(source_path.as_str());
-        }
-
-        // Prelude-tree modules need instances from all already-compiled siblings
-        if is_prelude_tree {
-            for path in prelude_tree_paths {
-                source_modules.insert(path.as_str());
-            }
         }
 
         let mut seen_instances: HashSet<(String, Type)> = HashSet::new();
@@ -3096,8 +3083,6 @@ pub(crate) fn infer_module_inner(
             module,
             cache,
             &module_path,
-            is_prelude_tree,
-            prelude_tree_paths,
             is_core_module,
         )?;
 

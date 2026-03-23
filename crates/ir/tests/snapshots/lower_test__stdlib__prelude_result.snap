@@ -4,16 +4,16 @@ expression: ir_module.to_string()
 ---
 module stdlib__prelude_result
 
-fn ok_val() -> Result[s7, Int] =
-  let v0: ~Result[s7, Int] = construct Result::Ok#0(42)
+fn ok_val() -> Result[u7, Int] =
+  let v0: ~Result[u7, Int] = construct Result::Ok#0(42)
   v0
 
-fn err_val() -> Result[String, y7] =
-  let v1: ~Result[String, y7] = construct Result::Err#1("oops")
+fn err_val() -> Result[String, a8] =
+  let v1: ~Result[String, a8] = construct Result::Err#1("oops")
   v1
 
 fn main() -> Int =
-  let v2: Result[g8, Int] = call ok_val()
+  let v2: Result[i8, Int] = call ok_val()
   switch v2 {
     0 (v3: d) ->
       v3

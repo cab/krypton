@@ -6,7 +6,7 @@ module data_types__list_recursive
 
 type List[a] = Cons#0(a, List[a]) | Nil#1
 
-fn length(v0: List[v7]) -> Int =
+fn length(v0: List[x7]) -> Int =
   switch v0 {
     1 ->
       0

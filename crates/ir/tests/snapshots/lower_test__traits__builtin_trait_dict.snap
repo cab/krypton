@@ -7,8 +7,8 @@ module traits__builtin_trait_dict
 declare combine: (Dict, g, g) -> g
 declare println: (m) -> Unit
 
-fn apply_combine(v0: Dict, v1: w7, v2: w7) -> w7 =
-  let v3: w7 = call combine(v0, v1, v2)
+fn apply_combine(v0: Dict, v1: y7, v2: y7) -> y7 =
+  let v3: y7 = call combine(v0, v1, v2)
   v3
 
 fn main() -> Unit =

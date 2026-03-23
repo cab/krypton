@@ -10,7 +10,7 @@ fn first(v0: Int) -> Option[Int] =
   let v1: ~Option[Int] = construct Option::Some#0(v0)
   v1
 
-fn second(v2: w7) -> Option[Int] =
+fn second(v2: y7) -> Option[Int] =
   let v3: ~Option[Int] = construct Option::None#1()
   v3
 

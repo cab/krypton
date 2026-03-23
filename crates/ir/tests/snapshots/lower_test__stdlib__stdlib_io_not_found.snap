@@ -7,7 +7,7 @@ module stdlib__stdlib_io_not_found
 declare println: (m) -> Unit
 declare read_file
 
-fn handle(v0: Result[y7, z7]) -> Unit =
+fn handle(v0: Result[a8, b8]) -> Unit =
   switch v0 {
     0 (v1: d) ->
       let v2: Unit = call println("unexpected")

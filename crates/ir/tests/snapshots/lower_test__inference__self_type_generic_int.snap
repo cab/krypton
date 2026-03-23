@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__self_type_generic_int
 
 struct Box[a] { value: a }
-declare my_eq: (Dict, r7, r7) -> Bool
+declare my_eq: (Dict, t7, t7) -> Bool
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =

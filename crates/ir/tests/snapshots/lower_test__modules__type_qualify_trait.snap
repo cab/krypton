@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__type_qualify_trait
 
-declare my_eq: (Dict, r7, r7) -> Bool
+declare my_eq: (Dict, t7, t7) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =

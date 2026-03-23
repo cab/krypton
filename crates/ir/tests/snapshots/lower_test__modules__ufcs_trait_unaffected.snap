@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__ufcs_trait_unaffected
 
-fn map(v0: List[v], v1: (v) -> x) -> List[x] =
+fn map(v0: List[w], v1: (w) -> y) -> List[y] =
   let v2: Int = call_closure v1(v0)
   v2
 

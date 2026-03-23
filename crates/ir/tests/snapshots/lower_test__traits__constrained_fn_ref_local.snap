@@ -8,7 +8,7 @@ declare eq: (Dict, g, g) -> Bool
 declare println: (Dict, m) -> Unit
 declare show: (Dict, g) -> String
 
-fn show_it(v0: Dict, v1: r7) -> String =
+fn show_it(v0: Dict, v1: t7) -> String =
   let v2: String = call show(v0, v1)
   v2
 

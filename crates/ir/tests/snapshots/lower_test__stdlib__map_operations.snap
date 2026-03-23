@@ -4,12 +4,12 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_operations
 
-declare contains: (Dict, Dict, Map[k10, l10], k10) -> Bool
-declare delete: (Dict, Dict, Map[b10, c10], b10) -> Map[b10, c10]
-declare empty: () -> Map[o8, p8]
+declare contains: (Dict, Dict, Map[n10, o10], n10) -> Bool
+declare delete: (Dict, Dict, Map[e10, f10], e10) -> Map[e10, f10]
+declare empty: () -> Map[r8, s8]
 declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[t8, u8], t8, u8) -> Map[t8, u8]
-declare size: (Map[g13, h13]) -> Int
+declare put: (Dict, Dict, Map[w8, x8], w8, x8) -> Map[w8, x8]
+declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

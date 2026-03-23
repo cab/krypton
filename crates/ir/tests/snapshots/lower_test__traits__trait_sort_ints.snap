@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_sort_ints
 
-declare compare: (Dict, r7, r7) -> Int
+declare compare: (Dict, t7, t7) -> Int
 declare println: (m) -> Unit
 
 fn main() -> Unit =

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_fn
 
-declare fmap: (Dict, r7[s7], (s7) -> t7) -> r7[t7]
+declare fmap: (Dict, t7[u7], (u7) -> v7) -> t7[v7]
 declare println: (m) -> Unit
 
 fn main() -> Unit =
