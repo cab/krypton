@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_nonoverlap
 
 trait Convert[s7] { convert(s7): String }
-instance Convert[$Fun1$T0$Int] {  }
-instance Convert[$Fun1$T0$Bool] {  }
+instance Convert[$Fun1$$Var0$Int] {  }
+instance Convert[$Fun1$$Var0$Bool] {  }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

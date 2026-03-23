@@ -747,7 +747,7 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
         Type::Var(id) => {
             let next = var_map.len();
             let idx = *var_map.entry(*id).or_insert(next);
-            format!("T{idx}")
+            format!("$Var{idx}")
         }
         Type::FnHole => "$FnHole".to_string(),
         other => unreachable!("unexpected type in canonical_name_inner: {other:?}"),
@@ -805,7 +805,7 @@ mod tests {
         // (a) -> Int and (b) -> Int should produce the same name
         let ty_a = Type::Fn(vec![Type::Var(TypeVarId(5))], Box::new(Type::Int));
         let ty_b = Type::Fn(vec![Type::Var(TypeVarId(99))], Box::new(Type::Int));
-        assert_eq!(type_to_canonical_name(&ty_a), "$Fun1$T0$Int");
+        assert_eq!(type_to_canonical_name(&ty_a), "$Fun1$$Var0$Int");
         assert_eq!(type_to_canonical_name(&ty_a), type_to_canonical_name(&ty_b));
     }
 
@@ -820,8 +820,8 @@ mod tests {
             vec![Type::Var(TypeVarId(0))],
             Box::new(Type::Var(TypeVarId(1))),
         );
-        assert_eq!(type_to_canonical_name(&same), "$Fun1$T0$T0");
-        assert_eq!(type_to_canonical_name(&diff), "$Fun1$T0$T1");
+        assert_eq!(type_to_canonical_name(&same), "$Fun1$$Var0$$Var0");
+        assert_eq!(type_to_canonical_name(&diff), "$Fun1$$Var0$$Var1");
         assert_ne!(type_to_canonical_name(&same), type_to_canonical_name(&diff));
     }
 

@@ -1,4 +1,4 @@
-# expect: error E0302
+# expect: error E0309
 trait Test[a] {
     fun test(x: a) -> String
 }

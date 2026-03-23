@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__impl_vec_trait
 
 trait MyTrait[s7] { check(s7): String }
-instance MyTrait[Vec$T0] {  }
+instance MyTrait[Vec$$Var0] {  }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

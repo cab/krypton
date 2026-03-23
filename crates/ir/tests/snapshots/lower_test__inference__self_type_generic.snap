@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module inference__self_type_generic
@@ -8,7 +7,7 @@ module inference__self_type_generic
 struct Wrapper[a] { value: a }
 trait MyEq[t7] { my_eq(t7, t7): Bool }
 instance MyEq[String] {  }
-instance MyEq[Wrapper$T0] {  }
+instance MyEq[Wrapper$$Var0] {  }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

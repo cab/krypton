@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__partial_apply_result
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
 trait Functor[u7] { fmap(u7[v7], (v7) -> w7): u7[w7] }
-instance Functor[Result$T0$T1] {  }
+instance Functor[Result$$Var0$$Var1] {  }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

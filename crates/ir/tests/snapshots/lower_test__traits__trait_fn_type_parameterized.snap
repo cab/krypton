@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_parameterized
 
 trait Test[s7] { test(s7): String }
-instance Test[$Fun0$T0] {  }
-instance Test[$Fun1$Int$T0] {  }
+instance Test[$Fun0$$Var0] {  }
+instance Test[$Fun1$Int$$Var0] {  }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

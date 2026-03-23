@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_constrained_vec
 
 trait Test[t7] { name(): String }
-instance Test[Vec$T0] {  }
+instance Test[Vec$$Var0] {  }
 instance Test[Int] {  }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int

@@ -49,6 +49,7 @@ pub enum TypeErrorCode {
     E0512, // Nested wildcard in impl head
     E0307, // Unknown trait
     E0308, // Self outside impl block
+    E0309, // Duplicate instance
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -124,6 +125,11 @@ pub enum TypeError {
     OrphanInstance {
         trait_name: String,
         ty: String,
+    },
+    DuplicateInstance {
+        trait_name: String,
+        ty: String,
+        existing_ty: String,
     },
     CannotDerive {
         trait_name: String,
@@ -248,6 +254,7 @@ impl TypeError {
                 ..
             } => TypeErrorCode::E0303,
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
+            TypeError::DuplicateInstance { .. } => TypeErrorCode::E0309,
             TypeError::CannotDerive { .. } => TypeErrorCode::E0304,
             TypeError::DefinitionConflictsWithTraitMethod { .. } => TypeErrorCode::E0305,
             TypeError::InvalidImpl { .. } => TypeErrorCode::E0306,
@@ -363,6 +370,9 @@ impl TypeError {
             TypeError::NoInstance { .. } => None,
             TypeError::OrphanInstance { trait_name, ty } => {
                 Some(format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty))
+            }
+            TypeError::DuplicateInstance { existing_ty, .. } => {
+                Some(format!("conflicts with existing implementation for `{}`", existing_ty))
             }
             TypeError::CannotDerive { trait_name, field_type, .. } => {
                 Some(format!("field type `{}` does not implement `{}`", field_type, trait_name))
@@ -644,6 +654,13 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "orphan instance: cannot implement `{}` for `{}`",
+                    trait_name, ty
+                )
+            }
+            TypeError::DuplicateInstance { trait_name, ty, .. } => {
+                write!(
+                    f,
+                    "duplicate instance: `{}` is already implemented for `{}`",
                     trait_name, ty
                 )
             }

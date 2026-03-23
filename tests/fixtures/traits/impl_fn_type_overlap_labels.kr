@@ -1,4 +1,4 @@
-# expect: error E0302
+# expect: error E0309
 trait Wrap[a] {
     fun wrap(x: a) -> String
 }

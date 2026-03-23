@@ -66,7 +66,7 @@ impl TraitRegistry {
         Ok(())
     }
 
-    pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), TypeError> {
+    pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), (TypeError, Span)> {
         // Check for duplicate (trait, type) pairs
         for existing in &self.instances {
             if existing.trait_name == info.trait_name
@@ -74,10 +74,13 @@ impl TraitRegistry {
             {
                 let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info.type_var_ids.iter()
                     .map(|(name, &id)| (id, name.as_str())).collect();
-                return Err(TypeError::OrphanInstance {
+                let existing_names: std::collections::HashMap<crate::types::TypeVarId, &str> = existing.type_var_ids.iter()
+                    .map(|(name, &id)| (id, name.as_str())).collect();
+                return Err((TypeError::DuplicateInstance {
                     trait_name: info.trait_name.clone(),
                     ty: crate::types::format_type_with_var_map(&info.target_type, &names),
-                });
+                    existing_ty: crate::types::format_type_with_var_map(&existing.target_type, &existing_names),
+                }, existing.span));
             }
         }
         self.instances.push(info);

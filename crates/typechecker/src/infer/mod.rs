@@ -2150,7 +2150,18 @@ fn process_deriving(
                 };
                 trait_registry
                     .register_instance(instance)
-                    .map_err(|e| spanned(e, type_decl.span))?;
+                    .map_err(|(e, existing_span)| SpannedTypeError {
+                        error: e,
+                        span: type_decl.span,
+                        note: None,
+                        secondary_span: Some(crate::unify::SecondaryLabel {
+                            span: existing_span,
+                            message: "first implementation here".into(),
+                            source_file: None,
+                        }),
+                        source_file: None,
+                        var_names: None,
+                    })?;
 
                 let syn_span: Span = (0, 0);
                 let trait_id_for_synth = trait_registry.lookup_trait(trait_name)
@@ -2431,7 +2442,18 @@ fn register_impl_instances(
 
             trait_registry
                 .register_instance(instance)
-                .map_err(|e| spanned(e, *span))?;
+                .map_err(|(e, existing_span)| SpannedTypeError {
+                    error: e,
+                    span: *span,
+                    note: None,
+                    secondary_span: Some(crate::unify::SecondaryLabel {
+                        span: existing_span,
+                        message: "first implementation here".into(),
+                        source_file: None,
+                    }),
+                    source_file: None,
+                    var_names: None,
+                })?;
         }
     }
     Ok(())

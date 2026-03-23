@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
 trait Contravariant[u7] { contramap(u7[v7], (w7) -> v7): u7[w7] }
-instance Contravariant[Predicate$T0$T1] {  }
+instance Contravariant[Predicate$$Var0$$Var1] {  }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__constrained_instance_multi_bound_ok
 
 type Pair[a, b] = Pair#0(a, b)
-instance Show[Pair$T0$T1] {  }
+instance Show[Pair$$Var0$$Var1] {  }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object

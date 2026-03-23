@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__partial_apply_fn
 
 trait Functor[t7] { fmap(t7[u7], (u7) -> v7): t7[v7] }
-instance Functor[$Fun1$T0$T1] {  }
+instance Functor[$Fun1$$Var0$$Var1] {  }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
