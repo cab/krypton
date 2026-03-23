@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use krypton_ir::link::link;
 use krypton_ir::lower::lower_module;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
@@ -65,4 +66,52 @@ fn ir_lower(
         .unwrap_or_else(|e| panic!("fixture {name}: IR lowering failed: {e:?}"));
 
     insta::assert_snapshot!(name, ir_module.to_string());
+}
+
+#[rstest]
+fn ir_link(
+    #[files("tests/fixtures/modules/*.kr")]
+    #[base_dir = "../.."]
+    path: PathBuf,
+) {
+    if should_skip(&path) {
+        return;
+    }
+
+    let fixture = load_fixture(&path);
+    if fixture.expectations.is_empty() || expects_error(&fixture.expectations) {
+        return;
+    }
+
+    let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+    let name = format!("link__{stem}");
+    let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
+
+    let (module, errors) = parse(&fixture.source);
+    assert!(
+        errors.is_empty(),
+        "fixture {name}: parse errors: {errors:?}"
+    );
+
+    let typed_modules = infer_module(&module, &resolver)
+        .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
+
+    // Lower ALL typed modules, skipping the fixture if any module fails.
+    let mut ir_modules = Vec::new();
+    for (i, typed) in typed_modules.iter().enumerate() {
+        let mod_name = if i == 0 {
+            stem.clone()
+        } else {
+            typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
+        };
+        match lower_module(typed, &mod_name) {
+            Ok(ir) => ir_modules.push(ir),
+            Err(e) => panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}"),
+        }
+    }
+
+    // Link all modules into one.
+    let linked = link(ir_modules);
+
+    insta::assert_snapshot!(name, linked.to_string());
 }

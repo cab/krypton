@@ -2344,6 +2344,24 @@ impl LowerCtx {
         // Peel TypeApp to get the function name, origin, and type args
         let (func_name, origin, type_args) = extract_call_info(func);
 
+        // Intercept trait_dict(TraitName) intrinsic: resolve to the dict param
+        // for the named trait from the enclosing function's where-constraints.
+        if func_name.as_deref() == Some("trait_dict") {
+            if let Some(arg) = args.first() {
+                if let TypedExprKind::Var(trait_name) = &arg.kind {
+                    // Find the dict param VarId for this trait
+                    for ((t, _), var_id) in &self.dict_params {
+                        if t == trait_name {
+                            return Ok((vec![], SimpleExpr::Atom(Atom::Var(*var_id))));
+                        }
+                    }
+                    return Err(LowerError::UnresolvedVar(format!(
+                        "trait_dict: no dict param for trait {trait_name}"
+                    )));
+                }
+            }
+        }
+
         // ANF-normalize all arguments
         let mut bindings = vec![];
         let mut arg_atoms = vec![];
@@ -2488,6 +2506,25 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         // Peel TypeApp to get function name, origin, type args
         let (func_name, origin, type_args) = extract_call_info(func);
+
+        // Intercept trait_dict(TraitName) intrinsic
+        if func_name.as_deref() == Some("trait_dict") {
+            if let Some(arg) = args.first() {
+                if let TypedExprKind::Var(trait_name) = &arg.kind {
+                    for ((t, _), var_id) in &self.dict_params {
+                        if t == trait_name {
+                            return Ok(Expr {
+                                ty: result_ty.clone(),
+                                kind: ExprKind::Atom(Atom::Var(*var_id)),
+                            });
+                        }
+                    }
+                    return Err(LowerError::UnresolvedVar(format!(
+                        "trait_dict: no dict param for trait {trait_name}"
+                    )));
+                }
+            }
+        }
 
         let result_ty = result_ty.clone();
 
@@ -3444,14 +3481,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 3b. Allocate FnIds for locally-defined trait methods.
-    // Imported trait methods already have FnIds from fn_types entries.
+    // 3b. Register trait methods in trait_method_ids from all trait_defs.
     // Local trait methods are stripped from fn_types by the typechecker,
-    // so we must register them from trait_defs.
+    // and imported trait methods may lack `origin` in fn_types entries
+    // (e.g., prelude auto-imports), so we register from trait_defs for both.
     for trait_def in &typed.trait_defs {
-        if trait_def.is_imported {
-            continue;
-        }
         for (method_name, _param_count) in &trait_def.methods {
             let fn_id = if let Some(&existing) = ctx.fn_ids.get(method_name) {
                 existing

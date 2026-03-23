@@ -3,6 +3,7 @@ import core/list.{List, Cons, Nil, fold}
 import core/vec.{to_list as vec_to_list}
 import core/eq.{Eq}
 import core/hash.{Hash}
+import core/ord.{Ord}
 
 extern "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 

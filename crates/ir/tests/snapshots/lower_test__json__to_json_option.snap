@@ -6,7 +6,7 @@ module json__to_json_option
 
 declare json_to_string: (Json) -> String
 declare println: (Dict, m) -> Unit
-declare to_json: (Dict, i14) -> Json
+declare to_json: (Dict, j14) -> Json
 
 fn main() -> Unit =
   let_join v13(v0: ~Option[Int]) =

@@ -1,0 +1,482 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: linked.to_string()
+---
+module use_math
+
+type List[h] = Cons#0(h, List[h]) | Nil#1
+type Option[g] = Some#0(g) | None#1
+type Ordering = LT#0 | EQ#1 | GT#2
+type Result[g, h] = Ok#0(h) | Err#1(g)
+declare list_filter: (List[g1], (g1) -> Bool) -> List[g1]
+declare list_fold: (List[s1], t1, (t1, s1) -> t1) -> t1
+declare list_length: (List[n]) -> Int
+declare list_map: (List[v], (v) -> x) -> List[x]
+declare list_sort_by: (Dict, List[v5], (v5) -> k5) -> List[v5]
+declare lt: (Dict, h, h) -> Bool
+declare panic: (String) -> e
+declare raw_print
+declare raw_println
+declare show: (Dict, g) -> String
+declare staticContainsKey
+declare staticDelete
+declare staticEmpty
+declare staticEntries
+declare staticFreeze
+declare staticGet
+declare staticGetUnsafe
+declare staticKeys
+declare staticLength
+declare staticMerge
+declare staticNew
+declare staticPut
+declare staticSet
+declare staticSize
+declare staticValues
+declare vec_to_list: (Vec[f7]) -> List[f7]
+
+fn main() -> Unit =
+  let v0: Int = call sum(3, 5)
+  let v1: Unit = call println(v0)
+  v1
+
+fn println(v5: Dict, v6: m) -> Unit =
+  let v7: String = call show(v5, v6)
+  let v8: Unit = call raw_println(v7)
+  v8
+
+fn print(v9: Dict, v10: u) -> Unit =
+  let v11: String = call show(v9, v10)
+  let v12: Unit = call raw_print(v11)
+  v12
+
+fn length(v13: List[n]) -> Int =
+  switch v13 {
+    1 ->
+      0
+    0 (v14: h, v15: List[h]) ->
+      let v16: Int = call length(v15)
+      let v17: Int = add_int(1, v16)
+      v17
+  }
+
+fn map(v18: List[v], v19: (v) -> x) -> List[x] =
+  switch v18 {
+    1 ->
+      let v20: ~List[x] = construct List::Nil#1()
+      v20
+    0 (v21: h, v22: List[h]) ->
+      let v23: x = call_closure v19(v21)
+      let v24: List[x] = call map(v22, v19)
+      let v25: ~List[x] = construct List::Cons#0(v23, v24)
+      v25
+  }
+
+fn filter(v26: List[g1], v27: (g1) -> Bool) -> List[g1] =
+  switch v26 {
+    1 ->
+      let v28: ~List[g1] = construct List::Nil#1()
+      v28
+    0 (v29: h, v30: List[h]) ->
+      let v31: Bool = call_closure v27(v29)
+      switch v31 {
+        1 ->
+          let v32: List[g1] = call filter(v30, v27)
+          let v33: ~List[g1] = construct List::Cons#0(v29, v32)
+          v33
+        _ ->
+          let v34: List[g1] = call filter(v30, v27)
+          v34
+      }
+  }
+
+fn fold(v35: List[s1], v36: t1, v37: (t1, s1) -> t1) -> t1 =
+  switch v35 {
+    1 ->
+      v36
+    0 (v38: h, v39: List[h]) ->
+      let v40: t1 = call_closure v37(v36, v38)
+      let v41: t1 = call fold(v39, v40, v37)
+      v41
+  }
+
+fn concat(v42: List[a2], v43: List[a2]) -> List[a2] =
+  switch v42 {
+    1 ->
+      v43
+    0 (v44: h, v45: List[h]) ->
+      let v46: List[a2] = call concat(v45, v43)
+      let v47: ~List[a2] = construct List::Cons#0(v44, v46)
+      v47
+  }
+
+fn reverse(v48: List[j2]) -> List[j2] =
+  let_join v56(v50: ~List[j2]) =
+    let v54: (List[j2], j2) -> ~List[j2] = make_closure(lambda$18, [])
+    let v55: List[j2] = call fold(v48, v50, v54)
+    v55
+  in
+  let v49: ~List[j2] = construct List::Nil#1()
+  jump v56(v49)
+
+fn head(v57: List[x2]) -> Option[x2] =
+  switch v57 {
+    0 (v58: h, v59: List[h]) ->
+      let v60: ~Option[x2] = construct Option::Some#0(v58)
+      v60
+    1 ->
+      let v61: ~Option[x2] = construct Option::None#1()
+      v61
+  }
+
+fn tail(v62: List[e3]) -> Option[List[e3]] =
+  switch v62 {
+    0 (v63: h, v64: List[h]) ->
+      let v65: ~Option[List[e3]] = construct Option::Some#0(v64)
+      v65
+    1 ->
+      let v66: ~Option[List[e3]] = construct Option::None#1()
+      v66
+  }
+
+fn last(v67: List[q3]) -> Option[q3] =
+  switch v67 {
+    0 (v68: h, v69: List[h]) ->
+      switch v69 {
+        1 ->
+          let v70: ~Option[q3] = construct Option::Some#0(v68)
+          v70
+        _ ->
+          let v71: Option[q3] = call last(v69)
+          v71
+      }
+    1 ->
+      let v72: ~Option[q3] = construct Option::None#1()
+      v72
+  }
+
+fn split(v73: List[e4]) -> (List[e4], List[e4]) =
+  switch v73 {
+    1 ->
+      let_join v80(v75: ~List[e4]) =
+        let_join v79(v77: ~List[e4]) =
+          let v78: (~List[e4], ~List[e4]) = tuple(v75, v77)
+          v78
+        in
+        let v76: ~List[e4] = construct List::Nil#1()
+        jump v79(v76)
+      in
+      let v74: ~List[e4] = construct List::Nil#1()
+      jump v80(v74)
+    0 (v81: h, v82: List[h]) ->
+      switch v82 {
+        1 ->
+          let v83: ~List[e4] = construct List::Nil#1()
+          let v84: ~List[e4] = construct List::Cons#0(v81, v83)
+          let_join v88(v86: ~List[e4]) =
+            let v87: (~List[e4], ~List[e4]) = tuple(v84, v86)
+            v87
+          in
+          let v85: ~List[e4] = construct List::Nil#1()
+          jump v88(v85)
+        0 (v89: h, v90: List[h]) ->
+          let v91: (List[e4], List[e4]) = call split(v90)
+          let v92: List[e4] = tuple_project v91.0
+          let v93: List[e4] = tuple_project v91.1
+          let v94: ~List[e4] = construct List::Cons#0(v81, v92)
+          let v95: ~List[e4] = construct List::Cons#0(v89, v93)
+          let v96: (~List[e4], ~List[e4]) = tuple(v94, v95)
+          v96
+      }
+  }
+
+fn merge_by(v97: Dict, v98: List[v4], v99: List[v4], v100: (v4) -> x4) -> List[v4] =
+  switch v98 {
+    1 ->
+      v99
+    0 (v101: h, v102: List[h]) ->
+      switch v99 {
+        1 ->
+          v98
+        0 (v103: h, v104: List[h]) ->
+          let_join v115(v108: Bool) =
+            switch v108 {
+              1 ->
+                let v109: ~List[v4] = construct List::Cons#0(v103, v104)
+                let v110: List[v4] = call merge_by(v97, v102, v109, v100)
+                let v111: ~List[v4] = construct List::Cons#0(v101, v110)
+                v111
+              _ ->
+                let v112: ~List[v4] = construct List::Cons#0(v101, v102)
+                let v113: List[v4] = call merge_by(v97, v112, v104, v100)
+                let v114: ~List[v4] = construct List::Cons#0(v103, v113)
+                v114
+            }
+          in
+          let v105: x4 = call_closure v100(v101)
+          let v106: x4 = call_closure v100(v103)
+          let v107: Bool = call lt(v97, v105, v106)
+          jump v115(v107)
+      }
+  }
+
+fn sort_by(v116: Dict, v117: List[v5], v118: (v5) -> k5) -> List[v5] =
+  switch v117 {
+    1 ->
+      let v119: ~List[v5] = construct List::Nil#1()
+      v119
+    0 (v120: h, v121: List[h]) ->
+      switch v121 {
+        1 ->
+          v117
+        _ ->
+          let v122: (List[v5], List[v5]) = call split(v117)
+          let v123: List[v5] = tuple_project v122.0
+          let v124: List[v5] = tuple_project v122.1
+          let v125: List[v5] = call sort_by(v116, v123, v118)
+          let v126: List[v5] = call sort_by(v116, v124, v118)
+          let v127: List[v5] = call merge_by(v116, v125, v126, v118)
+          v127
+      }
+    _ ->
+      let v128: (List[v5], List[v5]) = call split(v117)
+      let v129: List[v5] = tuple_project v128.0
+      let v130: List[v5] = tuple_project v128.1
+      let v131: List[v5] = call sort_by(v116, v129, v118)
+      let v132: List[v5] = call sort_by(v116, v130, v118)
+      let v133: List[v5] = call merge_by(v116, v131, v132, v118)
+      v133
+  }
+
+fn lambda$18(v51: List[j2], v52: j2) -> ~List[j2] =
+  let v53: ~List[j2] = construct List::Cons#0(v52, v51)
+  v53
+
+fn empty() -> Map[o8, p8] =
+  let v134: Map[o8, p8] = call staticEmpty()
+  v134
+
+fn put(v135: Dict, v136: Dict, v137: Map[t8, u8], v138: t8, v139: u8) -> Map[t8, u8] =
+  let v140: g9 = v135
+  let v141: j9 = v136
+  let v142: Map[t8, u8] = call staticPut(v137, v138, v139, v140, v141)
+  v142
+
+fn get(v143: Dict, v144: Dict, v145: Map[m9, z9], v146: m9) -> Option[z9] =
+  let v147: Bool = call staticContainsKey(v145, v146)
+  switch v147 {
+    1 ->
+      let v148: z9 = call staticGetUnsafe(v145, v146)
+      let v149: ~Option[z9] = construct Option::Some#0(v148)
+      v149
+    _ ->
+      let v150: ~Option[z9] = construct Option::None#1()
+      v150
+  }
+
+fn delete(v151: Dict, v152: Dict, v153: Map[b10, c10], v154: b10) -> Map[b10, c10] =
+  let v155: Map[b10, c10] = call staticDelete(v153, v154)
+  v155
+
+fn contains(v156: Dict, v157: Dict, v158: Map[k10, l10], v159: k10) -> Bool =
+  let v160: Bool = call staticContainsKey(v158, v159)
+  v160
+
+fn keys(v161: Map[v10, t10]) -> List[v10] =
+  let v162: Vec[v10] = call staticKeys(v161)
+  let v163: List[v10] = call vec_to_list(v162)
+  v163
+
+fn values(v164: Map[b11, e11]) -> List[e11] =
+  let v165: Vec[e11] = call staticValues(v164)
+  let v166: List[e11] = call vec_to_list(v165)
+  v166
+
+fn entries_go(v167: Object, v168: Int, v169: List[(k11, l11)]) -> List[(k11, l11)] =
+  let_join v180(v172: Bool) =
+    switch v172 {
+      1 ->
+        v169
+      _ ->
+        let v173: Int = sub_int(v168, 2)
+        let v174: Int = sub_int(v168, 1)
+        let v175: k11 = call staticGet(v167, v174)
+        let v176: l11 = call staticGet(v167, v168)
+        let v177: (k11, l11) = tuple(v175, v176)
+        let v178: ~List[(k11, l11)] = construct List::Cons#0(v177, v169)
+        let v179: List[(k11, l11)] = call entries_go(v167, v173, v178)
+        v179
+    }
+  in
+  let v170: Dict = get_dict Ord[Int]
+  let v171: Bool = call lt(v170, v168, 0)
+  jump v180(v171)
+
+fn entries(v181: Map[f12, g12]) -> List[(f12, g12)] =
+  let v182: e12 = call staticEntries(v181)
+  let v183: Int = call staticLength(v182)
+  let v184: Int = sub_int(v183, 1)
+  let_join v188(v186: ~List[(f12, g12)]) =
+    let v187: List[(f12, g12)] = call entries_go(v182, v184, v186)
+    v187
+  in
+  let v185: ~List[(f12, g12)] = construct List::Nil#1()
+  jump v188(v185)
+
+fn from_list(v189: Dict, v190: Dict, v191: List[(z12, a13)]) -> Map[z12, a13] =
+  let v192: Map[z12, a13] = call empty()
+  let v200: (Map[z12, a13], (z12, a13)) -> Map[z12, a13] = make_closure(lambda$37, [v189, v190])
+  let v201: Map[z12, a13] = call fold(v191, v192, v200)
+  v201
+
+fn size(v202: Map[g13, h13]) -> Int =
+  let v203: Int = call staticSize(v202)
+  v203
+
+fn merge(v204: Dict, v205: Dict, v206: Map[m13, n13], v207: Map[m13, n13]) -> Map[m13, n13] =
+  let v208: Map[m13, n13] = call staticMerge(v206, v207)
+  v208
+
+fn lambda$37(v193: Dict, v194: Dict, v195: Map[z12, a13], v196: (z12, a13)) -> Map[z12, a13] =
+  let v197: z12 = tuple_project v196.0
+  let v198: a13 = tuple_project v196.1
+  let v199: Map[z12, a13] = call put(v193, v194, v195, v197, v198)
+  v199
+
+fn unwrap(v211: Option[o]) -> o =
+  switch v211 {
+    0 (v212: g) ->
+      v212
+    1 ->
+      let v213: o = call panic("None")
+      v213
+  }
+
+fn peek(v216: h) -> h =
+  v216
+
+fn len(v222: Vec[b6]) -> Int =
+  let v223: Int = call staticLength(v222)
+  v223
+
+fn nth(v224: Vec[o6], v225: Int) -> Option[o6] =
+  let_join v238(v228: Bool) =
+    switch v228 {
+      1 ->
+        let v229: ~Option[o6] = construct Option::None#1()
+        v229
+      _ ->
+        let_join v237(v233: Bool) =
+          switch v233 {
+            1 ->
+              let v234: o6 = call staticGet(v224, v225)
+              let v235: ~Option[o6] = construct Option::Some#0(v234)
+              v235
+            _ ->
+              let v236: ~Option[o6] = construct Option::None#1()
+              v236
+          }
+        in
+        let v230: Dict = get_dict Ord[Int]
+        let v231: Int = call staticLength(v224)
+        let v232: Bool = call lt(v230, v225, v231)
+        jump v237(v232)
+    }
+  in
+  let v226: Dict = get_dict Ord[Int]
+  let v227: Bool = call lt(v226, v225, 0)
+  jump v238(v227)
+
+fn vec_from_vec_go(v239: Vec[w6], v240: Int, v241: List[w6]) -> List[w6] =
+  let_join v249(v244: Bool) =
+    switch v244 {
+      1 ->
+        v241
+      _ ->
+        let v245: Int = sub_int(v240, 1)
+        let v246: w6 = call staticGet(v239, v240)
+        let v247: ~List[w6] = construct List::Cons#0(v246, v241)
+        let v248: List[w6] = call vec_from_vec_go(v239, v245, v247)
+        v248
+    }
+  in
+  let v242: Dict = get_dict Ord[Int]
+  let v243: Bool = call lt(v242, v240, 0)
+  jump v249(v243)
+
+fn to_list(v250: Vec[f7]) -> List[f7] =
+  let v251: Int = call staticLength(v250)
+  let v252: Int = sub_int(v251, 1)
+  let_join v256(v254: ~List[f7]) =
+    let v255: List[f7] = call vec_from_vec_go(v250, v252, v254)
+    v255
+  in
+  let v253: ~List[f7] = construct List::Nil#1()
+  jump v256(v253)
+
+fn from_list_go(v257: List[p7], v258: Vec[p7], v259: Int) -> Vec[p7] =
+  switch v257 {
+    1 ->
+      let v260: Vec[p7] = call staticFreeze(v258)
+      v260
+    0 (v261: a, v262: List[a]) ->
+      let v263: Unit = call staticSet(v258, v259, v261)
+      let v264: Int = add_int(v259, 1)
+      let v265: Vec[p7] = call from_list_go(v262, v258, v264)
+      v265
+  }
+
+fn from_list(v266: List[b8]) -> Vec[b8] =
+  let v267: Int = call list_length(v266)
+  let v268: Vec[y7] = call staticNew(v267)
+  let v269: Vec[b8] = call from_list_go(v266, v268, 0)
+  v269
+
+fn last(v270: Vec[l8]) -> Option[l8] =
+  let v271: Int = call staticLength(v270)
+  let_join v279(v274: Bool) =
+    switch v274 {
+      1 ->
+        let v275: ~Option[l8] = construct Option::None#1()
+        v275
+      _ ->
+        let v276: Int = sub_int(v271, 1)
+        let v277: l8 = call staticGet(v270, v276)
+        let v278: ~Option[l8] = construct Option::Some#0(v277)
+        v278
+    }
+  in
+  let v272: Dict = get_dict Ord[Int]
+  let v273: Bool = call lt(v272, v271, 1)
+  jump v279(v273)
+
+fn filter(v280: Vec[t8], v281: (t8) -> Bool) -> Vec[t8] =
+  let v282: List[t8] = call to_list(v280)
+  let v283: List[t8] = call list_filter(v282, v281)
+  let v284: Vec[t8] = call from_list(v283)
+  v284
+
+fn map(v285: Vec[e9], v286: (e9) -> d9) -> Vec[d9] =
+  let v287: List[e9] = call to_list(v285)
+  let v288: List[d9] = call list_map(v287, v286)
+  let v289: Vec[d9] = call from_list(v288)
+  v289
+
+fn fold(v290: Vec[p9], v291: r9, v292: (r9, p9) -> r9) -> r9 =
+  let v293: List[p9] = call to_list(v290)
+  let v294: r9 = call list_fold(v293, v291, v292)
+  v294
+
+fn sort_by(v295: Dict, v296: Vec[t9], v297: (t9) -> u9) -> Vec[t9] =
+  let v298: List[t9] = call to_list(v296)
+  let v299: List[t9] = call list_sort_by(v295, v298, v297)
+  let v300: Vec[t9] = call from_list(v299)
+  v300
+
+fn sum(v301: Int, v302: Int) -> Int =
+  let v303: Int = add_int(v301, v302)
+  v303
+
+fn product(v304: Int, v305: Int) -> Int =
+  let v306: Int = mul_int(v304, v305)
+  v306

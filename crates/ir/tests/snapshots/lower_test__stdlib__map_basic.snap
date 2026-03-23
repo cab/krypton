@@ -4,10 +4,10 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_basic
 
-declare empty: () -> Map[n8, o8]
-declare get: (Dict, Dict, Map[l9, y9], l9) -> Option[y9]
+declare empty: () -> Map[o8, p8]
+declare get: (Dict, Dict, Map[m9, z9], m9) -> Option[z9]
 declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[s8, t8], s8, t8) -> Map[s8, t8]
+declare put: (Dict, Dict, Map[t8, u8], t8, u8) -> Map[t8, u8]
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

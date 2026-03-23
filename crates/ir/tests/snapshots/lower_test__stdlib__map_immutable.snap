@@ -4,13 +4,13 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_immutable
 
-declare contains: (Dict, Dict, Map[j10, k10], j10) -> Bool
-declare empty: () -> Map[n8, o8]
+declare contains: (Dict, Dict, Map[k10, l10], k10) -> Bool
+declare empty: () -> Map[o8, p8]
 declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[s8, t8], s8, t8) -> Map[s8, t8]
+declare put: (Dict, Dict, Map[t8, u8], t8, u8) -> Map[t8, u8]
 
 fn main() -> Unit =
-  let v0: Map[x10, y10] = call empty()
+  let v0: Map[y10, z10] = call empty()
   let v2: Dict = get_dict Eq[String]
   let v3: Dict = get_dict Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

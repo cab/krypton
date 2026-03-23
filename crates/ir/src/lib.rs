@@ -1,4 +1,5 @@
 pub mod expr;
+pub mod link;
 pub mod lower;
 pub mod pretty;
 

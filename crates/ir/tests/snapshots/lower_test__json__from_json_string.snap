@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module json__from_json_string
 
-declare from_json: (Dict, Json) -> Result[String, j14]
+declare from_json: (Dict, Json) -> Result[String, k14]
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =

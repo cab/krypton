@@ -73,6 +73,9 @@ enum Commands {
     /// Pretty-print the ANF intermediate representation
     DumpIr {
         file: String,
+        /// Link all modules into a single whole-program IR module
+        #[arg(long)]
+        link: bool,
     },
     /// Inspect resource ownership: show close and move insertion points
     Inspect {
@@ -403,7 +406,7 @@ fn main() {
                 print_timings(&phases);
             }
         }
-        Commands::DumpIr { file } => {
+        Commands::DumpIr { file, link } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
@@ -441,14 +444,37 @@ fn main() {
                 .unwrap_or("main");
 
             let t = Instant::now();
-            match krypton_ir::lower::lower_module(&typed_modules[0], stem) {
-                Ok(ir_module) => {
-                    phases.push(("lower", t.elapsed()));
-                    print!("{}", ir_module);
+            if link {
+                let mut ir_modules = Vec::new();
+                for (i, typed) in typed_modules.iter().enumerate() {
+                    let mod_name = if i == 0 {
+                        stem.to_string()
+                    } else {
+                        typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
+                    };
+                    match krypton_ir::lower::lower_module(typed, &mod_name) {
+                        Ok(ir) => ir_modules.push(ir),
+                        Err(e) => {
+                            eprintln!("IR lowering error (module {}): {}", mod_name, e);
+                            process::exit(1);
+                        }
+                    }
                 }
-                Err(e) => {
-                    eprintln!("IR lowering error: {}", e);
-                    process::exit(1);
+                phases.push(("lower", t.elapsed()));
+                let t = Instant::now();
+                let linked = krypton_ir::link::link(ir_modules);
+                phases.push(("link", t.elapsed()));
+                print!("{}", linked);
+            } else {
+                match krypton_ir::lower::lower_module(&typed_modules[0], stem) {
+                    Ok(ir_module) => {
+                        phases.push(("lower", t.elapsed()));
+                        print!("{}", ir_module);
+                    }
+                    Err(e) => {
+                        eprintln!("IR lowering error: {}", e);
+                        process::exit(1);
+                    }
                 }
             }
 

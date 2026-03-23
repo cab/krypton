@@ -4,13 +4,13 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_dict_singleton
 
-declare contains: (Dict, Dict, Map[j10, k10], j10) -> Bool
-declare empty: () -> Map[n8, o8]
-declare from_list: (Dict, Dict, List[(y12, z12)]) -> Map[y12, z12]
-declare get: (Dict, Dict, Map[l9, y9], l9) -> Option[y9]
+declare contains: (Dict, Dict, Map[k10, l10], k10) -> Bool
+declare empty: () -> Map[o8, p8]
+declare from_list: (Dict, Dict, List[(z12, a13)]) -> Map[z12, a13]
+declare get: (Dict, Dict, Map[m9, z9], m9) -> Option[z9]
 declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[s8, t8], s8, t8) -> Map[s8, t8]
-declare size: (Map[f13, g13]) -> Int
+declare put: (Dict, Dict, Map[t8, u8], t8, u8) -> Map[t8, u8]
+declare size: (Map[g13, h13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
@@ -31,8 +31,8 @@ fn main() -> Unit =
     let v24: ~List[(~String, ~Int)] = construct List::Nil#1()
     let v25: ~List[(~String, ~Int)] = construct List::Cons#0(v23, v24)
     let v26: ~List[(~String, ~Int)] = construct List::Cons#0(v22, v25)
-    let v27: Dict = get_dict Eq[y12]
-    let v28: Dict = get_dict Hash[y12]
+    let v27: Dict = get_dict Eq[z12]
+    let v28: Dict = get_dict Hash[z12]
     let v21: Map[String, Int] = call from_list(v27, v28, v26)
     let v30: Int = call size(v21)
     let v29: Dict = get_dict Show[Int]
