@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__list_filter
@@ -94,7 +93,7 @@ import core/list/length as length(List[o]): Int
 import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
 declare filter: (List[h1], (h1) -> Bool) -> List[h1]
 declare length: (List[o]) -> Int
-declare lt: (Dict, h, h) -> Bool
+declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =

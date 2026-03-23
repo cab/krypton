@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 115
 expression: output
 ---
 module use_transitive_trait
@@ -277,8 +276,8 @@ import trait_origin_lib/MkMsg as MkMsg(String): Msg
 import trait_origin_lib/MkMsg as MkMsg(String): Msg
 import trait_origin_lib/render as render(s7): String
 import core/io/println as println(m): Unit
-declare println: (Dict, m) -> Unit
-declare render: (Dict, s7) -> String
+declare println: (m) -> Unit
+declare render: (s7) -> String
 
 fn main() -> Unit =
   let v1: ~Msg = construct Msg::MkMsg#0("hi")
@@ -316,9 +315,9 @@ extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[Strin
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 import core/show/show as show(g): String
-declare raw_print
-declare raw_println
-declare show: (Dict, g) -> String
+declare raw_print: (Object) -> Unit
+declare raw_println: (Object) -> Unit
+declare show: (g) -> String
 
 fn println(v0: Dict, v1: m) -> Unit =
   let v2: String = call show(v0, v1)
@@ -571,18 +570,18 @@ import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
 import core/vec/to_list as vec_to_list(Vec[h7]): List[h7]
 declare fold: (List[t1], u1, (u1, t1) -> u1) -> u1
 declare lt
-declare staticContainsKey
-declare staticDelete
-declare staticEmpty
-declare staticEntries
-declare staticGet
-declare staticGetUnsafe
-declare staticKeys
-declare staticLength
-declare staticMerge
-declare staticPut
-declare staticSize
-declare staticValues
+declare staticContainsKey: (Object, Object) -> Bool
+declare staticDelete: (Object, Object) -> Object
+declare staticEmpty: () -> Object
+declare staticEntries: (Object) -> Object
+declare staticGet: (Object, Int) -> Object
+declare staticGetUnsafe: (Object, Object) -> Object
+declare staticKeys: (Object) -> Object
+declare staticLength: (Object) -> Int
+declare staticMerge: (Object, Object) -> Object
+declare staticPut: (Object, Object, Object, Object, Object) -> Object
+declare staticSize: (Object) -> Int
+declare staticValues: (Object) -> Object
 declare vec_to_list: (Vec[h7]) -> List[h7]
 
 fn empty() -> Map[r8, s8] =
@@ -688,8 +687,9 @@ instance Neg[Float] {  } [intrinsic]
 module core/option
 
 type Option[g] = Some#0(g) | None#1
-instance Show[Option] {  }
-declare panic: (String) -> a
+instance Show[Option] { show=f1 }
+declare panic
+declare show
 
 fn unwrap(v0: Option[o]) -> o =
   switch v0 {
@@ -698,6 +698,17 @@ fn unwrap(v0: Option[o]) -> o =
     1 ->
       let v2: o = call panic("None")
       v2
+  }
+
+fn Show$$Option$$show(v3: Dict, v4: Option[g]) -> String =
+  switch v4 {
+    0 (v5: g) ->
+      let v6: String = call show(v3, v5)
+      let v7: String = concat_string("Some(", v6)
+      let v8: String = concat_string(v7, ")")
+      v8
+    1 ->
+      "None"
   }
 module core/ord
 
@@ -760,13 +771,13 @@ declare list_filter: (List[h1], (h1) -> Bool) -> List[h1]
 declare list_fold: (List[t1], u1, (u1, t1) -> u1) -> u1
 declare list_length: (List[o]) -> Int
 declare list_map: (List[w], (w) -> y) -> List[y]
-declare list_sort_by: (Dict, List[w5], (w5) -> l5) -> List[w5]
-declare lt: (Dict, h, h) -> Bool
-declare staticFreeze
-declare staticGet
-declare staticLength
-declare staticNew
-declare staticSet
+declare list_sort_by: (List[w5], (w5) -> l5) -> List[w5]
+declare lt: (h, h) -> Bool
+declare staticFreeze: (Object) -> Object
+declare staticGet: (Object, Int) -> Object
+declare staticLength: (Object) -> Int
+declare staticNew: (Int) -> Object
+declare staticSet: (Object, Int, Object) -> Unit
 
 fn len(v0: Vec[d6]) -> Int =
   let v1: Int = call staticLength(v0)
@@ -976,7 +987,7 @@ module trait_origin_lib
 
 type Msg = MkMsg#0(String)
 trait Render[s7] { render(s7): String }
-instance Render[Msg] {  }
+instance Render[Msg] { render=f0 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -1063,6 +1074,12 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
+fn Render$$Msg$$render(v0: Msg) -> String =
+  switch v0 {
+    0 (v1: String) ->
+      let v2: String = concat_string("Msg: ", v1)
+      v2
+  }
 module trait_reexport
 
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int

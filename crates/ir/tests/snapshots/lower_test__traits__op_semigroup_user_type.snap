@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__op_semigroup_user_type
 
 struct Vec2 { x: Int, y: Int }
-instance Semigroup[Vec2] {  }
+instance Semigroup[Vec2] { combine=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,8 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Vec2: (Int, Int) -> Vec2
-declare combine: (Dict, g, g) -> g
+declare Vec2
+declare combine: (g, g) -> g
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -105,3 +104,13 @@ fn main() -> Unit =
   let v4: Int = project v3.0
   let v5: Unit = call println(v4)
   v5
+
+fn Semigroup$$Vec2$$combine(v6: Vec2, v7: Vec2) -> ~Vec2 =
+  let v8: Int = project v6.0
+  let v9: Int = project v7.0
+  let v10: Int = add_int(v8, v9)
+  let v11: Int = project v6.1
+  let v12: Int = project v7.1
+  let v13: Int = add_int(v11, v12)
+  let v14: ~Vec2 = call Vec2(v10, v13)
+  v14

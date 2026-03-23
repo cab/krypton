@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__extern_typecheck_call
@@ -92,8 +91,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare abs
-declare max
+declare abs: (Int) -> Int
+declare max: (Int, Int) -> Int
 
 fn main() -> Int =
   let v0: Int = call abs(5)

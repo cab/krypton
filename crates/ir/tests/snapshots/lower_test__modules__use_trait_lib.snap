@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__use_trait_lib
@@ -159,7 +158,7 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import trait_lib/Red as Red(): Color
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let_join v4(v0: ~Color) =

@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__use_user_trait
 
 type Greeting = MkGreeting#0(String)
-instance Printable[Greeting] {  }
+instance Printable[Greeting] { display=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -161,8 +160,8 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import user_trait_lib/display as display(s7): String
-declare display: (Dict, s7) -> String
-declare println: (Dict, m) -> Unit
+declare display: (s7) -> String
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Greeting = construct Greeting::MkGreeting#0("hi")
@@ -171,3 +170,6 @@ fn main() -> Unit =
   let v0: Dict = get_dict Show[String]
   let v4: Unit = call println(v0, v3)
   v4
+
+fn Printable$$Greeting$$display(v5: Greeting) -> ~String =
+  "hello"

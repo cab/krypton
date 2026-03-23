@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__branch_with_struct
@@ -92,8 +91,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Wrapper: (Int) -> Wrapper
-declare lt: (Dict, h, h) -> Bool
+declare Wrapper
+declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn pick(v0: Int) -> Wrapper =

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__println_int
@@ -100,7 +99,7 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Dict = get_dict Show[Int]

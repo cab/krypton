@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module actors__adapter_reply
@@ -179,7 +178,7 @@ import core/actor/receive as receive(Mailbox[e9]): e9
 import core/actor/actor_ref as actor_ref(Mailbox[n9]): Ref[n9]
 import core/actor/mailbox as mailbox(): Mailbox[y9]
 import core/actor/adapter as adapter(Ref[c10], (d10) -> c10): Ref[d10]
-declare Reply: (Int) -> MainMsg
+declare Reply
 declare actor_ref: (Mailbox[n9]) -> Ref[n9]
 declare adapter: (Ref[c10], (d10) -> c10) -> Ref[d10]
 declare mailbox: () -> Mailbox[y9]

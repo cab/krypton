@@ -1,14 +1,13 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__constrained_polymorphism
 
 struct A { x: Int }
 struct B { y: Int }
-instance Eq[A] {  }
-instance Eq[B] {  }
+instance Eq[A] { eq=f2 }
+instance Eq[B] { eq=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -95,9 +94,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare A: (Int) -> A
-declare B: (Int) -> B
-declare eq: (Dict, g, g) -> Bool
+declare A
+declare B
+declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn same(v0: Dict, v1: v7, v2: v7) -> Bool =
@@ -123,3 +122,33 @@ fn main() -> Unit =
     _ ->
       jump v14(false)
   }
+
+fn Eq$$A$$eq(v15: A, v16: A) -> Bool =
+  let_join v22(v21: Bool) =
+    switch v21 {
+      1 ->
+        true
+      _ ->
+        false
+    }
+  in
+  let v17: Dict = get_dict Eq[Int]
+  let v18: Int = project v15.0
+  let v19: Int = project v16.0
+  let v20: Bool = call eq(v17, v18, v19)
+  jump v22(v20)
+
+fn Eq$$B$$eq(v23: B, v24: B) -> Bool =
+  let_join v30(v29: Bool) =
+    switch v29 {
+      1 ->
+        true
+      _ ->
+        false
+    }
+  in
+  let v25: Dict = get_dict Eq[Int]
+  let v26: Int = project v23.0
+  let v27: Int = project v24.0
+  let v28: Bool = call eq(v25, v26, v27)
+  jump v30(v28)

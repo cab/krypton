@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module inference__recur_correct
@@ -90,10 +89,10 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
+declare eq: (g, g) -> Bool
 
 fn countdown(v0: Int) -> Int =
-  let_join v1(v2: Int) =
+  let_join [recur] v1(v2: Int) =
     let_join v7(v5: Bool) =
       switch v5 {
         1 ->

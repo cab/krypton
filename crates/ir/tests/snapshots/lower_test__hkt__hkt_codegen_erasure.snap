@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
 trait Functor[u7] { fmap(u7[v7], (v7) -> w7): u7[w7] }
-instance Functor[Box] {  }
+instance Functor[Box] { fmap=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -111,7 +110,7 @@ declare println: (m) -> Unit
 declare to_list: (Vec[h7]) -> List[h7]
 
 fn fold_box(v0: List[e8], v1: y7[e8], v2: (y7[e8], e8) -> y7[e8]) -> y7[e8] =
-  let_join v3(v4: List[e8], v5: y7[e8], v6: (y7[e8], e8) -> y7[e8]) =
+  let_join [recur] v3(v4: List[e8], v5: y7[e8], v6: (y7[e8], e8) -> y7[e8]) =
     switch v4 {
       1 ->
         v5
@@ -126,7 +125,7 @@ fn main() -> Unit =
   let v11: Vec[Int] = make_vec(1, 2, 4)
   let v12: List[Int] = call to_list(v11)
   let v13: ~Box[Int] = construct Box::Box#0(0)
-  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$52, [])
+  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$53, [])
   let v10: Box[Int] = call fold_box(v12, v13, v19)
   switch v10 {
     0 (v20: a) ->
@@ -134,7 +133,15 @@ fn main() -> Unit =
       v21
   }
 
-fn lambda$52(v14: Box[Int], v15: Int) -> ~Box[Int] =
+fn Functor$$Box$$fmap(v22: Box[d9], v23: (d9) -> f9) -> ~Box[f9] =
+  switch v22 {
+    0 (v24: a) ->
+      let v25: f9 = call_closure v23(v24)
+      let v26: ~Box[f9] = construct Box::Box#0(v25)
+      v26
+  }
+
+fn lambda$53(v14: Box[Int], v15: Int) -> ~Box[Int] =
   switch v14 {
     0 (v16: a) ->
       let v17: Int = add_int(v16, v15)

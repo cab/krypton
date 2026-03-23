@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__local_trait_imported_type
 
 trait Describable[s7] { describe(s7): String }
-instance Describable[Point] {  }
+instance Describable[Point] { describe=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -161,8 +160,8 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import user_trait_lib/MkPoint as MkPoint(Int, Int): Point
-declare describe: (Dict, s7) -> String
-declare println: (Dict, m) -> Unit
+declare describe
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Point = construct Point::MkPoint#0(1, 2)
@@ -171,3 +170,6 @@ fn main() -> Unit =
   let v0: Dict = get_dict Show[String]
   let v4: Unit = call println(v0, v3)
   v4
+
+fn Describable$$Point$$describe(v5: Point) -> ~String =
+  "true"

@@ -148,6 +148,7 @@ impl LintContext {
                 params,
                 join_body,
                 body,
+                is_recur: _,
             } => {
                 self.bind_var(*name)?;
                 self.join_points.insert(*name);
@@ -277,44 +278,36 @@ impl LintContext {
             SimpleExpr::TupleProject { value, .. } => self.check_atom_not_join(value),
 
             SimpleExpr::GetDict { trait_name, ty } => {
-                // Validate trait exists (skip check if traits list is empty — pre-enrichment)
-                if !self.known_traits.is_empty() && !self.known_traits.contains(trait_name) {
+                if !self.known_traits.contains(trait_name) {
                     return Err(self.err(format!(
                         "GetDict references unknown trait '{trait_name}'"
                     )));
                 }
-                // If the type is concrete (not a type variable), validate instance exists
-                if !self.known_instances.is_empty() {
-                    if let Some(type_name) = concrete_type_name(ty) {
-                        if !self.known_instances.contains(&(trait_name.clone(), type_name.clone())) {
-                            return Err(self.err(format!(
-                                "GetDict references unknown instance '{trait_name}' for type '{type_name}'"
-                            )));
-                        }
+                if let Some(type_name) = concrete_type_name(ty) {
+                    if !self.known_instances.contains(&(trait_name.clone(), type_name.clone())) {
+                        return Err(self.err(format!(
+                            "GetDict references unknown instance '{trait_name}' for type '{type_name}'"
+                        )));
                     }
                 }
                 Ok(())
             }
 
             SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
-                // Validate trait exists
-                if !self.known_traits.is_empty() && !self.known_traits.contains(trait_name) {
+                if !self.known_traits.contains(trait_name) {
                     return Err(self.err(format!(
                         "MakeDict references unknown trait '{trait_name}'"
                     )));
                 }
-                // If the type is concrete, validate sub_dict count matches instance requirements
-                if !self.instance_sub_dict_counts.is_empty() {
-                    if let Some(type_name) = concrete_type_name(ty) {
-                        if let Some((_, _, expected)) = self.instance_sub_dict_counts.iter()
-                            .find(|(tn, ttn, _)| tn == trait_name && ttn == &type_name)
-                        {
-                            if sub_dicts.len() != *expected {
-                                return Err(self.err(format!(
-                                    "MakeDict for '{trait_name}[{type_name}]' has {} sub_dicts, expected {expected}",
-                                    sub_dicts.len()
-                                )));
-                            }
+                if let Some(type_name) = concrete_type_name(ty) {
+                    if let Some((_, _, expected)) = self.instance_sub_dict_counts.iter()
+                        .find(|(tn, ttn, _)| tn == trait_name && ttn == &type_name)
+                    {
+                        if sub_dicts.len() != *expected {
+                            return Err(self.err(format!(
+                                "MakeDict for '{trait_name}[{type_name}]' has {} sub_dicts, expected {expected}",
+                                sub_dicts.len()
+                            )));
                         }
                     }
                 }
@@ -351,8 +344,25 @@ fn concrete_type_name(ty: &Type) -> Option<String> {
         Type::String => Some("String".to_string()),
         Type::Unit => Some("Unit".to_string()),
         Type::Named(name, _) => Some(name.clone()),
-        Type::Var(_) => None, // Type variable — can't validate statically
-        _ => None,
+        Type::Tuple(elts) => {
+            let names: Vec<String> = elts.iter().filter_map(concrete_type_name).collect();
+            if names.len() == elts.len() {
+                Some(format!("({})", names.join(", ")))
+            } else {
+                None
+            }
+        }
+        Type::Fn(params, ret) => {
+            let param_names: Vec<String> = params.iter().filter_map(concrete_type_name).collect();
+            let ret_name = concrete_type_name(ret)?;
+            if param_names.len() == params.len() {
+                Some(format!("({}) -> {}", param_names.join(", "), ret_name))
+            } else {
+                None
+            }
+        }
+        Type::Own(inner) => concrete_type_name(inner).map(|n| format!("Own<{n}>")),
+        Type::Var(_) | Type::App(_, _) | Type::FnHole => None,
     }
 }
 

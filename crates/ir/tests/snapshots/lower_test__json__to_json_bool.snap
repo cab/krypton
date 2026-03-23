@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__to_json_bool
@@ -228,8 +227,8 @@ import core/ordering/GT as GT(): Ordering
 import core/json/json_to_string as json_to_string(Json): String
 import core/json/to_json as to_json(m14): Json
 declare json_to_string: (Json) -> String
-declare println: (Dict, m) -> Unit
-declare to_json: (Dict, m14) -> Json
+declare println: (m) -> Unit
+declare to_json: (m14) -> Json
 
 fn main() -> Unit =
   let v1: Dict = get_dict ToJson[Bool]

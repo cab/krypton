@@ -30,3 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 main: () -> Unit
+Multiply$$Int$$times: (Int, Int) -> Int

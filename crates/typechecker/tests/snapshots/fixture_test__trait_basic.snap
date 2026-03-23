@@ -31,3 +31,4 @@ EQ: Ordering
 GT: Ordering
 Point: (Int, Int) -> Point
 main: () -> Bool
+Eq$$Point$$eq: (Point, Point) -> Bool

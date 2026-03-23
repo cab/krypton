@@ -32,6 +32,7 @@ pub enum ExprKind {
         params: Vec<(VarId, Type)>,
         join_body: Box<Expr>,
         body: Box<Expr>,
+        is_recur: bool,
     },
 
     /// Tail call to a join point.

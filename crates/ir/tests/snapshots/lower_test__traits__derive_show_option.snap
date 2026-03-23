@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__derive_show_option
 
 type Option[a] = Some#0(a) | None#1
-instance Show[Option] {  }
+instance Show[Option] { show=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,7 +93,7 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
-declare show: (Dict, g) -> String
+declare show: (g) -> String
 
 fn main() -> Unit =
   let v0: ~Option[Int] = construct Option::Some#0(42)
@@ -103,3 +102,14 @@ fn main() -> Unit =
   let v3: String = call show(v2, v0)
   let v4: Unit = call println(v3)
   v4
+
+fn Show$$Option$$show(v5: Dict, v6: Option[j7]) -> String =
+  switch v6 {
+    0 (v7: a) ->
+      let v8: String = call show(v5, v7)
+      let v9: String = concat_string("Some(", v8)
+      let v10: String = concat_string(v9, ")")
+      v10
+    1 ->
+      "None"
+  }

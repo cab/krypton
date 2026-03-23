@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__hash_deriving
 
 struct Point { x: Int, y: Int }
-instance Hash[Point] {  }
-instance Eq[Point] {  }
+instance Hash[Point] { hash=f1 }
+instance Eq[Point] { eq=f2 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,9 +92,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
-declare hash: (Dict, g) -> Int
-declare println: (Dict, m) -> Unit
+declare eq: (g, g) -> Bool
+declare hash: (g) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
@@ -128,3 +127,41 @@ fn main() -> Unit =
   let v14: Int = call hash(v13, v1)
   let v15: Bool = call eq(v10, v12, v14)
   jump v18(v15)
+
+fn Hash$$Point$$hash(v32: Point) -> Int =
+  let v33: Int = project v32.0
+  let v34: Dict = get_dict Hash[Int]
+  let v35: Int = call hash(v34, v33)
+  let v36: Int = mul_int(31, v35)
+  let v37: Int = project v32.1
+  let v38: Dict = get_dict Hash[Int]
+  let v39: Int = call hash(v38, v37)
+  let v40: Int = add_int(v36, v39)
+  v40
+
+fn Eq$$Point$$eq(v41: Point, v42: Point) -> Bool =
+  let_join v54(v47: Bool) =
+    switch v47 {
+      1 ->
+        let_join v53(v52: Bool) =
+          switch v52 {
+            1 ->
+              true
+            _ ->
+              false
+          }
+        in
+        let v48: Dict = get_dict Eq[Int]
+        let v49: Int = project v41.1
+        let v50: Int = project v42.1
+        let v51: Bool = call eq(v48, v49, v50)
+        jump v53(v51)
+      _ ->
+        false
+    }
+  in
+  let v43: Dict = get_dict Eq[Int]
+  let v44: Int = project v41.0
+  let v45: Int = project v42.0
+  let v46: Bool = call eq(v43, v44, v45)
+  jump v54(v46)

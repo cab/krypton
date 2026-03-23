@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__monoid_empty
 
 trait Monoid[t7] { empty(): t7; combine(t7, t7): t7 }
-instance Monoid[Int] {  }
+instance Monoid[Int] { empty=f1, combine=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,8 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare combine: (Dict, g, g) -> g
-declare empty: (Dict) -> t7
+declare combine: (g, g) -> g
+declare empty
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -107,3 +106,10 @@ fn main() -> Unit =
   let v6: Int = call combine(v5, v4, 1)
   let v7: Unit = call println(v6)
   v7
+
+fn Monoid$$Int$$empty() -> ~Int =
+  0
+
+fn Monoid$$Int$$combine(v8: Int, v9: Int) -> Int =
+  let v10: Int = add_int(v8, v9)
+  v10

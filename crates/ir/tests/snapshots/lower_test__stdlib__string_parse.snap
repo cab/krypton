@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__string_parse
@@ -182,7 +181,7 @@ import core/string/parse_int as parse_int(String): Option[Int]
 import core/string/parse_float as parse_float(String): Option[Float]
 declare parse_float: (String) -> Option[Float]
 declare parse_int: (String) -> Option[Int]
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Option[Int] = call parse_int("42")

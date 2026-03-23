@@ -444,7 +444,8 @@ fn main() {
                 .and_then(|s| s.to_str())
                 .unwrap_or("main");
 
-            let t = Instant::now();
+            let mut lower_dur = Duration::ZERO;
+            let mut lint_dur = Duration::ZERO;
             for (i, typed) in typed_modules.iter().enumerate() {
                 if !all && i > 0 {
                     continue;
@@ -454,13 +455,17 @@ fn main() {
                 } else {
                     typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
                 };
+                let t = Instant::now();
                 match krypton_ir::lower::lower_module(typed, &mod_name) {
                     Ok(ir_module) => {
+                        lower_dur += t.elapsed();
+                        let t = Instant::now();
                         let ir_module = krypton_ir::lint::LintPass.run(ir_module)
                             .unwrap_or_else(|e| {
                                 eprintln!("IR lint error (module {}): {}", mod_name, e);
                                 std::process::exit(1);
                             });
+                        lint_dur += t.elapsed();
                         print!("{}", ir_module);
                     }
                     Err(e) => {
@@ -469,7 +474,8 @@ fn main() {
                     }
                 }
             }
-            phases.push(("lower", t.elapsed()));
+            phases.push(("lower", lower_dur));
+            phases.push(("lint", lint_dur));
 
             if timings {
                 print_timings(&phases);

@@ -29,3 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+MyTrait$$Vec$$Var0$$check: (Vec[t7]) -> ~String

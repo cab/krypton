@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__derive_eq_sum
 
 type Color = Red#0 | Green#1 | Blue#2
-instance Eq[Color] {  }
+instance Eq[Color] { eq=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +92,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
+declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -112,3 +111,18 @@ fn main() -> Unit =
   in
   let v1: ~Color = construct Color::Red#0()
   jump v7(v1)
+
+fn Eq$$Color$$eq(v11: Color, v12: Color) -> Bool =
+  switch v11 {
+    0 ->
+      switch v12 {
+        0 ->
+          true
+        _ ->
+          false
+      }
+    1 ->
+      false
+    2 ->
+      false
+  }

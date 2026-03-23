@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module actors__ask_ok
@@ -179,7 +178,7 @@ import core/actor/receive as receive(Mailbox[e9]): e9
 import core/actor/ask as ask(Ref[l10], (Ref[m10]) -> l10, Int): Result[Timeout, m10]
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
-declare Get: (Ref[Int]) -> Msg
+declare Get
 declare ask: (Ref[l10], (Ref[m10]) -> l10, Int) -> Result[Timeout, m10]
 declare println: (m) -> Unit
 declare receive: (Mailbox[e9]) -> e9

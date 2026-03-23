@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__op_ord_user_type
 
 struct Wrapper { val: Int }
-instance Eq[Wrapper] {  }
-instance Ord[Wrapper] {  }
+instance Eq[Wrapper] { eq=f1 }
+instance Ord[Wrapper] { lt=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,8 +93,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Wrapper: (Int) -> Wrapper
-declare lt: (Dict, h, h) -> Bool
+declare Wrapper
+declare eq: (g, g) -> Bool
+declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -105,3 +105,17 @@ fn main() -> Unit =
   let v3: Bool = call lt(v2, v0, v1)
   let v4: Unit = call println(v3)
   v4
+
+fn Eq$$Wrapper$$eq(v5: Wrapper, v6: Wrapper) -> Bool =
+  let v7: Dict = get_dict Eq[Int]
+  let v8: Int = project v5.0
+  let v9: Int = project v6.0
+  let v10: Bool = call eq(v7, v8, v9)
+  v10
+
+fn Ord$$Wrapper$$lt(v11: Wrapper, v12: Wrapper) -> Bool =
+  let v13: Dict = get_dict Ord[Int]
+  let v14: Int = project v11.0
+  let v15: Int = project v12.0
+  let v16: Bool = call lt(v13, v14, v15)
+  v16

@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__trait_zero_arg_constrained_vec
 
 trait Test[t7] { name(): String }
-instance Test[Vec$$Var0] {  }
-instance Test[Int] {  }
+instance Test[Vec$$Var0] { name=f1 }
+instance Test[Int] { name=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +93,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare name: (Dict) -> String
+declare name
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -102,3 +102,10 @@ fn main() -> Unit =
   let v2: String = call name(v1)
   let v3: Unit = call println(v2)
   v3
+
+fn Test$$Vec$$Var0$$name(v4: Dict) -> String =
+  let v5: String = call name(v4)
+  v5
+
+fn Test$$Int$$name() -> ~String =
+  "yo"

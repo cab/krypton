@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_basic
 
 struct Point { x: Int, y: Int }
-instance Eq[Point] {  }
+instance Eq[Point] { eq=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,8 +91,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Point: (Int, Int) -> Point
-declare eq: (Dict, g, g) -> Bool
+declare Point
+declare eq: (g, g) -> Bool
 
 fn main() -> Bool =
   let v1: ~Point = call Point(1, 2)
@@ -101,3 +100,22 @@ fn main() -> Bool =
   let v0: Dict = get_dict Eq[Point]
   let v3: Bool = call eq(v0, v1, v2)
   v3
+
+fn Eq$$Point$$eq(v4: Point, v5: Point) -> Bool =
+  let_join v15(v10: Bool) =
+    switch v10 {
+      1 ->
+        let v11: Dict = get_dict Eq[Int]
+        let v12: Int = project v4.1
+        let v13: Int = project v5.1
+        let v14: Bool = call eq(v11, v12, v13)
+        v14
+      _ ->
+        false
+    }
+  in
+  let v6: Dict = get_dict Eq[Int]
+  let v7: Int = project v4.0
+  let v8: Int = project v5.0
+  let v9: Bool = call eq(v6, v7, v8)
+  jump v15(v9)

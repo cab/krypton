@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__multi_constraint
 
 struct Box { val: Int }
-instance Eq[Box] {  }
-instance Show[Box] {  }
+instance Eq[Box] { eq=f2 }
+instance Show[Box] { show=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,10 +93,10 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Box: (Int) -> Box
-declare eq: (Dict, g, g) -> Bool
+declare Box
+declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (Dict, g) -> String
+declare show: (g) -> String
 
 fn eq_and_show(v0: Dict, v1: Dict, v2: v7, v3: v7) -> String =
   let v4: Bool = call eq(v0, v2, v3)
@@ -122,3 +121,13 @@ fn main() -> Unit =
   let v11: String = call eq_and_show(v9, v10, v7, v8)
   let v12: Bool = call eq(v6, v11, "Box")
   jump v15(v12)
+
+fn Eq$$Box$$eq(v16: Box, v17: Box) -> Bool =
+  let v18: Dict = get_dict Eq[Int]
+  let v19: Int = project v16.0
+  let v20: Int = project v17.0
+  let v21: Bool = call eq(v18, v19, v20)
+  v21
+
+fn Show$$Box$$show(v22: Box) -> ~String =
+  "Box"

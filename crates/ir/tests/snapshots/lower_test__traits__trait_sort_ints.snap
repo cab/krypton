@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_sort_ints
 
 trait Cmp[t7] { compare(t7, t7): Int }
-instance Cmp[Int] {  }
+instance Cmp[Int] { compare=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare compare: (Dict, t7, t7) -> Int
+declare compare
+declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -101,3 +101,27 @@ fn main() -> Unit =
   let v1: Int = call compare(v0, 1, 2)
   let v2: Unit = call println(v1)
   v2
+
+fn Cmp$$Int$$compare(v3: Int, v4: Int) -> Int =
+  let_join v13(v7: Bool) =
+    switch v7 {
+      1 ->
+        let v8: Int = sub_int(0, 1)
+        v8
+      _ ->
+        let_join v12(v11: Bool) =
+          switch v11 {
+            1 ->
+              1
+            _ ->
+              0
+          }
+        in
+        let v9: Dict = get_dict Ord[Int]
+        let v10: Bool = call lt(v9, v4, v3)
+        jump v12(v10)
+    }
+  in
+  let v5: Dict = get_dict Ord[Int]
+  let v6: Bool = call lt(v5, v3, v4)
+  jump v13(v6)

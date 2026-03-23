@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__map_immutable
@@ -130,10 +129,10 @@ import core/ordering/GT as GT(): Ordering
 import core/map/empty as empty(): Map[r8, s8]
 import core/map/put as put(Map[w8, x8], w8, x8): Map[w8, x8]
 import core/map/contains as contains(Map[n10, o10], n10): Bool
-declare contains: (Dict, Dict, Map[n10, o10], n10) -> Bool
+declare contains: (Map[n10, o10], n10) -> Bool
 declare empty: () -> Map[r8, s8]
-declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[w8, x8], w8, x8) -> Map[w8, x8]
+declare println: (m) -> Unit
+declare put: (Map[w8, x8], w8, x8) -> Map[w8, x8]
 
 fn main() -> Unit =
   let v0: Map[b11, c11] = call empty()

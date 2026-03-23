@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__builtin_trait_dict
@@ -91,7 +90,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare combine: (Dict, g, g) -> g
+declare combine: (g, g) -> g
 declare println: (m) -> Unit
 
 fn apply_combine(v0: Dict, v1: y7, v2: y7) -> y7 =

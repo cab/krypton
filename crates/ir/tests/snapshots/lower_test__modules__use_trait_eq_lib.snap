@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__use_trait_eq_lib
@@ -159,8 +158,8 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import trait_eq_lib/North as North(): Dir
-declare eq: (Dict, g, g) -> Bool
-declare println: (Dict, m) -> Unit
+declare eq: (g, g) -> Bool
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let_join v11(v9: Bool) =

@@ -1602,14 +1602,6 @@ impl ModuleInferenceState {
 
         let auto_close = crate::auto_close::compute_auto_close(&functions, &results_tuples, trait_registry, &ownership_result.moves)?;
 
-        // Strip temporary instance method entries from functions and results —
-        // they live on instance_defs now, codegen reads them from there
-        functions.truncate(fn_decls.len());
-        // results contains: imported + constructors + fn_decls + instance methods
-        // Strip the instance method entries (they were appended last)
-        let results_base_len = results.len() - instance_defs.iter().map(|i| i.methods.len()).sum::<usize>();
-        results.truncate(results_base_len);
-
         let struct_decls: Vec<_> = module
             .decls
             .iter()

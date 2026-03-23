@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__constrained_instance_multi_bound_ok
 
 type Pair[a, b] = Pair#0(a, b)
-instance Show[Pair$$Var0$$Var1] {  }
+instance Show[Pair$$Var0$$Var1] { show=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,9 +92,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
+declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (Dict, g) -> String
+declare show: (g) -> String
 
 fn main() -> Unit =
   let_join v9(v7: Bool) =
@@ -109,3 +109,6 @@ fn main() -> Unit =
   let v5: String = call show(v4, v1)
   let v6: Bool = call eq(v0, v5, "pair")
   jump v9(v6)
+
+fn Show$$Pair$$Var0$$Var1$$show(v10: Dict, v11: Dict, v12: Pair[v7, w7]) -> ~String =
+  "pair"

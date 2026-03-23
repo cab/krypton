@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module inference__type_qualification
 
 struct Pos { x: Int, y: Int }
-instance Show[Pos] {  }
+instance Show[Pos] { show=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,10 +91,10 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Pos: (Int, Int) -> Pos
-declare eq: (Dict, g, g) -> Bool
-declare println: (Dict, m) -> Unit
-declare show: (Dict, g) -> String
+declare Pos
+declare eq: (g, g) -> Bool
+declare println: (m) -> Unit
+declare show: (g) -> String
 
 fn main() -> Unit =
   let v0: ~Pos = call Pos(1, 2)
@@ -142,3 +141,16 @@ fn main() -> Unit =
       let v28: Unit = call println(v27, 0)
       v28
   }
+
+fn Show$$Pos$$show(v29: Pos) -> String =
+  let v30: Int = project v29.0
+  let v31: Dict = get_dict Show[Int]
+  let v32: String = call show(v31, v30)
+  let v33: String = concat_string("Pos(", v32)
+  let v34: String = concat_string(v33, ", ")
+  let v35: Int = project v29.1
+  let v36: Dict = get_dict Show[Int]
+  let v37: String = call show(v36, v35)
+  let v38: String = concat_string(v34, v37)
+  let v39: String = concat_string(v38, ")")
+  v39

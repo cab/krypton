@@ -31,3 +31,5 @@ EQ: Ordering
 GT: Ordering
 Point: (Int, Int) -> Point
 main: () -> Unit
+Hash$$Point$$hash: (Point) -> Int
+Eq$$Point$$eq: (Point, Point) -> Bool

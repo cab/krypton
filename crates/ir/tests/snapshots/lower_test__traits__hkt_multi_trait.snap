@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__hkt_multi_trait
@@ -8,8 +7,8 @@ module traits__hkt_multi_trait
 type Box[a] = Box#0(a)
 trait Container[w7] { wrap(x7): w7[x7] }
 trait Functor[t7] { fmap(t7[u7], (u7) -> v7): t7[v7] }
-instance Functor[Box] {  }
-instance Container[Box] {  }
+instance Functor[Box] { fmap=f0 }
+instance Container[Box] { wrap=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -95,3 +94,15 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
+
+fn Functor$$Box$$fmap(v0: Box[c8], v1: (c8) -> e8) -> ~Box[e8] =
+  switch v0 {
+    0 (v2: a) ->
+      let v3: e8 = call_closure v1(v2)
+      let v4: ~Box[e8] = construct Box::Box#0(v3)
+      v4
+  }
+
+fn Container$$Box$$wrap(v5: x7) -> ~Box[x7] =
+  let v6: ~Box[x7] = construct Box::Box#0(v5)
+  v6

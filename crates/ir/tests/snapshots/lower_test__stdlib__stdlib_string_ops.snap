@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__stdlib_string_ops
@@ -179,9 +178,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare concat
+declare concat: (String, String) -> String
 declare println: (m) -> Unit
-declare trim
+declare trim: (String) -> String
 
 fn main() -> Int =
   let v0: String = call concat("  hello", " world  ")

@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module resources__resource_indirect_consume
 
 type Handle = MkHandle#0(String)
-instance Resource[Handle] {  }
+instance Resource[Handle] { close=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +92,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare close: (Dict, ~g) -> Unit
+declare close: (~g) -> Unit
 declare println: (m) -> Unit
 
 fn use_handle(v0: ~Handle) -> Unit =
@@ -106,3 +105,7 @@ fn main() -> Unit =
   let v4: Unit = call println("opened")
   let v5: Unit = call use_handle(v3)
   v5
+
+fn Resource$$Handle$$close(v6: ~Handle) -> Unit =
+  let v7: Unit = call println("closed")
+  v7

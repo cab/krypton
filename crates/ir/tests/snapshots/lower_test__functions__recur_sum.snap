@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module functions__recur_sum
@@ -91,11 +90,11 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
+declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn sum(v0: Int, v1: Int) -> Int =
-  let_join v2(v3: Int, v4: Int) =
+  let_join [recur] v2(v3: Int, v4: Int) =
     let_join v10(v7: Bool) =
       switch v7 {
         1 ->

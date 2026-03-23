@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__op_neg_syntax
 
 struct Vec2 { x: Int, y: Int }
-instance Neg[Vec2] {  }
+instance Neg[Vec2] { neg=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,8 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Vec2: (Int, Int) -> Vec2
-declare neg: (Dict, g) -> g
+declare Vec2
+declare neg: (g) -> g
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -110,3 +109,11 @@ fn main() -> Unit =
   let v3: Dict = get_dict Neg[Vec2]
   let v4: Vec2 = call neg(v3, v0)
   jump v7(v4)
+
+fn Neg$$Vec2$$neg(v11: Vec2) -> ~Vec2 =
+  let v12: Int = project v11.0
+  let v13: Int = sub_int(0, v12)
+  let v14: Int = project v11.1
+  let v15: Int = sub_int(0, v14)
+  let v16: ~Vec2 = call Vec2(v13, v15)
+  v16

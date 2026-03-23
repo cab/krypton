@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module ownership__shared_with_trait
@@ -90,7 +89,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare show: (Dict, g) -> String
+declare show: (g) -> String
 
 fn f(v0: Dict, v1: t7) -> String =
   let v2: String = call show(v0, v1)

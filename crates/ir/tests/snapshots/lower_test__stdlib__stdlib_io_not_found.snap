@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__stdlib_io_not_found
@@ -102,7 +101,7 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
-declare read_file
+declare read_file: (String) -> Result[String, String]
 
 fn handle(v0: Result[a8, b8]) -> Unit =
   switch v0 {

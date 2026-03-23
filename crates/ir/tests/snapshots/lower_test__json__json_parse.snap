@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__json_parse
@@ -237,7 +236,7 @@ import core/json/json_object as json_object(List[(String, Json)]): Json
 declare json_object: (List[(String, Json)]) -> Json
 declare json_to_string: (Json) -> String
 declare parse_json: (String) -> Result[String, Json]
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(1.0)

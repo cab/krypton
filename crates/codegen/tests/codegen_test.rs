@@ -379,6 +379,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 methods: vec![render_int_method],
                 subdict_traits: vec![],
                 is_intrinsic: false,
+                is_derived: false,
             },
             InstanceDefInfo {
                 trait_name: "Render".to_string(),
@@ -394,6 +395,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 methods: vec![render_wrap_method],
                 subdict_traits: vec![],
                 is_intrinsic: false,
+                is_derived: false,
             },
         ],
         imported_instance_defs: vec![],

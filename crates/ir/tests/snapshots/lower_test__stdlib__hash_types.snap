@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__hash_types
@@ -90,9 +89,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
-declare hash: (Dict, g) -> Int
-declare println: (Dict, m) -> Unit
+declare eq: (g, g) -> Bool
+declare hash: (g) -> Int
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let_join v63(v16: Unit) =

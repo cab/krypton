@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__hkt_function
@@ -8,8 +7,8 @@ module hkt__hkt_function
 type Box[a] = Box#0(a)
 trait Functor[t7] { fmap(t7[u7], (u7) -> v7): t7[v7] }
 trait Hoist[w7] { hoist(x7[w7], (x7[w7]) -> y7[w7]): y7[w7] }
-instance Functor[Box] {  }
-instance Hoist[Int] {  }
+instance Functor[Box] { fmap=f2 }
+instance Hoist[Int] { hoist=f3 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -95,10 +94,10 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare fmap: (Dict, t7[u7], (u7) -> v7) -> t7[v7]
+declare fmap
 
 fn apply(v0: Dict, v1: a8[b8]) -> a8[b8] =
-  let v4: (b8) -> b8 = make_closure(lambda$53, [])
+  let v4: (b8) -> b8 = make_closure(lambda$55, [])
   let v5: a8[b8] = call fmap(v0, v1, v4)
   v5
 
@@ -107,5 +106,17 @@ fn main(v6: Box[Int]) -> Box[Int] =
   let v8: Box[Int] = call apply(v7, v6)
   v8
 
-fn lambda$53(v3: b8) -> b8 =
+fn Functor$$Box$$fmap(v9: Box[s8], v10: (s8) -> u8) -> ~Box[u8] =
+  switch v9 {
+    0 (v11: a) ->
+      let v12: u8 = call_closure v10(v11)
+      let v13: ~Box[u8] = construct Box::Box#0(v12)
+      v13
+  }
+
+fn Hoist$$Int$$hoist(v14: x7[Int], v15: (x7[Int]) -> y7[Int]) -> y7[Int] =
+  let v16: y7[Int] = call_closure v15(v14)
+  v16
+
+fn lambda$55(v3: b8) -> b8 =
   v3

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__string_utils
@@ -194,7 +193,7 @@ declare contains: (String, String) -> Bool
 declare ends_with: (String, String) -> Bool
 declare index_of: (String, String) -> Option[Int]
 declare join: (List[String], String) -> String
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 declare replace: (String, String, String) -> String
 declare starts_with: (String, String) -> Bool
 declare to_lower: (String) -> String

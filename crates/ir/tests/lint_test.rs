@@ -13,12 +13,13 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
         sum_types: vec![],
         functions,
         fn_names,
-        extern_fn_types: HashMap::new(),
         extern_fns: vec![],
         extern_types: vec![],
         imported_fns: vec![],
         traits: vec![],
         instances: vec![],
+        tuple_arities: std::collections::BTreeSet::new(),
+        module_path: None,
     }
 }
 
@@ -145,6 +146,7 @@ fn join_point_used_as_value_is_error() {
                     kind: ExprKind::Atom(Atom::Var(VarId(0))), // using join point as value!
                     ty: Type::Unit,
                 }),
+                is_recur: false,
             },
             ty: Type::Unit,
         },
@@ -322,6 +324,7 @@ fn well_formed_join_point_passes() {
                     },
                     ty: Type::Unit,
                 }),
+                is_recur: false,
             },
             ty: Type::Unit,
         },
@@ -367,6 +370,7 @@ fn letjoin_param_varid_reusable_in_body() {
                     },
                     ty: Type::Int,
                 }),
+                is_recur: false,
             },
             ty: Type::Int,
         },

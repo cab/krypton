@@ -353,7 +353,7 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
             }
             referenced_vars_walk(body, vars);
         }
-        ExprKind::LetJoin { name: _, params: _, join_body, body } => {
+        ExprKind::LetJoin { name: _, params: _, join_body, body, is_recur: _ } => {
             referenced_vars_walk(join_body, vars);
             referenced_vars_walk(body, vars);
         }
@@ -675,6 +675,7 @@ impl LowerCtx {
                 params,
                 join_body,
                 body,
+                is_recur,
             } => {
                 let new_join_body = self.wrap_tail_with_closes(*join_body, resolved)?;
                 let new_body = self.wrap_tail_with_closes(*body, resolved)?;
@@ -685,6 +686,7 @@ impl LowerCtx {
                         params,
                         join_body: Box::new(new_join_body),
                         body: Box::new(new_body),
+                        is_recur,
                     },
                 })
             }
@@ -1629,6 +1631,7 @@ impl LowerCtx {
                 params: vec![(bind, bind_ty)],
                 join_body: Box::new(body),
                 body: Box::new(rewritten),
+                is_recur: false,
             },
         }
     }
@@ -3650,6 +3653,7 @@ impl LowerCtx {
                         kind: ExprKind::Atom(Atom::Var(result_var)),
                     }),
                     body: Box::new(body),
+                    is_recur: false,
                 },
             };
         }
@@ -3682,6 +3686,7 @@ impl LowerCtx {
                             args: original_atoms,
                         },
                     }),
+                    is_recur: true,
                 },
             };
         }
@@ -3716,6 +3721,19 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     }
     for (name, reqs) in &typed.imported_fn_constraint_requirements {
         fn_constraints.entry(name.clone()).or_insert_with(|| reqs.clone());
+    }
+
+    // Add instance method constraints so lower_fn prepends dict params
+    for inst in &typed.instance_defs {
+        if inst.constraints.is_empty() { continue; }
+        let constraint_pairs: Vec<(String, TypeVarId)> = inst.constraints.iter().filter_map(|c| {
+            inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
+        }).collect();
+        if constraint_pairs.is_empty() { continue; }
+        for m in &inst.methods {
+            let mangled = format!("{}$${}$${}", inst.trait_name, inst.target_type_name, m.name);
+            fn_constraints.entry(mangled).or_insert_with(|| constraint_pairs.clone());
+        }
     }
 
     // Build fn_schemes from fn_types
@@ -3993,61 +4011,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_names.insert(id, name.clone());
     }
 
-    // 8. Build extern_fn_types for non-local functions, prepending Dict
-    //    params for constrained functions and trait methods to match the
-    //    IR calling convention.
-    let local_names: std::collections::HashSet<&str> =
-        typed.functions.iter().map(|d| d.name.as_str()).collect();
-    let mut extern_fn_types = HashMap::new();
-    for entry in &typed.fn_types {
-        if !local_names.contains(entry.name.as_str()) {
-            if let Some(&fn_id) = ctx.fn_ids.get(&entry.name) {
-                let ty = if entry.origin.is_some() {
-                    // Trait methods always take a Dict as first arg
-                    prepend_n_dicts(1, &entry.scheme.ty)
-                } else {
-                    // Regular constrained functions get Dict per constraint
-                    prepend_dict_params(
-                        &entry.name,
-                        &ctx.fn_constraints,
-                        &entry.scheme.ty,
-                    )
-                };
-                extern_fn_types.insert(fn_id, ty);
-            }
-        }
-    }
-
-    // Register locally-defined trait method types in extern_fn_types.
-    // (FnIds were allocated in step 3b; this pass fills in type signatures
-    // after lowering is complete.)
-    for trait_def in &typed.trait_defs {
-        if trait_def.is_imported {
-            continue;
-        }
-        for (method_name, _) in &trait_def.methods {
-            if let Some(&fn_id) = ctx.fn_ids.get(method_name) {
-                if !extern_fn_types.contains_key(&fn_id) {
-                    if let Some((_, method_types)) = ctx.trait_method_types.get(&trait_def.name) {
-                        if let Some((param_tys, ret_ty)) = method_types.get(method_name) {
-                            let fn_ty = Type::Fn(param_tys.clone(), Box::new(ret_ty.clone()));
-                            extern_fn_types.insert(fn_id, prepend_n_dicts(1, &fn_ty));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Register panic intrinsic extern type
-    if let Some(&fn_id) = ctx.fn_ids.get("panic") {
-        if !extern_fn_types.contains_key(&fn_id) {
-            let ret_var = ctx.type_var_gen.fresh();
-            extern_fn_types.insert(fn_id, Type::Fn(vec![Type::String], Box::new(Type::Var(ret_var))));
-        }
-    }
-
-    // 9. Build enriched extern_fns from typed_module extern function info
+    // 8. Build enriched extern_fns from typed_module extern function info
     let mut extern_fns = vec![];
     for ext in typed.extern_fns.iter().chain(typed.imported_extern_fns.iter()) {
         if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
@@ -4117,11 +4081,23 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
 
     // 13. Build instance definitions from typed_module instance_defs (local + imported)
     let mut instances = vec![];
+    // Instance method FnIds are looked up by mangled name (Trait$$Type$$method).
+    // For local instances, all methods must have FnIds (allocated during step 3).
+    // For imported instances, methods may not be present (they're defined elsewhere).
     let lower_instance = |inst: &krypton_typechecker::typed_ast::InstanceDefInfo, is_imported: bool, ctx: &LowerCtx| {
-        let method_fn_ids = inst.methods.iter().filter_map(|m| {
-            let mangled = format!("{}$${}$${}", inst.trait_name, inst.target_type_name, m.name);
-            ctx.fn_ids.get(&mangled).map(|&fn_id| (m.name.clone(), fn_id))
-        }).collect();
+        let method_fn_ids = if is_imported {
+            inst.methods.iter().filter_map(|m| {
+                let mangled = format!("{}$${}$${}", inst.trait_name, inst.target_type_name, m.name);
+                ctx.fn_ids.get(&mangled).map(|&fn_id| (m.name.clone(), fn_id))
+            }).collect()
+        } else {
+            inst.methods.iter().map(|m| {
+                let mangled = format!("{}$${}$${}", inst.trait_name, inst.target_type_name, m.name);
+                let fn_id = ctx.fn_ids.get(&mangled)
+                    .unwrap_or_else(|| panic!("ICE: no FnId for instance method {mangled}"));
+                (m.name.clone(), *fn_id)
+            }).collect()
+        };
         let sub_dict_requirements = inst.constraints.iter().filter_map(|c| {
             inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
         }).collect();
@@ -4142,18 +4118,25 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         instances.push(lower_instance(inst, true, &ctx));
     }
 
+    // Collect tuple arities from all FnDefs
+    let mut tuple_arities = std::collections::BTreeSet::new();
+    for func in &functions {
+        collect_tuple_arities_from_fn(func, &mut tuple_arities);
+    }
+
     Ok(Module {
         name: module_name.to_string(),
         structs,
         sum_types,
         functions,
         fn_names,
-        extern_fn_types,
         extern_fns,
         extern_types,
         imported_fns,
         traits,
         instances,
+        tuple_arities,
+        module_path: typed.module_path.clone(),
     })
 }
 
@@ -4218,6 +4201,7 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
             params,
             join_body,
             body: join_scope,
+            is_recur,
         } => {
             let new_join_body = replace_tail_with_jump(*join_body, target);
             let new_scope = replace_tail_with_jump(*join_scope, target);
@@ -4228,6 +4212,7 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
                     params,
                     join_body: Box::new(new_join_body),
                     body: Box::new(new_scope),
+                    is_recur,
                 },
             }
         }
@@ -4476,31 +4461,87 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
     }
 }
 
-/// Prepend N Dict params to a function type.
-fn prepend_n_dicts(n: usize, ty: &Type) -> Type {
-    if n == 0 {
-        return ty.clone();
+// ---------------------------------------------------------------------------
+// Tuple arity collection
+// ---------------------------------------------------------------------------
+
+fn collect_tuple_arities_from_fn(func: &FnDef, arities: &mut std::collections::BTreeSet<usize>) {
+    for (_, ty) in &func.params {
+        collect_tuple_arities_from_type(ty, arities);
     }
+    collect_tuple_arities_from_type(&func.return_type, arities);
+    collect_tuple_arities_from_expr(&func.body, arities);
+}
+
+fn collect_tuple_arities_from_type(ty: &Type, arities: &mut std::collections::BTreeSet<usize>) {
     match ty {
-        Type::Fn(params, ret) => {
-            let mut new_params = vec![Type::Named("Dict".to_string(), vec![]); n];
-            new_params.extend(params.iter().cloned());
-            Type::Fn(new_params, ret.clone())
+        Type::Tuple(elems) => {
+            arities.insert(elems.len());
+            for e in elems {
+                collect_tuple_arities_from_type(e, arities);
+            }
         }
-        other => other.clone(),
+        Type::Fn(params, ret) => {
+            for p in params {
+                collect_tuple_arities_from_type(p, arities);
+            }
+            collect_tuple_arities_from_type(ret, arities);
+        }
+        Type::Named(_, args) => {
+            for a in args {
+                collect_tuple_arities_from_type(a, arities);
+            }
+        }
+        Type::Own(inner) => collect_tuple_arities_from_type(inner, arities),
+        _ => {}
     }
 }
 
-/// Prepend Dict params to a function type if it has trait constraints.
-fn prepend_dict_params(
-    name: &str,
-    fn_constraints: &HashMap<String, Vec<(String, TypeVarId)>>,
-    ty: &Type,
-) -> Type {
-    let dict_count = fn_constraints
-        .get(name)
-        .map(|c| c.len())
-        .unwrap_or(0);
-    prepend_n_dicts(dict_count, ty)
+fn collect_tuple_arities_from_expr(expr: &Expr, arities: &mut std::collections::BTreeSet<usize>) {
+    collect_tuple_arities_from_type(&expr.ty, arities);
+    match &expr.kind {
+        ExprKind::Let { ty, value, body, .. } => {
+            collect_tuple_arities_from_type(ty, arities);
+            collect_tuple_arities_from_simple(value, arities);
+            collect_tuple_arities_from_expr(body, arities);
+        }
+        ExprKind::LetRec { bindings, body } => {
+            for (_, ty, _, _) in bindings {
+                collect_tuple_arities_from_type(ty, arities);
+            }
+            collect_tuple_arities_from_expr(body, arities);
+        }
+        ExprKind::LetJoin { params, join_body, body, .. } => {
+            for (_, ty) in params {
+                collect_tuple_arities_from_type(ty, arities);
+            }
+            collect_tuple_arities_from_expr(join_body, arities);
+            collect_tuple_arities_from_expr(body, arities);
+        }
+        ExprKind::Switch { branches, default, .. } => {
+            for branch in branches {
+                for (_, ty) in &branch.bindings {
+                    collect_tuple_arities_from_type(ty, arities);
+                }
+                collect_tuple_arities_from_expr(&branch.body, arities);
+            }
+            if let Some(d) = default {
+                collect_tuple_arities_from_expr(d, arities);
+            }
+        }
+        ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
+    }
+}
+
+fn collect_tuple_arities_from_simple(expr: &SimpleExpr, arities: &mut std::collections::BTreeSet<usize>) {
+    match expr {
+        SimpleExpr::MakeTuple { elements } => {
+            arities.insert(elements.len());
+        }
+        SimpleExpr::MakeVec { element_type, .. } => {
+            collect_tuple_arities_from_type(element_type, arities);
+        }
+        _ => {}
+    }
 }
 

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__map_operations
@@ -132,11 +131,11 @@ import core/map/put as put(Map[w8, x8], w8, x8): Map[w8, x8]
 import core/map/delete as delete(Map[e10, f10], e10): Map[e10, f10]
 import core/map/contains as contains(Map[n10, o10], n10): Bool
 import core/map/size as size(Map[j13, k13]): Int
-declare contains: (Dict, Dict, Map[n10, o10], n10) -> Bool
-declare delete: (Dict, Dict, Map[e10, f10], e10) -> Map[e10, f10]
+declare contains: (Map[n10, o10], n10) -> Bool
+declare delete: (Map[e10, f10], e10) -> Map[e10, f10]
 declare empty: () -> Map[r8, s8]
-declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[w8, x8], w8, x8) -> Map[w8, x8]
+declare println: (m) -> Unit
+declare put: (Map[w8, x8], w8, x8) -> Map[w8, x8]
 declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =

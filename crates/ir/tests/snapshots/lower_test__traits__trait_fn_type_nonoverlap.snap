@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__trait_fn_type_nonoverlap
 
 trait Convert[s7] { convert(s7): String }
-instance Convert[$Fun1$$Var0$Int] {  }
-instance Convert[$Fun1$$Var0$Bool] {  }
+instance Convert[$Fun1$$Var0$Int] { convert=f3 }
+instance Convert[$Fun1$$Var0$Bool] { convert=f4 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,8 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare convert: (Dict, s7) -> String
-declare println: (Dict, m) -> Unit
+declare convert
+declare println: (m) -> Unit
 
 fn f(v0: String) -> Int =
   0
@@ -113,3 +113,9 @@ fn main() -> Unit =
   let v7: Dict = get_dict Show[String]
   let v11: Unit = call println(v7, v10)
   v11
+
+fn Convert$$$Fun1$$Var0$Int$$convert(v12: (t7) -> Int) -> ~String =
+  "to-int"
+
+fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (u7) -> Bool) -> ~String =
+  "to-bool"

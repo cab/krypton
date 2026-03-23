@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module actors__actor_receive_timeout
@@ -175,7 +174,7 @@ import core/actor/receive_timeout as receive_timeout(Mailbox[g9], Int): Option[g
 declare receive_timeout: (Mailbox[g9], Int) -> Option[g9]
 
 fn actor(v0: Mailbox[Msg]) -> Unit =
-  let_join v1(v2: Mailbox[Msg]) =
+  let_join [recur] v1(v2: Mailbox[Msg]) =
     let v3: Option[Msg] = call receive_timeout(v2, 5000)
     switch v3 {
       0 (v4: b) ->

@@ -29,6 +29,11 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-main: () -> Unit
-Tag$$Vec$Int$$tag: (Vec[Int]) -> ~String
-Tag$$Vec$String$$tag: (Vec[String]) -> ~String
+Some: forall a. (a) -> Option[a]
+None: forall a. Option[a]
+simple_match: (Option[Int]) -> Int
+nested_match: (Option[Option[Int]]) -> Int
+wildcard_match: (Option[Int]) -> Int
+literal_match: (Int) -> Int
+let_tuple: () -> Int
+match_as_value: (Option[Int]) -> Int

@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__hkt_functor
 
 type Box[a] = Box#0(a)
 trait Functor[t7] { fmap(t7[u7], (u7) -> v7): t7[v7] }
-instance Functor[Box] {  }
+instance Functor[Box] { fmap=f0 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,3 +92,11 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
+
+fn Functor$$Box$$fmap(v0: Box[a8], v1: (a8) -> c8) -> ~Box[c8] =
+  switch v0 {
+    0 (v2: a) ->
+      let v3: c8 = call_closure v1(v2)
+      let v4: ~Box[c8] = construct Box::Box#0(v3)
+      v4
+  }

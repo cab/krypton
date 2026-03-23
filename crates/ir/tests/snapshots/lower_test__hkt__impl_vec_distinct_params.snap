@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module hkt__impl_vec_distinct_params
 
 trait Tag[s7] { tag(s7): String }
-instance Tag[Vec$Int] {  }
-instance Tag[Vec$String] {  }
+instance Tag[Vec$Int] { tag=f1 }
+instance Tag[Vec$String] { tag=f2 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,8 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare println: (Dict, m) -> Unit
-declare tag: (Dict, s7) -> String
+declare println: (m) -> Unit
+declare tag
 
 fn main() -> Unit =
   let v0: Vec[Int] = make_vec(1, 2, 3)
@@ -108,3 +107,9 @@ fn main() -> Unit =
   let v6: Dict = get_dict Show[String]
   let v9: Unit = call println(v6, v8)
   v9
+
+fn Tag$$Vec$Int$$tag(v10: Vec[Int]) -> ~String =
+  "ints"
+
+fn Tag$$Vec$String$$tag(v11: Vec[String]) -> ~String =
+  "strings"

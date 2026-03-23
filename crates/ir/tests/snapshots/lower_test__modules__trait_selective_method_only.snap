@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__trait_selective_method_only
@@ -160,8 +159,8 @@ import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import trait_selective_lib/MkWidget as MkWidget(String): Widget
 import trait_selective_lib/describe as describe(s7): String
-declare describe: (Dict, s7) -> String
-declare println: (Dict, m) -> Unit
+declare describe: (s7) -> String
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Widget = construct Widget::MkWidget#0("x")

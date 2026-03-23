@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__constrained_fn_ref_scope_capture
@@ -100,9 +99,9 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare eq: (Dict, g, g) -> Bool
-declare println: (Dict, m) -> Unit
-declare show: (Dict, g) -> String
+declare eq: (g, g) -> Bool
+declare println: (m) -> Unit
+declare show: (g) -> String
 
 fn show_it(v0: Dict, v1: t7) -> String =
   let v2: String = call show(v0, v1)

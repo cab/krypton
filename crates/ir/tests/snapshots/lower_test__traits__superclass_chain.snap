@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__superclass_chain
 
 struct Num { n: Int }
-instance Eq[Num] {  }
-instance Ord[Num] {  }
+instance Eq[Num] { eq=f2 }
+instance Ord[Num] { lt=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,8 +93,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Num: (Int) -> Num
-declare lt: (Dict, h, h) -> Bool
+declare Num
+declare eq: (g, g) -> Bool
+declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn is_less(v0: Dict, v1: v7, v2: v7) -> Bool =
@@ -109,3 +109,17 @@ fn main() -> Unit =
   let v7: Bool = call is_less(v6, v4, v5)
   let v8: Unit = call println(v7)
   v8
+
+fn Eq$$Num$$eq(v9: Num, v10: Num) -> Bool =
+  let v11: Dict = get_dict Eq[Int]
+  let v12: Int = project v9.0
+  let v13: Int = project v10.0
+  let v14: Bool = call eq(v11, v12, v13)
+  v14
+
+fn Ord$$Num$$lt(v15: Num, v16: Num) -> Bool =
+  let v17: Dict = get_dict Ord[Int]
+  let v18: Int = project v15.0
+  let v19: Int = project v16.0
+  let v20: Bool = call lt(v17, v18, v19)
+  v20

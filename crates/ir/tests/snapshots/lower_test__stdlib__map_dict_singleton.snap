@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__map_dict_singleton
@@ -133,12 +132,12 @@ import core/map/get as get(Map[p9, c10], p9): Option[c10]
 import core/map/contains as contains(Map[n10, o10], n10): Bool
 import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
 import core/map/size as size(Map[j13, k13]): Int
-declare contains: (Dict, Dict, Map[n10, o10], n10) -> Bool
+declare contains: (Map[n10, o10], n10) -> Bool
 declare empty: () -> Map[r8, s8]
-declare from_list: (Dict, Dict, List[(c13, d13)]) -> Map[c13, d13]
-declare get: (Dict, Dict, Map[p9, c10], p9) -> Option[c10]
-declare println: (Dict, m) -> Unit
-declare put: (Dict, Dict, Map[w8, x8], w8, x8) -> Map[w8, x8]
+declare from_list: (List[(c13, d13)]) -> Map[c13, d13]
+declare get: (Map[p9, c10], p9) -> Option[c10]
+declare println: (m) -> Unit
+declare put: (Map[w8, x8], w8, x8) -> Map[w8, x8]
 declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =

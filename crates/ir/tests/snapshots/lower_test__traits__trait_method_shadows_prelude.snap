@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_method_shadows_prelude
 
 trait Multiply[t7] { times(t7, t7): t7 }
-instance Multiply[Int] {  }
+instance Multiply[Int] { times=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,8 +93,8 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
-declare show: (Dict, g) -> String
-declare times: (Dict, t7, t7) -> t7
+declare show: (g) -> String
+declare times
 
 fn main() -> Unit =
   let v0: Dict = get_dict Multiply[Int]
@@ -108,3 +107,7 @@ fn main() -> Unit =
   let v7: String = call show(v6, v5)
   let v8: Unit = call println(v7)
   v8
+
+fn Multiply$$Int$$times(v9: Int, v10: Int) -> Int =
+  let v11: Int = mul_int(v9, v10)
+  v11

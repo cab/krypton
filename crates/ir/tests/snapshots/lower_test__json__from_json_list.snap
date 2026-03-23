@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__from_json_list
@@ -233,9 +232,9 @@ import core/result/Err as Err(g): Result[g, h]
 import core/json/JNum as JNum(Float): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/from_json as from_json(Json): Result[String, n14]
-declare from_json: (Dict, Json) -> Result[String, n14]
+declare from_json: (Json) -> Result[String, n14]
 declare length: (List[o]) -> Int
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(1.0)

@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__derive_show_record
 
 struct Point { x: Int, y: Int }
-instance Show[Point] {  }
+instance Show[Point] { show=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,9 +92,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Point: (Int, Int) -> Point
+declare Point
 declare println: (m) -> Unit
-declare show: (Dict, g) -> String
+declare show: (g) -> String
 
 fn main() -> Unit =
   let v0: ~Point = call Point(1, 2)
@@ -103,3 +102,16 @@ fn main() -> Unit =
   let v2: String = call show(v1, v0)
   let v3: Unit = call println(v2)
   v3
+
+fn Show$$Point$$show(v4: Point) -> String =
+  let v5: Int = project v4.0
+  let v6: Dict = get_dict Show[Int]
+  let v7: String = call show(v6, v5)
+  let v8: String = concat_string("Point(", v7)
+  let v9: String = concat_string(v8, ", ")
+  let v10: Int = project v4.1
+  let v11: Dict = get_dict Show[Int]
+  let v12: String = call show(v11, v10)
+  let v13: String = concat_string(v9, v12)
+  let v14: String = concat_string(v13, ")")
+  v14

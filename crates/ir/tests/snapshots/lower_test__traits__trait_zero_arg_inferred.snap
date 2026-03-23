@@ -1,15 +1,14 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_inferred
 
 type MyStruct = MyStruct#0(Int)
 trait Default[t7] { default(): t7 }
-instance Default[Int] {  }
-instance Default[MyStruct] {  }
-instance Show[MyStruct] {  }
+instance Default[Int] { default=f1 }
+instance Default[MyStruct] { default=f2 }
+instance Show[MyStruct] { show=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -96,8 +95,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare default: (Dict) -> t7
+declare default
 declare println: (m) -> Unit
+declare show: (g) -> String
 
 fn main() -> Unit =
   let v1: Dict = get_dict Default[Int]
@@ -107,3 +107,20 @@ fn main() -> Unit =
   let v4: Unit = call println(v0)
   let v5: Unit = call println(v2)
   v5
+
+fn Default$$Int$$default() -> ~Int =
+  42
+
+fn Default$$MyStruct$$default() -> ~MyStruct =
+  let v6: ~MyStruct = construct MyStruct::MyStruct#0(10)
+  v6
+
+fn Show$$MyStruct$$show(v7: MyStruct) -> String =
+  switch v7 {
+    0 (v8: Int) ->
+      let v9: Dict = get_dict Show[Int]
+      let v10: String = call show(v9, v8)
+      let v11: String = concat_string("MyStruct(", v10)
+      let v12: String = concat_string(v11, ")")
+      v12
+  }

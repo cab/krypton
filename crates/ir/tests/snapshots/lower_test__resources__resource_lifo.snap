@@ -1,14 +1,13 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module resources__resource_lifo
 
 type HandleA = MkHandleA#0(Int)
 type HandleB = MkHandleB#0(Int)
-instance Resource[HandleA] {  }
-instance Resource[HandleB] {  }
+instance Resource[HandleA] { close=f1 }
+instance Resource[HandleB] { close=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -95,7 +94,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare close: (Dict, ~g) -> Unit
+declare close: (~g) -> Unit
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -108,3 +107,11 @@ fn main() -> Unit =
   let v5: Dict = get_dict Resource[HandleA]
   let v6: Unit = call close(v5, v0)
   v3
+
+fn Resource$$HandleA$$close(v8: ~HandleA) -> Unit =
+  let v9: Unit = call println("close_a")
+  v9
+
+fn Resource$$HandleB$$close(v10: ~HandleB) -> Unit =
+  let v11: Unit = call println("close_b")
+  v11

@@ -4,7 +4,7 @@ pub mod lower;
 pub mod pass;
 pub mod pretty;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 pub use krypton_typechecker::types::{Type, TypeVarId};
@@ -35,9 +35,6 @@ pub struct Module {
     pub functions: Vec<FnDef>,
     /// FnId → debug name for all known functions (local + extern + imported).
     pub fn_names: HashMap<FnId, String>,
-    /// FnId → type for extern/imported functions (not locally defined).
-    /// Legacy field — use extern_fns/imported_fns for enriched info.
-    pub extern_fn_types: HashMap<FnId, Type>,
     /// Extern FFI function bindings (Java/JS).
     pub extern_fns: Vec<ExternFnDef>,
     /// Extern type registrations (opaque types backed by host types).
@@ -48,6 +45,10 @@ pub struct Module {
     pub traits: Vec<TraitDef>,
     /// Trait instance declarations (codegen metadata for dispatch infrastructure).
     pub instances: Vec<InstanceDef>,
+    /// Set of tuple arities used in this module (for codegen class generation).
+    pub tuple_arities: BTreeSet<usize>,
+    /// Module path for qualified type names (None for main module).
+    pub module_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +85,7 @@ pub struct FnDef {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExternTarget {
     Java { class: String },
+    /// Not yet constructed — forward declaration for JS backend.
     Js { module: String },
 }
 
@@ -270,6 +272,7 @@ mod tests {
                 },
                 ty: Type::Unit,
             }),
+            is_recur: false,
         };
 
         let _letrec = ExprKind::LetRec {
@@ -283,7 +286,6 @@ mod tests {
         let _module = Module {
             name: "test".into(),
             fn_names: HashMap::new(),
-            extern_fn_types: HashMap::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],
@@ -320,6 +322,8 @@ mod tests {
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
+            tuple_arities: BTreeSet::new(),
+            module_path: None,
         };
     }
 }

@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__to_json_custom
 
 struct Point { x: Int, y: Int }
-instance ToJson[Point] {  }
+instance ToJson[Point] { to_json=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -271,9 +270,10 @@ import core/json/json_to_string as json_to_string(Json): String
 import core/json/json_object as json_object(List[(String, Json)]): Json
 import core/json/to_json as to_json(m14): Json
 import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
+declare json_object: (List[(String, Json)]) -> Json
 declare json_to_string: (Json) -> String
-declare println: (Dict, m) -> Unit
-declare to_json: (Dict, m14) -> Json
+declare println: (m) -> Unit
+declare to_json: (m14) -> Json
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
@@ -283,3 +283,18 @@ fn main() -> Unit =
   let v1: Dict = get_dict Show[String]
   let v5: Unit = call println(v1, v4)
   v5
+
+fn ToJson$$Point$$to_json(v6: Point) -> Json =
+  let v7: Int = project v6.0
+  let v8: Dict = get_dict ToJson[Int]
+  let v9: Json = call to_json(v8, v7)
+  let v10: (~String, Json) = tuple("x", v9)
+  let v11: Int = project v6.1
+  let v12: Dict = get_dict ToJson[Int]
+  let v13: Json = call to_json(v12, v11)
+  let v14: (~String, Json) = tuple("y", v13)
+  let v15: ~List[(~String, Json)] = construct List::Nil#1()
+  let v16: ~List[(~String, Json)] = construct List::Cons#0(v14, v15)
+  let v17: ~List[(~String, Json)] = construct List::Cons#0(v10, v16)
+  let v18: Json = call json_object(v17)
+  v18

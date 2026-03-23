@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__op_sub_syntax
 
 struct Vec2 { x: Int, y: Int }
-instance Sub[Vec2] {  }
+instance Sub[Vec2] { sub=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,9 +92,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare Vec2: (Int, Int) -> Vec2
+declare Vec2
 declare println: (m) -> Unit
-declare sub: (Dict, g, g) -> g
+declare sub: (g, g) -> g
 
 fn main() -> Unit =
   let v0: ~Vec2 = call Vec2(5, 3)
@@ -111,3 +110,13 @@ fn main() -> Unit =
   let v4: Dict = get_dict Sub[Vec2]
   let v5: Vec2 = call sub(v4, v0, v1)
   jump v8(v5)
+
+fn Sub$$Vec2$$sub(v12: Vec2, v13: Vec2) -> ~Vec2 =
+  let v14: Int = project v12.0
+  let v15: Int = project v13.0
+  let v16: Int = sub_int(v14, v15)
+  let v17: Int = project v12.1
+  let v18: Int = project v13.1
+  let v19: Int = sub_int(v17, v18)
+  let v20: ~Vec2 = call Vec2(v16, v19)
+  v20

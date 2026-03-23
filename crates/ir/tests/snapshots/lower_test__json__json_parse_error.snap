@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__json_parse_error
@@ -229,7 +228,7 @@ import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 import core/json/parse_json as parse_json(String): Result[String, Json]
 declare parse_json: (String) -> Result[String, Json]
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Result[String, Json] = call parse_json("not json")

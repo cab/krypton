@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__impl_vec_trait
 
 trait MyTrait[s7] { check(s7): String }
-instance MyTrait[Vec$$Var0] {  }
+instance MyTrait[Vec$$Var0] { check=f0 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -91,3 +91,5 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
+fn MyTrait$$Vec$$Var0$$check(v0: Dict, v1: Vec[t7]) -> ~String =
+  "vec"

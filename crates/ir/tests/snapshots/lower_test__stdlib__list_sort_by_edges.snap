@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__list_sort_by_edges
@@ -101,8 +100,8 @@ import core/ordering/GT as GT(): Ordering
 import core/list/length as length(List[o]): Int
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
 import core/io/println as println(m): Unit
-declare println: (Dict, m) -> Unit
-declare sort_by: (Dict, List[w5], (w5) -> l5) -> List[w5]
+declare println: (m) -> Unit
+declare sort_by: (List[w5], (w5) -> l5) -> List[w5]
 
 fn main() -> Unit =
   let v1: ~List[Int] = construct List::Nil#1()

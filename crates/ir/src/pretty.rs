@@ -271,9 +271,14 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 params,
                 join_body,
                 body,
+                is_recur,
             } => {
                 self.write_indent()?;
-                writeln!(self.f, "let_join {name}({}) =", fmt_params(params))?;
+                if *is_recur {
+                    writeln!(self.f, "let_join [recur] {name}({}) =", fmt_params(params))?;
+                } else {
+                    writeln!(self.f, "let_join {name}({}) =", fmt_params(params))?;
+                }
                 let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
                 inner.write_expr(join_body)?;
                 self.write_indent()?;
@@ -455,8 +460,18 @@ impl fmt::Display for Module {
             .map(|(id, name)| (name.as_str(), *id))
             .collect();
         declares.sort_by_key(|(name, _)| *name);
+        // Build FnId → Type lookup from enriched extern_fns and imported_fns
+        let mut fn_type_lookup: HashMap<FnId, String> = HashMap::new();
+        for ext in &self.extern_fns {
+            let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
+            fn_type_lookup.insert(ext.id, format!("({}) -> {}", params.join(", "), ext.return_type));
+        }
+        for imp in &self.imported_fns {
+            let params: Vec<String> = imp.param_types.iter().map(|t| format!("{t}")).collect();
+            fn_type_lookup.insert(imp.id, format!("({}) -> {}", params.join(", "), imp.return_type));
+        }
         for (name, id) in &declares {
-            if let Some(ty) = self.extern_fn_types.get(id) {
+            if let Some(ty) = fn_type_lookup.get(id) {
                 writeln!(f, "declare {name}: {ty}")?;
             } else {
                 writeln!(f, "declare {name}")?;
@@ -716,6 +731,7 @@ mod tests {
                     },
                     ty: Type::Int,
                 }),
+                is_recur: false,
             },
             ty: Type::Int,
         };
@@ -825,12 +841,13 @@ mod tests {
         let module = Module {
             name: "test".into(),
             fn_names: std::collections::HashMap::new(),
-            extern_fn_types: std::collections::HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
+            tuple_arities: std::collections::BTreeSet::new(),
+            module_path: None,
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],

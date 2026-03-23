@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__constrained_instance_nested_ok
 
 type Option[a] = Some#0(a) | None#1
-instance Show[Option$$Var0] {  }
+instance Show[Option$$Var0] { show=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,9 +92,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (Dict, g, g) -> Bool
+declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (Dict, g) -> String
+declare show: (g) -> String
 
 fn main() -> Unit =
   let_join v10(v8: Bool) =
@@ -110,3 +110,6 @@ fn main() -> Unit =
   let v6: String = call show(v5, v2)
   let v7: Bool = call eq(v0, v6, "nested")
   jump v10(v7)
+
+fn Show$$Option$$Var0$$show(v11: Dict, v12: Option[u7]) -> ~String =
+  "nested"

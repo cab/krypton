@@ -1,13 +1,12 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
 trait MyEq[s7] { my_eq(s7, s7): Bool }
-instance MyEq[Point] {  }
+instance MyEq[Point] { my_eq=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,8 +92,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare my_eq: (Dict, s7, s7) -> Bool
-declare println: (Dict, m) -> Unit
+declare eq: (g, g) -> Bool
+declare my_eq
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
@@ -104,3 +104,22 @@ fn main() -> Unit =
   let v2: Dict = get_dict Show[Bool]
   let v5: Unit = call println(v2, v4)
   v5
+
+fn MyEq$$Point$$my_eq(v6: Point, v7: Point) -> Bool =
+  let_join v17(v12: Bool) =
+    switch v12 {
+      1 ->
+        let v13: Dict = get_dict Eq[Int]
+        let v14: Int = project v6.1
+        let v15: Int = project v7.1
+        let v16: Bool = call eq(v13, v14, v15)
+        v16
+      _ ->
+        false
+    }
+  in
+  let v8: Dict = get_dict Eq[Int]
+  let v9: Int = project v6.0
+  let v10: Int = project v7.0
+  let v11: Bool = call eq(v8, v9, v10)
+  jump v17(v11)

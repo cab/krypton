@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__json_array_nested
@@ -235,7 +234,7 @@ import core/json/parse_json as parse_json(String): Result[String, Json]
 import core/json/json_to_string as json_to_string(Json): String
 declare json_to_string: (Json) -> String
 declare parse_json: (String) -> Result[String, Json]
-declare println: (Dict, m) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Result[String, Json] = call parse_json("[1,2,3]")

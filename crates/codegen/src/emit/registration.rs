@@ -804,7 +804,15 @@ impl Compiler {
         typed_module: &TypedModule,
     ) -> Result<Vec<Method>, CodegenError> {
         let mut extra_methods = Vec::new();
+        let instance_method_names: std::collections::HashSet<String> = typed_module.instance_defs.iter()
+            .flat_map(|inst| inst.methods.iter().map(|m| {
+                krypton_typechecker::typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name)
+            }))
+            .collect();
         for typed_fn in &typed_module.functions {
+            if instance_method_names.contains(&typed_fn.name) {
+                continue; // compiled from instance_defs below
+            }
             let mut method = self.compile_function(typed_fn)?;
             if typed_fn.name == "main" {
                 let name_idx = self.cp.add_utf8("krypton_main")?;

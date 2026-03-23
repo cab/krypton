@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module traits__trait_fn_type
 
 trait Callable[s7] { call(s7): String }
-instance Callable[$Fun1$Int$String] {  }
+instance Callable[$Fun1$Int$String] { call=f2 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,8 +91,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare call: (Dict, s7) -> String
-declare println: (Dict, m) -> Unit
+declare call
+declare println: (m) -> Unit
 
 fn greet(v0: Int) -> String =
   "hello"
@@ -105,3 +104,7 @@ fn main() -> Unit =
   let v1: Dict = get_dict Show[String]
   let v5: Unit = call println(v1, v4)
   v5
+
+fn Callable$$$Fun1$Int$String$$call(v6: (Int) -> String) -> String =
+  let v7: String = call_closure v6(42)
+  v7

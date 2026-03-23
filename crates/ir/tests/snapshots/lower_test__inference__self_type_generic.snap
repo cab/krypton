@@ -6,8 +6,8 @@ module inference__self_type_generic
 
 struct Wrapper[a] { value: a }
 trait MyEq[t7] { my_eq(t7, t7): Bool }
-instance MyEq[String] {  }
-instance MyEq[Wrapper$$Var0] {  }
+instance MyEq[String] { my_eq=f1 }
+instance MyEq[Wrapper$$Var0] { my_eq=f2 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,8 +93,9 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare my_eq: (Dict, t7, t7) -> Bool
-declare println: (Dict, m) -> Unit
+declare eq: (g, g) -> Bool
+declare my_eq
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Wrapper[String] = construct Wrapper("hello")
@@ -105,3 +106,14 @@ fn main() -> Unit =
   let v2: Dict = get_dict Show[Bool]
   let v6: Unit = call println(v2, v5)
   v6
+
+fn MyEq$$String$$my_eq(v7: String, v8: String) -> Bool =
+  let v9: Dict = get_dict Eq[String]
+  let v10: Bool = call eq(v9, v7, v8)
+  v10
+
+fn MyEq$$Wrapper$$Var0$$my_eq(v11: Dict, v12: Wrapper[u7], v13: Wrapper[u7]) -> Bool =
+  let v14: u7 = project v12.0
+  let v15: u7 = project v13.0
+  let v16: Bool = call my_eq(v11, v14, v15)
+  v16

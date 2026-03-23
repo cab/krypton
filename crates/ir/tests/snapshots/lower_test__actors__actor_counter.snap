@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module actors__actor_counter
@@ -178,7 +177,7 @@ declare receive: (Mailbox[e9]) -> e9
 declare send: (Ref[t8], t8) -> Unit
 
 fn counter(v0: Mailbox[CounterMsg], v1: Int) -> z9 =
-  let_join v2(v3: Mailbox[CounterMsg], v4: Int) =
+  let_join [recur] v2(v3: Mailbox[CounterMsg], v4: Int) =
     let v5: CounterMsg = call receive(v3)
     switch v5 {
       0 ->

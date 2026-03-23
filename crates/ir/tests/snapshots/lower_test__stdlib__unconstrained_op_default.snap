@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__unconstrained_op_default
@@ -100,8 +99,8 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare println: (Dict, m) -> Unit
-declare show: (Dict, g) -> String
+declare println: (m) -> Unit
+declare show: (g) -> String
 
 fn add_ints(v0: Int, v1: Int) -> Int =
   let v2: Int = add_int(v0, v1)

@@ -1,12 +1,11 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__type_qualify_trait
 
 trait MyEq[t7] { my_eq(t7, t7): Bool }
-instance MyEq[Int] {  }
+instance MyEq[Int] { my_eq=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +92,8 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare my_eq: (Dict, t7, t7) -> Bool
+declare eq: (g, g) -> Bool
+declare my_eq
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -101,3 +101,8 @@ fn main() -> Unit =
   let v1: Bool = call my_eq(v0, 42, 42)
   let v2: Unit = call println(v1)
   v2
+
+fn MyEq$$Int$$my_eq(v3: Int, v4: Int) -> Bool =
+  let v5: Dict = get_dict Eq[Int]
+  let v6: Bool = call eq(v5, v3, v4)
+  v6

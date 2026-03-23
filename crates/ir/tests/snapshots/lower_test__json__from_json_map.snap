@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module json__from_json_map
@@ -309,10 +308,10 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
 import core/json/from_json as from_json(Json): Result[String, n14]
 import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
-declare from_json: (Dict, Json) -> Result[String, n14]
-declare from_list: (Dict, Dict, List[(c13, d13)]) -> Map[c13, d13]
-declare get: (Dict, Dict, Map[p9, c10], p9) -> Option[c10]
-declare println: (Dict, m) -> Unit
+declare from_json: (Json) -> Result[String, n14]
+declare from_list: (List[(c13, d13)]) -> Map[c13, d13]
+declare get: (Map[p9, c10], p9) -> Option[c10]
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(42.0)
