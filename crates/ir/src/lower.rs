@@ -906,11 +906,10 @@ impl LowerCtx {
             )),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let lhs_ty = strip_own(&lhs.ty);
-                if resolve_binop(op, lhs_ty).is_ok() {
+                if let Ok(prim_op) = resolve_binop(op, lhs_ty) {
                     let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
                     let (rhs_bindings, rhs_atom) = self.lower_to_atom(rhs)?;
                     bindings.extend(rhs_bindings);
-                    let prim_op = resolve_binop(op, &lhs.ty)?;
                     Ok((
                         bindings,
                         SimpleExpr::PrimOp {
@@ -925,9 +924,8 @@ impl LowerCtx {
             }
             TypedExprKind::UnaryOp { op, operand } => {
                 let operand_ty = strip_own(&operand.ty);
-                if resolve_unaryop(op, operand_ty).is_ok() {
+                if let Ok(prim_op) = resolve_unaryop(op, operand_ty) {
                     let (bindings, atom) = self.lower_to_atom(operand)?;
-                    let prim_op = resolve_unaryop(op, &operand.ty)?;
                     Ok((
                         bindings,
                         SimpleExpr::PrimOp {
@@ -1217,13 +1215,11 @@ impl LowerCtx {
 
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let lhs_ty = strip_own(&lhs.ty).clone();
-                if resolve_binop(op, &lhs_ty).is_ok() {
+                if let Ok(prim_op) = resolve_binop(op, &lhs_ty) {
                     // Primitive type — keep PrimOp path
-                    let op = op.clone();
                     let result_ty = expr.ty.clone();
                     self.lower_to_atom_then(lhs, |ctx, l| {
                         ctx.lower_to_atom_then(rhs, |ctx, r| {
-                            let prim_op = resolve_binop(&op, &lhs_ty)?;
                             let var = ctx.fresh_var();
                             let ty = result_ty;
                             Ok(Expr {
@@ -1251,12 +1247,10 @@ impl LowerCtx {
 
             TypedExprKind::UnaryOp { op, operand } => {
                 let operand_ty = strip_own(&operand.ty).clone();
-                if resolve_unaryop(op, &operand_ty).is_ok() {
+                if let Ok(prim_op) = resolve_unaryop(op, &operand_ty) {
                     // Primitive type — keep PrimOp path
-                    let op = op.clone();
                     let result_ty = expr.ty.clone();
                     self.lower_to_atom_then(operand, |ctx, atom| {
-                        let prim_op = resolve_unaryop(&op, &operand_ty)?;
                         let var = ctx.fresh_var();
                         let ty = result_ty;
                         Ok(Expr {

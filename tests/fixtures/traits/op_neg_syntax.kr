@@ -1,0 +1,15 @@
+# expect: output -3
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Vec2 = { x: Int, y: Int }
+
+impl Neg[Vec2] {
+    fun neg(a) = Vec2(0 - a.x, 0 - a.y)
+}
+
+fun main() = {
+    let a = Vec2(3, 5)
+    println((-a).x)
+}
