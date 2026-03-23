@@ -1,0 +1,25 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module hkt__partial_apply_fn
+
+declare fmap: (Dict, r7[s7], (s7) -> t7) -> r7[t7]
+declare println: (m) -> Unit
+
+fn main() -> Unit =
+  let v0: (Int) -> Int = make_closure(lambda$50, [])
+  let v6: (Int) -> Int = make_closure(lambda$51, [])
+  let v7: Dict = get_dict Functor[(Int) -> _]
+  let v3: (Int) -> Int = call fmap(v7, v0, v6)
+  let v8: Int = call_closure v3(10)
+  let v9: Unit = call println(v8)
+  v9
+
+fn lambda$50(v1: Int) -> Int =
+  let v2: Int = add_int(v1, 1)
+  v2
+
+fn lambda$51(v4: Int) -> Int =
+  let v5: Int = mul_int(v4, 2)
+  v5

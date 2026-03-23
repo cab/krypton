@@ -13,7 +13,7 @@ fn fold_box(v0: List[c8], v1: w7[c8], v2: (w7[c8], c8) -> w7[c8]) -> w7[c8] =
     switch v4 {
       1 ->
         v5
-      0 (v7: e, v8: List[e]) ->
+      0 (v7: b, v8: List[b]) ->
         let v9: w7[c8] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }

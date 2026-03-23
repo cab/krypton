@@ -5,7 +5,7 @@ use krypton_typechecker::typed_ast::{
     ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm,
     TypedModule, TypedPattern,
 };
-use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
+use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
 use crate::{
     Atom, Expr, ExprKind, FnDef, FnId, Literal, Module, PrimOp, SimpleExpr, StructDef,
@@ -3922,6 +3922,32 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
                 && p_args
                     .iter()
                     .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
+        (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
+            p_args.len() == a_args.len()
+                && bind_type_vars(
+                    p_ctor,
+                    &Type::Named(a_name.clone(), Vec::new()),
+                    bindings,
+                )
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        // HKT cross-arm: App(Var(f), [a]) vs Fn([Int], Int)
+        (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
+            if types::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
+        {
+            let (ctor_fn, remaining) =
+                types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+            bind_type_vars(p_ctor, &ctor_fn, bindings)
+                && remaining.len() == p_args.len()
+                && p_args
+                    .iter()
+                    .zip(remaining.iter())
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
         _ => pattern == actual,

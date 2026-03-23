@@ -13,7 +13,7 @@ fn apply(v0: Dict, v1: y7[z7]) -> y7[z7] =
   v5
 
 fn main(v6: Box[Int]) -> Box[Int] =
-  let v7: Dict = get_dict Functor[y7]
+  let v7: Dict = get_dict Functor[Box]
   let v8: Box[Int] = call apply(v7, v6)
   v8
 

@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module traits__hkt_multi_method
+
+type Box[a] = Box#0(a)
+declare fmap: (Dict, r7[s7], (s7) -> t7) -> r7[t7]
+
+fn main() -> Int =
+  let v0: ~Box[Int] = construct Box::Box#0(42)
+  let v4: (Int) -> Int = make_closure(lambda$51, [])
+  let v5: Dict = get_dict Functor[Box]
+  let v1: Box[Int] = call fmap(v5, v0, v4)
+  switch v1 {
+    0 (v6: a) ->
+      v6
+  }
+
+fn lambda$51(v2: Int) -> Int =
+  let v3: Int = add_int(v2, 1)
+  v3
