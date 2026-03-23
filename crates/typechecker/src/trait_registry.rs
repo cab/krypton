@@ -3,9 +3,8 @@ use std::collections::HashMap;
 use krypton_parser::ast::TypeConstraint;
 use krypton_parser::ast::Span;
 
-use crate::types::Type;
-use crate::types::TypeVarId;
-use crate::unify::TypeError;
+use crate::types::{Type, TypeVarId, TypeVarGen, Substitution};
+use crate::unify::{TypeError, unify};
 
 pub struct TraitInfo {
     pub name: String,
@@ -67,10 +66,10 @@ impl TraitRegistry {
     }
 
     pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), (TypeError, Span)> {
-        // Check for duplicate (trait, type) pairs
+        // Check for overlapping (trait, type) pairs via unification
         for existing in &self.instances {
             if existing.trait_name == info.trait_name
-                && existing.target_type_name == info.target_type_name
+                && types_overlap(&existing.target_type, &info.target_type)
             {
                 let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info.type_var_ids.iter()
                     .map(|(name, &id)| (id, name.as_str())).collect();
@@ -543,6 +542,43 @@ fn split_instance_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
         }
         Type::Own(inner) => split_instance_type_constructor(inner),
         _ => None,
+    }
+}
+
+/// Check if two instance head types overlap (are unifiable).
+/// Freshens type variables from both types to avoid aliasing.
+fn types_overlap(a: &Type, b: &Type) -> bool {
+    let mut gen = TypeVarGen::new();
+    let a_fresh = freshen_type_vars(a, &mut gen);
+    let b_fresh = freshen_type_vars(b, &mut gen);
+    let mut subst = Substitution::new();
+    unify(&a_fresh, &b_fresh, &mut subst).is_ok()
+}
+
+fn freshen_type_vars(ty: &Type, gen: &mut TypeVarGen) -> Type {
+    let mut var_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    freshen_inner(ty, &mut var_map, gen)
+}
+
+fn freshen_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, TypeVarId>, gen: &mut TypeVarGen) -> Type {
+    match ty {
+        Type::Var(id) => {
+            let fresh = *var_map.entry(*id).or_insert_with(|| gen.fresh());
+            Type::Var(fresh)
+        }
+        Type::Fn(params, ret) => Type::Fn(
+            params.iter().map(|p| freshen_inner(p, var_map, gen)).collect(),
+            Box::new(freshen_inner(ret, var_map, gen)),
+        ),
+        Type::Named(name, args) => Type::Named(
+            name.clone(),
+            args.iter().map(|a| freshen_inner(a, var_map, gen)).collect(),
+        ),
+        Type::Own(inner) => Type::Own(Box::new(freshen_inner(inner, var_map, gen))),
+        Type::Tuple(elems) => Type::Tuple(
+            elems.iter().map(|e| freshen_inner(e, var_map, gen)).collect(),
+        ),
+        other => other.clone(),
     }
 }
 

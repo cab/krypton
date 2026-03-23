@@ -1,0 +1,13 @@
+# expect: error E0309
+type T0 = A
+
+trait Wrap[a] {
+    fun wrap(x: a) -> (Int) -> a
+}
+impl[b] Wrap[(Int) -> b] {
+    fun wrap(x: (Int) -> b) -> (Int) -> (Int) -> b = y -> v -> x(y)
+}
+impl Wrap[(Int) -> T0] {
+    fun wrap(x: (Int) -> T0) -> (Int) -> (Int) -> T0 = y -> v -> x(y)
+}
+fun main() = 0
