@@ -6,6 +6,11 @@ use crate::{FnDef, FnId, Module, StructDef, SumTypeDef, VarId};
 /// Merge N per-module IR modules into a single whole-program module with
 /// globally unique `FnId`s and `VarId`s, resolved cross-module references,
 /// and deduplicated type definitions.
+///
+/// The entry module must be at index 0; dependency modules follow. For
+/// duplicate names, the first locally-defined occurrence wins. Dependency
+/// module functions are qualified as `module/name` in debug output; entry
+/// module functions keep their bare names.
 pub fn link(modules: Vec<Module>) -> Module {
     if modules.is_empty() {
         return Module {
@@ -23,6 +28,12 @@ pub fn link(modules: Vec<Module>) -> Module {
 
     let name = modules[0].name.clone();
 
+    // Precompute local FnId sets for each module (used in steps 2-4).
+    let all_local_ids: Vec<HashSet<FnId>> = modules
+        .iter()
+        .map(|m| m.functions.iter().map(|f| f.id).collect())
+        .collect();
+
     // Step 1: Compute per-module offsets for FnId and VarId.
     let mut fn_offsets: Vec<u32> = Vec::with_capacity(modules.len());
     let mut var_offsets: Vec<u32> = Vec::with_capacity(modules.len());
@@ -31,15 +42,24 @@ pub fn link(modules: Vec<Module>) -> Module {
     for module in &modules {
         fn_offsets.push(running_fn);
         var_offsets.push(running_var);
-        running_fn += max_fn_id(module) + 1;
-        running_var += max_var_id(module) + 1;
+        let has_fn_ids = !module.functions.is_empty()
+            || !module.fn_names.is_empty()
+            || !module.extern_fn_types.is_empty();
+        running_fn += if has_fn_ids { max_fn_id(module) + 1 } else { 0 };
+        running_var += if module.functions.is_empty() {
+            0
+        } else {
+            max_var_id(module) + 1
+        };
     }
 
     // Step 2: Build global name->FnId table. Locally-defined functions take priority.
+    // Uses bare (unqualified) names as the resolution key, since cross-module
+    // references use bare names from the typechecker.
     let mut global_name_to_fn: HashMap<String, FnId> = HashMap::new();
     for (i, module) in modules.iter().enumerate() {
         let offset = fn_offsets[i];
-        let local_ids: HashSet<FnId> = module.functions.iter().map(|f| f.id).collect();
+        let local_ids = &all_local_ids[i];
         for (&old_id, debug_name) in &module.fn_names {
             if local_ids.contains(&old_id) {
                 let new_id = FnId(old_id.0 + offset);
@@ -50,7 +70,7 @@ pub fn link(modules: Vec<Module>) -> Module {
     // Second pass: register extern-only names not yet in the table.
     for (i, module) in modules.iter().enumerate() {
         let offset = fn_offsets[i];
-        let local_ids: HashSet<FnId> = module.functions.iter().map(|f| f.id).collect();
+        let local_ids = &all_local_ids[i];
         for (&old_id, debug_name) in &module.fn_names {
             if !local_ids.contains(&old_id) {
                 let new_id = FnId(old_id.0 + offset);
@@ -61,8 +81,8 @@ pub fn link(modules: Vec<Module>) -> Module {
 
     // Collect names of all locally-defined functions across all modules.
     let mut defined_fn_names: HashSet<String> = HashSet::new();
-    for module in &modules {
-        let local_ids: HashSet<FnId> = module.functions.iter().map(|f| f.id).collect();
+    for (i, module) in modules.iter().enumerate() {
+        let local_ids = &all_local_ids[i];
         for (&old_id, debug_name) in &module.fn_names {
             if local_ids.contains(&old_id) {
                 defined_fn_names.insert(debug_name.clone());
@@ -82,6 +102,7 @@ pub fn link(modules: Vec<Module>) -> Module {
     for (i, module) in modules.into_iter().enumerate() {
         let fn_offset = fn_offsets[i];
         let var_offset = var_offsets[i];
+        let is_entry = i == 0;
 
         // Deduplicate structs (first occurrence by name wins).
         for s in module.structs {
@@ -96,7 +117,7 @@ pub fn link(modules: Vec<Module>) -> Module {
             }
         }
 
-        let local_ids: HashSet<FnId> = module.functions.iter().map(|f| f.id).collect();
+        let local_ids = &all_local_ids[i];
 
         // Build old_FnId -> new_FnId map for this module.
         let mut fn_map: HashMap<FnId, FnId> = HashMap::new();
@@ -112,18 +133,27 @@ pub fn link(modules: Vec<Module>) -> Module {
             }
         }
 
+        // Qualify debug names: dependency modules get "module/name" prefix.
+        let qualify = |name: &str| -> String {
+            if is_entry {
+                name.to_string()
+            } else {
+                format!("{}/{}", module.name, name)
+            }
+        };
+
         // Register fn_names.
         for func in &module.functions {
             let new_id = fn_map[&func.id];
             merged_fn_names
                 .entry(new_id)
-                .or_insert_with(|| func.debug_name.clone());
+                .or_insert_with(|| qualify(&func.debug_name));
         }
         for (&old_id, debug_name) in &module.fn_names {
             let new_id = fn_map[&old_id];
             merged_fn_names
                 .entry(new_id)
-                .or_insert_with(|| debug_name.clone());
+                .or_insert_with(|| qualify(debug_name));
         }
 
         // Merge extern_fn_types: only keep truly external functions (not defined
@@ -146,6 +176,7 @@ pub fn link(modules: Vec<Module>) -> Module {
         // Renumber and collect functions.
         for mut func in module.functions {
             func.id = fn_map[&func.id];
+            func.debug_name = qualify(&func.debug_name);
             rewrite_params(&mut func.params, var_offset);
             rewrite_expr(&mut func.body, &fn_map, var_offset);
             all_functions.push(func);
@@ -576,7 +607,7 @@ mod tests {
         let use_helper_def = linked
             .functions
             .iter()
-            .find(|f| f.debug_name == "use_helper")
+            .find(|f| f.debug_name == "mod_b/use_helper")
             .expect("use_helper should exist");
 
         // The call in use_helper should resolve to helper's global FnId.

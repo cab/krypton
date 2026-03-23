@@ -2335,6 +2335,18 @@ impl LowerCtx {
         Ok(Self::wrap_bindings(dict_bindings, inner))
     }
 
+    /// Look up the dict param VarId for a given trait name.
+    fn lookup_dict_param(&self, trait_name: &str) -> Result<VarId, LowerError> {
+        for ((t, _), var_id) in &self.dict_params {
+            if t == trait_name {
+                return Ok(*var_id);
+            }
+        }
+        Err(LowerError::UnresolvedVar(format!(
+            "trait_dict: no dict param for trait {trait_name}"
+        )))
+    }
+
     /// Lower a function application.
     fn lower_app(
         &mut self,
@@ -2349,15 +2361,8 @@ impl LowerCtx {
         if func_name.as_deref() == Some("trait_dict") {
             if let Some(arg) = args.first() {
                 if let TypedExprKind::Var(trait_name) = &arg.kind {
-                    // Find the dict param VarId for this trait
-                    for ((t, _), var_id) in &self.dict_params {
-                        if t == trait_name {
-                            return Ok((vec![], SimpleExpr::Atom(Atom::Var(*var_id))));
-                        }
-                    }
-                    return Err(LowerError::UnresolvedVar(format!(
-                        "trait_dict: no dict param for trait {trait_name}"
-                    )));
+                    let var_id = self.lookup_dict_param(trait_name)?;
+                    return Ok((vec![], SimpleExpr::Atom(Atom::Var(var_id))));
                 }
             }
         }
@@ -2511,17 +2516,11 @@ impl LowerCtx {
         if func_name.as_deref() == Some("trait_dict") {
             if let Some(arg) = args.first() {
                 if let TypedExprKind::Var(trait_name) = &arg.kind {
-                    for ((t, _), var_id) in &self.dict_params {
-                        if t == trait_name {
-                            return Ok(Expr {
-                                ty: result_ty.clone(),
-                                kind: ExprKind::Atom(Atom::Var(*var_id)),
-                            });
-                        }
-                    }
-                    return Err(LowerError::UnresolvedVar(format!(
-                        "trait_dict: no dict param for trait {trait_name}"
-                    )));
+                    let var_id = self.lookup_dict_param(trait_name)?;
+                    return Ok(Expr {
+                        ty: result_ty.clone(),
+                        kind: ExprKind::Atom(Atom::Var(var_id)),
+                    });
                 }
             }
         }

@@ -38,21 +38,21 @@ pub struct Module {
     pub extern_fn_types: HashMap<FnId, Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
     pub name: String,
     pub type_params: Vec<TypeVarId>,
     pub fields: Vec<(String, Type)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SumTypeDef {
     pub name: String,
     pub type_params: Vec<TypeVarId>,
     pub variants: Vec<VariantDef>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariantDef {
     pub name: String,
     pub tag: u32,
