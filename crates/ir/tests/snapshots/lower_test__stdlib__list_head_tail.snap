@@ -14,7 +14,7 @@ fn main() -> Unit =
   let v3: ~List[Int] = construct List::Cons#0(1, v2)
   let v4: Option[Int] = call head(v3)
   switch v4 {
-    0 (v5: a) ->
+    0 (v5: b) ->
       let v6: Unit = call println(v5)
       v6
     1 ->

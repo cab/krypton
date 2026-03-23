@@ -9,10 +9,10 @@ declare read_file
 
 fn handle(v0: Result[y7, z7]) -> Unit =
   switch v0 {
-    0 (v1: b) ->
+    0 (v1: d) ->
       let v2: Unit = call println("unexpected")
       v2
-    1 (v3: a) ->
+    1 (v3: c) ->
       let v4: Unit = call println("got error")
       v4
   }

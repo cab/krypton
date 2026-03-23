@@ -1626,7 +1626,9 @@ impl ModuleInferenceState {
         {
             let existing_type_names: HashSet<String> =
                 sum_decls.iter().map(|d| d.name.clone()).collect();
-            for (type_name, (source_path, vis)) in &self.imports.imported_type_info {
+            let mut sorted_imported_types: Vec<_> = self.imports.imported_type_info.iter().collect();
+            sorted_imported_types.sort_by_key(|(name, _)| name.as_str());
+            for (type_name, (source_path, vis)) in sorted_imported_types {
                 if existing_type_names.contains(type_name) || !matches!(vis, Visibility::Pub) {
                     continue;
                 }
@@ -2250,7 +2252,9 @@ fn register_impl_instances(
                 for constraint in type_constraints {
                     impl_type_param_names.insert(constraint.type_var.clone());
                 }
-                impl_type_param_names
+                let mut sorted_names: Vec<_> = impl_type_param_names.into_iter().collect();
+                sorted_names.sort();
+                sorted_names
                     .into_iter()
                     .map(|name| (name, state.gen.fresh()))
                     .collect()
