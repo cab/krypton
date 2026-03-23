@@ -111,7 +111,8 @@ fn ir_link(
     }
 
     // Link all modules into one.
-    let linked = link(ir_modules);
+    let linked = link(ir_modules)
+        .unwrap_or_else(|e| panic!("fixture {name}: IR lint failed: {e}"));
 
     insta::assert_snapshot!(name, linked.to_string());
 }

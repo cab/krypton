@@ -1,6 +1,8 @@
 pub mod expr;
 pub mod link;
+pub mod lint;
 pub mod lower;
+pub mod pass;
 pub mod pretty;
 
 use std::collections::HashMap;

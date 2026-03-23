@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::expr::{Atom, Expr, ExprKind, SimpleExpr, SwitchBranch};
+use crate::lint::LintPass;
+use crate::pass::{IrPass, IrPassError};
 use crate::{FnDef, FnId, Module, StructDef, SumTypeDef, VarId};
 
 /// Merge N per-module IR modules into a single whole-program module with
@@ -11,19 +13,16 @@ use crate::{FnDef, FnId, Module, StructDef, SumTypeDef, VarId};
 /// duplicate names, the first locally-defined occurrence wins. Dependency
 /// module functions are qualified as `module/name` in debug output; entry
 /// module functions keep their bare names.
-pub fn link(modules: Vec<Module>) -> Module {
+pub fn link(modules: Vec<Module>) -> Result<Module, IrPassError> {
     if modules.is_empty() {
-        return Module {
-            name: String::new(),
-            structs: Vec::new(),
-            sum_types: Vec::new(),
-            functions: Vec::new(),
-            fn_names: HashMap::new(),
-            extern_fn_types: HashMap::new(),
-        };
+        return Err(IrPassError {
+            pass: "link".into(),
+            message: "no modules to link".into(),
+        });
     }
     if modules.len() == 1 {
-        return modules.into_iter().next().unwrap();
+        let module = modules.into_iter().next().unwrap();
+        return LintPass.run(module);
     }
 
     let name = modules[0].name.clone();
@@ -183,14 +182,16 @@ pub fn link(modules: Vec<Module>) -> Module {
         }
     }
 
-    Module {
+    let linked = Module {
         name,
         structs: merged_structs,
         sum_types: merged_sum_types,
         functions: all_functions,
         fn_names: merged_fn_names,
         extern_fn_types: merged_extern_fn_types,
-    }
+    };
+
+    LintPass.run(linked)
 }
 
 fn max_fn_id(module: &Module) -> u32 {
@@ -500,7 +501,7 @@ mod tests {
         let m1 = make_module("mod_a", 0, 0, "foo");
         let m2 = make_module("mod_b", 0, 0, "bar");
 
-        let linked = link(vec![m1, m2]);
+        let linked = link(vec![m1, m2]).unwrap();
 
         assert_eq!(linked.functions.len(), 2);
         let ids: Vec<u32> = linked.functions.iter().map(|f| f.id.0).collect();
@@ -597,7 +598,7 @@ mod tests {
             )]),
         };
 
-        let linked = link(vec![mod_a, mod_b]);
+        let linked = link(vec![mod_a, mod_b]).unwrap();
 
         let helper_def = linked
             .functions
@@ -657,7 +658,7 @@ mod tests {
             extern_fn_types: HashMap::new(),
         };
 
-        let linked = link(vec![m1, m2]);
+        let linked = link(vec![m1, m2]).unwrap();
         assert_eq!(
             linked.structs.len(),
             1,
@@ -669,14 +670,13 @@ mod tests {
     #[test]
     fn link_single_module_passthrough() {
         let m = make_module("only", 0, 0, "main");
-        let linked = link(vec![m]);
+        let linked = link(vec![m]).unwrap();
         assert_eq!(linked.functions.len(), 1);
         assert_eq!(linked.name, "only");
     }
 
     #[test]
-    fn link_empty() {
-        let linked = link(vec![]);
-        assert!(linked.functions.is_empty());
+    fn link_empty_is_error() {
+        assert!(link(vec![]).is_err());
     }
 }

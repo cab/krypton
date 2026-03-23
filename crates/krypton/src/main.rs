@@ -462,7 +462,11 @@ fn main() {
                 }
                 phases.push(("lower", t.elapsed()));
                 let t = Instant::now();
-                let linked = krypton_ir::link::link(ir_modules);
+                let linked = krypton_ir::link::link(ir_modules)
+                    .unwrap_or_else(|e| {
+                        eprintln!("IR lint error: {e}");
+                        std::process::exit(1);
+                    });
                 phases.push(("link", t.elapsed()));
                 print!("{}", linked);
             } else {
