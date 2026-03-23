@@ -546,7 +546,10 @@ fn split_instance_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
 }
 
 /// Check if two instance head types overlap (are unifiable).
-/// Freshens type variables from both types to avoid aliasing.
+/// Freshens type variables from both types into a shared namespace to avoid
+/// aliasing, then attempts trial unification. The substitution is discarded —
+/// only the success/failure result matters. Because the substitution is local,
+/// starting TypeVarGen at 0 is safe (no external ID collision possible).
 fn types_overlap(a: &Type, b: &Type) -> bool {
     let mut gen = TypeVarGen::new();
     let a_fresh = freshen_type_vars(a, &mut gen);
@@ -574,11 +577,15 @@ fn freshen_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, TypeVarId>, gen: &m
             name.clone(),
             args.iter().map(|a| freshen_inner(a, var_map, gen)).collect(),
         ),
+        Type::App(ctor, args) => Type::App(
+            Box::new(freshen_inner(ctor, var_map, gen)),
+            args.iter().map(|a| freshen_inner(a, var_map, gen)).collect(),
+        ),
         Type::Own(inner) => Type::Own(Box::new(freshen_inner(inner, var_map, gen))),
         Type::Tuple(elems) => Type::Tuple(
             elems.iter().map(|e| freshen_inner(e, var_map, gen)).collect(),
         ),
-        other => other.clone(),
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => ty.clone(),
     }
 }
 
@@ -930,6 +937,45 @@ mod tests {
         let registry = TraitRegistry::new();
         let result = registry.diagnose_missing_instance("Show", &Type::Int);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn types_overlap_parametric_subsumes_concrete() {
+        let mut gen = TypeVarGen::new();
+        let a = Type::Named("Vec".into(), vec![Type::Var(gen.fresh())]);
+        let b = Type::Named("Vec".into(), vec![Type::Int]);
+        assert!(super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_overlap_distinct_concrete_args() {
+        let a = Type::Named("Vec".into(), vec![Type::Int]);
+        let b = Type::Named("Vec".into(), vec![Type::String]);
+        assert!(!super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_overlap_fully_parametric_overlaps_everything() {
+        let mut gen = TypeVarGen::new();
+        let a = Type::Var(gen.fresh());
+        let b = Type::Int;
+        assert!(super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_overlap_fn_type_subsumption() {
+        let mut gen = TypeVarGen::new();
+        let a = Type::Fn(vec![Type::Var(gen.fresh())], Box::new(Type::Var(gen.fresh())));
+        let b = Type::Fn(vec![Type::Int], Box::new(Type::Var(gen.fresh())));
+        assert!(super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_overlap_app_with_var_ctor() {
+        use crate::types::TypeVarId;
+        let a = Type::App(Box::new(Type::Var(TypeVarId(100))), vec![Type::Int]);
+        let b = Type::Named("Vec".into(), vec![Type::Int]);
+        assert!(super::types_overlap(&a, &b));
     }
 
     #[test]

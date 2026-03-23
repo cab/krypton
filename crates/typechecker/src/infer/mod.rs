@@ -521,6 +521,26 @@ pub(super) fn spanned_with_names(
     }
 }
 
+/// Attach a span and secondary label to a duplicate-instance error from `register_instance`.
+pub(super) fn duplicate_instance_spanned(
+    error: TypeError,
+    span: krypton_parser::ast::Span,
+    existing_span: krypton_parser::ast::Span,
+) -> SpannedTypeError {
+    SpannedTypeError {
+        error,
+        span,
+        note: None,
+        secondary_span: Some(crate::unify::SecondaryLabel {
+            span: existing_span,
+            message: "first implementation here".into(),
+            source_file: None,
+        }),
+        source_file: None,
+        var_names: None,
+    }
+}
+
 /// Construct a NoInstance error with diagnostic note when a near-miss instance exists.
 pub(super) fn no_instance_error(
     trait_registry: &TraitRegistry,
@@ -1869,6 +1889,7 @@ fn import_cached_instances(
                         };
                         // A-T14: silently ignores duplicate imported instances; should be an error
                         let _ = trait_registry.register_instance(instance);
+                        // NOTE: deep-clones each imported instance; consider indices/Arc if this becomes hot
                         imported_instance_defs.push(inst.clone());
                     }
                 }
@@ -2150,18 +2171,7 @@ fn process_deriving(
                 };
                 trait_registry
                     .register_instance(instance)
-                    .map_err(|(e, existing_span)| SpannedTypeError {
-                        error: e,
-                        span: type_decl.span,
-                        note: None,
-                        secondary_span: Some(crate::unify::SecondaryLabel {
-                            span: existing_span,
-                            message: "first implementation here".into(),
-                            source_file: None,
-                        }),
-                        source_file: None,
-                        var_names: None,
-                    })?;
+                    .map_err(|(e, existing_span)| duplicate_instance_spanned(e, type_decl.span, existing_span))?;
 
                 let syn_span: Span = (0, 0);
                 let trait_id_for_synth = trait_registry.lookup_trait(trait_name)
@@ -2203,6 +2213,7 @@ fn process_deriving(
                     }],
                     subdict_traits: vec![],
                     is_intrinsic: false,
+                    is_derived: true,
                 });
             }
         }
@@ -2442,18 +2453,7 @@ fn register_impl_instances(
 
             trait_registry
                 .register_instance(instance)
-                .map_err(|(e, existing_span)| SpannedTypeError {
-                    error: e,
-                    span: *span,
-                    note: None,
-                    secondary_span: Some(crate::unify::SecondaryLabel {
-                        span: existing_span,
-                        message: "first implementation here".into(),
-                        source_file: None,
-                    }),
-                    source_file: None,
-                    var_names: None,
-                })?;
+                .map_err(|(e, existing_span)| duplicate_instance_spanned(e, *span, existing_span))?;
         }
     }
     Ok(())
@@ -3049,6 +3049,7 @@ fn typecheck_impl_methods(
                 methods: instance_methods,
                 subdict_traits: vec![],
                 is_intrinsic: all_intrinsic,
+                is_derived: false,
             });
         }
     }
