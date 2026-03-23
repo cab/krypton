@@ -264,8 +264,18 @@ impl Compiler {
             cpool_index: self.builder.refs.object_class,
         });
 
-        // Unbox result
+        // Unbox/cast result
         self.builder.unbox_if_needed(result_jvm);
+        // For struct results, the interface returns Object — cast to the concrete type
+        if let JvmType::StructRef(class_idx) = result_jvm {
+            if class_idx != self.builder.refs.object_class {
+                self.builder.emit(Instruction::Checkcast(class_idx));
+                self.builder.frame.pop_type();
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: class_idx,
+                });
+            }
+        }
         Ok(result_jvm)
     }
 
@@ -316,8 +326,18 @@ impl Compiler {
             cpool_index: self.builder.refs.object_class,
         });
 
-        // Unbox result
+        // Unbox/cast result
         self.builder.unbox_if_needed(result_jvm);
+        // For struct results, the interface returns Object — cast to the concrete type
+        if let JvmType::StructRef(class_idx) = result_jvm {
+            if class_idx != self.builder.refs.object_class {
+                self.builder.emit(Instruction::Checkcast(class_idx));
+                self.builder.frame.pop_type();
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: class_idx,
+                });
+            }
+        }
         Ok(result_jvm)
     }
 
