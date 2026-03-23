@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
-use krypton_ir::link::link;
+use krypton_ir::lint::LintPass;
 use krypton_ir::lower::lower_module;
+use krypton_ir::pass::IrPass;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
@@ -96,23 +97,20 @@ fn ir_link(
     let typed_modules = infer_module(&module, &resolver)
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
-    // Lower ALL typed modules, skipping the fixture if any module fails.
-    let mut ir_modules = Vec::new();
+    // Lower and lint each module, then concatenate output.
+    let mut output = String::new();
     for (i, typed) in typed_modules.iter().enumerate() {
         let mod_name = if i == 0 {
             stem.clone()
         } else {
             typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
         };
-        match lower_module(typed, &mod_name) {
-            Ok(ir) => ir_modules.push(ir),
-            Err(e) => panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}"),
-        }
+        let ir_module = lower_module(typed, &mod_name)
+            .unwrap_or_else(|e| panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}"));
+        let ir_module = LintPass.run(ir_module)
+            .unwrap_or_else(|e| panic!("fixture {name}: IR lint failed for module {mod_name}: {e}"));
+        output.push_str(&ir_module.to_string());
     }
 
-    // Link all modules into one.
-    let linked = link(ir_modules)
-        .unwrap_or_else(|e| panic!("fixture {name}: IR lint failed: {e}"));
-
-    insta::assert_snapshot!(name, linked.to_string());
+    insta::assert_snapshot!(name, output);
 }

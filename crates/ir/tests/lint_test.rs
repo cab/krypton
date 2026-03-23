@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
-use krypton_ir::{FnDef, FnId, Module, Type, VarId};
+use krypton_ir::{FnDef, FnId, InstanceDef, Module, TraitDef, TraitMethodDef, Type, VarId};
+use krypton_typechecker::types::TypeVarGen;
 
 fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) -> Module {
     Module {
@@ -13,6 +14,11 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
         functions,
         fn_names,
         extern_fn_types: HashMap::new(),
+        extern_fns: vec![],
+        extern_types: vec![],
+        imported_fns: vec![],
+        traits: vec![],
+        instances: vec![],
     }
 }
 
@@ -27,7 +33,7 @@ fn unit_atom() -> Expr {
 fn well_formed_module_passes() {
     let func = FnDef {
         id: FnId(0),
-        debug_name: "main".into(),
+        name: "main".into(),
         params: vec![],
         return_type: Type::Unit,
         body: unit_atom(),
@@ -43,7 +49,7 @@ fn well_formed_module_passes() {
 fn well_formed_with_let_and_call() {
     let func = FnDef {
         id: FnId(0),
-        debug_name: "callee".into(),
+        name: "callee".into(),
         params: vec![(VarId(0), Type::Int)],
         return_type: Type::Int,
         body: Expr {
@@ -53,7 +59,7 @@ fn well_formed_with_let_and_call() {
     };
     let main_fn = FnDef {
         id: FnId(1),
-        debug_name: "main".into(),
+        name: "main".into(),
         params: vec![],
         return_type: Type::Int,
         body: Expr {
@@ -84,7 +90,7 @@ fn duplicate_var_id_is_error() {
     // Two Let bindings with the same VarId(0).
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![],
         return_type: Type::Int,
         body: Expr {
@@ -127,7 +133,7 @@ fn join_point_used_as_value_is_error() {
     // LetJoin defines j0, then body uses j0 as a regular Atom::Var.
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
         body: Expr {
@@ -156,7 +162,7 @@ fn jump_to_non_join_point_is_error() {
     // Jump to VarId(0) which is not defined by LetJoin.
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![(VarId(0), Type::Unit)],
         return_type: Type::Unit,
         body: Expr {
@@ -179,7 +185,7 @@ fn jump_to_non_join_point_is_error() {
 fn call_to_unknown_fn_id_is_error() {
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![],
         return_type: Type::Int,
         body: Expr {
@@ -210,7 +216,7 @@ fn call_to_unknown_fn_id_is_error() {
 fn make_closure_unknown_fn_id_is_error() {
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![],
         return_type: Type::Fn(vec![], Box::new(Type::Unit)),
         body: Expr {
@@ -241,7 +247,7 @@ fn make_closure_unknown_fn_id_is_error() {
 fn letrec_unknown_fn_id_is_error() {
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
         body: Expr {
@@ -270,7 +276,7 @@ fn primop_type_mismatch_is_error() {
     // AddInt should return Int, but we bind it as Bool.
     let func = FnDef {
         id: FnId(0),
-        debug_name: "bad".into(),
+        name: "bad".into(),
         params: vec![],
         return_type: Type::Bool,
         body: Expr {
@@ -301,7 +307,7 @@ fn primop_type_mismatch_is_error() {
 fn well_formed_join_point_passes() {
     let func = FnDef {
         id: FnId(0),
-        debug_name: "good".into(),
+        name: "good".into(),
         params: vec![],
         return_type: Type::Unit,
         body: Expr {
@@ -332,7 +338,7 @@ fn letjoin_param_varid_reusable_in_body() {
     // LetJoin param v1 is scoped to join_body only, so re-binding v1 in body is valid.
     let func = FnDef {
         id: FnId(0),
-        debug_name: "good".into(),
+        name: "good".into(),
         params: vec![],
         return_type: Type::Int,
         body: Expr {
@@ -377,7 +383,7 @@ fn switch_branch_varid_reusable_across_branches() {
     // Each Switch branch's bindings are scoped to that branch, so reusing VarIds is valid.
     let func = FnDef {
         id: FnId(0),
-        debug_name: "good".into(),
+        name: "good".into(),
         params: vec![(VarId(0), Type::Int)],
         return_type: Type::Int,
         body: Expr {
@@ -410,5 +416,93 @@ fn switch_branch_varid_reusable_across_branches() {
         vec![func],
         HashMap::from([(FnId(0), "good".into())]),
     );
+    assert!(LintPass.run(module).is_ok());
+}
+
+#[test]
+fn getdict_unknown_trait_is_error() {
+    let func = FnDef {
+        id: FnId(0),
+        name: "bad".into(),
+        params: vec![],
+        return_type: Type::Unit,
+        body: Expr {
+            kind: ExprKind::Let {
+                bind: VarId(0),
+                ty: Type::Named("Dict".into(), vec![]),
+                value: SimpleExpr::GetDict {
+                    trait_name: "NonexistentTrait".into(),
+                    ty: Type::Int,
+                },
+                body: Box::new(Expr {
+                    kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
+                    ty: Type::Unit,
+                }),
+            },
+            ty: Type::Unit,
+        },
+    };
+    let mut module = make_simple_module(
+        vec![func],
+        HashMap::from([(FnId(0), "bad".into())]),
+    );
+    module.traits.push(TraitDef {
+        name: "Show".into(),
+        type_var: TypeVarGen::new().fresh(),
+        is_imported: false,
+        methods: vec![TraitMethodDef {
+            name: "show".into(),
+            param_count: 1,
+            param_types: vec![Type::Int],
+            return_type: Type::String,
+        }],
+    });
+    let result = LintPass.run(module);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().message.contains("unknown trait"));
+}
+
+#[test]
+fn getdict_valid_trait_and_instance_passes() {
+    let func = FnDef {
+        id: FnId(0),
+        name: "good".into(),
+        params: vec![],
+        return_type: Type::Unit,
+        body: Expr {
+            kind: ExprKind::Let {
+                bind: VarId(0),
+                ty: Type::Named("Dict".into(), vec![]),
+                value: SimpleExpr::GetDict {
+                    trait_name: "Show".into(),
+                    ty: Type::Int,
+                },
+                body: Box::new(Expr {
+                    kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
+                    ty: Type::Unit,
+                }),
+            },
+            ty: Type::Unit,
+        },
+    };
+    let mut module = make_simple_module(
+        vec![func],
+        HashMap::from([(FnId(0), "good".into())]),
+    );
+    module.traits.push(TraitDef {
+        name: "Show".into(),
+        type_var: TypeVarGen::new().fresh(),
+        is_imported: false,
+        methods: vec![],
+    });
+    module.instances.push(InstanceDef {
+        trait_name: "Show".into(),
+        target_type: Type::Int,
+        target_type_name: "Int".into(),
+        method_fn_ids: vec![],
+        sub_dict_requirements: vec![],
+        is_intrinsic: false,
+        is_imported: false,
+    });
     assert!(LintPass.run(module).is_ok());
 }

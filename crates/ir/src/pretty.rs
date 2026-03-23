@@ -388,7 +388,7 @@ impl FnDef {
         writeln!(
             f,
             "fn {}({}) -> {} =",
-            self.debug_name,
+            self.name,
             fmt_params(&self.params),
             self.return_type,
         )?;
@@ -406,6 +406,40 @@ impl fmt::Display for Module {
         }
         for s in &self.sum_types {
             writeln!(f, "{s}")?;
+        }
+
+        for t in self.traits.iter().filter(|t| !t.is_imported) {
+            let methods: Vec<String> = t.methods.iter().map(|m| {
+                let params: Vec<String> = m.param_types.iter().map(|t| format!("{t}")).collect();
+                format!("{}({}): {}", m.name, params.join(", "), m.return_type)
+            }).collect();
+            writeln!(f, "trait {}[{}] {{ {} }}", t.name, t.type_var, methods.join("; "))?;
+        }
+        for inst in self.instances.iter().filter(|i| !i.is_imported) {
+            let methods: Vec<String> = inst.method_fn_ids.iter()
+                .map(|(name, id)| format!("{name}=f{}", id.0))
+                .collect();
+            let intrinsic = if inst.is_intrinsic { " [intrinsic]" } else { "" };
+            writeln!(f, "instance {}[{}] {{ {} }}{}", inst.trait_name, inst.target_type_name, methods.join(", "), intrinsic)?;
+        }
+        for ext in &self.extern_fns {
+            let target = match &ext.target {
+                crate::ExternTarget::Java { class } => format!("java \"{class}\""),
+                crate::ExternTarget::Js { module } => format!("js \"{module}\""),
+            };
+            let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
+            writeln!(f, "extern {target} {}({}): {}", ext.name, params.join(", "), ext.return_type)?;
+        }
+        for ext in &self.extern_types {
+            let target = match &ext.target {
+                crate::ExternTarget::Java { class } => format!("java \"{class}\""),
+                crate::ExternTarget::Js { module } => format!("js \"{module}\""),
+            };
+            writeln!(f, "extern type {target} {}", ext.name)?;
+        }
+        for imp in &self.imported_fns {
+            let params: Vec<String> = imp.param_types.iter().map(|t| format!("{t}")).collect();
+            writeln!(f, "import {}/{} as {}({}): {}", imp.source_module, imp.original_name, imp.name, params.join(", "), imp.return_type)?;
         }
 
         // Print declarations for imported/extern functions referenced in bodies
@@ -626,7 +660,7 @@ mod tests {
         };
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
-            debug_name: "add".into(),
+            name: "add".into(),
             params: vec![],
             return_type: Type::Int,
             body: expr,
@@ -653,7 +687,7 @@ mod tests {
         };
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
-            debug_name: "test".into(),
+            name: "test".into(),
             params: vec![],
             return_type: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
             body: expr,
@@ -687,7 +721,7 @@ mod tests {
         };
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
-            debug_name: "test".into(),
+            name: "test".into(),
             params: vec![],
             return_type: Type::Int,
             body: expr,
@@ -724,7 +758,7 @@ mod tests {
         };
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
-            debug_name: "test".into(),
+            name: "test".into(),
             params: vec![(VarId(0), Type::Named("Option".into(), vec![Type::Int]))],
             return_type: Type::Int,
             body: expr,
@@ -792,6 +826,11 @@ mod tests {
             name: "test".into(),
             fn_names: std::collections::HashMap::new(),
             extern_fn_types: std::collections::HashMap::new(),
+            extern_fns: vec![],
+            extern_types: vec![],
+            imported_fns: vec![],
+            traits: vec![],
+            instances: vec![],
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],
@@ -815,7 +854,7 @@ mod tests {
             }],
             functions: vec![FnDef {
                 id: FnId(0),
-                debug_name: "main".into(),
+                name: "main".into(),
                 params: vec![],
                 return_type: Type::Unit,
                 body: Expr {

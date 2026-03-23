@@ -26,6 +26,11 @@ struct LintContext {
     var_stack: Vec<VarId>,
     join_points: HashSet<VarId>,
     known_fns: HashSet<FnId>,
+    known_traits: HashSet<String>,
+    /// (trait_name, target_type_name) pairs for concrete instances.
+    known_instances: HashSet<(String, String)>,
+    /// trait_name → sub_dict count for each instance.
+    instance_sub_dict_counts: Vec<(String, String, usize)>,
 }
 
 impl LintContext {
@@ -36,11 +41,32 @@ impl LintContext {
             .copied()
             .collect();
 
+        let known_traits: HashSet<String> = module
+            .traits
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
+
+        let known_instances: HashSet<(String, String)> = module
+            .instances
+            .iter()
+            .map(|i| (i.trait_name.clone(), i.target_type_name.clone()))
+            .collect();
+
+        let instance_sub_dict_counts: Vec<(String, String, usize)> = module
+            .instances
+            .iter()
+            .map(|i| (i.trait_name.clone(), i.target_type_name.clone(), i.sub_dict_requirements.len()))
+            .collect();
+
         LintContext {
             bound_vars: HashSet::new(),
             var_stack: Vec::new(),
             join_points: HashSet::new(),
             known_fns,
+            known_traits,
+            known_instances,
+            instance_sub_dict_counts,
         }
     }
 
@@ -250,9 +276,48 @@ impl LintContext {
 
             SimpleExpr::TupleProject { value, .. } => self.check_atom_not_join(value),
 
-            SimpleExpr::GetDict { .. } => Ok(()),
+            SimpleExpr::GetDict { trait_name, ty } => {
+                // Validate trait exists (skip check if traits list is empty — pre-enrichment)
+                if !self.known_traits.is_empty() && !self.known_traits.contains(trait_name) {
+                    return Err(self.err(format!(
+                        "GetDict references unknown trait '{trait_name}'"
+                    )));
+                }
+                // If the type is concrete (not a type variable), validate instance exists
+                if !self.known_instances.is_empty() {
+                    if let Some(type_name) = concrete_type_name(ty) {
+                        if !self.known_instances.contains(&(trait_name.clone(), type_name.clone())) {
+                            return Err(self.err(format!(
+                                "GetDict references unknown instance '{trait_name}' for type '{type_name}'"
+                            )));
+                        }
+                    }
+                }
+                Ok(())
+            }
 
-            SimpleExpr::MakeDict { sub_dicts, .. } => {
+            SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
+                // Validate trait exists
+                if !self.known_traits.is_empty() && !self.known_traits.contains(trait_name) {
+                    return Err(self.err(format!(
+                        "MakeDict references unknown trait '{trait_name}'"
+                    )));
+                }
+                // If the type is concrete, validate sub_dict count matches instance requirements
+                if !self.instance_sub_dict_counts.is_empty() {
+                    if let Some(type_name) = concrete_type_name(ty) {
+                        if let Some((_, _, expected)) = self.instance_sub_dict_counts.iter()
+                            .find(|(tn, ttn, _)| tn == trait_name && ttn == &type_name)
+                        {
+                            if sub_dicts.len() != *expected {
+                                return Err(self.err(format!(
+                                    "MakeDict for '{trait_name}[{type_name}]' has {} sub_dicts, expected {expected}",
+                                    sub_dicts.len()
+                                )));
+                            }
+                        }
+                    }
+                }
                 for atom in sub_dicts {
                     self.check_atom_not_join(atom)?;
                 }
@@ -274,6 +339,20 @@ impl LintContext {
             }
         }
         Ok(())
+    }
+}
+
+/// Extract the concrete type name from a Type, if it's not a type variable.
+fn concrete_type_name(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Int => Some("Int".to_string()),
+        Type::Float => Some("Float".to_string()),
+        Type::Bool => Some("Bool".to_string()),
+        Type::String => Some("String".to_string()),
+        Type::Unit => Some("Unit".to_string()),
+        Type::Named(name, _) => Some(name.clone()),
+        Type::Var(_) => None, // Type variable — can't validate statically
+        _ => None,
     }
 }
 

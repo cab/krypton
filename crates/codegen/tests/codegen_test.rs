@@ -396,6 +396,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 is_intrinsic: false,
             },
         ],
+        imported_instance_defs: vec![],
         fn_constraint_requirements,
         imported_fn_constraint_requirements: HashMap::new(),
         extern_fns: vec![ExternFnInfo {

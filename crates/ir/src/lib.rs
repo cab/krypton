@@ -1,5 +1,4 @@
 pub mod expr;
-pub mod link;
 pub mod lint;
 pub mod lower;
 pub mod pass;
@@ -37,7 +36,18 @@ pub struct Module {
     /// FnId → debug name for all known functions (local + extern + imported).
     pub fn_names: HashMap<FnId, String>,
     /// FnId → type for extern/imported functions (not locally defined).
+    /// Legacy field — use extern_fns/imported_fns for enriched info.
     pub extern_fn_types: HashMap<FnId, Type>,
+    /// Extern FFI function bindings (Java/JS).
+    pub extern_fns: Vec<ExternFnDef>,
+    /// Extern type registrations (opaque types backed by host types).
+    pub extern_types: Vec<ExternTypeDef>,
+    /// Functions imported from other Krypton modules.
+    pub imported_fns: Vec<ImportedFnDef>,
+    /// Trait declarations (codegen metadata for dispatch infrastructure).
+    pub traits: Vec<TraitDef>,
+    /// Trait instance declarations (codegen metadata for dispatch infrastructure).
+    pub instances: Vec<InstanceDef>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,10 +74,75 @@ pub struct VariantDef {
 #[derive(Debug, Clone)]
 pub struct FnDef {
     pub id: FnId,
-    pub debug_name: String,
+    pub name: String,
     pub params: Vec<(VarId, Type)>,
     pub return_type: Type,
     pub body: Expr,
+}
+
+/// Target-specific binding for extern declarations.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExternTarget {
+    Java { class: String },
+    Js { module: String },
+}
+
+/// An extern FFI function binding (Java/JS).
+#[derive(Debug, Clone)]
+pub struct ExternFnDef {
+    pub id: FnId,
+    pub name: String,
+    pub target: ExternTarget,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
+}
+
+/// An opaque extern type backed by a host type.
+#[derive(Debug, Clone)]
+pub struct ExternTypeDef {
+    pub name: String,
+    pub target: ExternTarget,
+}
+
+/// A function imported from another Krypton module.
+#[derive(Debug, Clone)]
+pub struct ImportedFnDef {
+    pub id: FnId,
+    pub name: String,
+    pub source_module: String,
+    pub original_name: String,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
+}
+
+/// A trait declaration (codegen metadata — dictionary passing is already desugared).
+#[derive(Debug, Clone)]
+pub struct TraitDef {
+    pub name: String,
+    pub type_var: TypeVarId,
+    pub methods: Vec<TraitMethodDef>,
+    pub is_imported: bool,
+}
+
+/// A method signature within a trait declaration.
+#[derive(Debug, Clone)]
+pub struct TraitMethodDef {
+    pub name: String,
+    pub param_count: usize,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
+}
+
+/// A trait instance declaration linking method FnDefs to a trait/type pair.
+#[derive(Debug, Clone)]
+pub struct InstanceDef {
+    pub trait_name: String,
+    pub target_type: Type,
+    pub target_type_name: String,
+    pub method_fn_ids: Vec<(String, FnId)>,
+    pub sub_dict_requirements: Vec<(String, TypeVarId)>,
+    pub is_intrinsic: bool,
+    pub is_imported: bool,
 }
 
 #[cfg(test)]
@@ -232,7 +307,7 @@ mod tests {
             }],
             functions: vec![FnDef {
                 id: FnId(0),
-                debug_name: "main".into(),
+                name: "main".into(),
                 params: vec![],
                 return_type: Type::Unit,
                 body: Expr {
@@ -240,6 +315,11 @@ mod tests {
                     ty: Type::Unit,
                 },
             }],
+            extern_fns: vec![],
+            extern_types: vec![],
+            imported_fns: vec![],
+            traits: vec![],
+            instances: vec![],
         };
     }
 }

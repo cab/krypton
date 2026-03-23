@@ -1,6 +1,7 @@
 mod inspect;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use krypton_ir::pass::IrPass;
 use krypton_modules::module_resolver::CompositeResolver;
 use std::path::PathBuf;
 use std::process;
@@ -73,9 +74,9 @@ enum Commands {
     /// Pretty-print the ANF intermediate representation
     DumpIr {
         file: String,
-        /// Link all modules into a single whole-program IR module
+        /// Print all modules (including imports); default is main module only
         #[arg(long)]
-        link: bool,
+        all: bool,
     },
     /// Inspect resource ownership: show close and move insertion points
     Inspect {
@@ -406,7 +407,7 @@ fn main() {
                 print_timings(&phases);
             }
         }
-        Commands::DumpIr { file, link } => {
+        Commands::DumpIr { file, all } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
@@ -444,43 +445,31 @@ fn main() {
                 .unwrap_or("main");
 
             let t = Instant::now();
-            if link {
-                let mut ir_modules = Vec::new();
-                for (i, typed) in typed_modules.iter().enumerate() {
-                    let mod_name = if i == 0 {
-                        stem.to_string()
-                    } else {
-                        typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
-                    };
-                    match krypton_ir::lower::lower_module(typed, &mod_name) {
-                        Ok(ir) => ir_modules.push(ir),
-                        Err(e) => {
-                            eprintln!("IR lowering error (module {}): {}", mod_name, e);
-                            process::exit(1);
-                        }
-                    }
+            for (i, typed) in typed_modules.iter().enumerate() {
+                if !all && i > 0 {
+                    continue;
                 }
-                phases.push(("lower", t.elapsed()));
-                let t = Instant::now();
-                let linked = krypton_ir::link::link(ir_modules)
-                    .unwrap_or_else(|e| {
-                        eprintln!("IR lint error: {e}");
-                        std::process::exit(1);
-                    });
-                phases.push(("link", t.elapsed()));
-                print!("{}", linked);
-            } else {
-                match krypton_ir::lower::lower_module(&typed_modules[0], stem) {
+                let mod_name = if i == 0 {
+                    stem.to_string()
+                } else {
+                    typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
+                };
+                match krypton_ir::lower::lower_module(typed, &mod_name) {
                     Ok(ir_module) => {
-                        phases.push(("lower", t.elapsed()));
+                        let ir_module = krypton_ir::lint::LintPass.run(ir_module)
+                            .unwrap_or_else(|e| {
+                                eprintln!("IR lint error (module {}): {}", mod_name, e);
+                                std::process::exit(1);
+                            });
                         print!("{}", ir_module);
                     }
                     Err(e) => {
-                        eprintln!("IR lowering error: {}", e);
+                        eprintln!("IR lowering error (module {}): {}", mod_name, e);
                         process::exit(1);
                     }
                 }
             }
+            phases.push(("lower", t.elapsed()));
 
             if timings {
                 print_timings(&phases);

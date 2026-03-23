@@ -337,6 +337,8 @@ pub struct TypedModule {
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
+    /// Instance definitions imported from dependency modules.
+    pub imported_instance_defs: Vec<InstanceDefInfo>,
     pub fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
     /// TypeVarId-based constraint requirements inherited from imported modules.
     pub imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,

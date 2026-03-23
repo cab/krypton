@@ -8,8 +8,9 @@ use krypton_typechecker::typed_ast::{
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
 use crate::{
-    Atom, Expr, ExprKind, FnDef, FnId, Literal, Module, PrimOp, SimpleExpr, StructDef,
-    SumTypeDef, SwitchBranch, VarId, VariantDef,
+    Atom, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FnDef, FnId, ImportedFnDef,
+    InstanceDef, Literal, Module, PrimOp, SimpleExpr, StructDef, SumTypeDef, SwitchBranch,
+    TraitDef, TraitMethodDef, VarId, VariantDef,
 };
 
 // ---------------------------------------------------------------------------
@@ -3424,7 +3425,7 @@ impl LowerCtx {
 
         // 5. Allocate a fresh FnId for the lifted function
         let fn_id = self.fresh_fn();
-        let debug_name = format!("lambda${}", fn_id.0);
+        let name = format!("lambda${}", fn_id.0);
 
         // 6. Allocate new VarIds for the lifted fn's scope
 
@@ -3506,14 +3507,14 @@ impl LowerCtx {
         // 9. Push FnDef onto lifted_fns
         self.lifted_fns.push(FnDef {
             id: fn_id,
-            debug_name: debug_name.clone(),
+            name: name.clone(),
             params: lifted_params,
             return_type,
             body: lowered_body,
         });
 
         // 10. Register in fn_ids for fn_names resolution
-        self.fn_ids.insert(debug_name, fn_id);
+        self.fn_ids.insert(name, fn_id);
 
         // 11. Return MakeClosure with capture atoms
         let mut all_captures = capture_atoms;
@@ -3687,7 +3688,7 @@ impl LowerCtx {
 
         Ok(FnDef {
             id: fn_id,
-            debug_name: decl.name.clone(),
+            name: decl.name.clone(),
             params,
             return_type,
             body,
@@ -4046,6 +4047,101 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
+    // 9. Build enriched extern_fns from typed_module extern function info
+    let mut extern_fns = vec![];
+    for ext in typed.extern_fns.iter().chain(typed.imported_extern_fns.iter()) {
+        if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
+            extern_fns.push(ExternFnDef {
+                id: fn_id,
+                name: ext.name.clone(),
+                target: ExternTarget::Java { class: ext.java_class.clone() },
+                param_types: ext.param_types.clone(),
+                return_type: ext.return_type.clone(),
+            });
+        }
+    }
+
+    // 10. Build extern_types from typed_module extern type info
+    let mut extern_types = vec![];
+    for (krypton_name, java_class) in typed.extern_java_types.iter().chain(typed.imported_extern_java_types.iter()) {
+        extern_types.push(ExternTypeDef {
+            name: krypton_name.clone(),
+            target: ExternTarget::Java { class: java_class.clone() },
+        });
+    }
+
+    // 11. Build imported_fns from fn_types entries with provenance
+    let mut imported_fns = vec![];
+    for entry in &typed.fn_types {
+        if let Some((ref source_module, ref original_name)) = entry.provenance {
+            if let Some(&fn_id) = ctx.fn_ids.get(&entry.name) {
+                let (param_types, return_type) = match &entry.scheme.ty {
+                    Type::Fn(params, ret) => (params.clone(), (**ret).clone()),
+                    other => (vec![], other.clone()),
+                };
+                imported_fns.push(ImportedFnDef {
+                    id: fn_id,
+                    name: entry.name.clone(),
+                    source_module: source_module.clone(),
+                    original_name: original_name.clone(),
+                    param_types,
+                    return_type,
+                });
+            }
+        }
+    }
+
+    // 12. Build trait definitions from typed_module trait_defs
+    let mut traits = vec![];
+    for trait_def in &typed.trait_defs {
+        let methods = trait_def.methods.iter().map(|(method_name, param_count)| {
+            let (param_types, return_type) = trait_def.method_tc_types
+                .get(method_name)
+                .cloned()
+                .unwrap_or_else(|| (vec![], Type::Unit));
+            TraitMethodDef {
+                name: method_name.clone(),
+                param_count: *param_count,
+                param_types,
+                return_type,
+            }
+        }).collect();
+        traits.push(TraitDef {
+            name: trait_def.name.clone(),
+            type_var: trait_def.type_var_id,
+            methods,
+            is_imported: trait_def.is_imported,
+        });
+    }
+    traits.sort_by(|a, b| a.name.cmp(&b.name));
+
+    // 13. Build instance definitions from typed_module instance_defs (local + imported)
+    let mut instances = vec![];
+    let lower_instance = |inst: &krypton_typechecker::typed_ast::InstanceDefInfo, is_imported: bool, ctx: &LowerCtx| {
+        let method_fn_ids = inst.methods.iter().filter_map(|m| {
+            let mangled = format!("{}$${}$${}", inst.trait_name, inst.target_type_name, m.name);
+            ctx.fn_ids.get(&mangled).map(|&fn_id| (m.name.clone(), fn_id))
+        }).collect();
+        let sub_dict_requirements = inst.constraints.iter().filter_map(|c| {
+            inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
+        }).collect();
+        InstanceDef {
+            trait_name: inst.trait_name.clone(),
+            target_type: inst.target_type.clone(),
+            target_type_name: inst.target_type_name.clone(),
+            method_fn_ids,
+            sub_dict_requirements,
+            is_intrinsic: inst.is_intrinsic,
+            is_imported,
+        }
+    };
+    for inst in &typed.instance_defs {
+        instances.push(lower_instance(inst, false, &ctx));
+    }
+    for inst in &typed.imported_instance_defs {
+        instances.push(lower_instance(inst, true, &ctx));
+    }
+
     Ok(Module {
         name: module_name.to_string(),
         structs,
@@ -4053,6 +4149,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         functions,
         fn_names,
         extern_fn_types,
+        extern_fns,
+        extern_types,
+        imported_fns,
+        traits,
+        instances,
     })
 }
 

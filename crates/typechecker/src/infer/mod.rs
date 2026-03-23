@@ -1360,6 +1360,7 @@ impl ModuleInferenceState {
         fn_bodies: Vec<Option<TypedExpr>>,
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
+        imported_instance_defs: Vec<InstanceDefInfo>,
         fn_constraint_requirements: &mut HashMap<String, Vec<(String, TypeVarId)>>,
         trait_method_map: &HashMap<String, TraitId>,
         trait_registry: &TraitRegistry,
@@ -1727,6 +1728,7 @@ impl ModuleInferenceState {
             functions,
             trait_defs,
             instance_defs,
+            imported_instance_defs,
             fn_constraint_requirements: fn_constraint_requirements.clone(),
             imported_fn_constraint_requirements: self.imported_fn_constraint_requirements,
             extern_fns,
@@ -1750,7 +1752,7 @@ impl ModuleInferenceState {
 }
 
 /// Phase: Register traits (imported + local), process deriving, register impl instances.
-/// Returns (trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map).
+/// Returns (trait_registry, exported_trait_defs, derived_instance_defs, imported_instance_defs, trait_method_map).
 ///
 /// Extracted from `infer_module_inner` so its locals are deallocated before the
 /// SCC function inference phase, reducing peak stack usage.
@@ -1765,6 +1767,7 @@ fn process_traits_and_deriving(
         TraitRegistry,
         Vec<ExportedTraitDef>,
         Vec<InstanceDefInfo>,
+        Vec<InstanceDefInfo>,
         HashMap<String, TraitId>,
     ),
     SpannedTypeError,
@@ -1772,7 +1775,7 @@ fn process_traits_and_deriving(
     let mut trait_registry = TraitRegistry::new();
 
     // Phase 1: Import instances from cached modules via orphan-rule lookup
-    import_cached_instances(
+    let imported_instance_defs = import_cached_instances(
         &mut trait_registry,
         &state.type_provenance,
         &state.imports.imported_type_info,
@@ -1821,7 +1824,7 @@ fn process_traits_and_deriving(
         is_core_module,
     )?;
 
-    Ok((trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map))
+    Ok((trait_registry, exported_trait_defs, derived_instance_defs, imported_instance_defs, trait_method_map))
 }
 
 /// Phase 1: Import instances from cached modules via orphan-rule lookup.
@@ -1830,7 +1833,8 @@ fn import_cached_instances(
     type_provenance: &HashMap<String, String>,
     imported_type_info: &HashMap<String, (String, Visibility)>,
     cache: &HashMap<String, TypedModule>,
-) {
+) -> Vec<InstanceDefInfo> {
+    let mut imported_instance_defs = Vec::new();
     // Structural instance lookup: for each type/trait in scope, look up instances
     // in the defining module. The orphan rule guarantees instances live in the
     // module defining the type or the trait.
@@ -1865,11 +1869,13 @@ fn import_cached_instances(
                         };
                         // A-T14: silently ignores duplicate imported instances; should be an error
                         let _ = trait_registry.register_instance(instance);
+                        imported_instance_defs.push(inst.clone());
                     }
                 }
             }
         }
     }
+    imported_instance_defs
 }
 
 /// Phase 2: Register trait definitions imported from other modules.
@@ -3077,7 +3083,7 @@ pub(crate) fn infer_module_inner(
     let constructor_schemes = state.process_local_type_decls(module)?;
 
     // Phase: trait registration, deriving, impl registration
-    let (trait_registry, exported_trait_defs, derived_instance_defs, trait_method_map) =
+    let (trait_registry, exported_trait_defs, derived_instance_defs, imported_instance_defs, trait_method_map) =
         process_traits_and_deriving(
             &mut state,
             module,
@@ -3114,6 +3120,7 @@ pub(crate) fn infer_module_inner(
         fn_bodies,
         instance_defs,
         derived_instance_defs,
+        imported_instance_defs,
         &mut fn_constraint_requirements,
         &trait_method_map,
         &trait_registry,
