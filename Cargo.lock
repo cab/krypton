@@ -810,6 +810,7 @@ dependencies = [
  "ariadne",
  "criterion",
  "insta",
+ "krypton-ir",
  "krypton-modules",
  "krypton-parser",
  "krypton-test-harness",

@@ -218,7 +218,7 @@ impl Compiler {
         let name = Self::extract_call_name(func)?;
 
         // Intrinsic
-        if name == "panic" || name == "trait_dict" || name == "is_null" {
+        if krypton_ir::COMPILER_INTRINSICS.contains(&name.as_ref()) {
             return Ok((name.to_string(), CallTarget::Intrinsic));
         }
 

@@ -573,8 +573,8 @@ fun main() = println(sum(100, 0))
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("fun main() = 42");
     assert!(errors.is_empty());
-    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_modules(std::slice::from_ref(typed_module), "Test").expect("compile_module_standalone should succeed");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
@@ -634,8 +634,8 @@ fun main() = None
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_modules(std::slice::from_ref(typed_module), "Test").expect("compile");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -825,8 +825,8 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_modules(std::slice::from_ref(typed_module), "Test").expect("compile");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -854,8 +854,8 @@ fn test_typed_module_direct() {
     let source = format!("{PRINTLN_EXTERN}\nfun main() = println(42)");
     let (module, errors) = parse(&source);
     assert!(errors.is_empty());
-    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_modules(std::slice::from_ref(typed_module), "Test").expect("codegen");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let classes = compile_modules(&typed_modules, "Test").expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -888,8 +888,8 @@ fun main() = println(Some(42))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_module = &infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check")[0];
-    let classes = compile_modules(std::slice::from_ref(typed_module), "Test").expect("compile");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -936,35 +936,102 @@ fun main() = println(show(Player2 { name = "hi", score = x -> x }))
 
 #[test]
 fn test_constrained_instance_dictionary_passing_runtime() {
-    let module = build_constrained_render_module(false, false);
-    assert_eq!(run_typed_modules(&[module]), "Wrap(x)");
+    let src = r#"
+trait Render[a] {
+    fun render(x: a) -> String
+}
+type Wrap[a] = Wrap(a) | Empty
+impl Render[Int] {
+    fun render(x: Int) -> String = "x"
+}
+impl[a] Render[Wrap[a]] where a: Render {
+    fun render(value: Wrap[a]) -> String = match value {
+        Wrap(inner) => "Wrap(" + render(inner) + ")",
+        Empty => "Empty",
+    }
+}
+fun main() = println(render(Wrap(42)))
+"#;
+    assert_eq!(run_program(src), "Wrap(x)");
 }
 
 #[test]
 fn test_constrained_instance_dictionary_passing_nested_runtime() {
-    let module = build_constrained_render_module(false, true);
-    assert_eq!(run_typed_modules(&[module]), "Wrap(Wrap(x))");
+    let src = r#"
+trait Render[a] {
+    fun render(x: a) -> String
+}
+type Wrap[a] = Wrap(a) | Empty
+impl Render[Int] {
+    fun render(x: Int) -> String = "x"
+}
+impl[a] Render[Wrap[a]] where a: Render {
+    fun render(value: Wrap[a]) -> String = match value {
+        Wrap(inner) => "Wrap(" + render(inner) + ")",
+        Empty => "Empty",
+    }
+}
+fun main() = println(render(Wrap(Wrap(42))))
+"#;
+    assert_eq!(run_program(src), "Wrap(Wrap(x))");
 }
 
 #[test]
 fn test_constrained_instance_dictionary_forwarding_from_polymorphic_context() {
-    let module = build_constrained_render_module(true, false);
-    assert_eq!(run_typed_modules(&[module]), "Wrap(x)");
+    // Tests that a polymorphic wrapper function can forward dict params to trait calls
+    let src = r#"
+import core/show.{Show, show}
+fun show_it[a](x: a) -> String where a: Show = show(x)
+fun main() = println(show_it(42))
+"#;
+    assert_eq!(run_program(src), "42");
 }
 
 #[test]
 fn test_constrained_instance_class_captures_dictionary_parameter() {
-    let module = build_constrained_render_module(false, false);
-    let dir = compile_typed_modules(&[module]);
-    let class_output = javap_output(&dir.path().join("Render$$Wrap.class"), false);
+    let src = r#"
+trait Render[a] {
+    fun render(x: a) -> String
+}
+type Wrap[a] = Wrap(a) | Empty
+impl Render[Int] {
+    fun render(x: Int) -> String = "x"
+}
+impl[a] Render[Wrap[a]] where a: Render {
+    fun render(value: Wrap[a]) -> String = match value {
+        Wrap(inner) => "Wrap(" + render(inner) + ")",
+        Empty => "Empty",
+    }
+}
+fun main() = println(render(Wrap(42)))
+"#;
+    let full_src = format!("{PRINTLN_EXTERN}\n{src}");
+    let (module, errors) = parse(&full_src);
+    assert!(errors.is_empty());
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only()).expect("type check");
+    let classes = compile_modules(&typed_modules, "Test").expect("compile");
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+    }
+    // Find the parameterized instance class for Render[Wrap[a]]
+    let render_wrap_class = classes.iter()
+        .find(|(n, _)| n.starts_with("Render$$Wrap"))
+        .expect("should have a Render$$Wrap* instance class");
+    let class_output = javap_output(&dir.path().join(format!("{}.class", render_wrap_class.0)), false);
     assert!(
         class_output.contains("java.lang.Object dict0;"),
         "expected constrained instance to store dictionary field, javap output:\n{class_output}"
     );
 
     let test_output = javap_output(&dir.path().join("Test.class"), true);
+    let expected_ctor = format!("Method {}.\"<init>\":(Ljava/lang/Object;)V", render_wrap_class.0);
     assert!(
-        test_output.contains("Method Render$$Wrap.\"<init>\":(Ljava/lang/Object;)V"),
+        test_output.contains(&expected_ctor),
         "expected constrained instance construction with dictionary arg, javap output:\n{test_output}"
     );
 }

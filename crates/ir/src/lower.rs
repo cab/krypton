@@ -3918,10 +3918,12 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 3c. Register panic intrinsic
-    if !ctx.fn_ids.contains_key("panic") {
-        let fn_id = ctx.fresh_fn();
-        ctx.fn_ids.insert("panic".to_string(), fn_id);
+    // 3c. Register compiler intrinsics
+    for &name in crate::COMPILER_INTRINSICS {
+        if !ctx.fn_ids.contains_key(name) {
+            let fn_id = ctx.fresh_fn();
+            ctx.fn_ids.insert(name.to_string(), fn_id);
+        }
     }
 
     // 4. Lower struct definitions (skip imported types)
@@ -4137,6 +4139,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         instances,
         tuple_arities,
         module_path: typed.module_path.clone(),
+        fn_dict_requirements: ctx.fn_constraints.clone(),
     })
 }
 

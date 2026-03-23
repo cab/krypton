@@ -449,7 +449,7 @@ impl Compiler {
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
-                if name == "Object" {
+                if name == "Object" || name == "Dict" {
                     return Ok(JvmType::StructRef(self.builder.refs.object_class));
                 }
                 if name == "Vec" {
@@ -464,9 +464,8 @@ impl Compiler {
                 } else if let Some(&class_index) = self.types.extern_sum_class_indices.get(name) {
                     Ok(JvmType::StructRef(class_index))
                 } else {
-                    Err(CodegenError::TypeError(format!(
-                        "unknown named type: {name}"
-                    ), None))
+                    // Unknown named type — erase to Object (may come from cross-module imports)
+                    Ok(JvmType::StructRef(self.builder.refs.object_class))
                 }
             }
             Type::Var(_) => Ok(JvmType::StructRef(self.builder.refs.object_class)),

@@ -1,19 +1,16 @@
 //! Module registration phases (types, traits, instances, functions).
+//! All registration reads from `ir::Module`; function body compilation still uses `TypedModule`.
 
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
-use krypton_typechecker::type_registry;
-use krypton_typechecker::types::{self, Type, TypeVarId};
+use krypton_typechecker::types::{self, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 use ristretto_classfile::Method;
 
-use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
-
 use super::{
-    type_expr_to_jvm, type_expr_to_jvm_basic, type_expr_to_jvm_with_params,
-    type_expr_uses_type_params, qualify_type_for,
-    ImportedInstanceInfo, dict_requirements_for_instance,
+    qualify_ir, qualify_with_provenance, type_references_var, type_has_vars,
+    ImportedInstanceInfo,
 };
 use super::data_class_gen::{
     generate_struct_class, generate_sealed_interface_class, generate_variant_class,
@@ -41,7 +38,6 @@ fn name_to_builtin_type(name: &str) -> Type {
 }
 
 /// Map a `Type::Named` to its JVM type and descriptor fragment.
-/// Types with type args use Object (JVM erasure).
 fn jvm_type_for_named(
     name: &str,
     args: &[Type],
@@ -60,22 +56,25 @@ fn jvm_type_for_named(
 }
 
 impl Compiler {
-    pub(super) fn register_extern_types(
+    // -----------------------------------------------------------------------
+    // Phase 1: Types
+    // -----------------------------------------------------------------------
+
+    pub(super) fn register_extern_types_ir(
         &mut self,
-        typed_module: &TypedModule,
+        ir_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
-        for (krypton_name, java_class) in typed_module
-            .extern_java_types
-            .iter()
-            .chain(typed_module.imported_extern_java_types.iter())
-        {
-            let jvm_class = java_class.replace('.', "/");
+        for ext in &ir_module.extern_types {
+            let jvm_class = match &ext.target {
+                krypton_ir::ExternTarget::Java { class } => class.replace('.', "/"),
+                krypton_ir::ExternTarget::Js { .. } => continue,
+            };
             let class_index = self.cp.add_class(&jvm_class)?;
             self.types
                 .class_descriptors
-                .insert(class_index, format!("L{};", jvm_class));
+                .insert(class_index, format!("L{jvm_class};"));
             self.types.struct_info.insert(
-                krypton_name.clone(),
+                ext.name.clone(),
                 StructInfo {
                     class_index,
                     class_name: jvm_class,
@@ -88,23 +87,22 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn register_structs(
+    pub(super) fn register_structs_ir(
         &mut self,
-        typed_module: &TypedModule,
-        field_type_registry: &type_registry::TypeRegistry,
-        struct_type_param_maps: &HashMap<String, HashMap<String, TypeVarId>>,
+        ir_module: &krypton_ir::Module,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
-        let empty_map = HashMap::new();
-        for struct_decl in &typed_module.struct_decls {
-            let (struct_name, ast_fields) = (&struct_decl.name, &struct_decl.fields);
-            let qualified = qualify_type_for(typed_module, struct_name);
+        for struct_def in &ir_module.structs {
+            let qualified = qualify_ir(&ir_module.module_path, &struct_def.name);
 
-            let type_param_map = struct_type_param_maps.get(struct_name).unwrap_or(&empty_map);
-            let jvm_fields: Vec<(String, JvmType)> = ast_fields
+            let jvm_fields: Vec<(String, JvmType)> = struct_def.fields
                 .iter()
-                .map(|(fname, texpr)| {
-                    let jt = type_expr_to_jvm_with_params(self, texpr, field_type_registry, &type_param_map)?;
+                .map(|(fname, ty)| {
+                    let jt = if type_references_var(ty, &struct_def.type_params) {
+                        JvmType::StructRef(self.builder.refs.object_class)
+                    } else {
+                        self.type_to_jvm(ty)?
+                    };
                     Ok((fname.clone(), jt))
                 })
                 .collect::<Result<_, CodegenError>>()?;
@@ -133,7 +131,7 @@ impl Compiler {
             }
 
             self.types.struct_info.insert(
-                struct_name.clone(),
+                struct_def.name.clone(),
                 StructInfo {
                     class_index,
                     class_name: qualified.clone(),
@@ -143,27 +141,20 @@ impl Compiler {
                 },
             );
 
-            // Only emit bytecode for types defined in this module (not imports)
-            if !typed_module.is_type_imported(struct_name) {
-                let struct_bytes =
-                    generate_struct_class(&qualified, &jvm_fields, &self.types.class_descriptors)?;
-                result_classes.push((qualified.clone(), struct_bytes));
-            }
+            let struct_bytes =
+                generate_struct_class(&qualified, &jvm_fields, &self.types.class_descriptors)?;
+            result_classes.push((qualified.clone(), struct_bytes));
         }
         Ok(result_classes)
     }
 
-    pub(super) fn register_sum_types(
+    pub(super) fn register_sum_types_ir(
         &mut self,
-        typed_module: &TypedModule,
+        ir_module: &krypton_ir::Module,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
-        for sum_decl in &typed_module.sum_decls {
-            let (sum_name, type_params, variants) = (&sum_decl.name, &sum_decl.type_params, &sum_decl.variants);
-            let qualified_sum = qualify_type_for(typed_module, sum_name);
-
-            // Check if this sum type is imported from another module
-            let is_imported = typed_module.is_type_imported(sum_name);
+        for sum_def in &ir_module.sum_types {
+            let qualified_sum = qualify_ir(&ir_module.module_path, &sum_def.name);
 
             let interface_class_index = self.cp.add_class(&qualified_sum)?;
             let interface_desc = format!("L{qualified_sum};");
@@ -172,20 +163,21 @@ impl Compiler {
                 .insert(interface_class_index, interface_desc);
 
             let mut variant_infos = HashMap::new();
-            let variant_names: Vec<String> = variants.iter().map(|v| format!("{}${}", qualified_sum, v.name)).collect();
+            let variant_names: Vec<String> = sum_def.variants.iter()
+                .map(|v| format!("{}${}", qualified_sum, v.name))
+                .collect();
 
-            for variant in variants {
-                let fields: Vec<VariantField> = variant
-                    .fields
+            for variant in &sum_def.variants {
+                let fields: Vec<VariantField> = variant.fields
                     .iter()
                     .enumerate()
-                    .map(|(i, texpr)| {
+                    .map(|(i, ty)| {
                         let name = format!("field{i}");
-                        let is_erased = type_expr_uses_type_params(texpr, type_params);
+                        let is_erased = type_references_var(ty, &sum_def.type_params);
                         let jvm_type = if is_erased {
                             JvmType::StructRef(self.builder.refs.object_class)
                         } else {
-                            type_expr_to_jvm_basic(texpr, self)?
+                            self.type_to_jvm(ty)?
                         };
                         Ok(VariantField { name, jvm_type, is_erased })
                     })
@@ -227,7 +219,7 @@ impl Compiler {
 
                 self.types
                     .variant_to_sum
-                    .insert(variant.name.clone(), sum_name.clone());
+                    .insert(variant.name.clone(), sum_def.name.clone());
 
                 let singleton_field_ref = if fields.is_empty() {
                     let variant_desc = format!("L{qualified_variant};");
@@ -248,85 +240,234 @@ impl Compiler {
                     },
                 );
 
-                // Only emit bytecode for types defined in this module
-                if !is_imported {
-                    let variant_bytes =
-                        generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields, &self.types.class_descriptors)?;
-                    result_classes.push((qualified_variant.clone(), variant_bytes));
-                }
+                let variant_bytes =
+                    generate_variant_class(&qualified_variant, &qualified_sum, &variant.name, &fields, &self.types.class_descriptors)?;
+                result_classes.push((qualified_variant.clone(), variant_bytes));
             }
 
             self.types.sum_type_info.insert(
-                sum_name.clone(),
+                sum_def.name.clone(),
                 SumTypeInfo {
                     interface_class_index,
                     variants: variant_infos,
                 },
             );
 
-            // Only emit bytecode for types defined in this module
-            if !is_imported {
-                let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
-                let interface_bytes = generate_sealed_interface_class(&qualified_sum, &variant_name_refs)?;
-                result_classes.push((qualified_sum.clone(), interface_bytes));
-            }
+            let variant_name_refs: Vec<&str> = variant_names.iter().map(|s| s.as_str()).collect();
+            let interface_bytes = generate_sealed_interface_class(&qualified_sum, &variant_name_refs)?;
+            result_classes.push((qualified_sum.clone(), interface_bytes));
         }
         Ok(result_classes)
     }
 
-    pub(super) fn register_fun_interfaces(
+    /// Register struct types from another module (class indices only, no bytecode).
+    pub(super) fn register_imported_structs_ir(
         &mut self,
-        typed_module: &TypedModule,
+        other_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
-        for entry in typed_module.fn_types.iter() {
-            if let Type::Fn(param_tys, _) = &entry.scheme.ty {
-                if self.types.struct_info.contains_key(&entry.name)
-                    || self.types.variant_to_sum.contains_key(&entry.name)
-                {
-                    continue;
-                }
-                for pt in param_tys {
-                    if let Type::Fn(inner_params, _) = pt {
-                        let arity = inner_params.len() as u8;
-                        self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
-                    }
-                }
+        for struct_def in &other_module.structs {
+            if self.types.struct_info.contains_key(&struct_def.name) { continue; }
+            let qualified = qualify_ir(&other_module.module_path, &struct_def.name);
+
+            let jvm_fields: Vec<(String, JvmType)> = struct_def.fields
+                .iter()
+                .map(|(fname, ty)| {
+                    let jt = if type_references_var(ty, &struct_def.type_params) {
+                        JvmType::StructRef(self.builder.refs.object_class)
+                    } else {
+                        self.type_to_jvm(ty)?
+                    };
+                    Ok((fname.clone(), jt))
+                })
+                .collect::<Result<_, CodegenError>>()?;
+
+            let class_index = self.cp.add_class(&qualified)?;
+            let class_desc = format!("L{qualified};");
+            self.types.class_descriptors.insert(class_index, class_desc);
+
+            let mut ctor_desc = String::from("(");
+            for (_, jt) in &jvm_fields {
+                ctor_desc.push_str(&self.types.jvm_type_descriptor(*jt));
             }
-        }
-        for instance_def in &typed_module.instance_defs {
-            for method in &instance_def.methods {
-                if let Type::Fn(param_tys, _) = &method.scheme.ty {
-                    for pt in param_tys {
-                        if let Type::Fn(inner_params, _) = pt {
-                            let arity = inner_params.len() as u8;
-                            self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
-                        }
-                    }
-                }
+            ctor_desc.push_str(")V");
+            let constructor_ref = self.cp.add_method_ref(class_index, "<init>", &ctor_desc)?;
+
+            let mut accessor_refs = HashMap::new();
+            for (fname, jt) in &jvm_fields {
+                let ret_desc = self.types.jvm_type_descriptor(*jt);
+                let method_desc = format!("(){ret_desc}");
+                let accessor_ref = self.cp.add_method_ref(class_index, fname, &method_desc)?;
+                accessor_refs.insert(fname.clone(), accessor_ref);
             }
+
+            self.types.struct_info.insert(
+                struct_def.name.clone(),
+                StructInfo {
+                    class_index,
+                    class_name: qualified,
+                    fields: jvm_fields,
+                    constructor_ref,
+                    accessor_refs,
+                },
+            );
         }
         Ok(())
     }
 
-    pub(super) fn register_traits(
+    /// Register sum types from another module (class indices + variant mappings, no bytecode).
+    pub(super) fn register_imported_sum_types_ir(
         &mut self,
-        typed_module: &TypedModule,
+        other_module: &krypton_ir::Module,
+    ) -> Result<(), CodegenError> {
+        for sum_def in &other_module.sum_types {
+            if self.types.sum_type_info.contains_key(&sum_def.name) { continue; }
+            let qualified_sum = qualify_ir(&other_module.module_path, &sum_def.name);
+
+            let interface_class_index = self.cp.add_class(&qualified_sum)?;
+            let interface_desc = format!("L{qualified_sum};");
+            self.types.class_descriptors.insert(interface_class_index, interface_desc);
+
+            let mut variant_infos = HashMap::new();
+
+            for variant in &sum_def.variants {
+                let fields: Vec<VariantField> = variant.fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, ty)| {
+                        let name = format!("field{i}");
+                        let is_erased = type_references_var(ty, &sum_def.type_params);
+                        let jvm_type = if is_erased {
+                            JvmType::StructRef(self.builder.refs.object_class)
+                        } else {
+                            self.type_to_jvm(ty)?
+                        };
+                        Ok(VariantField { name, jvm_type, is_erased })
+                    })
+                    .collect::<Result<_, CodegenError>>()?;
+
+                let qualified_variant = format!("{}${}", qualified_sum, variant.name);
+                let variant_class_index = self.cp.add_class(&qualified_variant)?;
+                let variant_desc = format!("L{qualified_variant};");
+                self.types.class_descriptors.insert(variant_class_index, variant_desc);
+
+                let mut ctor_desc = String::from("(");
+                for f in &fields {
+                    if f.is_erased {
+                        ctor_desc.push_str("Ljava/lang/Object;");
+                    } else {
+                        ctor_desc.push_str(&self.types.jvm_type_descriptor(f.jvm_type));
+                    }
+                }
+                ctor_desc.push_str(")V");
+
+                let constructor_ref = self.cp.add_method_ref(
+                    variant_class_index, "<init>", &ctor_desc,
+                )?;
+
+                let mut main_field_refs = Vec::new();
+                for f in &fields {
+                    let fdesc = if f.is_erased {
+                        "Ljava/lang/Object;".to_string()
+                    } else {
+                        self.types.jvm_type_descriptor(f.jvm_type)
+                    };
+                    let fr = self.cp.add_field_ref(variant_class_index, &f.name, &fdesc)?;
+                    main_field_refs.push(fr);
+                }
+
+                self.types.variant_to_sum.insert(variant.name.clone(), sum_def.name.clone());
+
+                let singleton_field_ref = if fields.is_empty() {
+                    let vdesc = format!("L{qualified_variant};");
+                    Some(self.cp.add_field_ref(variant_class_index, "INSTANCE", &vdesc)?)
+                } else {
+                    None
+                };
+
+                variant_infos.insert(
+                    variant.name.clone(),
+                    VariantInfo {
+                        class_index: variant_class_index,
+                        class_name: qualified_variant,
+                        fields,
+                        constructor_ref,
+                        field_refs: main_field_refs,
+                        singleton_field_ref,
+                    },
+                );
+            }
+
+            self.types.sum_type_info.insert(
+                sum_def.name.clone(),
+                SumTypeInfo {
+                    interface_class_index,
+                    variants: variant_infos,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 2: Traits & Instances
+    // -----------------------------------------------------------------------
+
+    pub(super) fn register_fun_interfaces_ir(
+        &mut self,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<(), CodegenError> {
+        fn collect_fn_arities(ty: &Type, arities: &mut std::collections::BTreeSet<u8>) {
+            match ty {
+                Type::Fn(params, ret) => {
+                    arities.insert(params.len() as u8);
+                    for p in params { collect_fn_arities(p, arities); }
+                    collect_fn_arities(ret, arities);
+                }
+                Type::Named(_, args) => { for a in args { collect_fn_arities(a, arities); } }
+                Type::Tuple(elems) => { for e in elems { collect_fn_arities(e, arities); } }
+                Type::Own(inner) => collect_fn_arities(inner, arities),
+                _ => {}
+            }
+        }
+
+        let mut arities = std::collections::BTreeSet::new();
+
+        // Local functions (including instance methods)
+        for fn_def in &ir_module.functions {
+            if self.types.struct_info.contains_key(&fn_def.name)
+                || self.types.variant_to_sum.contains_key(&fn_def.name)
+            {
+                continue;
+            }
+            for (_var_id, param_ty) in &fn_def.params {
+                collect_fn_arities(param_ty, &mut arities);
+            }
+            collect_fn_arities(&fn_def.return_type, &mut arities);
+        }
+
+        // Imported function signatures
+        for imp in &ir_module.imported_fns {
+            for ty in &imp.param_types {
+                collect_fn_arities(ty, &mut arities);
+            }
+            collect_fn_arities(&imp.return_type, &mut arities);
+        }
+
+        for arity in arities {
+            self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn register_traits_ir(
+        &mut self,
+        ir_module: &krypton_ir::Module,
+        type_provenance: &HashMap<String, String>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
-        for (name, requirements) in &typed_module.fn_constraint_requirements {
-            self.traits.impl_dict_requirements.insert(
-                name.clone(),
-                requirements
-                    .iter()
-                    .map(|(trait_name, type_var)| DictRequirement {
-                        trait_name: trait_name.clone(),
-                        type_var: *type_var,
-                    })
-                    .collect(),
-            );
-        }
-        for (name, requirements) in &typed_module.imported_fn_constraint_requirements {
+        // Populate dict requirements from IR
+        for (name, requirements) in &ir_module.fn_dict_requirements {
             self.traits.impl_dict_requirements.entry(name.clone()).or_insert_with(|| {
                 requirements
                     .iter()
@@ -338,11 +479,14 @@ impl Compiler {
             });
         }
 
-        for trait_def in &typed_module.trait_defs {
-            let qualified_trait = qualify_type_for(typed_module, &trait_def.name);
+        for trait_def in &ir_module.traits {
+            let qualified_trait = qualify_with_provenance(&ir_module.module_path, &trait_def.name, type_provenance);
 
             if !trait_def.is_imported {
-                let interface_bytes = generate_trait_interface_class(&qualified_trait, &trait_def.methods)?;
+                let methods_for_gen: Vec<(String, usize)> = trait_def.methods.iter()
+                    .map(|m| (m.name.clone(), m.param_count))
+                    .collect();
+                let interface_bytes = generate_trait_interface_class(&qualified_trait, &methods_for_gen)?;
                 result_classes.push((qualified_trait.clone(), interface_bytes));
             }
 
@@ -350,40 +494,44 @@ impl Compiler {
             self.types.class_descriptors.insert(iface_class, format!("L{qualified_trait};"));
 
             let mut method_refs = HashMap::new();
-            for (method_name, param_count) in &trait_def.methods {
+            for method in &trait_def.methods {
                 let mut desc = String::from("(");
-                for _ in 0..*param_count {
+                for _ in 0..method.param_count {
                     desc.push_str("Ljava/lang/Object;");
                 }
                 desc.push_str(")Ljava/lang/Object;");
-                let mref = self.cp.add_interface_method_ref(iface_class, method_name, &desc)?;
-                method_refs.insert(method_name.clone(), mref);
+                let mref = self.cp.add_interface_method_ref(iface_class, &method.name, &desc)?;
+                method_refs.insert(method.name.clone(), mref);
             }
+
+            let method_tc_types: HashMap<String, (Vec<Type>, Type)> = trait_def.methods.iter()
+                .map(|m| (m.name.clone(), (m.param_types.clone(), m.return_type.clone())))
+                .collect();
 
             self.traits.trait_dispatch.insert(trait_def.name.clone(), TraitDispatchInfo {
                 interface_class: iface_class,
                 method_refs,
-                type_var_id: trait_def.type_var_id,
-                method_tc_types: trait_def.method_tc_types.clone(),
+                type_var_id: trait_def.type_var,
+                method_tc_types,
             });
         }
         Ok(result_classes)
     }
 
-    pub(super) fn register_builtin_instances(
+    pub(super) fn register_builtin_instances_ir(
         &mut self,
-        typed_module: &TypedModule,
+        ir_module: &krypton_ir::Module,
+        type_provenance: &HashMap<String, String>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
-        // Only emit bytecode for traits defined locally (not imported)
-        let local_traits: std::collections::HashSet<&str> = typed_module.trait_defs.iter()
+        let local_traits: std::collections::HashSet<&str> = ir_module.traits.iter()
             .filter(|td| !td.is_imported)
             .map(|td| td.name.as_str())
             .collect();
         let registry = intrinsics::IntrinsicRegistry::new();
         for entry in registry.iter() {
             if self.traits.trait_dispatch.contains_key(entry.trait_name) {
-                let q_trait = qualify_type_for(typed_module, entry.trait_name);
+                let q_trait = qualify_with_provenance(&ir_module.module_path, entry.trait_name, type_provenance);
                 let class_name = format!("{q_trait}$${}", entry.type_name);
 
                 if local_traits.contains(entry.trait_name) {
@@ -413,7 +561,7 @@ impl Compiler {
         &mut self,
         imported_instances: &HashMap<(String, String), ImportedInstanceInfo>,
     ) -> Result<(), CodegenError> {
-        for ((trait_name, type_name), imported_instance) in imported_instances {
+        for ((trait_name, _type_name), imported_instance) in imported_instances {
             let inst_class_idx = self.cp.add_class(&imported_instance.class_name)?;
             let inst_desc = format!("L{};", imported_instance.class_name);
             self.types
@@ -440,70 +588,94 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn register_instance_defs(
+    pub(super) fn register_instance_defs_ir(
         &mut self,
-        typed_module: &TypedModule,
+        ir_module: &krypton_ir::Module,
         class_name: &str,
+        type_provenance: &HashMap<String, String>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
-        for instance_def in &typed_module.instance_defs {
-            if instance_def.is_intrinsic {
+
+        // Build FnId → FnDef lookup
+        let fn_defs_by_id: HashMap<krypton_ir::FnId, &krypton_ir::FnDef> = ir_module.functions.iter()
+            .map(|f| (f.id, f))
+            .collect();
+
+        for inst in &ir_module.instances {
+            if inst.is_intrinsic || inst.is_imported {
                 continue;
             }
-            let q_trait = qualify_type_for(typed_module, &instance_def.trait_name);
-            let instance_class_name = format!("{}$${}", q_trait, instance_def.target_type_name);
-            let dict_requirements = dict_requirements_for_instance(
-                &instance_def.type_var_ids,
-                &instance_def.constraints,
-                &instance_def.subdict_traits,
-            );
+            let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name, type_provenance);
+            let instance_class_name = format!("{}$${}", q_trait, inst.target_type_name);
+            let dict_requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
+                .map(|(trait_name, type_var)| DictRequirement {
+                    trait_name: trait_name.clone(),
+                    type_var: *type_var,
+                })
+                .collect();
 
             let mut method_info = Vec::new();
             let mut param_jvm_types_map: HashMap<String, Vec<JvmType>> = HashMap::new();
             let mut return_jvm_types_map: HashMap<String, JvmType> = HashMap::new();
             let mut param_class_names_map: HashMap<String, Vec<Option<String>>> = HashMap::new();
 
-            for method in &instance_def.methods {
-                let qualified_name = krypton_typechecker::typed_ast::mangled_method_name(
-                    &instance_def.trait_name,
-                    &instance_def.target_type_name,
-                    &method.name,
-                );
-                if let Type::Fn(param_tys, ret_ty) = &method.scheme.ty {
-                    let param_jvm: Vec<JvmType> = param_tys.iter()
-                        .map(|t| self.type_to_jvm(t))
-                        .collect::<Result<_, _>>()?;
-                    let ret_jvm = self.type_to_jvm(ret_ty)?;
-                    self.traits
-                        .impl_dict_requirements
-                        .insert(qualified_name.clone(), dict_requirements.clone());
-                    let mut all_param_jvm = Vec::new();
-                    for _ in 0..dict_requirements.len() {
-                        all_param_jvm.push(JvmType::StructRef(self.builder.refs.object_class));
-                    }
-                    all_param_jvm.extend(param_jvm.iter().copied());
-                    let static_desc = self.types.build_descriptor(&all_param_jvm, ret_jvm);
-                    let class_names: Vec<Option<String>> = param_jvm.iter().map(|jt| {
-                        match jt {
-                            JvmType::StructRef(idx) => {
-                                self.types.class_descriptors.get(idx).map(|desc| {
-                                    desc.strip_prefix('L')
-                                        .and_then(|s| s.strip_suffix(';'))
-                                        .unwrap_or(desc)
-                                        .to_string()
-                                })
-                            }
-                            _ => None,
-                        }
-                    }).collect();
-                    param_class_names_map.insert(method.name.clone(), class_names);
-                    param_jvm_types_map.insert(method.name.clone(), param_jvm);
-                    return_jvm_types_map.insert(method.name.clone(), ret_jvm);
-                    method_info.push((method.name.clone(), qualified_name.clone(), param_tys.len(), static_desc));
+            for (method_name, fn_id) in &inst.method_fn_ids {
+                let mangled = format!("{}$${}$${}", inst.trait_name, inst.target_type_name, method_name);
+
+                // Look up the FnDef to get param/return types
+                let fn_def = fn_defs_by_id.get(fn_id);
+                if fn_def.is_none() {
+                    // Intrinsic method — no FnDef exists
+                    continue;
                 }
+                let fn_def = fn_def.unwrap();
+
+                // Extract user param types (skip dict params at the front)
+                let dict_count = dict_requirements.len();
+                let user_params: Vec<&Type> = fn_def.params.iter()
+                    .skip(dict_count)
+                    .map(|(_vid, ty)| ty)
+                    .collect();
+
+                let param_jvm: Vec<JvmType> = user_params.iter()
+                    .map(|t| self.type_to_jvm(t))
+                    .collect::<Result<_, _>>()?;
+                let ret_jvm = self.type_to_jvm(&fn_def.return_type)?;
+
+                self.traits
+                    .impl_dict_requirements
+                    .insert(mangled.clone(), dict_requirements.clone());
+
+                let mut all_param_jvm = Vec::new();
+                for _ in 0..dict_requirements.len() {
+                    all_param_jvm.push(JvmType::StructRef(self.builder.refs.object_class));
+                }
+                all_param_jvm.extend(param_jvm.iter().copied());
+                let static_desc = self.types.build_descriptor(&all_param_jvm, ret_jvm);
+
+                let class_names: Vec<Option<String>> = param_jvm.iter().map(|jt| {
+                    match jt {
+                        JvmType::StructRef(idx) => {
+                            self.types.class_descriptors.get(idx).map(|desc| {
+                                desc.strip_prefix('L')
+                                    .and_then(|s| s.strip_suffix(';'))
+                                    .unwrap_or(desc)
+                                    .to_string()
+                            })
+                        }
+                        _ => None,
+                    }
+                }).collect();
+
+                param_class_names_map.insert(method_name.clone(), class_names);
+                param_jvm_types_map.insert(method_name.clone(), param_jvm);
+                return_jvm_types_map.insert(method_name.clone(), ret_jvm);
+                method_info.push((method_name.clone(), mangled.clone(), user_params.len(), static_desc));
             }
 
-            if instance_def.type_var_ids.is_empty() {
+            let is_parameterized = type_has_vars(&inst.target_type);
+
+            if !is_parameterized {
                 let instance_bytes = generate_instance_class(
                     &instance_class_name,
                     &q_trait,
@@ -521,7 +693,7 @@ impl Compiler {
                 let instance_field_ref = self.cp.add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
 
                 self.traits.instance_singletons.insert(
-                    (instance_def.trait_name.clone(), instance_def.target_type.clone()),
+                    (inst.trait_name.clone(), inst.target_type.clone()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
@@ -539,15 +711,13 @@ impl Compiler {
 
                 let new_info = ParameterizedInstanceInfo {
                     class_name: instance_class_name.clone(),
-                    target_type: instance_def.target_type.clone(),
+                    target_type: inst.target_type.clone(),
                     requirements: dict_requirements,
                 };
                 let entries = self.traits.parameterized_instances
-                    .entry(instance_def.trait_name.clone())
+                    .entry(inst.trait_name.clone())
                     .or_default();
-                // Local impls shadow imported impls with the same target type name
-                // (e.g. user-defined Option shadows prelude Option).
-                let canonical = types::type_to_canonical_name(&instance_def.target_type);
+                let canonical = types::type_to_canonical_name(&inst.target_type);
                 if let Some(pos) = entries.iter().position(|e| {
                     types::type_to_canonical_name(&e.target_type) == canonical
                 }) {
@@ -560,24 +730,15 @@ impl Compiler {
         Ok(result_classes)
     }
 
-    pub(super) fn register_tuples(
+    // -----------------------------------------------------------------------
+    // Phase 3: Tuples & Functions
+    // -----------------------------------------------------------------------
+
+    pub(super) fn register_tuples_ir(
         &mut self,
-        typed_module: &TypedModule,
+        ir_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
-        let mut tuple_arities = std::collections::HashSet::new();
-        for entry in typed_module.fn_types.iter() {
-            collect_tuple_arities(&entry.scheme.ty, &mut tuple_arities);
-        }
-        for typed_fn in &typed_module.functions {
-            collect_tuple_arities_expr(&typed_fn.body, &mut tuple_arities);
-        }
-        for instance_def in &typed_module.instance_defs {
-            for method in &instance_def.methods {
-                collect_tuple_arities(&method.scheme.ty, &mut tuple_arities);
-                collect_tuple_arities_expr(&method.body, &mut tuple_arities);
-            }
-        }
-        for arity in tuple_arities {
+        for &arity in &ir_module.tuple_arities {
             let class_name = format!("krypton/runtime/Tuple{arity}");
             let class_index = self.cp.add_class(&class_name)?;
             let class_desc = format!("Lkrypton/runtime/Tuple{arity};");
@@ -617,115 +778,71 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn register_functions(
+    pub(super) fn register_functions_ir(
         &mut self,
-        typed_module: &TypedModule,
+        ir_module: &krypton_ir::Module,
         this_class: u16,
     ) -> Result<(), CodegenError> {
-        let type_info = &typed_module.fn_types;
-
-        for entry in type_info.iter() {
-            if let Type::Fn(param_tys, ret_ty) = &entry.scheme.ty {
-                let name = &entry.name;
-                if self.types.struct_info.contains_key(name)
-                    || self.types.variant_to_sum.contains_key(name)
-                {
-                    continue;
-                }
-                let impl_dict_count = self
-                    .traits
-                    .impl_dict_requirements
-                    .get(name)
-                    .map(|requirements| requirements.len())
-                    .unwrap_or(0);
-                let mut all_param_types: Vec<JvmType> = Vec::new();
-                for _ in 0..impl_dict_count {
-                    all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
-                }
-                let user_param_types: Vec<JvmType> = param_tys
-                    .iter()
-                    .map(|t| self.type_to_jvm(t))
-                    .collect::<Result<_, _>>()?;
-                all_param_types.extend(user_param_types);
-                let return_type = self.type_to_jvm(ret_ty.as_ref())?;
-                let jvm_name = if name == "main" {
-                    "krypton_main"
-                } else {
-                    name.as_str()
-                };
-                let descriptor = self.types.build_descriptor(&all_param_types, return_type);
-                let (target_class, target_name) = if let Some((source_module, orig_name)) = &entry.provenance {
-                    (self.cp.add_class(source_module)?, orig_name.as_str())
-                } else {
-                    (this_class, jvm_name)
-                };
-                let method_ref =
-                    self.cp.add_method_ref(target_class, target_name, &descriptor)?;
-                self.types.functions.entry(name.clone()).or_default().push(
-                    FunctionInfo {
-                        method_ref,
-                        param_types: all_param_types,
-                        return_type,
-                        is_void: false,
-                        tc_param_types: param_tys.clone(),
-                    },
-                );
-                self.types.fn_tc_types.insert(
-                    name.clone(),
-                    (param_tys.clone(), ret_ty.as_ref().clone()),
-                );
+        // Local functions (including instance methods which are in ir_module.functions)
+        for fn_def in &ir_module.functions {
+            let name = &fn_def.name;
+            if self.types.struct_info.contains_key(name)
+                || self.types.variant_to_sum.contains_key(name)
+            {
+                continue;
             }
+            let impl_dict_count = self
+                .traits
+                .impl_dict_requirements
+                .get(name)
+                .map(|r| r.len())
+                .unwrap_or(0);
+
+            // FnDef params already include dict params prepended by the lowerer.
+            // We need to build the JVM descriptor from all params.
+            let all_param_types: Vec<JvmType> = fn_def.params
+                .iter()
+                .map(|(_vid, ty)| self.type_to_jvm(ty))
+                .collect::<Result<_, _>>()?;
+            let return_type = self.type_to_jvm(&fn_def.return_type)?;
+
+            let jvm_name = if name == "main" { "krypton_main" } else { name.as_str() };
+            let descriptor = self.types.build_descriptor(&all_param_types, return_type);
+            let method_ref =
+                self.cp.add_method_ref(this_class, jvm_name, &descriptor)?;
+
+            // tc_param_types = user params (skip dict params)
+            let tc_param_types: Vec<Type> = fn_def.params
+                .iter()
+                .skip(impl_dict_count)
+                .map(|(_vid, ty)| ty.clone())
+                .collect();
+
+            self.types.functions.entry(name.clone()).or_default().push(
+                FunctionInfo {
+                    method_ref,
+                    param_types: all_param_types,
+                    return_type,
+                    is_void: false,
+                    tc_param_types: tc_param_types.clone(),
+                },
+            );
+            self.types.fn_tc_types.insert(
+                name.clone(),
+                (tc_param_types, fn_def.return_type.clone()),
+            );
         }
 
-        // Register instance method functions from instance_defs
-        for instance_def in &typed_module.instance_defs {
-            for method in &instance_def.methods {
-                let qualified_name = krypton_typechecker::typed_ast::mangled_method_name(
-                    &instance_def.trait_name,
-                    &instance_def.target_type_name,
-                    &method.name,
-                );
-                if let Type::Fn(param_tys, ret_ty) = &method.scheme.ty {
-                    let impl_dict_count = self
-                        .traits
-                        .impl_dict_requirements
-                        .get(&qualified_name)
-                        .map(|requirements| requirements.len())
-                        .unwrap_or(0);
-                    let mut all_param_types: Vec<JvmType> = Vec::new();
-                    for _ in 0..impl_dict_count {
-                        all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
-                    }
-                    let user_param_types: Vec<JvmType> = param_tys
-                        .iter()
-                        .map(|t| self.type_to_jvm(t))
-                        .collect::<Result<_, _>>()?;
-                    all_param_types.extend(user_param_types);
-                    let return_type = self.type_to_jvm(ret_ty.as_ref())?;
-                    let descriptor = self.types.build_descriptor(&all_param_types, return_type);
-                    let method_ref =
-                        self.cp.add_method_ref(this_class, &qualified_name, &descriptor)?;
-                    self.types.functions.insert(qualified_name.clone(), vec![
-                        FunctionInfo {
-                            method_ref,
-                            param_types: all_param_types,
-                            return_type,
-                            is_void: false,
-                            tc_param_types: param_tys.clone(),
-                        },
-                    ]);
-                    self.types.fn_tc_types.insert(
-                        qualified_name,
-                        (param_tys.clone(), ret_ty.as_ref().clone()),
-                    );
+        // Extern functions
+        for ext in &ir_module.extern_fns {
+            let (_jvm_class_name, extern_class) = match &ext.target {
+                krypton_ir::ExternTarget::Java { class } => {
+                    let jvm = class.replace('.', "/");
+                    let ci = self.cp.add_class(&jvm)?;
+                    (jvm, ci)
                 }
-            }
-        }
-
-        // Register extern functions
-        for ext in typed_module.extern_fns.iter().chain(typed_module.imported_extern_fns.iter()) {
-            let jvm_class_name = ext.java_class.replace('.', "/");
-            let extern_class = self.cp.add_class(&jvm_class_name)?;
+                krypton_ir::ExternTarget::Js { .. } => continue,
+            };
 
             let mut param_jvm_types = Vec::new();
             let mut param_desc = String::from("(");
@@ -796,8 +913,58 @@ impl Compiler {
             ]);
         }
 
+        // Imported functions
+        for imp in &ir_module.imported_fns {
+            // Skip imported constructors — local sum types/structs shadow them
+            if self.types.struct_info.contains_key(&imp.name)
+                || self.types.variant_to_sum.contains_key(&imp.name)
+            {
+                continue;
+            }
+            let target_class = self.cp.add_class(&imp.source_module)?;
+
+            let impl_dict_count = self
+                .traits
+                .impl_dict_requirements
+                .get(&imp.name)
+                .map(|r| r.len())
+                .unwrap_or(0);
+            let mut all_param_types: Vec<JvmType> = Vec::new();
+            for _ in 0..impl_dict_count {
+                all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
+            }
+            let user_param_types: Vec<JvmType> = imp.param_types
+                .iter()
+                .map(|t| self.type_to_jvm(t))
+                .collect::<Result<_, _>>()?;
+            all_param_types.extend(user_param_types);
+            let return_type = self.type_to_jvm(&imp.return_type)?;
+
+            let jvm_name = if imp.original_name == "main" { "krypton_main" } else { imp.original_name.as_str() };
+            let descriptor = self.types.build_descriptor(&all_param_types, return_type);
+            let method_ref = self.cp.add_method_ref(target_class, jvm_name, &descriptor)?;
+
+            self.types.functions.entry(imp.name.clone()).or_default().push(
+                FunctionInfo {
+                    method_ref,
+                    param_types: all_param_types,
+                    return_type,
+                    is_void: false,
+                    tc_param_types: imp.param_types.clone(),
+                },
+            );
+            self.types.fn_tc_types.insert(
+                imp.name.clone(),
+                (imp.param_types.clone(), imp.return_type.clone()),
+            );
+        }
+
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Phase 4: Function bodies (still uses TypedModule)
+    // -----------------------------------------------------------------------
 
     pub(super) fn compile_function_bodies(
         &mut self,
@@ -885,86 +1052,5 @@ impl Compiler {
 
         self.builder.emit(Instruction::Return);
         Ok(())
-    }
-}
-
-/// Recursively collect all tuple arities from a Type.
-fn collect_tuple_arities(ty: &Type, arities: &mut std::collections::HashSet<usize>) {
-    match ty {
-        Type::Tuple(elems) => {
-            arities.insert(elems.len());
-            for e in elems {
-                collect_tuple_arities(e, arities);
-            }
-        }
-        Type::Fn(params, ret) => {
-            for p in params {
-                collect_tuple_arities(p, arities);
-            }
-            collect_tuple_arities(ret, arities);
-        }
-        Type::Named(_, args) => {
-            for a in args {
-                collect_tuple_arities(a, arities);
-            }
-        }
-        Type::Own(inner) => collect_tuple_arities(inner, arities),
-        _ => {}
-    }
-}
-
-/// Iteratively collect all tuple arities from a TypedExpr tree.
-fn collect_tuple_arities_expr(expr: &TypedExpr, arities: &mut std::collections::HashSet<usize>) {
-    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
-    work.push(expr);
-    while let Some(expr) = work.pop() {
-        collect_tuple_arities(&expr.ty, arities);
-        match &expr.kind {
-            TypedExprKind::Tuple(elems) => {
-                arities.insert(elems.len());
-                for e in elems { work.push(e); }
-            }
-            TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
-                work.push(value);
-                if let Some(b) = body { work.push(b); }
-            }
-            TypedExprKind::App { func, args } => {
-                work.push(func);
-                for a in args { work.push(a); }
-            }
-            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
-            TypedExprKind::If { cond, then_, else_ } => {
-                work.push(cond);
-                work.push(then_);
-                work.push(else_);
-            }
-            TypedExprKind::Do(exprs) => {
-                for e in exprs { work.push(e); }
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                work.push(scrutinee);
-                for arm in arms { work.push(&arm.body); }
-            }
-            TypedExprKind::Lambda { body, .. } => work.push(body),
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                work.push(lhs);
-                work.push(rhs);
-            }
-            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
-            TypedExprKind::FieldAccess { expr, .. } | TypedExprKind::QuestionMark { expr, .. } => {
-                work.push(expr);
-            }
-            TypedExprKind::StructUpdate { base, fields } => {
-                work.push(base);
-                for (_, e) in fields { work.push(e); }
-            }
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields { work.push(e); }
-            }
-            TypedExprKind::Recur(args) | TypedExprKind::VecLit(args) => {
-                for a in args { work.push(a); }
-            }
-            _ => {}
-        }
     }
 }

@@ -13,10 +13,8 @@ mod registration;
 
 use std::collections::HashMap;
 
-use krypton_parser::ast::TypeExpr;
 use krypton_typechecker::typed_ast::TypedModule;
-use krypton_typechecker::type_registry::{self, ResolutionContext};
-use krypton_typechecker::types::{Type, TypeVarGen, TypeVarId};
+use krypton_typechecker::types::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method,
@@ -36,28 +34,6 @@ struct ImportedInstanceInfo {
     target_type: Type,
     requirements: Vec<DictRequirement>,
 }
-
-fn dict_requirements_for_instance(
-    type_var_ids: &HashMap<String, TypeVarId>,
-    constraints: &[krypton_parser::ast::TypeConstraint],
-    _subdict_traits: &[(String, usize)],
-) -> Vec<DictRequirement> {
-    let mut dict_requirements: Vec<DictRequirement> = Vec::new();
-    for constraint in constraints {
-        if let Some(&type_var) = type_var_ids.get(&constraint.type_var) {
-            if !dict_requirements.iter().any(|req| {
-                req.trait_name == constraint.trait_name && req.type_var == type_var
-            }) {
-                dict_requirements.push(DictRequirement {
-                    trait_name: constraint.trait_name.clone(),
-                    type_var,
-                });
-            }
-        }
-    }
-    dict_requirements
-}
-
 
 fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
     match ty {
@@ -89,83 +65,46 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
     }
 }
 
-fn type_expr_to_jvm_basic(texpr: &TypeExpr, compiler: &Compiler) -> Result<JvmType, CodegenError> {
-    match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::Qualified { name, .. } => match name.as_str() {
-            "Int" => Ok(JvmType::Long),
-            "Float" => Ok(JvmType::Double),
-            "Bool" => Ok(JvmType::Int),
-            "String" => Ok(JvmType::StructRef(compiler.builder.refs.string_class)),
-            "Unit" => Ok(JvmType::Int),
-            // Any other named type (struct, opaque, Object) maps to Object ref.
-            // Variant fields are stored as Ljava/lang/Object; at JVM level
-            // (see jvm_type_to_field_descriptor), so we use object_class here.
-            _ => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
-        },
-        // App types (e.g. Ref[Int], Mailbox[Msg]) — same as above
-        TypeExpr::App { .. } => Ok(JvmType::StructRef(compiler.builder.refs.object_class)),
-        _ => Err(CodegenError::TypeError(format!(
-            "unsupported type expr in struct field: {texpr:?}"
-        ), None)),
+/// Qualify a type name using the module's path (IR version).
+/// IR only contains locally-defined types, so no type_provenance lookup needed.
+fn qualify_ir(module_path: &Option<String>, bare_name: &str) -> String {
+    match module_path.as_deref() {
+        Some(path) => format!("{path}/{bare_name}"),
+        None => bare_name.to_string(),
     }
 }
 
-/// Map a record field TypeExpr to a JvmType using the typechecker's erasure rules.
-fn type_expr_to_jvm(
-    compiler: &Compiler,
-    texpr: &TypeExpr,
-    type_registry_ref: &type_registry::TypeRegistry,
-) -> Result<JvmType, CodegenError> {
-    type_expr_to_jvm_with_params(compiler, texpr, type_registry_ref, &HashMap::new())
+/// Qualify a name using cross-module provenance, falling back to module_path for local names.
+fn qualify_with_provenance(module_path: &Option<String>, bare_name: &str, type_provenance: &HashMap<String, String>) -> String {
+    if let Some(qualified) = type_provenance.get(bare_name) {
+        return qualified.clone();
+    }
+    qualify_ir(module_path, bare_name)
 }
 
-fn type_expr_to_jvm_with_params(
-    compiler: &Compiler,
-    texpr: &TypeExpr,
-    type_registry_ref: &type_registry::TypeRegistry,
-    type_param_map: &HashMap<String, krypton_typechecker::types::TypeVarId>,
-) -> Result<JvmType, CodegenError> {
-    let resolved = type_registry::resolve_type_expr(
-        texpr,
-        type_param_map,
-        &HashMap::new(),
-        type_registry_ref,
-        ResolutionContext::InternalDecl,
-        None,
-    )
-    .map_err(|e| CodegenError::TypeError(format!("type error: {e}"), None))?;
-    compiler.type_to_jvm(&resolved)
-}
-
-fn type_expr_uses_type_params(texpr: &TypeExpr, type_params: &[String]) -> bool {
-    match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::Qualified { name, .. } => {
-            type_params.contains(name)
-        }
-        TypeExpr::App { args, .. } => {
-            args.iter().any(|a| type_expr_uses_type_params(a, type_params))
-        }
+/// Check if a Type references any of the given type variable IDs (for JVM erasure).
+fn type_references_var(ty: &Type, vars: &[TypeVarId]) -> bool {
+    match ty {
+        Type::Var(id) => vars.contains(id),
+        Type::Named(_, args) => args.iter().any(|a| type_references_var(a, vars)),
+        Type::App(ctor, args) => type_references_var(ctor, vars) || args.iter().any(|a| type_references_var(a, vars)),
+        Type::Fn(params, ret) => params.iter().any(|p| type_references_var(p, vars)) || type_references_var(ret, vars),
+        Type::Tuple(elems) => elems.iter().any(|e| type_references_var(e, vars)),
+        Type::Own(inner) => type_references_var(inner, vars),
         _ => false,
     }
 }
 
-/// Compile a library module (no main function required).
-fn compile_library_module(
-    typed_module: &TypedModule,
-    class_name: &str,
-    global_sum_types: &HashMap<String, String>,
-) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    let empty_map = HashMap::new();
-    compile_module_inner(typed_module, class_name, false, &empty_map, global_sum_types)
-}
-
-/// Qualify a type name from a module's perspective, using its type_provenance and module_path.
-fn qualify_type_for(module: &TypedModule, bare_name: &str) -> String {
-    let source = module.type_provenance.get(bare_name).map(String::as_str)
-        .or(module.module_path.as_deref());
-    match source {
-        Some(mod_path) => format!("{mod_path}/{bare_name}"),
-        None => bare_name.to_string(),
+/// Check if a Type contains any type variables.
+fn type_has_vars(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Named(_, args) => args.iter().any(type_has_vars),
+        Type::App(ctor, args) => type_has_vars(ctor) || args.iter().any(type_has_vars),
+        Type::Fn(params, ret) => params.iter().any(type_has_vars) || type_has_vars(ret),
+        Type::Tuple(elems) => elems.iter().any(type_has_vars),
+        Type::Own(inner) => type_has_vars(inner),
+        _ => false,
     }
 }
 
@@ -177,25 +116,74 @@ pub fn compile_modules(
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut all_classes = Vec::new();
 
+    // Lower each TypedModule to an IR Module.
+    // Library modules that fail to lower are skipped (their types/functions are still
+    // available via imports in other modules' IR).
+    let mut ir_modules: Vec<krypton_ir::Module> = Vec::new();
+    let mut typed_with_ir: Vec<(&TypedModule, usize)> = Vec::new(); // (typed_module, ir_index)
+    for tm in typed_modules {
+        let name = tm.module_path.as_deref().unwrap_or(main_class_name);
+        match krypton_ir::lower::lower_module(tm, name) {
+            Ok(ir) => {
+                let idx = ir_modules.len();
+                ir_modules.push(ir);
+                typed_with_ir.push((tm, idx));
+            }
+            Err(e) => {
+                // Main module must lower successfully
+                if tm.module_path.is_none() {
+                    return Err(CodegenError::TypeError(format!("IR lowering error: {e}"), None));
+                }
+                // Library module lowering failure — skip it
+                tracing::warn!("skipping library module {:?}: IR lowering error: {e}", tm.module_path);
+            }
+        }
+    }
+
+    // Build global type provenance: bare_name → qualified_name for cross-module lookups.
+    // Only include types/traits DEFINED (not re-imported) by each module.
+    let mut global_type_provenance: HashMap<String, String> = HashMap::new();
+    for ir_module in &ir_modules {
+        if let Some(path) = &ir_module.module_path {
+            for trait_def in &ir_module.traits {
+                if !trait_def.is_imported {
+                    global_type_provenance.entry(trait_def.name.clone())
+                        .or_insert_with(|| format!("{path}/{}", trait_def.name));
+                }
+            }
+            for struct_def in &ir_module.structs {
+                global_type_provenance.entry(struct_def.name.clone())
+                    .or_insert_with(|| format!("{path}/{}", struct_def.name));
+            }
+            for sum_def in &ir_module.sum_types {
+                global_type_provenance.entry(sum_def.name.clone())
+                    .or_insert_with(|| format!("{path}/{}", sum_def.name));
+            }
+        }
+    }
+
     // Build instance class name map from all library modules
     let mut instance_class_map: HashMap<(String, String), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
-    for module in typed_modules {
-        if module.module_path.is_some() {
-            for inst in &module.instance_defs {
+    for ir_module in &ir_modules {
+        if ir_module.module_path.is_some() {
+            for inst in &ir_module.instances {
+                if inst.is_imported { continue; }
                 if intrinsic_registry.get(&inst.trait_name, &inst.target_type_name).is_some() { continue; }
-                let q_trait = qualify_type_for(module, &inst.trait_name);
+                let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name, &global_type_provenance);
                 let class_name = format!("{}$${}", q_trait, inst.target_type_name);
+                let requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
+                    .map(|(trait_name, type_var)| DictRequirement {
+                        trait_name: trait_name.clone(),
+                        type_var: *type_var,
+                    })
+                    .collect();
                 instance_class_map.insert(
                     (inst.trait_name.clone(), inst.target_type_name.clone()),
                     ImportedInstanceInfo {
                         class_name,
                         target_type: inst.target_type.clone(),
-                        requirements: dict_requirements_for_instance(
-                            &inst.type_var_ids,
-                            &inst.constraints,
-                            &inst.subdict_traits,
-                        ),
+                        requirements,
                     },
                 );
             }
@@ -205,14 +193,12 @@ pub fn compile_modules(
     // Build global sum type map: bare_name → qualified_name (for cross-module references)
     // Detect collisions when two different library modules define the same bare name.
     let mut global_sum_types: HashMap<String, String> = HashMap::new();
-    for module in typed_modules {
-        for sum_decl in &module.sum_decls {
-            let sum_name = &sum_decl.name;
-            let qualified = qualify_type_for(module, sum_name);
+    for ir_module in &ir_modules {
+        for sum_def in &ir_module.sum_types {
+            let sum_name = &sum_def.name;
+            let qualified = qualify_ir(&ir_module.module_path, sum_name);
             match global_sum_types.entry(sum_name.clone()) {
                 std::collections::hash_map::Entry::Occupied(e) => {
-                    // Only error when two distinct qualified names collide
-                    // (bare == qualified means it's the main module, which shadows imports)
                     let existing = e.get();
                     if existing != &qualified
                         && existing != sum_name
@@ -232,11 +218,13 @@ pub fn compile_modules(
     }
 
     // Compile all library modules
-    for module in typed_modules {
-        if let Some(path) = &module.module_path {
-            let classes = compile_library_module(module, path, &global_sum_types)
+    for &(typed_module, ir_idx) in &typed_with_ir {
+        let ir_module = &ir_modules[ir_idx];
+        if let Some(path) = &ir_module.module_path {
+            let empty_map = HashMap::new();
+            let classes = compile_module_inner(ir_module, typed_module, &ir_modules, path, false, &empty_map, &global_sum_types, &global_type_provenance)
                 .map_err(|e| {
-                    if let (Some(p), Some(s)) = (&module.module_path, &module.module_source) {
+                    if let (Some(p), Some(s)) = (&typed_module.module_path, &typed_module.module_source) {
                         e.with_source(p.clone(), s.clone())
                     } else {
                         e
@@ -247,9 +235,10 @@ pub fn compile_modules(
     }
 
     // Compile main module with instance map
-    for module in typed_modules {
-        if module.module_path.is_none() {
-            let classes = compile_module_inner(module, main_class_name, true, &instance_class_map, &global_sum_types)?;
+    for &(typed_module, ir_idx) in &typed_with_ir {
+        let ir_module = &ir_modules[ir_idx];
+        if ir_module.module_path.is_none() {
+            let classes = compile_module_inner(ir_module, typed_module, &ir_modules, main_class_name, true, &instance_class_map, &global_sum_types, &global_type_provenance)?;
             all_classes.extend(classes);
         }
     }
@@ -258,13 +247,16 @@ pub fn compile_modules(
 }
 
 fn compile_module_inner(
+    ir_module: &krypton_ir::Module,
     typed_module: &TypedModule,
+    all_ir_modules: &[krypton_ir::Module],
     class_name: &str,
     is_main: bool,
     imported_instances: &HashMap<(String, String), ImportedInstanceInfo>,
     global_sum_types: &HashMap<String, String>,
+    type_provenance: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    if is_main && !typed_module.functions.iter().any(|f| f.name == "main") {
+    if is_main && !ir_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction());
     }
 
@@ -274,58 +266,20 @@ fn compile_module_inner(
         .class_descriptors
         .insert(compiler.builder.refs.object_class, "Ljava/lang/Object;".to_string());
 
-    // Build field type registry and type param maps for struct field resolution
-    let mut field_type_registry = type_registry::TypeRegistry::new();
-    field_type_registry.register_builtins(&mut TypeVarGen::new());
-    let mut struct_type_param_maps: HashMap<String, HashMap<String, krypton_typechecker::types::TypeVarId>> = HashMap::new();
-    for struct_decl in &typed_module.struct_decls {
-        let (struct_name, type_params, ast_fields) = (&struct_decl.name, &struct_decl.type_params, &struct_decl.fields);
-        // Build type param map so parameterized records (e.g., Predicate[a, b])
-        // can resolve their field types
-        let mut gen = TypeVarGen::new();
-        let type_param_map: HashMap<String, krypton_typechecker::types::TypeVarId> = type_params
-            .iter()
-            .map(|name| (name.clone(), gen.fresh()))
-            .collect();
-        let resolved_fields = ast_fields
-            .iter()
-            .map(|(_, texpr)| {
-                type_registry::resolve_type_expr(
-                    texpr,
-                    &type_param_map,
-                    &HashMap::new(),
-                    &field_type_registry,
-                    ResolutionContext::InternalDecl,
-                    None,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| CodegenError::TypeError(format!("type error: {e}"), None))?;
-        struct_type_param_maps.insert(struct_name.clone(), type_param_map);
-        field_type_registry
-            .register_type(type_registry::TypeInfo {
-                name: struct_name.clone(),
-                type_params: vec![],
-                type_param_vars: vec![],
-                kind: type_registry::TypeKind::Record {
-                    fields: ast_fields
-                        .iter()
-                        .map(|(name, _)| name.clone())
-                        .zip(resolved_fields.into_iter())
-                        .collect(),
-                },
-                is_prelude: false,
-            })
-            .map_err(|e| CodegenError::TypeError(format!("type error: {e}"), None))?;
+    // Phase 1: Register types
+    compiler.register_extern_types_ir(ir_module)?;
+    let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
+    result_classes.extend(compiler.register_structs_ir(ir_module)?);
+    result_classes.extend(compiler.register_sum_types_ir(ir_module)?);
+
+    // Register imported types from other modules (class indices, variant mappings, no bytecode)
+    for other_module in all_ir_modules {
+        if std::ptr::eq(other_module, ir_module) { continue; }
+        compiler.register_imported_structs_ir(other_module)?;
+        compiler.register_imported_sum_types_ir(other_module)?;
     }
 
-    // Phase 1: Register types
-    compiler.register_extern_types(typed_module)?;
-    let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
-    result_classes.extend(compiler.register_structs(typed_module, &field_type_registry, &struct_type_param_maps)?);
-    result_classes.extend(compiler.register_sum_types(typed_module)?);
-
-    // Register cross-module sum type references (class index only, no bytecode)
+    // Register cross-module sum type references that weren't covered
     for (bare_name, qualified_name) in global_sum_types {
         if !compiler.types.sum_type_info.contains_key(bare_name) {
             let class_index = compiler.cp.add_class(qualified_name)?;
@@ -336,19 +290,19 @@ fn compile_module_inner(
     }
 
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
-    compiler.register_fun_interfaces(typed_module)?;
+    compiler.register_fun_interfaces_ir(ir_module)?;
     // Vec's class descriptor must exist before instances referencing Vec[T] are registered.
     compiler.register_vec()?;
-    result_classes.extend(compiler.register_traits(typed_module)?);
-    result_classes.extend(compiler.register_builtin_instances(typed_module)?);
+    result_classes.extend(compiler.register_traits_ir(ir_module, &type_provenance)?);
+    result_classes.extend(compiler.register_builtin_instances_ir(ir_module, &type_provenance)?);
     compiler.register_imported_instances(imported_instances)?;
-    result_classes.extend(compiler.register_instance_defs(typed_module, class_name)?);
+    result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name, &type_provenance)?);
 
     // Phase 3: Register tuples and functions
-    compiler.register_tuples(typed_module)?;
-    compiler.register_functions(typed_module, compiler.this_class)?;
+    compiler.register_tuples_ir(ir_module)?;
+    compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
-    // Phase 4: Compile function bodies and build class
+    // Phase 4: Compile function bodies (still uses TypedModule — Session 3 replaces this)
     let extra_methods = compiler.compile_function_bodies(typed_module)?;
     if is_main {
         compiler.emit_main_wrapper()?;

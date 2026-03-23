@@ -879,6 +879,7 @@ mod tests {
                     ty: Type::Unit,
                 },
             }],
+            fn_dict_requirements: std::collections::HashMap::new(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

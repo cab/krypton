@@ -9,6 +9,11 @@ use std::collections::{BTreeSet, HashMap};
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 pub use krypton_typechecker::types::{Type, TypeVarId};
 
+/// Function names that are compiler intrinsics — they produce inline bytecode
+/// rather than static method calls. Both the IR lowerer and JVM codegen reference
+/// this list to ensure consistency.
+pub const COMPILER_INTRINSICS: &[&str] = &["panic", "is_null", "trait_dict"];
+
 /// Unique function identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FnId(pub u32);
@@ -49,6 +54,9 @@ pub struct Module {
     pub tuple_arities: BTreeSet<usize>,
     /// Module path for qualified type names (None for main module).
     pub module_path: Option<String>,
+    /// Function name → dict parameter requirements (trait_name, type_var_id).
+    /// Populated from typechecker constraint requirements during lowering.
+    pub fn_dict_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -324,6 +332,7 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: None,
+            fn_dict_requirements: HashMap::new(),
         };
     }
 }
