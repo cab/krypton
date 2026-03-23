@@ -9,60 +9,57 @@ declare hash: (Dict, g) -> Int
 declare println: (Dict, m) -> Unit
 
 fn main() -> Unit =
-  let v8: Bool = call $thunk_49()
-  let v9: Dict = get_dict Show[Bool]
-  let v10: Unit = call println(v9, v8)
-  let v19: Bool = call $thunk_50()
-  let v20: Dict = get_dict Show[Bool]
-  let v21: Unit = call println(v20, v19)
-  let v30: Bool = call $thunk_51()
-  let v31: Dict = get_dict Show[Bool]
-  let v32: Unit = call println(v31, v30)
-  let_join v42(v40: Bool) =
-    let v33: Dict = get_dict Show[Bool]
-    let v41: Unit = call println(v33, v40)
-    v41
+  let_join v63(v16: Unit) =
+    let_join v62(v33: Unit) =
+      let_join v61(v50: Unit) =
+        let_join v60(v58: Bool) =
+          let v51: Dict = get_dict Show[Bool]
+          let v59: Unit = call println(v51, v58)
+          v59
+        in
+        let v52: Dict = get_dict Eq[Int]
+        let v53: Dict = get_dict Hash[Bool]
+        let v54: Int = call hash(v53, true)
+        let v55: Dict = get_dict Hash[Bool]
+        let v56: Int = call hash(v55, true)
+        let v57: Bool = call eq(v52, v54, v56)
+        jump v60(v57)
+      in
+      let_join v49(v47: Bool) =
+        let v40: Dict = get_dict Show[Bool]
+        let v48: Unit = call println(v40, v47)
+        jump v61(v48)
+      in
+      let v41: Dict = get_dict Eq[Int]
+      let v42: Dict = get_dict Hash[String]
+      let v43: Int = call hash(v42, "hello")
+      let v44: Dict = get_dict Hash[String]
+      let v45: Int = call hash(v44, "hello")
+      let v46: Bool = call eq(v41, v43, v45)
+      jump v49(v46)
+    in
+    let_join v32(v30: Bool) =
+      let v23: Dict = get_dict Show[Bool]
+      let v31: Unit = call println(v23, v30)
+      jump v62(v31)
+    in
+    let v24: Dict = get_dict Eq[Int]
+    let v25: Dict = get_dict Hash[Float]
+    let v26: Int = call hash(v25, 3.14)
+    let v27: Dict = get_dict Hash[Float]
+    let v28: Int = call hash(v27, 3.14)
+    let v29: Bool = call eq(v24, v26, v28)
+    jump v32(v29)
   in
-  let v34: Dict = get_dict Eq[Int]
-  let v35: Dict = get_dict Hash[Bool]
-  let v36: Int = call hash(v35, true)
-  let v37: Dict = get_dict Hash[Bool]
-  let v38: Int = call hash(v37, true)
-  let v39: Bool = call eq(v34, v36, v38)
-  jump v42(v39)
-
-fn $thunk_49() -> Bool =
-  let_join v7(v6: Bool) =
-    v6
+  let_join v15(v13: Bool) =
+    let v6: Dict = get_dict Show[Bool]
+    let v14: Unit = call println(v6, v13)
+    jump v63(v14)
   in
-  let v0: Dict = get_dict Eq[Int]
-  let v1: Dict = get_dict Hash[Int]
-  let v2: Int = call hash(v1, 42)
-  let v3: Dict = get_dict Hash[Int]
-  let v4: Int = call hash(v3, 42)
-  let v5: Bool = call eq(v0, v2, v4)
-  jump v7(v5)
-
-fn $thunk_50() -> Bool =
-  let_join v18(v17: Bool) =
-    v17
-  in
-  let v11: Dict = get_dict Eq[Int]
-  let v12: Dict = get_dict Hash[Float]
-  let v13: Int = call hash(v12, 3.14)
-  let v14: Dict = get_dict Hash[Float]
-  let v15: Int = call hash(v14, 3.14)
-  let v16: Bool = call eq(v11, v13, v15)
-  jump v18(v16)
-
-fn $thunk_51() -> Bool =
-  let_join v29(v28: Bool) =
-    v28
-  in
-  let v22: Dict = get_dict Eq[Int]
-  let v23: Dict = get_dict Hash[String]
-  let v24: Int = call hash(v23, "hello")
-  let v25: Dict = get_dict Hash[String]
-  let v26: Int = call hash(v25, "hello")
-  let v27: Bool = call eq(v22, v24, v26)
-  jump v29(v27)
+  let v7: Dict = get_dict Eq[Int]
+  let v8: Dict = get_dict Hash[Int]
+  let v9: Int = call hash(v8, 42)
+  let v10: Dict = get_dict Hash[Int]
+  let v11: Int = call hash(v10, 42)
+  let v12: Bool = call eq(v7, v9, v11)
+  jump v15(v12)

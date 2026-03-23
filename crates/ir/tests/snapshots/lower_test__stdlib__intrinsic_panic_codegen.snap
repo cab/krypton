@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__intrinsic_panic_codegen
 
-declare panic: (String) -> Unit
+declare panic: (String) -> e
 declare println: (m) -> Unit
 
 fn main() -> Unit =

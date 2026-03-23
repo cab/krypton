@@ -23,6 +23,7 @@ pub enum LowerError {
     UnresolvedStruct(String),
     UnresolvedField(String, String),
     UnsupportedOp(String),
+    CompoundInAtom,
     InternalError(String),
 }
 
@@ -36,6 +37,7 @@ impl std::fmt::Display for LowerError {
                 write!(f, "unresolved field {field} on {t}")
             }
             LowerError::UnsupportedOp(s) => write!(f, "unsupported op: {s}"),
+            LowerError::CompoundInAtom => write!(f, "compound expression in atom position"),
             LowerError::InternalError(s) => write!(f, "internal error: {s}"),
         }
     }
@@ -427,6 +429,8 @@ struct LowerCtx {
     var_scope: HashMap<String, Vec<VarId>>,
     /// top-level function name → FnId
     fn_ids: HashMap<String, FnId>,
+    /// (trait_name, method_name) → FnId for trait-qualified method lookup
+    trait_method_ids: HashMap<(String, String), FnId>,
     /// struct name → ordered fields with resolved types
     struct_fields: HashMap<String, Vec<(String, Type)>>,
     /// variant name → (type_name, tag, field_types)
@@ -491,6 +495,12 @@ impl LowerCtx {
 
     fn lookup_fn(&self, name: &str) -> Option<FnId> {
         self.fn_ids.get(name).copied()
+    }
+
+    fn lookup_trait_method(&self, trait_name: &str, method_name: &str) -> Option<FnId> {
+        self.trait_method_ids
+            .get(&(trait_name.to_string(), method_name.to_string()))
+            .copied()
     }
 
     fn field_index(&self, type_name: &str, field_name: &str) -> Result<usize, LowerError> {
@@ -581,52 +591,7 @@ impl LowerCtx {
                     });
                     Ok((all_bindings, Atom::Var(var)))
                 }
-                LoweredValue::Expr(compound) => {
-                    // Compound expression in atom position (e.g. comparison
-                    // as function argument). Use lower_to_atom_then with an
-                    // identity continuation is not possible here because we
-                    // must return (Vec<LetBinding>, Atom). Instead, we error
-                    // — callers should use lower_to_atom_then for CPS.
-                    // However, this path is reached from lower_app via
-                    // lower_to_simple, so we handle it by synthesising an
-                    // extra let-binding via inline_compound_let.
-                    let var = self.fresh_var();
-                    let atom_expr = Expr {
-                        ty: expr.ty.clone(),
-                        kind: ExprKind::Atom(Atom::Var(var)),
-                    };
-                    let wrapper = self.inline_compound_let(
-                        var,
-                        expr.ty.clone(),
-                        compound,
-                        atom_expr,
-                    );
-                    // Re-wrap into a single binding using a lifted thunk
-                    // Actually, we need to return bindings + atom, but we have
-                    // a full Expr tree. Convert to a thunk call.
-                    let thunk_id = self.fresh_fn();
-                    let thunk_name = format!("$thunk_{}", thunk_id.0);
-                    self.fn_ids.insert(thunk_name.clone(), thunk_id);
-                    self.lifted_fns.push(FnDef {
-                        id: thunk_id,
-                        debug_name: thunk_name,
-                        params: vec![],
-                        return_type: expr.ty.clone(),
-                        body: wrapper,
-                    });
-                    let result_var = self.fresh_var();
-                    Ok((
-                        vec![LetBinding {
-                            bind: result_var,
-                            ty: expr.ty.clone(),
-                            value: SimpleExpr::Call {
-                                func: thunk_id,
-                                args: vec![],
-                            },
-                        }],
-                        Atom::Var(result_var),
-                    ))
-                }
+                LoweredValue::Expr(_) => Err(LowerError::CompoundInAtom),
             },
         }
     }
@@ -641,17 +606,16 @@ impl LowerCtx {
         match &expr.kind {
             TypedExprKind::Lit(lit) => return cont(self, Atom::Lit(convert_lit(lit))),
             TypedExprKind::Var(name) => {
-                // Nullary variant → needs binding (not atomic)
-                if let Some((_, _, ref fields)) = self.sum_variants.get(name.as_str()) {
-                    if fields.is_empty() {
-                        // fall through to general path
-                    } else if let Some(id) = self.lookup_var(name) {
+                // Nullary variants are constructors — fall through to general path.
+                let is_nullary_variant = matches!(
+                    self.sum_variants.get(name.as_str()),
+                    Some((_, _, fields)) if fields.is_empty()
+                );
+                if !is_nullary_variant {
+                    if let Some(id) = self.lookup_var(name) {
                         return cont(self, Atom::Var(id));
                     }
-                } else if let Some(id) = self.lookup_var(name) {
-                    return cont(self, Atom::Var(id));
                 }
-                // fn ref or nullary variant → fall through to general path
             }
             TypedExprKind::TypeApp { expr: inner, .. } => {
                 return self.lower_to_atom_then(inner, cont);
@@ -1359,10 +1323,14 @@ impl LowerCtx {
                 Ok(LoweredValue::Expr(e))
             }
             // Everything else can be lowered to SimpleExpr
-            _ => {
-                let (bindings, simple) = self.lower_to_simple(expr)?;
-                Ok(LoweredValue::Simple(bindings, simple))
-            }
+            _ => match self.lower_to_simple(expr) {
+                Ok((bindings, simple)) => Ok(LoweredValue::Simple(bindings, simple)),
+                Err(LowerError::CompoundInAtom) => {
+                    let e = self.lower_expr(expr)?;
+                    Ok(LoweredValue::Expr(e))
+                }
+                Err(e) => Err(e),
+            },
         }
     }
 
@@ -2316,8 +2284,10 @@ impl LowerCtx {
 
         // Resolve dict + method fn_id BEFORE entering CPS chain
         let fn_id = self
-            .lookup_fn(method_name)
-            .ok_or_else(|| LowerError::UnresolvedVar(method_name.to_string()))?;
+            .lookup_trait_method(trait_name, method_name)
+            .ok_or_else(|| LowerError::UnresolvedVar(
+                format!("{}.{}", trait_name, method_name),
+            ))?;
         let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
@@ -3328,6 +3298,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         type_var_gen: TypeVarGen::new(),
         var_scope: HashMap::new(),
         fn_ids: HashMap::new(),
+        trait_method_ids: HashMap::new(),
         struct_fields: HashMap::new(),
         sum_variants: HashMap::new(),
         private_type_params: HashMap::new(),
@@ -3463,6 +3434,14 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(entry.name.clone(), fn_id);
         }
+        // Register trait methods in trait_method_ids for qualified lookup
+        if let Some(ref origin) = entry.origin {
+            let fn_id = ctx.fn_ids[&entry.name];
+            ctx.trait_method_ids.insert(
+                (origin.name.clone(), entry.name.clone()),
+                fn_id,
+            );
+        }
     }
 
     // 3b. Allocate FnIds for locally-defined trait methods.
@@ -3474,10 +3453,17 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             continue;
         }
         for (method_name, _param_count) in &trait_def.methods {
-            if !ctx.fn_ids.contains_key(method_name) {
-                let fn_id = ctx.fresh_fn();
-                ctx.fn_ids.insert(method_name.clone(), fn_id);
-            }
+            let fn_id = if let Some(&existing) = ctx.fn_ids.get(method_name) {
+                existing
+            } else {
+                let id = ctx.fresh_fn();
+                ctx.fn_ids.insert(method_name.clone(), id);
+                id
+            };
+            ctx.trait_method_ids.insert(
+                (trait_def.name.clone(), method_name.clone()),
+                fn_id,
+            );
         }
     }
 
@@ -3599,7 +3585,9 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // Also register locally-defined trait methods in extern_fn_types
+    // Register locally-defined trait method types in extern_fn_types.
+    // (FnIds were allocated in step 3b; this pass fills in type signatures
+    // after lowering is complete.)
     for trait_def in &typed.trait_defs {
         if trait_def.is_imported {
             continue;
@@ -3621,7 +3609,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     // Register panic intrinsic extern type
     if let Some(&fn_id) = ctx.fn_ids.get("panic") {
         if !extern_fn_types.contains_key(&fn_id) {
-            extern_fn_types.insert(fn_id, Type::Fn(vec![Type::String], Box::new(Type::Unit)));
+            let ret_var = ctx.type_var_gen.fresh();
+            extern_fn_types.insert(fn_id, Type::Fn(vec![Type::String], Box::new(Type::Var(ret_var))));
         }
     }
 

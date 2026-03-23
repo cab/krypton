@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module stdlib__intrinsic_panic
 
-declare panic: (String) -> Unit
+declare panic: (String) -> e
 
 fn main() -> Int =
   switch true {
