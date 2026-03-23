@@ -1,10 +1,99 @@
 ---
 source: crates/ir/tests/lower_test.rs
+assertion_line: 69
 expression: ir_module.to_string()
 ---
 module inference__self_type_generic
 
 struct Wrapper[a] { value: a }
+trait MyEq[t7] { my_eq(t7, t7): Bool }
+instance MyEq[String] {  }
+instance MyEq[Wrapper$T0] {  }
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern type java "krypton.runtime.KryptonArray" Vec
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonArray" Vec
+import core/eq/eq as eq(g, g): Bool
+import core/ord/lt as lt(h, h): Bool
+import core/semigroup/combine as combine(g, g): g
+import core/sub/sub as sub(g, g): g
+import core/mul/mul as mul(g, g): g
+import core/div/div as div(g, g): g
+import core/neg/neg as neg(g): g
+import core/show/show as show(g): String
+import core/hash/hash as hash(g): Int
+import core/resource/close as close(~g): Unit
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[r3]): Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
+import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
+import core/list/map as map(List[w], (w) -> y): List[y]
+import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/io/println as println(m): Unit
+import core/option/Some as Some(e): Option[e]
+import core/option/None as None(): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/ordering/LT as LT(): Ordering
+import core/ordering/EQ as EQ(): Ordering
+import core/ordering/GT as GT(): Ordering
 declare my_eq: (Dict, t7, t7) -> Bool
 declare println: (Dict, m) -> Unit
 

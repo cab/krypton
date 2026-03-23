@@ -1,476 +1,929 @@
 ---
 source: crates/ir/tests/lower_test.rs
-expression: linked.to_string()
+assertion_line: 115
+expression: output
 ---
 module prelude_shadow_fn
 
-type List[h] = Cons#0(h, List[h]) | Nil#1
-type Option[g] = Some#0(g) | None#1
-type Ordering = LT#0 | EQ#1 | GT#2
-type Result[g, h] = Ok#0(h) | Err#1(g)
-declare core/map/vec_to_list: (Vec[h7]) -> List[h7]
-declare core/vec/list_filter: (List[h1], (h1) -> Bool) -> List[h1]
-declare core/vec/list_fold: (List[t1], u1, (u1, t1) -> u1) -> u1
-declare core/vec/list_length: (List[o]) -> Int
-declare core/vec/list_map: (List[w], (w) -> y) -> List[y]
-declare core/vec/list_sort_by: (Dict, List[w5], (w5) -> l5) -> List[w5]
-declare lt: (Dict, h, h) -> Bool
-declare panic: (String) -> e
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern type java "krypton.runtime.KryptonArray" Vec
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonArray" Vec
+extern type java "krypton.runtime.KryptonArray" Vec
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonArray" Vec
+import core/eq/eq as eq(g, g): Bool
+import core/ord/lt as lt(h, h): Bool
+import core/semigroup/combine as combine(g, g): g
+import core/sub/sub as sub(g, g): g
+import core/mul/mul as mul(g, g): g
+import core/div/div as div(g, g): g
+import core/neg/neg as neg(g): g
+import core/show/show as show(g): String
+import core/hash/hash as hash(g): Int
+import core/resource/close as close(~g): Unit
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[r3]): Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
+import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
+import core/list/map as map(List[w], (w) -> y): List[y]
+import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/option/Some as Some(e): Option[e]
+import core/option/None as None(): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/ordering/LT as LT(): Ordering
+import core/ordering/EQ as EQ(): Ordering
+import core/ordering/GT as GT(): Ordering
+import custom_println/println as println(Int): Int
+declare println: (Int) -> Int
+
+fn main() -> Int =
+  let v0: Int = call println(42)
+  v0
+module core/div
+
+trait Div[g] { div(g, g): g }
+instance Div[Int] {  } [intrinsic]
+instance Div[Float] {  } [intrinsic]
+module core/eq
+
+trait Eq[g] { eq(g, g): Bool }
+instance Eq[Int] {  } [intrinsic]
+instance Eq[Float] {  } [intrinsic]
+instance Eq[String] {  } [intrinsic]
+instance Eq[Bool] {  } [intrinsic]
+module core/hash
+
+trait Hash[g] { hash(g): Int }
+instance Hash[Int] {  } [intrinsic]
+instance Hash[Float] {  } [intrinsic]
+instance Hash[String] {  } [intrinsic]
+instance Hash[Bool] {  } [intrinsic]
+module core/io
+
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+import core/result/Ok as Ok(h): Result[g, h]
+import core/result/Err as Err(g): Result[g, h]
+import core/show/show as show(g): String
 declare raw_print
 declare raw_println
 declare show: (Dict, g) -> String
+
+fn println(v0: Dict, v1: m) -> Unit =
+  let v2: String = call show(v0, v1)
+  let v3: Unit = call raw_println(v2)
+  v3
+
+fn print(v4: Dict, v5: u) -> Unit =
+  let v6: String = call show(v4, v5)
+  let v7: Unit = call raw_print(v6)
+  v7
+module core/list
+
+type List[h] = Cons#0(h, List[h]) | Nil#1
+import core/option/Some as Some(g): Option[g]
+import core/option/None as None(): Option[g]
+declare lt
+
+fn length(v0: List[o]) -> Int =
+  switch v0 {
+    1 ->
+      0
+    0 (v1: h, v2: List[h]) ->
+      let v3: Int = call length(v2)
+      let v4: Int = add_int(1, v3)
+      v4
+  }
+
+fn map(v5: List[w], v6: (w) -> y) -> List[y] =
+  switch v5 {
+    1 ->
+      let v7: ~List[y] = construct List::Nil#1()
+      v7
+    0 (v8: h, v9: List[h]) ->
+      let v10: y = call_closure v6(v8)
+      let v11: List[y] = call map(v9, v6)
+      let v12: ~List[y] = construct List::Cons#0(v10, v11)
+      v12
+  }
+
+fn filter(v13: List[h1], v14: (h1) -> Bool) -> List[h1] =
+  switch v13 {
+    1 ->
+      let v15: ~List[h1] = construct List::Nil#1()
+      v15
+    0 (v16: h, v17: List[h]) ->
+      let v18: Bool = call_closure v14(v16)
+      switch v18 {
+        1 ->
+          let v19: List[h1] = call filter(v17, v14)
+          let v20: ~List[h1] = construct List::Cons#0(v16, v19)
+          v20
+        _ ->
+          let v21: List[h1] = call filter(v17, v14)
+          v21
+      }
+  }
+
+fn fold(v22: List[t1], v23: u1, v24: (u1, t1) -> u1) -> u1 =
+  switch v22 {
+    1 ->
+      v23
+    0 (v25: h, v26: List[h]) ->
+      let v27: u1 = call_closure v24(v23, v25)
+      let v28: u1 = call fold(v26, v27, v24)
+      v28
+  }
+
+fn concat(v29: List[b2], v30: List[b2]) -> List[b2] =
+  switch v29 {
+    1 ->
+      v30
+    0 (v31: h, v32: List[h]) ->
+      let v33: List[b2] = call concat(v32, v30)
+      let v34: ~List[b2] = construct List::Cons#0(v31, v33)
+      v34
+  }
+
+fn reverse(v35: List[k2]) -> List[k2] =
+  let_join v43(v37: ~List[k2]) =
+    let v41: (List[k2], k2) -> ~List[k2] = make_closure(lambda$19, [])
+    let v42: List[k2] = call fold(v35, v37, v41)
+    v42
+  in
+  let v36: ~List[k2] = construct List::Nil#1()
+  jump v43(v36)
+
+fn head(v44: List[y2]) -> Option[y2] =
+  switch v44 {
+    0 (v45: h, v46: List[h]) ->
+      let v47: ~Option[y2] = construct Option::Some#0(v45)
+      v47
+    1 ->
+      let v48: ~Option[y2] = construct Option::None#1()
+      v48
+  }
+
+fn tail(v49: List[f3]) -> Option[List[f3]] =
+  switch v49 {
+    0 (v50: h, v51: List[h]) ->
+      let v52: ~Option[List[f3]] = construct Option::Some#0(v51)
+      v52
+    1 ->
+      let v53: ~Option[List[f3]] = construct Option::None#1()
+      v53
+  }
+
+fn last(v54: List[r3]) -> Option[r3] =
+  switch v54 {
+    0 (v55: h, v56: List[h]) ->
+      switch v56 {
+        1 ->
+          let v57: ~Option[r3] = construct Option::Some#0(v55)
+          v57
+        _ ->
+          let v58: Option[r3] = call last(v56)
+          v58
+      }
+    1 ->
+      let v59: ~Option[r3] = construct Option::None#1()
+      v59
+  }
+
+fn split(v60: List[f4]) -> (List[f4], List[f4]) =
+  switch v60 {
+    1 ->
+      let_join v67(v62: ~List[f4]) =
+        let_join v66(v64: ~List[f4]) =
+          let v65: (~List[f4], ~List[f4]) = tuple(v62, v64)
+          v65
+        in
+        let v63: ~List[f4] = construct List::Nil#1()
+        jump v66(v63)
+      in
+      let v61: ~List[f4] = construct List::Nil#1()
+      jump v67(v61)
+    0 (v68: h, v69: List[h]) ->
+      switch v69 {
+        1 ->
+          let v70: ~List[f4] = construct List::Nil#1()
+          let v71: ~List[f4] = construct List::Cons#0(v68, v70)
+          let_join v75(v73: ~List[f4]) =
+            let v74: (~List[f4], ~List[f4]) = tuple(v71, v73)
+            v74
+          in
+          let v72: ~List[f4] = construct List::Nil#1()
+          jump v75(v72)
+        0 (v76: h, v77: List[h]) ->
+          let v78: (List[f4], List[f4]) = call split(v77)
+          let v79: List[f4] = tuple_project v78.0
+          let v80: List[f4] = tuple_project v78.1
+          let v81: ~List[f4] = construct List::Cons#0(v68, v79)
+          let v82: ~List[f4] = construct List::Cons#0(v76, v80)
+          let v83: (~List[f4], ~List[f4]) = tuple(v81, v82)
+          v83
+      }
+  }
+
+fn merge_by(v84: Dict, v85: List[w4], v86: List[w4], v87: (w4) -> y4) -> List[w4] =
+  switch v85 {
+    1 ->
+      v86
+    0 (v88: h, v89: List[h]) ->
+      switch v86 {
+        1 ->
+          v85
+        0 (v90: h, v91: List[h]) ->
+          let_join v102(v95: Bool) =
+            switch v95 {
+              1 ->
+                let v96: ~List[w4] = construct List::Cons#0(v90, v91)
+                let v97: List[w4] = call merge_by(v84, v89, v96, v87)
+                let v98: ~List[w4] = construct List::Cons#0(v88, v97)
+                v98
+              _ ->
+                let v99: ~List[w4] = construct List::Cons#0(v88, v89)
+                let v100: List[w4] = call merge_by(v84, v99, v91, v87)
+                let v101: ~List[w4] = construct List::Cons#0(v90, v100)
+                v101
+            }
+          in
+          let v92: y4 = call_closure v87(v88)
+          let v93: y4 = call_closure v87(v90)
+          let v94: Bool = call lt(v84, v92, v93)
+          jump v102(v94)
+      }
+  }
+
+fn sort_by(v103: Dict, v104: List[w5], v105: (w5) -> l5) -> List[w5] =
+  switch v104 {
+    1 ->
+      let v106: ~List[w5] = construct List::Nil#1()
+      v106
+    0 (v107: h, v108: List[h]) ->
+      switch v108 {
+        1 ->
+          v104
+        _ ->
+          let v109: (List[w5], List[w5]) = call split(v104)
+          let v110: List[w5] = tuple_project v109.0
+          let v111: List[w5] = tuple_project v109.1
+          let v112: List[w5] = call sort_by(v103, v110, v105)
+          let v113: List[w5] = call sort_by(v103, v111, v105)
+          let v114: List[w5] = call merge_by(v103, v112, v113, v105)
+          v114
+      }
+    _ ->
+      let v115: (List[w5], List[w5]) = call split(v104)
+      let v116: List[w5] = tuple_project v115.0
+      let v117: List[w5] = tuple_project v115.1
+      let v118: List[w5] = call sort_by(v103, v116, v105)
+      let v119: List[w5] = call sort_by(v103, v117, v105)
+      let v120: List[w5] = call merge_by(v103, v118, v119, v105)
+      v120
+  }
+
+fn lambda$19(v38: List[k2], v39: k2) -> ~List[k2] =
+  let v40: ~List[k2] = construct List::Cons#0(v39, v38)
+  v40
+module core/map
+
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonArray" Vec
+import core/option/Some as Some(g): Option[g]
+import core/option/None as None(): Option[g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
+import core/vec/to_list as vec_to_list(Vec[h7]): List[h7]
+declare fold: (List[t1], u1, (u1, t1) -> u1) -> u1
+declare lt
 declare staticContainsKey
 declare staticDelete
 declare staticEmpty
 declare staticEntries
-declare staticFreeze
 declare staticGet
 declare staticGetUnsafe
 declare staticKeys
 declare staticLength
 declare staticMerge
-declare staticNew
 declare staticPut
-declare staticSet
 declare staticSize
 declare staticValues
+declare vec_to_list: (Vec[h7]) -> List[h7]
 
-fn main() -> Int =
-  let v0: Int = call println(42)
+fn empty() -> Map[r8, s8] =
+  let v0: Map[r8, s8] = call staticEmpty()
   v0
 
-fn core/io/println(v1: Dict, v2: m) -> Unit =
-  let v3: String = call show(v1, v2)
-  let v4: Unit = call raw_println(v3)
-  v4
-
-fn core/io/print(v5: Dict, v6: u) -> Unit =
-  let v7: String = call show(v5, v6)
-  let v8: Unit = call raw_print(v7)
+fn put(v1: Dict, v2: Dict, v3: Map[w8, x8], v4: w8, v5: x8) -> Map[w8, x8] =
+  let v6: j9 = v1
+  let v7: m9 = v2
+  let v8: Map[w8, x8] = call staticPut(v3, v4, v5, v6, v7)
   v8
 
-fn core/list/length(v9: List[o]) -> Int =
-  switch v9 {
+fn get(v9: Dict, v10: Dict, v11: Map[p9, c10], v12: p9) -> Option[c10] =
+  let v13: Bool = call staticContainsKey(v11, v12)
+  switch v13 {
     1 ->
-      0
-    0 (v10: h, v11: List[h]) ->
-      let v12: Int = call core/list/length(v11)
-      let v13: Int = add_int(1, v12)
-      v13
-  }
-
-fn core/list/map(v14: List[w], v15: (w) -> y) -> List[y] =
-  switch v14 {
-    1 ->
-      let v16: ~List[y] = construct List::Nil#1()
+      let v14: c10 = call staticGetUnsafe(v11, v12)
+      let v15: ~Option[c10] = construct Option::Some#0(v14)
+      v15
+    _ ->
+      let v16: ~Option[c10] = construct Option::None#1()
       v16
-    0 (v17: h, v18: List[h]) ->
-      let v19: y = call_closure v15(v17)
-      let v20: List[y] = call map(v18, v15)
-      let v21: ~List[y] = construct List::Cons#0(v19, v20)
-      v21
   }
 
-fn core/list/filter(v22: List[h1], v23: (h1) -> Bool) -> List[h1] =
-  switch v22 {
-    1 ->
-      let v24: ~List[h1] = construct List::Nil#1()
-      v24
-    0 (v25: h, v26: List[h]) ->
-      let v27: Bool = call_closure v23(v25)
-      switch v27 {
-        1 ->
-          let v28: List[h1] = call filter(v26, v23)
-          let v29: ~List[h1] = construct List::Cons#0(v25, v28)
-          v29
-        _ ->
-          let v30: List[h1] = call filter(v26, v23)
-          v30
-      }
-  }
+fn delete(v17: Dict, v18: Dict, v19: Map[e10, f10], v20: e10) -> Map[e10, f10] =
+  let v21: Map[e10, f10] = call staticDelete(v19, v20)
+  v21
 
-fn core/list/fold(v31: List[t1], v32: u1, v33: (u1, t1) -> u1) -> u1 =
-  switch v31 {
-    1 ->
-      v32
-    0 (v34: h, v35: List[h]) ->
-      let v36: u1 = call_closure v33(v32, v34)
-      let v37: u1 = call fold(v35, v36, v33)
-      v37
-  }
+fn contains(v22: Dict, v23: Dict, v24: Map[n10, o10], v25: n10) -> Bool =
+  let v26: Bool = call staticContainsKey(v24, v25)
+  v26
 
-fn core/list/concat(v38: List[b2], v39: List[b2]) -> List[b2] =
-  switch v38 {
+fn keys(v27: Map[y10, w10]) -> List[y10] =
+  let v28: Vec[y10] = call staticKeys(v27)
+  let v29: List[y10] = call vec_to_list(v28)
+  v29
+
+fn values(v30: Map[e11, h11]) -> List[h11] =
+  let v31: Vec[h11] = call staticValues(v30)
+  let v32: List[h11] = call vec_to_list(v31)
+  v32
+
+fn entries_go(v33: Object, v34: Int, v35: List[(n11, o11)]) -> List[(n11, o11)] =
+  let_join v46(v38: Bool) =
+    switch v38 {
+      1 ->
+        v35
+      _ ->
+        let v39: Int = sub_int(v34, 2)
+        let v40: Int = sub_int(v34, 1)
+        let v41: n11 = call staticGet(v33, v40)
+        let v42: o11 = call staticGet(v33, v34)
+        let v43: (n11, o11) = tuple(v41, v42)
+        let v44: ~List[(n11, o11)] = construct List::Cons#0(v43, v35)
+        let v45: List[(n11, o11)] = call entries_go(v33, v39, v44)
+        v45
+    }
+  in
+  let v36: Dict = get_dict Ord[Int]
+  let v37: Bool = call lt(v36, v34, 0)
+  jump v46(v37)
+
+fn entries(v47: Map[i12, j12]) -> List[(i12, j12)] =
+  let v48: h12 = call staticEntries(v47)
+  let v49: Int = call staticLength(v48)
+  let v50: Int = sub_int(v49, 1)
+  let_join v54(v52: ~List[(i12, j12)]) =
+    let v53: List[(i12, j12)] = call entries_go(v48, v50, v52)
+    v53
+  in
+  let v51: ~List[(i12, j12)] = construct List::Nil#1()
+  jump v54(v51)
+
+fn from_list(v55: Dict, v56: Dict, v57: List[(c13, d13)]) -> Map[c13, d13] =
+  let v58: Map[c13, d13] = call empty()
+  let v66: (Map[c13, d13], (c13, d13)) -> Map[c13, d13] = make_closure(lambda$38, [v55, v56])
+  let v67: Map[c13, d13] = call fold(v57, v58, v66)
+  v67
+
+fn size(v68: Map[j13, k13]) -> Int =
+  let v69: Int = call staticSize(v68)
+  v69
+
+fn merge(v70: Dict, v71: Dict, v72: Map[p13, q13], v73: Map[p13, q13]) -> Map[p13, q13] =
+  let v74: Map[p13, q13] = call staticMerge(v72, v73)
+  v74
+
+fn lambda$38(v59: Dict, v60: Dict, v61: Map[c13, d13], v62: (c13, d13)) -> Map[c13, d13] =
+  let v63: c13 = tuple_project v62.0
+  let v64: d13 = tuple_project v62.1
+  let v65: Map[c13, d13] = call put(v59, v60, v61, v63, v64)
+  v65
+module core/mul
+
+trait Mul[g] { mul(g, g): g }
+instance Mul[Int] {  } [intrinsic]
+instance Mul[Float] {  } [intrinsic]
+module core/neg
+
+trait Neg[g] { neg(g): g }
+instance Neg[Int] {  } [intrinsic]
+instance Neg[Float] {  } [intrinsic]
+module core/option
+
+type Option[g] = Some#0(g) | None#1
+instance Show[Option] {  }
+declare panic: (String) -> a
+
+fn unwrap(v0: Option[o]) -> o =
+  switch v0 {
+    0 (v1: g) ->
+      v1
     1 ->
-      v39
-    0 (v40: h, v41: List[h]) ->
-      let v42: List[b2] = call core/list/concat(v41, v39)
-      let v43: ~List[b2] = construct List::Cons#0(v40, v42)
+      let v2: o = call panic("None")
+      v2
+  }
+module core/ord
+
+trait Ord[h] { lt(h, h): Bool }
+instance Ord[Int] {  } [intrinsic]
+instance Ord[Float] {  } [intrinsic]
+module core/ordering
+
+type Ordering = LT#0 | EQ#1 | GT#2
+
+module core/peek
+
+fn peek(v0: h) -> h =
+  v0
+module core/resource
+
+trait Resource[g] { close(~g): Unit }
+module core/result
+
+type Result[g, h] = Ok#0(h) | Err#1(g)
+
+module core/semigroup
+
+trait Semigroup[g] { combine(g, g): g }
+instance Semigroup[Int] {  } [intrinsic]
+instance Semigroup[Float] {  } [intrinsic]
+instance Semigroup[String] {  } [intrinsic]
+module core/show
+
+trait Show[g] { show(g): String }
+instance Show[Int] {  } [intrinsic]
+instance Show[Float] {  } [intrinsic]
+instance Show[Bool] {  } [intrinsic]
+instance Show[String] {  } [intrinsic]
+module core/sub
+
+trait Sub[g] { sub(g, g): g }
+instance Sub[Int] {  } [intrinsic]
+instance Sub[Float] {  } [intrinsic]
+module core/vec
+
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern type java "krypton.runtime.KryptonArray" Vec
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/list/length as list_length(List[o]): Int
+import core/list/map as list_map(List[w], (w) -> y): List[y]
+import core/list/filter as list_filter(List[h1], (h1) -> Bool): List[h1]
+import core/list/fold as list_fold(List[t1], u1, (u1, t1) -> u1): u1
+import core/list/sort_by as list_sort_by(List[w5], (w5) -> l5): List[w5]
+import core/option/Some as Some(g): Option[g]
+import core/option/None as None(): Option[g]
+import core/sub/sub as sub(g, g): g
+import core/ord/lt as lt(h, h): Bool
+declare list_filter: (List[h1], (h1) -> Bool) -> List[h1]
+declare list_fold: (List[t1], u1, (u1, t1) -> u1) -> u1
+declare list_length: (List[o]) -> Int
+declare list_map: (List[w], (w) -> y) -> List[y]
+declare list_sort_by: (Dict, List[w5], (w5) -> l5) -> List[w5]
+declare lt: (Dict, h, h) -> Bool
+declare staticFreeze
+declare staticGet
+declare staticLength
+declare staticNew
+declare staticSet
+
+fn len(v0: Vec[d6]) -> Int =
+  let v1: Int = call staticLength(v0)
+  v1
+
+fn nth(v2: Vec[q6], v3: Int) -> Option[q6] =
+  let_join v16(v6: Bool) =
+    switch v6 {
+      1 ->
+        let v7: ~Option[q6] = construct Option::None#1()
+        v7
+      _ ->
+        let_join v15(v11: Bool) =
+          switch v11 {
+            1 ->
+              let v12: q6 = call staticGet(v2, v3)
+              let v13: ~Option[q6] = construct Option::Some#0(v12)
+              v13
+            _ ->
+              let v14: ~Option[q6] = construct Option::None#1()
+              v14
+          }
+        in
+        let v8: Dict = get_dict Ord[Int]
+        let v9: Int = call staticLength(v2)
+        let v10: Bool = call lt(v8, v3, v9)
+        jump v15(v10)
+    }
+  in
+  let v4: Dict = get_dict Ord[Int]
+  let v5: Bool = call lt(v4, v3, 0)
+  jump v16(v5)
+
+fn vec_from_vec_go(v17: Vec[y6], v18: Int, v19: List[y6]) -> List[y6] =
+  let_join v27(v22: Bool) =
+    switch v22 {
+      1 ->
+        v19
+      _ ->
+        let v23: Int = sub_int(v18, 1)
+        let v24: y6 = call staticGet(v17, v18)
+        let v25: ~List[y6] = construct List::Cons#0(v24, v19)
+        let v26: List[y6] = call vec_from_vec_go(v17, v23, v25)
+        v26
+    }
+  in
+  let v20: Dict = get_dict Ord[Int]
+  let v21: Bool = call lt(v20, v18, 0)
+  jump v27(v21)
+
+fn to_list(v28: Vec[h7]) -> List[h7] =
+  let v29: Int = call staticLength(v28)
+  let v30: Int = sub_int(v29, 1)
+  let_join v34(v32: ~List[h7]) =
+    let v33: List[h7] = call vec_from_vec_go(v28, v30, v32)
+    v33
+  in
+  let v31: ~List[h7] = construct List::Nil#1()
+  jump v34(v31)
+
+fn from_list_go(v35: List[r7], v36: Vec[r7], v37: Int) -> Vec[r7] =
+  switch v35 {
+    1 ->
+      let v38: Vec[r7] = call staticFreeze(v36)
+      v38
+    0 (v39: a, v40: List[a]) ->
+      let v41: Unit = call staticSet(v36, v37, v39)
+      let v42: Int = add_int(v37, 1)
+      let v43: Vec[r7] = call from_list_go(v40, v36, v42)
       v43
   }
 
-fn core/list/reverse(v44: List[k2]) -> List[k2] =
-  let_join v52(v46: ~List[k2]) =
-    let v50: (List[k2], k2) -> ~List[k2] = make_closure(core/list/lambda$19, [])
-    let v51: List[k2] = call fold(v44, v46, v50)
-    v51
-  in
-  let v45: ~List[k2] = construct List::Nil#1()
-  jump v52(v45)
+fn from_list(v44: List[d8]) -> Vec[d8] =
+  let v45: Int = call list_length(v44)
+  let v46: Vec[a8] = call staticNew(v45)
+  let v47: Vec[d8] = call from_list_go(v44, v46, 0)
+  v47
 
-fn core/list/head(v53: List[y2]) -> Option[y2] =
-  switch v53 {
-    0 (v54: h, v55: List[h]) ->
-      let v56: ~Option[y2] = construct Option::Some#0(v54)
-      v56
-    1 ->
-      let v57: ~Option[y2] = construct Option::None#1()
-      v57
-  }
-
-fn core/list/tail(v58: List[f3]) -> Option[List[f3]] =
-  switch v58 {
-    0 (v59: h, v60: List[h]) ->
-      let v61: ~Option[List[f3]] = construct Option::Some#0(v60)
-      v61
-    1 ->
-      let v62: ~Option[List[f3]] = construct Option::None#1()
-      v62
-  }
-
-fn core/list/last(v63: List[r3]) -> Option[r3] =
-  switch v63 {
-    0 (v64: h, v65: List[h]) ->
-      switch v65 {
-        1 ->
-          let v66: ~Option[r3] = construct Option::Some#0(v64)
-          v66
-        _ ->
-          let v67: Option[r3] = call last(v65)
-          v67
-      }
-    1 ->
-      let v68: ~Option[r3] = construct Option::None#1()
-      v68
-  }
-
-fn core/list/split(v69: List[f4]) -> (List[f4], List[f4]) =
-  switch v69 {
-    1 ->
-      let_join v76(v71: ~List[f4]) =
-        let_join v75(v73: ~List[f4]) =
-          let v74: (~List[f4], ~List[f4]) = tuple(v71, v73)
-          v74
-        in
-        let v72: ~List[f4] = construct List::Nil#1()
-        jump v75(v72)
-      in
-      let v70: ~List[f4] = construct List::Nil#1()
-      jump v76(v70)
-    0 (v77: h, v78: List[h]) ->
-      switch v78 {
-        1 ->
-          let v79: ~List[f4] = construct List::Nil#1()
-          let v80: ~List[f4] = construct List::Cons#0(v77, v79)
-          let_join v84(v82: ~List[f4]) =
-            let v83: (~List[f4], ~List[f4]) = tuple(v80, v82)
-            v83
-          in
-          let v81: ~List[f4] = construct List::Nil#1()
-          jump v84(v81)
-        0 (v85: h, v86: List[h]) ->
-          let v87: (List[f4], List[f4]) = call core/list/split(v86)
-          let v88: List[f4] = tuple_project v87.0
-          let v89: List[f4] = tuple_project v87.1
-          let v90: ~List[f4] = construct List::Cons#0(v77, v88)
-          let v91: ~List[f4] = construct List::Cons#0(v85, v89)
-          let v92: (~List[f4], ~List[f4]) = tuple(v90, v91)
-          v92
-      }
-  }
-
-fn core/list/merge_by(v93: Dict, v94: List[w4], v95: List[w4], v96: (w4) -> y4) -> List[w4] =
-  switch v94 {
-    1 ->
-      v95
-    0 (v97: h, v98: List[h]) ->
-      switch v95 {
-        1 ->
-          v94
-        0 (v99: h, v100: List[h]) ->
-          let_join v111(v104: Bool) =
-            switch v104 {
-              1 ->
-                let v105: ~List[w4] = construct List::Cons#0(v99, v100)
-                let v106: List[w4] = call core/list/merge_by(v93, v98, v105, v96)
-                let v107: ~List[w4] = construct List::Cons#0(v97, v106)
-                v107
-              _ ->
-                let v108: ~List[w4] = construct List::Cons#0(v97, v98)
-                let v109: List[w4] = call core/list/merge_by(v93, v108, v100, v96)
-                let v110: ~List[w4] = construct List::Cons#0(v99, v109)
-                v110
-            }
-          in
-          let v101: y4 = call_closure v96(v97)
-          let v102: y4 = call_closure v96(v99)
-          let v103: Bool = call lt(v93, v101, v102)
-          jump v111(v103)
-      }
-  }
-
-fn core/list/sort_by(v112: Dict, v113: List[w5], v114: (w5) -> l5) -> List[w5] =
-  switch v113 {
-    1 ->
-      let v115: ~List[w5] = construct List::Nil#1()
-      v115
-    0 (v116: h, v117: List[h]) ->
-      switch v117 {
-        1 ->
-          v113
-        _ ->
-          let v118: (List[w5], List[w5]) = call core/list/split(v113)
-          let v119: List[w5] = tuple_project v118.0
-          let v120: List[w5] = tuple_project v118.1
-          let v121: List[w5] = call sort_by(v112, v119, v114)
-          let v122: List[w5] = call sort_by(v112, v120, v114)
-          let v123: List[w5] = call core/list/merge_by(v112, v121, v122, v114)
-          v123
-      }
-    _ ->
-      let v124: (List[w5], List[w5]) = call core/list/split(v113)
-      let v125: List[w5] = tuple_project v124.0
-      let v126: List[w5] = tuple_project v124.1
-      let v127: List[w5] = call sort_by(v112, v125, v114)
-      let v128: List[w5] = call sort_by(v112, v126, v114)
-      let v129: List[w5] = call core/list/merge_by(v112, v127, v128, v114)
-      v129
-  }
-
-fn core/list/lambda$19(v47: List[k2], v48: k2) -> ~List[k2] =
-  let v49: ~List[k2] = construct List::Cons#0(v48, v47)
-  v49
-
-fn core/map/empty() -> Map[r8, s8] =
-  let v130: Map[r8, s8] = call staticEmpty()
-  v130
-
-fn core/map/put(v131: Dict, v132: Dict, v133: Map[w8, x8], v134: w8, v135: x8) -> Map[w8, x8] =
-  let v136: j9 = v131
-  let v137: m9 = v132
-  let v138: Map[w8, x8] = call staticPut(v133, v134, v135, v136, v137)
-  v138
-
-fn core/map/get(v139: Dict, v140: Dict, v141: Map[p9, c10], v142: p9) -> Option[c10] =
-  let v143: Bool = call staticContainsKey(v141, v142)
-  switch v143 {
-    1 ->
-      let v144: c10 = call staticGetUnsafe(v141, v142)
-      let v145: ~Option[c10] = construct Option::Some#0(v144)
-      v145
-    _ ->
-      let v146: ~Option[c10] = construct Option::None#1()
-      v146
-  }
-
-fn core/map/delete(v147: Dict, v148: Dict, v149: Map[e10, f10], v150: e10) -> Map[e10, f10] =
-  let v151: Map[e10, f10] = call staticDelete(v149, v150)
-  v151
-
-fn core/map/contains(v152: Dict, v153: Dict, v154: Map[n10, o10], v155: n10) -> Bool =
-  let v156: Bool = call staticContainsKey(v154, v155)
-  v156
-
-fn core/map/keys(v157: Map[y10, w10]) -> List[y10] =
-  let v158: Vec[y10] = call staticKeys(v157)
-  let v159: List[y10] = call core/map/vec_to_list(v158)
-  v159
-
-fn core/map/values(v160: Map[e11, h11]) -> List[h11] =
-  let v161: Vec[h11] = call staticValues(v160)
-  let v162: List[h11] = call core/map/vec_to_list(v161)
-  v162
-
-fn core/map/entries_go(v163: Object, v164: Int, v165: List[(n11, o11)]) -> List[(n11, o11)] =
-  let_join v176(v168: Bool) =
-    switch v168 {
+fn last(v48: Vec[n8]) -> Option[n8] =
+  let v49: Int = call staticLength(v48)
+  let_join v57(v52: Bool) =
+    switch v52 {
       1 ->
-        v165
+        let v53: ~Option[n8] = construct Option::None#1()
+        v53
       _ ->
-        let v169: Int = sub_int(v164, 2)
-        let v170: Int = sub_int(v164, 1)
-        let v171: n11 = call staticGet(v163, v170)
-        let v172: o11 = call staticGet(v163, v164)
-        let v173: (n11, o11) = tuple(v171, v172)
-        let v174: ~List[(n11, o11)] = construct List::Cons#0(v173, v165)
-        let v175: List[(n11, o11)] = call core/map/entries_go(v163, v169, v174)
-        v175
+        let v54: Int = sub_int(v49, 1)
+        let v55: n8 = call staticGet(v48, v54)
+        let v56: ~Option[n8] = construct Option::Some#0(v55)
+        v56
     }
   in
-  let v166: Dict = get_dict Ord[Int]
-  let v167: Bool = call lt(v166, v164, 0)
-  jump v176(v167)
+  let v50: Dict = get_dict Ord[Int]
+  let v51: Bool = call lt(v50, v49, 1)
+  jump v57(v51)
 
-fn core/map/entries(v177: Map[i12, j12]) -> List[(i12, j12)] =
-  let v178: h12 = call staticEntries(v177)
-  let v179: Int = call staticLength(v178)
-  let v180: Int = sub_int(v179, 1)
-  let_join v184(v182: ~List[(i12, j12)]) =
-    let v183: List[(i12, j12)] = call core/map/entries_go(v178, v180, v182)
-    v183
-  in
-  let v181: ~List[(i12, j12)] = construct List::Nil#1()
-  jump v184(v181)
+fn filter(v58: Vec[v8], v59: (v8) -> Bool) -> Vec[v8] =
+  let v60: List[v8] = call to_list(v58)
+  let v61: List[v8] = call list_filter(v60, v59)
+  let v62: Vec[v8] = call from_list(v61)
+  v62
 
-fn core/map/from_list(v185: Dict, v186: Dict, v187: List[(c13, d13)]) -> Map[c13, d13] =
-  let v188: Map[c13, d13] = call core/map/empty()
-  let v196: (Map[c13, d13], (c13, d13)) -> Map[c13, d13] = make_closure(core/map/lambda$38, [v185, v186])
-  let v197: Map[c13, d13] = call fold(v187, v188, v196)
-  v197
+fn map(v63: Vec[g9], v64: (g9) -> f9) -> Vec[f9] =
+  let v65: List[g9] = call to_list(v63)
+  let v66: List[f9] = call list_map(v65, v64)
+  let v67: Vec[f9] = call from_list(v66)
+  v67
 
-fn core/map/size(v198: Map[j13, k13]) -> Int =
-  let v199: Int = call staticSize(v198)
-  v199
+fn fold(v68: Vec[r9], v69: t9, v70: (t9, r9) -> t9) -> t9 =
+  let v71: List[r9] = call to_list(v68)
+  let v72: t9 = call list_fold(v71, v69, v70)
+  v72
 
-fn core/map/merge(v200: Dict, v201: Dict, v202: Map[p13, q13], v203: Map[p13, q13]) -> Map[p13, q13] =
-  let v204: Map[p13, q13] = call staticMerge(v202, v203)
-  v204
+fn sort_by(v73: Dict, v74: Vec[v9], v75: (v9) -> w9) -> Vec[v9] =
+  let v76: List[v9] = call to_list(v74)
+  let v77: List[v9] = call list_sort_by(v73, v76, v75)
+  let v78: Vec[v9] = call from_list(v77)
+  v78
+module custom_println
 
-fn core/map/lambda$38(v189: Dict, v190: Dict, v191: Map[c13, d13], v192: (c13, d13)) -> Map[c13, d13] =
-  let v193: c13 = tuple_project v192.0
-  let v194: d13 = tuple_project v192.1
-  let v195: Map[c13, d13] = call core/map/put(v189, v190, v191, v193, v194)
-  v195
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern type java "krypton.runtime.KryptonArray" Vec
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonArray" Vec
+import core/eq/eq as eq(g, g): Bool
+import core/ord/lt as lt(h, h): Bool
+import core/semigroup/combine as combine(g, g): g
+import core/sub/sub as sub(g, g): g
+import core/mul/mul as mul(g, g): g
+import core/div/div as div(g, g): g
+import core/neg/neg as neg(g): g
+import core/show/show as show(g): String
+import core/hash/hash as hash(g): Int
+import core/resource/close as close(~g): Unit
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[r3]): Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
+import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
+import core/list/map as map(List[w], (w) -> y): List[y]
+import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/io/println as println(m): Unit
+import core/option/Some as Some(e): Option[e]
+import core/option/None as None(): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/ordering/LT as LT(): Ordering
+import core/ordering/EQ as EQ(): Ordering
+import core/ordering/GT as GT(): Ordering
+fn println(v0: m) -> Unit =
+  v0
+module prelude
 
-fn core/option/unwrap(v205: Option[o]) -> o =
-  switch v205 {
-    0 (v206: g) ->
-      v206
-    1 ->
-      let v207: o = call panic("None")
-      v207
-  }
-
-fn core/peek/peek(v208: h) -> h =
-  v208
-
-fn core/vec/len(v209: Vec[d6]) -> Int =
-  let v210: Int = call staticLength(v209)
-  v210
-
-fn core/vec/nth(v211: Vec[q6], v212: Int) -> Option[q6] =
-  let_join v225(v215: Bool) =
-    switch v215 {
-      1 ->
-        let v216: ~Option[q6] = construct Option::None#1()
-        v216
-      _ ->
-        let_join v224(v220: Bool) =
-          switch v220 {
-            1 ->
-              let v221: q6 = call staticGet(v211, v212)
-              let v222: ~Option[q6] = construct Option::Some#0(v221)
-              v222
-            _ ->
-              let v223: ~Option[q6] = construct Option::None#1()
-              v223
-          }
-        in
-        let v217: Dict = get_dict Ord[Int]
-        let v218: Int = call staticLength(v211)
-        let v219: Bool = call lt(v217, v212, v218)
-        jump v224(v219)
-    }
-  in
-  let v213: Dict = get_dict Ord[Int]
-  let v214: Bool = call lt(v213, v212, 0)
-  jump v225(v214)
-
-fn core/vec/vec_from_vec_go(v226: Vec[y6], v227: Int, v228: List[y6]) -> List[y6] =
-  let_join v236(v231: Bool) =
-    switch v231 {
-      1 ->
-        v228
-      _ ->
-        let v232: Int = sub_int(v227, 1)
-        let v233: y6 = call staticGet(v226, v227)
-        let v234: ~List[y6] = construct List::Cons#0(v233, v228)
-        let v235: List[y6] = call core/vec/vec_from_vec_go(v226, v232, v234)
-        v235
-    }
-  in
-  let v229: Dict = get_dict Ord[Int]
-  let v230: Bool = call lt(v229, v227, 0)
-  jump v236(v230)
-
-fn core/vec/to_list(v237: Vec[h7]) -> List[h7] =
-  let v238: Int = call staticLength(v237)
-  let v239: Int = sub_int(v238, 1)
-  let_join v243(v241: ~List[h7]) =
-    let v242: List[h7] = call core/vec/vec_from_vec_go(v237, v239, v241)
-    v242
-  in
-  let v240: ~List[h7] = construct List::Nil#1()
-  jump v243(v240)
-
-fn core/vec/from_list_go(v244: List[r7], v245: Vec[r7], v246: Int) -> Vec[r7] =
-  switch v244 {
-    1 ->
-      let v247: Vec[r7] = call staticFreeze(v245)
-      v247
-    0 (v248: a, v249: List[a]) ->
-      let v250: Unit = call staticSet(v245, v246, v248)
-      let v251: Int = add_int(v246, 1)
-      let v252: Vec[r7] = call core/vec/from_list_go(v249, v245, v251)
-      v252
-  }
-
-fn core/vec/from_list(v253: List[d8]) -> Vec[d8] =
-  let v254: Int = call core/vec/list_length(v253)
-  let v255: Vec[a8] = call staticNew(v254)
-  let v256: Vec[d8] = call core/vec/from_list_go(v253, v255, 0)
-  v256
-
-fn core/vec/last(v257: Vec[n8]) -> Option[n8] =
-  let v258: Int = call staticLength(v257)
-  let_join v266(v261: Bool) =
-    switch v261 {
-      1 ->
-        let v262: ~Option[n8] = construct Option::None#1()
-        v262
-      _ ->
-        let v263: Int = sub_int(v258, 1)
-        let v264: n8 = call staticGet(v257, v263)
-        let v265: ~Option[n8] = construct Option::Some#0(v264)
-        v265
-    }
-  in
-  let v259: Dict = get_dict Ord[Int]
-  let v260: Bool = call lt(v259, v258, 1)
-  jump v266(v260)
-
-fn core/vec/filter(v267: Vec[v8], v268: (v8) -> Bool) -> Vec[v8] =
-  let v269: List[v8] = call to_list(v267)
-  let v270: List[v8] = call core/vec/list_filter(v269, v268)
-  let v271: Vec[v8] = call core/vec/from_list(v270)
-  v271
-
-fn core/vec/map(v272: Vec[g9], v273: (g9) -> f9) -> Vec[f9] =
-  let v274: List[g9] = call to_list(v272)
-  let v275: List[f9] = call core/vec/list_map(v274, v273)
-  let v276: Vec[f9] = call core/vec/from_list(v275)
-  v276
-
-fn core/vec/fold(v277: Vec[r9], v278: t9, v279: (t9, r9) -> t9) -> t9 =
-  let v280: List[r9] = call to_list(v277)
-  let v281: t9 = call core/vec/list_fold(v280, v278, v279)
-  v281
-
-fn core/vec/sort_by(v282: Dict, v283: Vec[v9], v284: (v9) -> w9) -> Vec[v9] =
-  let v285: List[v9] = call to_list(v283)
-  let v286: List[v9] = call core/vec/list_sort_by(v282, v285, v284)
-  let v287: Vec[v9] = call core/vec/from_list(v286)
-  v287
-
-fn custom_println/println(v288: m) -> Unit =
-  v288
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
+extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Object, Object): Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Object, Object): Object
+extern java "krypton.runtime.KryptonMap" staticKeys(Object): Object
+extern java "krypton.runtime.KryptonMap" staticValues(Object): Object
+extern java "krypton.runtime.KryptonMap" staticEntries(Object): Object
+extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
+extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
+extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
+extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern type java "krypton.runtime.KryptonArray" Vec
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonMap" Map
+extern type java "krypton.runtime.KryptonArray" Vec
+import core/eq/eq as eq(g, g): Bool
+import core/ord/lt as lt(h, h): Bool
+import core/semigroup/combine as combine(g, g): g
+import core/sub/sub as sub(g, g): g
+import core/mul/mul as mul(g, g): g
+import core/div/div as div(g, g): g
+import core/neg/neg as neg(g): g
+import core/show/show as show(g): String
+import core/hash/hash as hash(g): Int
+import core/resource/close as close(~g): Unit
+import core/peek/peek as peek(h): h
+import core/option/Some as Some(g): Option[g]
+import core/option/None as None(): Option[g]
+import core/result/Ok as Ok(h): Result[g, h]
+import core/result/Err as Err(g): Result[g, h]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/list/map as map(List[w], (w) -> y): List[y]
+import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
+import core/list/last as last(List[r3]): Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
+import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/ordering/LT as LT(): Ordering
+import core/ordering/EQ as EQ(): Ordering
+import core/ordering/GT as GT(): Ordering
+import core/io/println as println(m): Unit
