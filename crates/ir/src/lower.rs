@@ -473,6 +473,8 @@ struct LowerCtx {
     fn_exit_track: HashSet<String>,
     /// Most recent VarId for tracked fn_exit names (survives pop_var)
     fn_exit_vars: HashMap<String, VarId>,
+    /// Cached FnId for Resource.close (lazily resolved)
+    close_fn_id: Option<FnId>,
 }
 
 impl LowerCtx {
@@ -532,17 +534,53 @@ impl LowerCtx {
         self.emit_resolved_close_calls(&resolved, inner)
     }
 
+    /// Lazily resolve and cache the FnId for Resource.close.
+    fn get_close_fn_id(&mut self) -> Result<FnId, LowerError> {
+        if let Some(id) = self.close_fn_id {
+            return Ok(id);
+        }
+        let id = self
+            .lookup_trait_method("Resource", "close")
+            .ok_or_else(|| {
+                LowerError::InternalError("Resource.close not found".to_string())
+            })?;
+        self.close_fn_id = Some(id);
+        Ok(id)
+    }
+
+    /// Emit a close call for a shadowed binding, wrapping `body`.
+    fn emit_shadow_close(
+        &mut self,
+        binding: &AutoCloseBinding,
+        old_var: VarId,
+        body: Expr,
+    ) -> Result<Expr, LowerError> {
+        let close_fn_id = self.get_close_fn_id()?;
+        let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+        let (dict_bindings, dict_atom) = self.resolve_dict("Resource", &dict_ty)?;
+        let unit_var = self.fresh_var();
+        let close_expr = Expr {
+            ty: body.ty.clone(),
+            kind: ExprKind::Let {
+                bind: unit_var,
+                ty: Type::Unit,
+                value: SimpleExpr::Call {
+                    func: close_fn_id,
+                    args: vec![dict_atom, Atom::Var(old_var)],
+                },
+                body: Box::new(body),
+            },
+        };
+        Ok(Self::wrap_bindings(dict_bindings, close_expr))
+    }
+
     /// Pre-resolve AutoCloseBindings to VarIds and dict info.
     /// Checks both current var_scope and fn_exit_vars for variable lookup.
     fn resolve_close_bindings(
         &mut self,
         bindings: &[AutoCloseBinding],
     ) -> Result<Vec<ResolvedClose>, LowerError> {
-        let close_fn_id = self
-            .lookup_trait_method("Resource", "close")
-            .ok_or_else(|| {
-                LowerError::InternalError("Resource.close not found".to_string())
-            })?;
+        let close_fn_id = self.get_close_fn_id()?;
         let mut resolved = Vec::with_capacity(bindings.len());
         for binding in bindings {
             let binding_var = self
@@ -573,7 +611,7 @@ impl LowerCtx {
         inner: Expr,
     ) -> Result<Expr, LowerError> {
         let mut result = inner;
-        // Process in reverse so the first binding's close is outermost (runs first)
+        // Process in reverse: first binding becomes outermost let, so it's evaluated (closed) first — LIFO order
         for rc in resolved.iter().rev() {
             let unit_var = self.fresh_var();
             let close_expr = Expr {
@@ -1121,27 +1159,7 @@ impl LowerCtx {
 
                 // Emit close for the shadowed binding (wraps the body, runs before body)
                 if let (Some(binding), Some(old_id)) = (&shadow_close, old_var) {
-                    let close_fn_id = self
-                        .lookup_trait_method("Resource", "close")
-                        .ok_or_else(|| {
-                            LowerError::InternalError("Resource.close not found".to_string())
-                        })?;
-                    let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
-                    let (dict_bindings, dict_atom) = self.resolve_dict("Resource", &dict_ty)?;
-                    let unit_var = self.fresh_var();
-                    body_expr = Expr {
-                        ty: body_expr.ty.clone(),
-                        kind: ExprKind::Let {
-                            bind: unit_var,
-                            ty: Type::Unit,
-                            value: SimpleExpr::Call {
-                                func: close_fn_id,
-                                args: vec![dict_atom, Atom::Var(old_id)],
-                            },
-                            body: Box::new(body_expr),
-                        },
-                    };
-                    body_expr = Self::wrap_bindings(dict_bindings, body_expr);
+                    body_expr = self.emit_shadow_close(binding, old_id, body_expr)?;
                 }
 
                 self.pop_var(name);
@@ -2409,27 +2427,7 @@ impl LowerCtx {
 
             // Emit close for the shadowed binding
             if let (Some(binding), Some(old_id)) = (&shadow_close, old_var) {
-                let close_fn_id = self
-                    .lookup_trait_method("Resource", "close")
-                    .ok_or_else(|| {
-                        LowerError::InternalError("Resource.close not found".to_string())
-                    })?;
-                let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
-                let (dict_bindings, dict_atom) = self.resolve_dict("Resource", &dict_ty)?;
-                let unit_var = self.fresh_var();
-                body_expr = Expr {
-                    ty: body_expr.ty.clone(),
-                    kind: ExprKind::Let {
-                        bind: unit_var,
-                        ty: Type::Unit,
-                        value: SimpleExpr::Call {
-                            func: close_fn_id,
-                            args: vec![dict_atom, Atom::Var(old_id)],
-                        },
-                        body: Box::new(body_expr),
-                    },
-                };
-                body_expr = Self::wrap_bindings(dict_bindings, body_expr);
+                body_expr = self.emit_shadow_close(binding, old_id, body_expr)?;
             }
 
             self.pop_var(name);
@@ -3771,6 +3769,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         auto_close: typed.auto_close.clone(),
         fn_exit_track: HashSet::new(),
         fn_exit_vars: HashMap::new(),
+        close_fn_id: None,
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
