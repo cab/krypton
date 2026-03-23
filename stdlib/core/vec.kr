@@ -1,5 +1,6 @@
 import core/list.{Cons, Nil, List, length as list_length, filter as list_filter, sort_by as list_sort_by, map as list_map, fold as list_fold}
 import core/option.{Option, Some, None}
+import core/semigroup.{Semigroup}
 import core/sub.{sub}
 import core/ord.{Ord, lt}
 

@@ -4,6 +4,7 @@ import core/vec.{to_list as vec_to_list}
 import core/eq.{Eq}
 import core/hash.{Hash}
 import core/ord.{Ord}
+import core/sub.{Sub}
 
 extern "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 

@@ -1,5 +1,6 @@
 import core/option.{Option, Some, None}
 import core/ord.{Ord}
+import core/semigroup.{Semigroup}
 
 # core/list — List type (cons-based linked list)
 pub type List[a] = Cons(a, List[a]) | Nil
