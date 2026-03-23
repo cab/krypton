@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr};
+use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
 use krypton_ir::{FnDef, FnId, Module, Type, VarId};
@@ -318,6 +318,92 @@ fn well_formed_join_point_passes() {
                 }),
             },
             ty: Type::Unit,
+        },
+    };
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(FnId(0), "good".into())]),
+    );
+    assert!(LintPass.run(module).is_ok());
+}
+
+#[test]
+fn letjoin_param_varid_reusable_in_body() {
+    // LetJoin param v1 is scoped to join_body only, so re-binding v1 in body is valid.
+    let func = FnDef {
+        id: FnId(0),
+        debug_name: "good".into(),
+        params: vec![],
+        return_type: Type::Int,
+        body: Expr {
+            kind: ExprKind::LetJoin {
+                name: VarId(0),
+                params: vec![(VarId(1), Type::Int)],
+                join_body: Box::new(Expr {
+                    kind: ExprKind::Atom(Atom::Var(VarId(1))),
+                    ty: Type::Int,
+                }),
+                body: Box::new(Expr {
+                    kind: ExprKind::Let {
+                        bind: VarId(1), // same as join param — legal because param is out of scope
+                        ty: Type::Int,
+                        value: SimpleExpr::PrimOp {
+                            op: PrimOp::AddInt,
+                            args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
+                        },
+                        body: Box::new(Expr {
+                            kind: ExprKind::Jump {
+                                target: VarId(0),
+                                args: vec![Atom::Var(VarId(1))],
+                            },
+                            ty: Type::Int,
+                        }),
+                    },
+                    ty: Type::Int,
+                }),
+            },
+            ty: Type::Int,
+        },
+    };
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(FnId(0), "good".into())]),
+    );
+    assert!(LintPass.run(module).is_ok());
+}
+
+#[test]
+fn switch_branch_varid_reusable_across_branches() {
+    // Each Switch branch's bindings are scoped to that branch, so reusing VarIds is valid.
+    let func = FnDef {
+        id: FnId(0),
+        debug_name: "good".into(),
+        params: vec![(VarId(0), Type::Int)],
+        return_type: Type::Int,
+        body: Expr {
+            kind: ExprKind::Switch {
+                scrutinee: Atom::Var(VarId(0)),
+                branches: vec![
+                    SwitchBranch {
+                        tag: 0,
+                        bindings: vec![(VarId(1), Type::Int)],
+                        body: Expr {
+                            kind: ExprKind::Atom(Atom::Var(VarId(1))),
+                            ty: Type::Int,
+                        },
+                    },
+                    SwitchBranch {
+                        tag: 1,
+                        bindings: vec![(VarId(1), Type::Int)], // same VarId as branch 0
+                        body: Expr {
+                            kind: ExprKind::Atom(Atom::Var(VarId(1))),
+                            ty: Type::Int,
+                        },
+                    },
+                ],
+                default: None,
+            },
+            ty: Type::Int,
         },
     };
     let module = make_simple_module(

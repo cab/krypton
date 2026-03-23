@@ -23,6 +23,7 @@ impl IrPass for LintPass {
 
 struct LintContext {
     bound_vars: HashSet<VarId>,
+    var_stack: Vec<VarId>,
     join_points: HashSet<VarId>,
     known_fns: HashSet<FnId>,
 }
@@ -37,6 +38,7 @@ impl LintContext {
 
         LintContext {
             bound_vars: HashSet::new(),
+            var_stack: Vec::new(),
             join_points: HashSet::new(),
             known_fns,
         }
@@ -52,6 +54,7 @@ impl LintContext {
     fn check_function(&mut self, func: &FnDef) -> Result<(), IrPassError> {
         // Each function gets a fresh binding scope.
         self.bound_vars.clear();
+        self.var_stack.clear();
         self.join_points.clear();
 
         // Bind params.
@@ -66,7 +69,19 @@ impl LintContext {
         if !self.bound_vars.insert(var) {
             return Err(self.err(format!("duplicate VarId binding: v{}", var.0)));
         }
+        self.var_stack.push(var);
         Ok(())
+    }
+
+    fn scope_mark(&self) -> usize {
+        self.var_stack.len()
+    }
+
+    fn restore_scope(&mut self, mark: usize) {
+        while self.var_stack.len() > mark {
+            let var = self.var_stack.pop().unwrap();
+            self.bound_vars.remove(&var);
+        }
     }
 
     fn check_expr(&mut self, expr: &Expr) -> Result<(), IrPassError> {
@@ -112,13 +127,12 @@ impl LintContext {
                 self.join_points.insert(*name);
 
                 // Join params scope only over join_body, not body.
-                let saved_vars = self.bound_vars.clone();
+                let mark = self.scope_mark();
                 for &(var, _) in params {
                     self.bind_var(var)?;
                 }
                 self.check_expr(join_body)?;
-
-                self.bound_vars = saved_vars;
+                self.restore_scope(mark);
                 self.check_expr(body)
             }
 
@@ -143,12 +157,12 @@ impl LintContext {
                 self.check_atom_not_join(scrutinee)?;
                 for branch in branches {
                     // Branch bindings scope only over this branch's body.
-                    let saved_vars = self.bound_vars.clone();
+                    let mark = self.scope_mark();
                     for &(var, _) in &branch.bindings {
                         self.bind_var(var)?;
                     }
                     self.check_expr(&branch.body)?;
-                    self.bound_vars = saved_vars;
+                    self.restore_scope(mark);
                 }
                 if let Some(d) = default {
                     self.check_expr(d)?;

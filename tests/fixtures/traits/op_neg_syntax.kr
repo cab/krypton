@@ -6,6 +6,7 @@ extern "krypton.runtime.KryptonIO" {
 type Vec2 = { x: Int, y: Int }
 
 impl Neg[Vec2] {
+    # Use `0 - x` instead of `-x` to avoid infinite recursion (`-x` desugars to `neg(x)`).
     fun neg(a) = Vec2(0 - a.x, 0 - a.y)
 }
 
