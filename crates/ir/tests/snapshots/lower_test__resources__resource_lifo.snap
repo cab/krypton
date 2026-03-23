@@ -6,6 +6,7 @@ module resources__resource_lifo
 
 type HandleA = MkHandleA#0(Int)
 type HandleB = MkHandleB#0(Int)
+declare close: (Dict, ~g) -> Unit
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -13,4 +14,8 @@ fn main() -> Unit =
   let v1: Unit = call println("a")
   let v2: ~HandleB = construct HandleB::MkHandleB#0(2)
   let v3: Unit = call println("b")
+  let v4: Dict = get_dict Resource[HandleB]
+  let v7: Unit = call close(v4, v2)
+  let v5: Dict = get_dict Resource[HandleA]
+  let v6: Unit = call close(v5, v0)
   v3

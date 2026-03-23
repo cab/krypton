@@ -5,6 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_question_mark
 
 type Handle = MkHandle#0(String)
+declare close: (Dict, ~g) -> Unit
 declare println: (m) -> Unit
 
 fn fallible() -> Result[String, Int] =
@@ -17,26 +18,30 @@ fn work() -> Result[String, Int] =
   in
   let v3: ~Handle = construct Handle::MkHandle#0("test")
   let v4: Unit = call println("opened")
-  let_join v11(v5: Int) =
-    let v10: ~Result[String, Int] = construct Result::Ok#0(v5)
-    v10
+  let_join v13(v5: Int) =
+    let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
+    let v14: Dict = get_dict Resource[Handle]
+    let v15: Unit = call close(v14, v3)
+    v12
   in
   let v6: Result[String, Int] = call fallible()
   switch v6 {
     0 (v7: Int) ->
-      jump v11(v7)
+      jump v13(v7)
     1 (v8: String) ->
       let v9: Result[String, Int] = construct Result::Err#1(v8)
+      let v10: Dict = get_dict Resource[Handle]
+      let v11: Unit = call close(v10, v3)
       jump v1(v9)
   }
 
 fn main() -> Unit =
-  let v12: Result[String, Int] = call work()
-  switch v12 {
-    0 (v13: d) ->
-      let v14: Unit = call println(v13)
-      v14
-    1 (v15: c) ->
-      let v16: Unit = call println("err")
-      v16
+  let v16: Result[String, Int] = call work()
+  switch v16 {
+    0 (v17: d) ->
+      let v18: Unit = call println(v17)
+      v18
+    1 (v19: c) ->
+      let v20: Unit = call println("err")
+      v20
   }

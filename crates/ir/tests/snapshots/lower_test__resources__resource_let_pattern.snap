@@ -5,6 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_let_pattern
 
 type Handle = MkHandle#0(String)
+declare close: (Dict, ~g) -> Unit
 declare println: (m) -> Unit
 
 fn make_pair() -> (Int, ~Handle) =
@@ -17,4 +18,6 @@ fn main() -> Unit =
   let v3: Int = tuple_project v2.0
   let v4: ~Handle = tuple_project v2.1
   let v5: Unit = call println("opened")
+  let v6: Dict = get_dict Resource[Handle]
+  let v7: Unit = call close(v6, v4)
   v5

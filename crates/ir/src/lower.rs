@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
 use krypton_typechecker::typed_ast::{
-    ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm,
-    TypedModule, TypedPattern,
+    AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr,
+    TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -47,6 +47,7 @@ impl std::fmt::Display for LowerError {
 // Helper: intermediate let-binding produced during ANF normalization
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct LetBinding {
     bind: VarId,
     ty: Type,
@@ -416,6 +417,14 @@ fn referenced_vars_atom(atom: &Atom, vars: &mut HashSet<VarId>) {
     }
 }
 
+/// Pre-resolved auto-close info for a single binding.
+struct ResolvedClose {
+    close_fn_id: FnId,
+    binding_var: VarId,
+    dict_bindings: Vec<LetBinding>,
+    dict_atom: Atom,
+}
+
 // ---------------------------------------------------------------------------
 // Lowering context
 // ---------------------------------------------------------------------------
@@ -458,6 +467,12 @@ struct LowerCtx {
     recur_join: Option<(VarId, Vec<VarId>)>,
     /// Join point for `?` early returns in the current function
     early_return_join: Option<VarId>,
+    /// Auto-close info from the typechecker
+    auto_close: AutoCloseInfo,
+    /// Names to track for fn_exit auto-close resolution; latest VarId per name
+    fn_exit_track: HashSet<String>,
+    /// Most recent VarId for tracked fn_exit names (survives pop_var)
+    fn_exit_vars: HashMap<String, VarId>,
 }
 
 impl LowerCtx {
@@ -478,6 +493,9 @@ impl LowerCtx {
             .entry(name.to_string())
             .or_default()
             .push(id);
+        if self.fn_exit_track.contains(name) {
+            self.fn_exit_vars.insert(name.to_string(), id);
+        }
     }
 
     fn pop_var(&mut self, name: &str) {
@@ -501,6 +519,174 @@ impl LowerCtx {
         self.trait_method_ids
             .get(&(trait_name.to_string(), method_name.to_string()))
             .copied()
+    }
+
+    /// Emit close() calls for a list of AutoCloseBindings, wrapping `inner`.
+    /// Resolves variable names and dicts from current scope.
+    fn emit_close_calls(
+        &mut self,
+        bindings: &[AutoCloseBinding],
+        inner: Expr,
+    ) -> Result<Expr, LowerError> {
+        let resolved = self.resolve_close_bindings(bindings)?;
+        self.emit_resolved_close_calls(&resolved, inner)
+    }
+
+    /// Pre-resolve AutoCloseBindings to VarIds and dict info.
+    /// Checks both current var_scope and fn_exit_vars for variable lookup.
+    fn resolve_close_bindings(
+        &mut self,
+        bindings: &[AutoCloseBinding],
+    ) -> Result<Vec<ResolvedClose>, LowerError> {
+        let close_fn_id = self
+            .lookup_trait_method("Resource", "close")
+            .ok_or_else(|| {
+                LowerError::InternalError("Resource.close not found".to_string())
+            })?;
+        let mut resolved = Vec::with_capacity(bindings.len());
+        for binding in bindings {
+            let binding_var = self
+                .lookup_var(&binding.name)
+                .or_else(|| self.fn_exit_vars.get(&binding.name).copied())
+                .ok_or_else(|| {
+                    LowerError::InternalError(format!(
+                        "auto-close: variable '{}' not in scope",
+                        binding.name
+                    ))
+                })?;
+            let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+            let (dict_bindings, dict_atom) = self.resolve_dict("Resource", &dict_ty)?;
+            resolved.push(ResolvedClose {
+                close_fn_id,
+                binding_var,
+                dict_bindings,
+                dict_atom,
+            });
+        }
+        Ok(resolved)
+    }
+
+    /// Emit close calls from pre-resolved info, wrapping `inner`.
+    fn emit_resolved_close_calls(
+        &mut self,
+        resolved: &[ResolvedClose],
+        inner: Expr,
+    ) -> Result<Expr, LowerError> {
+        let mut result = inner;
+        // Process in reverse so the first binding's close is outermost (runs first)
+        for rc in resolved.iter().rev() {
+            let unit_var = self.fresh_var();
+            let close_expr = Expr {
+                ty: result.ty.clone(),
+                kind: ExprKind::Let {
+                    bind: unit_var,
+                    ty: Type::Unit,
+                    value: SimpleExpr::Call {
+                        func: rc.close_fn_id,
+                        args: vec![rc.dict_atom.clone(), Atom::Var(rc.binding_var)],
+                    },
+                    body: Box::new(result),
+                },
+            };
+            result = Self::wrap_bindings(rc.dict_bindings.clone(), close_expr);
+        }
+        Ok(result)
+    }
+
+    /// Walk tail positions of an expression and wrap each terminal Atom with close calls.
+    fn wrap_tail_with_closes(
+        &mut self,
+        expr: Expr,
+        resolved: &[ResolvedClose],
+    ) -> Result<Expr, LowerError> {
+        match expr.kind {
+            ExprKind::Atom(_) => self.emit_resolved_close_calls(resolved, expr),
+            ExprKind::Let {
+                bind,
+                ty,
+                value,
+                body,
+            } => {
+                let new_body = self.wrap_tail_with_closes(*body, resolved)?;
+                Ok(Expr {
+                    ty: new_body.ty.clone(),
+                    kind: ExprKind::Let {
+                        bind,
+                        ty,
+                        value,
+                        body: Box::new(new_body),
+                    },
+                })
+            }
+            ExprKind::LetRec {
+                bindings: rec_bindings,
+                body,
+            } => {
+                let new_body = self.wrap_tail_with_closes(*body, resolved)?;
+                Ok(Expr {
+                    ty: new_body.ty.clone(),
+                    kind: ExprKind::LetRec {
+                        bindings: rec_bindings,
+                        body: Box::new(new_body),
+                    },
+                })
+            }
+            ExprKind::LetJoin {
+                name,
+                params,
+                join_body,
+                body,
+            } => {
+                let new_join_body = self.wrap_tail_with_closes(*join_body, resolved)?;
+                let new_body = self.wrap_tail_with_closes(*body, resolved)?;
+                Ok(Expr {
+                    ty: new_body.ty.clone(),
+                    kind: ExprKind::LetJoin {
+                        name,
+                        params,
+                        join_body: Box::new(new_join_body),
+                        body: Box::new(new_body),
+                    },
+                })
+            }
+            ExprKind::Switch {
+                scrutinee,
+                branches,
+                default,
+            } => {
+                let new_branches = branches
+                    .into_iter()
+                    .map(|br| {
+                        let new_body = self.wrap_tail_with_closes(br.body, resolved)?;
+                        Ok(SwitchBranch {
+                            tag: br.tag,
+                            bindings: br.bindings,
+                            body: new_body,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, LowerError>>()?;
+                let new_default = match default {
+                    Some(d) => Some(Box::new(self.wrap_tail_with_closes(*d, resolved)?)),
+                    None => None,
+                };
+                Ok(Expr {
+                    ty: new_branches
+                        .first()
+                        .map(|b| b.body.ty.clone())
+                        .or_else(|| new_default.as_ref().map(|d| d.ty.clone()))
+                        .unwrap_or(Type::Unit),
+                    kind: ExprKind::Switch {
+                        scrutinee,
+                        branches: new_branches,
+                        default: new_default,
+                    },
+                })
+            }
+            ExprKind::Jump { .. } => {
+                // Jump targets handle their own cleanup
+                Ok(expr)
+            }
+        }
     }
 
     fn field_index(&self, type_name: &str, field_name: &str) -> Result<usize, LowerError> {
@@ -911,13 +1097,21 @@ impl LowerCtx {
             TypedExprKind::TypeApp { expr: inner, .. } => self.lower_expr(inner),
 
             TypedExprKind::Let { name, value, body } => {
+                // Check for shadow_close before pushing the new binding
+                let shadow_close = self.auto_close.shadow_closes.get(&expr.span).cloned();
+                let old_var = if shadow_close.is_some() {
+                    self.lookup_var(name)
+                } else {
+                    None
+                };
+
                 let bind = self.fresh_var();
                 self.var_types.insert(bind, value.ty.clone());
                 self.push_var(name, bind);
 
                 // Try to lower value as a SimpleExpr directly
                 let lowered_value = self.try_lower_as_simple(value)?;
-                let body_expr = if let Some(body) = body {
+                let mut body_expr = if let Some(body) = body {
                     self.lower_expr(body)?
                 } else {
                     // Let without body — the value IS the result
@@ -926,6 +1120,31 @@ impl LowerCtx {
                         kind: ExprKind::Atom(Atom::Var(bind)),
                     }
                 };
+
+                // Emit close for the shadowed binding (wraps the body, runs before body)
+                if let (Some(binding), Some(old_id)) = (&shadow_close, old_var) {
+                    let close_fn_id = self
+                        .lookup_trait_method("Resource", "close")
+                        .ok_or_else(|| {
+                            LowerError::InternalError("Resource.close not found".to_string())
+                        })?;
+                    let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+                    let (dict_bindings, dict_atom) = self.resolve_dict("Resource", &dict_ty)?;
+                    let unit_var = self.fresh_var();
+                    body_expr = Expr {
+                        ty: body_expr.ty.clone(),
+                        kind: ExprKind::Let {
+                            bind: unit_var,
+                            ty: Type::Unit,
+                            value: SimpleExpr::Call {
+                                func: close_fn_id,
+                                args: vec![dict_atom, Atom::Var(old_id)],
+                            },
+                            body: Box::new(body_expr),
+                        },
+                    };
+                    body_expr = Self::wrap_bindings(dict_bindings, body_expr);
+                }
 
                 self.pop_var(name);
 
@@ -1155,14 +1374,19 @@ impl LowerCtx {
                     LowerError::InternalError("recur outside of a recur-enabled function".to_string())
                 })?;
                 let result_ty = expr.ty.clone();
-                self.lower_atoms_then(args, vec![], |_ctx, jump_args| {
-                    Ok(Expr {
+                let recur_close_bindings = self.auto_close.recur_closes.get(&expr.span).cloned();
+                self.lower_atoms_then(args, vec![], |ctx, jump_args| {
+                    let mut jump_expr = Expr {
                         ty: result_ty,
                         kind: ExprKind::Jump {
                             target: join_name,
                             args: jump_args,
                         },
-                    })
+                    };
+                    if let Some(ref close_bindings) = recur_close_bindings {
+                        jump_expr = ctx.emit_close_calls(close_bindings, jump_expr)?;
+                    }
+                    Ok(jump_expr)
                 })
             }
 
@@ -1173,6 +1397,7 @@ impl LowerCtx {
                 let is_option = *is_option;
                 let inner_full_ty = inner.ty.clone();
                 let inner_stripped_ty = strip_own(&inner.ty).clone();
+                let early_close_bindings = self.auto_close.early_returns.get(&expr.span).cloned();
                 self.lower_to_atom_then(inner, |ctx, scrut_atom| {
                     let success_var = ctx.fresh_var();
                     let switch = if is_option {
@@ -1182,6 +1407,16 @@ impl LowerCtx {
                             _ => Type::Unit,
                         };
                         let wrap_var = ctx.fresh_var();
+                        let mut none_jump = Expr {
+                            ty: inner_full_ty.clone(),
+                            kind: ExprKind::Jump {
+                                target: early_return,
+                                args: vec![Atom::Var(wrap_var)],
+                            },
+                        };
+                        if let Some(ref close_bindings) = early_close_bindings {
+                            none_jump = ctx.emit_close_calls(close_bindings, none_jump)?;
+                        }
                         Expr {
                             ty: t.clone(),
                             kind: ExprKind::Switch {
@@ -1209,13 +1444,7 @@ impl LowerCtx {
                                                     tag: 1,
                                                     fields: vec![],
                                                 },
-                                                body: Box::new(Expr {
-                                                    ty: inner_full_ty,
-                                                    kind: ExprKind::Jump {
-                                                        target: early_return,
-                                                        args: vec![Atom::Var(wrap_var)],
-                                                    },
-                                                }),
+                                                body: Box::new(none_jump),
                                             },
                                         },
                                     },
@@ -1231,6 +1460,16 @@ impl LowerCtx {
                         };
                         let err_var = ctx.fresh_var();
                         let wrap_var = ctx.fresh_var();
+                        let mut err_jump = Expr {
+                            ty: inner_full_ty.clone(),
+                            kind: ExprKind::Jump {
+                                target: early_return,
+                                args: vec![Atom::Var(wrap_var)],
+                            },
+                        };
+                        if let Some(ref close_bindings) = early_close_bindings {
+                            err_jump = ctx.emit_close_calls(close_bindings, err_jump)?;
+                        }
                         Expr {
                             ty: ok_ty.clone(),
                             kind: ExprKind::Switch {
@@ -1258,13 +1497,7 @@ impl LowerCtx {
                                                     tag: 1,
                                                     fields: vec![Atom::Var(err_var)],
                                                 },
-                                                body: Box::new(Expr {
-                                                    ty: inner_full_ty,
-                                                    kind: ExprKind::Jump {
-                                                        target: early_return,
-                                                        args: vec![Atom::Var(wrap_var)],
-                                                    },
-                                                }),
+                                                body: Box::new(err_jump),
                                             },
                                         },
                                     },
@@ -2165,12 +2398,45 @@ impl LowerCtx {
 
         // Special case: Let { body: None } in a Do block — the body is the rest of the block
         if let TypedExprKind::Let { name, value, body: None } = &expr.kind {
+            // Check for shadow_close before pushing the new binding
+            let shadow_close = self.auto_close.shadow_closes.get(&expr.span).cloned();
+            let old_var = if shadow_close.is_some() {
+                self.lookup_var(name)
+            } else {
+                None
+            };
+
             let bind = self.fresh_var();
             self.var_types.insert(bind, value.ty.clone());
             self.push_var(name, bind);
 
             let lowered_value = self.try_lower_as_simple(value)?;
-            let body_expr = self.lower_do_slice(rest)?;
+            let mut body_expr = self.lower_do_slice(rest)?;
+
+            // Emit close for the shadowed binding
+            if let (Some(binding), Some(old_id)) = (&shadow_close, old_var) {
+                let close_fn_id = self
+                    .lookup_trait_method("Resource", "close")
+                    .ok_or_else(|| {
+                        LowerError::InternalError("Resource.close not found".to_string())
+                    })?;
+                let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+                let (dict_bindings, dict_atom) = self.resolve_dict("Resource", &dict_ty)?;
+                let unit_var = self.fresh_var();
+                body_expr = Expr {
+                    ty: body_expr.ty.clone(),
+                    kind: ExprKind::Let {
+                        bind: unit_var,
+                        ty: Type::Unit,
+                        value: SimpleExpr::Call {
+                            func: close_fn_id,
+                            args: vec![dict_atom, Atom::Var(old_id)],
+                        },
+                        body: Box::new(body_expr),
+                    },
+                };
+                body_expr = Self::wrap_bindings(dict_bindings, body_expr);
+            }
 
             self.pop_var(name);
 
@@ -3344,7 +3610,26 @@ impl LowerCtx {
             None
         };
 
+        // Set up fn_exit tracking so push_var records VarIds for auto-close bindings
+        let prev_track = std::mem::take(&mut self.fn_exit_track);
+        let prev_vars = std::mem::take(&mut self.fn_exit_vars);
+        if let Some(close_bindings) = self.auto_close.fn_exits.get(&decl.name) {
+            for binding in close_bindings {
+                self.fn_exit_track.insert(binding.name.clone());
+            }
+        }
+
         let mut body = self.lower_expr(&decl.body)?;
+
+        // Wrap fn_exit close calls at tail positions (vars resolved via fn_exit_vars)
+        if let Some(close_bindings) = self.auto_close.fn_exits.get(&decl.name).cloned() {
+            let resolved = self.resolve_close_bindings(&close_bindings)?;
+            body = self.wrap_tail_with_closes(body, &resolved)?;
+        }
+
+        // Restore tracking state
+        self.fn_exit_track = prev_track;
+        self.fn_exit_vars = prev_vars;
 
         // Pop recur join params (they were pushed on top of regular params)
         if recur_join_info.is_some() {
@@ -3489,6 +3774,9 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         var_types: HashMap::new(),
         recur_join: None,
         early_return_join: None,
+        auto_close: typed.auto_close.clone(),
+        fn_exit_track: HashSet::new(),
+        fn_exit_vars: HashMap::new(),
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)

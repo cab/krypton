@@ -5,9 +5,12 @@ expression: ir_module.to_string()
 module resources__resource_basic
 
 type Handle = MkHandle#0(String)
+declare close: (Dict, ~g) -> Unit
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Handle = construct Handle::MkHandle#0("test")
   let v1: Unit = call println("opened")
+  let v2: Dict = get_dict Resource[Handle]
+  let v3: Unit = call close(v2, v0)
   v1
