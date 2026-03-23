@@ -719,28 +719,40 @@ impl LowerCtx {
                 "And/Or/comparison ops must be lowered as compound expr".to_string(),
             )),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
-                let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
-                let (rhs_bindings, rhs_atom) = self.lower_to_atom(rhs)?;
-                bindings.extend(rhs_bindings);
-                let prim_op = resolve_binop(op, &lhs.ty)?;
-                Ok((
-                    bindings,
-                    SimpleExpr::PrimOp {
-                        op: prim_op,
-                        args: vec![lhs_atom, rhs_atom],
-                    },
-                ))
+                let lhs_ty = strip_own(&lhs.ty);
+                if resolve_binop(op, lhs_ty).is_ok() {
+                    let (mut bindings, lhs_atom) = self.lower_to_atom(lhs)?;
+                    let (rhs_bindings, rhs_atom) = self.lower_to_atom(rhs)?;
+                    bindings.extend(rhs_bindings);
+                    let prim_op = resolve_binop(op, &lhs.ty)?;
+                    Ok((
+                        bindings,
+                        SimpleExpr::PrimOp {
+                            op: prim_op,
+                            args: vec![lhs_atom, rhs_atom],
+                        },
+                    ))
+                } else {
+                    // Non-primitive: needs trait dispatch via lower_expr
+                    Err(LowerError::CompoundInAtom)
+                }
             }
             TypedExprKind::UnaryOp { op, operand } => {
-                let (bindings, atom) = self.lower_to_atom(operand)?;
-                let prim_op = resolve_unaryop(op, &operand.ty)?;
-                Ok((
-                    bindings,
-                    SimpleExpr::PrimOp {
-                        op: prim_op,
-                        args: vec![atom],
-                    },
-                ))
+                let operand_ty = strip_own(&operand.ty);
+                if resolve_unaryop(op, operand_ty).is_ok() {
+                    let (bindings, atom) = self.lower_to_atom(operand)?;
+                    let prim_op = resolve_unaryop(op, &operand.ty)?;
+                    Ok((
+                        bindings,
+                        SimpleExpr::PrimOp {
+                            op: prim_op,
+                            args: vec![atom],
+                        },
+                    ))
+                } else {
+                    // Non-primitive: needs trait dispatch via lower_expr
+                    Err(LowerError::CompoundInAtom)
+                }
             }
             TypedExprKind::App { func, args } => self.lower_app(func, args),
             TypedExprKind::Tuple(elems) => {
@@ -985,12 +997,47 @@ impl LowerCtx {
             } => self.lower_trait_comparison(op, lhs, rhs, &expr.ty),
 
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
-                let op = op.clone();
-                let result_ty = expr.ty.clone();
-                let lhs_ty = lhs.ty.clone();
-                self.lower_to_atom_then(lhs, |ctx, l| {
-                    ctx.lower_to_atom_then(rhs, |ctx, r| {
-                        let prim_op = resolve_binop(&op, &lhs_ty)?;
+                let lhs_ty = strip_own(&lhs.ty).clone();
+                if resolve_binop(op, &lhs_ty).is_ok() {
+                    // Primitive type — keep PrimOp path
+                    let op = op.clone();
+                    let result_ty = expr.ty.clone();
+                    self.lower_to_atom_then(lhs, |ctx, l| {
+                        ctx.lower_to_atom_then(rhs, |ctx, r| {
+                            let prim_op = resolve_binop(&op, &lhs_ty)?;
+                            let var = ctx.fresh_var();
+                            let ty = result_ty;
+                            Ok(Expr {
+                                ty: ty.clone(),
+                                kind: ExprKind::Let {
+                                    bind: var,
+                                    ty: ty.clone(),
+                                    value: SimpleExpr::PrimOp {
+                                        op: prim_op,
+                                        args: vec![l, r],
+                                    },
+                                    body: Box::new(Expr {
+                                        ty,
+                                        kind: ExprKind::Atom(Atom::Var(var)),
+                                    }),
+                                },
+                            })
+                        })
+                    })
+                } else {
+                    // User-defined type — trait dispatch
+                    self.lower_trait_arithmetic(op, lhs, rhs, &expr.ty)
+                }
+            }
+
+            TypedExprKind::UnaryOp { op, operand } => {
+                let operand_ty = strip_own(&operand.ty).clone();
+                if resolve_unaryop(op, &operand_ty).is_ok() {
+                    // Primitive type — keep PrimOp path
+                    let op = op.clone();
+                    let result_ty = expr.ty.clone();
+                    self.lower_to_atom_then(operand, |ctx, atom| {
+                        let prim_op = resolve_unaryop(&op, &operand_ty)?;
                         let var = ctx.fresh_var();
                         let ty = result_ty;
                         Ok(Expr {
@@ -1000,7 +1047,7 @@ impl LowerCtx {
                                 ty: ty.clone(),
                                 value: SimpleExpr::PrimOp {
                                     op: prim_op,
-                                    args: vec![l, r],
+                                    args: vec![atom],
                                 },
                                 body: Box::new(Expr {
                                     ty,
@@ -1009,33 +1056,10 @@ impl LowerCtx {
                             },
                         })
                     })
-                })
-            }
-
-            TypedExprKind::UnaryOp { op, operand } => {
-                let op = op.clone();
-                let result_ty = expr.ty.clone();
-                let operand_ty = operand.ty.clone();
-                self.lower_to_atom_then(operand, |ctx, atom| {
-                    let prim_op = resolve_unaryop(&op, &operand_ty)?;
-                    let var = ctx.fresh_var();
-                    let ty = result_ty;
-                    Ok(Expr {
-                        ty: ty.clone(),
-                        kind: ExprKind::Let {
-                            bind: var,
-                            ty: ty.clone(),
-                            value: SimpleExpr::PrimOp {
-                                op: prim_op,
-                                args: vec![atom],
-                            },
-                            body: Box::new(Expr {
-                                ty,
-                                kind: ExprKind::Atom(Atom::Var(var)),
-                            }),
-                        },
-                    })
-                })
+                } else {
+                    // User-defined type — trait dispatch
+                    self.lower_trait_unary(op, operand, &expr.ty)
+                }
             }
 
             TypedExprKind::Tuple(elems) => {
@@ -2330,6 +2354,100 @@ impl LowerCtx {
                         body: Box::new(call_body),
                     },
                 })
+            })
+        })?;
+        Ok(Self::wrap_bindings(dict_bindings, inner))
+    }
+
+    /// Desugar arithmetic operators on user-defined types to trait method calls.
+    fn lower_trait_arithmetic(
+        &mut self,
+        op: &BinOp,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        let (trait_name, method_name) = match op {
+            BinOp::Add => ("Semigroup", "combine"),
+            BinOp::Sub => ("Sub", "sub"),
+            BinOp::Mul => ("Mul", "mul"),
+            BinOp::Div => ("Div", "div"),
+            _ => unreachable!(),
+        };
+
+        let dict_ty = strip_own(&lhs.ty).clone();
+
+        let fn_id = self
+            .lookup_trait_method(trait_name, method_name)
+            .ok_or_else(|| LowerError::UnresolvedVar(
+                format!("{}.{}", trait_name, method_name),
+            ))?;
+        let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dict_ty)?;
+
+        let result_ty = result_ty.clone();
+        let inner = self.lower_to_atom_then(lhs, |ctx, l| {
+            ctx.lower_to_atom_then(rhs, |ctx, r| {
+                let var = ctx.fresh_var();
+                let ty = result_ty;
+                Ok(Expr {
+                    ty: ty.clone(),
+                    kind: ExprKind::Let {
+                        bind: var,
+                        ty: ty.clone(),
+                        value: SimpleExpr::Call {
+                            func: fn_id,
+                            args: vec![dict_atom.clone(), l, r],
+                        },
+                        body: Box::new(Expr {
+                            ty,
+                            kind: ExprKind::Atom(Atom::Var(var)),
+                        }),
+                    },
+                })
+            })
+        })?;
+        Ok(Self::wrap_bindings(dict_bindings, inner))
+    }
+
+    /// Desugar unary operators on user-defined types to trait method calls.
+    fn lower_trait_unary(
+        &mut self,
+        op: &UnaryOp,
+        operand: &TypedExpr,
+        result_ty: &Type,
+    ) -> Result<Expr, LowerError> {
+        let (trait_name, method_name) = match op {
+            UnaryOp::Neg => ("Neg", "neg"),
+            _ => unreachable!(),
+        };
+
+        let dict_ty = strip_own(&operand.ty).clone();
+
+        let fn_id = self
+            .lookup_trait_method(trait_name, method_name)
+            .ok_or_else(|| LowerError::UnresolvedVar(
+                format!("{}.{}", trait_name, method_name),
+            ))?;
+        let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dict_ty)?;
+
+        let result_ty = result_ty.clone();
+        let inner = self.lower_to_atom_then(operand, |ctx, a| {
+            let var = ctx.fresh_var();
+            let ty = result_ty;
+            Ok(Expr {
+                ty: ty.clone(),
+                kind: ExprKind::Let {
+                    bind: var,
+                    ty: ty.clone(),
+                    value: SimpleExpr::Call {
+                        func: fn_id,
+                        args: vec![dict_atom.clone(), a],
+                    },
+                    body: Box::new(Expr {
+                        ty,
+                        kind: ExprKind::Atom(Atom::Var(var)),
+                    }),
+                },
             })
         })?;
         Ok(Self::wrap_bindings(dict_bindings, inner))

@@ -1,0 +1,16 @@
+# expect: output 2
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+type Vec2 = { x: Int, y: Int }
+
+impl Sub[Vec2] {
+    fun sub(a, b) = Vec2(a.x - b.x, a.y - b.y)
+}
+
+fun main() = {
+    let a = Vec2(5, 3)
+    let b = Vec2(3, 1)
+    println((a - b).x)
+}

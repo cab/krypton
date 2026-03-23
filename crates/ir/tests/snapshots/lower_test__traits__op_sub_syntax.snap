@@ -1,0 +1,26 @@
+---
+source: crates/ir/tests/lower_test.rs
+assertion_line: 68
+expression: ir_module.to_string()
+---
+module traits__op_sub_syntax
+
+struct Vec2 { x: Int, y: Int }
+declare Vec2: (Int, Int) -> Vec2
+declare println: (m) -> Unit
+declare sub: (Dict, g, g) -> g
+
+fn main() -> Unit =
+  let v0: ~Vec2 = call Vec2(5, 3)
+  let v1: ~Vec2 = call Vec2(3, 1)
+  let_join v11(v9: Int) =
+    let v10: Unit = call println(v9)
+    v10
+  in
+  let_join v8(v6: Vec2) =
+    let v7: Int = project v6.0
+    jump v11(v7)
+  in
+  let v4: Dict = get_dict Sub[Vec2]
+  let v5: Vec2 = call sub(v4, v0, v1)
+  jump v8(v5)
