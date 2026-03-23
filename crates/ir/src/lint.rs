@@ -111,11 +111,14 @@ impl LintContext {
                 self.bind_var(*name)?;
                 self.join_points.insert(*name);
 
-                // Bind join params and check join body.
+                // Join params scope only over join_body, not body.
+                let saved_vars = self.bound_vars.clone();
                 for &(var, _) in params {
                     self.bind_var(var)?;
                 }
                 self.check_expr(join_body)?;
+
+                self.bound_vars = saved_vars;
                 self.check_expr(body)
             }
 
@@ -139,10 +142,13 @@ impl LintContext {
             } => {
                 self.check_atom_not_join(scrutinee)?;
                 for branch in branches {
+                    // Branch bindings scope only over this branch's body.
+                    let saved_vars = self.bound_vars.clone();
                     for &(var, _) in &branch.bindings {
                         self.bind_var(var)?;
                     }
                     self.check_expr(&branch.body)?;
+                    self.bound_vars = saved_vars;
                 }
                 if let Some(d) = default {
                     self.check_expr(d)?;
