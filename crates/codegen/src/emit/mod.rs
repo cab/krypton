@@ -117,31 +117,23 @@ pub fn compile_modules(
     let mut all_classes = Vec::new();
 
     // Lower each TypedModule to an IR Module.
-    // Library modules that fail to lower are skipped (their types/functions are still
-    // available via imports in other modules' IR).
     let mut ir_modules: Vec<krypton_ir::Module> = Vec::new();
     let mut typed_with_ir: Vec<(&TypedModule, usize)> = Vec::new(); // (typed_module, ir_index)
     for tm in typed_modules {
         let name = tm.module_path.as_deref().unwrap_or(main_class_name);
-        match krypton_ir::lower::lower_module(tm, name) {
-            Ok(ir) => {
-                let idx = ir_modules.len();
-                ir_modules.push(ir);
-                typed_with_ir.push((tm, idx));
-            }
-            Err(e) => {
-                // Main module must lower successfully
-                if tm.module_path.is_none() {
-                    return Err(CodegenError::TypeError(format!("IR lowering error: {e}"), None));
-                }
-                // Library module lowering failure — skip it
-                tracing::warn!("skipping library module {:?}: IR lowering error: {e}", tm.module_path);
-            }
-        }
+        let ir = krypton_ir::lower::lower_module(tm, name)
+            .map_err(|e| CodegenError::TypeError(
+                format!("IR lowering error in module {name}: {e}"), None,
+            ))?;
+        let idx = ir_modules.len();
+        ir_modules.push(ir);
+        typed_with_ir.push((tm, idx));
     }
 
     // Build global type provenance: bare_name → qualified_name for cross-module lookups.
-    // Only include types/traits DEFINED (not re-imported) by each module.
+    // Only library modules (with Some(module_path)) contribute here. Main-module types
+    // are excluded: qualify_with_provenance falls through to qualify_ir, which returns
+    // bare names when module_path is None.
     let mut global_type_provenance: HashMap<String, String> = HashMap::new();
     for ir_module in &ir_modules {
         if let Some(path) = &ir_module.module_path {
@@ -274,7 +266,7 @@ fn compile_module_inner(
 
     // Register imported types from other modules (class indices, variant mappings, no bytecode)
     for other_module in all_ir_modules {
-        if std::ptr::eq(other_module, ir_module) { continue; }
+        if other_module.module_path == ir_module.module_path { continue; }
         compiler.register_imported_structs_ir(other_module)?;
         compiler.register_imported_sum_types_ir(other_module)?;
     }
