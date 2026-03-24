@@ -4453,7 +4453,8 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
         (Type::Own(p), Type::Own(a)) => bind_type_vars(p, a, bindings),
-        (Type::Own(p), a) | (a, Type::Own(p)) => bind_type_vars(p, a, bindings),
+        (Type::Own(p), a) => bind_type_vars(p, a, bindings),
+        (a, Type::Own(p)) => bind_type_vars(a, p, bindings),
         (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
             bind_type_vars(p_ctor, a_ctor, bindings)
                 && p_args.len() == a_args.len()

@@ -984,14 +984,16 @@ impl Compiler {
     ) -> Result<Vec<Method>, CodegenError> {
         self.fn_names = ir_module.fn_names.clone();
 
-        // Build variant_tags map from all IR modules (cross-module sum types)
+        // Build variant_tags, sum_type_params, and variant_field_types from all IR modules
         for module in all_ir_modules {
             for sum_def in &module.sum_types {
                 let mut tag_map = std::collections::HashMap::new();
                 for variant in &sum_def.variants {
                     tag_map.insert(variant.tag, variant.name.clone());
+                    self.variant_field_types.insert(variant.name.clone(), variant.fields.clone());
                 }
                 self.variant_tags.insert(sum_def.name.clone(), tag_map);
+                self.sum_type_params.insert(sum_def.name.clone(), sum_def.type_params.clone());
             }
         }
 
@@ -1000,8 +1002,10 @@ impl Compiler {
             let mut tag_map = std::collections::HashMap::new();
             for variant in &sum_def.variants {
                 tag_map.insert(variant.tag, variant.name.clone());
+                self.variant_field_types.insert(variant.name.clone(), variant.fields.clone());
             }
             self.variant_tags.insert(sum_def.name.clone(), tag_map);
+            self.sum_type_params.insert(sum_def.name.clone(), sum_def.type_params.clone());
         }
 
         let mut extra_methods = Vec::new();

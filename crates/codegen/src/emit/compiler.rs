@@ -337,6 +337,10 @@ pub(super) struct Compiler {
     pub(super) fn_names: HashMap<krypton_ir::FnId, String>,
     /// sum_type_name → (tag → variant_name) for IR Switch compilation.
     pub(super) variant_tags: HashMap<String, HashMap<u32, String>>,
+    /// sum_type_name → type_params for resolving generic types in switch bindings.
+    pub(super) sum_type_params: HashMap<String, Vec<krypton_ir::TypeVarId>>,
+    /// variant_name → field types (from IR SumTypeDef) for resolving generic bindings.
+    pub(super) variant_field_types: HashMap<String, Vec<Type>>,
 }
 
 impl Compiler {
@@ -469,6 +473,8 @@ impl Compiler {
             join_points: HashMap::new(),
             fn_names: HashMap::new(),
             variant_tags: HashMap::new(),
+            sum_type_params: HashMap::new(),
+            variant_field_types: HashMap::new(),
         };
 
         Ok(compiler)
@@ -2193,6 +2199,7 @@ impl Compiler {
                 let is_bool = matches!(scrutinee_type, JvmType::Int) && branches.len() <= 2;
 
                 let total_branches = branches.len() + if default.is_some() { 1 } else { 0 };
+                let all_tags: Vec<u32> = branches.iter().map(|b| b.tag).collect();
 
                 for (i, branch) in branches.iter().enumerate() {
                     let is_last = i == total_branches - 1 && default.is_none();
@@ -2231,7 +2238,7 @@ impl Compiler {
                     } else if !is_bool && !is_last {
                         // Variant dispatch: instanceof check
                         let variant_name = self.find_variant_by_tag(
-                            scrutinee, &self.var_types.clone(), branch.tag)?;
+                            scrutinee, &self.var_types.clone(), branch.tag, &all_tags)?;
                         let sum_name = self.types.variant_to_sum.get(&variant_name)
                             .ok_or_else(|| CodegenError::TypeError(
                                 format!("unknown variant: {variant_name}"), None))?
@@ -2255,8 +2262,10 @@ impl Compiler {
                     // Bind branch variables
                     if !is_bool && !branch.bindings.is_empty() {
                         let variant_name = self.find_variant_by_tag(
-                            scrutinee, &self.var_types.clone(), branch.tag)?;
+                            scrutinee, &self.var_types.clone(), branch.tag, &all_tags)?;
                         let sum_name = self.types.variant_to_sum[&variant_name].clone();
+                        let resolved_field_types = self.resolve_variant_field_types(
+                            scrutinee, &self.var_types.clone(), &sum_name, &variant_name);
                         let sum_info = &self.types.sum_type_info[&sum_name];
                         let vi = &sum_info.variants[&variant_name];
                         let variant_class_index = vi.class_index;
@@ -2316,7 +2325,10 @@ impl Compiler {
                             let var_slot = self.builder.alloc_anonymous_local(actual_type);
                             self.builder.emit_store(var_slot, actual_type);
                             self.var_locals.insert(*var_id, (var_slot, actual_type));
-                            self.var_types.insert(*var_id, var_ty.clone());
+                            let resolved_ty = resolved_field_types.as_ref()
+                                .and_then(|rft| rft.get(j).cloned())
+                                .unwrap_or_else(|| var_ty.clone());
+                            self.var_types.insert(*var_id, resolved_ty);
                         }
                     }
 
@@ -2421,12 +2433,78 @@ impl Compiler {
         }
     }
 
+    /// Substitute type variables in a type using a mapping from TypeVarId to concrete Type.
+    fn substitute_type_vars(ty: &Type, subst: &HashMap<krypton_ir::TypeVarId, Type>) -> Type {
+        match ty {
+            Type::Var(v) => subst.get(v).cloned().unwrap_or_else(|| ty.clone()),
+            Type::Named(name, args) => Type::Named(
+                name.clone(),
+                args.iter().map(|a| Self::substitute_type_vars(a, subst)).collect(),
+            ),
+            Type::Own(inner) => Type::Own(Box::new(Self::substitute_type_vars(inner, subst))),
+            Type::App(ctor, args) => Type::App(
+                Box::new(Self::substitute_type_vars(ctor, subst)),
+                args.iter().map(|a| Self::substitute_type_vars(a, subst)).collect(),
+            ),
+            Type::Fn(params, ret) => Type::Fn(
+                params.iter().map(|p| Self::substitute_type_vars(p, subst)).collect(),
+                Box::new(Self::substitute_type_vars(ret, subst)),
+            ),
+            Type::Tuple(elems) => Type::Tuple(
+                elems.iter().map(|e| Self::substitute_type_vars(e, subst)).collect(),
+            ),
+            _ => ty.clone(),
+        }
+    }
+
+    /// Resolve concrete field types for a variant binding using the scrutinee's type.
+    /// Returns a vec of concrete types for each field, or None if resolution isn't possible.
+    fn resolve_variant_field_types(
+        &self,
+        scrutinee: &krypton_ir::Atom,
+        var_types: &HashMap<krypton_ir::VarId, Type>,
+        sum_name: &str,
+        variant_name: &str,
+    ) -> Option<Vec<Type>> {
+        // Get the sum type's type params and the variant's generic field types
+        let type_params = self.sum_type_params.get(sum_name)?;
+        let field_types = self.variant_field_types.get(variant_name)?;
+
+        // Get the scrutinee's concrete type arguments
+        let type_args = if let krypton_ir::Atom::Var(var_id) = scrutinee {
+            match var_types.get(var_id) {
+                Some(Type::Named(_, args)) => Some(args),
+                Some(Type::Own(inner)) => match inner.as_ref() {
+                    Type::Named(_, args) => Some(args),
+                    _ => None,
+                },
+                _ => None,
+            }
+        } else {
+            None
+        }?;
+
+        if type_params.len() != type_args.len() {
+            return None;
+        }
+
+        // Build substitution: type_param -> concrete type
+        let subst: HashMap<krypton_ir::TypeVarId, Type> = type_params.iter()
+            .zip(type_args.iter())
+            .map(|(p, a)| (*p, a.clone()))
+            .collect();
+
+        // Apply substitution to each field type
+        Some(field_types.iter().map(|ft| Self::substitute_type_vars(ft, &subst)).collect())
+    }
+
     /// Find variant name by tag from scrutinee type info.
     fn find_variant_by_tag(
         &self,
         scrutinee: &krypton_ir::Atom,
         var_types: &HashMap<krypton_ir::VarId, Type>,
         tag: u32,
+        all_tags: &[u32],
     ) -> Result<String, CodegenError> {
         let sum_name = match scrutinee {
             krypton_ir::Atom::Var(var_id) => match var_types.get(var_id) {
@@ -2436,8 +2514,19 @@ impl Compiler {
                     _ => return Err(CodegenError::TypeError(
                         "Switch scrutinee is not a named type".to_string(), None)),
                 },
-                _ => return Err(CodegenError::TypeError(
-                    "Switch scrutinee has unknown type".to_string(), None)),
+                _ => {
+                    // Fallback: find sum type by matching all branch tags
+                    let candidates: Vec<&String> = self.variant_tags.iter()
+                        .filter(|(_, tags)| all_tags.iter().all(|t| tags.contains_key(t)))
+                        .map(|(name, _)| name)
+                        .collect();
+                    if candidates.len() == 1 {
+                        candidates[0].clone()
+                    } else {
+                        return Err(CodegenError::TypeError(
+                            format!("Switch scrutinee has unknown type (var_id {:?}, {} candidates)", var_id, candidates.len()), None))
+                    }
+                }
             },
             _ => return Err(CodegenError::TypeError(
                 "Switch on literal scrutinee".to_string(), None)),
