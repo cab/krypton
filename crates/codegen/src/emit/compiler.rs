@@ -3,8 +3,6 @@
 use std::collections::HashMap;
 
 use krypton_parser::ast::Span;
-use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedFnDecl};
-use krypton_typechecker::types::Type as TcType;
 use krypton_ir::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
@@ -329,7 +327,6 @@ pub(super) struct Compiler {
     pub(super) types: CodegenTypeInfo,
     pub(super) traits: TraitState,
     pub(super) vec_info: Option<VecInfo>,
-    pub(super) auto_close: krypton_typechecker::typed_ast::AutoCloseInfo,
     // IR compilation state
     pub(super) var_locals: HashMap<krypton_ir::VarId, (u16, JvmType)>,
     pub(super) var_types: HashMap<krypton_ir::VarId, Type>,
@@ -467,7 +464,6 @@ impl Compiler {
                 parameterized_instances: HashMap::new(),
             },
             vec_info: None,
-            auto_close: krypton_typechecker::typed_ast::AutoCloseInfo::default(),
             var_locals: HashMap::new(),
             var_types: HashMap::new(),
             join_points: HashMap::new(),
@@ -538,7 +534,6 @@ impl Compiler {
     }
 
     /// Map a typechecker Type to a JvmType by converting to IR Type first.
-    /// Used when compiling TypedExpr-based code (legacy path).
     pub(super) fn tc_type_to_jvm(&self, ty: &krypton_typechecker::types::Type) -> Result<JvmType, CodegenError> {
         let ir_ty: Type = ty.clone().into();
         self.type_to_jvm(&ir_ty)
@@ -553,236 +548,26 @@ impl Compiler {
         self.join_points.clear();
     }
 
-    pub(super) fn compile_expr(
-        &mut self,
-        expr: &TypedExpr,
-        in_tail: bool,
-    ) -> Result<JvmType, CodegenError> {
-        match &expr.kind {
-            TypedExprKind::Lit(value) => self.compile_lit(value),
-            TypedExprKind::BinaryOp { op, lhs, rhs } => self.compile_binop(op, lhs, rhs),
-            TypedExprKind::If { cond, then_, else_ } => {
-                self.compile_if(cond, then_, else_, in_tail)
-            }
-            TypedExprKind::Let { name, value, body } => {
-                self.compile_let(name, value, body, in_tail, expr.span)
-            }
-            TypedExprKind::Var(name) => {
-                let fn_type = match &expr.ty {
-                    TcType::Own(inner) => inner.as_ref(),
-                    other => other,
-                };
-                if matches!(fn_type, TcType::Fn(_, _)) && !self.builder.locals.contains_key(name) {
-                    if self.types.functions.contains_key(name)
-                        || self.types.struct_info.contains_key(name)
-                        || self
-                            .types
-                            .variant_to_sum
-                            .get(name)
-                            .and_then(|sum_name| self.types.sum_type_info.get(sum_name))
-                            .and_then(|sum_info| sum_info.variants.get(name))
-                            .is_some_and(|variant| !variant.fields.is_empty())
-                    {
-                        return self.compile_fn_ref(name, &expr.ty);
-                    }
-                }
-                self.compile_var(name)
-            }
-            TypedExprKind::Do(exprs) => self.compile_do(exprs, in_tail),
-            TypedExprKind::App { func, args } => self.compile_app(func, args, &expr.ty),
-            TypedExprKind::TypeApp { expr: inner, .. } => {
-                if let TypedExprKind::Var(name) = &inner.kind {
-                    let fn_type = match &expr.ty {
-                        TcType::Own(inner) => inner.as_ref(),
-                        other => other,
-                    };
-                    if matches!(fn_type, TcType::Fn(_, _)) && !self.builder.locals.contains_key(name) {
-                        if self.types.functions.contains_key(name)
-                            || self.types.struct_info.contains_key(name)
-                            || self
-                                .types
-                                .variant_to_sum
-                                .get(name)
-                                .and_then(|sum_name| self.types.sum_type_info.get(sum_name))
-                                .and_then(|sum_info| sum_info.variants.get(name))
-                                .is_some_and(|variant| !variant.fields.is_empty())
-                        {
-                            return self.compile_fn_ref(name, &expr.ty);
-                        }
-                    }
-                }
-                self.compile_expr(inner, in_tail)
-            }
-            TypedExprKind::Recur(args) => self.compile_recur(args, in_tail, expr.span),
-            TypedExprKind::FieldAccess {
-                expr: target,
-                field,
-            } => self.compile_field_access(target, field),
-            TypedExprKind::Tuple(elems) => self.compile_tuple(elems, &expr.ty),
-            TypedExprKind::LetPattern {
-                pattern,
-                value,
-                body,
-            } => self.compile_let_pattern(pattern, value, body, in_tail),
-            TypedExprKind::StructLit { fields, .. } => self.compile_struct_lit(fields, &expr.ty),
-            TypedExprKind::StructUpdate { base, fields } => {
-                self.compile_struct_update(base, fields)
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                self.compile_match(scrutinee, arms, in_tail)
-            }
-            TypedExprKind::UnaryOp { op, operand } => self.compile_unaryop(op, operand),
-            TypedExprKind::Lambda { params, body } => self.compile_lambda(params, body, &expr.ty),
-            TypedExprKind::QuestionMark {
-                expr: inner,
-                is_option,
-            } => self.compile_question_mark(inner, *is_option, &expr.ty, expr.span),
-            TypedExprKind::VecLit(elems) => self.compile_vec_lit(elems),
-            other => Err(CodegenError::UnsupportedExpr(format!("{other:?}"), Some(expr.span))),
-        }
-    }
-
-    /// Compile a function declaration into a JVM Method.
-    pub(super) fn compile_function(&mut self, decl: &TypedFnDecl) -> Result<Method, CodegenError> {
-        self.reset_method_state();
-
-        // Look up the function's type info
-        let info = self
-            .types
-            .get_function(&decl.name)
-            .ok_or_else(|| CodegenError::UndefinedVariable(decl.name.clone(), None))?;
-        let param_types = info.param_types.clone();
-        let return_type = info.return_type;
-
-        // Get typechecker types for this function's params (for detecting Fn-typed params)
-        let tc_types = self.types.fn_tc_types.get(&decl.name).cloned();
-
-        // Register dict params for constrained functions (leading params before user params)
-        let dict_requirements = self.traits.impl_dict_requirements
-            .get(&decl.name)
-            .cloned()
-            .unwrap_or_default();
-        let num_dict_params = dict_requirements.len();
-        let mut fn_params = Vec::new();
-        for requirement in &dict_requirements {
-            let slot = self.builder.next_local;
-            let jvm_ty = JvmType::StructRef(self.builder.refs.object_class);
-            self.traits
-                .dict_locals
-                .insert((requirement.trait_name().to_string(), requirement.type_var_id()), slot);
-            fn_params.push((slot, jvm_ty));
-            self.builder.next_local += 1;
-            self.builder.frame.local_types.push(VerificationType::Object {
-                cpool_index: self.builder.refs.object_class,
-            });
-        }
-
-        // Register user parameters as locals and save fn_params for recur
-        for (i, (param_name, &jvm_ty)) in decl
-            .params
-            .iter()
-            .zip(param_types[num_dict_params..].iter())
-            .enumerate()
-        {
-            let slot = self.builder.alloc_local(param_name.clone(), jvm_ty);
-            fn_params.push((slot, jvm_ty));
-
-            // If this param is function-typed, register in local_fn_info
-            if let Some((ref tc_param_types, _)) = tc_types {
-                let tc_param_type = match &tc_param_types[i] {
-                    Type::Own(inner) => inner.as_ref(),
-                    other => other,
-                };
-                if let Type::Fn(inner_params, inner_ret) = tc_param_type {
-                    let inner_param_jvm: Vec<JvmType> = inner_params
-                        .iter()
-                        .map(|t| self.type_to_jvm(t))
-                        .collect::<Result<_, _>>()?;
-                    let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
-                    let arity = inner_params.len() as u8;
-                    self.lambda.ensure_fun_interface(
-                        arity,
-                        &mut self.cp,
-                        &mut self.types.class_descriptors,
-                    )?;
-                    self.builder.local_fn_info
-                        .insert(param_name.clone(), (inner_param_jvm, inner_ret_jvm));
+    pub(super) fn emit_int_const(&mut self, n: i32) {
+        match n {
+            0 => self.builder.emit(Instruction::Iconst_0),
+            1 => self.builder.emit(Instruction::Iconst_1),
+            2 => self.builder.emit(Instruction::Iconst_2),
+            3 => self.builder.emit(Instruction::Iconst_3),
+            4 => self.builder.emit(Instruction::Iconst_4),
+            5 => self.builder.emit(Instruction::Iconst_5),
+            _ => {
+                let idx = self
+                    .cp
+                    .add_integer(n)
+                    .expect("failed to add integer constant");
+                if idx <= 255 {
+                    self.builder.emit(Instruction::Ldc(idx as u8));
+                } else {
+                    self.builder.emit(Instruction::Ldc_w(idx));
                 }
             }
         }
-        self.builder.fn_params = fn_params;
-        self.builder.num_dict_params = num_dict_params;
-        self.builder.fn_return_type = Some(return_type);
-
-        // Emit Nop as recur back-edge target at instruction 0.
-        self.builder.emit(Instruction::Nop);
-        self.builder.recur_target = self.builder.code.len() as u16;
-        self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
-
-        // Compile function body
-        let body_type = self.compile_expr(&decl.body, true)?;
-
-        // If body type is Object but return type is primitive, unbox
-        if matches!(body_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && !matches!(return_type, JvmType::StructRef(_))
-        {
-            self.builder.unbox_if_needed(return_type);
-        }
-        // If body type is primitive but return type is Object, box
-        else if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && !matches!(body_type, JvmType::StructRef(_))
-        {
-            self.builder.box_if_needed(body_type);
-        }
-        // If body type is Object but return type is a specific reference type, checkcast
-        else if matches!(body_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && matches!(return_type, JvmType::StructRef(_))
-            && !matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-        {
-            let cast_class = match return_type {
-                JvmType::StructRef(idx) => idx,
-                _ => unreachable!(),
-            };
-            self.builder.emit(Instruction::Checkcast(cast_class));
-            self.builder.frame.pop_type();
-            self.builder.frame.push_type(VerificationType::Object {
-                cpool_index: cast_class,
-            });
-        }
-
-        // Auto-close live resources at function exit
-        if let Some(bindings) = self.auto_close.fn_exits.get(&decl.name).cloned() {
-            // Save return value to temp
-            let ret_slot = self.builder.alloc_anonymous_local(return_type);
-            self.builder.emit_store(ret_slot, return_type);
-
-            for binding in &bindings {
-                self.emit_auto_close(binding)?;
-            }
-
-            // Reload return value
-            self.builder.emit_load(ret_slot, return_type);
-        }
-
-        // Emit typed return
-        let ret_instr = match return_type {
-            JvmType::Long => Instruction::Lreturn,
-            JvmType::Double => Instruction::Dreturn,
-            JvmType::Int => Instruction::Ireturn,
-            JvmType::StructRef(_) => Instruction::Areturn,
-        };
-        self.builder.emit(ret_instr);
-
-        let descriptor = self.types.build_descriptor(&param_types, return_type);
-        let name_idx = self.cp.add_utf8(&decl.name)?;
-        let desc_idx = self.cp.add_utf8(&descriptor)?;
-
-        Ok(Method {
-            access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::STATIC,
-            name_index: name_idx,
-            descriptor_index: desc_idx,
-            attributes: vec![self.builder.finish_method()],
-        })
     }
 
     // -----------------------------------------------------------------------

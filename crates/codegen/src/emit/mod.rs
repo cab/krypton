@@ -5,10 +5,8 @@ mod calls;
 mod data_class_gen;
 mod trait_class_gen;
 mod compiler;
-mod expr;
 mod intrinsics;
 mod lambda;
-mod pattern;
 mod registration;
 
 use std::collections::HashMap;
