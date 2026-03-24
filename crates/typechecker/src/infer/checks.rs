@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, UnaryOp};
 
 use crate::trait_registry::TraitRegistry;
-use crate::typed_ast::{TraitId, TypedExpr, TypedExprKind};
+use crate::typed_ast::{TraitName, TypedExpr, TypedExprKind};
 use crate::types;
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
@@ -262,7 +262,7 @@ pub(super) fn check_constrained_function_refs(
 /// Detect trait method calls on type variables and collect as constraints (used for codegen dict params).
 pub(super) fn detect_trait_constraints(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
     constraints: &mut Vec<(String, TypeVarId)>,
@@ -275,7 +275,7 @@ pub(super) fn detect_trait_constraints(
 /// Validate that all trait method calls on type variables have corresponding declared constraints.
 pub(super) fn validate_trait_constraints(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
     declared_constraints: &[(String, TypeVarId)],
@@ -312,7 +312,7 @@ pub(super) fn validate_trait_constraints(
 /// Shared walker: finds trait method calls on type variables and invokes the callback for each.
 fn walk_trait_method_calls(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
     callback: &mut dyn FnMut(String, TypeVarId),
@@ -377,11 +377,38 @@ fn walk_trait_method_calls(
                     work.push(&arm.body);
                 }
             }
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            TypedExprKind::BinaryOp { op, lhs, rhs } => {
+                let trait_name = match op {
+                    BinOp::Add => Some("Semigroup"),
+                    BinOp::Sub => Some("Sub"),
+                    BinOp::Mul => Some("Mul"),
+                    BinOp::Div => Some("Div"),
+                    BinOp::Eq | BinOp::Neq => Some("Eq"),
+                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some("Ord"),
+                    BinOp::And | BinOp::Or => None,
+                };
+                if let Some(tn) = trait_name {
+                    let operand_ty = strip_own(&subst.apply(&lhs.ty));
+                    if let Some(v) = leading_type_var(&operand_ty) {
+                        if fn_type_param_vars.contains(&v) {
+                            callback(tn.to_string(), v);
+                        }
+                    }
+                }
                 work.push(lhs);
                 work.push(rhs);
             }
-            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
+            TypedExprKind::UnaryOp { op, operand } => {
+                if matches!(op, UnaryOp::Neg) {
+                    let operand_ty = strip_own(&subst.apply(&operand.ty));
+                    if let Some(v) = leading_type_var(&operand_ty) {
+                        if fn_type_param_vars.contains(&v) {
+                            callback("Neg".to_string(), v);
+                        }
+                    }
+                }
+                work.push(operand);
+            }
             TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
             TypedExprKind::StructLit { fields, .. } => {
                 for (_, e) in fields {
@@ -412,7 +439,7 @@ fn walk_trait_method_calls(
 /// Also checks calls to imported constrained functions (via `fn_constraint_requirements`).
 pub(super) fn check_trait_instances(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,

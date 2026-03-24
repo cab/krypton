@@ -104,22 +104,20 @@ fn main() -> Unit =
 
 fn Cmp$$Int$$compare(v3: Int, v4: Int) -> Int =
   let_join v13(v7: Bool) =
-    switch v7 {
-      1 ->
-        let v8: Int = sub_int(0, 1)
-        v8
-      _ ->
-        let_join v12(v11: Bool) =
-          switch v11 {
-            1 ->
-              1
-            _ ->
-              0
-          }
-        in
-        let v9: Dict[Ord, Int] = get_dict Ord[Int]
-        let v10: Bool = call lt(v9, v4, v3)
-        jump v12(v10)
+    if v7 {
+      let v8: Int = sub_int(0, 1)
+      v8
+    } else {
+      let_join v12(v11: Bool) =
+        if v11 {
+          1
+        } else {
+          0
+        }
+      in
+      let v9: Dict[Ord, Int] = get_dict Ord[Int]
+      let v10: Bool = call lt(v9, v4, v3)
+      jump v12(v10)
     }
   in
   let v5: Dict[Ord, Int] = get_dict Ord[Int]

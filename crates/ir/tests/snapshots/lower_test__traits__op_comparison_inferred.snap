@@ -2,9 +2,8 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module functions__recur_loop
+module traits__op_comparison_inferred
 
-extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -49,6 +48,16 @@ extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
@@ -80,7 +89,6 @@ import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
 import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
 import core/list/map as map(List[x], (x) -> z): List[z]
 import core/vec/to_list as to_list(Vec[j7]): List[j7]
-import core/io/println as println(m): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -90,27 +98,20 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
+import core/io/println as println(m): Unit
 declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
+declare show: (g) -> String
 
-fn sum(v0: Int, v1: Int) -> Int =
-  let_join [recur] v2(v3: Int, v4: Int) =
-    let_join v10(v7: Bool) =
-      if v7 {
-        v4
-      } else {
-        let v8: Int = sub_int(v3, 1)
-        let v9: Int = add_int(v4, v3)
-        jump v2(v8, v9)
-      }
-    in
-    let v5: Dict[Eq, Int] = get_dict Eq[Int]
-    let v6: Bool = call eq(v5, v3, 0)
-    jump v10(v6)
-  in
-  jump v2(v0, v1)
+fn is_equal(v0: Dict[Eq, v7], v1: v7, v2: v7) -> Bool =
+  let v3: Bool = call eq(v0, v1, v2)
+  v3
 
 fn main() -> Unit =
-  let v11: Int = call sum(100, 0)
-  let v12: Unit = call println(v11)
-  v12
+  let v5: Dict[Eq, Int] = get_dict Eq[Int]
+  let v6: Bool = call is_equal(v5, 1, 1)
+  let v7: Dict[Show, Bool] = get_dict Show[Bool]
+  let v8: String = call show(v7, v6)
+  let v4: Dict[Show, String] = get_dict Show[String]
+  let v9: Unit = call println(v4, v8)
+  v9

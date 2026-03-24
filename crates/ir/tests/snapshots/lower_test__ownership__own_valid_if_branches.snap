@@ -97,9 +97,8 @@ fn test(v1: ~String, v2: ~String) -> String =
     let v4: String = call consume(v3)
     v4
   in
-  switch true {
-    1 ->
-      jump v5(v1)
-    _ ->
-      jump v5(v2)
+  if true {
+    jump v5(v1)
+  } else {
+    jump v5(v2)
   }

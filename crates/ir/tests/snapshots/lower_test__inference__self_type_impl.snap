@@ -107,15 +107,14 @@ fn main() -> Unit =
 
 fn MyEq$$Point$$my_eq(v6: Point, v7: Point) -> Bool =
   let_join v17(v12: Bool) =
-    switch v12 {
-      1 ->
-        let v13: Dict[Eq, Int] = get_dict Eq[Int]
-        let v14: Int = project v6.1
-        let v15: Int = project v7.1
-        let v16: Bool = call eq(v13, v14, v15)
-        v16
-      _ ->
-        false
+    if v12 {
+      let v13: Dict[Eq, Int] = get_dict Eq[Int]
+      let v14: Int = project v6.1
+      let v15: Int = project v7.1
+      let v16: Bool = call eq(v13, v14, v15)
+      v16
+    } else {
+      false
     }
   in
   let v8: Dict[Eq, Int] = get_dict Eq[Int]

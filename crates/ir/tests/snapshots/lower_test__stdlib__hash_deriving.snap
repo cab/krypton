@@ -141,23 +141,21 @@ fn Hash$$Point$$hash(v32: Point) -> Int =
 
 fn Eq$$Point$$eq(v41: Point, v42: Point) -> Bool =
   let_join v54(v47: Bool) =
-    switch v47 {
-      1 ->
-        let_join v53(v52: Bool) =
-          switch v52 {
-            1 ->
-              true
-            _ ->
-              false
-          }
-        in
-        let v48: Dict[Eq, Int] = get_dict Eq[Int]
-        let v49: Int = project v41.1
-        let v50: Int = project v42.1
-        let v51: Bool = call eq(v48, v49, v50)
-        jump v53(v51)
-      _ ->
-        false
+    if v47 {
+      let_join v53(v52: Bool) =
+        if v52 {
+          true
+        } else {
+          false
+        }
+      in
+      let v48: Dict[Eq, Int] = get_dict Eq[Int]
+      let v49: Int = project v41.1
+      let v50: Int = project v42.1
+      let v51: Bool = call eq(v48, v49, v50)
+      jump v53(v51)
+    } else {
+      false
     }
   in
   let v43: Dict[Eq, Int] = get_dict Eq[Int]

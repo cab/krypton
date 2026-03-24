@@ -181,14 +181,13 @@ fn filter(v13: List[i1], v14: (i1) -> Bool) -> List[i1] =
       v15
     0 (v16: i1, v17: List[i1]) ->
       let v18: Bool = call_closure v14(v16)
-      switch v18 {
-        1 ->
-          let v19: List[i1] = call filter(v17, v14)
-          let v20: ~List[i1] = construct List::Cons#0(v16, v19)
-          v20
-        _ ->
-          let v21: List[i1] = call filter(v17, v14)
-          v21
+      if v18 {
+        let v19: List[i1] = call filter(v17, v14)
+        let v20: ~List[i1] = construct List::Cons#0(v16, v19)
+        v20
+      } else {
+        let v21: List[i1] = call filter(v17, v14)
+        v21
       }
   }
 
@@ -302,17 +301,16 @@ fn merge_by(v84: Dict[Ord, a5], v85: List[y4], v86: List[y4], v87: (y4) -> a5) -
           v85
         0 (v90: y4, v91: List[y4]) ->
           let_join v102(v95: Bool) =
-            switch v95 {
-              1 ->
-                let v96: ~List[y4] = construct List::Cons#0(v90, v91)
-                let v97: List[y4] = call merge_by(v84, v89, v96, v87)
-                let v98: ~List[y4] = construct List::Cons#0(v88, v97)
-                v98
-              _ ->
-                let v99: ~List[y4] = construct List::Cons#0(v88, v89)
-                let v100: List[y4] = call merge_by(v84, v99, v91, v87)
-                let v101: ~List[y4] = construct List::Cons#0(v90, v100)
-                v101
+            if v95 {
+              let v96: ~List[y4] = construct List::Cons#0(v90, v91)
+              let v97: List[y4] = call merge_by(v84, v89, v96, v87)
+              let v98: ~List[y4] = construct List::Cons#0(v88, v97)
+              v98
+            } else {
+              let v99: ~List[y4] = construct List::Cons#0(v88, v89)
+              let v100: List[y4] = call merge_by(v84, v99, v91, v87)
+              let v101: ~List[y4] = construct List::Cons#0(v90, v100)
+              v101
             }
           in
           let v92: a5 = call_closure v87(v88)
@@ -413,14 +411,13 @@ fn put(v1: Dict[Eq, y8], v2: Dict[Hash, y8], v3: Map[y8, z8], v4: y8, v5: z8) ->
 
 fn get(v9: Dict[Eq, r9], v10: Dict[Hash, r9], v11: Map[r9, e10], v12: r9) -> Option[e10] =
   let v13: Bool = call staticContainsKey(v11, v12)
-  switch v13 {
-    1 ->
-      let v14: e10 = call staticGetUnsafe(v11, v12)
-      let v15: ~Option[e10] = construct Option::Some#0(v14)
-      v15
-    _ ->
-      let v16: ~Option[e10] = construct Option::None#1()
-      v16
+  if v13 {
+    let v14: e10 = call staticGetUnsafe(v11, v12)
+    let v15: ~Option[e10] = construct Option::Some#0(v14)
+    v15
+  } else {
+    let v16: ~Option[e10] = construct Option::None#1()
+    v16
   }
 
 fn delete(v17: Dict[Eq, g10], v18: Dict[Hash, g10], v19: Map[g10, h10], v20: g10) -> Map[g10, h10] =
@@ -443,18 +440,17 @@ fn values(v30: Map[g11, j11]) -> List[j11] =
 
 fn entries_go(v33: Object, v34: Int, v35: List[(p11, q11)]) -> List[(p11, q11)] =
   let_join v46(v38: Bool) =
-    switch v38 {
-      1 ->
-        v35
-      _ ->
-        let v39: Int = sub_int(v34, 2)
-        let v40: Int = sub_int(v34, 1)
-        let v41: p11 = call staticGet(v33, v40)
-        let v42: q11 = call staticGet(v33, v34)
-        let v43: (p11, q11) = tuple(v41, v42)
-        let v44: ~List[(p11, q11)] = construct List::Cons#0(v43, v35)
-        let v45: List[(p11, q11)] = call entries_go(v33, v39, v44)
-        v45
+    if v38 {
+      v35
+    } else {
+      let v39: Int = sub_int(v34, 2)
+      let v40: Int = sub_int(v34, 1)
+      let v41: p11 = call staticGet(v33, v40)
+      let v42: q11 = call staticGet(v33, v34)
+      let v43: (p11, q11) = tuple(v41, v42)
+      let v44: ~List[(p11, q11)] = construct List::Cons#0(v43, v35)
+      let v45: List[(p11, q11)] = call entries_go(v33, v39, v44)
+      v45
     }
   in
   let v36: Dict[Ord, Int] = get_dict Ord[Int]
@@ -602,26 +598,24 @@ fn len(v0: Vec[d6]) -> Int =
 
 fn nth(v2: Vec[s6], v3: Int) -> Option[s6] =
   let_join v16(v6: Bool) =
-    switch v6 {
-      1 ->
-        let v7: ~Option[s6] = construct Option::None#1()
-        v7
-      _ ->
-        let_join v15(v11: Bool) =
-          switch v11 {
-            1 ->
-              let v12: s6 = call staticGet(v2, v3)
-              let v13: ~Option[s6] = construct Option::Some#0(v12)
-              v13
-            _ ->
-              let v14: ~Option[s6] = construct Option::None#1()
-              v14
-          }
-        in
-        let v8: Dict[Ord, Int] = get_dict Ord[Int]
-        let v9: Int = call staticLength(v2)
-        let v10: Bool = call lt(v8, v3, v9)
-        jump v15(v10)
+    if v6 {
+      let v7: ~Option[s6] = construct Option::None#1()
+      v7
+    } else {
+      let_join v15(v11: Bool) =
+        if v11 {
+          let v12: s6 = call staticGet(v2, v3)
+          let v13: ~Option[s6] = construct Option::Some#0(v12)
+          v13
+        } else {
+          let v14: ~Option[s6] = construct Option::None#1()
+          v14
+        }
+      in
+      let v8: Dict[Ord, Int] = get_dict Ord[Int]
+      let v9: Int = call staticLength(v2)
+      let v10: Bool = call lt(v8, v3, v9)
+      jump v15(v10)
     }
   in
   let v4: Dict[Ord, Int] = get_dict Ord[Int]
@@ -630,15 +624,14 @@ fn nth(v2: Vec[s6], v3: Int) -> Option[s6] =
 
 fn vec_from_vec_go(v17: Vec[a7], v18: Int, v19: List[a7]) -> List[a7] =
   let_join v27(v22: Bool) =
-    switch v22 {
-      1 ->
-        v19
-      _ ->
-        let v23: Int = sub_int(v18, 1)
-        let v24: a7 = call staticGet(v17, v18)
-        let v25: ~List[a7] = construct List::Cons#0(v24, v19)
-        let v26: List[a7] = call vec_from_vec_go(v17, v23, v25)
-        v26
+    if v22 {
+      v19
+    } else {
+      let v23: Int = sub_int(v18, 1)
+      let v24: a7 = call staticGet(v17, v18)
+      let v25: ~List[a7] = construct List::Cons#0(v24, v19)
+      let v26: List[a7] = call vec_from_vec_go(v17, v23, v25)
+      v26
     }
   in
   let v20: Dict[Ord, Int] = get_dict Ord[Int]
@@ -676,15 +669,14 @@ fn from_list(v44: List[f8]) -> Vec[f8] =
 fn last(v48: Vec[p8]) -> Option[p8] =
   let v49: Int = call staticLength(v48)
   let_join v57(v52: Bool) =
-    switch v52 {
-      1 ->
-        let v53: ~Option[p8] = construct Option::None#1()
-        v53
-      _ ->
-        let v54: Int = sub_int(v49, 1)
-        let v55: p8 = call staticGet(v48, v54)
-        let v56: ~Option[p8] = construct Option::Some#0(v55)
-        v56
+    if v52 {
+      let v53: ~Option[p8] = construct Option::None#1()
+      v53
+    } else {
+      let v54: Int = sub_int(v49, 1)
+      let v55: p8 = call staticGet(v48, v54)
+      let v56: ~Option[p8] = construct Option::Some#0(v55)
+      v56
     }
   in
   let v50: Dict[Ord, Int] = get_dict Ord[Int]

@@ -99,11 +99,10 @@ fn main() -> Unit =
     v5
   in
   let_join v3(v2: Bool) =
-    switch v2 {
-      1 ->
-        jump v6("yes")
-      _ ->
-        jump v6("no")
+    if v2 {
+      jump v6("yes")
+    } else {
+      jump v6("no")
     }
   in
   let v0: Dict[Eq, Int] = get_dict Eq[Int]

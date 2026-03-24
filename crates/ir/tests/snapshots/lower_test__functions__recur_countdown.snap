@@ -96,12 +96,11 @@ declare println: (m) -> Unit
 fn countdown(v0: Int) -> Int =
   let_join [recur] v1(v2: Int) =
     let_join v7(v5: Bool) =
-      switch v5 {
-        1 ->
-          0
-        _ ->
-          let v6: Int = sub_int(v2, 1)
-          jump v1(v6)
+      if v5 {
+        0
+      } else {
+        let v6: Int = sub_int(v2, 1)
+        jump v1(v6)
       }
     in
     let v3: Dict[Eq, Int] = get_dict Eq[Int]

@@ -93,14 +93,13 @@ declare eq: (g, g) -> Bool
 
 fn sum_to(v0: Int, v1: Int) -> Int =
   let_join v8(v4: Bool) =
-    switch v4 {
-      1 ->
-        v1
-      _ ->
-        let v5: Int = sub_int(v0, 1)
-        let v6: Int = add_int(v1, v0)
-        let v7: Int = call sum_to(v5, v6)
-        v7
+    if v4 {
+      v1
+    } else {
+      let v5: Int = sub_int(v0, 1)
+      let v6: Int = add_int(v1, v0)
+      let v7: Int = call sum_to(v5, v6)
+      v7
     }
   in
   let v2: Dict[Eq, Int] = get_dict Eq[Int]

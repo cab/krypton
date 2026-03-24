@@ -107,11 +107,10 @@ fn both_less(v0: Dict[Ord, v7], v1: Dict[Ord, w7], v2: v7, v3: v7, v4: w7, v5: w
   let_join v13(v6: Bool) =
     let_join v12(v8: Bool) =
       let_join v11(v10: Bool) =
-        switch v10 {
-          1 ->
-            v8
-          _ ->
-            false
+        if v10 {
+          v8
+        } else {
+          false
         }
       in
       jump v11(v6)

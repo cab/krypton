@@ -1,0 +1,7 @@
+# expect: output "3"
+# Tests that a function with explicit Semigroup constraint and operator works.
+import core/io.{println}
+
+fun add[a](x: a, y: a) -> a where a: Semigroup = x + y
+
+fun main() = println(show(add(1, 2)))

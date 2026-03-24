@@ -1,2 +1,2 @@
-# expect: ok
+# expect: error E0312
 fun add(x, y) = x + y

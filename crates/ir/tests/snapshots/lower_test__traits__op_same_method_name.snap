@@ -2,9 +2,10 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module functions__recur_loop
+module traits__op_same_method_name
 
-extern java "krypton.runtime.KryptonIO" println(Object): Unit
+trait Joinable[u7] { join(u7, u7): u7 }
+instance Joinable[String] { join=f3 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -49,6 +50,16 @@ extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
+extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
+extern java "krypton.runtime.KryptonIO" readLine(): String
+extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
+extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
@@ -80,7 +91,6 @@ import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
 import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
 import core/list/map as map(List[x], (x) -> z): List[z]
 import core/vec/to_list as to_list(Vec[j7]): List[j7]
-import core/io/println as println(m): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -90,27 +100,34 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
+import core/io/println as println(m): Unit
+declare combine: (g, g) -> g
+declare join
 declare println: (m) -> Unit
+declare show: (g) -> String
 
-fn sum(v0: Int, v1: Int) -> Int =
-  let_join [recur] v2(v3: Int, v4: Int) =
-    let_join v10(v7: Bool) =
-      if v7 {
-        v4
-      } else {
-        let v8: Int = sub_int(v3, 1)
-        let v9: Int = add_int(v4, v3)
-        jump v2(v8, v9)
-      }
-    in
-    let v5: Dict[Eq, Int] = get_dict Eq[Int]
-    let v6: Bool = call eq(v5, v3, 0)
-    jump v10(v6)
-  in
-  jump v2(v0, v1)
+fn apply_combine(v0: Dict[Semigroup, a8], v1: a8, v2: a8) -> a8 =
+  let v3: a8 = call combine(v0, v1, v2)
+  v3
+
+fn apply_join(v4: Dict[Joinable, g8], v5: g8, v6: g8) -> g8 =
+  let v7: g8 = call join(v4, v5, v6)
+  v7
 
 fn main() -> Unit =
-  let v11: Int = call sum(100, 0)
-  let v12: Unit = call println(v11)
-  v12
+  let v8: Dict[Semigroup, Int] = get_dict Semigroup[Int]
+  let v9: Int = call apply_combine(v8, 1, 2)
+  let v10: Dict[Show, Int] = get_dict Show[Int]
+  let v11: String = call show(v10, v9)
+  let v12: Dict[Show, String] = get_dict Show[String]
+  let v13: Unit = call println(v12, v11)
+  let v15: Dict[Joinable, String] = get_dict Joinable[String]
+  let v16: String = call apply_join(v15, "hello", "world")
+  let v14: Dict[Show, String] = get_dict Show[String]
+  let v17: Unit = call println(v14, v16)
+  v17
+
+fn Joinable$$String$$join(v18: String, v19: String) -> String =
+  let v20: String = concat_string(v18, " ")
+  let v21: String = concat_string(v20, v19)
+  v21

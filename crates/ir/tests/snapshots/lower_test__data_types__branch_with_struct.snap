@@ -97,13 +97,12 @@ declare println: (m) -> Unit
 
 fn pick(v0: Int) -> Wrapper =
   let_join v6(v3: Bool) =
-    switch v3 {
-      1 ->
-        let v4: ~Wrapper = call Wrapper(100)
-        v4
-      _ ->
-        let v5: ~Wrapper = call Wrapper(42)
-        v5
+    if v3 {
+      let v4: ~Wrapper = call Wrapper(100)
+      v4
+    } else {
+      let v5: ~Wrapper = call Wrapper(42)
+      v5
     }
   in
   let v1: Dict[Ord, Int] = get_dict Ord[Int]

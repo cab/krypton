@@ -96,13 +96,12 @@ declare println: (m) -> Unit
 fn sum(v0: Int, v1: Int) -> Int =
   let_join [recur] v2(v3: Int, v4: Int) =
     let_join v10(v7: Bool) =
-      switch v7 {
-        1 ->
-          v4
-        _ ->
-          let v8: Int = sub_int(v3, 1)
-          let v9: Int = add_int(v4, v3)
-          jump v2(v8, v9)
+      if v7 {
+        v4
+      } else {
+        let v8: Int = sub_int(v3, 1)
+        let v9: Int = add_int(v4, v3)
+        jump v2(v8, v9)
       }
     in
     let v5: Dict[Eq, Int] = get_dict Eq[Int]

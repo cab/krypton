@@ -1,0 +1,7 @@
+# expect: output "-5"
+# Tests that a function with explicit Neg constraint and unary - works.
+import core/io.{println}
+
+fun negate[a](x: a) -> a where a: Neg = -x
+
+fun main() = println(show(negate(5)))

@@ -98,10 +98,9 @@ fn main() -> Unit =
     let v2: Unit = call println(v0)
     v2
   in
-  switch true {
-    1 ->
-      jump v3(42)
-    _ ->
-      let v1: Int = call panic("oops")
-      jump v3(v1)
+  if true {
+    jump v3(42)
+  } else {
+    let v1: Int = call panic("oops")
+    jump v3(v1)
   }

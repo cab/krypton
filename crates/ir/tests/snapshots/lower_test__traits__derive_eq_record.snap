@@ -109,23 +109,21 @@ fn main() -> Unit =
 
 fn Eq$$Point$$eq(v7: Point, v8: Point) -> Bool =
   let_join v20(v13: Bool) =
-    switch v13 {
-      1 ->
-        let_join v19(v18: Bool) =
-          switch v18 {
-            1 ->
-              true
-            _ ->
-              false
-          }
-        in
-        let v14: Dict[Eq, Int] = get_dict Eq[Int]
-        let v15: Int = project v7.1
-        let v16: Int = project v8.1
-        let v17: Bool = call eq(v14, v15, v16)
-        jump v19(v17)
-      _ ->
-        false
+    if v13 {
+      let_join v19(v18: Bool) =
+        if v18 {
+          true
+        } else {
+          false
+        }
+      in
+      let v14: Dict[Eq, Int] = get_dict Eq[Int]
+      let v15: Int = project v7.1
+      let v16: Int = project v8.1
+      let v17: Bool = call eq(v14, v15, v16)
+      jump v19(v17)
+    } else {
+      false
     }
   in
   let v9: Dict[Eq, Int] = get_dict Eq[Int]

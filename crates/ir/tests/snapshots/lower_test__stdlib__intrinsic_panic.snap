@@ -92,10 +92,9 @@ import core/ordering/GT as GT(): Ordering
 declare panic
 
 fn main() -> Int =
-  switch true {
-    1 ->
-      42
-    _ ->
-      let v0: Int = call panic("oops")
-      v0
+  if true {
+    42
+  } else {
+    let v0: Int = call panic("oops")
+    v0
   }

@@ -90,9 +90,8 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 fn test(v0: ~String, v1: String) -> String =
-  switch true {
-    1 ->
-      v0
-    _ ->
-      v1
+  if true {
+    v0
+  } else {
+    v1
   }

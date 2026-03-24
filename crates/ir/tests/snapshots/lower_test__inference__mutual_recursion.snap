@@ -93,13 +93,12 @@ declare eq: (g, g) -> Bool
 
 fn is_even(v0: Int) -> Bool =
   let_join v6(v3: Bool) =
-    switch v3 {
-      1 ->
-        true
-      _ ->
-        let v4: Int = sub_int(v0, 1)
-        let v5: Bool = call is_odd(v4)
-        v5
+    if v3 {
+      true
+    } else {
+      let v4: Int = sub_int(v0, 1)
+      let v5: Bool = call is_odd(v4)
+      v5
     }
   in
   let v1: Dict[Eq, Int] = get_dict Eq[Int]
@@ -108,13 +107,12 @@ fn is_even(v0: Int) -> Bool =
 
 fn is_odd(v7: Int) -> Bool =
   let_join v13(v10: Bool) =
-    switch v10 {
-      1 ->
-        false
-      _ ->
-        let v11: Int = sub_int(v7, 1)
-        let v12: Bool = call is_even(v11)
-        v12
+    if v10 {
+      false
+    } else {
+      let v11: Int = sub_int(v7, 1)
+      let v12: Bool = call is_even(v11)
+      v12
     }
   in
   let v8: Dict[Eq, Int] = get_dict Eq[Int]

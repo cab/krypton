@@ -100,12 +100,11 @@ declare show: (g) -> String
 
 fn eq_and_show(v0: Dict[Eq, w7], v1: Dict[Show, w7], v2: w7, v3: w7) -> String =
   let v4: Bool = call eq(v0, v2, v3)
-  switch v4 {
-    1 ->
-      let v5: String = call show(v1, v2)
-      v5
-    _ ->
-      "not equal"
+  if v4 {
+    let v5: String = call show(v1, v2)
+    v5
+  } else {
+    "not equal"
   }
 
 fn main() -> Unit =

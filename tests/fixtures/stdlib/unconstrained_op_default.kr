@@ -1,6 +1,6 @@
-# expect: output "3"
-# Operators on unconstrained type variables default to Int.
-# This documents the current behavior for regression tracking.
+# expect: error E0312
+# Operators on unconstrained type variables require explicit trait bounds.
+# Previously this defaulted to Int; now it's an error.
 import core/io.{println}
 
 fun add_ints(a, b) = a + b

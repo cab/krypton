@@ -1,0 +1,7 @@
+# expect: output "true"
+# Tests that a function with explicit Eq constraint and == operator works.
+import core/io.{println}
+
+fun is_equal[a](x: a, y: a) -> Bool where a: Eq = x == y
+
+fun main() = println(show(is_equal(1, 1)))

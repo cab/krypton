@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
-use crate::typed_ast::{TraitId, TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{TraitName, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
@@ -11,7 +11,7 @@ use super::QualifiedModuleBinding;
 
 struct OverloadOption {
     scheme: TypeScheme,
-    origin: Option<TraitId>,
+    origin: Option<TraitName>,
     module: String,
 }
 
@@ -30,28 +30,11 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
-    pub(super) trait_method_map: &'a HashMap<String, TraitId>,
+    pub(super) trait_method_map: &'a HashMap<String, TraitName>,
     pub(super) self_type: Option<Type>,
 }
 
 impl<'a> InferenceContext<'a> {
-    fn is_type_var_constrained(&self, ty: &Type, trait_name: &str) -> bool {
-        if let Type::Var(_) = ty {
-            let resolved = self.subst.apply(ty);
-            if let Type::Var(resolved_id) = resolved {
-                return self.enclosing_fn_constraints.iter().any(|(t, v)| {
-                    if t != trait_name { return false; }
-                    // Resolve the constraint's type var through substitution too,
-                    // since unification may have mapped it to a different var.
-                    match self.subst.apply(&Type::Var(*v)) {
-                        Type::Var(constraint_id) => constraint_id == resolved_id,
-                        _ => false,
-                    }
-                });
-            }
-        }
-        false
-    }
 
     pub fn unify_spanned(&mut self, t1: &Type, t2: &Type, span: Span) -> Result<(), SpannedTypeError> {
         unify(t1, t2, self.subst).map_err(|e| super::spanned(e, span))
@@ -585,7 +568,7 @@ impl<'a> InferenceContext<'a> {
         struct OverloadCandidate {
             subst: Substitution,
             func_type: Type,
-            origin: Option<TraitId>,
+            origin: Option<TraitName>,
             module: String,
         }
 
@@ -1070,34 +1053,10 @@ impl<'a> InferenceContext<'a> {
         let ty = match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                 self.join_types_spanned(&lhs_typed.ty, &rhs_typed.ty, span)?;
-                let resolved = super::strip_own(&self.subst.apply(&lhs_typed.ty));
-                let trait_name = match op {
-                    BinOp::Add => "Semigroup",
-                    BinOp::Sub => "Sub",
-                    BinOp::Mul => "Mul",
-                    BinOp::Div => "Div",
-                    _ => unreachable!(),
-                };
-                match &resolved {
-                    Type::Var(_) if !self.is_type_var_constrained(&resolved, trait_name) => {
-                        self.unify_spanned(&resolved, &Type::Int, span)?;
-                        Type::Int
-                    }
-                    _ => resolved,
-                }
+                super::strip_own(&self.subst.apply(&lhs_typed.ty))
             }
             BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                 self.join_types_spanned(&lhs_typed.ty, &rhs_typed.ty, span)?;
-                let resolved = super::strip_own(&self.subst.apply(&lhs_typed.ty));
-                let trait_name = match op {
-                    BinOp::Eq | BinOp::Neq => "Eq",
-                    _ => "Ord",
-                };
-                if let Type::Var(_) = &resolved {
-                    if !self.is_type_var_constrained(&resolved, trait_name) {
-                        self.unify_spanned(&resolved, &Type::Int, span)?;
-                    }
-                }
                 Type::Bool
             }
             BinOp::And | BinOp::Or => {
@@ -1738,14 +1697,7 @@ impl<'a> InferenceContext<'a> {
                 let operand_typed = self.infer_expr_inner(operand, None)?;
                 let ty = match op {
                     UnaryOp::Neg => {
-                        let resolved = super::strip_own(&self.subst.apply(&operand_typed.ty));
-                        match &resolved {
-                            Type::Var(_) => {
-                                self.unify_spanned(&resolved, &Type::Int, *span)?;
-                                Type::Int
-                            }
-                            _ => resolved,
-                        }
+                        super::strip_own(&self.subst.apply(&operand_typed.ty))
                     }
                     UnaryOp::Not => {
                         self.coerce_unify_spanned(&operand_typed.ty, &Type::Bool, *span)?;

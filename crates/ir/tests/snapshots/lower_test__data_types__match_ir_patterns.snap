@@ -123,17 +123,15 @@ fn wildcard_match(v6: Option[Int]) -> Int =
 
 fn literal_match(v8: Int) -> Int =
   let v10: Bool = eq_int(v8, 0)
-  switch v10 {
-    1 ->
-      100
-    _ ->
-      let v9: Bool = eq_int(v8, 1)
-      switch v9 {
-        1 ->
-          200
-        _ ->
-          300
-      }
+  if v10 {
+    100
+  } else {
+    let v9: Bool = eq_int(v8, 1)
+    if v9 {
+      200
+    } else {
+      300
+    }
   }
 
 fn let_tuple() -> Int =
