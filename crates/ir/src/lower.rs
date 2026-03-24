@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, UnaryOp};
 use krypton_typechecker::typed_ast::{
-    AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry, TraitId, TypedExpr,
+    AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry, TraitName, TypedExpr,
     TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
@@ -3946,19 +3946,18 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     // Local trait methods are stripped from fn_types by the typechecker,
     // and imported trait methods may lack `origin` in fn_types entries
     // (e.g., prelude auto-imports), so we register from trait_defs for both.
+    // Each (trait_name, method_name) pair gets its own unique FnId to avoid
+    // collisions when different traits define methods with the same name
+    // (e.g., Monoid.combine vs Semigroup.combine).
     for trait_def in &typed.trait_defs {
         for (method_name, _param_count) in &trait_def.methods {
-            let fn_id = if let Some(&existing) = ctx.fn_ids.get(method_name) {
-                existing
-            } else {
+            let key = (trait_def.name.clone(), method_name.clone());
+            if !ctx.trait_method_ids.contains_key(&key) {
                 let id = ctx.fresh_fn();
-                ctx.fn_ids.insert(method_name.clone(), id);
-                id
-            };
-            ctx.trait_method_ids.insert(
-                (trait_def.name.clone(), method_name.clone()),
-                fn_id,
-            );
+                ctx.trait_method_ids.insert(key, id);
+                // Also register in fn_ids for unqualified lookups (first wins)
+                ctx.fn_ids.entry(method_name.clone()).or_insert(id);
+            }
         }
     }
 
@@ -4290,7 +4289,7 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
 
 /// Extract function name, origin, and type_args from a call expression,
 /// peeling through TypeApp wrappers. Collects the outermost type_args.
-fn extract_call_info(expr: &TypedExpr) -> (Option<String>, Option<TraitId>, Vec<Type>) {
+fn extract_call_info(expr: &TypedExpr) -> (Option<String>, Option<TraitName>, Vec<Type>) {
     match &expr.kind {
         TypedExprKind::Var(name) => (Some(name.clone()), expr.origin.clone(), vec![]),
         TypedExprKind::TypeApp {

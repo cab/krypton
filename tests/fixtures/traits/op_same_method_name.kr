@@ -1,0 +1,20 @@
+# expect: output "3\nhello world"
+# Regression test: two traits with the same method name ("combine") must
+# get distinct FnIds so dict dispatch doesn't get confused.
+import core/io.{println}
+
+trait Joinable[a] {
+    fun join(x: a, y: a) -> a
+}
+
+impl Joinable[String] {
+    fun join(x, y) = x + " " + y
+}
+
+fun apply_combine[a](x: a, y: a) -> a where a: Semigroup = combine(x, y)
+fun apply_join[a](x: a, y: a) -> a where a: Joinable = join(x, y)
+
+fun main() = {
+    println(show(apply_combine(1, 2)));
+    println(apply_join("hello", "world"))
+}
