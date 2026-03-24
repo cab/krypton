@@ -164,6 +164,92 @@ impl Compiler {
         Ok(result_classes)
     }
 
+    /// Register a single variant's metadata in the constant pool.
+    fn register_variant_metadata(
+        &mut self,
+        variant: &krypton_ir::VariantDef,
+        sum_def: &krypton_ir::SumTypeDef,
+        qualified_sum: &str,
+    ) -> Result<(String, String, VariantInfo), CodegenError> {
+        let fields: Vec<VariantField> = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| {
+                let name = format!("field{i}");
+                let is_erased = type_references_var(ty, &sum_def.type_params);
+                let jvm_type = if is_erased {
+                    JvmType::StructRef(self.builder.refs.object_class)
+                } else {
+                    self.type_to_jvm(ty)?
+                };
+                Ok(VariantField {
+                    name,
+                    jvm_type,
+                    is_erased,
+                })
+            })
+            .collect::<Result<_, CodegenError>>()?;
+
+        let qualified_variant = format!("{}${}", qualified_sum, variant.name);
+        let variant_class_index = self.cp.add_class(&qualified_variant)?;
+        let variant_desc = format!("L{qualified_variant};");
+        self.types
+            .class_descriptors
+            .insert(variant_class_index, variant_desc);
+
+        let mut ctor_desc = String::from("(");
+        for f in &fields {
+            if f.is_erased {
+                ctor_desc.push_str("Ljava/lang/Object;");
+            } else {
+                ctor_desc.push_str(&self.types.jvm_type_descriptor(f.jvm_type));
+            }
+        }
+        ctor_desc.push_str(")V");
+
+        let constructor_ref =
+            self.cp
+                .add_method_ref(variant_class_index, "<init>", &ctor_desc)?;
+
+        let mut field_refs = Vec::new();
+        for f in &fields {
+            let fdesc = if f.is_erased {
+                "Ljava/lang/Object;".to_string()
+            } else {
+                self.types.jvm_type_descriptor(f.jvm_type)
+            };
+            let fr = self
+                .cp
+                .add_field_ref(variant_class_index, &f.name, &fdesc)?;
+            field_refs.push(fr);
+        }
+
+        self.types
+            .variant_to_sum
+            .insert(variant.name.clone(), sum_def.name.clone());
+
+        let singleton_field_ref = if fields.is_empty() {
+            let vdesc = format!("L{qualified_variant};");
+            Some(
+                self.cp
+                    .add_field_ref(variant_class_index, "INSTANCE", &vdesc)?,
+            )
+        } else {
+            None
+        };
+
+        let vi = VariantInfo {
+            class_index: variant_class_index,
+            class_name: qualified_variant.clone(),
+            fields,
+            constructor_ref,
+            field_refs,
+            singleton_field_ref,
+        };
+        Ok((variant.name.clone(), qualified_variant, vi))
+    }
+
     /// Register a sum type's sealed interface and all variant classes in the constant pool.
     /// Returns Vec<(variant_bare_name, qualified_variant_name)> for bytecode generation.
     fn register_sum_type_metadata(
@@ -181,87 +267,9 @@ impl Compiler {
         let mut variant_pairs = Vec::new();
 
         for variant in &sum_def.variants {
-            let fields: Vec<VariantField> = variant
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(i, ty)| {
-                    let name = format!("field{i}");
-                    let is_erased = type_references_var(ty, &sum_def.type_params);
-                    let jvm_type = if is_erased {
-                        JvmType::StructRef(self.builder.refs.object_class)
-                    } else {
-                        self.type_to_jvm(ty)?
-                    };
-                    Ok(VariantField {
-                        name,
-                        jvm_type,
-                        is_erased,
-                    })
-                })
-                .collect::<Result<_, CodegenError>>()?;
-
-            let qualified_variant = format!("{}${}", qualified_sum, variant.name);
-            let variant_class_index = self.cp.add_class(&qualified_variant)?;
-            let variant_desc = format!("L{qualified_variant};");
-            self.types
-                .class_descriptors
-                .insert(variant_class_index, variant_desc);
-
-            let mut ctor_desc = String::from("(");
-            for f in &fields {
-                if f.is_erased {
-                    ctor_desc.push_str("Ljava/lang/Object;");
-                } else {
-                    ctor_desc.push_str(&self.types.jvm_type_descriptor(f.jvm_type));
-                }
-            }
-            ctor_desc.push_str(")V");
-
-            let constructor_ref =
-                self.cp
-                    .add_method_ref(variant_class_index, "<init>", &ctor_desc)?;
-
-            let mut main_field_refs = Vec::new();
-            for f in &fields {
-                let fdesc = if f.is_erased {
-                    "Ljava/lang/Object;".to_string()
-                } else {
-                    self.types.jvm_type_descriptor(f.jvm_type)
-                };
-                let fr = self
-                    .cp
-                    .add_field_ref(variant_class_index, &f.name, &fdesc)?;
-                main_field_refs.push(fr);
-            }
-
-            self.types
-                .variant_to_sum
-                .insert(variant.name.clone(), sum_def.name.clone());
-
-            let singleton_field_ref = if fields.is_empty() {
-                let vdesc = format!("L{qualified_variant};");
-                Some(
-                    self.cp
-                        .add_field_ref(variant_class_index, "INSTANCE", &vdesc)?,
-                )
-            } else {
-                None
-            };
-
-            variant_pairs.push((variant.name.clone(), qualified_variant.clone()));
-
-            variant_infos.insert(
-                variant.name.clone(),
-                VariantInfo {
-                    class_index: variant_class_index,
-                    class_name: qualified_variant,
-                    fields,
-                    constructor_ref,
-                    field_refs: main_field_refs,
-                    singleton_field_ref,
-                },
-            );
+            let (name, qualified, info) = self.register_variant_metadata(variant, sum_def, qualified_sum)?;
+            variant_pairs.push((name.clone(), qualified));
+            variant_infos.insert(name, info);
         }
 
         self.types.sum_type_info.insert(
@@ -336,84 +344,9 @@ impl Compiler {
                     if self.types.variant_to_sum.contains_key(&variant.name) {
                         continue; // Already registered (local variant)
                     }
-                    // Register variant class metadata
-                    let qualified_variant = format!("{}${}", qualified_sum, variant.name);
-                    let variant_class_index = self.cp.add_class(&qualified_variant)?;
-                    let variant_desc = format!("L{qualified_variant};");
-                    self.types
-                        .class_descriptors
-                        .insert(variant_class_index, variant_desc);
-
-                    let fields: Vec<VariantField> = variant
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ty)| {
-                            let is_erased = type_references_var(ty, &sum_def.type_params);
-                            let jvm_type = if is_erased {
-                                JvmType::StructRef(self.builder.refs.object_class)
-                            } else {
-                                self.type_to_jvm(ty)?
-                            };
-                            Ok(VariantField {
-                                name: format!("field{i}"),
-                                jvm_type,
-                                is_erased,
-                            })
-                        })
-                        .collect::<Result<_, CodegenError>>()?;
-
-                    let mut ctor_desc = String::from("(");
-                    for f in &fields {
-                        if f.is_erased {
-                            ctor_desc.push_str("Ljava/lang/Object;");
-                        } else {
-                            ctor_desc.push_str(&self.types.jvm_type_descriptor(f.jvm_type));
-                        }
-                    }
-                    ctor_desc.push_str(")V");
-                    let constructor_ref =
-                        self.cp
-                            .add_method_ref(variant_class_index, "<init>", &ctor_desc)?;
-
-                    let mut field_refs = Vec::new();
-                    for f in &fields {
-                        let fdesc = if f.is_erased {
-                            "Ljava/lang/Object;".to_string()
-                        } else {
-                            self.types.jvm_type_descriptor(f.jvm_type)
-                        };
-                        let fr = self
-                            .cp
-                            .add_field_ref(variant_class_index, &f.name, &fdesc)?;
-                        field_refs.push(fr);
-                    }
-
-                    let singleton_field_ref = if fields.is_empty() {
-                        let vdesc = format!("L{qualified_variant};");
-                        Some(
-                            self.cp
-                                .add_field_ref(variant_class_index, "INSTANCE", &vdesc)?,
-                        )
-                    } else {
-                        None
-                    };
-
-                    self.types
-                        .variant_to_sum
-                        .insert(variant.name.clone(), sum_def.name.clone());
+                    let (name, _, vi) = self.register_variant_metadata(variant, sum_def, &qualified_sum)?;
                     if let Some(info) = self.types.sum_type_info.get_mut(&sum_def.name) {
-                        info.variants.insert(
-                            variant.name.clone(),
-                            VariantInfo {
-                                class_index: variant_class_index,
-                                class_name: qualified_variant,
-                                constructor_ref,
-                                field_refs,
-                                fields,
-                                singleton_field_ref,
-                            },
-                        );
+                        info.variants.insert(name, vi);
                     }
                 }
                 continue;

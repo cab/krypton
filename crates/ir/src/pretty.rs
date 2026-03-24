@@ -289,6 +289,18 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 self.write_indent()?;
                 writeln!(self.f, "jump {target}({})", fmt_atoms(args))
             }
+            ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+                self.write_indent()?;
+                writeln!(self.f, "if {scrutinee} {{")?;
+                let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
+                inner.write_expr(true_body)?;
+                self.write_indent()?;
+                writeln!(self.f, "}} else {{")?;
+                let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
+                inner.write_expr(false_body)?;
+                self.write_indent()?;
+                writeln!(self.f, "}}")
+            }
             ExprKind::Switch {
                 scrutinee,
                 branches,
@@ -508,6 +520,10 @@ fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
         ExprKind::LetJoin { join_body, body, .. } => {
             collect_referenced_fns(join_body, ids);
             collect_referenced_fns(body, ids);
+        }
+        ExprKind::BoolSwitch { true_body, false_body, .. } => {
+            collect_referenced_fns(true_body, ids);
+            collect_referenced_fns(false_body, ids);
         }
         ExprKind::Switch { branches, default, .. } => {
             for branch in branches {

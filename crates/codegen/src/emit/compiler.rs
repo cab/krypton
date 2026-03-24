@@ -539,6 +539,61 @@ impl Compiler {
         self.type_to_jvm(&ir_ty)
     }
 
+    /// Look up variant metadata: class_index, constructor_ref, interface_class_index, fields.
+    pub(super) fn variant_construct_info(&self, variant_name: &str)
+        -> Result<(u16, u16, u16, Vec<VariantField>), CodegenError>
+    {
+        let sum_name = self.types.variant_to_sum.get(variant_name)
+            .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {variant_name}"), None))?
+            .clone();
+        let sum_info = &self.types.sum_type_info[&sum_name];
+        let vi = &sum_info.variants[variant_name];
+        Ok((vi.class_index, vi.constructor_ref, sum_info.interface_class_index, vi.fields.clone()))
+    }
+
+    /// After field args are on the stack: pop frame entries, emit Invokespecial, push result type.
+    pub(super) fn emit_variant_invokespecial(&mut self, constructor_ref: u16, fields: &[VariantField], result_class: u16) -> JvmType {
+        for f in fields.iter().rev() {
+            if f.is_erased {
+                self.builder.frame.pop_type();
+            } else {
+                self.builder.pop_jvm_type(f.jvm_type);
+            }
+        }
+        self.builder.frame.pop_type(); // new
+        self.builder.frame.pop_type(); // dup
+        self.builder.emit(Instruction::Invokespecial(constructor_ref));
+        let result_type = JvmType::StructRef(result_class);
+        self.builder.push_jvm_type(result_type);
+        result_type
+    }
+
+    /// Emit coercion bytecode to convert `actual` type on the stack to `target` type.
+    fn emit_type_coercion(&mut self, actual: JvmType, target: JvmType) {
+        let obj = self.builder.refs.object_class;
+        if matches!(target, JvmType::StructRef(idx) if idx == obj)
+            && !matches!(actual, JvmType::StructRef(_))
+        {
+            self.builder.box_if_needed(actual);
+        } else if !matches!(target, JvmType::StructRef(_))
+            && matches!(actual, JvmType::StructRef(idx) if idx == obj)
+        {
+            self.builder.unbox_if_needed(target);
+        } else if matches!(actual, JvmType::StructRef(idx) if idx == obj)
+            && matches!(target, JvmType::StructRef(idx) if idx != obj)
+        {
+            let cast_class = match target {
+                JvmType::StructRef(idx) => idx,
+                _ => unreachable!(),
+            };
+            self.builder.emit(Instruction::Checkcast(cast_class));
+            self.builder.frame.pop_type();
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: cast_class,
+            });
+        }
+    }
+
     /// Reset per-method compilation state.
     pub(super) fn reset_method_state(&mut self) {
         self.builder.reset();
@@ -548,7 +603,7 @@ impl Compiler {
         self.join_points.clear();
     }
 
-    pub(super) fn emit_int_const(&mut self, n: i32) {
+    pub(super) fn emit_int_const(&mut self, n: i32) -> Result<(), CodegenError> {
         match n {
             0 => self.builder.emit(Instruction::Iconst_0),
             1 => self.builder.emit(Instruction::Iconst_1),
@@ -557,10 +612,7 @@ impl Compiler {
             4 => self.builder.emit(Instruction::Iconst_4),
             5 => self.builder.emit(Instruction::Iconst_5),
             _ => {
-                let idx = self
-                    .cp
-                    .add_integer(n)
-                    .expect("failed to add integer constant");
+                let idx = self.cp.add_integer(n)?;
                 if idx <= 255 {
                     self.builder.emit(Instruction::Ldc(idx as u8));
                 } else {
@@ -568,6 +620,7 @@ impl Compiler {
                 }
             }
         }
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -992,10 +1045,7 @@ impl Compiler {
                     };
                     let object_class = self.builder.refs.object_class;
                     if let Some(dict_slot) = self.traits.get_dict_local_by_trait(&trait_name) {
-                        self.builder.emit(Instruction::Aload(dict_slot as u8));
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: object_class,
-                        });
+                        self.builder.emit_load(dict_slot, JvmType::StructRef(object_class));
                         return Ok(JvmType::StructRef(object_class));
                     }
                     return Err(CodegenError::UndefinedVariable(format!(
@@ -1064,32 +1114,16 @@ impl Compiler {
                 }
 
                 // Variant constructor
-                if let Some(sum_name) = self.types.variant_to_sum.get(&name).cloned() {
-                    let sum_info = &self.types.sum_type_info[&sum_name];
-                    let vi = &sum_info.variants[&name];
-                    let class_index = vi.class_index;
-                    let constructor_ref = vi.constructor_ref;
-                    let interface_class_index = sum_info.interface_class_index;
-                    let fields = vi.fields.clone();
-                    let result_type = JvmType::StructRef(interface_class_index);
-                    self.builder.emit_new_dup(class_index);
+                if self.types.variant_to_sum.contains_key(&name) {
+                    let (class_idx, ctor_ref, iface_idx, fields) = self.variant_construct_info(&name)?;
+                    self.builder.emit_new_dup(class_idx);
                     for (i, arg) in args.iter().enumerate() {
                         let arg_type = self.compile_ir_atom(arg)?;
                         if fields[i].is_erased {
                             self.builder.box_if_needed(arg_type);
                         }
                     }
-                    for f in fields.iter().rev() {
-                        if f.is_erased {
-                            self.builder.frame.pop_type();
-                        } else {
-                            self.builder.pop_jvm_type(f.jvm_type);
-                        }
-                    }
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder.emit(Instruction::Invokespecial(constructor_ref));
-                    self.builder.push_jvm_type(result_type);
+                    let result_type = self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx);
                     return Ok(result_type);
                 }
 
@@ -1326,31 +1360,16 @@ impl Compiler {
                     self.builder.frame.pop_type();
                     self.builder.frame.pop_type();
                     self.builder.push_jvm_type(JvmType::StructRef(class_index));
-                } else if let Some(sum_name) = self.types.variant_to_sum.get(&func_name).cloned() {
-                    let sum_info = &self.types.sum_type_info[&sum_name];
-                    let variant = &sum_info.variants[&func_name];
-                    let class_index = variant.class_index;
-                    let constructor_ref = variant.constructor_ref;
-                    let interface_class_index = sum_info.interface_class_index;
-                    let fields = variant.fields.clone();
-                    self.builder.emit_new_dup(class_index);
+                } else if self.types.variant_to_sum.contains_key(&func_name) {
+                    let (class_idx, ctor_ref, iface_idx, fields) = self.variant_construct_info(&func_name)?;
+                    self.builder.emit_new_dup(class_idx);
                     for (i, (f, actual_type)) in fields.iter().zip(param_jvm_types.iter().copied()).enumerate() {
                         self.load_bridge_arg((capture_count + i) as u16, actual_type);
                         if f.is_erased {
                             self.builder.box_if_needed(actual_type);
                         }
                     }
-                    self.builder.emit(Instruction::Invokespecial(constructor_ref));
-                    for f in fields.iter().rev() {
-                        if f.is_erased {
-                            self.builder.frame.pop_type();
-                        } else {
-                            self.builder.pop_jvm_type(f.jvm_type);
-                        }
-                    }
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder.push_jvm_type(JvmType::StructRef(interface_class_index));
+                    self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx);
                 } else {
                     return Err(CodegenError::UndefinedVariable(func_name, None));
                 }
@@ -1437,35 +1456,15 @@ impl Compiler {
             }
 
             krypton_ir::SimpleExpr::ConstructVariant { type_name: _, variant, tag: _, fields } => {
-                let sum_name = self.types.variant_to_sum.get(variant)
-                    .ok_or_else(|| CodegenError::TypeError(format!("unknown variant: {variant}"), None))?
-                    .clone();
-                let sum_info = &self.types.sum_type_info[&sum_name];
-                let vi = &sum_info.variants[variant];
-                let class_index = vi.class_index;
-                let constructor_ref = vi.constructor_ref;
-                let interface_class_index = sum_info.interface_class_index;
-                let variant_fields = vi.fields.clone();
-                let result_type = JvmType::StructRef(interface_class_index);
-                self.builder.emit_new_dup(class_index);
+                let (class_idx, ctor_ref, iface_idx, variant_fields) = self.variant_construct_info(variant)?;
+                self.builder.emit_new_dup(class_idx);
                 for (i, atom) in fields.iter().enumerate() {
                     let arg_type = self.compile_ir_atom(atom)?;
                     if variant_fields[i].is_erased {
                         self.builder.box_if_needed(arg_type);
                     }
                 }
-                for f in variant_fields.iter().rev() {
-                    if f.is_erased {
-                        self.builder.frame.pop_type();
-                    } else {
-                        self.builder.pop_jvm_type(f.jvm_type);
-                    }
-                }
-                self.builder.frame.pop_type();
-                self.builder.frame.pop_type();
-                self.builder.emit(Instruction::Invokespecial(constructor_ref));
-                self.builder.push_jvm_type(result_type);
-                Ok(result_type)
+                Ok(self.emit_variant_invokespecial(ctor_ref, &variant_fields, iface_idx))
             }
 
             krypton_ir::SimpleExpr::Project { value, field_index } => {
@@ -1639,7 +1638,7 @@ impl Compiler {
                 self.builder.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
                 self.builder.emit(Instruction::Dup);
                 self.builder.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
-                self.emit_int_const(elements.len() as i32);
+                self.emit_int_const(elements.len() as i32)?;
                 self.builder.frame.push_type(VerificationType::Integer);
                 self.builder.emit(Instruction::Invokespecial(info.init_ref));
                 self.builder.frame.pop_type();
@@ -1650,7 +1649,7 @@ impl Compiler {
                 for (i, elem) in elements.iter().enumerate() {
                     self.builder.emit(Instruction::Dup);
                     self.builder.frame.push_type(arr_vtype.clone());
-                    self.emit_int_const(i as i32);
+                    self.emit_int_const(i as i32)?;
                     self.builder.frame.push_type(VerificationType::Integer);
                     let elem_type = self.compile_ir_atom(elem)?;
                     self.builder.box_if_needed(elem_type);
@@ -1683,30 +1682,8 @@ impl Compiler {
                 let jvm_ty = self.type_to_jvm(ty)?;
                 let val_type = self.compile_ir_simple_expr(value, ty, ir_module)?;
 
-                // Coerce if needed
-                if matches!(jvm_ty, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                    && !matches!(val_type, JvmType::StructRef(_))
-                {
-                    self.builder.box_if_needed(val_type);
-                } else if !matches!(jvm_ty, JvmType::StructRef(_))
-                    && matches!(val_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                {
-                    self.builder.unbox_if_needed(jvm_ty);
-                } else if matches!(val_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                    && matches!(jvm_ty, JvmType::StructRef(_))
-                    && !matches!(jvm_ty, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                {
-                    // Object → specific class: checkcast
-                    let cast_class = match jvm_ty {
-                        JvmType::StructRef(idx) => idx,
-                        _ => unreachable!(),
-                    };
-                    self.builder.emit(Instruction::Checkcast(cast_class));
-                    self.builder.frame.pop_type();
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: cast_class,
-                    });
-                }
+                // Coerce if needed (actual=val_type → target=jvm_ty)
+                self.emit_type_coercion(val_type, jvm_ty);
 
                 let slot = self.builder.alloc_anonymous_local(jvm_ty);
                 self.builder.emit_store(slot, jvm_ty);
@@ -1963,6 +1940,68 @@ impl Compiler {
                 Ok(return_type)
             }
 
+            krypton_ir::ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+                let scrutinee_type = self.compile_ir_atom(scrutinee)?;
+                let scrutinee_slot = self.builder.alloc_anonymous_local(scrutinee_type);
+                self.builder.emit_store(scrutinee_slot, scrutinee_type);
+
+                let stack_at_match = self.builder.frame.stack_types.clone();
+                let saved_locals = self.builder.locals.clone();
+                let saved_local_types = self.builder.frame.local_types.clone();
+                let saved_next_local = self.builder.next_local;
+                let saved_var_locals = self.var_locals.clone();
+                let saved_var_types = self.var_types.clone();
+
+                // Emit: if scrutinee == 0 goto false_branch
+                self.builder.emit_load(scrutinee_slot, scrutinee_type);
+                let false_patch = self.builder.emit_placeholder(Instruction::Ifeq(0));
+                self.builder.frame.pop_type();
+
+                // True branch
+                let true_type = self.compile_ir_expr(true_body, ir_module)?;
+                let target_type = self.builder.fn_return_type.unwrap_or(true_type);
+                self.emit_type_coercion(true_type, target_type);
+                let goto_patch = self.builder.emit_placeholder(Instruction::Goto(0));
+
+                // False branch — restore state
+                let mut max_next_local = self.builder.next_local;
+                self.builder.frame.stack_types = stack_at_match.clone();
+                self.builder.locals = saved_locals.clone();
+                self.builder.frame.local_types = saved_local_types.clone();
+                self.builder.next_local = saved_next_local;
+                self.var_locals = saved_var_locals.clone();
+                self.var_types = saved_var_types.clone();
+
+                let false_start = self.builder.current_offset();
+                self.builder.patch(false_patch, Instruction::Ifeq(false_start));
+                self.builder.frame.record_frame(false_start);
+
+                let false_type = self.compile_ir_expr(false_body, ir_module)?;
+                self.emit_type_coercion(false_type, target_type);
+
+                if self.builder.next_local > max_next_local {
+                    max_next_local = self.builder.next_local;
+                }
+
+                // Merge point
+                let after_match = self.builder.current_offset();
+                self.builder.patch(goto_patch, Instruction::Goto(after_match));
+                self.builder.frame.local_types = saved_local_types;
+                self.builder.frame.stack_types = stack_at_match;
+                self.builder.locals = saved_locals;
+                self.builder.next_local = saved_next_local;
+                self.var_locals = saved_var_locals;
+                self.var_types = saved_var_types;
+                self.builder.push_jvm_type(target_type);
+                self.builder.frame.record_frame(after_match);
+
+                if max_next_local > self.builder.max_locals_hwm {
+                    self.builder.max_locals_hwm = max_next_local;
+                }
+
+                Ok(target_type)
+            }
+
             krypton_ir::ExprKind::Switch { scrutinee, branches, default } => {
                 let scrutinee_type = self.compile_ir_atom(scrutinee)?;
                 let scrutinee_slot = self.builder.alloc_anonymous_local(scrutinee_type);
@@ -1978,10 +2017,6 @@ impl Compiler {
                 let mut goto_patches: Vec<usize> = Vec::new();
                 let mut result_type = None;
                 let mut max_next_local = saved_next_local;
-
-                // Check for bool dispatch: if branches have tags 0 and/or 1 and
-                // scrutinee is Int (bool), use simple ifeq/ifne
-                let is_bool = matches!(scrutinee_type, JvmType::Int) && branches.len() <= 2;
 
                 let total_branches = branches.len() + if default.is_some() { 1 } else { 0 };
                 let all_tags: Vec<u32> = branches.iter().map(|b| b.tag).collect();
@@ -2006,24 +2041,10 @@ impl Compiler {
                         self.builder.frame.record_frame(branch_start);
                     }
 
-                    let next_arm_patch = if is_bool && !is_last {
-                        // Bool: load scrutinee, check against tag
-                        self.builder.emit_load(scrutinee_slot, scrutinee_type);
-                        if branch.tag == 0 {
-                            // tag 0 = false → branch to next if scrutinee != 0
-                            let idx = self.builder.emit_placeholder(Instruction::Ifne(0));
-                            self.builder.frame.pop_type();
-                            Some(idx)
-                        } else {
-                            // tag 1 = true → branch to next if scrutinee == 0
-                            let idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
-                            self.builder.frame.pop_type();
-                            Some(idx)
-                        }
-                    } else if !is_bool && !is_last {
-                        // Variant dispatch: instanceof check
+                    // Instanceof check (skip for last branch — it's the fallthrough)
+                    let next_arm_patch = if !is_last {
                         let variant_name = self.find_variant_by_tag(
-                            scrutinee, &self.var_types.clone(), branch.tag, &all_tags)?;
+                            scrutinee, &saved_var_types, branch.tag, &all_tags)?;
                         let sum_name = self.types.variant_to_sum.get(&variant_name)
                             .ok_or_else(|| CodegenError::TypeError(
                                 format!("unknown variant: {variant_name}"), None))?
@@ -2032,8 +2053,7 @@ impl Compiler {
                         let vi = &sum_info.variants[&variant_name];
                         let variant_class_index = vi.class_index;
 
-                        self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                        self.builder.push_jvm_type(scrutinee_type);
+                        self.builder.emit_load(scrutinee_slot, scrutinee_type);
                         self.builder.emit(Instruction::Instanceof(variant_class_index));
                         self.builder.pop_jvm_type(scrutinee_type);
                         self.builder.frame.push_type(VerificationType::Integer);
@@ -2045,20 +2065,19 @@ impl Compiler {
                     };
 
                     // Bind branch variables
-                    if !is_bool && !branch.bindings.is_empty() {
+                    if !branch.bindings.is_empty() {
                         let variant_name = self.find_variant_by_tag(
-                            scrutinee, &self.var_types.clone(), branch.tag, &all_tags)?;
+                            scrutinee, &saved_var_types, branch.tag, &all_tags)?;
                         let sum_name = self.types.variant_to_sum[&variant_name].clone();
                         let resolved_field_types = self.resolve_variant_field_types(
-                            scrutinee, &self.var_types.clone(), &sum_name, &variant_name);
+                            scrutinee, &saved_var_types, &sum_name, &variant_name);
                         let sum_info = &self.types.sum_type_info[&sum_name];
                         let vi = &sum_info.variants[&variant_name];
                         let variant_class_index = vi.class_index;
                         let field_refs = vi.field_refs.clone();
                         let fields = vi.fields.clone();
 
-                        self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
-                        self.builder.push_jvm_type(scrutinee_type);
+                        self.builder.emit_load(scrutinee_slot, scrutinee_type);
                         self.builder.emit(Instruction::Checkcast(variant_class_index));
                         self.builder.pop_jvm_type(scrutinee_type);
                         self.builder.frame.push_type(VerificationType::Object {
@@ -2078,10 +2097,7 @@ impl Compiler {
                                 f.jvm_type
                             };
 
-                            self.builder.emit(Instruction::Aload(cast_slot as u8));
-                            self.builder.frame.push_type(VerificationType::Object {
-                                cpool_index: variant_class_index,
-                            });
+                            self.builder.emit_load(cast_slot, JvmType::StructRef(variant_class_index));
                             self.builder.emit(Instruction::Getfield(field_ref));
                             self.builder.frame.pop_type();
                             if f.is_erased {
@@ -2124,28 +2140,7 @@ impl Compiler {
                     if result_type.is_none() {
                         result_type = Some(target_type);
                     }
-                    if matches!(target_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                        && !matches!(arm_type, JvmType::StructRef(_))
-                    {
-                        self.builder.box_if_needed(arm_type);
-                    } else if !matches!(target_type, JvmType::StructRef(_))
-                        && matches!(arm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                    {
-                        self.builder.unbox_if_needed(target_type);
-                    } else if matches!(target_type, JvmType::StructRef(_))
-                        && !matches!(target_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                        && matches!(arm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                    {
-                        let cast_class = match target_type {
-                            JvmType::StructRef(idx) => idx,
-                            _ => unreachable!(),
-                        };
-                        self.builder.emit(Instruction::Checkcast(cast_class));
-                        self.builder.frame.pop_type();
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: cast_class,
-                        });
-                    }
+                    self.emit_type_coercion(arm_type, target_type);
 
                     if !is_last || default.is_some() {
                         let goto_idx = self.builder.emit_placeholder(Instruction::Goto(0));
@@ -2153,8 +2148,8 @@ impl Compiler {
                     }
 
                     if let Some(patch_idx) = next_arm_patch {
-                        let next_arm_target = self.builder.current_offset();
-                        self.builder.patch(patch_idx, Instruction::Ifeq(next_arm_target));
+                        let target = self.builder.current_offset();
+                        self.builder.patch(patch_idx, Instruction::Ifeq(target));
                     }
                 }
 
@@ -2178,15 +2173,7 @@ impl Compiler {
                     if result_type.is_none() {
                         result_type = Some(target_type);
                     }
-                    if matches!(target_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                        && !matches!(arm_type, JvmType::StructRef(_))
-                    {
-                        self.builder.box_if_needed(arm_type);
-                    } else if !matches!(target_type, JvmType::StructRef(_))
-                        && matches!(arm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                    {
-                        self.builder.unbox_if_needed(target_type);
-                    }
+                    self.emit_type_coercion(arm_type, target_type);
                 }
 
                 if self.builder.next_local > max_next_local {
@@ -2309,7 +2296,7 @@ impl Compiler {
                         candidates[0].clone()
                     } else {
                         return Err(CodegenError::TypeError(
-                            format!("Switch scrutinee has unknown type (var_id {:?}, {} candidates)", var_id, candidates.len()), None))
+                            format!("ICE: Switch scrutinee var {:?} has no type in var_types ({} tag-match candidates)", var_id, candidates.len()), None))
                     }
                 }
             },
@@ -2407,7 +2394,6 @@ impl Compiler {
         }
 
         self.builder.fn_params = fn_params;
-        self.builder.num_dict_params = num_dict_params;
         self.builder.fn_return_type = Some(return_type);
 
         self.builder.emit(Instruction::Nop);
@@ -2417,28 +2403,7 @@ impl Compiler {
         let body_type = self.compile_ir_expr(&fn_def.body, ir_module)?;
 
         // Return type coercion
-        if matches!(body_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && !matches!(return_type, JvmType::StructRef(_))
-        {
-            self.builder.unbox_if_needed(return_type);
-        } else if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && !matches!(body_type, JvmType::StructRef(_))
-        {
-            self.builder.box_if_needed(body_type);
-        } else if matches!(body_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-            && matches!(return_type, JvmType::StructRef(_))
-            && !matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-        {
-            let cast_class = match return_type {
-                JvmType::StructRef(idx) => idx,
-                _ => unreachable!(),
-            };
-            self.builder.emit(Instruction::Checkcast(cast_class));
-            self.builder.frame.pop_type();
-            self.builder.frame.push_type(VerificationType::Object {
-                cpool_index: cast_class,
-            });
-        }
+        self.emit_type_coercion(body_type, return_type);
 
         let ret_instr = match return_type {
             JvmType::Long => Instruction::Lreturn,

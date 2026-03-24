@@ -280,15 +280,10 @@ impl Compiler {
             self.builder.frame.pop_type();
             self.builder.frame.pop_type();
             self.builder.push_jvm_type(JvmType::StructRef(class_index));
-        } else if let Some(sum_name) = self.types.variant_to_sum.get(name).cloned() {
-            let sum_info = &self.types.sum_type_info[&sum_name];
-            let variant = &sum_info.variants[name];
-            let class_index = variant.class_index;
-            let constructor_ref = variant.constructor_ref;
-            let interface_class_index = sum_info.interface_class_index;
-            let fields = variant.fields.clone();
+        } else if self.types.variant_to_sum.contains_key(name) {
+            let (class_idx, ctor_ref, iface_idx, fields) = self.variant_construct_info(name)?;
 
-            self.builder.emit_new_dup(class_index);
+            self.builder.emit_new_dup(class_idx);
 
             for (i, (f, actual_type)) in
                 fields.iter().zip(param_jvm_types.iter().copied()).enumerate()
@@ -309,17 +304,7 @@ impl Compiler {
                 }
             }
 
-            self.builder.emit(Instruction::Invokespecial(constructor_ref));
-            for f in fields.iter().rev() {
-                if f.is_erased {
-                    self.builder.frame.pop_type();
-                } else {
-                    self.builder.pop_jvm_type(f.jvm_type);
-                }
-            }
-            self.builder.frame.pop_type();
-            self.builder.frame.pop_type();
-            self.builder.push_jvm_type(JvmType::StructRef(interface_class_index));
+            self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx);
         } else {
             return Err(CodegenError::UndefinedVariable(name.to_string(), None));
         }

@@ -41,7 +41,15 @@ pub enum ExprKind {
         args: Vec<Atom>,
     },
 
-    /// Multi-way branch on a constructor tag.
+    /// Two-way branch on a boolean value (if/else, literal equality, short-circuit ops).
+    /// Codegen emits ifeq/ifne; no instanceof or variant bindings.
+    BoolSwitch {
+        scrutinee: Atom,
+        true_body: Box<Expr>,
+        false_body: Box<Expr>,
+    },
+
+    /// Multi-way branch on a constructor tag (pattern match, ? operator).
     Switch {
         scrutinee: Atom,
         branches: Vec<SwitchBranch>,

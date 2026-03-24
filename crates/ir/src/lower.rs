@@ -363,6 +363,11 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
                 referenced_vars_atom(atom, vars);
             }
         }
+        ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+            referenced_vars_atom(scrutinee, vars);
+            referenced_vars_walk(true_body, vars);
+            referenced_vars_walk(false_body, vars);
+        }
         ExprKind::Switch { scrutinee, branches, default } => {
             referenced_vars_atom(scrutinee, vars);
             for branch in branches {
@@ -688,6 +693,18 @@ impl LowerCtx {
                         join_body: Box::new(new_join_body),
                         body: Box::new(new_body),
                         is_recur,
+                    },
+                })
+            }
+            ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+                let new_true = self.wrap_tail_with_closes(*true_body, resolved)?;
+                let new_false = self.wrap_tail_with_closes(*false_body, resolved)?;
+                Ok(Expr {
+                    ty: new_true.ty.clone(),
+                    kind: ExprKind::BoolSwitch {
+                        scrutinee,
+                        true_body: Box::new(new_true),
+                        false_body: Box::new(new_false),
                     },
                 })
             }
@@ -1054,10 +1071,16 @@ impl LowerCtx {
                     atoms.push(atom);
                 }
                 let element_type = if let Type::Named(_, args) = &expr.ty {
-                    args.first().cloned().unwrap_or(Type::Unit)
+                    args.first().cloned().unwrap_or_else(|| {
+                        eprintln!("ICE: Vec type Named has no type args: {:?}", expr.ty);
+                        Type::Unit
+                    })
                 } else if let Type::Own(inner) = &expr.ty {
                     if let Type::Named(_, args) = inner.as_ref() {
-                        args.first().cloned().unwrap_or(Type::Unit)
+                        args.first().cloned().unwrap_or_else(|| {
+                            eprintln!("ICE: Vec type Own(Named) has no type args: {:?}", expr.ty);
+                            Type::Unit
+                        })
                     } else {
                         Type::Unit
                     }
@@ -1198,14 +1221,10 @@ impl LowerCtx {
                     let else_body = ctx.lower_expr(else_)?;
                     Ok(Expr {
                         ty: result_ty.into(),
-                        kind: ExprKind::Switch {
+                        kind: ExprKind::BoolSwitch {
                             scrutinee: cond_atom,
-                            branches: vec![SwitchBranch {
-                                tag: 1, // true
-                                bindings: vec![],
-                                body: then_body,
-                            }],
-                            default: Some(Box::new(else_body)),
+                            true_body: Box::new(then_body),
+                            false_body: Box::new(else_body),
                         },
                     })
                 })
@@ -1529,10 +1548,16 @@ impl LowerCtx {
             TypedExprKind::VecLit(elems) => {
                 let result_ty = expr.ty.clone();
                 let element_type = if let Type::Named(_, args) = &expr.ty {
-                    args.first().cloned().unwrap_or(Type::Unit)
+                    args.first().cloned().unwrap_or_else(|| {
+                        eprintln!("ICE: VecLit type Named has no type args: {:?}", expr.ty);
+                        Type::Unit
+                    })
                 } else if let Type::Own(inner) = &expr.ty {
                     if let Type::Named(_, args) = inner.as_ref() {
-                        args.first().cloned().unwrap_or(Type::Unit)
+                        args.first().cloned().unwrap_or_else(|| {
+                            eprintln!("ICE: VecLit type Own(Named) has no type args: {:?}", expr.ty);
+                            Type::Unit
+                        })
                     } else {
                         Type::Unit
                     }
@@ -1992,14 +2017,10 @@ impl LowerCtx {
                     },
                     body: Box::new(Expr {
                         ty: result_ty.clone().into(),
-                        kind: ExprKind::Switch {
+                        kind: ExprKind::BoolSwitch {
                             scrutinee: Atom::Var(eq_var),
-                            branches: vec![SwitchBranch {
-                                tag: 1, // true
-                                bindings: vec![],
-                                body: then_body,
-                            }],
-                            default: Some(Box::new(result)),
+                            true_body: Box::new(then_body),
+                            false_body: Box::new(result),
                         },
                     }),
                 },
@@ -2553,14 +2574,10 @@ impl LowerCtx {
 
         let switch = Expr {
             ty: Type::Bool.into(),
-            kind: ExprKind::Switch {
+            kind: ExprKind::BoolSwitch {
                 scrutinee: Atom::Var(lhs_var),
-                branches: vec![SwitchBranch {
-                    tag: 1,
-                    bindings: vec![],
-                    body: true_branch,
-                }],
-                default: Some(Box::new(false_branch)),
+                true_body: Box::new(true_branch),
+                false_body: Box::new(false_branch),
             },
         };
 
@@ -3475,7 +3492,10 @@ impl LowerCtx {
         let mut lambda_var_mappings = vec![];
         for (i, param_name) in params.iter().enumerate() {
             let new_var = self.fresh_var();
-            let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+            let ty = param_types.get(i).cloned().unwrap_or_else(|| {
+                eprintln!("ICE: lambda param {} has no type (param_types len={})", i, param_types.len());
+                Type::Unit
+            });
             lambda_var_mappings.push((param_name.clone(), new_var, ty));
         }
 
@@ -3589,7 +3609,10 @@ impl LowerCtx {
             let ty = param_types
                 .get(i)
                 .cloned()
-                .unwrap_or(Type::Unit);
+                .unwrap_or_else(|| {
+                    eprintln!("ICE: fn param {} has no type (param_types len={})", i, param_types.len());
+                    Type::Unit
+                });
             self.var_types.insert(var, ty.clone());
             self.push_var(param_name, var);
             params.push((var, ty.into()));
@@ -4031,6 +4054,9 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     // 7. Build fn_names lookup (includes lifted lambdas registered in fn_ids)
     let mut fn_names = HashMap::new();
     for (name, &id) in &ctx.fn_ids {
+        if let Some(existing) = fn_names.get(&id) {
+            debug_assert_eq!(existing, name, "ICE: FnId {:?} maps to both '{}' and '{}'", id, existing, name);
+        }
         fn_names.insert(id, name.clone());
     }
 
@@ -4200,6 +4226,16 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
                     ty,
                     value,
                     body: Box::new(new_body),
+                },
+            }
+        }
+        ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+            Expr {
+                ty: result_ty,
+                kind: ExprKind::BoolSwitch {
+                    scrutinee,
+                    true_body: Box::new(replace_tail_with_jump(*true_body, target)),
+                    false_body: Box::new(replace_tail_with_jump(*false_body, target)),
                 },
             }
         }
@@ -4550,6 +4586,10 @@ fn collect_tuple_arities_from_expr(expr: &Expr, arities: &mut std::collections::
             }
             collect_tuple_arities_from_expr(join_body, arities);
             collect_tuple_arities_from_expr(body, arities);
+        }
+        ExprKind::BoolSwitch { true_body, false_body, .. } => {
+            collect_tuple_arities_from_expr(true_body, arities);
+            collect_tuple_arities_from_expr(false_body, arities);
         }
         ExprKind::Switch { branches, default, .. } => {
             for branch in branches {

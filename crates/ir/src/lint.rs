@@ -176,6 +176,13 @@ impl LintContext {
                 Ok(())
             }
 
+            ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+                self.check_atom_not_join(scrutinee)?;
+                self.check_expr(true_body)?;
+                self.check_expr(false_body)?;
+                Ok(())
+            }
+
             ExprKind::Switch {
                 scrutinee,
                 branches,

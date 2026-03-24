@@ -1142,3 +1142,47 @@ fun main() = println(default[Int]())
         "expected Default$$Int instance class in javap output:\n{javap_out}"
     );
 }
+
+#[test]
+fn test_match_bool_literals() {
+    let src = r#"
+fun describe(b: Bool) -> String = if b { "yes" } else { "no" }
+
+fun main() = {
+  println(describe(true))
+  println(describe(false))
+}
+"#;
+    assert_eq!(run_program(src), "yes\nno");
+}
+
+#[test]
+fn test_match_three_variants() {
+    let src = r#"
+type Color = Red | Green | Blue
+
+fun name(c: Color) -> String = match c {
+  Red => "red",
+  Green => "green",
+  Blue => "blue",
+}
+
+fun main() = { println(name(Red)); println(name(Green)); println(name(Blue)) }
+"#;
+    assert_eq!(run_program(src), "red\ngreen\nblue");
+}
+
+#[test]
+fn test_match_default_checkcast() {
+    let src = r#"
+type Shape = Circle(Int) | Square(Int) | Triangle(Int)
+
+fun describe(s: Shape) -> String = match s {
+  Circle(r) => "circle",
+  _ => "other",
+}
+
+fun main() = { println(describe(Circle(5))); println(describe(Square(3))); println(describe(Triangle(1))) }
+"#;
+    assert_eq!(run_program(src), "circle\nother\nother");
+}

@@ -177,7 +177,7 @@ fn compute_byte_offsets(code: &[Instruction]) -> Vec<u16> {
     let mut cursor = std::io::Cursor::new(Vec::new());
     for instr in code {
         offsets.push(cursor.position() as u16);
-        instr.to_bytes(&mut cursor).expect("instruction serialization");
+        instr.to_bytes(&mut cursor).expect("ICE: instruction serialization failed");
     }
     offsets
 }
@@ -191,12 +191,10 @@ pub(super) struct BytecodeBuilder {
     pub(super) next_local: u16,
     pub(super) max_locals_hwm: u16,
     pub(super) fn_params: Vec<(u16, JvmType)>,
-    pub(super) num_dict_params: usize,
     pub(super) fn_return_type: Option<JvmType>,
     pub(super) recur_target: u16,
     pub(super) recur_frame_locals: Vec<VerificationType>,
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
-    pub(super) nested_branch_patches: Vec<usize>,
 }
 
 impl BytecodeBuilder {
@@ -209,12 +207,10 @@ impl BytecodeBuilder {
             next_local: 0,
             max_locals_hwm: 0,
             fn_params: Vec::new(),
-            num_dict_params: 0,
             fn_return_type: None,
             recur_target: 1,
             recur_frame_locals: Vec::new(),
             local_fn_info: HashMap::new(),
-            nested_branch_patches: Vec::new(),
         }
     }
 
@@ -304,6 +300,7 @@ impl BytecodeBuilder {
 
     /// Emit a typed load instruction and push the type onto the stack.
     pub(super) fn emit_load(&mut self, slot: u16, ty: JvmType) {
+        debug_assert!(slot <= 255, "ICE: local slot {} exceeds u8 range", slot);
         let instr = match ty {
             JvmType::Long => Instruction::Lload(slot as u8),
             JvmType::Double => Instruction::Dload(slot as u8),
@@ -316,6 +313,7 @@ impl BytecodeBuilder {
 
     /// Emit a typed store instruction and pop the type from the stack.
     pub(super) fn emit_store(&mut self, slot: u16, ty: JvmType) {
+        debug_assert!(slot <= 255, "ICE: local slot {} exceeds u8 range", slot);
         let instr = match ty {
             JvmType::Long => Instruction::Lstore(slot as u8),
             JvmType::Double => Instruction::Dstore(slot as u8),
