@@ -10,7 +10,7 @@ use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry}
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
     self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, StructDecl,
-    SumDecl, TraitId, TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
+    SumDecl, TraitName, TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
@@ -961,8 +961,10 @@ fn process_extern_methods(
 
 /// Infer types for all top-level definitions in a module.
 ///
-/// Returns a `Vec<TypedModule>` containing the main module (first, `module_path: None`)
+/// Returns a `Vec<TypedModule>` containing the main module (first)
 /// followed by any imported modules discovered during inference.
+///
+/// `root_module_path` is the module path for the root file (e.g., `Some("hello")` for `hello.kr`).
 ///
 /// Uses SCC (strongly connected component) analysis to process definitions
 /// in dependency order. Functions within the same SCC are inferred together
@@ -971,6 +973,7 @@ fn process_extern_methods(
 pub fn infer_module(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    root_module_path: Option<String>,
 ) -> Result<Vec<TypedModule>, InferError> {
     use krypton_modules::module_graph;
     use krypton_modules::stdlib_loader::StdlibLoader;
@@ -1022,7 +1025,7 @@ pub fn infer_module(
         }
     }
 
-    // Type-check the root module
+    // Type-check the root module (None = root file, not a named module)
     let main = infer_module_inner(module, &mut cache, &parsed_modules, None, &graph.prelude_tree_paths)
         .map_err(|e| InferError::TypeError { error: e, error_source: None })?;
 
@@ -1061,7 +1064,7 @@ pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<TypedModule, InferError> {
-    let mut modules = infer_module(module, resolver)?;
+    let mut modules = infer_module(module, resolver, None)?;
     Ok(modules.remove(0))
 }
 
@@ -1092,7 +1095,7 @@ impl ImportContext {
         env: &mut TypeEnv,
         name: String,
         scheme: TypeScheme,
-        origin: Option<TraitId>,
+        origin: Option<TraitName>,
         source_module: String,
         original_name: String,
         prelude_imported_names: &HashSet<String>,
@@ -1170,7 +1173,7 @@ impl ImportContext {
         &mut self,
         name: String,
         scheme: TypeScheme,
-        origin: Option<TraitId>,
+        origin: Option<TraitName>,
         provenance: (String, String),
     ) {
         self.imported_fn_types.push(typed_ast::ImportedFn {
@@ -1382,7 +1385,7 @@ impl ModuleInferenceState {
         derived_instance_defs: Vec<InstanceDefInfo>,
         imported_instance_defs: Vec<InstanceDefInfo>,
         fn_constraint_requirements: &mut HashMap<String, Vec<(String, TypeVarId)>>,
-        trait_method_map: &HashMap<String, TraitId>,
+        trait_method_map: &HashMap<String, TraitName>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
@@ -1555,8 +1558,8 @@ impl ModuleInferenceState {
         }
 
         let mut trait_defs = Vec::new();
-        for (trait_name, info) in trait_registry.traits() {
-            let is_imported = self.imported_trait_names.contains(trait_name);
+        for (_qualified_key, info) in trait_registry.traits() {
+            let is_imported = self.imported_trait_names.contains(&info.name);
             let method_info: Vec<(String, usize)> = info
                 .methods
                 .iter()
@@ -1568,8 +1571,8 @@ impl ModuleInferenceState {
                 .map(|m| (m.name.clone(), (m.param_types.clone(), m.return_type.clone())))
                 .collect();
             trait_defs.push(TraitDefInfo {
-                name: trait_name.clone(),
-                trait_id: TraitId::new(info.module_path.clone(), trait_name.clone()),
+                name: info.name.clone(),
+                trait_id: TraitName::new(info.module_path.clone(), info.name.clone()),
                 methods: method_info,
                 is_imported,
                 type_var_id: info.type_var_id,
@@ -1578,7 +1581,7 @@ impl ModuleInferenceState {
         }
 
         // Convert FnTypeEntry to tuple format for ownership/auto_close APIs
-        let results_tuples: Vec<(String, TypeScheme, Option<TraitId>)> = results.iter()
+        let results_tuples: Vec<(String, TypeScheme, Option<TraitName>)> = results.iter()
             .map(|e| (e.name.clone(), e.scheme.clone(), e.origin.clone()))
             .collect();
 
@@ -1780,7 +1783,7 @@ fn process_traits_and_deriving(
         Vec<ExportedTraitDef>,
         Vec<InstanceDefInfo>,
         Vec<InstanceDefInfo>,
-        HashMap<String, TraitId>,
+        HashMap<String, TraitName>,
     ),
     SpannedTypeError,
 > {
@@ -1827,7 +1830,7 @@ fn process_traits_and_deriving(
     )?;
 
     // Compute trait_method_map between phases 5 and 6, with collision detection
-    let mut trait_method_map: HashMap<String, TraitId> = HashMap::new();
+    let mut trait_method_map: HashMap<String, TraitName> = HashMap::new();
     for (method_name, trait_id, is_prelude) in trait_registry.trait_method_names() {
         if let Some(existing) = trait_method_map.get(&method_name) {
             let existing_is_prelude = trait_registry
@@ -2196,7 +2199,7 @@ fn process_deriving(
 
                 let syn_span: Span = (0, 0);
                 let trait_id_for_synth = trait_registry.lookup_trait(trait_name)
-                    .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()));
+                    .map(|ti| TraitName::new(ti.module_path.clone(), ti.name.clone()));
                 let (body, fn_ty) = match trait_name.as_str() {
                     "Eq" => derive::synthesize_eq_body(type_info, &target_type, syn_span),
                     "Show" => derive::synthesize_show_body(type_info, &target_type, syn_span, trait_id_for_synth.clone()),
@@ -2217,8 +2220,8 @@ fn process_deriving(
                 };
 
                 let derive_trait_id = trait_registry.lookup_trait(trait_name)
-                    .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()))
-                    .unwrap_or_else(|| TraitId::new(module_path.clone(), trait_name.clone()));
+                    .map(|ti| TraitName::new(ti.module_path.clone(), ti.name.clone()))
+                    .unwrap_or_else(|| TraitName::new(module_path.clone(), trait_name.clone()));
                 derived_instance_defs.push(InstanceDefInfo {
                     trait_name: trait_name.clone(),
                     trait_id: derive_trait_id,
@@ -2483,7 +2486,7 @@ fn register_impl_instances(
 /// Phase 6: Check for trait method name conflicts and reserved name usage.
 fn check_trait_name_conflicts(
     module: &Module,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
     is_core_module: bool,
 ) -> Result<(), SpannedTypeError> {
     // Check for top-level def names conflicting with trait method names
@@ -2571,7 +2574,7 @@ fn infer_function_bodies<'a>(
     module: &'a Module,
     extern_fns: &[ExternFnInfo],
     trait_registry: &TraitRegistry,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
 ) -> Result<
     (
         Vec<&'a krypton_parser::ast::FnDecl>,
@@ -2925,7 +2928,7 @@ fn typecheck_impl_methods(
     module: &Module,
     module_path: &Option<String>,
     trait_registry: &TraitRegistry,
-    trait_method_map: &HashMap<String, TraitId>,
+    trait_method_map: &HashMap<String, TraitName>,
     extern_fns: &[ExternFnInfo],
 ) -> Result<Vec<InstanceDefInfo>, SpannedTypeError> {
     let mut instance_defs: Vec<InstanceDefInfo> = Vec::new();
@@ -3123,8 +3126,8 @@ fn typecheck_impl_methods(
             }
 
             let inst_trait_id = trait_registry.lookup_trait(trait_name)
-                .map(|ti| TraitId::new(ti.module_path.clone(), ti.name.clone()))
-                .unwrap_or_else(|| TraitId::new(module_path.clone(), trait_name.clone()));
+                .map(|ti| TraitName::new(ti.module_path.clone(), ti.name.clone()))
+                .unwrap_or_else(|| TraitName::new(module_path.clone(), trait_name.clone()));
             instance_defs.push(InstanceDefInfo {
                 trait_name: trait_name.clone(),
                 trait_id: inst_trait_id,

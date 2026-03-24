@@ -60,7 +60,7 @@ fn ir_lower(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, &resolver)
+    let typed_modules = infer_module(&module, &resolver, None)
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     let ir_module = lower_module(&typed_modules[0], &name)
@@ -94,7 +94,7 @@ fn ir_link(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, &resolver)
+    let typed_modules = infer_module(&module, &resolver, None)
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     // Lower and lint each module, then concatenate output.

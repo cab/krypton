@@ -127,7 +127,7 @@ fn test_fat_jar_runs_with_java_jar() {
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let resolver = krypton_modules::module_resolver::CompositeResolver::stdlib_only();
-    let typed_modules = krypton_typechecker::infer::infer_module(&module, &resolver)
+    let typed_modules = krypton_typechecker::infer::infer_module(&module, &resolver, None)
         .expect("type checking should succeed");
 
     let classes = krypton_codegen::emit::compile_modules(&typed_modules, "FatJarTest")

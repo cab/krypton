@@ -4,7 +4,7 @@ use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint};
 
 use crate::trait_registry::TraitRegistry;
 use crate::type_registry::TypeInfo;
-use crate::typed_ast::{TraitId, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern};
+use crate::typed_ast::{TraitName, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern};
 use crate::types::{Type, TypeVarId};
 
 use super::match_type_with_bindings;
@@ -299,7 +299,7 @@ pub(super) fn synthesize_show_body(
     type_info: &TypeInfo,
     target_type: &Type,
     span: Span,
-    trait_id: Option<TraitId>,
+    trait_id: Option<TraitName>,
 ) -> (TypedExpr, Type) {
     let param_a = TypedExpr {
         kind: TypedExprKind::Var("__a".to_string()),
@@ -435,7 +435,7 @@ pub(super) fn synthesize_hash_body(
     type_info: &TypeInfo,
     target_type: &Type,
     span: Span,
-    trait_id: Option<TraitId>,
+    trait_id: Option<TraitName>,
 ) -> (TypedExpr, Type) {
     let param_a = TypedExpr {
         kind: TypedExprKind::Var("__a".to_string()),

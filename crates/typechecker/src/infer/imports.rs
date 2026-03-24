@@ -4,7 +4,7 @@ use krypton_parser::ast::{Decl, ImportName, Module, Span, TypeDecl, Visibility};
 
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::ExportedTypeInfo;
-use crate::typed_ast::{self as typed_ast, TraitId, TypedModule};
+use crate::typed_ast::{self as typed_ast, TraitName, TypedModule};
 use crate::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -680,7 +680,7 @@ impl ModuleInferenceState {
                 self.imported_trait_defs.push(trait_def.clone());
                 self.imported_trait_names.insert(trait_def.name.clone());
                 // Bind visible trait methods as imported functions (skip if already imported via fn_types)
-                let trait_id = TraitId::new(
+                let trait_id = TraitName::new(
                     trait_def.module_path.clone().or_else(|| Some(path.to_string())),
                     trait_def.name.clone(),
                 );

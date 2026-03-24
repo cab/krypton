@@ -24,7 +24,7 @@ fn typecheck_benchmarks(c: &mut Criterion) {
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     c.bench_function("typecheck_trivial", |b| {
-        b.iter(|| infer_module(std::hint::black_box(&trivial_module), &resolver));
+        b.iter(|| infer_module(std::hint::black_box(&trivial_module), &resolver, None));
     });
 
     // Stress: pre-parse, benchmark only typechecking
@@ -32,7 +32,7 @@ fn typecheck_benchmarks(c: &mut Criterion) {
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     c.bench_function("typecheck_stress", |b| {
-        b.iter(|| infer_module(std::hint::black_box(&stress_module), &resolver));
+        b.iter(|| infer_module(std::hint::black_box(&stress_module), &resolver, None));
     });
 }
 

@@ -23,7 +23,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     // Trivial: pre-parse + pre-typecheck, benchmark only codegen
     let (trivial_module, errors) = parse(TRIVIAL);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let trivial_typed = infer_module(&trivial_module, &resolver).expect("typecheck should succeed");
+    let trivial_typed = infer_module(&trivial_module, &resolver, None).expect("typecheck should succeed");
 
     c.bench_function("codegen_trivial", |b| {
         b.iter(|| {
@@ -35,7 +35,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     // Stress: pre-parse + pre-typecheck, benchmark only codegen
     let (stress_module, errors) = parse(stress_source());
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let stress_typed = infer_module(&stress_module, &resolver).expect("typecheck should succeed");
+    let stress_typed = infer_module(&stress_module, &resolver, None).expect("typecheck should succeed");
 
     c.bench_function("codegen_stress", |b| {
         b.iter(|| {
@@ -49,7 +49,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     c.bench_function("pipeline_stress", |b| {
         b.iter(|| {
             let (module, _errors) = parse(std::hint::black_box(source));
-            let typed = infer_module(&module, &resolver).expect("typecheck");
+            let typed = infer_module(&module, &resolver, None).expect("typecheck");
             compile_modules(&typed, "Bench").expect("codegen")
         });
     });

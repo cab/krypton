@@ -6,6 +6,14 @@ use krypton_parser::ast::Span;
 use crate::types::{Type, TypeVarId, TypeVarGen, Substitution};
 use crate::unify::{TypeError, unify};
 
+/// Build a qualified key from module_path + name for TraitRegistry lookups.
+pub fn qualified_trait_key(module_path: &Option<String>, name: &str) -> String {
+    match module_path {
+        Some(path) => format!("{path}::{name}"),
+        None => name.to_string(),
+    }
+}
+
 pub struct TraitInfo {
     pub name: String,
     pub module_path: Option<String>,
@@ -57,13 +65,14 @@ impl TraitRegistry {
     }
 
     pub fn register_trait(&mut self, info: TraitInfo) -> Result<(), TypeError> {
-        if self.traits.contains_key(&info.name) {
+        let key = qualified_trait_key(&info.module_path, &info.name);
+        if self.traits.contains_key(&key) {
             return Err(TypeError::OrphanInstance {
                 trait_name: info.name.clone(),
                 ty: info.name.clone(),
             });
         }
-        self.traits.insert(info.name.clone(), info);
+        self.traits.insert(key, info);
         Ok(())
     }
 
@@ -89,11 +98,15 @@ impl TraitRegistry {
     }
 
     pub fn lookup_trait(&self, name: &str) -> Option<&TraitInfo> {
-        self.traits.get(name)
+        // Try exact (qualified) key first, then fall back to bare name search
+        self.traits.get(name).or_else(|| {
+            self.traits.values().find(|info| info.name == name)
+        })
     }
 
     pub fn find_instance(&self, trait_name: &str, ty: &Type) -> Option<&InstanceInfo> {
         let mut resolution_stack = Vec::new();
+        // Resolve bare name to the instance's trait_name for matching
         self.find_instance_inner(trait_name, ty, &mut resolution_stack)
     }
 
@@ -109,7 +122,7 @@ impl TraitRegistry {
         }
 
         // For HK traits (arity > 0), match by extracting the outermost type constructor
-        let trait_info = self.traits.get(trait_name);
+        let trait_info = self.lookup_trait(trait_name);
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
                 resolution_stack.push(key);
@@ -190,7 +203,7 @@ impl TraitRegistry {
     }
 
     pub fn check_superclasses(&self, instance: &InstanceInfo) -> Result<(), TypeError> {
-        let trait_info = match self.traits.get(&instance.trait_name) {
+        let trait_info = match self.lookup_trait(&instance.trait_name) {
             Some(t) => t,
             None => return Ok(()),
         };
@@ -219,10 +232,10 @@ impl TraitRegistry {
             .find(|inst| inst.trait_name == trait_name && inst.span == span)
     }
 
-    pub fn trait_method_names(&self) -> Vec<(String, crate::typed_ast::TraitId, bool)> {
+    pub fn trait_method_names(&self) -> Vec<(String, crate::typed_ast::TraitName, bool)> {
         let mut result = Vec::new();
         for (_trait_name, info) in &self.traits {
-            let trait_id = crate::typed_ast::TraitId::new(info.module_path.clone(), info.name.clone());
+            let trait_id = crate::typed_ast::TraitName::new(info.module_path.clone(), info.name.clone());
             for method in &info.methods {
                 result.push((method.name.clone(), trait_id.clone(), info.is_prelude));
             }
@@ -242,7 +255,7 @@ impl TraitRegistry {
     /// structurally match but have failing `where` constraints.
     /// Called only on the error path — zero impact on the happy path.
     pub fn diagnose_missing_instance(&self, trait_name: &str, ty: &Type) -> Option<InstanceDiagnostic> {
-        let trait_info = self.traits.get(trait_name);
+        let trait_info = self.lookup_trait(trait_name);
 
         // HK trait path (arity > 0)
         if let Some(info) = trait_info {

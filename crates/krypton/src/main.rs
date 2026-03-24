@@ -10,6 +10,14 @@ use tempfile::tempdir;
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 
+/// Derive a module path from a file path (e.g., "hello.kr" → "hello").
+fn root_module_path(file: &str) -> Option<String> {
+    std::path::Path::new(file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+}
+
 fn find_runtime_jar() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("KRYPTON_RUNTIME") {
         let p = PathBuf::from(path);
@@ -195,7 +203,7 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -292,7 +300,7 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -387,7 +395,7 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            match krypton_typechecker::infer::infer_module(&module, &resolver) {
+            match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
                 Ok(modules) => {
                     phases.push(("typecheck", t.elapsed()));
                     let info = &modules[0];
@@ -428,7 +436,7 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -498,7 +506,7 @@ fn main() {
             let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
-            match krypton_typechecker::infer::infer_module(&module, &resolver) {
+            match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
                 Ok(modules) => {
                     let info = &modules[0];
                     let output = inspect::render_inspect(

@@ -216,7 +216,7 @@ fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSe
 /// Stays on surface AST because it needs FnDecl.type_params.
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
-    fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitId>)],
+    fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitName>)],
     shared_type_vars: &HashMap<String, HashSet<String>>,
 ) -> HashMap<String, Vec<(ParamQualifier, String)>> {
     let type_map: HashMap<&str, &TypeScheme> =
@@ -465,7 +465,7 @@ pub struct OwnershipResult {
 pub fn check_ownership(
     module: &Module,
     typed_fns: &[TypedFnDecl],
-    fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitId>)],
+    fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitName>)],
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,

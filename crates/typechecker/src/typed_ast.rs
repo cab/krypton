@@ -17,16 +17,16 @@ pub enum ParamQualifier {
 
 /// Module-qualified trait identity.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TraitId {
+pub struct TraitName {
     /// Source module path, e.g., "core/semigroup". None for the current module.
     pub module_path: Option<String>,
     /// Bare trait name, e.g., "Semigroup"
     pub name: String,
 }
 
-impl TraitId {
+impl TraitName {
     pub fn new(module_path: Option<String>, name: String) -> Self {
-        TraitId { module_path, name }
+        TraitName { module_path, name }
     }
 
     pub fn display_name(&self) -> &str {
@@ -34,7 +34,7 @@ impl TraitId {
     }
 }
 
-impl fmt::Display for TraitId {
+impl fmt::Display for TraitName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(path) = &self.module_path {
             write!(f, "{}.{}", path, self.name)
@@ -49,7 +49,7 @@ impl fmt::Display for TraitId {
 pub struct ImportedFn {
     pub name: String,
     pub scheme: TypeScheme,
-    pub origin: Option<TraitId>,
+    pub origin: Option<TraitName>,
     pub source_module: String,
     pub original_name: String,
 }
@@ -59,7 +59,7 @@ pub struct ImportedFn {
 pub struct FnTypeEntry {
     pub name: String,
     pub scheme: TypeScheme,
-    pub origin: Option<TraitId>,
+    pub origin: Option<TraitName>,
     /// Provenance for imported functions (source_module, original_name). None for local.
     pub provenance: Option<(String, String)>,
 }
@@ -126,7 +126,7 @@ pub struct TypedExpr {
     pub ty: Type,
     pub span: Span,
     /// Set for trait method references; used by codegen to dispatch to the correct trait.
-    pub origin: Option<TraitId>,
+    pub origin: Option<TraitName>,
 }
 
 #[derive(Debug, Clone)]
@@ -217,13 +217,13 @@ pub struct TypedFnDecl {
 pub struct ExportedFn {
     pub name: String,
     pub scheme: TypeScheme,
-    pub origin: Option<TraitId>,
+    pub origin: Option<TraitName>,
     pub def_span: Option<Span>,
 }
 
 pub struct TraitDefInfo {
     pub name: String,
-    pub trait_id: TraitId,
+    pub trait_id: TraitName,
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
     pub is_imported: bool,
     pub type_var_id: TypeVarId,
@@ -261,7 +261,7 @@ pub struct InstanceMethod {
 #[derive(Clone)]
 pub struct InstanceDefInfo {
     pub trait_name: String,
-    pub trait_id: TraitId,
+    pub trait_id: TraitName,
     pub target_type_name: String,
     pub target_type: Type,
     pub type_var_ids: HashMap<String, TypeVarId>,

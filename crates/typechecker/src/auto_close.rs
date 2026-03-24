@@ -444,7 +444,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
 /// Returns the auto-close info and any diagnostic errors (e.g., branch leaks).
 pub fn compute_auto_close(
     functions: &[TypedFnDecl],
-    fn_types: &[(String, crate::types::TypeScheme, Option<crate::typed_ast::TraitId>)],
+    fn_types: &[(String, crate::types::TypeScheme, Option<crate::typed_ast::TraitName>)],
     registry: &TraitRegistry,
     ownership_moves: &HashMap<Span, String>,
 ) -> Result<AutoCloseInfo, SpannedTypeError> {
