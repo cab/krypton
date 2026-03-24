@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_fn
 
-trait Functor[t7] { fmap(t7[u7], (u7) -> v7): t7[v7] }
+trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
 instance Functor[$Fun1$$Var0$$Var1] { fmap=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
@@ -76,12 +76,12 @@ import core/show/show as show(g): String
 import core/hash/hash as hash(g): Int
 import core/resource/close as close(~g): Unit
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[r3]): Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
-import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
-import core/list/map as map(List[w], (w) -> y): List[y]
-import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/list/last as last(List[t3]): Option[t3]
+import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
+import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
+import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
+import core/list/map as map(List[x], (x) -> z): List[z]
+import core/vec/to_list as to_list(Vec[j7]): List[j7]
 import core/io/println as println(m): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -104,8 +104,8 @@ fn main() -> Unit =
   let v9: Unit = call println(v8)
   v9
 
-fn Functor$$$Fun1$$Var0$$Var1$$fmap(v10: (o8) -> q8, v11: (q8) -> r8) -> (o8) -> r8 =
-  let v17: (o8) -> r8 = make_closure(lambda$55, [v11, v10])
+fn Functor$$$Fun1$$Var0$$Var1$$fmap(v10: (q8) -> s8, v11: (s8) -> t8) -> (q8) -> t8 =
+  let v17: (q8) -> t8 = make_closure(lambda$55, [v11, v10])
   v17
 
 fn lambda$53(v1: Int) -> Int =
@@ -116,7 +116,7 @@ fn lambda$54(v4: Int) -> Int =
   let v5: Int = mul_int(v4, 2)
   v5
 
-fn lambda$55(v12: (q8) -> r8, v13: (o8) -> q8, v14: o8) -> r8 =
-  let v15: q8 = call_closure v13(v14)
-  let v16: r8 = call_closure v12(v15)
+fn lambda$55(v12: (s8) -> t8, v13: (q8) -> s8, v14: q8) -> t8 =
+  let v15: s8 = call_closure v13(v14)
+  let v16: t8 = call_closure v12(v15)
   v16

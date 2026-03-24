@@ -1799,6 +1799,7 @@ fn process_traits_and_deriving(
         &mut trait_registry,
         &state.imported_trait_defs,
         &mut state.gen,
+        &state.prelude_imported_names,
     );
 
     // Phase 3: Process local DefTrait declarations
@@ -1825,9 +1826,33 @@ fn process_traits_and_deriving(
         module_path,
     )?;
 
-    // Compute trait_method_map between phases 5 and 6
-    let trait_method_map: HashMap<String, TraitId> =
-        trait_registry.trait_method_names().into_iter().collect();
+    // Compute trait_method_map between phases 5 and 6, with collision detection
+    let mut trait_method_map: HashMap<String, TraitId> = HashMap::new();
+    for (method_name, trait_id, is_prelude) in trait_registry.trait_method_names() {
+        if let Some(existing) = trait_method_map.get(&method_name) {
+            let existing_is_prelude = trait_registry
+                .lookup_trait(&existing.name)
+                .map_or(false, |info| info.is_prelude);
+            if !existing_is_prelude && !is_prelude {
+                // Two non-prelude traits with same method name → error
+                return Err(spanned(
+                    TypeError::TraitMethodCollision {
+                        method_name: method_name.clone(),
+                        trait1: existing.name.clone(),
+                        trait2: trait_id.name.clone(),
+                    },
+                    (0, 0),
+                ));
+            } else if existing_is_prelude && !is_prelude {
+                // Local shadows prelude
+                trait_method_map.insert(method_name, trait_id);
+            }
+            // If existing is not prelude and new is prelude → skip (local wins)
+            // If both prelude → keep existing (prelude is curated, first wins)
+        } else {
+            trait_method_map.insert(method_name, trait_id);
+        }
+    }
 
     // Phase 6: Conflict and reserved-name checks
     check_trait_name_conflicts(
@@ -1896,6 +1921,7 @@ fn register_imported_trait_defs(
     trait_registry: &mut TraitRegistry,
     imported_trait_defs: &[ExportedTraitDef],
     gen: &mut TypeVarGen,
+    prelude_imported_names: &HashSet<String>,
 ) {
     // Register trait definitions imported from other modules
     for trait_def in imported_trait_defs {
@@ -1921,6 +1947,7 @@ fn register_imported_trait_defs(
             });
         }
 
+        let is_prelude = prelude_imported_names.contains(&trait_def.name);
         trait_registry
             .register_trait(TraitInfo {
                 name: trait_def.name.clone(),
@@ -1931,6 +1958,7 @@ fn register_imported_trait_defs(
                 superclasses: trait_def.superclasses.clone(),
                 methods: trait_methods,
                 span: (0, 0),
+                is_prelude,
             })
             .expect("imported trait should not already be registered (checked above)");
     }
@@ -2048,6 +2076,7 @@ fn register_local_traits(
                     superclasses: superclasses.clone(),
                     methods: trait_methods,
                     span: *span,
+                    is_prelude: false,
                 })
                 .map_err(|e| spanned(e, *span))?;
 
@@ -2562,6 +2591,30 @@ fn infer_function_bodies<'a>(
         })
         .collect();
 
+    // Check that pub functions have full type annotations
+    for decl in &fn_decls {
+        if matches!(decl.visibility, Visibility::Pub) {
+            let mut missing = Vec::new();
+            for p in &decl.params {
+                if p.ty.is_none() {
+                    missing.push(format!("parameter `{}`", p.name));
+                }
+            }
+            if decl.return_type.is_none() {
+                missing.push("return type".to_string());
+            }
+            if !missing.is_empty() {
+                return Err(spanned(
+                    TypeError::MissingPubAnnotation {
+                        fn_name: decl.name.clone(),
+                        missing,
+                    },
+                    decl.span,
+                ));
+            }
+        }
+    }
+
     let adj = scc::build_dependency_graph(&fn_decls);
     let sccs = scc::tarjan_scc(&adj);
 
@@ -2786,6 +2839,47 @@ fn infer_function_bodies<'a>(
             if let Type::Var(new_id) = resolved {
                 *type_var = new_id;
             }
+        }
+    }
+
+    // Validate explicit trait bounds: fn_decl bodies must not use trait methods on type vars
+    // unless the corresponding bound is declared in a `where` clause.
+    for (idx, decl) in fn_decls.iter().enumerate() {
+        if let Some(body) = &fn_bodies[idx] {
+            let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
+            if let Some(scheme) = &result_schemes[idx] {
+                if let Type::Fn(param_types, ret_ty) = &scheme.ty {
+                    for pty in param_types.iter() {
+                        for v in free_vars(pty) {
+                            fn_type_param_vars.insert(v);
+                        }
+                    }
+                    for v in free_vars(ret_ty) {
+                        fn_type_param_vars.insert(v);
+                    }
+                }
+            }
+            if fn_type_param_vars.is_empty() {
+                continue;
+            }
+            let declared = fn_constraint_requirements
+                .get(decl.name.as_str())
+                .cloned()
+                .unwrap_or_default();
+            // Build reverse map: TypeVarId → user-visible type param name
+            let type_var_names: HashMap<TypeVarId, String> = saved_type_param_maps
+                .get(&idx)
+                .map(|tpm| tpm.iter().map(|(name, &id)| (id, name.clone())).collect())
+                .unwrap_or_default();
+            checks::validate_trait_constraints(
+                body,
+                trait_method_map,
+                &state.subst,
+                &fn_type_param_vars,
+                &declared,
+                &decl.name,
+                &type_var_names,
+            )?;
         }
     }
 

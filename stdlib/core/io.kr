@@ -1,5 +1,5 @@
 import core/result.{Result, Ok, Err}
-import core/show.{show}
+import core/show.{Show, show}
 
 # core/io — I/O functions
 extern "krypton.runtime.KryptonIO" {
@@ -10,5 +10,5 @@ extern "krypton.runtime.KryptonIO" {
     pub fun write_file(String, String) -> Result[String, Unit]
 }
 
-pub fun println[a](x: a) where a: shared = raw_println(show(x))
-pub fun print(x) = raw_print(show(x))
+pub fun println[a](x: a) -> Unit where a: Show + shared = raw_println(show(x))
+pub fun print[a](x: a) -> Unit where a: Show + shared = raw_print(show(x))

@@ -1,0 +1,12 @@
+# expect: error
+# expect: E0311
+
+trait Foo[a] {
+    fun do_thing(_0: a) -> a
+}
+
+trait Bar[a] {
+    fun do_thing(_0: a) -> a
+}
+
+fun main() = 0

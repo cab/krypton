@@ -815,7 +815,7 @@ fn test_trait_dictionary_parameter() {
     let src = r#"
 type Point = { x: Int, y: Int }
 impl Eq[Point] { fun eq(x, y) = if x.x == y.x { x.y == y.y } else { false } }
-fun are_equal(x, y) = eq(x, y)
+fun are_equal[a](x: a, y: a) -> Bool where a: Eq = eq(x, y)
 fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
 "#;
     // First verify it runs correctly

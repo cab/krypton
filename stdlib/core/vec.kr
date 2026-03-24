@@ -13,9 +13,9 @@ extern "krypton.runtime.KryptonArray" as Vec[a] {
     fun staticFreeze(Vec[a]) -> Vec[a]
 }
 
-pub fun len(xs) = staticLength(xs)
+pub fun len[a](xs: Vec[a]) -> Int = staticLength(xs)
 
-pub fun nth(xs, index) = if index < 0 {
+pub fun nth[a](xs: Vec[a], index: Int) -> Option[a] = if index < 0 {
     None
 } else {
     if index < staticLength(xs) {
@@ -26,7 +26,7 @@ pub fun nth(xs, index) = if index < 0 {
 }
 
 fun vec_from_vec_go(xs, i, acc)  = if i < 0 { acc } else { vec_from_vec_go(xs, i - 1, Cons(staticGet(xs, i), acc)) }
-pub fun to_list(xs) = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
+pub fun to_list[a](xs: Vec[a]) -> List[a] = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
 
 fun from_list_go(lst, arr, i) = match lst {
     Nil => staticFreeze(arr),
@@ -42,15 +42,15 @@ fun from_list(lst) = {
     from_list_go(lst, arr, 0)
 }
 
-pub fun last(xs) = {
+pub fun last[a](xs: Vec[a]) -> Option[a] = {
     let n = staticLength(xs);
     if n < 1 { None } else { Some(staticGet(xs, n - 1)) }
 }
 
-pub fun filter(xs, f) = from_list(list_filter(to_list(xs), f))
+pub fun filter[a](xs: Vec[a], f: (a) -> Bool) -> Vec[a] = from_list(list_filter(to_list(xs), f))
 
-pub fun map(xs, f) = from_list(list_map(to_list(xs), f))
+pub fun map[a, b](xs: Vec[a], f: (a) -> b) -> Vec[b] = from_list(list_map(to_list(xs), f))
 
-pub fun fold(xs, acc, f) = list_fold(to_list(xs), acc, f)
+pub fun fold[a, b](xs: Vec[a], acc: b, f: (b, a) -> b) -> b = list_fold(to_list(xs), acc, f)
 
 pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord = from_list(list_sort_by(to_list(xs), key))

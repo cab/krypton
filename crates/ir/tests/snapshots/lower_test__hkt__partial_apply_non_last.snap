@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
-trait Contravariant[u7] { contramap(u7[v7], (w7) -> v7): u7[w7] }
+trait Contravariant[w7] { contramap(w7[x7], (y7) -> x7): w7[y7] }
 instance Contravariant[Predicate$$Var0$$Var1] { contramap=f0 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -76,12 +76,12 @@ import core/show/show as show(g): String
 import core/hash/hash as hash(g): Int
 import core/resource/close as close(~g): Unit
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[r3]): Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
-import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
-import core/list/map as map(List[w], (w) -> y): List[y]
-import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/list/last as last(List[t3]): Option[t3]
+import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
+import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
+import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
+import core/list/map as map(List[x], (x) -> z): List[z]
+import core/vec/to_list as to_list(Vec[j7]): List[j7]
 import core/io/println as println(m): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -93,13 +93,13 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
-fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[d8, d8], v1: (d8) -> d8) -> ~Predicate[d8, d8] =
-  let v8: (d8) -> d8 = make_closure(lambda$53, [v0, v1])
-  let v9: ~Predicate[d8, d8] = construct Predicate(v8)
+fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[f8, f8], v1: (f8) -> f8) -> ~Predicate[f8, f8] =
+  let v8: (f8) -> f8 = make_closure(lambda$53, [v0, v1])
+  let v9: ~Predicate[f8, f8] = construct Predicate(v8)
   v9
 
-fn lambda$53(v2: Predicate[d8, d8], v3: (d8) -> d8, v4: d8) -> d8 =
-  let v5: (d8) -> d8 = project v2.0
-  let v6: d8 = call_closure v3(v4)
-  let v7: d8 = call_closure v5(v6)
+fn lambda$53(v2: Predicate[f8, f8], v3: (f8) -> f8, v4: f8) -> f8 =
+  let v5: (f8) -> f8 = project v2.0
+  let v6: f8 = call_closure v3(v4)
+  let v7: f8 = call_closure v5(v6)
   v7

@@ -16,6 +16,8 @@ pub struct TraitInfo {
     pub superclasses: Vec<String>,
     pub methods: Vec<TraitMethod>,
     pub span: Span,
+    /// True if this trait was imported from the prelude.
+    pub is_prelude: bool,
 }
 
 pub struct TraitMethod {
@@ -217,12 +219,12 @@ impl TraitRegistry {
             .find(|inst| inst.trait_name == trait_name && inst.span == span)
     }
 
-    pub fn trait_method_names(&self) -> Vec<(String, crate::typed_ast::TraitId)> {
+    pub fn trait_method_names(&self) -> Vec<(String, crate::typed_ast::TraitId, bool)> {
         let mut result = Vec::new();
         for (_trait_name, info) in &self.traits {
             let trait_id = crate::typed_ast::TraitId::new(info.module_path.clone(), info.name.clone());
             for method in &info.methods {
-                result.push((method.name.clone(), trait_id.clone()));
+                result.push((method.name.clone(), trait_id.clone(), info.is_prelude));
             }
         }
         result
@@ -611,6 +613,7 @@ mod tests {
             superclasses: vec![],
             methods: Vec::<TraitMethod>::new(),
             span: (0, 0),
+            is_prelude: false,
         }
     }
 

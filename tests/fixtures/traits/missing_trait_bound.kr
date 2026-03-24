@@ -1,0 +1,9 @@
+# expect: error
+# expect: E0312
+extern "krypton.runtime.KryptonIO" {
+    fun println(Object) -> Unit
+}
+
+fun show_it(x) = show(x)
+
+fun main() = println(show_it(42))

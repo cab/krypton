@@ -5,44 +5,44 @@ import core/semigroup.{Semigroup}
 # core/list — List type (cons-based linked list)
 pub type List[a] = Cons(a, List[a]) | Nil
 
-pub fun length(xs) = match xs {
+pub fun length[a](xs: List[a]) -> Int = match xs {
     Nil => 0,
     Cons(_, rest) => 1 + length(rest),
 }
 
-pub fun map(xs, f) = match xs {
+pub fun map[a, b](xs: List[a], f: (a) -> b) -> List[b] = match xs {
     Nil => Nil,
     Cons(h, rest) => Cons(f(h), map(rest, f)),
 }
 
-pub fun filter(xs, f) = match xs {
+pub fun filter[a](xs: List[a], f: (a) -> Bool) -> List[a] = match xs {
     Nil => Nil,
     Cons(h, rest) => if f(h) { Cons(h, filter(rest, f)) } else { filter(rest, f) },
 }
 
-pub fun fold(xs, acc, f) = match xs {
+pub fun fold[a, b](xs: List[a], acc: b, f: (b, a) -> b) -> b = match xs {
     Nil => acc,
     Cons(h, rest) => fold(rest, f(acc, h), f),
 }
 
-pub fun concat(xs, ys) = match xs {
+pub fun concat[a](xs: List[a], ys: List[a]) -> List[a] = match xs {
     Nil => ys,
     Cons(h, rest) => Cons(h, concat(rest, ys)),
 }
 
-pub fun reverse(xs) = fold(xs, Nil, (acc, x) -> Cons(x, acc))
+pub fun reverse[a](xs: List[a]) -> List[a] = fold(xs, Nil, (acc, x) -> Cons(x, acc))
 
-pub fun head(xs) = match xs {
+pub fun head[a](xs: List[a]) -> Option[a] = match xs {
     Cons(h, _) => Some(h),
     Nil => None,
 }
 
-pub fun tail(xs) = match xs {
+pub fun tail[a](xs: List[a]) -> Option[List[a]] = match xs {
     Cons(_, rest) => Some(rest),
     Nil => None,
 }
 
-pub fun last(xs) = match xs {
+pub fun last[a](xs: List[a]) -> Option[a] = match xs {
     Cons(last, Nil) => Some(last),
     Cons(_, rest) => last(rest),
     Nil => None,

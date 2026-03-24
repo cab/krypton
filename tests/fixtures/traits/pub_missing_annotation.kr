@@ -1,0 +1,4 @@
+# expect: error
+# expect: E0310
+
+pub fun add(x, y) = x + y

@@ -50,6 +50,9 @@ pub enum TypeErrorCode {
     E0307, // Unknown trait
     E0308, // Self outside impl block
     E0309, // Duplicate instance
+    E0310, // Missing pub type annotation
+    E0311, // Trait method collision
+    E0312, // Missing trait bound
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -224,6 +227,20 @@ pub enum TypeError {
         name: String,
     },
     SelfOutsideImpl,
+    MissingPubAnnotation {
+        fn_name: String,
+        missing: Vec<String>,
+    },
+    TraitMethodCollision {
+        method_name: String,
+        trait1: String,
+        trait2: String,
+    },
+    MissingTraitBound {
+        fn_name: String,
+        trait_name: String,
+        type_var: String,
+    },
 }
 
 impl TypeError {
@@ -281,6 +298,9 @@ impl TypeError {
             TypeError::NestedWildcard { .. } => TypeErrorCode::E0512,
             TypeError::UnknownTrait { .. } => TypeErrorCode::E0307,
             TypeError::SelfOutsideImpl => TypeErrorCode::E0308,
+            TypeError::MissingPubAnnotation { .. } => TypeErrorCode::E0310,
+            TypeError::TraitMethodCollision { .. } => TypeErrorCode::E0311,
+            TypeError::MissingTraitBound { .. } => TypeErrorCode::E0312,
         }
     }
 
@@ -482,6 +502,15 @@ impl TypeError {
             }
             TypeError::UnknownTrait { .. } => None,
             TypeError::SelfOutsideImpl => None,
+            TypeError::MissingPubAnnotation { .. } => {
+                Some("public functions must have explicit type annotations on all parameters and the return type".to_string())
+            }
+            TypeError::TraitMethodCollision { trait1, trait2, method_name } => {
+                Some(format!("traits `{}` and `{}` both define method `{}`; use qualified imports or rename to disambiguate", trait1, trait2, method_name))
+            }
+            TypeError::MissingTraitBound { type_var, trait_name, .. } => {
+                Some(format!("add `where {}: {}` to the function signature", type_var, trait_name))
+            }
         }
     }
 
@@ -823,6 +852,28 @@ impl fmt::Display for TypeError {
             }
             TypeError::SelfOutsideImpl => {
                 write!(f, "`Self` can only be used inside impl blocks")
+            }
+            TypeError::MissingPubAnnotation { fn_name, missing } => {
+                write!(
+                    f,
+                    "public function `{}` is missing type annotations for: {}",
+                    fn_name,
+                    missing.join(", ")
+                )
+            }
+            TypeError::TraitMethodCollision { method_name, trait1, trait2 } => {
+                write!(
+                    f,
+                    "trait method collision: `{}` is defined by both `{}` and `{}`",
+                    method_name, trait1, trait2
+                )
+            }
+            TypeError::MissingTraitBound { fn_name, trait_name, type_var } => {
+                write!(
+                    f,
+                    "function `{}` uses trait method from `{}` on type variable `{}` without a corresponding bound",
+                    fn_name, trait_name, type_var
+                )
             }
         }
     }

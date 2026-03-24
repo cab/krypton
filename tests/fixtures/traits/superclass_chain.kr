@@ -13,6 +13,6 @@ impl Ord[Num] {
     fun lt(a, b) = a.n < b.n
 }
 
-fun is_less(x, y) = lt(x, y)
+fun is_less[a](x: a, y: a) -> Bool where a: Ord = lt(x, y)
 
 fun main() = println(is_less(Num(1), Num(2)))

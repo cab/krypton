@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__hkt_multi_trait
 
 type Box[a] = Box#0(a)
-trait Container[w7] { wrap(x7): w7[x7] }
-trait Functor[t7] { fmap(t7[u7], (u7) -> v7): t7[v7] }
+trait Container[y7] { wrap(z7): y7[z7] }
+trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
 instance Functor[Box] { fmap=f0 }
 instance Container[Box] { wrap=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
@@ -78,12 +78,12 @@ import core/show/show as show(g): String
 import core/hash/hash as hash(g): Int
 import core/resource/close as close(~g): Unit
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[r3]): Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5): List[w5]
-import core/list/filter as filter(List[h1], (h1) -> Bool): List[h1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1): u1
-import core/list/map as map(List[w], (w) -> y): List[y]
-import core/vec/to_list as to_list(Vec[h7]): List[h7]
+import core/list/last as last(List[t3]): Option[t3]
+import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
+import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
+import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
+import core/list/map as map(List[x], (x) -> z): List[z]
+import core/vec/to_list as to_list(Vec[j7]): List[j7]
 import core/io/println as println(m): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -95,14 +95,14 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
-fn Functor$$Box$$fmap(v0: Box[c8], v1: (c8) -> e8) -> ~Box[e8] =
+fn Functor$$Box$$fmap(v0: Box[e8], v1: (e8) -> g8) -> ~Box[g8] =
   switch v0 {
-    0 (v2: c8) ->
-      let v3: e8 = call_closure v1(v2)
-      let v4: ~Box[e8] = construct Box::Box#0(v3)
+    0 (v2: e8) ->
+      let v3: g8 = call_closure v1(v2)
+      let v4: ~Box[g8] = construct Box::Box#0(v3)
       v4
   }
 
-fn Container$$Box$$wrap(v5: x7) -> ~Box[x7] =
-  let v6: ~Box[x7] = construct Box::Box#0(v5)
+fn Container$$Box$$wrap(v5: z7) -> ~Box[z7] =
+  let v6: ~Box[z7] = construct Box::Box#0(v5)
   v6

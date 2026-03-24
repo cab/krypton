@@ -7,6 +7,6 @@ type A = { x: Int } deriving (Eq)
 
 type B = { y: Int } deriving (Eq)
 
-fun same(x, y) = eq(x, y)
+fun same[a](x: a, y: a) -> Bool where a: Eq = eq(x, y)
 
 fun main() = println(if same(A(1), A(1)) { same(B(2), B(2)) } else { false })

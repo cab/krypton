@@ -259,13 +259,63 @@ pub(super) fn check_constrained_function_refs(
     Ok(())
 }
 
-/// Detect trait method calls on type variables (indicating the function needs a dict param).
+/// Detect trait method calls on type variables and collect as constraints (used for codegen dict params).
 pub(super) fn detect_trait_constraints(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitId>,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
     constraints: &mut Vec<(String, TypeVarId)>,
+) {
+    walk_trait_method_calls(expr, trait_method_map, subst, fn_type_param_vars, &mut |trait_name, var| {
+        constraints.push((trait_name, var));
+    });
+}
+
+/// Validate that all trait method calls on type variables have corresponding declared constraints.
+pub(super) fn validate_trait_constraints(
+    expr: &TypedExpr,
+    trait_method_map: &HashMap<String, TraitId>,
+    subst: &Substitution,
+    fn_type_param_vars: &HashSet<TypeVarId>,
+    declared_constraints: &[(String, TypeVarId)],
+    fn_name: &str,
+    type_var_names: &HashMap<TypeVarId, String>,
+) -> Result<(), SpannedTypeError> {
+    let mut first_error: Option<SpannedTypeError> = None;
+    walk_trait_method_calls(expr, trait_method_map, subst, fn_type_param_vars, &mut |trait_name, var| {
+        if first_error.is_some() {
+            return;
+        }
+        let is_declared = declared_constraints.iter().any(|(t, v)| t == &trait_name && *v == var);
+        if !is_declared {
+            let type_var_display = type_var_names
+                .get(&var)
+                .cloned()
+                .unwrap_or_else(|| format!("?{}", var.0));
+            first_error = Some(super::spanned(
+                TypeError::MissingTraitBound {
+                    fn_name: fn_name.to_string(),
+                    trait_name,
+                    type_var: type_var_display,
+                },
+                expr.span,
+            ));
+        }
+    });
+    match first_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
+}
+
+/// Shared walker: finds trait method calls on type variables and invokes the callback for each.
+fn walk_trait_method_calls(
+    expr: &TypedExpr,
+    trait_method_map: &HashMap<String, TraitId>,
+    subst: &Substitution,
+    fn_type_param_vars: &HashSet<TypeVarId>,
+    callback: &mut dyn FnMut(String, TypeVarId),
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -292,7 +342,7 @@ pub(super) fn detect_trait_constraints(
                         });
                         if let Some(v) = candidate_var {
                             if fn_type_param_vars.contains(&v) {
-                                constraints.push((trait_id.name.clone(), v));
+                                callback(trait_id.name.clone(), v);
                             }
                         }
                     }

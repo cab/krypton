@@ -3,6 +3,6 @@ extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-fun apply_combine(x, y) = combine(x, y)
+fun apply_combine[a](x: a, y: a) -> a where a: Semigroup = combine(x, y)
 
 fun main() = println(apply_combine(3, 5))
