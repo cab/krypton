@@ -96,7 +96,7 @@ declare close: (~g) -> Unit
 declare println: (m) -> Unit
 
 fn use_handle(v0: ~Handle) -> Unit =
-  let v1: Dict = get_dict Resource[Handle]
+  let v1: Dict[Resource, Handle] = get_dict Resource[Handle]
   let v2: Unit = call close(v1, v0)
   v2
 

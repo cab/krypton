@@ -234,16 +234,16 @@ declare to_json: (m14) -> Json
 
 fn main() -> Unit =
   let_join v13(v0: ~Option[Int]) =
-    let v2: Dict = get_dict ToJson[Option[Int]]
+    let v2: Dict[ToJson, Option[Int]] = get_dict ToJson[Option[Int]]
     let v3: Json = call to_json(v2, v0)
     let v4: String = call json_to_string(v3)
-    let v5: Dict = get_dict Show[String]
+    let v5: Dict[Show, String] = get_dict Show[String]
     let v6: Unit = call println(v5, v4)
     let v8: ~Option[Int] = construct Option::Some#0(42)
-    let v9: Dict = get_dict ToJson[Option[Int]]
+    let v9: Dict[ToJson, Option[Int]] = get_dict ToJson[Option[Int]]
     let v10: Json = call to_json(v9, v8)
     let v11: String = call json_to_string(v10)
-    let v7: Dict = get_dict Show[String]
+    let v7: Dict[Show, String] = get_dict Show[String]
     let v12: Unit = call println(v7, v11)
     v12
   in

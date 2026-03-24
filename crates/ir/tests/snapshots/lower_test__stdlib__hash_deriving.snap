@@ -102,39 +102,39 @@ fn main() -> Unit =
   let v2: ~Point = construct Point(3, 4)
   let_join v31(v19: Unit) =
     let_join v30(v28: Bool) =
-      let v20: Dict = get_dict Show[Bool]
+      let v20: Dict[Show, Bool] = get_dict Show[Bool]
       let v29: Unit = call println(v20, v28)
       v29
     in
-    let v21: Dict = get_dict Eq[Int]
-    let v22: Dict = get_dict Hash[Point]
+    let v21: Dict[Eq, Int] = get_dict Eq[Int]
+    let v22: Dict[Hash, Point] = get_dict Hash[Point]
     let v23: Int = call hash(v22, v0)
-    let v24: Dict = get_dict Hash[Point]
+    let v24: Dict[Hash, Point] = get_dict Hash[Point]
     let v25: Int = call hash(v24, v2)
     let v26: Bool = call eq(v21, v23, v25)
     let v27: Bool = not(v26)
     jump v30(v27)
   in
   let_join v18(v16: Bool) =
-    let v9: Dict = get_dict Show[Bool]
+    let v9: Dict[Show, Bool] = get_dict Show[Bool]
     let v17: Unit = call println(v9, v16)
     jump v31(v17)
   in
-  let v10: Dict = get_dict Eq[Int]
-  let v11: Dict = get_dict Hash[Point]
+  let v10: Dict[Eq, Int] = get_dict Eq[Int]
+  let v11: Dict[Hash, Point] = get_dict Hash[Point]
   let v12: Int = call hash(v11, v0)
-  let v13: Dict = get_dict Hash[Point]
+  let v13: Dict[Hash, Point] = get_dict Hash[Point]
   let v14: Int = call hash(v13, v1)
   let v15: Bool = call eq(v10, v12, v14)
   jump v18(v15)
 
 fn Hash$$Point$$hash(v32: Point) -> Int =
   let v33: Int = project v32.0
-  let v34: Dict = get_dict Hash[Int]
+  let v34: Dict[Hash, Int] = get_dict Hash[Int]
   let v35: Int = call hash(v34, v33)
   let v36: Int = mul_int(31, v35)
   let v37: Int = project v32.1
-  let v38: Dict = get_dict Hash[Int]
+  let v38: Dict[Hash, Int] = get_dict Hash[Int]
   let v39: Int = call hash(v38, v37)
   let v40: Int = add_int(v36, v39)
   v40
@@ -151,7 +151,7 @@ fn Eq$$Point$$eq(v41: Point, v42: Point) -> Bool =
               false
           }
         in
-        let v48: Dict = get_dict Eq[Int]
+        let v48: Dict[Eq, Int] = get_dict Eq[Int]
         let v49: Int = project v41.1
         let v50: Int = project v42.1
         let v51: Bool = call eq(v48, v49, v50)
@@ -160,7 +160,7 @@ fn Eq$$Point$$eq(v41: Point, v42: Point) -> Bool =
         false
     }
   in
-  let v43: Dict = get_dict Eq[Int]
+  let v43: Dict[Eq, Int] = get_dict Eq[Int]
   let v44: Int = project v41.0
   let v45: Int = project v42.0
   let v46: Bool = call eq(v43, v44, v45)

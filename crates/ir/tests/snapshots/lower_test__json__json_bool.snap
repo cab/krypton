@@ -232,10 +232,10 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let v0: ~Json = construct Json::JBool#1(true)
   let v1: String = call json_to_string(v0)
-  let v2: Dict = get_dict Show[String]
+  let v2: Dict[Show, String] = get_dict Show[String]
   let v3: Unit = call println(v2, v1)
   let v5: ~Json = construct Json::JBool#1(false)
   let v6: String = call json_to_string(v5)
-  let v4: Dict = get_dict Show[String]
+  let v4: Dict[Show, String] = get_dict Show[String]
   let v7: Unit = call println(v4, v6)
   v7

@@ -97,15 +97,15 @@ declare show: (g) -> String
 
 fn main() -> Unit =
   let v0: ~Option[Int] = construct Option::Some#0(42)
-  let v1: Dict = get_dict Show[Int]
-  let v2: Dict = make_dict Show[Option[Int]](v1)
+  let v1: Dict[Show, Int] = get_dict Show[Int]
+  let v2: Dict[Show, Option[Int]] = make_dict Show[Option[Int]](v1)
   let v3: String = call show(v2, v0)
   let v4: Unit = call println(v3)
   v4
 
-fn Show$$Option$$show(v5: Dict, v6: Option[j7]) -> String =
+fn Show$$Option$$show(v5: Dict[Show, j7], v6: Option[j7]) -> String =
   switch v6 {
-    0 (v7: a) ->
+    0 (v7: j7) ->
       let v8: String = call show(v5, v7)
       let v9: String = concat_string("Some(", v8)
       let v10: String = concat_string(v9, ")")

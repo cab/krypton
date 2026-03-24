@@ -104,7 +104,7 @@ fn main() -> Unit =
               let v48: Unit = call println(v47)
               v48
             in
-            let v44: Dict = get_dict Eq[Int]
+            let v44: Dict[Eq, Int] = get_dict Eq[Int]
             let v45: Bool = call eq(v44, 10, 10)
             let v46: Bool = not(v45)
             jump v49(v46)
@@ -113,7 +113,7 @@ fn main() -> Unit =
             let v41: Unit = call println(v40)
             jump v50(v41)
           in
-          let v38: Dict = get_dict Eq[Int]
+          let v38: Dict[Eq, Int] = get_dict Eq[Int]
           let v39: Bool = call eq(v38, 10, 10)
           jump v42(v39)
         in
@@ -121,7 +121,7 @@ fn main() -> Unit =
           let v33: Unit = call println(v32)
           jump v51(v33)
         in
-        let v29: Dict = get_dict Ord[Int]
+        let v29: Dict[Ord, Int] = get_dict Ord[Int]
         let v30: Bool = call lt(v29, 10, 20)
         let v31: Bool = not(v30)
         jump v34(v31)
@@ -130,7 +130,7 @@ fn main() -> Unit =
         let v23: Unit = call println(v22)
         jump v52(v23)
       in
-      let v19: Dict = get_dict Ord[Int]
+      let v19: Dict[Ord, Int] = get_dict Ord[Int]
       let v20: Bool = call lt(v19, 20, 10)
       let v21: Bool = not(v20)
       jump v24(v21)
@@ -139,7 +139,7 @@ fn main() -> Unit =
       let v13: Unit = call println(v12)
       jump v53(v13)
     in
-    let v10: Dict = get_dict Ord[Int]
+    let v10: Dict[Ord, Int] = get_dict Ord[Int]
     let v11: Bool = call lt(v10, 20, 10)
     jump v14(v11)
   in
@@ -147,6 +147,6 @@ fn main() -> Unit =
     let v5: Unit = call println(v4)
     jump v54(v5)
   in
-  let v2: Dict = get_dict Ord[Int]
+  let v2: Dict[Ord, Int] = get_dict Ord[Int]
   let v3: Bool = call lt(v2, 10, 20)
   jump v6(v3)

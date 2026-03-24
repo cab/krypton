@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__nullary_singleton
@@ -98,7 +97,7 @@ fn unwrap_or(v0: Option[z7], v1: z7) -> z7 =
   switch v0 {
     0 ->
       v1
-    1 (v2: a) ->
+    1 (v2: z7) ->
       v2
   }
 

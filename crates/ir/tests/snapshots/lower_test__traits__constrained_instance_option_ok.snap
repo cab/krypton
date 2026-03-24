@@ -101,13 +101,13 @@ fn main() -> Unit =
     let v7: Unit = call println(v6)
     v7
   in
-  let v0: Dict = get_dict Eq[String]
+  let v0: Dict[Eq, String] = get_dict Eq[String]
   let v1: ~Option[Int] = construct Option::Some#0(42)
-  let v2: Dict = get_dict Show[Int]
-  let v3: Dict = make_dict Show[Option[Int]](v2)
+  let v2: Dict[Show, Int] = get_dict Show[Int]
+  let v3: Dict[Show, Option[Int]] = make_dict Show[Option[Int]](v2)
   let v4: String = call show(v3, v1)
   let v5: Bool = call eq(v0, v4, "ok")
   jump v8(v5)
 
-fn Show$$Option$$Var0$$show(v9: Dict, v10: Option[u7]) -> ~String =
+fn Show$$Option$$Var0$$show(v9: Dict[Show, u7], v10: Option[u7]) -> ~String =
   "ok"

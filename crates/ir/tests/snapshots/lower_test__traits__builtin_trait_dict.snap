@@ -93,12 +93,12 @@ import core/ordering/GT as GT(): Ordering
 declare combine: (g, g) -> g
 declare println: (m) -> Unit
 
-fn apply_combine(v0: Dict, v1: y7, v2: y7) -> y7 =
+fn apply_combine(v0: Dict[Semigroup, y7], v1: y7, v2: y7) -> y7 =
   let v3: y7 = call combine(v0, v1, v2)
   v3
 
 fn main() -> Unit =
-  let v4: Dict = get_dict Semigroup[Int]
+  let v4: Dict[Semigroup, Int] = get_dict Semigroup[Int]
   let v5: Int = call apply_combine(v4, 3, 5)
   let v6: Unit = call println(v5)
   v6

@@ -97,13 +97,13 @@ declare name
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: Dict = get_dict Test[Int]
-  let v1: Dict = make_dict Test[Vec[Int]](v0)
+  let v0: Dict[Test, Int] = get_dict Test[Int]
+  let v1: Dict[Test, Vec[Int]] = make_dict Test[Vec[Int]](v0)
   let v2: String = call name(v1)
   let v3: Unit = call println(v2)
   v3
 
-fn Test$$Vec$$Var0$$name(v4: Dict) -> String =
+fn Test$$Vec$$Var0$$name(v4: Dict[Test, u7]) -> String =
   let v5: String = call name(v4)
   v5
 

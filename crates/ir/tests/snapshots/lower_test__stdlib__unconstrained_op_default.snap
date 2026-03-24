@@ -108,8 +108,8 @@ fn add_ints(v0: Int, v1: Int) -> Int =
 
 fn main() -> Unit =
   let v4: Int = call add_ints(1, 2)
-  let v5: Dict = get_dict Show[Int]
+  let v5: Dict[Show, Int] = get_dict Show[Int]
   let v6: String = call show(v5, v4)
-  let v3: Dict = get_dict Show[String]
+  let v3: Dict[Show, String] = get_dict Show[String]
   let v7: Unit = call println(v3, v6)
   v7

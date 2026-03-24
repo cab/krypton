@@ -96,18 +96,18 @@ declare default
 declare println: (m) -> Unit
 
 fn int_default() -> Int =
-  let v0: Dict = get_dict Default[Int]
+  let v0: Dict[Default, Int] = get_dict Default[Int]
   let v1: Int = call default(v0)
   v1
 
-fn default2(v2: Dict) -> a8 =
+fn default2(v2: Dict[Default, a8]) -> a8 =
   let v3: a8 = call default(v2)
   v3
 
 fn main() -> Unit =
   let v4: Int = call int_default()
   let v5: Unit = call println(v4)
-  let v6: Dict = get_dict Default[Int]
+  let v6: Dict[Default, Int] = get_dict Default[Int]
   let v7: Int = call default2(v6)
   let v8: Unit = call println(v7)
   v8

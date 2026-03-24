@@ -12,6 +12,7 @@ use crate::{
     InstanceDef, Literal, Module, PrimOp, SimpleExpr, StructDef, SumTypeDef, SwitchBranch,
     TraitDef, TraitMethodDef, VarId, VariantDef,
 };
+use crate::Type as IrType;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -51,7 +52,7 @@ impl std::fmt::Display for LowerError {
 #[derive(Clone)]
 struct LetBinding {
     bind: VarId,
-    ty: Type,
+    ty: IrType,
     value: SimpleExpr,
 }
 
@@ -564,7 +565,7 @@ impl LowerCtx {
             ty: body.ty.clone(),
             kind: ExprKind::Let {
                 bind: unit_var,
-                ty: Type::Unit,
+                ty: Type::Unit.into(),
                 value: SimpleExpr::Call {
                     func: close_fn_id,
                     args: vec![dict_atom, Atom::Var(old_var)],
@@ -619,7 +620,7 @@ impl LowerCtx {
                 ty: result.ty.clone(),
                 kind: ExprKind::Let {
                     bind: unit_var,
-                    ty: Type::Unit,
+                    ty: Type::Unit.into(),
                     value: SimpleExpr::Call {
                         func: rc.close_fn_id,
                         args: vec![rc.dict_atom.clone(), Atom::Var(rc.binding_var)],
@@ -715,7 +716,7 @@ impl LowerCtx {
                         .first()
                         .map(|b| b.body.ty.clone())
                         .or_else(|| new_default.as_ref().map(|d| d.ty.clone()))
-                        .unwrap_or(Type::Unit),
+                        .unwrap_or(Type::Unit.into()),
                     kind: ExprKind::Switch {
                         scrutinee,
                         branches: new_branches,
@@ -781,7 +782,7 @@ impl LowerCtx {
                         let mut all_bindings = bindings;
                         all_bindings.push(LetBinding {
                             bind: var,
-                            ty,
+                            ty: ty.into(),
                             value: simple,
                         });
                         return Ok((all_bindings, Atom::Var(var)));
@@ -797,7 +798,7 @@ impl LowerCtx {
                     let mut all_bindings = bindings;
                     all_bindings.push(LetBinding {
                         bind: var,
-                        ty,
+                        ty: ty.into(),
                         value: simple,
                     });
                     Ok((all_bindings, Atom::Var(var)))
@@ -813,7 +814,7 @@ impl LowerCtx {
                     let mut all_bindings = bindings;
                     all_bindings.push(LetBinding {
                         bind: var,
-                        ty,
+                        ty: ty.into(),
                         value: simple,
                     });
                     Ok((all_bindings, Atom::Var(var)))
@@ -858,7 +859,7 @@ impl LowerCtx {
                     ty: body.ty.clone(),
                     kind: ExprKind::Let {
                         bind: var,
-                        ty: expr.ty.clone(),
+                        ty: expr.ty.clone().into(),
                         value: simple,
                         body: Box::new(body),
                     },
@@ -1063,7 +1064,7 @@ impl LowerCtx {
                 } else {
                     Type::Unit
                 };
-                Ok((bindings, SimpleExpr::MakeVec { element_type, elements: atoms }))
+                Ok((bindings, SimpleExpr::MakeVec { element_type: element_type.into(), elements: atoms }))
             }
         }
     }
@@ -1076,7 +1077,7 @@ impl LowerCtx {
         match &expr.kind {
             TypedExprKind::Lit(lit) => Ok(Expr {
                 kind: ExprKind::Atom(Atom::Lit(convert_lit(lit))),
-                ty: expr.ty.clone(),
+                ty: expr.ty.clone().into(),
             }),
 
             TypedExprKind::Var(name) => {
@@ -1087,10 +1088,10 @@ impl LowerCtx {
                     if fields.is_empty() {
                         let var = self.fresh_var();
                         return Ok(Expr {
-                            ty: expr.ty.clone(),
+                            ty: expr.ty.clone().into(),
                             kind: ExprKind::Let {
                                 bind: var,
-                                ty: expr.ty.clone(),
+                                ty: expr.ty.clone().into(),
                                 value: SimpleExpr::ConstructVariant {
                                     type_name,
                                     variant: name.clone(),
@@ -1098,7 +1099,7 @@ impl LowerCtx {
                                     fields: vec![],
                                 },
                                 body: Box::new(Expr {
-                                    ty: expr.ty.clone(),
+                                    ty: expr.ty.clone().into(),
                                     kind: ExprKind::Atom(Atom::Var(var)),
                                 }),
                             },
@@ -1108,22 +1109,22 @@ impl LowerCtx {
                 if let Some(id) = self.lookup_var(name) {
                     Ok(Expr {
                         kind: ExprKind::Atom(Atom::Var(id)),
-                        ty: expr.ty.clone(),
+                        ty: expr.ty.clone().into(),
                     })
                 } else if let Some(fn_id) = self.lookup_fn(name) {
                     // Top-level function used as value
                     let var = self.fresh_var();
                     Ok(Expr {
-                        ty: expr.ty.clone(),
+                        ty: expr.ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: expr.ty.clone(),
+                            ty: expr.ty.clone().into(),
                             value: SimpleExpr::MakeClosure {
                                 func: fn_id,
                                 captures: vec![],
                             },
                             body: Box::new(Expr {
-                                ty: expr.ty.clone(),
+                                ty: expr.ty.clone().into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -1155,7 +1156,7 @@ impl LowerCtx {
                 } else {
                     // Let without body — the value IS the result
                     Expr {
-                        ty: value.ty.clone(),
+                        ty: value.ty.clone().into(),
                         kind: ExprKind::Atom(Atom::Var(bind)),
                     }
                 };
@@ -1173,7 +1174,7 @@ impl LowerCtx {
                             ty: body_expr.ty.clone(),
                             kind: ExprKind::Let {
                                 bind,
-                                ty: value.ty.clone(),
+                                ty: value.ty.clone().into(),
                                 value: simple,
                                 body: Box::new(body_expr),
                             },
@@ -1196,7 +1197,7 @@ impl LowerCtx {
                     let then_body = ctx.lower_expr(then_)?;
                     let else_body = ctx.lower_expr(else_)?;
                     Ok(Expr {
-                        ty: result_ty,
+                        ty: result_ty.into(),
                         kind: ExprKind::Switch {
                             scrutinee: cond_atom,
                             branches: vec![SwitchBranch {
@@ -1244,16 +1245,16 @@ impl LowerCtx {
                             let var = ctx.fresh_var();
                             let ty = result_ty;
                             Ok(Expr {
-                                ty: ty.clone(),
+                                ty: ty.clone().into(),
                                 kind: ExprKind::Let {
                                     bind: var,
-                                    ty: ty.clone(),
+                                    ty: ty.clone().into(),
                                     value: SimpleExpr::PrimOp {
                                         op: prim_op,
                                         args: vec![l, r],
                                     },
                                     body: Box::new(Expr {
-                                        ty,
+                                        ty: ty.into(),
                                         kind: ExprKind::Atom(Atom::Var(var)),
                                     }),
                                 },
@@ -1275,16 +1276,16 @@ impl LowerCtx {
                         let var = ctx.fresh_var();
                         let ty = result_ty;
                         Ok(Expr {
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             kind: ExprKind::Let {
                                 bind: var,
-                                ty: ty.clone(),
+                                ty: ty.clone().into(),
                                 value: SimpleExpr::PrimOp {
                                     op: prim_op,
                                     args: vec![atom],
                                 },
                                 body: Box::new(Expr {
-                                    ty,
+                                    ty: ty.into(),
                                     kind: ExprKind::Atom(Atom::Var(var)),
                                 }),
                             },
@@ -1302,13 +1303,13 @@ impl LowerCtx {
                     let var = ctx.fresh_var();
                     let ty = result_ty;
                     Ok(Expr {
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::MakeTuple { elements: atoms },
                             body: Box::new(Expr {
-                                ty,
+                                ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -1335,16 +1336,16 @@ impl LowerCtx {
                     let var = ctx.fresh_var();
                     let ty = result_ty;
                     Ok(Expr {
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::Project {
                                 value: base_atom,
                                 field_index: idx,
                             },
                             body: Box::new(Expr {
-                                ty,
+                                ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -1363,12 +1364,12 @@ impl LowerCtx {
                 let mut all_bindings = bindings;
                 all_bindings.push(LetBinding {
                     bind: var,
-                    ty: ty.clone(),
+                    ty: ty.clone().into(),
                     value: simple,
                 });
                 let inner = Expr {
                     kind: ExprKind::Atom(Atom::Var(var)),
-                    ty,
+                    ty: ty.into(),
                 };
                 Ok(Self::wrap_bindings(all_bindings, inner))
             }
@@ -1392,7 +1393,7 @@ impl LowerCtx {
                 let recur_close_bindings = self.auto_close.recur_closes.get(&expr.span).cloned();
                 self.lower_atoms_then(args, vec![], |ctx, jump_args| {
                     let mut jump_expr = Expr {
-                        ty: result_ty,
+                        ty: result_ty.into(),
                         kind: ExprKind::Jump {
                             target: join_name,
                             args: jump_args,
@@ -1423,7 +1424,7 @@ impl LowerCtx {
                         };
                         let wrap_var = ctx.fresh_var();
                         let mut none_jump = Expr {
-                            ty: inner_full_ty.clone(),
+                            ty: inner_full_ty.clone().into(),
                             kind: ExprKind::Jump {
                                 target: early_return,
                                 args: vec![Atom::Var(wrap_var)],
@@ -1433,15 +1434,15 @@ impl LowerCtx {
                             none_jump = ctx.emit_close_calls(close_bindings, none_jump)?;
                         }
                         Expr {
-                            ty: t.clone(),
+                            ty: t.clone().into(),
                             kind: ExprKind::Switch {
                                 scrutinee: scrut_atom,
                                 branches: vec![
                                     SwitchBranch {
                                         tag: 0,
-                                        bindings: vec![(success_var, t.clone())],
+                                        bindings: vec![(success_var, t.clone().into())],
                                         body: Expr {
-                                            ty: t,
+                                            ty: t.into(),
                                             kind: ExprKind::Atom(Atom::Var(success_var)),
                                         },
                                     },
@@ -1449,10 +1450,10 @@ impl LowerCtx {
                                         tag: 1,
                                         bindings: vec![],
                                         body: Expr {
-                                            ty: inner_full_ty.clone(),
+                                            ty: inner_full_ty.clone().into(),
                                             kind: ExprKind::Let {
                                                 bind: wrap_var,
-                                                ty: inner_full_ty.clone(),
+                                                ty: inner_full_ty.clone().into(),
                                                 value: SimpleExpr::ConstructVariant {
                                                     type_name: "Option".to_string(),
                                                     variant: "None".to_string(),
@@ -1476,7 +1477,7 @@ impl LowerCtx {
                         let err_var = ctx.fresh_var();
                         let wrap_var = ctx.fresh_var();
                         let mut err_jump = Expr {
-                            ty: inner_full_ty.clone(),
+                            ty: inner_full_ty.clone().into(),
                             kind: ExprKind::Jump {
                                 target: early_return,
                                 args: vec![Atom::Var(wrap_var)],
@@ -1486,26 +1487,26 @@ impl LowerCtx {
                             err_jump = ctx.emit_close_calls(close_bindings, err_jump)?;
                         }
                         Expr {
-                            ty: ok_ty.clone(),
+                            ty: ok_ty.clone().into(),
                             kind: ExprKind::Switch {
                                 scrutinee: scrut_atom,
                                 branches: vec![
                                     SwitchBranch {
                                         tag: 0,
-                                        bindings: vec![(success_var, ok_ty.clone())],
+                                        bindings: vec![(success_var, ok_ty.clone().into())],
                                         body: Expr {
-                                            ty: ok_ty,
+                                            ty: ok_ty.into(),
                                             kind: ExprKind::Atom(Atom::Var(success_var)),
                                         },
                                     },
                                     SwitchBranch {
                                         tag: 1,
-                                        bindings: vec![(err_var, err_ty)],
+                                        bindings: vec![(err_var, err_ty.into())],
                                         body: Expr {
-                                            ty: inner_full_ty.clone(),
+                                            ty: inner_full_ty.clone().into(),
                                             kind: ExprKind::Let {
                                                 bind: wrap_var,
-                                                ty: inner_full_ty.clone(),
+                                                ty: inner_full_ty.clone().into(),
                                                 value: SimpleExpr::ConstructVariant {
                                                     type_name: "Result".to_string(),
                                                     variant: "Err".to_string(),
@@ -1542,16 +1543,16 @@ impl LowerCtx {
                     let var = ctx.fresh_var();
                     let ty = result_ty;
                     Ok(Expr {
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::MakeVec {
-                                element_type,
+                                element_type: element_type.into(),
                                 elements: atoms,
                             },
                             body: Box::new(Expr {
-                                ty,
+                                ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -1628,7 +1629,7 @@ impl LowerCtx {
             ty: result_ty.clone(),
             kind: ExprKind::LetJoin {
                 name: join_name,
-                params: vec![(bind, bind_ty)],
+                params: vec![(bind, bind_ty.into())],
                 join_body: Box::new(body),
                 body: Box::new(rewritten),
                 is_recur: false,
@@ -1709,7 +1710,7 @@ impl LowerCtx {
             // Emit a unit atom as a placeholder for unreachable code
             return Ok(Expr {
                 kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                ty: result_ty.clone(),
+                ty: result_ty.clone().into(),
             });
         }
 
@@ -1756,7 +1757,7 @@ impl LowerCtx {
                     bound_names.push(name.clone());
                     lit_bindings.push(LetBinding {
                         bind: var,
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         value: SimpleExpr::Atom(crate::Atom::Lit(lit.clone())),
                     });
                 }
@@ -1779,7 +1780,7 @@ impl LowerCtx {
                         bound_names.push(name.clone());
                         lit_bindings.push(LetBinding {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::Atom(crate::Atom::Lit(lit.clone())),
                         });
                     }
@@ -1886,9 +1887,16 @@ impl LowerCtx {
 
             let body = self.compile_clauses(new_scrutinees, specialized, result_ty)?;
 
+            // Use concrete types updated during lowering, not abstract field types
+            let concrete_bindings: Vec<(VarId, Type)> = field_bindings.iter()
+                .map(|(v, abstract_t)| {
+                    (*v, self.var_types.get(v).cloned().unwrap_or_else(|| abstract_t.clone()))
+                })
+                .collect();
+
             branches.push(SwitchBranch {
                 tag: *tag,
-                bindings: field_bindings,
+                bindings: concrete_bindings.into_iter().map(|(v, t)| (v, t.into())).collect(),
                 body,
             });
         }
@@ -1908,7 +1916,7 @@ impl LowerCtx {
         };
 
         Ok(Expr {
-            ty: result_ty.clone(),
+            ty: result_ty.clone().into(),
             kind: ExprKind::Switch {
                 scrutinee: scrut,
                 branches,
@@ -1950,7 +1958,7 @@ impl LowerCtx {
             // Unreachable
             Expr {
                 kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                ty: result_ty.clone(),
+                ty: result_ty.clone().into(),
             }
         } else {
             self.compile_clauses(new_scrutinees_for_default.clone(), default_clauses, result_ty)?
@@ -1974,16 +1982,16 @@ impl LowerCtx {
             let eq_var = self.fresh_var();
 
             result = Expr {
-                ty: result_ty.clone(),
+                ty: result_ty.clone().into(),
                 kind: ExprKind::Let {
                     bind: eq_var,
-                    ty: Type::Bool,
+                    ty: Type::Bool.into(),
                     value: SimpleExpr::PrimOp {
                         op: eq_op,
                         args: vec![scrut.clone(), lit_atom],
                     },
                     body: Box::new(Expr {
-                        ty: result_ty.clone(),
+                        ty: result_ty.clone().into(),
                         kind: ExprKind::Switch {
                             scrutinee: Atom::Var(eq_var),
                             branches: vec![SwitchBranch {
@@ -2028,7 +2036,7 @@ impl LowerCtx {
             self.var_types.insert(v, elem_ty.clone());
             proj_bindings.push(LetBinding {
                 bind: v,
-                ty: elem_ty,
+                ty: elem_ty.into(),
                 value: SimpleExpr::TupleProject {
                     value: scrut.clone(),
                     index: i,
@@ -2082,7 +2090,7 @@ impl LowerCtx {
             self.var_types.insert(v, fty.clone());
             proj_bindings.push(LetBinding {
                 bind: v,
-                ty: fty.clone(),
+                ty: fty.clone().into(),
                 value: SimpleExpr::Project {
                     value: scrut.clone(),
                     field_index: i,
@@ -2397,7 +2405,7 @@ impl LowerCtx {
         if exprs.is_empty() {
             return Ok(Expr {
                 kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                ty: Type::Unit,
+                ty: Type::Unit.into(),
             });
         }
         self.lower_do_slice(exprs)
@@ -2405,8 +2413,21 @@ impl LowerCtx {
 
     /// Recursively lower a slice of Do-block expressions.
     fn lower_do_slice(&mut self, exprs: &[TypedExpr]) -> Result<Expr, LowerError> {
+        if exprs.is_empty() {
+            return Ok(Expr {
+                kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
+                ty: Type::Unit.into(),
+            });
+        }
         if exprs.len() == 1 {
-            return self.lower_expr(&exprs[0]);
+            // If the single expression is a Let/LetPattern with no body, it's a trailing
+            // statement — fall through to the Do-block Let handler which will use the
+            // empty rest (→ Unit) as the body.
+            if !matches!(&exprs[0].kind,
+                TypedExprKind::Let { body: None, .. } | TypedExprKind::LetPattern { body: None, .. })
+            {
+                return self.lower_expr(&exprs[0]);
+            }
         }
 
         let expr = &exprs[0];
@@ -2442,7 +2463,7 @@ impl LowerCtx {
                         ty: body_expr.ty.clone(),
                         kind: ExprKind::Let {
                             bind,
-                            ty: value.ty.clone(),
+                            ty: value.ty.clone().into(),
                             value: simple,
                             body: Box::new(body_expr),
                         },
@@ -2488,7 +2509,7 @@ impl LowerCtx {
                     ty: rest_expr.ty.clone(),
                     kind: ExprKind::Let {
                         bind: discard,
-                        ty: expr.ty.clone(),
+                        ty: expr.ty.clone().into(),
                         value: simple,
                         body: Box::new(rest_expr),
                     },
@@ -2521,17 +2542,17 @@ impl LowerCtx {
         let (true_branch, false_branch) = if is_and {
             (self.lower_expr(rhs)?, Expr {
                 kind: ExprKind::Atom(Atom::Lit(Literal::Bool(false))),
-                ty: Type::Bool,
+                ty: Type::Bool.into(),
             })
         } else {
             (Expr {
                 kind: ExprKind::Atom(Atom::Lit(Literal::Bool(true))),
-                ty: Type::Bool,
+                ty: Type::Bool.into(),
             }, self.lower_expr(rhs)?)
         };
 
         let switch = Expr {
-            ty: Type::Bool,
+            ty: Type::Bool.into(),
             kind: ExprKind::Switch {
                 scrutinee: Atom::Var(lhs_var),
                 branches: vec![SwitchBranch {
@@ -2584,23 +2605,23 @@ impl LowerCtx {
                 let call_body = if negate {
                     let neg_var = ctx.fresh_var();
                     Expr {
-                        ty: Type::Bool,
+                        ty: Type::Bool.into(),
                         kind: ExprKind::Let {
                             bind: neg_var,
-                            ty: Type::Bool,
+                            ty: Type::Bool.into(),
                             value: SimpleExpr::PrimOp {
                                 op: PrimOp::Not,
                                 args: vec![Atom::Var(var)],
                             },
                             body: Box::new(Expr {
-                                ty: Type::Bool,
+                                ty: Type::Bool.into(),
                                 kind: ExprKind::Atom(Atom::Var(neg_var)),
                             }),
                         },
                     }
                 } else {
                     Expr {
-                        ty: result_ty,
+                        ty: result_ty.into(),
                         kind: ExprKind::Atom(Atom::Var(var)),
                     }
                 };
@@ -2608,7 +2629,7 @@ impl LowerCtx {
                     ty: call_body.ty.clone(),
                     kind: ExprKind::Let {
                         bind: var,
-                        ty: Type::Bool,
+                        ty: Type::Bool.into(),
                         value: SimpleExpr::Call {
                             func: fn_id,
                             args: vec![dict_atom.clone(), l, r],
@@ -2652,16 +2673,16 @@ impl LowerCtx {
                 let var = ctx.fresh_var();
                 let ty = result_ty;
                 Ok(Expr {
-                    ty: ty.clone(),
+                    ty: ty.clone().into(),
                     kind: ExprKind::Let {
                         bind: var,
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         value: SimpleExpr::Call {
                             func: fn_id,
                             args: vec![dict_atom.clone(), l, r],
                         },
                         body: Box::new(Expr {
-                            ty,
+                            ty: ty.into(),
                             kind: ExprKind::Atom(Atom::Var(var)),
                         }),
                     },
@@ -2697,16 +2718,16 @@ impl LowerCtx {
             let var = ctx.fresh_var();
             let ty = result_ty;
             Ok(Expr {
-                ty: ty.clone(),
+                ty: ty.clone().into(),
                 kind: ExprKind::Let {
                     bind: var,
-                    ty: ty.clone(),
+                    ty: ty.clone().into(),
                     value: SimpleExpr::Call {
                         func: fn_id,
                         args: vec![dict_atom.clone(), a],
                     },
                     body: Box::new(Expr {
-                        ty,
+                        ty: ty.into(),
                         kind: ExprKind::Atom(Atom::Var(var)),
                     }),
                 },
@@ -2898,7 +2919,7 @@ impl LowerCtx {
                 if let TypedExprKind::Var(trait_name) = &arg.kind {
                     let var_id = self.lookup_dict_param(trait_name)?;
                     return Ok(Expr {
-                        ty: result_ty.clone(),
+                        ty: result_ty.clone().into(),
                         kind: ExprKind::Atom(Atom::Var(var_id)),
                     });
                 }
@@ -2928,13 +2949,13 @@ impl LowerCtx {
                             let var = ctx.fresh_var();
                             let ty = result_ty;
                             let call_expr = Expr {
-                                ty: ty.clone(),
+                                ty: ty.clone().into(),
                                 kind: ExprKind::Let {
                                     bind: var,
-                                    ty: ty.clone(),
+                                    ty: ty.clone().into(),
                                     value: SimpleExpr::Call { func: fn_id, args: all_args },
                                     body: Box::new(Expr {
-                                        ty,
+                                        ty: ty.into(),
                                         kind: ExprKind::Atom(Atom::Var(var)),
                                     }),
                                 },
@@ -2958,10 +2979,10 @@ impl LowerCtx {
                     let var = ctx.fresh_var();
                     let ty = result_ty.clone();
                     Ok(Expr {
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::ConstructVariant {
                                 type_name: type_name.clone(),
                                 variant: name,
@@ -2969,7 +2990,7 @@ impl LowerCtx {
                                 fields: arg_atoms,
                             },
                             body: Box::new(Expr {
-                                ty,
+                                ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -2988,13 +3009,13 @@ impl LowerCtx {
                     let var = ctx.fresh_var();
                     let ty = result_ty;
                     let call_expr = Expr {
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::Call { func: fn_id, args: all_args },
                             body: Box::new(Expr {
-                                ty,
+                                ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -3009,16 +3030,16 @@ impl LowerCtx {
                     let var = ctx.fresh_var();
                     let ty = result_ty.clone();
                     Ok(Expr {
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         kind: ExprKind::Let {
                             bind: var,
-                            ty: ty.clone(),
+                            ty: ty.clone().into(),
                             value: SimpleExpr::CallClosure {
                                 closure: Atom::Var(var_id),
                                 args: arg_atoms,
                             },
                             body: Box::new(Expr {
-                                ty,
+                                ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
                             }),
                         },
@@ -3035,16 +3056,16 @@ impl LowerCtx {
                 let var = ctx.fresh_var();
                 let ty = result_ty.clone();
                 Ok(Expr {
-                    ty: ty.clone(),
+                    ty: ty.clone().into(),
                     kind: ExprKind::Let {
                         bind: var,
-                        ty: ty.clone(),
+                        ty: ty.clone().into(),
                         value: SimpleExpr::CallClosure {
                             closure: func_atom.clone(),
                             args: arg_atoms,
                         },
                         body: Box::new(Expr {
-                            ty,
+                            ty: ty.into(),
                             kind: ExprKind::Atom(Atom::Var(var)),
                         }),
                     },
@@ -3082,16 +3103,16 @@ impl LowerCtx {
             let var = ctx.fresh_var();
             let ty = result_ty;
             Ok(Expr {
-                ty: ty.clone(),
+                ty: ty.clone().into(),
                 kind: ExprKind::Let {
                     bind: var,
-                    ty: ty.clone(),
+                    ty: ty.clone().into(),
                     value: SimpleExpr::Construct {
                         type_name,
                         fields: atoms,
                     },
                     body: Box::new(Expr {
-                        ty,
+                        ty: ty.into(),
                         kind: ExprKind::Atom(Atom::Var(var)),
                     }),
                 },
@@ -3141,7 +3162,7 @@ impl LowerCtx {
                         let proj_var = ctx.fresh_var();
                         bindings.push(LetBinding {
                             bind: proj_var,
-                            ty: fty.clone(),
+                            ty: fty.clone().into(),
                             value: SimpleExpr::Project {
                                 value: base_atom.clone(),
                                 field_index: i,
@@ -3154,7 +3175,7 @@ impl LowerCtx {
                 let construct_var = ctx.fresh_var();
                 bindings.push(LetBinding {
                     bind: construct_var,
-                    ty: result_ty.clone(),
+                    ty: result_ty.clone().into(),
                     value: SimpleExpr::Construct {
                         type_name: type_name.clone(),
                         fields: field_atoms,
@@ -3162,7 +3183,7 @@ impl LowerCtx {
                 });
 
                 let inner = Expr {
-                    ty: result_ty,
+                    ty: result_ty.into(),
                     kind: ExprKind::Atom(Atom::Var(construct_var)),
                 };
                 Ok(Self::wrap_bindings(bindings, inner))
@@ -3215,10 +3236,10 @@ impl LowerCtx {
         Ok((
             vec![LetBinding {
                 bind: var,
-                ty: Type::Named("Dict".to_string(), vec![]),
+                ty: IrType::Dict { trait_name: trait_name.to_string(), target: Box::new(ty.clone().into()) },
                 value: SimpleExpr::GetDict {
                     trait_name: trait_name.to_string(),
-                    ty: ty.clone(),
+                    ty: ty.clone().into(),
                 },
             }],
             Atom::Var(var),
@@ -3277,10 +3298,10 @@ impl LowerCtx {
         let var = self.fresh_var();
         all_bindings.push(LetBinding {
             bind: var,
-            ty: Type::Named("Dict".to_string(), vec![]),
+            ty: IrType::Dict { trait_name: trait_name.to_string(), target: Box::new(ty.clone().into()) },
             value: SimpleExpr::MakeDict {
                 trait_name: trait_name.to_string(),
-                ty: ty.clone(),
+                ty: ty.clone().into(),
                 sub_dicts: sub_dict_atoms,
             },
         });
@@ -3498,13 +3519,13 @@ impl LowerCtx {
         // 8. Build the param list: captures ++ filtered dict captures ++ lambda params
         let mut lifted_params = vec![];
         for (_, new_var, _, ty) in &capture_var_mappings {
-            lifted_params.push((*new_var, ty.clone()));
+            lifted_params.push((*new_var, ty.clone().into()));
         }
-        for (_, new_var) in &dict_var_mappings {
-            lifted_params.push((*new_var, Type::Named("Dict".to_string(), vec![])));
+        for (key, new_var) in &dict_var_mappings {
+            lifted_params.push((*new_var, IrType::Dict { trait_name: key.0.clone(), target: Box::new(IrType::Var(key.1)) }));
         }
         for (_, new_var, ty) in &lambda_var_mappings {
-            lifted_params.push((*new_var, ty.clone()));
+            lifted_params.push((*new_var, ty.clone().into()));
         }
 
         // 9. Push FnDef onto lifted_fns
@@ -3512,7 +3533,7 @@ impl LowerCtx {
             id: fn_id,
             name: name.clone(),
             params: lifted_params,
-            return_type,
+            return_type: return_type.into(),
             body: lowered_body,
         });
 
@@ -3557,7 +3578,7 @@ impl LowerCtx {
                 let var = self.fresh_var();
                 self.dict_params
                     .insert((trait_name.clone(), *type_var_id), var);
-                params.push((var, Type::Named("Dict".to_string(), vec![])));
+                params.push((var, IrType::Dict { trait_name: trait_name.clone(), target: Box::new(IrType::Var(*type_var_id)) }));
             }
         }
 
@@ -3571,7 +3592,7 @@ impl LowerCtx {
                 .unwrap_or(Type::Unit);
             self.var_types.insert(var, ty.clone());
             self.push_var(param_name, var);
-            params.push((var, ty));
+            params.push((var, ty.into()));
             regular_param_vars.push(var);
         }
 
@@ -3644,12 +3665,12 @@ impl LowerCtx {
         // Wrap body with early return join if needed
         if let Some((join_name, result_var)) = early_return_info {
             body = Expr {
-                ty: return_type.clone(),
+                ty: return_type.clone().into(),
                 kind: ExprKind::LetJoin {
                     name: join_name,
-                    params: vec![(result_var, return_type.clone())],
+                    params: vec![(result_var, return_type.clone().into())],
                     join_body: Box::new(Expr {
-                        ty: return_type.clone(),
+                        ty: return_type.clone().into(),
                         kind: ExprKind::Atom(Atom::Var(result_var)),
                     }),
                     body: Box::new(body),
@@ -3674,13 +3695,13 @@ impl LowerCtx {
                 .map(|&v| Atom::Var(v))
                 .collect();
             body = Expr {
-                ty: return_type.clone(),
+                ty: return_type.clone().into(),
                 kind: ExprKind::LetJoin {
                     name: join_name,
-                    params: join_params,
+                    params: join_params.into_iter().map(|(v, t)| (v, t.into())).collect(),
                     join_body: Box::new(body),
                     body: Box::new(Expr {
-                        ty: return_type.clone(),
+                        ty: return_type.clone().into(),
                         kind: ExprKind::Jump {
                             target: join_name,
                             args: original_atoms,
@@ -3695,7 +3716,7 @@ impl LowerCtx {
             id: fn_id,
             name: decl.name.clone(),
             params,
-            return_type,
+            return_type: return_type.into(),
             body,
         })
     }
@@ -3951,7 +3972,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             StructDef {
                 name: decl.name.clone(),
                 type_params,
-                fields,
+                fields: fields.into_iter().map(|(n, t)| (n, t.into())).collect(),
             }
         })
         .collect();
@@ -3985,7 +4006,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                     VariantDef {
                         name: v.name.clone(),
                         tag: tag as u32,
-                        fields,
+                        fields: fields.into_iter().map(|t| t.into()).collect(),
                     }
                 })
                 .collect();
@@ -4021,8 +4042,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 id: fn_id,
                 name: ext.name.clone(),
                 target: ExternTarget::Java { class: ext.java_class.clone() },
-                param_types: ext.param_types.clone(),
-                return_type: ext.return_type.clone(),
+                param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
+                return_type: ext.return_type.clone().into(),
             });
         }
     }
@@ -4050,8 +4071,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                     name: entry.name.clone(),
                     source_module: source_module.clone(),
                     original_name: original_name.clone(),
-                    param_types,
-                    return_type,
+                    param_types: param_types.into_iter().map(Into::into).collect(),
+                    return_type: return_type.into(),
                 });
             }
         }
@@ -4068,8 +4089,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             TraitMethodDef {
                 name: method_name.clone(),
                 param_count: *param_count,
-                param_types,
-                return_type,
+                param_types: param_types.into_iter().map(Into::into).collect(),
+                return_type: return_type.into(),
             }
         }).collect();
         traits.push(TraitDef {
@@ -4105,7 +4126,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }).collect();
         InstanceDef {
             trait_name: inst.trait_name.clone(),
-            target_type: inst.target_type.clone(),
+            target_type: inst.target_type.clone().into(),
             target_type_name: inst.target_type_name.clone(),
             method_fn_ids,
             sub_dict_requirements,
@@ -4126,6 +4147,12 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         collect_tuple_arities_from_fn(func, &mut tuple_arities);
     }
 
+    // Build trait_method_fn_ids from ctx.trait_method_ids (inverted: FnId → (trait, method))
+    let mut trait_method_fn_ids = HashMap::new();
+    for ((trait_name, method_name), &fn_id) in &ctx.trait_method_ids {
+        trait_method_fn_ids.insert(fn_id, (trait_name.clone(), method_name.clone()));
+    }
+
     Ok(Module {
         name: module_name.to_string(),
         structs,
@@ -4140,6 +4167,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         tuple_arities,
         module_path: typed.module_path.clone(),
         fn_dict_requirements: ctx.fn_constraints.clone(),
+        trait_method_fn_ids,
     })
 }
 
@@ -4476,26 +4504,27 @@ fn collect_tuple_arities_from_fn(func: &FnDef, arities: &mut std::collections::B
     collect_tuple_arities_from_expr(&func.body, arities);
 }
 
-fn collect_tuple_arities_from_type(ty: &Type, arities: &mut std::collections::BTreeSet<usize>) {
+fn collect_tuple_arities_from_type(ty: &IrType, arities: &mut std::collections::BTreeSet<usize>) {
     match ty {
-        Type::Tuple(elems) => {
+        IrType::Tuple(elems) => {
             arities.insert(elems.len());
             for e in elems {
                 collect_tuple_arities_from_type(e, arities);
             }
         }
-        Type::Fn(params, ret) => {
+        IrType::Fn(params, ret) => {
             for p in params {
                 collect_tuple_arities_from_type(p, arities);
             }
             collect_tuple_arities_from_type(ret, arities);
         }
-        Type::Named(_, args) => {
+        IrType::Named(_, args) => {
             for a in args {
                 collect_tuple_arities_from_type(a, arities);
             }
         }
-        Type::Own(inner) => collect_tuple_arities_from_type(inner, arities),
+        IrType::Own(inner) => collect_tuple_arities_from_type(inner, arities),
+        IrType::Dict { target, .. } => collect_tuple_arities_from_type(target, arities),
         _ => {}
     }
 }

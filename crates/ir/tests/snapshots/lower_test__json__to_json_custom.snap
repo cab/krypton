@@ -277,20 +277,20 @@ declare to_json: (m14) -> Json
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
-  let v2: Dict = get_dict ToJson[Point]
+  let v2: Dict[ToJson, Point] = get_dict ToJson[Point]
   let v3: Json = call to_json(v2, v0)
   let v4: String = call json_to_string(v3)
-  let v1: Dict = get_dict Show[String]
+  let v1: Dict[Show, String] = get_dict Show[String]
   let v5: Unit = call println(v1, v4)
   v5
 
 fn ToJson$$Point$$to_json(v6: Point) -> Json =
   let v7: Int = project v6.0
-  let v8: Dict = get_dict ToJson[Int]
+  let v8: Dict[ToJson, Int] = get_dict ToJson[Int]
   let v9: Json = call to_json(v8, v7)
   let v10: (~String, Json) = tuple("x", v9)
   let v11: Int = project v6.1
-  let v12: Dict = get_dict ToJson[Int]
+  let v12: Dict[ToJson, Int] = get_dict ToJson[Int]
   let v13: Json = call to_json(v12, v11)
   let v14: (~String, Json) = tuple("y", v13)
   let v15: ~List[(~String, Json)] = construct List::Nil#1()

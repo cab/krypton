@@ -106,6 +106,6 @@ fn main() -> Unit =
         jump v6("no")
     }
   in
-  let v0: Dict = get_dict Eq[Int]
+  let v0: Dict[Eq, Int] = get_dict Eq[Int]
   let v1: Bool = call eq(v0, 1, 1)
   jump v3(v1)

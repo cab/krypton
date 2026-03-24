@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__match_complete
@@ -94,7 +93,7 @@ import core/ordering/GT as GT(): Ordering
 
 fn test(v0: Option[Int]) -> Int =
   switch v0 {
-    0 (v1: a) ->
+    0 (v1: Int) ->
       v1
     1 ->
       0

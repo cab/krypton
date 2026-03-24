@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
-use krypton_typechecker::types::{self, Type};
+use krypton_ir::Type;
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 use ristretto_classfile::Method;
 
@@ -294,8 +294,78 @@ impl Compiler {
         other_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
         for sum_def in &other_module.sum_types {
-            if self.types.sum_type_info.contains_key(&sum_def.name) { continue; }
             let qualified_sum = qualify_ir(&other_module.module_path, &sum_def.name);
+            if self.types.sum_type_info.contains_key(&sum_def.name) {
+                // Sum type already registered (e.g. local shadow). Merge imported
+                // variants into the existing info so function bodies referencing
+                // imported variants (e.g. stdlib `head` returning Some) can resolve.
+                for variant in &sum_def.variants {
+                    if self.types.variant_to_sum.contains_key(&variant.name) {
+                        continue; // Already registered (local variant)
+                    }
+                    // Register variant class metadata
+                    let qualified_variant = format!("{}${}", qualified_sum, variant.name);
+                    let variant_class_index = self.cp.add_class(&qualified_variant)?;
+                    let variant_desc = format!("L{qualified_variant};");
+                    self.types.class_descriptors.insert(variant_class_index, variant_desc);
+
+                    let fields: Vec<VariantField> = variant.fields.iter().enumerate().map(|(i, ty)| {
+                        let is_erased = type_references_var(ty, &sum_def.type_params);
+                        let jvm_type = if is_erased {
+                            JvmType::StructRef(self.builder.refs.object_class)
+                        } else {
+                            self.type_to_jvm(ty)?
+                        };
+                        Ok(VariantField {
+                            name: format!("field{i}"),
+                            jvm_type,
+                            is_erased,
+                        })
+                    }).collect::<Result<_, CodegenError>>()?;
+
+                    let mut ctor_desc = String::from("(");
+                    for f in &fields {
+                        if f.is_erased {
+                            ctor_desc.push_str("Ljava/lang/Object;");
+                        } else {
+                            ctor_desc.push_str(&self.types.jvm_type_descriptor(f.jvm_type));
+                        }
+                    }
+                    ctor_desc.push_str(")V");
+                    let constructor_ref = self.cp.add_method_ref(variant_class_index, "<init>", &ctor_desc)?;
+
+                    let mut field_refs = Vec::new();
+                    for f in &fields {
+                        let fdesc = if f.is_erased {
+                            "Ljava/lang/Object;".to_string()
+                        } else {
+                            self.types.jvm_type_descriptor(f.jvm_type)
+                        };
+                        let fr = self.cp.add_field_ref(variant_class_index, &f.name, &fdesc)?;
+                        field_refs.push(fr);
+                    }
+
+                    let singleton_field_ref = if fields.is_empty() {
+                        let vdesc = format!("L{qualified_variant};");
+                        Some(self.cp.add_field_ref(variant_class_index, "INSTANCE", &vdesc)?)
+                    } else {
+                        None
+                    };
+
+                    self.types.variant_to_sum.insert(variant.name.clone(), sum_def.name.clone());
+                    if let Some(info) = self.types.sum_type_info.get_mut(&sum_def.name) {
+                        info.variants.insert(variant.name.clone(), VariantInfo {
+                            class_index: variant_class_index,
+                            class_name: qualified_variant,
+                            constructor_ref,
+                            field_refs,
+                            fields,
+                            singleton_field_ref,
+                        });
+                    }
+                }
+                continue;
+            }
             self.register_sum_type_metadata(sum_def, &qualified_sum)?;
         }
         Ok(())
@@ -607,9 +677,9 @@ impl Compiler {
                 let entries = self.traits.parameterized_instances
                     .entry(inst.trait_name.clone())
                     .or_default();
-                let canonical = types::type_to_canonical_name(&inst.target_type);
+                let canonical = krypton_ir::type_to_canonical_name(&inst.target_type);
                 if let Some(pos) = entries.iter().position(|e| {
-                    types::type_to_canonical_name(&e.target_type) == canonical
+                    krypton_ir::type_to_canonical_name(&e.target_type) == canonical
                 }) {
                     entries[pos] = new_info;
                 } else {
@@ -900,6 +970,48 @@ impl Compiler {
             }
         }
 
+        Ok(extra_methods)
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4 (IR): Compile function bodies from ir::Module
+    // -----------------------------------------------------------------------
+
+    pub(super) fn compile_function_bodies_ir(
+        &mut self,
+        ir_module: &krypton_ir::Module,
+        all_ir_modules: &[krypton_ir::Module],
+    ) -> Result<Vec<Method>, CodegenError> {
+        self.fn_names = ir_module.fn_names.clone();
+
+        // Build variant_tags map from all IR modules (cross-module sum types)
+        for module in all_ir_modules {
+            for sum_def in &module.sum_types {
+                let mut tag_map = std::collections::HashMap::new();
+                for variant in &sum_def.variants {
+                    tag_map.insert(variant.tag, variant.name.clone());
+                }
+                self.variant_tags.insert(sum_def.name.clone(), tag_map);
+            }
+        }
+
+        // Ensure current module's sum type tags take priority over imports
+        for sum_def in &ir_module.sum_types {
+            let mut tag_map = std::collections::HashMap::new();
+            for variant in &sum_def.variants {
+                tag_map.insert(variant.tag, variant.name.clone());
+            }
+            self.variant_tags.insert(sum_def.name.clone(), tag_map);
+        }
+
+        let mut extra_methods = Vec::new();
+        for fn_def in &ir_module.functions {
+            if fn_def.name == "main" {
+                eprintln!("=== IR main ===\n{}", fn_def);
+            }
+            let method = self.compile_ir_function(fn_def, ir_module)?;
+            extra_methods.push(method);
+        }
         Ok(extra_methods)
     }
 

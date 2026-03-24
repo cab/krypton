@@ -102,7 +102,7 @@ fn is_even(v0: Int) -> Bool =
         v5
     }
   in
-  let v1: Dict = get_dict Eq[Int]
+  let v1: Dict[Eq, Int] = get_dict Eq[Int]
   let v2: Bool = call eq(v1, v0, 0)
   jump v6(v2)
 
@@ -117,6 +117,6 @@ fn is_odd(v7: Int) -> Bool =
         v12
     }
   in
-  let v8: Dict = get_dict Eq[Int]
+  let v8: Dict[Eq, Int] = get_dict Eq[Int]
   let v9: Bool = call eq(v8, v7, 0)
   jump v13(v9)

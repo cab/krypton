@@ -263,7 +263,7 @@ fn main() -> Unit =
   let v15: String = call json_to_string(v9)
   let v16: Result[String, Json] = call parse_json(v15)
   switch v16 {
-    0 (v17: d) ->
+    0 (v17: Json) ->
       let v18: Option[Json] = call json_get(v17, "a")
       switch v18 {
         0 (v19: b) ->
@@ -274,31 +274,31 @@ fn main() -> Unit =
                 0 (v22: b) ->
                   switch v22 {
                     4 (v23: List[Json]) ->
-                      let v24: Dict = get_dict Show[String]
+                      let v24: Dict[Show, String] = get_dict Show[String]
                       let v25: Unit = call println(v24, "ok")
                       v25
                     _ ->
-                      let v26: Dict = get_dict Show[String]
+                      let v26: Dict[Show, String] = get_dict Show[String]
                       let v27: Unit = call println(v26, "FAIL list")
                       v27
                   }
                 _ ->
-                  let v28: Dict = get_dict Show[String]
+                  let v28: Dict[Show, String] = get_dict Show[String]
                   let v29: Unit = call println(v28, "FAIL list")
                   v29
               }
             _ ->
-              let v30: Dict = get_dict Show[String]
+              let v30: Dict[Show, String] = get_dict Show[String]
               let v31: Unit = call println(v30, "FAIL a")
               v31
           }
         _ ->
-          let v32: Dict = get_dict Show[String]
+          let v32: Dict[Show, String] = get_dict Show[String]
           let v33: Unit = call println(v32, "FAIL a")
           v33
       }
-    1 (v34: c) ->
-      let v35: Dict = get_dict Show[String]
+    1 (v34: String) ->
+      let v35: Dict[Show, String] = get_dict Show[String]
       let v36: Unit = call println(v35, v34)
       v36
   }

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module ownership__own_fabrication_generic_ok
@@ -95,9 +94,9 @@ fn ok(v0: (t7) -> String, v1: t7) -> String =
   v2
 
 fn test() -> String =
-  let v3: (Int) -> ~String = make_closure(lambda$50, [])
+  let v3: (Int) -> ~String = make_closure(lambda$52, [])
   let v5: String = call ok(v3, 42)
   v5
 
-fn lambda$50(v4: Int) -> ~String =
+fn lambda$52(v4: Int) -> ~String =
   "hi"

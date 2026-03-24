@@ -164,8 +164,8 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Widget = construct Widget::MkWidget#0("x")
-  let v2: Dict = get_dict Describable[Widget]
+  let v2: Dict[Describable, Widget] = get_dict Describable[Widget]
   let v3: String = call describe(v2, v1)
-  let v0: Dict = get_dict Show[String]
+  let v0: Dict[Show, String] = get_dict Show[String]
   let v4: Unit = call println(v0, v3)
   v4

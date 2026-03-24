@@ -88,7 +88,7 @@ impl Compiler {
                     }
                     let field_ref = field_refs[i];
                     let elem_ty = &elem_types[i];
-                    let elem_jvm_type = self.type_to_jvm(elem_ty)?;
+                    let elem_jvm_type = self.tc_type_to_jvm(elem_ty)?;
 
                     // Load tuple, invoke accessor _i() -> Object
                     self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
@@ -408,7 +408,7 @@ impl Compiler {
                                 // For erased fields, resolve actual type from the pattern
                                 // variable's typechecker type and emit cast/unbox.
                                 let actual_type = if f.is_erased {
-                                    self.type_to_jvm(var_tc_type)
+                                    self.tc_type_to_jvm(var_tc_type)
                                         .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
                                 } else {
                                     f.jvm_type
@@ -550,7 +550,7 @@ impl Compiler {
                     }
                     let field_ref = field_refs[i];
                     let elem_ty = &elem_types[i];
-                    let elem_jvm_type = self.type_to_jvm(elem_ty)?;
+                    let elem_jvm_type = self.tc_type_to_jvm(elem_ty)?;
 
                     self.builder.emit(Instruction::Aload(scrutinee_slot as u8));
                     self.builder.frame.push_type(VerificationType::Object {

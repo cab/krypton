@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__nested_patterns
@@ -97,7 +96,7 @@ fn unwrap_nested(v0: Option[Option[Int]]) -> Int =
   switch v0 {
     0 (v1: a) ->
       switch v1 {
-        0 (v2: a) ->
+        0 (v2: Int) ->
           v2
         1 ->
           0
@@ -108,9 +107,9 @@ fn unwrap_nested(v0: Option[Option[Int]]) -> Int =
 
 fn first_two(v3: List[Int]) -> Int =
   switch v3 {
-    0 (v4: b, v5: List[b]) ->
+    0 (v4: Int, v5: List[b]) ->
       switch v5 {
-        0 (v6: b, v7: List[b]) ->
+        0 (v6: Int, v7: List[b]) ->
           let v8: Int = add_int(v4, v6)
           v8
         _ ->

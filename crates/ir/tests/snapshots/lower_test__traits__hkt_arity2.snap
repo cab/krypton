@@ -95,7 +95,7 @@ import core/ordering/GT as GT(): Ordering
 
 fn Bifunctor$$Pair$$bimap(v0: Pair[g8, h8], v1: (g8) -> k8, v2: (h8) -> l8) -> ~Pair[k8, l8] =
   switch v0 {
-    0 (v3: a, v4: b) ->
+    0 (v3: g8, v4: h8) ->
       let v5: k8 = call_closure v1(v3)
       let v6: l8 = call_closure v2(v4)
       let v7: ~Pair[k8, l8] = construct Pair::Pair#0(v5, v6)

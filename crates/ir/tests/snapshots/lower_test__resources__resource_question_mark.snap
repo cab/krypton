@@ -107,7 +107,7 @@ fn work() -> Result[String, Int] =
   let v4: Unit = call println("opened")
   let_join v13(v5: Int) =
     let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
-    let v14: Dict = get_dict Resource[Handle]
+    let v14: Dict[Resource, Handle] = get_dict Resource[Handle]
     let v15: Unit = call close(v14, v3)
     v12
   in
@@ -117,7 +117,7 @@ fn work() -> Result[String, Int] =
       jump v13(v7)
     1 (v8: String) ->
       let v9: Result[String, Int] = construct Result::Err#1(v8)
-      let v10: Dict = get_dict Resource[Handle]
+      let v10: Dict[Resource, Handle] = get_dict Resource[Handle]
       let v11: Unit = call close(v10, v3)
       jump v1(v9)
   }
@@ -125,10 +125,10 @@ fn work() -> Result[String, Int] =
 fn main() -> Unit =
   let v16: Result[String, Int] = call work()
   switch v16 {
-    0 (v17: d) ->
+    0 (v17: Int) ->
       let v18: Unit = call println(v17)
       v18
-    1 (v19: c) ->
+    1 (v19: String) ->
       let v20: Unit = call println("err")
       v20
   }

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module closures__closure_basic
@@ -94,11 +93,11 @@ import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: (Int) -> Int = make_closure(lambda$49, [])
+  let v0: (Int) -> Int = make_closure(lambda$51, [])
   let v3: Int = call_closure v0(5)
   let v4: Unit = call println(v3)
   v4
 
-fn lambda$49(v1: Int) -> Int =
+fn lambda$51(v1: Int) -> Int =
   let v2: Int = add_int(v1, 1)
   v2

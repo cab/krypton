@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module modules__ufcs_trait_unaffected
@@ -101,10 +100,10 @@ fn double(v3: Int) -> Int =
   v4
 
 fn main() -> Int =
-  let v7: (Int) -> Int = make_closure(lambda$50, [])
+  let v7: (Int) -> Int = make_closure(lambda$52, [])
   let v8: Int = call map(5, v7)
   v8
 
-fn lambda$50(v5: Int) -> Int =
+fn lambda$52(v5: Int) -> Int =
   let v6: Int = call double(v5)
   v6

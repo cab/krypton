@@ -94,11 +94,11 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
 fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[d8, d8], v1: (d8) -> d8) -> ~Predicate[d8, d8] =
-  let v8: (d8) -> d8 = make_closure(lambda$51, [v0, v1])
+  let v8: (d8) -> d8 = make_closure(lambda$53, [v0, v1])
   let v9: ~Predicate[d8, d8] = construct Predicate(v8)
   v9
 
-fn lambda$51(v2: Predicate[d8, d8], v3: (d8) -> d8, v4: d8) -> d8 =
+fn lambda$53(v2: Predicate[d8, d8], v3: (d8) -> d8, v4: d8) -> d8 =
   let v5: (d8) -> d8 = project v2.0
   let v6: d8 = call_closure v3(v4)
   let v7: d8 = call_closure v5(v6)

@@ -233,15 +233,15 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(42.0)
-  let v2: Dict = get_dict FromJson[Int]
+  let v2: Dict[FromJson, Int] = get_dict FromJson[Int]
   let v0: Result[String, Int] = call from_json(v2, v1)
   switch v0 {
-    0 (v3: d) ->
-      let v4: Dict = get_dict Show[Int]
+    0 (v3: Int) ->
+      let v4: Dict[Show, Int] = get_dict Show[Int]
       let v5: Unit = call println(v4, v3)
       v5
-    1 (v6: c) ->
-      let v7: Dict = get_dict Show[String]
+    1 (v6: String) ->
+      let v7: Dict[Show, String] = get_dict Show[String]
       let v8: Unit = call println(v7, v6)
       v8
   }

@@ -3,7 +3,13 @@
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
-use krypton_typechecker::types::{self, Type, TypeVarId};
+use krypton_typechecker::types::Type as TcType;
+use krypton_ir::{Type, TypeVarId};
+
+/// Convert a TC type to an IR type.
+fn tc_to_ir(ty: &TcType) -> Type {
+    ty.clone().into()
+}
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo, VariantField};
@@ -48,7 +54,7 @@ impl Compiler {
         &mut self,
         name: &str,
         args: &[TypedExpr],
-        result_ty: &Type,
+        result_ty: &TcType,
     ) -> Result<JvmType, CodegenError> {
         match name {
             "panic" => {
@@ -64,7 +70,7 @@ impl Compiler {
                 self.builder.frame.pop_type(); // original uninit
                 self.builder.emit(Instruction::Athrow);
                 // Push the expected return type onto the frame for verification
-                let jvm_ret = self.type_to_jvm(result_ty)?;
+                let jvm_ret = self.tc_type_to_jvm(result_ty)?;
                 self.builder.push_jvm_type(jvm_ret);
                 Ok(jvm_ret)
             }
@@ -123,7 +129,7 @@ impl Compiler {
         &mut self,
         func: &TypedExpr,
         args: &[TypedExpr],
-        result_ty: &Type,
+        result_ty: &TcType,
     ) -> Result<JvmType, CodegenError> {
         if Self::extract_call_name(func).is_ok() {
             let (name, target) = self.resolve_call(func, args, result_ty)?;
@@ -142,9 +148,9 @@ impl Compiler {
     ) -> Result<JvmType, CodegenError> {
         // Determine arity and return type from the callee's type
         let (arity, ret_ty) = match &func.ty {
-            Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
-            Type::Own(inner) => match inner.as_ref() {
-                Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
+            TcType::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
+            TcType::Own(inner) => match inner.as_ref() {
+                TcType::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
                 other => return Err(CodegenError::TypeError(format!(
                     "expression call on non-function type: {other:?}"
                 ), Some(func.span))),
@@ -153,7 +159,7 @@ impl Compiler {
                 "expression call on non-function type: {other:?}"
             ), Some(func.span))),
         };
-        let ret_jvm = self.type_to_jvm(&ret_ty)?;
+        let ret_jvm = self.tc_type_to_jvm(&ret_ty)?;
 
         // Ensure the FunN interface exists for this arity
         self.lambda.ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
@@ -213,7 +219,7 @@ impl Compiler {
         &self,
         func: &TypedExpr,
         args: &[TypedExpr],
-        result_ty: &Type,
+        result_ty: &TcType,
     ) -> Result<(String, CallTarget), CodegenError> {
         let name = Self::extract_call_name(func)?;
 
@@ -269,20 +275,20 @@ impl Compiler {
                     ));
                 let type_var_id = dispatch.type_var_id;
                 let mut bindings = HashMap::new();
-                // Bind from params
+                // Bind from params — convert TC types to IR types
                 for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
-                    Self::bind_type_vars(pattern, &arg.ty, &mut bindings);
+                    Self::bind_type_vars(pattern, &tc_to_ir(&arg.ty), &mut bindings);
                 }
                 // Bind from return type
-                let actual_ret = match &func.ty {
-                    Type::Fn(_, ret) => ret.as_ref().clone(),
-                    _ => result_ty.clone(),
+                let actual_ret: Type = match &func.ty {
+                    TcType::Fn(_, ret) => tc_to_ir(ret.as_ref()),
+                    _ => tc_to_ir(result_ty),
                 };
                 Self::bind_type_vars(ret_pattern, &actual_ret, &mut bindings);
                 // Bind from explicit type application
                 if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
                     if !type_args.is_empty() {
-                        bindings.entry(type_var_id).or_insert_with(|| type_args[0].clone());
+                        bindings.entry(type_var_id).or_insert_with(|| tc_to_ir(&type_args[0]));
                     }
                 }
                 let dict_ty = bindings.get(&type_var_id).cloned()
@@ -314,9 +320,9 @@ impl Compiler {
             .unwrap_or_default();
 
         let func_params: Vec<Type> = match &func.ty {
-            Type::Fn(params, _) => params.clone(),
-            Type::Own(inner) => match inner.as_ref() {
-                Type::Fn(params, _) => params.clone(),
+            TcType::Fn(params, _) => params.iter().map(|p| tc_to_ir(p)).collect(),
+            TcType::Own(inner) => match inner.as_ref() {
+                TcType::Fn(params, _) => params.iter().map(|p| tc_to_ir(p)).collect(),
                 _ => vec![],
             },
             _ => vec![],
@@ -365,7 +371,7 @@ impl Compiler {
         name: &str,
         func: &TypedExpr,
         args: &[TypedExpr],
-        result_ty: &Type,
+        result_ty: &TcType,
     ) -> Result<JvmType, CodegenError> {
         match target {
             CallTarget::Intrinsic => self.compile_intrinsic(name, args, result_ty),
@@ -467,10 +473,10 @@ impl Compiler {
 
                 // Determine expected return type from the interface method
                 let result_jvm = self
-                    .type_to_jvm(&func.ty)
+                    .tc_type_to_jvm(&func.ty)
                     .unwrap_or(JvmType::StructRef(self.builder.refs.object_class));
-                let expected_ret = if let Type::Fn(_, ret) = &func.ty {
-                    self.type_to_jvm(ret)
+                let expected_ret = if let TcType::Fn(_, ret) = &func.ty {
+                    self.tc_type_to_jvm(ret)
                         .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
                 } else {
                     result_jvm
@@ -492,12 +498,13 @@ impl Compiler {
                     if let Some((param_patterns, ret_pattern)) =
                         self.types.fn_tc_types.get(name).cloned()
                     {
+                        let ir_result_ty = tc_to_ir(result_ty);
                         for requirement in &requirements {
                             let requirement_ty = Self::resolve_function_requirement_type(
                                 requirement,
                                 &param_patterns,
                                 args,
-                                Some((&ret_pattern, result_ty)),
+                                Some((&ret_pattern, &ir_result_ty)),
                             )
                             .ok_or_else(|| {
                                 CodegenError::UndefinedVariable(format!(
@@ -601,9 +608,9 @@ impl Compiler {
             }
             // Cross-arm for HKT: App(Var(f), [a]) vs Fn([Int], Int)
             (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
-                if types::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
+                if krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
             {
-                let (ctor_fn, remaining) = types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+                let (ctor_fn, remaining) = krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
                 if !Self::bind_type_vars(p_ctor, &ctor_fn, bindings) {
                     return false;
                 }
@@ -612,6 +619,7 @@ impl Compiler {
                         Self::bind_type_vars(p, a, bindings)
                     })
             }
+            (Type::Dict { .. }, _) => true,
             (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
             (ty, Type::Own(actual_inner)) => Self::bind_type_vars(ty, actual_inner, bindings),
             (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
@@ -659,7 +667,8 @@ impl Compiler {
         let type_var = &requirement.type_var;
         let mut bindings = HashMap::new();
         for (param_ty, arg) in param_types.iter().zip(args.iter()) {
-            if !Self::bind_type_vars(param_ty, &arg.ty, &mut bindings) {
+            let ir_arg_ty = tc_to_ir(&arg.ty);
+            if !Self::bind_type_vars(param_ty, &ir_arg_ty, &mut bindings) {
                 return None;
             }
         }
@@ -723,7 +732,7 @@ impl Compiler {
         let lookup_type = ty.strip_own();
         // Try full type first (concrete instances), then head-only (HKT instances like Functor[Box])
         let singleton_key = (trait_name.to_string(), lookup_type.clone());
-        let head_key = (trait_name.to_string(), Type::Named(types::head_type_name(ty), vec![]));
+        let head_key = (trait_name.to_string(), Type::Named(krypton_ir::head_type_name(ty), vec![]));
         if let Some(singleton) = self
             .traits
             .instance_singletons

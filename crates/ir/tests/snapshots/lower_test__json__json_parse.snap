@@ -250,16 +250,16 @@ fn main() -> Unit =
     0 (v7: d) ->
       switch v7 {
         5 (v8: Map[String, Json]) ->
-          let v9: Dict = get_dict Show[String]
+          let v9: Dict[Show, String] = get_dict Show[String]
           let v10: Unit = call println(v9, "JObj")
           v10
         _ ->
-          let v11: Dict = get_dict Show[String]
+          let v11: Dict[Show, String] = get_dict Show[String]
           let v12: Unit = call println(v11, "FAIL")
           v12
       }
     _ ->
-      let v13: Dict = get_dict Show[String]
+      let v13: Dict[Show, String] = get_dict Show[String]
       let v14: Unit = call println(v13, "FAIL")
       v14
   }

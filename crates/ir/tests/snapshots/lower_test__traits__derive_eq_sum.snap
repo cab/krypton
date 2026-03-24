@@ -100,7 +100,7 @@ fn main() -> Unit =
     let v9: Unit = call println(v8)
     v9
   in
-  let v0: Dict = get_dict Eq[Color]
+  let v0: Dict[Eq, Color] = get_dict Eq[Color]
   let_join v7(v2: ~Color) =
     let_join v6(v4: ~Color) =
       let v5: Bool = call eq(v0, v2, v4)

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__list_recursive_codegen
@@ -96,9 +95,9 @@ declare println: (m) -> Unit
 
 fn second(v0: List[Int]) -> Int =
   switch v0 {
-    0 (v1: a, v2: List[a]) ->
+    0 (v1: Int, v2: List[a]) ->
       switch v2 {
-        0 (v3: a, v4: List[a]) ->
+        0 (v3: Int, v4: List[a]) ->
           v3
         _ ->
           0

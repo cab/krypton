@@ -225,11 +225,11 @@ declare render_it: (t7) -> String
 fn main() -> Unit =
   let v0: (Int) -> String = make_closure(render_it, [])
   let_join v7(v5: Bool) =
-    let v1: Dict = get_dict Show[Bool]
+    let v1: Dict[Show, Bool] = get_dict Show[Bool]
     let v6: Unit = call println(v1, v5)
     v6
   in
-  let v2: Dict = get_dict Eq[String]
+  let v2: Dict[Eq, String] = get_dict Eq[String]
   let v3: String = call apply_to_int(v0, 42)
   let v4: Bool = call eq(v2, v3, "42")
   jump v7(v4)

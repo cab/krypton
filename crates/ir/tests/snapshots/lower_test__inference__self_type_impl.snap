@@ -99,9 +99,9 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
   let v1: ~Point = construct Point(1, 2)
-  let v3: Dict = get_dict MyEq[Point]
+  let v3: Dict[MyEq, Point] = get_dict MyEq[Point]
   let v4: Bool = call my_eq(v3, v0, v1)
-  let v2: Dict = get_dict Show[Bool]
+  let v2: Dict[Show, Bool] = get_dict Show[Bool]
   let v5: Unit = call println(v2, v4)
   v5
 
@@ -109,7 +109,7 @@ fn MyEq$$Point$$my_eq(v6: Point, v7: Point) -> Bool =
   let_join v17(v12: Bool) =
     switch v12 {
       1 ->
-        let v13: Dict = get_dict Eq[Int]
+        let v13: Dict[Eq, Int] = get_dict Eq[Int]
         let v14: Int = project v6.1
         let v15: Int = project v7.1
         let v16: Bool = call eq(v13, v14, v15)
@@ -118,7 +118,7 @@ fn MyEq$$Point$$my_eq(v6: Point, v7: Point) -> Bool =
         false
     }
   in
-  let v8: Dict = get_dict Eq[Int]
+  let v8: Dict[Eq, Int] = get_dict Eq[Int]
   let v9: Int = project v6.0
   let v10: Int = project v7.0
   let v11: Bool = call eq(v8, v9, v10)

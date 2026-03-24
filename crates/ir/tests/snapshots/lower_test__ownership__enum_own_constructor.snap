@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module ownership__enum_own_constructor
@@ -99,7 +98,7 @@ fn f() -> ~Option[Int] =
 fn main() -> Int =
   let v1: ~Option[Int] = call f()
   switch v1 {
-    0 (v2: a) ->
+    0 (v2: Int) ->
       v2
     1 ->
       0

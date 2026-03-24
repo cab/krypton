@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__question_mark_result_chain
@@ -132,10 +131,10 @@ fn process(v5: Int) -> Result[String, Int] =
 fn main() -> Unit =
   let v21: Result[String, Int] = call process(21)
   switch v21 {
-    0 (v22: d) ->
+    0 (v22: Int) ->
       let v23: Unit = call println(v22)
       v23
-    1 (v24: c) ->
+    1 (v24: String) ->
       let v25: Unit = call println(v24)
       v25
   }

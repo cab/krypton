@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module exhaustiveness__match_tuple_complete
@@ -97,9 +96,9 @@ fn test(v0: Option[Int], v1: Option[Int]) -> Int =
   let v3: Option[Int] = tuple_project v2.0
   let v4: Option[Int] = tuple_project v2.1
   switch v3 {
-    0 (v5: a) ->
+    0 (v5: Int) ->
       switch v4 {
-        0 (v6: a) ->
+        0 (v6: Int) ->
           let v7: Int = add_int(v5, v6)
           v7
         1 ->
@@ -107,7 +106,7 @@ fn test(v0: Option[Int], v1: Option[Int]) -> Int =
       }
     1 ->
       switch v4 {
-        0 (v8: a) ->
+        0 (v8: Int) ->
           v8
         1 ->
           0

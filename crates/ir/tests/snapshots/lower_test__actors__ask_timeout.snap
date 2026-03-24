@@ -190,7 +190,7 @@ fn main() -> Unit =
   let v3: (Ref[Int]) -> Msg = make_closure(Get, [])
   let v4: Result[Timeout, Int] = call ask(v1, v3, 100)
   switch v4 {
-    0 (v5: d) ->
+    0 (v5: Int) ->
       let v6: Unit = call println(v5)
       v6
     1 (v7: c) ->

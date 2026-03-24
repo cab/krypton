@@ -318,29 +318,29 @@ fn main() -> Unit =
   let v2: (~String, ~Json) = tuple("x", v1)
   let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
   let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
-  let v5: Dict = get_dict Eq[c13]
-  let v6: Dict = get_dict Hash[c13]
+  let v5: Dict[Eq, c13] = get_dict Eq[c13]
+  let v6: Dict[Hash, c13] = get_dict Hash[c13]
   let v7: Map[String, Json] = call from_list(v5, v6, v4)
   let v0: ~Json = construct Json::JObj#5(v7)
-  let v9: Dict = get_dict FromJson[Map[String, Int]]
+  let v9: Dict[FromJson, Map[String, Int]] = get_dict FromJson[Map[String, Int]]
   let v8: Result[String, Map[String, Int]] = call from_json(v9, v0)
   switch v8 {
-    0 (v10: d) ->
-      let v11: Dict = get_dict Eq[String]
-      let v12: Dict = get_dict Hash[String]
+    0 (v10: Map[String, Int]) ->
+      let v11: Dict[Eq, String] = get_dict Eq[String]
+      let v12: Dict[Hash, String] = get_dict Hash[String]
       let v13: Option[Int] = call get(v11, v12, v10, "x")
       switch v13 {
-        0 (v14: b) ->
-          let v15: Dict = get_dict Show[Int]
+        0 (v14: Int) ->
+          let v15: Dict[Show, Int] = get_dict Show[Int]
           let v16: Unit = call println(v15, v14)
           v16
         1 ->
-          let v17: Dict = get_dict Show[String]
+          let v17: Dict[Show, String] = get_dict Show[String]
           let v18: Unit = call println(v17, "missing")
           v18
       }
-    1 (v19: c) ->
-      let v20: Dict = get_dict Show[String]
+    1 (v19: String) ->
+      let v20: Dict[Show, String] = get_dict Show[String]
       let v21: Unit = call println(v20, v19)
       v21
   }

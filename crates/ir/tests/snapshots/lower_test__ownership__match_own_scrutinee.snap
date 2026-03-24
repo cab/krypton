@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module ownership__match_own_scrutinee
@@ -94,7 +93,7 @@ import core/ordering/GT as GT(): Ordering
 
 fn test(v0: ~Option[String]) -> String =
   switch v0 {
-    0 (v1: a) ->
+    0 (v1: String) ->
       v1
     1 ->
       "default"

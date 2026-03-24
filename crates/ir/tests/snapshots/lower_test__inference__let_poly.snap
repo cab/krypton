@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module inference__let_poly
@@ -91,10 +90,10 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 fn main() -> Bool =
-  let v0: (u7) -> u7 = make_closure(lambda$49, [])
+  let v0: (u7) -> u7 = make_closure(lambda$51, [])
   let v2: Int = call_closure v0(1)
   let v3: Bool = call_closure v0(true)
   v3
 
-fn lambda$49(v1: u7) -> u7 =
+fn lambda$51(v1: u7) -> u7 =
   v1

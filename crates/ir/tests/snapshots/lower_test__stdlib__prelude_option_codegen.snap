@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__prelude_option_codegen
@@ -95,7 +94,7 @@ declare println: (m) -> Unit
 
 fn unwrap_or(v0: Option[v7], v1: v7) -> v7 =
   switch v0 {
-    0 (v2: b) ->
+    0 (v2: v7) ->
       v2
     1 ->
       v1

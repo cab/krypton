@@ -91,6 +91,6 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare show: (g) -> String
 
-fn f(v0: Dict, v1: t7) -> String =
+fn f(v0: Dict[Show, t7], v1: t7) -> String =
   let v2: String = call show(v0, v1)
   v2

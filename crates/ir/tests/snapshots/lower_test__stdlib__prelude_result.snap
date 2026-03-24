@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__prelude_result
@@ -101,7 +100,7 @@ fn err_val() -> Result[String, a8] =
 fn main() -> Int =
   let v2: Result[i8, Int] = call ok_val()
   switch v2 {
-    0 (v3: d) ->
+    0 (v3: Int) ->
       v3
     1 (v4: c) ->
       0

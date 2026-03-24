@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module closures__closure_capture
@@ -95,13 +94,13 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let_join v7(v0: ~Int) =
-    let v1: ~(Int) -> Int = make_closure(lambda$49, [v0])
+    let v1: ~(Int) -> Int = make_closure(lambda$51, [v0])
     let v5: Int = call_closure v1(5)
     let v6: Unit = call println(v5)
     v6
   in
   jump v7(10)
 
-fn lambda$49(v2: ~Int, v3: Int) -> Int =
+fn lambda$51(v2: ~Int, v3: Int) -> Int =
   let v4: Int = add_int(v3, v2)
   v4

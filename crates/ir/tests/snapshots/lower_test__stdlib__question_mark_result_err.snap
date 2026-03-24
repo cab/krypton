@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__question_mark_result_err
@@ -118,10 +117,10 @@ fn caller() -> Result[String, Int] =
 fn main() -> Unit =
   let v11: Result[String, Int] = call caller()
   switch v11 {
-    0 (v12: d) ->
+    0 (v12: Int) ->
       let v13: Unit = call println(v12)
       v13
-    1 (v14: c) ->
+    1 (v14: String) ->
       let v15: Unit = call println(v14)
       v15
   }

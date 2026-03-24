@@ -31,6 +31,10 @@ pub(super) struct CpoolRefs {
     // Intrinsic support
     pub(super) runtime_exception_class: u16,
     pub(super) runtime_exception_init: u16,
+    // Conversion method refs for IR compilation
+    pub(super) long_to_string: u16,
+    pub(super) double_to_string: u16,
+    pub(super) bool_to_string: u16,
 }
 
 /// StackMapTable / verification type tracking.
@@ -77,16 +81,9 @@ impl FrameState {
     }
 
     pub(super) fn record_frame(&mut self, instr_idx: u16) {
-        fn strip_tops(types: &[VerificationType]) -> Vec<VerificationType> {
-            types
-                .iter()
-                .filter(|vt| !matches!(vt, VerificationType::Top))
-                .cloned()
-                .collect()
-        }
         self.frames.insert(
             instr_idx,
-            (strip_tops(&self.local_types), strip_tops(&self.stack_types)),
+            (compact_types(&self.local_types), compact_types(&self.stack_types)),
         );
     }
 
@@ -148,6 +145,21 @@ impl FrameState {
         self.frames.clear();
         self.max_stack_depth = 0;
     }
+}
+
+/// Strip implicit second-slot `Top` after Long/Double for StackMapTable encoding,
+/// while preserving standalone `Top` entries (uninitialized locals).
+pub(super) fn compact_types(types: &[VerificationType]) -> Vec<VerificationType> {
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < types.len() {
+        result.push(types[i].clone());
+        match types[i] {
+            VerificationType::Long | VerificationType::Double => i += 2,
+            _ => i += 1,
+        }
+    }
+    result
 }
 
 /// Convert instruction-index-based `Uninitialized { offset }` values to byte offsets.

@@ -198,7 +198,7 @@ fn main() -> Unit =
   let v0: Vec[String] = call split("hello world", " ")
   let v1: Option[String] = call nth(v0, 0)
   switch v1 {
-    0 (v2: b) ->
+    0 (v2: String) ->
       let v3: Unit = call println(v2)
       v3
     1 ->

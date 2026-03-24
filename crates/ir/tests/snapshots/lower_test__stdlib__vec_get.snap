@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__vec_get
@@ -110,7 +109,7 @@ fn main() -> Unit =
   let v0: Vec[Int] = make_vec(1, 2, 3)
   let v1: Option[Int] = call nth(v0, 0)
   switch v1 {
-    0 (v2: b) ->
+    0 (v2: Int) ->
       let v3: Unit = call println(v2)
       v3
     1 ->

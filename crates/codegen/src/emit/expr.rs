@@ -92,7 +92,7 @@ impl Compiler {
         rhs: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
         // Check the operand type from the typed AST to determine dispatch strategy
-        let operand_jvm = self.type_to_jvm(&lhs.ty)?;
+        let operand_jvm = self.tc_type_to_jvm(&lhs.ty)?;
 
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
@@ -229,10 +229,11 @@ impl Compiler {
                 ), Some(lhs.span)));
             }
         } else {
+            let ir_lookup_type: krypton_ir::Type = lookup_type.clone().into();
             let singleton = self
                 .traits
                 .instance_singletons
-                .get(&(trait_name.to_string(), lookup_type.clone()))
+                .get(&(trait_name.to_string(), ir_lookup_type))
                 .ok_or_else(|| {
                     CodegenError::UndefinedVariable(format!(
                         "no instance of {trait_name} for {}", lhs.ty
@@ -297,10 +298,11 @@ impl Compiler {
         })?;
         let iface_class = dispatch.interface_class;
 
+        let ir_lookup_type: krypton_ir::Type = lookup_type.clone().into();
         let singleton = self
             .traits
             .instance_singletons
-            .get(&(trait_name.to_string(), lookup_type.clone()))
+            .get(&(trait_name.to_string(), ir_lookup_type))
             .ok_or_else(|| {
                 CodegenError::UndefinedVariable(format!(
                     "no instance of {trait_name} for {}", operand.ty
@@ -347,7 +349,7 @@ impl Compiler {
         lhs: &TypedExpr,
         rhs: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
-        let operand_jvm = self.type_to_jvm(&lhs.ty)?;
+        let operand_jvm = self.tc_type_to_jvm(&lhs.ty)?;
 
         // String equality: use String.equals
         if operand_jvm == JvmType::StructRef(self.builder.refs.string_class) && matches!(op, BinOp::Eq | BinOp::Neq) {
@@ -485,7 +487,7 @@ impl Compiler {
         op: &UnaryOp,
         operand: &TypedExpr,
     ) -> Result<JvmType, CodegenError> {
-        let operand_jvm = self.type_to_jvm(&operand.ty)?;
+        let operand_jvm = self.tc_type_to_jvm(&operand.ty)?;
         match op {
             UnaryOp::Neg => match operand_jvm {
                 JvmType::Long => {
@@ -636,9 +638,9 @@ impl Compiler {
             };
             if let Type::Fn(param_types, ret_type) = fn_type {
                 let param_jvm: Result<Vec<JvmType>, _> =
-                    param_types.iter().map(|t| self.type_to_jvm(t)).collect();
+                    param_types.iter().map(|t| self.tc_type_to_jvm(t)).collect();
                 if let Ok(param_jvm) = param_jvm {
-                    if let Ok(ret_jvm) = self.type_to_jvm(ret_type) {
+                    if let Ok(ret_jvm) = self.tc_type_to_jvm(ret_type) {
                         self.builder.local_fn_info
                             .insert(name.to_string(), (param_jvm, ret_jvm));
                     }
@@ -884,7 +886,7 @@ impl Compiler {
         }
 
         // Determine the actual JVM type of the unwrapped value
-        let actual_jvm_type = self.type_to_jvm(result_ty)?;
+        let actual_jvm_type = self.tc_type_to_jvm(result_ty)?;
         let result_type = if is_erased {
             // Unbox from Object to the actual type
             self.builder.unbox_if_needed(actual_jvm_type);
@@ -1002,7 +1004,7 @@ impl Compiler {
         struct_ty: &Type,
     ) -> Result<JvmType, CodegenError> {
         let span = fields.first().map(|(_, e)| e.span);
-        let struct_jvm = self.type_to_jvm(struct_ty)?;
+        let struct_jvm = self.tc_type_to_jvm(struct_ty)?;
         let class_idx = match struct_jvm {
             JvmType::StructRef(idx) => idx,
             _ => {
@@ -1088,14 +1090,7 @@ impl Compiler {
         let initial_locals: Vec<VerificationType> = self.builder.recur_frame_locals.clone();
         self.builder.frame.frames.insert(
             recur_target,
-            (
-                initial_locals
-                    .iter()
-                    .filter(|vt| !matches!(vt, VerificationType::Top))
-                    .cloned()
-                    .collect(),
-                vec![],
-            ),
+            (super::builder::compact_types(&initial_locals), vec![]),
         );
 
         // Goto recur target (after Nop)
@@ -1141,7 +1136,7 @@ impl Compiler {
         &mut self,
         binding: &krypton_typechecker::typed_ast::AutoCloseBinding,
     ) -> Result<(), CodegenError> {
-        let key = ("Resource".to_string(), Type::Named(binding.type_name.clone(), vec![]));
+        let key = ("Resource".to_string(), krypton_ir::Type::Named(binding.type_name.clone(), vec![]));
         let singleton = self.traits.instance_singletons.get(&key).ok_or_else(|| {
             CodegenError::TypeError(format!("no Resource instance for {}", binding.type_name), None)
         })?;

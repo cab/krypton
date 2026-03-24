@@ -106,7 +106,7 @@ fn main() -> Unit =
     let v6: Int = project v5.0
     jump v10(v6)
   in
-  let v3: Dict = get_dict Neg[Vec2]
+  let v3: Dict[Neg, Vec2] = get_dict Neg[Vec2]
   let v4: Vec2 = call neg(v3, v0)
   jump v7(v4)
 

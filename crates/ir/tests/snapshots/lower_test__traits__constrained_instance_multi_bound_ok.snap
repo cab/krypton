@@ -101,14 +101,14 @@ fn main() -> Unit =
     let v8: Unit = call println(v7)
     v8
   in
-  let v0: Dict = get_dict Eq[String]
+  let v0: Dict[Eq, String] = get_dict Eq[String]
   let v1: ~Pair[Int, String] = construct Pair::Pair#0(1, "ok")
-  let v2: Dict = get_dict Eq[Int]
-  let v3: Dict = get_dict Show[String]
-  let v4: Dict = make_dict Show[Pair[Int, String]](v2, v3)
+  let v2: Dict[Eq, Int] = get_dict Eq[Int]
+  let v3: Dict[Show, String] = get_dict Show[String]
+  let v4: Dict[Show, Pair[Int, String]] = make_dict Show[Pair[Int, String]](v2, v3)
   let v5: String = call show(v4, v1)
   let v6: Bool = call eq(v0, v5, "pair")
   jump v9(v6)
 
-fn Show$$Pair$$Var0$$Var1$$show(v10: Dict, v11: Dict, v12: Pair[v7, w7]) -> ~String =
+fn Show$$Pair$$Var0$$Var1$$show(v10: Dict[Eq, v7], v11: Dict[Show, w7], v12: Pair[v7, w7]) -> ~String =
   "pair"

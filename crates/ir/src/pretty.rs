@@ -6,7 +6,7 @@ use crate::{
     expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch},
     FnDef, FnId, Module, StructDef, SumTypeDef, VarId,
 };
-use krypton_typechecker::types::Type;
+use crate::Type;
 
 // --- Display impls for leaf types ---
 
@@ -880,6 +880,7 @@ mod tests {
                 },
             }],
             fn_dict_requirements: std::collections::HashMap::new(),
+            trait_method_fn_ids: std::collections::HashMap::new(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

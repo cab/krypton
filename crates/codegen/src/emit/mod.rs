@@ -14,7 +14,7 @@ mod registration;
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
-use krypton_typechecker::types::{Type, TypeVarId};
+use krypton_ir::{Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method,
@@ -91,6 +91,7 @@ fn type_references_var(ty: &Type, vars: &[TypeVarId]) -> bool {
         Type::Fn(params, ret) => params.iter().any(|p| type_references_var(p, vars)) || type_references_var(ret, vars),
         Type::Tuple(elems) => elems.iter().any(|e| type_references_var(e, vars)),
         Type::Own(inner) => type_references_var(inner, vars),
+        Type::Dict { target, .. } => type_references_var(target, vars),
         _ => false,
     }
 }
@@ -104,6 +105,7 @@ fn type_has_vars(ty: &Type) -> bool {
         Type::Fn(params, ret) => params.iter().any(type_has_vars) || type_has_vars(ret),
         Type::Tuple(elems) => elems.iter().any(type_has_vars),
         Type::Own(inner) => type_has_vars(inner),
+        Type::Dict { target, .. } => type_has_vars(target),
         _ => false,
     }
 }
@@ -214,7 +216,7 @@ pub fn compile_modules(
         let ir_module = &ir_modules[ir_idx];
         if let Some(path) = &ir_module.module_path {
             let empty_map = HashMap::new();
-            let classes = compile_module_inner(ir_module, typed_module, &ir_modules, path, false, &empty_map, &global_sum_types, &global_type_provenance)
+            let classes = compile_module_inner(ir_module, &ir_modules, path, false, &empty_map, &global_sum_types, &global_type_provenance)
                 .map_err(|e| {
                     if let (Some(p), Some(s)) = (&typed_module.module_path, &typed_module.module_source) {
                         e.with_source(p.clone(), s.clone())
@@ -227,10 +229,10 @@ pub fn compile_modules(
     }
 
     // Compile main module with instance map
-    for &(typed_module, ir_idx) in &typed_with_ir {
+    for &(_typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
         if ir_module.module_path.is_none() {
-            let classes = compile_module_inner(ir_module, typed_module, &ir_modules, main_class_name, true, &instance_class_map, &global_sum_types, &global_type_provenance)?;
+            let classes = compile_module_inner(ir_module, &ir_modules, main_class_name, true, &instance_class_map, &global_sum_types, &global_type_provenance)?;
             all_classes.extend(classes);
         }
     }
@@ -240,7 +242,6 @@ pub fn compile_modules(
 
 fn compile_module_inner(
     ir_module: &krypton_ir::Module,
-    typed_module: &TypedModule,
     all_ir_modules: &[krypton_ir::Module],
     class_name: &str,
     is_main: bool,
@@ -253,7 +254,6 @@ fn compile_module_inner(
     }
 
     let mut compiler = Compiler::new(class_name)?;
-    compiler.auto_close = typed_module.auto_close.clone();
     compiler.types
         .class_descriptors
         .insert(compiler.builder.refs.object_class, "Ljava/lang/Object;".to_string());
@@ -294,8 +294,8 @@ fn compile_module_inner(
     compiler.register_tuples_ir(ir_module)?;
     compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
-    // Phase 4: Compile function bodies (still uses TypedModule — Session 3 replaces this)
-    let extra_methods = compiler.compile_function_bodies(typed_module)?;
+    // Phase 4: Compile function bodies from IR
+    let extra_methods = compiler.compile_function_bodies_ir(ir_module, all_ir_modules)?;
     if is_main {
         compiler.emit_main_wrapper()?;
     }

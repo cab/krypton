@@ -7,7 +7,203 @@ pub mod pretty;
 use std::collections::{BTreeSet, HashMap};
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
-pub use krypton_typechecker::types::{Type, TypeVarId};
+pub use krypton_typechecker::types::TypeVarId;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Type {
+    Int,
+    Float,
+    Bool,
+    String,
+    Unit,
+    Fn(Vec<Type>, Box<Type>),
+    Var(TypeVarId),
+    Named(std::string::String, Vec<Type>),
+    App(Box<Type>, Vec<Type>),
+    Own(Box<Type>),
+    Tuple(Vec<Type>),
+    /// Trait dictionary. Only exists in IR — never in the typechecker.
+    Dict { trait_name: std::string::String, target: Box<Type> },
+    /// HKT sentinel (carried over from TC for bind_type_vars/decompose_fn_for_app).
+    FnHole,
+}
+
+impl From<krypton_typechecker::types::Type> for Type {
+    fn from(tc: krypton_typechecker::types::Type) -> Self {
+        use krypton_typechecker::types::Type as TcType;
+        match tc {
+            TcType::Int => Type::Int,
+            TcType::Float => Type::Float,
+            TcType::Bool => Type::Bool,
+            TcType::String => Type::String,
+            TcType::Unit => Type::Unit,
+            TcType::Fn(params, ret) => Type::Fn(
+                params.into_iter().map(Into::into).collect(),
+                Box::new((*ret).into()),
+            ),
+            TcType::Var(id) => Type::Var(id),
+            TcType::Named(n, args) => Type::Named(n, args.into_iter().map(Into::into).collect()),
+            TcType::App(ctor, args) => Type::App(
+                Box::new((*ctor).into()),
+                args.into_iter().map(Into::into).collect(),
+            ),
+            TcType::Own(inner) => Type::Own(Box::new((*inner).into())),
+            TcType::Tuple(elems) => Type::Tuple(elems.into_iter().map(Into::into).collect()),
+            TcType::FnHole => Type::FnHole,
+        }
+    }
+}
+
+impl Type {
+    /// Strip `Own` wrappers recursively, including inside `Named` type args.
+    pub fn strip_own(&self) -> Type {
+        match self {
+            Type::Own(inner) => inner.strip_own(),
+            Type::Named(name, args) => Type::Named(
+                name.clone(),
+                args.iter().map(|a| a.strip_own()).collect(),
+            ),
+            other => other.clone(),
+        }
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Int => write!(f, "Int"),
+            Type::Float => write!(f, "Float"),
+            Type::Bool => write!(f, "Bool"),
+            Type::String => write!(f, "String"),
+            Type::Unit => write!(f, "Unit"),
+            Type::Fn(params, ret) => {
+                write!(f, "(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ") -> {}", ret)
+            }
+            Type::Var(id) => write!(f, "{}", id.display_name()),
+            Type::Named(name, args) => {
+                write!(f, "{}", name)?;
+                if !args.is_empty() {
+                    write!(f, "[")?;
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")?; }
+                        write!(f, "{}", a)?;
+                    }
+                    write!(f, "]")?;
+                }
+                Ok(())
+            }
+            Type::App(ctor, args) => {
+                write!(f, "{}", ctor)?;
+                if !args.is_empty() {
+                    write!(f, "[")?;
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")?; }
+                        write!(f, "{}", a)?;
+                    }
+                    write!(f, "]")?;
+                }
+                Ok(())
+            }
+            Type::Own(inner) => write!(f, "~{}", inner),
+            Type::Tuple(elems) => {
+                write!(f, "(")?;
+                for (i, e) in elems.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", e)?;
+                }
+                write!(f, ")")
+            }
+            Type::Dict { trait_name, target } => write!(f, "Dict[{}, {}]", trait_name, target),
+            Type::FnHole => write!(f, "_"),
+        }
+    }
+}
+
+/// Head type constructor name for parameterized instance dispatch.
+pub fn head_type_name(ty: &Type) -> std::string::String {
+    match ty {
+        Type::Own(inner) => head_type_name(inner),
+        Type::Named(name, _) => name.clone(),
+        Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::String => "String".to_string(),
+        Type::Unit => "Unit".to_string(),
+        Type::Fn(params, _) => format!("$Fun{}", params.len()),
+        Type::Dict { .. } => "Dict".to_string(),
+        Type::Var(_) => "Object".to_string(),
+        Type::Tuple(elems) => format!("$Tuple{}", elems.len()),
+        Type::App(ctor, _) => head_type_name(ctor),
+        other => unreachable!("unexpected type in head_type_name: {other:?}"),
+    }
+}
+
+/// Decompose a concrete `Fn` type into (partial_ctor, remaining_args) for matching
+/// against `App(ctor, args)` in HKT contexts.
+pub fn decompose_fn_for_app(params: &[Type], ret: &Type, applied_count: usize) -> Option<(Type, Vec<Type>)> {
+    let total = params.len() + 1;
+    if applied_count == 0 || applied_count > total {
+        return None;
+    }
+    let ctor_count = total - applied_count;
+    let ctor = Type::Fn(params[..ctor_count].to_vec(), Box::new(Type::FnHole));
+    let mut remaining: Vec<Type> = params[ctor_count..].to_vec();
+    remaining.push(ret.clone());
+    Some((ctor, remaining))
+}
+
+/// Canonical name for a type, used for deduplication of parameterized instances.
+/// Type variables are normalized to positional names ($Var0, $Var1, ...).
+pub fn type_to_canonical_name(ty: &Type) -> String {
+    use std::collections::HashMap;
+    fn inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> String {
+        match ty {
+            Type::Int => "Int".to_string(),
+            Type::Float => "Float".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::String => "String".to_string(),
+            Type::Unit => "Unit".to_string(),
+            Type::Named(name, args) if args.is_empty() => name.clone(),
+            Type::Named(name, args) => {
+                let arg_strs: Vec<String> = args.iter().map(|a| inner(a, var_map)).collect();
+                format!("{}${}", name, arg_strs.join("$"))
+            }
+            Type::Fn(params, ret) => {
+                let mut parts: Vec<String> = params.iter().map(|p| inner(p, var_map)).collect();
+                parts.push(inner(ret, var_map));
+                format!("$Fun{}${}", params.len(), parts.join("$"))
+            }
+            Type::Own(inner_ty) => inner(inner_ty, var_map),
+            Type::Var(id) => {
+                let next = var_map.len();
+                let idx = *var_map.entry(*id).or_insert(next);
+                format!("$Var{idx}")
+            }
+            Type::App(ctor, args) => {
+                let mut parts = vec![inner(ctor, var_map)];
+                for a in args {
+                    parts.push(inner(a, var_map));
+                }
+                format!("$App${}", parts.join("$"))
+            }
+            Type::Tuple(elems) => {
+                let parts: Vec<String> = elems.iter().map(|e| inner(e, var_map)).collect();
+                format!("$Tuple${}", parts.join("$"))
+            }
+            Type::Dict { trait_name, target } => {
+                format!("$Dict${}${}", trait_name, inner(target, var_map))
+            }
+            Type::FnHole => "$FnHole".to_string(),
+        }
+    }
+    let mut var_map = HashMap::new();
+    inner(ty, &mut var_map)
+}
 
 /// Function names that are compiler intrinsics — they produce inline bytecode
 /// rather than static method calls. Both the IR lowerer and JVM codegen reference
@@ -57,6 +253,9 @@ pub struct Module {
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     pub fn_dict_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
+    /// FnId → (trait_name, method_name) for trait method calls.
+    /// Allows codegen to distinguish trait method calls from regular static calls.
+    pub trait_method_fn_ids: HashMap<FnId, (String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -333,6 +532,7 @@ mod tests {
             tuple_arities: BTreeSet::new(),
             module_path: None,
             fn_dict_requirements: HashMap::new(),
+            trait_method_fn_ids: HashMap::new(),
         };
     }
 }

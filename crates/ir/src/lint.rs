@@ -362,6 +362,7 @@ fn concrete_type_name(ty: &Type) -> Option<String> {
             }
         }
         Type::Own(inner) => concrete_type_name(inner).map(|n| format!("Own<{n}>")),
+        Type::Dict { trait_name, .. } => Some(format!("Dict[{trait_name}]")),
         Type::Var(_) | Type::App(_, _) | Type::FnHole => None,
     }
 }
@@ -418,6 +419,7 @@ fn contains_type_var(ty: &Type) -> bool {
         Type::Named(_, args) => args.iter().any(contains_type_var),
         Type::Tuple(elts) => elts.iter().any(contains_type_var),
         Type::Own(inner) => contains_type_var(inner),
+        Type::Dict { target, .. } => contains_type_var(target),
     }
 }
 

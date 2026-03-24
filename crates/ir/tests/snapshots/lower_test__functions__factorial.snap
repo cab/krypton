@@ -105,7 +105,7 @@ fn factorial(v0: Int) -> Int =
         v6
     }
   in
-  let v1: Dict = get_dict Eq[Int]
+  let v1: Dict[Eq, Int] = get_dict Eq[Int]
   let v2: Bool = call eq(v1, v0, 0)
   jump v7(v2)
 

@@ -165,9 +165,9 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Greeting = construct Greeting::MkGreeting#0("hi")
-  let v2: Dict = get_dict Printable[Greeting]
+  let v2: Dict[Printable, Greeting] = get_dict Printable[Greeting]
   let v3: String = call display(v2, v1)
-  let v0: Dict = get_dict Show[String]
+  let v0: Dict[Show, String] = get_dict Show[String]
   let v4: Unit = call println(v0, v3)
   v4
 

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__prelude_match_option
@@ -92,7 +91,7 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 fn unwrap_or(v0: Option[u7], v1: u7) -> u7 =
   switch v0 {
-    0 (v2: b) ->
+    0 (v2: u7) ->
       v2
     1 ->
       v1

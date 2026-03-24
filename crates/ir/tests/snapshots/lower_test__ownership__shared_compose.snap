@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module ownership__shared_compose
@@ -90,5 +89,5 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-fn assert_eq_show(v0: Dict, v1: Dict, v2: t7, v3: t7) -> t7 =
+fn assert_eq_show(v0: Dict[Eq, t7], v1: Dict[Show, t7], v2: t7, v3: t7) -> t7 =
   v2

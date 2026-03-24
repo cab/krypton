@@ -97,13 +97,13 @@ declare show: (g) -> String
 declare times
 
 fn main() -> Unit =
-  let v0: Dict = get_dict Multiply[Int]
+  let v0: Dict[Multiply, Int] = get_dict Multiply[Int]
   let v1: Int = call times(v0, 2, 3)
-  let v2: Dict = get_dict Show[Int]
+  let v2: Dict[Show, Int] = get_dict Show[Int]
   let v3: String = call show(v2, v1)
   let v4: Unit = call println(v3)
   let v5: Int = add_int(1, 2)
-  let v6: Dict = get_dict Show[Int]
+  let v6: Dict[Show, Int] = get_dict Show[Int]
   let v7: String = call show(v6, v5)
   let v8: Unit = call println(v7)
   v8

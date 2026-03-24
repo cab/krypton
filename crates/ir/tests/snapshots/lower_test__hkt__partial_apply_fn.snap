@@ -96,27 +96,27 @@ declare fmap
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: (Int) -> Int = make_closure(lambda$51, [])
-  let v6: (Int) -> Int = make_closure(lambda$52, [])
-  let v7: Dict = get_dict Functor[(Int) -> _]
+  let v0: (Int) -> Int = make_closure(lambda$53, [])
+  let v6: (Int) -> Int = make_closure(lambda$54, [])
+  let v7: Dict[Functor, (Int) -> _] = get_dict Functor[(Int) -> _]
   let v3: (Int) -> Int = call fmap(v7, v0, v6)
   let v8: Int = call_closure v3(10)
   let v9: Unit = call println(v8)
   v9
 
 fn Functor$$$Fun1$$Var0$$Var1$$fmap(v10: (o8) -> q8, v11: (q8) -> r8) -> (o8) -> r8 =
-  let v17: (o8) -> r8 = make_closure(lambda$53, [v11, v10])
+  let v17: (o8) -> r8 = make_closure(lambda$55, [v11, v10])
   v17
 
-fn lambda$51(v1: Int) -> Int =
+fn lambda$53(v1: Int) -> Int =
   let v2: Int = add_int(v1, 1)
   v2
 
-fn lambda$52(v4: Int) -> Int =
+fn lambda$54(v4: Int) -> Int =
   let v5: Int = mul_int(v4, 2)
   v5
 
-fn lambda$53(v12: (q8) -> r8, v13: (o8) -> q8, v14: o8) -> r8 =
+fn lambda$55(v12: (q8) -> r8, v13: (o8) -> q8, v14: o8) -> r8 =
   let v15: q8 = call_closure v13(v14)
   let v16: r8 = call_closure v12(v15)
   v16

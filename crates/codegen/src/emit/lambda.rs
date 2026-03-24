@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind};
-use krypton_typechecker::types::{Type, TypeVarId};
+use krypton_typechecker::types::Type as TcType;
+use krypton_ir::{Type, TypeVarId};
 use ristretto_classfile::attributes::{BootstrapMethod, Instruction, VerificationType};
 use ristretto_classfile::{ConstantPool, Method, MethodAccessFlags, ReferenceKind};
 
@@ -147,13 +148,13 @@ impl Compiler {
         Ok(result_type)
     }
 
-    pub(super) fn compile_fn_ref(&mut self, name: &str, expr_ty: &Type) -> Result<JvmType, CodegenError> {
+    pub(super) fn compile_fn_ref(&mut self, name: &str, expr_ty: &TcType) -> Result<JvmType, CodegenError> {
         let fn_type = match expr_ty {
-            Type::Own(inner) => inner.as_ref(),
+            TcType::Own(inner) => inner.as_ref(),
             other => other,
         };
         let (param_types, ret_type) = match fn_type {
-            Type::Fn(param_types, ret_type) => (param_types, ret_type),
+            TcType::Fn(param_types, ret_type) => (param_types, ret_type),
             other => {
                 return Err(CodegenError::TypeError(format!(
                     "function reference has non-function type: {other}"
@@ -162,9 +163,9 @@ impl Compiler {
         };
         let param_jvm_types = param_types
             .iter()
-            .map(|ty| self.type_to_jvm(ty))
+            .map(|ty| self.tc_type_to_jvm(ty))
             .collect::<Result<Vec<_>, _>>()?;
-        let ret_jvm = self.type_to_jvm(ret_type)?;
+        let ret_jvm = self.tc_type_to_jvm(ret_type)?;
         let arity = param_jvm_types.len() as u8;
 
         self.lambda
@@ -342,17 +343,18 @@ impl Compiler {
         self.pop_method_scope(scope);
 
         if !dict_requirements.is_empty() {
+            let ir_param_types: Vec<Type> = param_types.iter().map(|t| t.clone().into()).collect();
             let declared_param_types = self
                 .types
                 .fn_tc_types
                 .get(name)
                 .map(|(params, _)| params.clone())
-                .unwrap_or_else(|| param_types.clone());
+                .unwrap_or_else(|| ir_param_types.clone());
             for requirement in &dict_requirements {
                 let requirement_ty = Self::resolve_function_ref_requirement_type(
                     requirement,
                     &declared_param_types,
-                    param_types,
+                    &ir_param_types,
                 )
                 .ok_or_else(|| {
                     CodegenError::UndefinedVariable(format!(
@@ -382,19 +384,19 @@ impl Compiler {
         &mut self,
         params: &[String],
         body: &TypedExpr,
-        lambda_ty: &Type,
+        lambda_ty: &TcType,
     ) -> Result<JvmType, CodegenError> {
         let arity = params.len() as u8;
 
         // Extract param types from the TypedExpr's type
         let fn_type = match lambda_ty {
-            Type::Own(inner) => inner.as_ref(),
+            TcType::Own(inner) => inner.as_ref(),
             other => other,
         };
         let param_jvm_types = match fn_type {
-            Type::Fn(param_types, _) => param_types
+            TcType::Fn(param_types, _) => param_types
                 .iter()
-                .map(|t| self.type_to_jvm(t))
+                .map(|t| self.tc_type_to_jvm(t))
                 .collect::<Result<Vec<_>, _>>()?,
             _ => {
                 return Err(CodegenError::TypeError(
@@ -562,7 +564,7 @@ impl Compiler {
             .collect();
         self.builder.fn_params = lambda_fn_params;
         let lambda_return_type = match fn_type {
-            Type::Fn(_, ret) => self.type_to_jvm(ret)?,
+            TcType::Fn(_, ret) => self.tc_type_to_jvm(ret)?,
             _ => JvmType::StructRef(self.builder.refs.object_class),
         };
         self.builder.fn_return_type = Some(lambda_return_type);

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__question_mark_option_basic
@@ -118,7 +117,7 @@ fn process(v2: Int) -> Option[Int] =
 fn main() -> Unit =
   let v12: Option[Int] = call process(21)
   switch v12 {
-    0 (v13: b) ->
+    0 (v13: Int) ->
       let v14: Unit = call println(v13)
       v14
     1 ->

@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__match_nested
@@ -94,9 +93,9 @@ import core/ordering/GT as GT(): Ordering
 
 fn sum_first_two(v0: List[Int]) -> Int =
   switch v0 {
-    0 (v1: a, v2: List[a]) ->
+    0 (v1: Int, v2: List[a]) ->
       switch v2 {
-        0 (v3: a, v4: List[a]) ->
+        0 (v3: Int, v4: List[Int]) ->
           let v5: Int = add_int(v1, v3)
           v5
         _ ->

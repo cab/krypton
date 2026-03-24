@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__match_ir_patterns
@@ -94,7 +93,7 @@ import core/ordering/GT as GT(): Ordering
 
 fn simple_match(v0: Option[Int]) -> Int =
   switch v0 {
-    0 (v1: a) ->
+    0 (v1: Int) ->
       v1
     1 ->
       0
@@ -104,7 +103,7 @@ fn nested_match(v2: Option[Option[Int]]) -> Int =
   switch v2 {
     0 (v3: a) ->
       switch v3 {
-        0 (v4: a) ->
+        0 (v4: Int) ->
           v4
         1 ->
           let v5: Int = neg_int(1)
@@ -116,7 +115,7 @@ fn nested_match(v2: Option[Option[Int]]) -> Int =
 
 fn wildcard_match(v6: Option[Int]) -> Int =
   switch v6 {
-    0 (v7: a) ->
+    0 (v7: Int) ->
       v7
     _ ->
       42
@@ -150,7 +149,7 @@ fn match_as_value(v15: Option[Int]) -> Int =
     v18
   in
   switch v15 {
-    0 (v17: a) ->
+    0 (v17: Int) ->
       jump v19(v17)
     1 ->
       jump v19(0)

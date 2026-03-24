@@ -101,15 +101,15 @@ fn main() -> Unit =
     let v9: Unit = call println(v8)
     v9
   in
-  let v0: Dict = get_dict Eq[String]
+  let v0: Dict[Eq, String] = get_dict Eq[String]
   let v1: ~Option[Int] = construct Option::Some#0(42)
   let v2: ~Option[Option[Int]] = construct Option::Some#0(v1)
-  let v3: Dict = get_dict Show[Int]
-  let v4: Dict = make_dict Show[Option[Int]](v3)
-  let v5: Dict = make_dict Show[Option[Option[Int]]](v4)
+  let v3: Dict[Show, Int] = get_dict Show[Int]
+  let v4: Dict[Show, Option[Int]] = make_dict Show[Option[Int]](v3)
+  let v5: Dict[Show, Option[Option[Int]]] = make_dict Show[Option[Option[Int]]](v4)
   let v6: String = call show(v5, v2)
   let v7: Bool = call eq(v0, v6, "nested")
   jump v10(v7)
 
-fn Show$$Option$$Var0$$show(v11: Dict, v12: Option[u7]) -> ~String =
+fn Show$$Option$$Var0$$show(v11: Dict[Show, u7], v12: Option[u7]) -> ~String =
   "nested"

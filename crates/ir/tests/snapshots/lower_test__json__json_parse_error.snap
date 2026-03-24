@@ -233,12 +233,12 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let v0: Result[String, Json] = call parse_json("not json")
   switch v0 {
-    1 (v1: c) ->
-      let v2: Dict = get_dict Show[String]
+    1 (v1: String) ->
+      let v2: Dict[Show, String] = get_dict Show[String]
       let v3: Unit = call println(v2, "error")
       v3
-    0 (v4: d) ->
-      let v5: Dict = get_dict Show[String]
+    0 (v4: Json) ->
+      let v5: Dict[Show, String] = get_dict Show[String]
       let v6: Unit = call println(v5, "FAIL")
       v6
   }

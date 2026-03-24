@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__result_basic
@@ -94,9 +93,9 @@ import core/ordering/GT as GT(): Ordering
 
 fn extract(v0: Result[z7, Int]) -> Int =
   switch v0 {
-    0 (v1: b) ->
+    0 (v1: Int) ->
       v1
-    1 (v2: a) ->
+    1 (v2: z7) ->
       let v3: Int = sub_int(0, 1)
       v3
   }

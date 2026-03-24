@@ -105,7 +105,7 @@ fn sum(v0: Int, v1: Int) -> Int =
           jump v2(v8, v9)
       }
     in
-    let v5: Dict = get_dict Eq[Int]
+    let v5: Dict[Eq, Int] = get_dict Eq[Int]
     let v6: Bool = call eq(v5, v3, 0)
     jump v10(v6)
   in

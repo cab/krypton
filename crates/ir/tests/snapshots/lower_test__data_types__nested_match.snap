@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__nested_match
@@ -98,11 +97,11 @@ fn apply_fn(v0: (v7) -> x7, v1: v7) -> x7 =
   v2
 
 fn main() -> Unit =
-  let v5: (Int) -> Int = make_closure(lambda$50, [])
+  let v5: (Int) -> Int = make_closure(lambda$52, [])
   let v6: Int = call apply_fn(v5, 5)
   let v7: Unit = call println(v6)
   v7
 
-fn lambda$50(v3: Int) -> Int =
+fn lambda$52(v3: Int) -> Int =
   let v4: Int = add_int(v3, 1)
   v4

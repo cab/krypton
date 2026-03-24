@@ -98,53 +98,53 @@ fn main() -> Unit =
     let_join v62(v33: Unit) =
       let_join v61(v50: Unit) =
         let_join v60(v58: Bool) =
-          let v51: Dict = get_dict Show[Bool]
+          let v51: Dict[Show, Bool] = get_dict Show[Bool]
           let v59: Unit = call println(v51, v58)
           v59
         in
-        let v52: Dict = get_dict Eq[Int]
-        let v53: Dict = get_dict Hash[Bool]
+        let v52: Dict[Eq, Int] = get_dict Eq[Int]
+        let v53: Dict[Hash, Bool] = get_dict Hash[Bool]
         let v54: Int = call hash(v53, true)
-        let v55: Dict = get_dict Hash[Bool]
+        let v55: Dict[Hash, Bool] = get_dict Hash[Bool]
         let v56: Int = call hash(v55, true)
         let v57: Bool = call eq(v52, v54, v56)
         jump v60(v57)
       in
       let_join v49(v47: Bool) =
-        let v40: Dict = get_dict Show[Bool]
+        let v40: Dict[Show, Bool] = get_dict Show[Bool]
         let v48: Unit = call println(v40, v47)
         jump v61(v48)
       in
-      let v41: Dict = get_dict Eq[Int]
-      let v42: Dict = get_dict Hash[String]
+      let v41: Dict[Eq, Int] = get_dict Eq[Int]
+      let v42: Dict[Hash, String] = get_dict Hash[String]
       let v43: Int = call hash(v42, "hello")
-      let v44: Dict = get_dict Hash[String]
+      let v44: Dict[Hash, String] = get_dict Hash[String]
       let v45: Int = call hash(v44, "hello")
       let v46: Bool = call eq(v41, v43, v45)
       jump v49(v46)
     in
     let_join v32(v30: Bool) =
-      let v23: Dict = get_dict Show[Bool]
+      let v23: Dict[Show, Bool] = get_dict Show[Bool]
       let v31: Unit = call println(v23, v30)
       jump v62(v31)
     in
-    let v24: Dict = get_dict Eq[Int]
-    let v25: Dict = get_dict Hash[Float]
+    let v24: Dict[Eq, Int] = get_dict Eq[Int]
+    let v25: Dict[Hash, Float] = get_dict Hash[Float]
     let v26: Int = call hash(v25, 3.14)
-    let v27: Dict = get_dict Hash[Float]
+    let v27: Dict[Hash, Float] = get_dict Hash[Float]
     let v28: Int = call hash(v27, 3.14)
     let v29: Bool = call eq(v24, v26, v28)
     jump v32(v29)
   in
   let_join v15(v13: Bool) =
-    let v6: Dict = get_dict Show[Bool]
+    let v6: Dict[Show, Bool] = get_dict Show[Bool]
     let v14: Unit = call println(v6, v13)
     jump v63(v14)
   in
-  let v7: Dict = get_dict Eq[Int]
-  let v8: Dict = get_dict Hash[Int]
+  let v7: Dict[Eq, Int] = get_dict Eq[Int]
+  let v8: Dict[Hash, Int] = get_dict Hash[Int]
   let v9: Int = call hash(v8, 42)
-  let v10: Dict = get_dict Hash[Int]
+  let v10: Dict[Hash, Int] = get_dict Hash[Int]
   let v11: Int = call hash(v10, 42)
   let v12: Bool = call eq(v7, v9, v11)
   jump v15(v12)

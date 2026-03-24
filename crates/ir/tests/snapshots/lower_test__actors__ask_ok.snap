@@ -199,7 +199,7 @@ fn main() -> Unit =
   let v6: (Ref[Int]) -> Msg = make_closure(Get, [])
   let v7: Result[Timeout, Int] = call ask(v4, v6, 5000)
   switch v7 {
-    0 (v8: d) ->
+    0 (v8: Int) ->
       let v9: Unit = call println(v8)
       v9
     1 (v10: c) ->

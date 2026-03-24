@@ -100,19 +100,19 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let v0: ~Box[Int] = construct Box(1)
   let v1: ~Box[Int] = construct Box(1)
-  let v3: Dict = get_dict MyEq[Int]
-  let v4: Dict = make_dict MyEq[Box[Int]](v3)
+  let v3: Dict[MyEq, Int] = get_dict MyEq[Int]
+  let v4: Dict[MyEq, Box[Int]] = make_dict MyEq[Box[Int]](v3)
   let v5: Bool = call my_eq(v4, v0, v1)
-  let v2: Dict = get_dict Show[Bool]
+  let v2: Dict[Show, Bool] = get_dict Show[Bool]
   let v6: Unit = call println(v2, v5)
   v6
 
 fn MyEq$$Int$$my_eq(v7: Int, v8: Int) -> Bool =
-  let v9: Dict = get_dict Eq[Int]
+  let v9: Dict[Eq, Int] = get_dict Eq[Int]
   let v10: Bool = call eq(v9, v7, v8)
   v10
 
-fn MyEq$$Box$$Var0$$my_eq(v11: Dict, v12: Box[u7], v13: Box[u7]) -> Bool =
+fn MyEq$$Box$$Var0$$my_eq(v11: Dict[MyEq, u7], v12: Box[u7], v13: Box[u7]) -> Bool =
   let v14: u7 = project v12.0
   let v15: u7 = project v13.0
   let v16: Bool = call my_eq(v11, v14, v15)

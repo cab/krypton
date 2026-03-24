@@ -240,6 +240,6 @@ fn main() -> Unit =
   let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
   let v0: Json = call json_object(v4)
   let v6: String = call json_to_string(v0)
-  let v5: Dict = get_dict Show[String]
+  let v5: Dict[Show, String] = get_dict Show[String]
   let v7: Unit = call println(v5, v6)
   v7

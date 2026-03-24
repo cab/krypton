@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module ownership__own_fn_in_struct
@@ -96,12 +95,12 @@ fn consume(v0: ~String) -> String =
   v0
 
 fn test(v1: ~String) -> String =
-  let v5: ~() -> String = make_closure(lambda$51, [v1])
+  let v5: ~() -> String = make_closure(lambda$53, [v1])
   let v2: ~Callback = construct Callback(v5)
   let v6: ~() -> String = project v2.0
   let v7: String = call_closure v6()
   v7
 
-fn lambda$51(v3: ~String) -> String =
+fn lambda$53(v3: ~String) -> String =
   let v4: String = call consume(v3)
   v4

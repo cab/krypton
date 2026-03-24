@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__match_multiple_in_function
@@ -107,7 +106,7 @@ fn main() -> Unit =
         in
         let v13: ~Option[Int] = construct Option::Some#0(4)
         switch v13 {
-          0 (v14: a) ->
+          0 (v14: Int) ->
             jump v16(v14)
           1 ->
             jump v16(0)
@@ -115,7 +114,7 @@ fn main() -> Unit =
       in
       let v9: ~Option[Int] = construct Option::Some#0(3)
       switch v9 {
-        0 (v10: a) ->
+        0 (v10: Int) ->
           jump v17(v10)
         1 ->
           jump v17(0)
@@ -123,7 +122,7 @@ fn main() -> Unit =
     in
     let v5: ~Option[Int] = construct Option::Some#0(2)
     switch v5 {
-      0 (v6: a) ->
+      0 (v6: Int) ->
         jump v18(v6)
       1 ->
         jump v18(0)
@@ -131,7 +130,7 @@ fn main() -> Unit =
   in
   let v1: ~Option[Int] = construct Option::Some#0(1)
   switch v1 {
-    0 (v2: a) ->
+    0 (v2: Int) ->
       jump v19(v2)
     1 ->
       jump v19(0)

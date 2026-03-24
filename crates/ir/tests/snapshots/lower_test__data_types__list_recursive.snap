@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/lower_test.rs
-assertion_line: 69
 expression: ir_module.to_string()
 ---
 module data_types__list_recursive
@@ -96,7 +95,7 @@ fn length(v0: List[x7]) -> Int =
   switch v0 {
     1 ->
       0
-    0 (v1: a, v2: List[a]) ->
+    0 (v1: a, v2: List[x7]) ->
       let v3: Int = call length(v2)
       let v4: Int = add_int(1, v3)
       v4
