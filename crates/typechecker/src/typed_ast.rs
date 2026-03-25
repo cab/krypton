@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
-use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint, TypeExpr, UnaryOp, Variant, Visibility};
+use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant, Visibility};
 
 /// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +32,16 @@ impl TraitName {
     pub fn display_name(&self) -> &str {
         &self.name
     }
+
+    // Core trait constructors
+    pub fn core_eq() -> Self { TraitName::new("core/eq".into(), "Eq".into()) }
+    pub fn core_ord() -> Self { TraitName::new("core/ord".into(), "Ord".into()) }
+    pub fn core_semigroup() -> Self { TraitName::new("core/semigroup".into(), "Semigroup".into()) }
+    pub fn core_sub() -> Self { TraitName::new("core/sub".into(), "Sub".into()) }
+    pub fn core_mul() -> Self { TraitName::new("core/mul".into(), "Mul".into()) }
+    pub fn core_div() -> Self { TraitName::new("core/div".into(), "Div".into()) }
+    pub fn core_neg() -> Self { TraitName::new("core/neg".into(), "Neg".into()) }
+    pub fn core_resource() -> Self { TraitName::new("core/resource".into(), "Resource".into()) }
 }
 
 impl fmt::Display for TraitName {
@@ -258,13 +268,21 @@ pub struct InstanceMethod {
     pub scheme: TypeScheme,     // type scheme for the method
 }
 
+/// A type constraint with its trait name already resolved to a full TraitName.
+#[derive(Clone, Debug)]
+pub struct ResolvedConstraint {
+    pub trait_name: TraitName,
+    pub type_var: String,
+    pub span: Span,
+}
+
 #[derive(Clone)]
 pub struct InstanceDefInfo {
     pub trait_name: TraitName,
     pub target_type_name: String,
     pub target_type: Type,
     pub type_var_ids: HashMap<String, TypeVarId>,
-    pub constraints: Vec<TypeConstraint>,
+    pub constraints: Vec<ResolvedConstraint>,
     pub methods: Vec<InstanceMethod>,
     pub subdict_traits: Vec<(String, usize)>, // (trait_name, type_param_index) for parameterized instances
     pub is_intrinsic: bool,                   // true when all method bodies are intrinsic()

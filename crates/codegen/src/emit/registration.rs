@@ -488,26 +488,7 @@ impl Compiler {
                 })
                 .collect();
 
-            // Build TraitName from the qualified trait path
-            let trait_key = if trait_def.is_imported {
-                // For imported traits, extract module_path from the qualified name
-                if let Some(pos) = qualified_trait.rfind('/') {
-                    TraitName {
-                        module_path: qualified_trait[..pos].to_string(),
-                        name: trait_def.name.clone(),
-                    }
-                } else {
-                    TraitName {
-                        module_path: String::new(),
-                        name: trait_def.name.clone(),
-                    }
-                }
-            } else {
-                TraitName {
-                    module_path: ir_module.module_path.clone(),
-                    name: trait_def.name.clone(),
-                }
-            };
+            let trait_key = trait_def.trait_name.clone();
             self.traits.trait_dispatch.insert(
                 trait_key,
                 TraitDispatchInfo {

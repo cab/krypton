@@ -594,7 +594,7 @@ impl LowerCtx {
         }
         let id = self
             .lookup_trait_method(
-                &TraitName::new("core/resource".to_string(), "Resource".to_string()),
+                &TraitName::core_resource(),
                 "close",
             )
             .ok_or_else(|| LowerError::InternalError("Resource.close not found".to_string()))?;
@@ -612,7 +612,7 @@ impl LowerCtx {
         let close_fn_id = self.get_close_fn_id()?;
         let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
         let (dict_bindings, dict_atom) = self.resolve_dict(
-            &TraitName::new("core/resource".to_string(), "Resource".to_string()),
+            &TraitName::core_resource(),
             &dict_ty,
         )?;
         let unit_var = self.fresh_var();
@@ -651,7 +651,7 @@ impl LowerCtx {
                 })?;
             let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
             let (dict_bindings, dict_atom) = self.resolve_dict(
-                &TraitName::new("core/resource".to_string(), "Resource".to_string()),
+                &TraitName::core_resource(),
                 &dict_ty,
             )?;
             resolved.push(ResolvedClose {
@@ -2854,37 +2854,37 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name, swap, negate) = match op {
             BinOp::Eq => (
-                TraitName::new("core/eq".to_string(), "Eq".to_string()),
+                TraitName::core_eq(),
                 "eq",
                 false,
                 false,
             ),
             BinOp::Neq => (
-                TraitName::new("core/eq".to_string(), "Eq".to_string()),
+                TraitName::core_eq(),
                 "eq",
                 false,
                 true,
             ),
             BinOp::Lt => (
-                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                TraitName::core_ord(),
                 "lt",
                 false,
                 false,
             ),
             BinOp::Gt => (
-                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                TraitName::core_ord(),
                 "lt",
                 true,
                 false,
             ),
             BinOp::Le => (
-                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                TraitName::core_ord(),
                 "lt",
                 true,
                 true,
             ),
             BinOp::Ge => (
-                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                TraitName::core_ord(),
                 "lt",
                 false,
                 true,
@@ -2958,19 +2958,19 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name) = match op {
             BinOp::Add => (
-                TraitName::new("core/semigroup".to_string(), "Semigroup".to_string()),
+                TraitName::core_semigroup(),
                 "combine",
             ),
             BinOp::Sub => (
-                TraitName::new("core/sub".to_string(), "Sub".to_string()),
+                TraitName::core_sub(),
                 "sub",
             ),
             BinOp::Mul => (
-                TraitName::new("core/mul".to_string(), "Mul".to_string()),
+                TraitName::core_mul(),
                 "mul",
             ),
             BinOp::Div => (
-                TraitName::new("core/div".to_string(), "Div".to_string()),
+                TraitName::core_div(),
                 "div",
             ),
             _ => unreachable!(),
@@ -3019,7 +3019,7 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name) = match op {
             UnaryOp::Neg => (
-                TraitName::new("core/neg".to_string(), "Neg".to_string()),
+                TraitName::core_neg(),
                 "neg",
             ),
             _ => unreachable!(),
@@ -4210,13 +4210,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .or_insert_with(|| reqs.clone());
     }
 
-    // Build a bare-name → TraitName lookup from trait_defs for resolving parser constraints
-    let trait_name_lookup: HashMap<String, TraitName> = typed
-        .trait_defs
-        .iter()
-        .map(|t| (t.name.clone(), t.trait_id.clone()))
-        .collect();
-
     // Add instance method constraints so lower_fn prepends dict params
     for inst in &typed.instance_defs {
         if inst.constraints.is_empty() {
@@ -4226,11 +4219,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .constraints
             .iter()
             .filter_map(|c| {
-                let tn = trait_name_lookup
-                    .get(&c.trait_name)
-                    .cloned()
-                    .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
-                inst.type_var_ids.get(&c.type_var).map(|&tv| (tn, tv))
+                inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
             })
             .collect();
         if constraint_pairs.is_empty() {
@@ -4277,13 +4266,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 constraints: inst
                     .constraints
                     .iter()
-                    .map(|c| {
-                        let tn = trait_name_lookup
-                            .get(&c.trait_name)
-                            .cloned()
-                            .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
-                        (tn, c.type_var.clone())
-                    })
+                    .map(|c| (c.trait_name.clone(), c.type_var.clone()))
                     .collect(),
             })
             .collect(),
@@ -4624,6 +4607,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .collect();
         traits.push(TraitDef {
             name: trait_def.name.clone(),
+            trait_name: trait_def.trait_id.clone(),
             type_var: trait_def.type_var_id,
             methods,
             is_imported: trait_def.is_imported,
@@ -4672,11 +4656,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .constraints
             .iter()
             .filter_map(|c| {
-                let tn = trait_name_lookup
-                    .get(&c.trait_name)
-                    .cloned()
-                    .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
-                inst.type_var_ids.get(&c.type_var).map(|&tv| (tn, tv))
+                inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
             })
             .collect();
         InstanceDef {

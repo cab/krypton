@@ -53,6 +53,7 @@ pub enum TypeErrorCode {
     E0310, // Missing pub type annotation
     E0311, // Trait method collision
     E0312, // Missing trait bound
+    E0313, // Ambiguous trait name
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -241,6 +242,11 @@ pub enum TypeError {
         trait_name: String,
         type_var: String,
     },
+    AmbiguousTraitName {
+        name: String,
+        existing_module: String,
+        new_module: String,
+    },
 }
 
 impl TypeError {
@@ -301,6 +307,7 @@ impl TypeError {
             TypeError::MissingPubAnnotation { .. } => TypeErrorCode::E0310,
             TypeError::TraitMethodCollision { .. } => TypeErrorCode::E0311,
             TypeError::MissingTraitBound { .. } => TypeErrorCode::E0312,
+            TypeError::AmbiguousTraitName { .. } => TypeErrorCode::E0313,
         }
     }
 
@@ -510,6 +517,9 @@ impl TypeError {
             }
             TypeError::MissingTraitBound { type_var, trait_name, .. } => {
                 Some(format!("add `where {}: {}` to the function signature", type_var, trait_name))
+            }
+            TypeError::AmbiguousTraitName { name, .. } => {
+                Some(format!("use `import module.{{{}  as Alias}}` to disambiguate", name))
             }
         }
     }
@@ -873,6 +883,13 @@ impl fmt::Display for TypeError {
                     f,
                     "function `{}` uses trait method from `{}` on type variable `{}` without a corresponding bound",
                     fn_name, trait_name, type_var
+                )
+            }
+            TypeError::AmbiguousTraitName { name, existing_module, new_module } => {
+                write!(
+                    f,
+                    "ambiguous trait name `{}`: defined in both `{}` and `{}`",
+                    name, existing_module, new_module
                 )
             }
         }

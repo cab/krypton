@@ -27,7 +27,7 @@ fn is_owned_resource(ty: &Type, registry: &TraitRegistry) -> Option<String> {
     if let Type::Own(inner) = ty {
         if let Some(name) = concrete_type_name(inner) {
             {
-                let resource_tn = crate::typed_ast::TraitName::new("core/resource".into(), "Resource".into());
+                let resource_tn = crate::typed_ast::TraitName::core_resource();
                 if registry.find_instance(&resource_tn, inner).is_some() {
                     return Some(name.to_string());
                 }
@@ -451,7 +451,7 @@ pub fn compute_auto_close(
     registry: &TraitRegistry,
     ownership_moves: &HashMap<Span, String>,
 ) -> Result<AutoCloseInfo, SpannedTypeError> {
-    let resource_tn = crate::typed_ast::TraitName::new("core/resource".into(), "Resource".into());
+    let resource_tn = crate::typed_ast::TraitName::core_resource();
     if registry.lookup_trait(&resource_tn).is_none() {
         return Ok(AutoCloseInfo::default());
     }

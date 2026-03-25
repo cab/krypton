@@ -657,13 +657,18 @@ impl ModuleInferenceState {
 
         // Propagate trait definitions from the imported module
         for trait_def in &cached.exported_trait_defs {
+            // Compute effective (possibly aliased) name
+            let effective_name = aliases.get(&trait_def.name)
+                .cloned()
+                .unwrap_or_else(|| trait_def.name.clone());
+
             let explicitly_requested = requested.contains(trait_def.name.as_str())
                 || trait_def
                     .methods
                     .iter()
                     .any(|m| requested.contains(m.name.as_str()));
             if (explicitly_requested || import_all)
-                && !self.imported_trait_names.contains(&trait_def.name)
+                && !self.imported_trait_names.contains(&effective_name)
             {
                 if matches!(trait_def.visibility, Visibility::Private) {
                     if explicitly_requested {
@@ -678,13 +683,18 @@ impl ModuleInferenceState {
                     continue;
                 }
                 self.imported_trait_defs.push(trait_def.clone());
-                self.imported_trait_names.insert(trait_def.name.clone());
-                // Bind visible trait methods as imported functions (skip if already imported via fn_types)
+                self.imported_trait_names.insert(effective_name.clone());
+                // Build canonical TraitName (always uses original name, not alias)
                 let trait_id = TraitName::new(
                     if trait_def.module_path.is_empty() { path.to_string() } else { trait_def.module_path.clone() },
                     trait_def.name.clone(),
                 );
+                // Register alias if different from original
+                if effective_name != trait_def.name {
+                    self.trait_aliases.push((effective_name.clone(), trait_id.clone()));
+                }
                 let origin = Some(trait_id);
+                // Bind visible trait methods as imported functions (skip if already imported via fn_types)
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
                     let already_imported = self.imports.imported_fn_types.iter().any(|f| f.name == method.name);

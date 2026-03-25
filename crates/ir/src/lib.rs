@@ -329,6 +329,7 @@ pub struct ImportedFnDef {
 #[derive(Debug, Clone)]
 pub struct TraitDef {
     pub name: String,
+    pub trait_name: TraitName,
     pub type_var: TypeVarId,
     pub methods: Vec<TraitMethodDef>,
     pub is_imported: bool,

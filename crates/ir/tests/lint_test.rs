@@ -454,6 +454,7 @@ fn getdict_unknown_trait_is_error() {
     );
     module.traits.push(TraitDef {
         name: "Show".into(),
+        trait_name: TraitName::new("core/show".into(), "Show".into()),
         type_var: TypeVarGen::new().fresh(),
         is_imported: false,
         methods: vec![TraitMethodDef {
@@ -497,6 +498,7 @@ fn getdict_valid_trait_and_instance_passes() {
     );
     module.traits.push(TraitDef {
         name: "Show".into(),
+        trait_name: TraitName::new("core/show".into(), "Show".into()),
         type_var: TypeVarGen::new().fresh(),
         is_imported: false,
         methods: vec![],

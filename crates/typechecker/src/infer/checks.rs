@@ -417,7 +417,7 @@ fn walk_trait_method_calls(
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
                     if let Some(v) = leading_type_var(&operand_ty) {
                         if fn_type_param_vars.contains(&v) {
-                            callback(TraitName::new("core/neg".into(), "Neg".into()), v);
+                            callback(TraitName::core_neg(), v);
                         }
                     }
                 }
@@ -560,12 +560,12 @@ pub(super) fn check_trait_instances(
             TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let trait_name = match op {
-                    BinOp::Add => Some(TraitName::new("core/semigroup".into(), "Semigroup".into())),
-                    BinOp::Sub => Some(TraitName::new("core/sub".into(), "Sub".into())),
-                    BinOp::Mul => Some(TraitName::new("core/mul".into(), "Mul".into())),
-                    BinOp::Div => Some(TraitName::new("core/div".into(), "Div".into())),
-                    BinOp::Eq | BinOp::Neq => Some(TraitName::new("core/eq".into(), "Eq".into())),
-                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some(TraitName::new("core/ord".into(), "Ord".into())),
+                    BinOp::Add => Some(TraitName::core_semigroup()),
+                    BinOp::Sub => Some(TraitName::core_sub()),
+                    BinOp::Mul => Some(TraitName::core_mul()),
+                    BinOp::Div => Some(TraitName::core_div()),
+                    BinOp::Eq | BinOp::Neq => Some(TraitName::core_eq()),
+                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some(TraitName::core_ord()),
                     BinOp::And | BinOp::Or => None,
                 };
                 if let Some(ref trait_name) = trait_name {
@@ -588,7 +588,7 @@ pub(super) fn check_trait_instances(
             }
             TypedExprKind::UnaryOp { op, operand } => {
                 if matches!(op, UnaryOp::Neg) {
-                    let neg_trait = TraitName::new("core/neg".into(), "Neg".into());
+                    let neg_trait = TraitName::core_neg();
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
                     if !matches!(operand_ty, Type::Var(_)) {
                         if trait_registry.lookup_trait(&neg_trait).is_some()

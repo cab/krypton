@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Lit, Span, TypeConstraint};
+use krypton_parser::ast::{BinOp, Lit, Span};
 
 use crate::trait_registry::TraitRegistry;
 use crate::type_registry::TypeInfo;
-use crate::typed_ast::{TraitName, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern};
+use crate::typed_ast::{ResolvedConstraint, TraitName, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern};
 use crate::types::{Type, TypeVarId};
 
 use super::match_type_with_bindings;
@@ -15,31 +15,42 @@ pub(super) fn collect_derived_constraints_for_type(
     field_type: &Type,
     local_type_params: &HashMap<TypeVarId, String>,
     visited: &mut HashSet<(String, String)>,
-    constraints: &mut Vec<TypeConstraint>,
+    constraints: &mut Vec<ResolvedConstraint>,
 ) -> bool {
     let key = (trait_name.to_string(), format!("{field_type}"));
     if !visited.insert(key) {
         return true;
     }
 
+    let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) else {
+        if let Type::Var(type_var) = field_type {
+            if let Some(type_var_name) = local_type_params.get(type_var) {
+                if !constraints.iter().any(|c| c.trait_name.name == trait_name && c.type_var == *type_var_name) {
+                    // Can't resolve without trait_info — use bare fallback
+                    constraints.push(ResolvedConstraint {
+                        trait_name: TraitName::new(String::new(), trait_name.to_string()),
+                        type_var: type_var_name.clone(),
+                        span: (0, 0),
+                    });
+                }
+                return true;
+            }
+        }
+        return false;
+    };
+
     if let Type::Var(type_var) = field_type {
         if let Some(type_var_name) = local_type_params.get(type_var) {
-            if !constraints.iter().any(|constraint| {
-                constraint.trait_name == trait_name && constraint.type_var == *type_var_name
-            }) {
-                constraints.push(TypeConstraint {
+            if !constraints.iter().any(|c| c.trait_name.name == trait_name && c.type_var == *type_var_name) {
+                constraints.push(ResolvedConstraint {
+                    trait_name: trait_info.trait_name(),
                     type_var: type_var_name.clone(),
-                    trait_name: trait_name.to_string(),
                     span: (0, 0),
                 });
             }
             return true;
         }
     }
-
-    let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) else {
-        return false;
-    };
     let full_trait_name = trait_info.trait_name();
     let Some(instance) = trait_registry.find_instance(&full_trait_name, field_type) else {
         return false;
@@ -63,7 +74,7 @@ pub(super) fn collect_derived_constraints_for_type(
         };
         if !collect_derived_constraints_for_type(
             trait_registry,
-            &constraint.trait_name,
+            &constraint.trait_name.name,
             required_type,
             local_type_params,
             visited,

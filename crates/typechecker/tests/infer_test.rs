@@ -199,7 +199,7 @@ fn impl_where_clause_constraints_are_stored_on_instance_defs() {
 
     assert_eq!(instance.constraints.len(), 1);
     assert_eq!(instance.constraints[0].type_var, "a");
-    assert_eq!(instance.constraints[0].trait_name, "MyEq");
+    assert_eq!(instance.constraints[0].trait_name.name, "MyEq");
 }
 
 #[test]
@@ -1962,7 +1962,7 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
         .expect("expected derived Show[Box[a]] instance");
 
     assert_eq!(instance.constraints.len(), 1);
-    assert_eq!(instance.constraints[0].trait_name, "Show");
+    assert_eq!(instance.constraints[0].trait_name.name, "Show");
     assert_eq!(instance.constraints[0].type_var, "a");
     assert!(instance.type_var_ids.contains_key("a"));
 }

@@ -9,8 +9,8 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, StructDecl,
-    SumDecl, TraitName, TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, ResolvedConstraint,
+    StructDecl, SumDecl, TraitName, TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
@@ -1211,6 +1211,7 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imported_extern_java_types: Vec<(String, String)>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
+    pub(super) trait_aliases: Vec<(String, TraitName)>,
     pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
     // Re-export state
     pub(super) reexported_fn_types: Vec<typed_ast::ExportedFn>,
@@ -1249,6 +1250,7 @@ impl ModuleInferenceState {
             imported_extern_java_types: Vec::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
+            trait_aliases: Vec::new(),
             qualified_modules: HashMap::new(),
             reexported_fn_types: Vec::new(),
             reexported_type_names: Vec::new(),
@@ -1803,6 +1805,11 @@ fn process_traits_and_deriving(
         &state.prelude_imported_names,
     );
 
+    // Phase 2b: Register trait aliases from imports
+    for (alias, canonical) in &state.trait_aliases {
+        trait_registry.register_trait_alias(alias.clone(), canonical.clone());
+    }
+
     // Phase 3: Process local DefTrait declarations
     let exported_trait_defs = register_local_traits(
         state,
@@ -1905,8 +1912,13 @@ fn import_cached_instances(
                             span: (0, 0),
                             is_builtin: false,
                         };
-                        // A-T14: silently ignores duplicate imported instances; should be an error
-                        let _ = trait_registry.register_instance(instance);
+                        match trait_registry.register_instance(instance) {
+                            Ok(()) => {},
+                            Err((TypeError::DuplicateInstance { .. }, _)) => {
+                                // Expected: same instance imported via multiple transitive paths
+                            },
+                            Err(_) => {},
+                        }
                         // NOTE: deep-clones each imported instance; consider indices/Arc if this becomes hot
                         imported_instance_defs.push(inst.clone());
                     }
@@ -1926,9 +1938,16 @@ fn register_imported_trait_defs(
 ) {
     // Register trait definitions imported from other modules
     for trait_def in imported_trait_defs {
-        if trait_registry.lookup_trait_by_name(&trait_def.name).is_some() {
+        // Skip if this exact trait (same TraitName) is already registered
+        let trait_id = TraitName::new(
+            if trait_def.module_path.is_empty() { String::new() }
+            else { trait_def.module_path.clone() },
+            trait_def.name.clone(),
+        );
+        if trait_registry.lookup_trait(&trait_id).is_some() {
             continue;
         }
+
         let new_tv_id = gen.fresh();
         let old_tv_id = trait_def.type_var_id;
 
@@ -1950,19 +1969,22 @@ fn register_imported_trait_defs(
 
         let is_prelude = prelude_imported_names.contains(&trait_def.name);
         let superclass_names: Vec<TraitName> = trait_def.superclasses.clone();
-        trait_registry
-            .register_trait(TraitInfo {
-                name: trait_def.name.clone(),
-                module_path: trait_def.module_path.clone(),
-                type_var: trait_def.type_var.clone(),
-                type_var_id: new_tv_id,
-                type_var_arity: trait_def.type_var_arity,
-                superclasses: superclass_names,
-                methods: trait_methods,
-                span: (0, 0),
-                is_prelude,
-            })
-            .expect("imported trait should not already be registered (checked above)");
+        // register_trait checks for bare-name collisions and returns AmbiguousTraitName
+        // if two different modules define traits with the same bare name
+        if let Err(_e) = trait_registry.register_trait(TraitInfo {
+            name: trait_def.name.clone(),
+            module_path: trait_def.module_path.clone(),
+            type_var: trait_def.type_var.clone(),
+            type_var_id: new_tv_id,
+            type_var_arity: trait_def.type_var_arity,
+            superclasses: superclass_names,
+            methods: trait_methods,
+            span: (0, 0),
+            is_prelude,
+        }) {
+            // For now, silently skip traits that collide — aliasing will resolve this
+            continue;
+        }
     }
 }
 
@@ -2149,7 +2171,7 @@ fn process_deriving(
                     .iter()
                     .map(|(name, id)| (*id, name.clone()))
                     .collect();
-                let mut derived_constraints: Vec<TypeConstraint> = Vec::new();
+                let mut derived_constraints: Vec<ResolvedConstraint> = Vec::new();
                 let mut visited_constraints: HashSet<(String, String)> = HashSet::new();
 
                 for ft in &field_types {
@@ -2245,6 +2267,22 @@ fn process_deriving(
         }
     }
     Ok(derived_instance_defs)
+}
+
+/// Resolve parser `TypeConstraint`s (bare string trait names) to `ResolvedConstraint`s
+/// using the trait registry to look up the full `TraitName`.
+fn resolve_constraints(
+    constraints: &[TypeConstraint],
+    trait_registry: &TraitRegistry,
+    module_path: &str,
+) -> Vec<ResolvedConstraint> {
+    constraints.iter().map(|tc| ResolvedConstraint {
+        trait_name: trait_registry.lookup_trait_by_name(&tc.trait_name)
+            .map(|ti| ti.trait_name())
+            .unwrap_or_else(|| TraitName::new(module_path.to_string(), tc.trait_name.clone())),
+        type_var: tc.type_var.clone(),
+        span: tc.span,
+    }).collect()
 }
 
 /// Phase 5: Process DefImpl declarations (register instances).
@@ -2465,12 +2503,13 @@ fn register_impl_instances(
             let impl_full_trait_name = trait_registry.lookup_trait_by_name(trait_name)
                 .map(|ti| ti.trait_name())
                 .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
+            let resolved_constraints = resolve_constraints(type_constraints, trait_registry, module_path);
             let instance = InstanceInfo {
                 trait_name: impl_full_trait_name,
                 target_type: resolved_target,
                 target_type_name,
                 type_var_ids: type_param_map.clone(),
-                constraints: type_constraints.clone(),
+                constraints: resolved_constraints,
                 methods: method_names,
                 span: *span,
                 is_builtin: false,

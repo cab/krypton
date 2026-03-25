@@ -1,11 +1,11 @@
 use krypton_codegen::emit::compile_modules;
-use krypton_parser::ast::{BinOp, Lit, TypeConstraint, TypeExpr, Variant, Visibility};
+use krypton_parser::ast::{BinOp, Lit, TypeExpr, Variant, Visibility};
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
-    AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, SumDecl,
-    TraitDefInfo, TraitName, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule,
-    TypedPattern,
+    AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, ResolvedConstraint,
+    SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm,
+    TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
 
@@ -385,9 +385,9 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 target_type_name: "Wrap".to_string(),
                 target_type: wrap_a_ty.clone(),
                 type_var_ids: HashMap::from([("a".to_string(), var_a)]),
-                constraints: vec![TypeConstraint {
+                constraints: vec![ResolvedConstraint {
+                    trait_name: TraitName::new(String::new(), "Render".to_string()),
                     type_var: "a".to_string(),
-                    trait_name: "Render".to_string(),
                     span: (0, 0),
                 }],
                 methods: vec![render_wrap_method],
