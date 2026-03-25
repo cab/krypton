@@ -1653,9 +1653,6 @@ impl ModuleInferenceState {
                     if let Some(td) = find_type_decl(&imported_mod.decls, type_name) {
                         if let TypeDeclKind::Sum { variants } = &td.kind {
                             self.type_provenance.insert(td.name.clone(), source_path.clone());
-                            for v in variants {
-                                self.type_provenance.insert(v.name.clone(), source_path.clone());
-                            }
                             sum_decls.push(SumDecl {
                                 name: td.name.clone(),
                                 type_params: td.type_params.clone(),
