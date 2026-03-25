@@ -6,8 +6,8 @@ module resources__resource_lifo
 
 type HandleA = MkHandleA#0(Int)
 type HandleB = MkHandleB#0(Int)
-instance core/resource.Resource[HandleA] { close=f1 }
-instance core/resource.Resource[HandleB] { close=f2 }
+instance core/resource.Resource[HandleA] { close=Resource$$HandleA$$close }
+instance core/resource.Resource[HandleB] { close=Resource$$HandleB$$close }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,7 +94,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare close: (~g) -> Unit
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -103,9 +102,9 @@ fn main() -> Unit =
   let v2: ~HandleB = construct HandleB::MkHandleB#0(2)
   let v3: Unit = call println("b")
   let v4: Dict[core/resource.Resource, HandleB] = get_dict core/resource.Resource[HandleB]
-  let v7: Unit = call close(v4, v2)
+  let v7: Unit = trait_call core/resource.Resource.close(v4, v2)
   let v5: Dict[core/resource.Resource, HandleA] = get_dict core/resource.Resource[HandleA]
-  let v6: Unit = call close(v5, v0)
+  let v6: Unit = trait_call core/resource.Resource.close(v5, v0)
   v3
 
 fn Resource$$HandleA$$close(v8: ~HandleA) -> Unit =

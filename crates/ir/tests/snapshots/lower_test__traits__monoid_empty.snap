@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__monoid_empty
 
 trait Monoid[v7] { empty(): v7; combine(v7, v7): v7 }
-instance traits__monoid_empty.Monoid[Int] { empty=f2, combine=f3 }
+instance traits__monoid_empty.Monoid[Int] { empty=Monoid$$Int$$empty, combine=Monoid$$Int$$combine }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,8 +92,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare combine
-declare empty
 declare println: (m) -> Unit
 
 fn apply_thunk(v0: () -> Int) -> Int =
@@ -102,15 +100,15 @@ fn apply_thunk(v0: () -> Int) -> Int =
 
 fn main() -> Unit =
   let v2: Dict[traits__monoid_empty.Monoid, Int] = get_dict traits__monoid_empty.Monoid[Int]
-  let v3: Int = call empty(v2)
+  let v3: Int = trait_call traits__monoid_empty.Monoid.empty(v2)
   let v4: Unit = call println(v3)
   let v5: Dict[traits__monoid_empty.Monoid, Int] = get_dict traits__monoid_empty.Monoid[Int]
-  let v6: Int = call empty(v5)
+  let v6: Int = trait_call traits__monoid_empty.Monoid.empty(v5)
   let v7: Dict[traits__monoid_empty.Monoid, Int] = get_dict traits__monoid_empty.Monoid[Int]
-  let v8: Int = call combine(v7, v6, 1)
+  let v8: Int = trait_call traits__monoid_empty.Monoid.combine(v7, v6, 1)
   let v9: Unit = call println(v8)
   let v10: Dict[traits__monoid_empty.Monoid, Int] = get_dict traits__monoid_empty.Monoid[Int]
-  let v13: () -> Int = make_closure(trait_ref$56, [v10])
+  let v13: () -> Int = make_closure(trait_ref$54, [v10])
   let v14: Int = call apply_thunk(v13)
   let v15: Unit = call println(v14)
   v15
@@ -122,6 +120,6 @@ fn Monoid$$Int$$combine(v16: Int, v17: Int) -> Int =
   let v18: Int = add_int(v16, v17)
   v18
 
-fn trait_ref$56(v11: Dict[traits__monoid_empty.Monoid, Int]) -> Int =
-  let v12: Int = call empty(v11)
+fn trait_ref$54(v11: Dict[traits__monoid_empty.Monoid, Int]) -> Int =
+  let v12: Int = trait_call traits__monoid_empty.Monoid.empty(v11)
   v12

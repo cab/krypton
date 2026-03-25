@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__impl_vec_trait
 
 trait MyTrait[u7] { check(u7): String }
-instance hkt__impl_vec_trait.MyTrait[Vec$$Var0] { check=f0 }
+instance hkt__impl_vec_trait.MyTrait[Vec$$Var0] { check=MyTrait$$Vec$$Var0$$check }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

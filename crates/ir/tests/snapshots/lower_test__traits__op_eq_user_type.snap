@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_eq_user_type
 
 struct Point { x: Int, y: Int }
-instance core/eq.Eq[Point] { eq=f1 }
+instance core/eq.Eq[Point] { eq=Eq$$Point$$eq }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,14 +93,13 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Point
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = call Point(1, 2)
   let v1: ~Point = call Point(1, 2)
   let v2: Dict[core/eq.Eq, Point] = get_dict core/eq.Eq[Point]
-  let v3: Bool = call eq(v2, v0, v1)
+  let v3: Bool = trait_call core/eq.Eq.eq(v2, v0, v1)
   let v4: Unit = call println(v3)
   v4
 
@@ -110,7 +109,7 @@ fn Eq$$Point$$eq(v5: Point, v6: Point) -> Bool =
       let v12: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
       let v13: Int = project v5.1
       let v14: Int = project v6.1
-      let v15: Bool = call eq(v12, v13, v14)
+      let v15: Bool = trait_call core/eq.Eq.eq(v12, v13, v14)
       v15
     } else {
       false
@@ -119,5 +118,5 @@ fn Eq$$Point$$eq(v5: Point, v6: Point) -> Bool =
   let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v8: Int = project v5.0
   let v9: Int = project v6.0
-  let v10: Bool = call eq(v7, v8, v9)
+  let v10: Bool = trait_call core/eq.Eq.eq(v7, v8, v9)
   jump v16(v10)

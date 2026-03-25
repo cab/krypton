@@ -6,7 +6,7 @@ module traits__hkt_arity2
 
 type Pair[a, b] = Pair#0(a, b)
 trait Bifunctor[w7] { bimap(w7[x7, y7], (x7) -> z7, (y7) -> a8): w7[z7, a8] }
-instance traits__hkt_arity2.Bifunctor[Pair] { bimap=f0 }
+instance traits__hkt_arity2.Bifunctor[Pair] { bimap=Bifunctor$$Pair$$bimap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

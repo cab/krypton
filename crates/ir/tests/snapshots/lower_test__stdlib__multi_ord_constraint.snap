@@ -99,9 +99,7 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn both_less(v0: Dict[core/ord.Ord, v7], v1: Dict[core/ord.Ord, w7], v2: v7, v3: v7, v4: w7, v5: w7) -> Bool =
   let_join v13(v6: Bool) =
@@ -115,10 +113,10 @@ fn both_less(v0: Dict[core/ord.Ord, v7], v1: Dict[core/ord.Ord, w7], v2: v7, v3:
       in
       jump v11(v6)
     in
-    let v9: Bool = call lt(v1, v4, v5)
+    let v9: Bool = trait_call core/ord.Ord.lt(v1, v4, v5)
     jump v12(v9)
   in
-  let v7: Bool = call lt(v0, v2, v3)
+  let v7: Bool = trait_call core/ord.Ord.lt(v0, v2, v3)
   jump v13(v7)
 
 fn main() -> Unit =
@@ -126,7 +124,7 @@ fn main() -> Unit =
   let v16: Dict[core/ord.Ord, Float] = get_dict core/ord.Ord[Float]
   let v17: Bool = call both_less(v15, v16, 1, 2, 3.0, 4.0)
   let v18: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
-  let v19: String = call show(v18, v17)
+  let v19: String = trait_call core/show.Show.show(v18, v17)
   let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v20: Unit = call println(v14, v19)
   v20

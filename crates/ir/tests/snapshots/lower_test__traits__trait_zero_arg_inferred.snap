@@ -6,9 +6,9 @@ module traits__trait_zero_arg_inferred
 
 type MyStruct = MyStruct#0(Int)
 trait Default[v7] { default(): v7 }
-instance traits__trait_zero_arg_inferred.Default[Int] { default=f1 }
-instance traits__trait_zero_arg_inferred.Default[MyStruct] { default=f2 }
-instance core/show.Show[MyStruct] { show=f3 }
+instance traits__trait_zero_arg_inferred.Default[Int] { default=Default$$Int$$default }
+instance traits__trait_zero_arg_inferred.Default[MyStruct] { default=Default$$MyStruct$$default }
+instance core/show.Show[MyStruct] { show=Show$$MyStruct$$show }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -95,15 +95,13 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare default
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn main() -> Unit =
   let v1: Dict[traits__trait_zero_arg_inferred.Default, Int] = get_dict traits__trait_zero_arg_inferred.Default[Int]
-  let v0: Int = call default(v1)
+  let v0: Int = trait_call traits__trait_zero_arg_inferred.Default.default(v1)
   let v3: Dict[traits__trait_zero_arg_inferred.Default, MyStruct] = get_dict traits__trait_zero_arg_inferred.Default[MyStruct]
-  let v2: MyStruct = call default(v3)
+  let v2: MyStruct = trait_call traits__trait_zero_arg_inferred.Default.default(v3)
   let v4: Unit = call println(v0)
   let v5: Unit = call println(v2)
   v5
@@ -119,7 +117,7 @@ fn Show$$MyStruct$$show(v7: MyStruct) -> String =
   switch v7 {
     0 (v8: Int) ->
       let v9: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-      let v10: String = call show(v9, v8)
+      let v10: String = trait_call core/show.Show.show(v9, v8)
       let v11: String = concat_string("MyStruct(", v10)
       let v12: String = concat_string(v11, ")")
       v12

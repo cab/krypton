@@ -410,7 +410,8 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
 
 fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
     match simple {
-        SimpleExpr::Call { func: _, args } => {
+        SimpleExpr::Call { func: _, args }
+        | SimpleExpr::TraitCall { args, .. } => {
             for atom in args {
                 referenced_vars_atom(atom, vars);
             }
@@ -475,7 +476,7 @@ fn referenced_vars_atom(atom: &Atom, vars: &mut HashSet<VarId>) {
 
 /// Pre-resolved auto-close info for a single binding.
 struct ResolvedClose {
-    close_fn_id: FnId,
+    trait_name: TraitName,
     binding_var: VarId,
     dict_bindings: Vec<LetBinding>,
     dict_atom: Atom,
@@ -494,8 +495,6 @@ struct LowerCtx {
     var_scope: HashMap<String, Vec<VarId>>,
     /// top-level function name → FnId
     fn_ids: HashMap<String, FnId>,
-    /// (trait_name, method_name) → FnId for trait-qualified method lookup
-    trait_method_ids: HashMap<(TraitName, String), FnId>,
     /// struct name → ordered fields with resolved types
     struct_fields: HashMap<String, Vec<(String, Type)>>,
     /// variant name → (type_name, tag, field_types)
@@ -529,8 +528,6 @@ struct LowerCtx {
     fn_exit_track: HashSet<String>,
     /// Most recent VarId for tracked fn_exit names (survives pop_var)
     fn_exit_vars: HashMap<String, VarId>,
-    /// Cached FnId for Resource.close (lazily resolved)
-    close_fn_id: Option<FnId>,
 }
 
 impl LowerCtx {
@@ -570,11 +567,6 @@ impl LowerCtx {
         self.fn_ids.get(name).copied()
     }
 
-    fn lookup_trait_method(&self, trait_name: &TraitName, method_name: &str) -> Option<FnId> {
-        self.trait_method_ids
-            .get(&(trait_name.clone(), method_name.to_string()))
-            .copied()
-    }
 
     /// Emit close() calls for a list of AutoCloseBindings, wrapping `inner`.
     /// Resolves variable names and dicts from current scope.
@@ -587,21 +579,6 @@ impl LowerCtx {
         self.emit_resolved_close_calls(&resolved, inner)
     }
 
-    /// Lazily resolve and cache the FnId for Resource.close.
-    fn get_close_fn_id(&mut self) -> Result<FnId, LowerError> {
-        if let Some(id) = self.close_fn_id {
-            return Ok(id);
-        }
-        let id = self
-            .lookup_trait_method(
-                &TraitName::core_resource(),
-                "close",
-            )
-            .ok_or_else(|| LowerError::InternalError("Resource.close not found".to_string()))?;
-        self.close_fn_id = Some(id);
-        Ok(id)
-    }
-
     /// Emit a close call for a shadowed binding, wrapping `body`.
     fn emit_shadow_close(
         &mut self,
@@ -609,10 +586,10 @@ impl LowerCtx {
         old_var: VarId,
         body: Expr,
     ) -> Result<Expr, LowerError> {
-        let close_fn_id = self.get_close_fn_id()?;
         let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+        let trait_name = TraitName::core_resource();
         let (dict_bindings, dict_atom) = self.resolve_dict(
-            &TraitName::core_resource(),
+            &trait_name,
             &dict_ty,
         )?;
         let unit_var = self.fresh_var();
@@ -621,8 +598,9 @@ impl LowerCtx {
             kind: ExprKind::Let {
                 bind: unit_var,
                 ty: Type::Unit.into(),
-                value: SimpleExpr::Call {
-                    func: close_fn_id,
+                value: SimpleExpr::TraitCall {
+                    trait_name,
+                    method_name: "close".to_string(),
                     args: vec![dict_atom, Atom::Var(old_var)],
                 },
                 body: Box::new(body),
@@ -637,7 +615,7 @@ impl LowerCtx {
         &mut self,
         bindings: &[AutoCloseBinding],
     ) -> Result<Vec<ResolvedClose>, LowerError> {
-        let close_fn_id = self.get_close_fn_id()?;
+        let trait_name = TraitName::core_resource();
         let mut resolved = Vec::with_capacity(bindings.len());
         for binding in bindings {
             let binding_var = self
@@ -651,11 +629,11 @@ impl LowerCtx {
                 })?;
             let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
             let (dict_bindings, dict_atom) = self.resolve_dict(
-                &TraitName::core_resource(),
+                &trait_name,
                 &dict_ty,
             )?;
             resolved.push(ResolvedClose {
-                close_fn_id,
+                trait_name: trait_name.clone(),
                 binding_var,
                 dict_bindings,
                 dict_atom,
@@ -679,8 +657,9 @@ impl LowerCtx {
                 kind: ExprKind::Let {
                     bind: unit_var,
                     ty: Type::Unit.into(),
-                    value: SimpleExpr::Call {
-                        func: rc.close_fn_id,
+                    value: SimpleExpr::TraitCall {
+                        trait_name: rc.trait_name.clone(),
+                        method_name: "close".to_string(),
                         args: vec![rc.dict_atom.clone(), Atom::Var(rc.binding_var)],
                     },
                     body: Box::new(result),
@@ -2895,15 +2874,11 @@ impl LowerCtx {
         let (lhs_arg, rhs_arg) = if swap { (rhs, lhs) } else { (lhs, rhs) };
         let dict_ty = strip_own(&lhs.ty).clone();
 
-        // Resolve dict + method fn_id BEFORE entering CPS chain
-        let fn_id = self
-            .lookup_trait_method(&trait_name, method_name)
-            .ok_or_else(|| {
-                LowerError::UnresolvedVar(format!("{}.{}", trait_name.local_name, method_name))
-            })?;
+        // Resolve dict BEFORE entering CPS chain
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
+        let method_name = method_name.to_string();
         // CPS chain for operands; wrap dict_bindings OUTSIDE
         let inner = self.lower_to_atom_then(lhs_arg, |ctx, l| {
             ctx.lower_to_atom_then(rhs_arg, |ctx, r| {
@@ -2936,8 +2911,9 @@ impl LowerCtx {
                     kind: ExprKind::Let {
                         bind: var,
                         ty: Type::Bool.into(),
-                        value: SimpleExpr::Call {
-                            func: fn_id,
+                        value: SimpleExpr::TraitCall {
+                            trait_name: trait_name.clone(),
+                            method_name: method_name.clone(),
                             args: vec![dict_atom.clone(), l, r],
                         },
                         body: Box::new(call_body),
@@ -2978,14 +2954,10 @@ impl LowerCtx {
 
         let dict_ty = strip_own(&lhs.ty).clone();
 
-        let fn_id = self
-            .lookup_trait_method(&trait_name, method_name)
-            .ok_or_else(|| {
-                LowerError::UnresolvedVar(format!("{}.{}", trait_name.local_name, method_name))
-            })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
+        let method_name = method_name.to_string();
         let inner = self.lower_to_atom_then(lhs, |ctx, l| {
             ctx.lower_to_atom_then(rhs, |ctx, r| {
                 let var = ctx.fresh_var();
@@ -2995,8 +2967,9 @@ impl LowerCtx {
                     kind: ExprKind::Let {
                         bind: var,
                         ty: ty.clone().into(),
-                        value: SimpleExpr::Call {
-                            func: fn_id,
+                        value: SimpleExpr::TraitCall {
+                            trait_name: trait_name.clone(),
+                            method_name: method_name.clone(),
                             args: vec![dict_atom.clone(), l, r],
                         },
                         body: Box::new(Expr {
@@ -3027,14 +3000,10 @@ impl LowerCtx {
 
         let dict_ty = strip_own(&operand.ty).clone();
 
-        let fn_id = self
-            .lookup_trait_method(&trait_name, method_name)
-            .ok_or_else(|| {
-                LowerError::UnresolvedVar(format!("{}.{}", trait_name.local_name, method_name))
-            })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
+        let method_name = method_name.to_string();
         let inner = self.lower_to_atom_then(operand, |ctx, a| {
             let var = ctx.fresh_var();
             let ty = result_ty;
@@ -3043,8 +3012,9 @@ impl LowerCtx {
                 kind: ExprKind::Let {
                     bind: var,
                     ty: ty.clone().into(),
-                    value: SimpleExpr::Call {
-                        func: fn_id,
+                    value: SimpleExpr::TraitCall {
+                        trait_name: trait_name.clone(),
+                        method_name: method_name.clone(),
                         args: vec![dict_atom.clone(), a],
                     },
                     body: Box::new(Expr {
@@ -3101,12 +3071,6 @@ impl LowerCtx {
         // Handle trait method dispatch (origin-tagged calls)
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let fn_id = self.lookup_trait_method(trait_id, name).ok_or_else(|| {
-                    LowerError::InternalError(format!(
-                        "ICE: no FnId for trait method {}.{}",
-                        trait_id.local_name, name
-                    ))
-                })?;
                 let dict_ty =
                     self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
@@ -3117,8 +3081,9 @@ impl LowerCtx {
                 all_args.extend(arg_atoms);
                 return Ok((
                     bindings,
-                    SimpleExpr::Call {
-                        func: fn_id,
+                    SimpleExpr::TraitCall {
+                        trait_name: trait_id.clone(),
+                        method_name: name.clone(),
                         args: all_args,
                     },
                 ));
@@ -3254,16 +3219,12 @@ impl LowerCtx {
         // Handle trait method dispatch
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let fn_id = self.lookup_trait_method(trait_id, name).ok_or_else(|| {
-                    LowerError::InternalError(format!(
-                        "ICE: no FnId for trait method {}.{}",
-                        trait_id.local_name, name
-                    ))
-                })?;
                 let dict_ty =
                     self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
 
+                let trait_id = trait_id.clone();
+                let name = name.clone();
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let mut all_args = vec![dict_atom];
                     all_args.extend(arg_atoms);
@@ -3274,8 +3235,9 @@ impl LowerCtx {
                         kind: ExprKind::Let {
                             bind: var,
                             ty: ty.clone().into(),
-                            value: SimpleExpr::Call {
-                                func: fn_id,
+                            value: SimpleExpr::TraitCall {
+                                trait_name: trait_id,
+                                method_name: name,
                                 args: all_args,
                             },
                             body: Box::new(Expr {
@@ -3743,28 +3705,20 @@ impl LowerCtx {
         expr_ty: &Type,
         type_args: &[Type],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
-        // 1. Look up the dispatch FnId
-        let dispatch_fn_id = self.lookup_trait_method(trait_name, method_name).ok_or_else(|| {
-            LowerError::InternalError(format!(
-                "ICE: no FnId for trait method {}.{}",
-                trait_name.local_name, method_name
-            ))
-        })?;
-
-        // 2. Resolve the dispatch type
+        // 1. Resolve the dispatch type
         let dispatch_ty = self.resolve_dispatch_type(trait_name, method_name, expr_ty, type_args)?;
 
-        // 3. Resolve the dict
+        // 2. Resolve the dict
         let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dispatch_ty)?;
 
-        // 4. Extract user param types from expr_ty
+        // 3. Extract user param types from expr_ty
         let unwrapped = strip_own(expr_ty);
         let (user_param_types, return_type) = match unwrapped {
             Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
             other => (vec![], other.clone()),
         };
 
-        // 5. Allocate wrapper function
+        // 4. Allocate wrapper function
         let wrapper_fn_id = self.fresh_fn();
         let wrapper_name = format!("trait_ref${}", wrapper_fn_id.0);
 
@@ -3784,7 +3738,7 @@ impl LowerCtx {
             lifted_params.push((var, ty.clone().into()));
         }
 
-        // 6. Build body: Call dispatch_fn_id(dict_capture_var, user_params...)
+        // 5. Build body: TraitCall trait_name.method_name(dict_capture_var, user_params...)
         let mut call_args = vec![Atom::Var(dict_capture_var)];
         for var in &user_param_vars {
             call_args.push(Atom::Var(*var));
@@ -3796,8 +3750,9 @@ impl LowerCtx {
             kind: ExprKind::Let {
                 bind: result_var,
                 ty: return_type.clone().into(),
-                value: SimpleExpr::Call {
-                    func: dispatch_fn_id,
+                value: SimpleExpr::TraitCall {
+                    trait_name: trait_name.clone(),
+                    method_name: method_name.to_string(),
                     args: call_args,
                 },
                 body: Box::new(Expr {
@@ -3807,7 +3762,7 @@ impl LowerCtx {
             },
         };
 
-        // 7. Push lifted FnDef
+        // 6. Push lifted FnDef
         self.lifted_fns.push(FnDef {
             id: wrapper_fn_id,
             name: wrapper_name.clone(),
@@ -3817,7 +3772,7 @@ impl LowerCtx {
         });
         self.fn_ids.insert(wrapper_name, wrapper_fn_id);
 
-        // 8. Return MakeClosure capturing the dict
+        // 7. Return MakeClosure capturing the dict
         Ok((
             dict_bindings,
             SimpleExpr::MakeClosure {
@@ -4248,7 +4203,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         type_var_gen: TypeVarGen::new(),
         var_scope: HashMap::new(),
         fn_ids: HashMap::new(),
-        trait_method_ids: HashMap::new(),
         struct_fields: HashMap::new(),
         sum_variants: HashMap::new(),
         private_type_params: HashMap::new(),
@@ -4288,7 +4242,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         auto_close: typed.auto_close.clone(),
         fn_exit_track: HashSet::new(),
         fn_exit_vars: HashMap::new(),
-        close_fn_id: None,
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -4388,34 +4341,9 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(entry.name.clone(), fn_id);
         }
-        // Register trait methods in trait_method_ids for qualified lookup
-        if let Some(ref origin) = entry.origin {
-            let fn_id = ctx.fn_ids[&entry.name];
-            ctx.trait_method_ids.insert(
-                (origin.clone(), entry.name.clone()),
-                fn_id,
-            );
-        }
     }
 
-    // 3b. Register trait methods in trait_method_ids from all trait_defs.
-    // Local trait methods are stripped from fn_types by the typechecker,
-    // and imported trait methods may lack `origin` in fn_types entries
-    // (e.g., prelude auto-imports), so we register from trait_defs for both.
-    // Each (trait_name, method_name) pair gets its own unique FnId to avoid
-    // collisions when different traits define methods with the same name
-    // (e.g., Monoid.combine vs Semigroup.combine).
-    for trait_def in &typed.trait_defs {
-        for (method_name, _param_count) in &trait_def.methods {
-            let key = (trait_def.trait_id.clone(), method_name.clone());
-            if !ctx.trait_method_ids.contains_key(&key) {
-                let id = ctx.fresh_fn();
-                ctx.trait_method_ids.insert(key, id);
-            }
-        }
-    }
-
-    // 3c. Register compiler intrinsics
+    // 3b. Register compiler intrinsics
     for &name in crate::COMPILER_INTRINSICS {
         if !ctx.fn_ids.contains_key(name) {
             let fn_id = ctx.fresh_fn();
@@ -4520,13 +4448,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             );
         }
         fn_names.insert(id, name.clone());
-    }
-
-    // Also register trait method dispatch FnIds with their bare method name.
-    // These are dispatch-only FnIds (no FnDef) — codegen uses them with
-    // invokeinterface via trait_method_fn_ids.
-    for ((_, method_name), &fn_id) in &ctx.trait_method_ids {
-        fn_names.entry(fn_id).or_insert(method_name.clone());
     }
 
     // 8. Build enriched extern_fns from typed_module extern function info
@@ -4682,12 +4603,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         collect_tuple_arities_from_fn(func, &mut tuple_arities);
     }
 
-    // Build trait_method_fn_ids from ctx.trait_method_ids (inverted: FnId → (trait, method))
-    let mut trait_method_fn_ids = HashMap::new();
-    for ((trait_name, method_name), &fn_id) in &ctx.trait_method_ids {
-        trait_method_fn_ids.insert(fn_id, (trait_name.clone(), method_name.clone()));
-    }
-
     Ok(Module {
         name: module_name.to_string(),
         structs,
@@ -4702,7 +4617,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         tuple_arities,
         module_path: typed.module_path.clone(),
         fn_dict_requirements: ctx.fn_constraints.clone(),
-        trait_method_fn_ids,
     })
 }
 

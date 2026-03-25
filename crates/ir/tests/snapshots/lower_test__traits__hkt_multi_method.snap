@@ -6,7 +6,7 @@ module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
 trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
-instance traits__hkt_multi_method.Functor[Box] { fmap=f1 }
+instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,13 +92,12 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare fmap
 
 fn main() -> Int =
   let v0: ~Box[Int] = construct Box::Box#0(42)
-  let v4: (Int) -> Int = make_closure(lambda$54, [])
+  let v4: (Int) -> Int = make_closure(lambda$53, [])
   let v5: Dict[traits__hkt_multi_method.Functor, Box] = get_dict traits__hkt_multi_method.Functor[Box]
-  let v1: Box[Int] = call fmap(v5, v0, v4)
+  let v1: Box[Int] = trait_call traits__hkt_multi_method.Functor.fmap(v5, v0, v4)
   switch v1 {
     0 (v6: Int) ->
       v6
@@ -112,6 +111,6 @@ fn Functor$$Box$$fmap(v7: Box[m8], v8: (m8) -> o8) -> ~Box[o8] =
       v11
   }
 
-fn lambda$54(v2: Int) -> Int =
+fn lambda$53(v2: Int) -> Int =
   let v3: Int = add_int(v2, 1)
   v3

@@ -254,9 +254,6 @@ pub struct Module {
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
-    /// FnId → (trait_name, method_name) for trait method calls.
-    /// Allows codegen to distinguish trait method calls from regular static calls.
-    pub trait_method_fn_ids: HashMap<FnId, (TraitName, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -534,7 +531,6 @@ mod tests {
             tuple_arities: BTreeSet::new(),
             module_path: "test".to_string(),
             fn_dict_requirements: HashMap::new(),
-            trait_method_fn_ids: HashMap::new(),
         };
     }
 }

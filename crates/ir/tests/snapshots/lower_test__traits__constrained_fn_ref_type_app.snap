@@ -99,12 +99,10 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn show_it(v0: Dict[core/show.Show, v7], v1: v7) -> String =
-  let v2: String = call show(v0, v1)
+  let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 
 fn main() -> Unit =
@@ -116,5 +114,5 @@ fn main() -> Unit =
   in
   let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v6: String = call_closure v3("hello")
-  let v7: Bool = call eq(v5, v6, "hello")
+  let v7: Bool = trait_call core/eq.Eq.eq(v5, v6, "hello")
   jump v10(v7)

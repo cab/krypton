@@ -99,6 +99,9 @@ impl fmt::Display for SimpleExpr {
             SimpleExpr::Call { func, args } => {
                 write!(f, "call {func}({})", fmt_atoms(args))
             }
+            SimpleExpr::TraitCall { trait_name, method_name, args } => {
+                write!(f, "trait_call {trait_name}.{method_name}({})", fmt_atoms(args))
+            }
             SimpleExpr::CallClosure { closure, args } => {
                 write!(f, "call_closure {closure}({})", fmt_atoms(args))
             }
@@ -185,6 +188,9 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
         match expr {
             SimpleExpr::Call { func, args } => {
                 write!(self.f, "call {}({})", self.fmt_fn(func), fmt_atoms(args))
+            }
+            SimpleExpr::TraitCall { trait_name, method_name, args } => {
+                write!(self.f, "trait_call {trait_name}.{method_name}({})", fmt_atoms(args))
             }
             SimpleExpr::CallClosure { closure, args } => {
                 write!(self.f, "call_closure {closure}({})", fmt_atoms(args))
@@ -899,7 +905,6 @@ mod tests {
                 },
             }],
             fn_dict_requirements: std::collections::HashMap::new(),
-            trait_method_fn_ids: std::collections::HashMap::new(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

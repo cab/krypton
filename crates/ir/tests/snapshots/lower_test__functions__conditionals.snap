@@ -90,7 +90,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -106,5 +105,5 @@ fn main() -> Unit =
     }
   in
   let v0: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v1: Bool = call eq(v0, 1, 1)
+  let v1: Bool = trait_call core/eq.Eq.eq(v0, 1, 1)
   jump v3(v1)

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__constrained_instance_option_ok
 
 type Option[a] = Some#0(a) | None#1
-instance core/show.Show[Option$$Var0] { show=f1 }
+instance core/show.Show[Option$$Var0] { show=Show$$Option$$Var0$$show }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,9 +92,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn main() -> Unit =
   let_join v8(v6: Bool) =
@@ -105,8 +103,8 @@ fn main() -> Unit =
   let v1: ~Option[Int] = construct Option::Some#0(42)
   let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v3: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v2)
-  let v4: String = call show(v3, v1)
-  let v5: Bool = call eq(v0, v4, "ok")
+  let v4: String = trait_call core/show.Show.show(v3, v1)
+  let v5: Bool = trait_call core/eq.Eq.eq(v0, v4, "ok")
   jump v8(v5)
 
 fn Show$$Option$$Var0$$show(v9: Dict[core/show.Show, w7], v10: Option[w7]) -> ~String =

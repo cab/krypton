@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__constrained_instance_unconstrained_regression
 
 type Box = Box#0(Int)
-instance core/show.Show[Box] { show=f1 }
+instance core/show.Show[Box] { show=Show$$Box$$show }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,9 +92,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn main() -> Unit =
   let_join v7(v5: Bool) =
@@ -104,8 +102,8 @@ fn main() -> Unit =
   let v0: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v1: ~Box = construct Box::Box#0(1)
   let v2: Dict[core/show.Show, Box] = get_dict core/show.Show[Box]
-  let v3: String = call show(v2, v1)
-  let v4: Bool = call eq(v0, v3, "box")
+  let v3: String = trait_call core/show.Show.show(v2, v1)
+  let v4: Bool = trait_call core/eq.Eq.eq(v0, v3, "box")
   jump v7(v4)
 
 fn Show$$Box$$show(v8: Box) -> ~String =

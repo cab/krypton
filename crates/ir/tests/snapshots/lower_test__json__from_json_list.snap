@@ -231,8 +231,13 @@ import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 import core/json/JNum as JNum(Float): Json
 import core/json/JArr as JArr(List[Json]): Json
+import core/json/JNull as JNull(): Json
+import core/json/JBool as JBool(Bool): Json
+import core/json/JNum as JNum(Float): Json
+import core/json/JStr as JStr(String): Json
+import core/json/JArr as JArr(List[Json]): Json
+import core/json/JObj as JObj(Map[String, Json]): Json
 import core/json/from_json as from_json(Json): Result[String, p14]
-declare from_json: (Json) -> Result[String, p14]
 declare length: (List[o]) -> Int
 declare println: (m) -> Unit
 
@@ -246,7 +251,7 @@ fn main() -> Unit =
   let v7: ~List[Json] = construct List::Cons#0(v1, v6)
   let v0: ~Json = construct Json::JArr#4(v7)
   let v9: Dict[core/json.FromJson, List[Int]] = get_dict core/json.FromJson[List[Int]]
-  let v8: Result[String, List[Int]] = call from_json(v9, v0)
+  let v8: Result[String, List[Int]] = trait_call core/json.FromJson.from_json(v9, v0)
   switch v8 {
     0 (v10: List[Int]) ->
       let v12: Int = call length(v10)

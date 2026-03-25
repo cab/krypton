@@ -6,7 +6,7 @@ module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
 trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
-instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=f2 }
+instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -125,7 +125,7 @@ fn main() -> Unit =
   let v11: Vec[Int] = make_vec(1, 2, 4)
   let v12: List[Int] = call to_list(v11)
   let v13: ~Box[Int] = construct Box::Box#0(0)
-  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$55, [])
+  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$54, [])
   let v10: Box[Int] = call fold_box(v12, v13, v19)
   switch v10 {
     0 (v20: Int) ->
@@ -141,7 +141,7 @@ fn Functor$$Box$$fmap(v22: Box[f9], v23: (f9) -> h9) -> ~Box[h9] =
       v26
   }
 
-fn lambda$55(v14: Box[Int], v15: Int) -> ~Box[Int] =
+fn lambda$54(v14: Box[Int], v15: Int) -> ~Box[Int] =
   switch v14 {
     0 (v16: Int) ->
       let v17: Int = add_int(v16, v15)

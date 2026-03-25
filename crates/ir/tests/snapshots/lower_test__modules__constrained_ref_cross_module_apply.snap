@@ -218,7 +218,6 @@ import core/io/println as println(m): Unit
 import constrained_ref_hof/apply_to_int as apply_to_int((Int) -> String, Int): String
 import constrained_ref_lib/render_it as render_it(v7): String
 declare apply_to_int: ((Int) -> String, Int) -> String
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 declare render_it: (v7) -> String
 
@@ -231,5 +230,5 @@ fn main() -> Unit =
   in
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: String = call apply_to_int(v0, 42)
-  let v4: Bool = call eq(v2, v3, "42")
+  let v4: Bool = trait_call core/eq.Eq.eq(v2, v3, "42")
   jump v7(v4)

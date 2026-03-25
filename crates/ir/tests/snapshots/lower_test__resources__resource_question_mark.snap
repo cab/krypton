@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_question_mark
 
 type Handle = MkHandle#0(String)
-instance core/resource.Resource[Handle] { close=f3 }
+instance core/resource.Resource[Handle] { close=Resource$$Handle$$close }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,7 +92,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare close: (~g) -> Unit
 declare println: (m) -> Unit
 
 fn fallible() -> Result[String, Int] =
@@ -108,7 +107,7 @@ fn work() -> Result[String, Int] =
   let_join v13(v5: Int) =
     let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
     let v14: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-    let v15: Unit = call close(v14, v3)
+    let v15: Unit = trait_call core/resource.Resource.close(v14, v3)
     v12
   in
   let v6: Result[String, Int] = call fallible()
@@ -118,7 +117,7 @@ fn work() -> Result[String, Int] =
     1 (v8: String) ->
       let v9: Result[String, Int] = construct Result::Err#1(v8)
       let v10: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-      let v11: Unit = call close(v10, v3)
+      let v11: Unit = trait_call core/resource.Resource.close(v10, v3)
       jump v1(v9)
   }
 

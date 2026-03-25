@@ -6,7 +6,7 @@ module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
 trait Contravariant[w7] { contramap(w7[x7], (y7) -> x7): w7[y7] }
-instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=f0 }
+instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=Contravariant$$Predicate$$Var0$$Var1$$contramap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -94,11 +94,11 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
 fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[f8, f8], v1: (f8) -> f8) -> ~Predicate[f8, f8] =
-  let v8: (f8) -> f8 = make_closure(lambda$53, [v0, v1])
+  let v8: (f8) -> f8 = make_closure(lambda$52, [v0, v1])
   let v9: ~Predicate[f8, f8] = construct Predicate(v8)
   v9
 
-fn lambda$53(v2: Predicate[f8, f8], v3: (f8) -> f8, v4: f8) -> f8 =
+fn lambda$52(v2: Predicate[f8, f8], v3: (f8) -> f8, v4: f8) -> f8 =
   let v5: (f8) -> f8 = project v2.0
   let v6: f8 = call_closure v3(v4)
   let v7: f8 = call_closure v5(v6)

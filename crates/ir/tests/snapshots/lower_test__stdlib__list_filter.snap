@@ -93,7 +93,6 @@ import core/list/length as length(List[o]): Int
 import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
 declare filter: (List[i1], (i1) -> Bool) -> List[i1]
 declare length: (List[o]) -> Int
-declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -109,5 +108,5 @@ fn main() -> Unit =
 
 fn lambda$52(v4: Int) -> Bool =
   let v5: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-  let v6: Bool = call lt(v5, 1, v4)
+  let v6: Bool = trait_call core/ord.Ord.lt(v5, 1, v4)
   v6

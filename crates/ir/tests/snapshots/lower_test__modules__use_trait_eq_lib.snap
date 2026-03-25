@@ -158,7 +158,8 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import trait_eq_lib/North as North(): Dir
-declare eq: (g, g) -> Bool
+import trait_eq_lib/North as North(): Dir
+import trait_eq_lib/South as South(): Dir
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -172,5 +173,5 @@ fn main() -> Unit =
   let v3: ~Dir = v2
   let v4: ~Dir = construct Dir::North#0()
   let v5: ~Dir = v4
-  let v6: Bool = call eq(v1, v3, v5)
+  let v6: Bool = trait_call core/eq.Eq.eq(v1, v3, v5)
   jump v9(v6)

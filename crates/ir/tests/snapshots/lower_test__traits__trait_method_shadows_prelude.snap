@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_method_shadows_prelude
 
 trait Multiply[v7] { times(v7, v7): v7 }
-instance traits__trait_method_shadows_prelude.Multiply[Int] { times=f1 }
+instance traits__trait_method_shadows_prelude.Multiply[Int] { times=Multiply$$Int$$times }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,18 +93,16 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
-declare show: (g) -> String
-declare times
 
 fn main() -> Unit =
   let v0: Dict[traits__trait_method_shadows_prelude.Multiply, Int] = get_dict traits__trait_method_shadows_prelude.Multiply[Int]
-  let v1: Int = call times(v0, 2, 3)
+  let v1: Int = trait_call traits__trait_method_shadows_prelude.Multiply.times(v0, 2, 3)
   let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v3: String = call show(v2, v1)
+  let v3: String = trait_call core/show.Show.show(v2, v1)
   let v4: Unit = call println(v3)
   let v5: Int = add_int(1, 2)
   let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v7: String = call show(v6, v5)
+  let v7: String = trait_call core/show.Show.show(v6, v5)
   let v8: Unit = call println(v7)
   v8
 

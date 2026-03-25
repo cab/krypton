@@ -99,19 +99,17 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare neg: (g) -> g
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn negate(v0: Dict[core/neg.Neg, v7], v1: v7) -> v7 =
-  let v2: v7 = call neg(v0, v1)
+  let v2: v7 = trait_call core/neg.Neg.neg(v0, v1)
   v2
 
 fn main() -> Unit =
   let v4: Dict[core/neg.Neg, Int] = get_dict core/neg.Neg[Int]
   let v5: Int = call negate(v4, 5)
   let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v7: String = call show(v6, v5)
+  let v7: String = trait_call core/show.Show.show(v6, v5)
   let v3: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v8: Unit = call println(v3, v7)
   v8

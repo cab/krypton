@@ -90,8 +90,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
-declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -105,7 +103,7 @@ fn main() -> Unit =
               v48
             in
             let v44: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-            let v45: Bool = call eq(v44, 10, 10)
+            let v45: Bool = trait_call core/eq.Eq.eq(v44, 10, 10)
             let v46: Bool = not(v45)
             jump v49(v46)
           in
@@ -114,7 +112,7 @@ fn main() -> Unit =
             jump v50(v41)
           in
           let v38: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-          let v39: Bool = call eq(v38, 10, 10)
+          let v39: Bool = trait_call core/eq.Eq.eq(v38, 10, 10)
           jump v42(v39)
         in
         let_join v34(v32: Bool) =
@@ -122,7 +120,7 @@ fn main() -> Unit =
           jump v51(v33)
         in
         let v29: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-        let v30: Bool = call lt(v29, 10, 20)
+        let v30: Bool = trait_call core/ord.Ord.lt(v29, 10, 20)
         let v31: Bool = not(v30)
         jump v34(v31)
       in
@@ -131,7 +129,7 @@ fn main() -> Unit =
         jump v52(v23)
       in
       let v19: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-      let v20: Bool = call lt(v19, 20, 10)
+      let v20: Bool = trait_call core/ord.Ord.lt(v19, 20, 10)
       let v21: Bool = not(v20)
       jump v24(v21)
     in
@@ -140,7 +138,7 @@ fn main() -> Unit =
       jump v53(v13)
     in
     let v10: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-    let v11: Bool = call lt(v10, 20, 10)
+    let v11: Bool = trait_call core/ord.Ord.lt(v10, 20, 10)
     jump v14(v11)
   in
   let_join v6(v4: Bool) =
@@ -148,5 +146,5 @@ fn main() -> Unit =
     jump v54(v5)
   in
   let v2: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-  let v3: Bool = call lt(v2, 10, 20)
+  let v3: Bool = trait_call core/ord.Ord.lt(v2, 10, 20)
   jump v6(v3)

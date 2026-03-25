@@ -92,7 +92,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Wrapper
-declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn pick(v0: Int) -> Wrapper =
@@ -106,7 +105,7 @@ fn pick(v0: Int) -> Wrapper =
     }
   in
   let v1: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-  let v2: Bool = call lt(v1, 0, v0)
+  let v2: Bool = trait_call core/ord.Ord.lt(v1, 0, v0)
   jump v6(v2)
 
 fn main() -> Unit =

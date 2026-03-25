@@ -232,6 +232,12 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/parse_json as parse_json(String): Result[String, Json]
 import core/json/json_to_string as json_to_string(Json): String
+import core/json/JNull as JNull(): Json
+import core/json/JBool as JBool(Bool): Json
+import core/json/JNum as JNum(Float): Json
+import core/json/JStr as JStr(String): Json
+import core/json/JArr as JArr(List[Json]): Json
+import core/json/JObj as JObj(Map[String, Json]): Json
 declare json_to_string: (Json) -> String
 declare parse_json: (String) -> Result[String, Json]
 declare println: (m) -> Unit

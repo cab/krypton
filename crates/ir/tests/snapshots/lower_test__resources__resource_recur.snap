@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_recur
 
 type Handle = MkHandle#0(Int)
-instance core/resource.Resource[Handle] { close=f2 }
+instance core/resource.Resource[Handle] { close=Resource$$Handle$$close }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,8 +92,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare close: (~g) -> Unit
-declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn loop(v0: Int) -> Unit =
@@ -107,12 +105,12 @@ fn loop(v0: Int) -> Unit =
         let v9: Unit = call println("iter")
         let v10: Int = add_int(v2, 1)
         let v11: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-        let v12: Unit = call close(v11, v8)
+        let v12: Unit = trait_call core/resource.Resource.close(v11, v8)
         jump v1(v10)
       }
     in
     let v3: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-    let v4: Bool = call lt(v3, v2, 3)
+    let v4: Bool = trait_call core/ord.Ord.lt(v3, v2, 3)
     let v5: Bool = not(v4)
     jump v13(v5)
   in

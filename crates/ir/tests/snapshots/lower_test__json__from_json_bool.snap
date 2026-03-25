@@ -227,14 +227,19 @@ import core/ordering/GT as GT(): Ordering
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 import core/json/JBool as JBool(Bool): Json
+import core/json/JNull as JNull(): Json
+import core/json/JBool as JBool(Bool): Json
+import core/json/JNum as JNum(Float): Json
+import core/json/JStr as JStr(String): Json
+import core/json/JArr as JArr(List[Json]): Json
+import core/json/JObj as JObj(Map[String, Json]): Json
 import core/json/from_json as from_json(Json): Result[String, p14]
-declare from_json: (Json) -> Result[String, p14]
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JBool#1(true)
   let v2: Dict[core/json.FromJson, Bool] = get_dict core/json.FromJson[Bool]
-  let v0: Result[String, Bool] = call from_json(v2, v1)
+  let v0: Result[String, Bool] = trait_call core/json.FromJson.from_json(v2, v1)
   switch v0 {
     0 (v3: Bool) ->
       let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]

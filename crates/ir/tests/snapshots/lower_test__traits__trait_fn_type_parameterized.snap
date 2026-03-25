@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__trait_fn_type_parameterized
 
 trait Test[u7] { test(u7): String }
-instance traits__trait_fn_type_parameterized.Test[$Fun0$$Var0] { test=f3 }
-instance traits__trait_fn_type_parameterized.Test[$Fun1$Int$$Var0] { test=f4 }
+instance traits__trait_fn_type_parameterized.Test[$Fun0$$Var0] { test=Test$$$Fun0$$Var0$$test }
+instance traits__trait_fn_type_parameterized.Test[$Fun1$Int$$Var0] { test=Test$$$Fun1$Int$$Var0$$test }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,7 +93,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
-declare test
 
 fn f() -> String =
   "hello"
@@ -104,12 +103,12 @@ fn g(v0: Int) -> String =
 fn main() -> Unit =
   let v1: () -> String = make_closure(f, [])
   let v2: Dict[traits__trait_fn_type_parameterized.Test, () -> String] = get_dict traits__trait_fn_type_parameterized.Test[() -> String]
-  let v3: String = call test(v2, v1)
+  let v3: String = trait_call traits__trait_fn_type_parameterized.Test.test(v2, v1)
   let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v4, v3)
   let v7: (Int) -> String = make_closure(g, [])
   let v8: Dict[traits__trait_fn_type_parameterized.Test, (Int) -> String] = get_dict traits__trait_fn_type_parameterized.Test[(Int) -> String]
-  let v9: String = call test(v8, v7)
+  let v9: String = trait_call traits__trait_fn_type_parameterized.Test.test(v8, v7)
   let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v10: Unit = call println(v6, v9)
   v10

@@ -6,7 +6,7 @@ module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
 trait MyEq[u7] { my_eq(u7, u7): Bool }
-instance inference__self_type_impl.MyEq[Point] { my_eq=f1 }
+instance inference__self_type_impl.MyEq[Point] { my_eq=MyEq$$Point$$my_eq }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,15 +92,13 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
-declare my_eq
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
   let v1: ~Point = construct Point(1, 2)
   let v3: Dict[inference__self_type_impl.MyEq, Point] = get_dict inference__self_type_impl.MyEq[Point]
-  let v4: Bool = call my_eq(v3, v0, v1)
+  let v4: Bool = trait_call inference__self_type_impl.MyEq.my_eq(v3, v0, v1)
   let v2: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v5: Unit = call println(v2, v4)
   v5
@@ -111,7 +109,7 @@ fn MyEq$$Point$$my_eq(v6: Point, v7: Point) -> Bool =
       let v13: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
       let v14: Int = project v6.1
       let v15: Int = project v7.1
-      let v16: Bool = call eq(v13, v14, v15)
+      let v16: Bool = trait_call core/eq.Eq.eq(v13, v14, v15)
       v16
     } else {
       false
@@ -120,5 +118,5 @@ fn MyEq$$Point$$my_eq(v6: Point, v7: Point) -> Bool =
   let v8: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v9: Int = project v6.0
   let v10: Int = project v7.0
-  let v11: Bool = call eq(v8, v9, v10)
+  let v11: Bool = trait_call core/eq.Eq.eq(v8, v9, v10)
   jump v17(v11)

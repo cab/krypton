@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_mul_syntax
 
 struct Vec2 { x: Int, y: Int }
-instance core/mul.Mul[Vec2] { mul=f1 }
+instance core/mul.Mul[Vec2] { mul=Mul$$Vec2$$mul }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +93,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Vec2
-declare mul: (g, g) -> g
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -108,7 +107,7 @@ fn main() -> Unit =
     jump v11(v7)
   in
   let v4: Dict[core/mul.Mul, Vec2] = get_dict core/mul.Mul[Vec2]
-  let v5: Vec2 = call mul(v4, v0, v1)
+  let v5: Vec2 = trait_call core/mul.Mul.mul(v4, v0, v1)
   jump v8(v5)
 
 fn Mul$$Vec2$$mul(v12: Vec2, v13: Vec2) -> ~Vec2 =

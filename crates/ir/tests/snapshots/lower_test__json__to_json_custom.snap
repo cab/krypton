@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module json__to_json_custom
 
 struct Point { x: Int, y: Int }
-instance core/json.ToJson[Point] { to_json=f1 }
+instance core/json.ToJson[Point] { to_json=ToJson$$Point$$to_json }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -268,17 +268,22 @@ import core/list/Nil as Nil(): List[h]
 import core/json/JNum as JNum(Float): Json
 import core/json/json_to_string as json_to_string(Json): String
 import core/json/json_object as json_object(List[(String, Json)]): Json
+import core/json/JNull as JNull(): Json
+import core/json/JBool as JBool(Bool): Json
+import core/json/JNum as JNum(Float): Json
+import core/json/JStr as JStr(String): Json
+import core/json/JArr as JArr(List[Json]): Json
+import core/json/JObj as JObj(Map[String, Json]): Json
 import core/json/to_json as to_json(o14): Json
 import core/map/from_list as from_list(List[(e13, f13)]): Map[e13, f13]
 declare json_object: (List[(String, Json)]) -> Json
 declare json_to_string: (Json) -> String
 declare println: (m) -> Unit
-declare to_json: (o14) -> Json
 
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
   let v2: Dict[core/json.ToJson, Point] = get_dict core/json.ToJson[Point]
-  let v3: Json = call to_json(v2, v0)
+  let v3: Json = trait_call core/json.ToJson.to_json(v2, v0)
   let v4: String = call json_to_string(v3)
   let v1: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v1, v4)
@@ -287,11 +292,11 @@ fn main() -> Unit =
 fn ToJson$$Point$$to_json(v6: Point) -> Json =
   let v7: Int = project v6.0
   let v8: Dict[core/json.ToJson, Int] = get_dict core/json.ToJson[Int]
-  let v9: Json = call to_json(v8, v7)
+  let v9: Json = trait_call core/json.ToJson.to_json(v8, v7)
   let v10: (~String, Json) = tuple("x", v9)
   let v11: Int = project v6.1
   let v12: Dict[core/json.ToJson, Int] = get_dict core/json.ToJson[Int]
-  let v13: Json = call to_json(v12, v11)
+  let v13: Json = trait_call core/json.ToJson.to_json(v12, v11)
   let v14: (~String, Json) = tuple("y", v13)
   let v15: ~List[(~String, Json)] = construct List::Nil#1()
   let v16: ~List[(~String, Json)] = construct List::Cons#0(v14, v15)

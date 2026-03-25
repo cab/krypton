@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_neg_syntax
 
 struct Vec2 { x: Int, y: Int }
-instance core/neg.Neg[Vec2] { neg=f1 }
+instance core/neg.Neg[Vec2] { neg=Neg$$Vec2$$neg }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,7 +93,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Vec2
-declare neg: (g) -> g
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -107,7 +106,7 @@ fn main() -> Unit =
     jump v10(v6)
   in
   let v3: Dict[core/neg.Neg, Vec2] = get_dict core/neg.Neg[Vec2]
-  let v4: Vec2 = call neg(v3, v0)
+  let v4: Vec2 = trait_call core/neg.Neg.neg(v3, v0)
   jump v7(v4)
 
 fn Neg$$Vec2$$neg(v11: Vec2) -> ~Vec2 =

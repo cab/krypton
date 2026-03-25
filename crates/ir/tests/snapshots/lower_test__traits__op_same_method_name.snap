@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_same_method_name
 
 trait Joinable[u7] { join(u7, u7): u7 }
-instance traits__op_same_method_name.Joinable[String] { join=f3 }
+instance traits__op_same_method_name.Joinable[String] { join=Joinable$$String$$join }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -101,24 +101,21 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
-declare combine: (g, g) -> g
-declare join
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn apply_combine(v0: Dict[core/semigroup.Semigroup, a8], v1: a8, v2: a8) -> a8 =
-  let v3: a8 = call combine(v0, v1, v2)
+  let v3: a8 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
   v3
 
 fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, g8], v5: g8, v6: g8) -> g8 =
-  let v7: g8 = call join(v4, v5, v6)
+  let v7: g8 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
   v7
 
 fn main() -> Unit =
   let v8: Dict[core/semigroup.Semigroup, Int] = get_dict core/semigroup.Semigroup[Int]
   let v9: Int = call apply_combine(v8, 1, 2)
   let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v11: String = call show(v10, v9)
+  let v11: String = trait_call core/show.Show.show(v10, v9)
   let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v13: Unit = call println(v12, v11)
   let v15: Dict[traits__op_same_method_name.Joinable, String] = get_dict traits__op_same_method_name.Joinable[String]

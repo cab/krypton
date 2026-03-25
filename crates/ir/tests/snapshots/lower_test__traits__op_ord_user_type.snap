@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__op_ord_user_type
 
 struct Wrapper { val: Int }
-instance core/eq.Eq[Wrapper] { eq=f1 }
-instance core/ord.Ord[Wrapper] { lt=f2 }
+instance core/eq.Eq[Wrapper] { eq=Eq$$Wrapper$$eq }
+instance core/ord.Ord[Wrapper] { lt=Ord$$Wrapper$$lt }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,15 +94,13 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Wrapper
-declare eq: (g, g) -> Bool
-declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: ~Wrapper = call Wrapper(1)
   let v1: ~Wrapper = call Wrapper(2)
   let v2: Dict[core/ord.Ord, Wrapper] = get_dict core/ord.Ord[Wrapper]
-  let v3: Bool = call lt(v2, v0, v1)
+  let v3: Bool = trait_call core/ord.Ord.lt(v2, v0, v1)
   let v4: Unit = call println(v3)
   v4
 
@@ -110,12 +108,12 @@ fn Eq$$Wrapper$$eq(v5: Wrapper, v6: Wrapper) -> Bool =
   let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v8: Int = project v5.0
   let v9: Int = project v6.0
-  let v10: Bool = call eq(v7, v8, v9)
+  let v10: Bool = trait_call core/eq.Eq.eq(v7, v8, v9)
   v10
 
 fn Ord$$Wrapper$$lt(v11: Wrapper, v12: Wrapper) -> Bool =
   let v13: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v14: Int = project v11.0
   let v15: Int = project v12.0
-  let v16: Bool = call lt(v13, v14, v15)
+  let v16: Bool = trait_call core/ord.Ord.lt(v13, v14, v15)
   v16

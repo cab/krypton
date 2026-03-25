@@ -158,14 +158,14 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import trait_selective_lib/MkWidget as MkWidget(String): Widget
+import trait_selective_lib/MkWidget as MkWidget(String): Widget
 import trait_selective_lib/describe as describe(u7): String
-declare describe: (u7) -> String
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Widget = construct Widget::MkWidget#0("x")
   let v2: Dict[trait_selective_lib.Describable, Widget] = get_dict trait_selective_lib.Describable[Widget]
-  let v3: String = call describe(v2, v1)
+  let v3: String = trait_call trait_selective_lib.Describable.describe(v2, v1)
   let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)
   v4

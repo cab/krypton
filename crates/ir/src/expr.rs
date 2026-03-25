@@ -73,6 +73,14 @@ pub enum SimpleExpr {
     /// Direct call to a known function.
     Call { func: FnId, args: Vec<Atom> },
 
+    /// Dispatch call to a trait method via dictionary.
+    /// args[0] is the dict, args[1..] are user args.
+    TraitCall {
+        trait_name: TraitName,
+        method_name: String,
+        args: Vec<Atom>,
+    },
+
     /// Indirect call through a closure value.
     CallClosure { closure: Atom, args: Vec<Atom> },
 

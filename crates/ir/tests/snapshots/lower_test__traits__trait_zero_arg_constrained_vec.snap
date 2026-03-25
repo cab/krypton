@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__trait_zero_arg_constrained_vec
 
 trait Test[v7] { name(): String }
-instance traits__trait_zero_arg_constrained_vec.Test[Vec$$Var0] { name=f1 }
-instance traits__trait_zero_arg_constrained_vec.Test[Int] { name=f2 }
+instance traits__trait_zero_arg_constrained_vec.Test[Vec$$Var0] { name=Test$$Vec$$Var0$$name }
+instance traits__trait_zero_arg_constrained_vec.Test[Int] { name=Test$$Int$$name }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -93,18 +93,17 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare name
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Dict[traits__trait_zero_arg_constrained_vec.Test, Int] = get_dict traits__trait_zero_arg_constrained_vec.Test[Int]
   let v1: Dict[traits__trait_zero_arg_constrained_vec.Test, Vec[Int]] = make_dict traits__trait_zero_arg_constrained_vec.Test[Vec[Int]](v0)
-  let v2: String = call name(v1)
+  let v2: String = trait_call traits__trait_zero_arg_constrained_vec.Test.name(v1)
   let v3: Unit = call println(v2)
   v3
 
 fn Test$$Vec$$Var0$$name(v4: Dict[traits__trait_zero_arg_constrained_vec.Test, w7]) -> String =
-  let v5: String = call name(v4)
+  let v5: String = trait_call traits__trait_zero_arg_constrained_vec.Test.name(v4)
   v5
 
 fn Test$$Int$$name() -> ~String =

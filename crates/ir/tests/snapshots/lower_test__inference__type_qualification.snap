@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__type_qualification
 
 struct Pos { x: Int, y: Int }
-instance core/show.Show[Pos] { show=f1 }
+instance core/show.Show[Pos] { show=Show$$Pos$$show }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -92,18 +92,16 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Pos
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn main() -> Unit =
   let v0: ~Pos = call Pos(1, 2)
   let v1: Dict[core/show.Show, Pos] = get_dict core/show.Show[Pos]
-  let v2: String = call show(v1, v0)
+  let v2: String = trait_call core/show.Show.show(v1, v0)
   let v3: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v3, v2)
   let v5: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v6: Bool = call eq(v5, 1, 1)
+  let v6: Bool = trait_call core/eq.Eq.eq(v5, 1, 1)
   let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v8: Unit = call println(v7, v6)
   let v10: ~List[Int] = construct List::Nil#1()
@@ -145,12 +143,12 @@ fn main() -> Unit =
 fn Show$$Pos$$show(v29: Pos) -> String =
   let v30: Int = project v29.0
   let v31: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v32: String = call show(v31, v30)
+  let v32: String = trait_call core/show.Show.show(v31, v30)
   let v33: String = concat_string("Pos(", v32)
   let v34: String = concat_string(v33, ", ")
   let v35: Int = project v29.1
   let v36: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v37: String = call show(v36, v35)
+  let v37: String = trait_call core/show.Show.show(v36, v35)
   let v38: String = concat_string(v34, v37)
   let v39: String = concat_string(v38, ")")
   v39

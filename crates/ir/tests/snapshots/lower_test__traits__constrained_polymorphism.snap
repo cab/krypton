@@ -6,8 +6,8 @@ module traits__constrained_polymorphism
 
 struct A { x: Int }
 struct B { y: Int }
-instance core/eq.Eq[A] { eq=f2 }
-instance core/eq.Eq[B] { eq=f3 }
+instance core/eq.Eq[A] { eq=Eq$$A$$eq }
+instance core/eq.Eq[B] { eq=Eq$$B$$eq }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -96,11 +96,10 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare A
 declare B
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn same(v0: Dict[core/eq.Eq, w7], v1: w7, v2: w7) -> Bool =
-  let v3: Bool = call eq(v0, v1, v2)
+  let v3: Bool = trait_call core/eq.Eq.eq(v0, v1, v2)
   v3
 
 fn main() -> Unit =
@@ -133,7 +132,7 @@ fn Eq$$A$$eq(v15: A, v16: A) -> Bool =
   let v17: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v18: Int = project v15.0
   let v19: Int = project v16.0
-  let v20: Bool = call eq(v17, v18, v19)
+  let v20: Bool = trait_call core/eq.Eq.eq(v17, v18, v19)
   jump v22(v20)
 
 fn Eq$$B$$eq(v23: B, v24: B) -> Bool =
@@ -147,5 +146,5 @@ fn Eq$$B$$eq(v23: B, v24: B) -> Bool =
   let v25: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v26: Int = project v23.0
   let v27: Int = project v24.0
-  let v28: Bool = call eq(v25, v26, v27)
+  let v28: Bool = trait_call core/eq.Eq.eq(v25, v26, v27)
   jump v30(v28)

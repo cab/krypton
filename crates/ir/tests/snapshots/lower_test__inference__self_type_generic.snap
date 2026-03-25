@@ -6,8 +6,8 @@ module inference__self_type_generic
 
 struct Wrapper[a] { value: a }
 trait MyEq[v7] { my_eq(v7, v7): Bool }
-instance inference__self_type_generic.MyEq[String] { my_eq=f1 }
-instance inference__self_type_generic.MyEq[Wrapper$$Var0] { my_eq=f2 }
+instance inference__self_type_generic.MyEq[String] { my_eq=MyEq$$String$$my_eq }
+instance inference__self_type_generic.MyEq[Wrapper$$Var0] { my_eq=MyEq$$Wrapper$$Var0$$my_eq }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -93,8 +93,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
-declare my_eq
 declare println: (m) -> Unit
 
 fn main() -> Unit =
@@ -102,18 +100,18 @@ fn main() -> Unit =
   let v1: ~Wrapper[String] = construct Wrapper("hello")
   let v3: Dict[inference__self_type_generic.MyEq, String] = get_dict inference__self_type_generic.MyEq[String]
   let v4: Dict[inference__self_type_generic.MyEq, Wrapper[String]] = make_dict inference__self_type_generic.MyEq[Wrapper[String]](v3)
-  let v5: Bool = call my_eq(v4, v0, v1)
+  let v5: Bool = trait_call inference__self_type_generic.MyEq.my_eq(v4, v0, v1)
   let v2: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v6: Unit = call println(v2, v5)
   v6
 
 fn MyEq$$String$$my_eq(v7: String, v8: String) -> Bool =
   let v9: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v10: Bool = call eq(v9, v7, v8)
+  let v10: Bool = trait_call core/eq.Eq.eq(v9, v7, v8)
   v10
 
 fn MyEq$$Wrapper$$Var0$$my_eq(v11: Dict[inference__self_type_generic.MyEq, w7], v12: Wrapper[w7], v13: Wrapper[w7]) -> Bool =
   let v14: w7 = project v12.0
   let v15: w7 = project v13.0
-  let v16: Bool = call my_eq(v11, v14, v15)
+  let v16: Bool = trait_call inference__self_type_generic.MyEq.my_eq(v11, v14, v15)
   v16

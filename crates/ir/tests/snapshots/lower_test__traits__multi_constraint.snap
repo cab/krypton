@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__multi_constraint
 
 struct Box { val: Int }
-instance core/eq.Eq[Box] { eq=f2 }
-instance core/show.Show[Box] { show=f3 }
+instance core/eq.Eq[Box] { eq=Eq$$Box$$eq }
+instance core/show.Show[Box] { show=Show$$Box$$show }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -94,14 +94,12 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare Box
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn eq_and_show(v0: Dict[core/eq.Eq, w7], v1: Dict[core/show.Show, w7], v2: w7, v3: w7) -> String =
-  let v4: Bool = call eq(v0, v2, v3)
+  let v4: Bool = trait_call core/eq.Eq.eq(v0, v2, v3)
   if v4 {
-    let v5: String = call show(v1, v2)
+    let v5: String = trait_call core/show.Show.show(v1, v2)
     v5
   } else {
     "not equal"
@@ -118,14 +116,14 @@ fn main() -> Unit =
   let v9: Dict[core/eq.Eq, Box] = get_dict core/eq.Eq[Box]
   let v10: Dict[core/show.Show, Box] = get_dict core/show.Show[Box]
   let v11: String = call eq_and_show(v9, v10, v7, v8)
-  let v12: Bool = call eq(v6, v11, "Box")
+  let v12: Bool = trait_call core/eq.Eq.eq(v6, v11, "Box")
   jump v15(v12)
 
 fn Eq$$Box$$eq(v16: Box, v17: Box) -> Bool =
   let v18: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v19: Int = project v16.0
   let v20: Int = project v17.0
-  let v21: Bool = call eq(v18, v19, v20)
+  let v21: Bool = trait_call core/eq.Eq.eq(v18, v19, v20)
   v21
 
 fn Show$$Box$$show(v22: Box) -> ~String =

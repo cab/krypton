@@ -981,7 +981,7 @@ impl Compiler {
         &mut self,
         value: &krypton_ir::SimpleExpr,
         bind_ty: &Type,
-        ir_module: &krypton_ir::Module,
+        _ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
         match value {
             krypton_ir::SimpleExpr::Atom(atom) => self.compile_ir_atom(atom),
@@ -1063,46 +1063,6 @@ impl Compiler {
                     ), None));
                 }
 
-                // Trait method call
-                // The IR already includes the dict as args[0] and user args as args[1..].
-                if let Some((trait_name, method_name)) = ir_module.trait_method_fn_ids.get(func) {
-                    if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
-                        let iface_method_ref = dispatch.method_refs[method_name];
-                        let iface_class = dispatch.interface_class;
-
-                        // args[0] is the dict, args[1..] are user args
-                        // Compile dict arg — cast to the trait interface
-                        let dict_jvm = self.compile_ir_atom(&args[0])?;
-                        if let JvmType::StructRef(idx) = dict_jvm {
-                            if idx != iface_class {
-                                self.builder.emit(Instruction::Checkcast(iface_class));
-                                self.builder.frame.pop_type();
-                                self.builder.frame.push_type(VerificationType::Object {
-                                    cpool_index: iface_class,
-                                });
-                            }
-                        }
-
-                        // Compile user args (skip dict at args[0])
-                        let user_args = &args[1..];
-                        for arg in user_args {
-                            let arg_type = self.compile_ir_atom(arg)?;
-                            self.builder.box_if_needed(arg_type);
-                        }
-                        // invokeinterface: receiver + user_args
-                        self.builder.emit(Instruction::Invokeinterface(
-                            iface_method_ref, (user_args.len() + 1) as u8,
-                        ));
-                        for _ in user_args {
-                            self.builder.frame.pop_type();
-                        }
-                        self.builder.frame.pop_type(); // receiver (dict)
-                        let expected_ret = self.type_to_jvm(bind_ty)?;
-                        self.coerce_interface_return(expected_ret);
-                        return Ok(expected_ret);
-                    }
-                }
-
                 // Struct constructor
                 if let Some(si) = self.types.struct_info.get(&name) {
                     let class_index = si.class_index;
@@ -1180,6 +1140,47 @@ impl Compiler {
                 } else {
                     self.builder.push_jvm_type(return_type);
                     Ok(return_type)
+                }
+            }
+
+            krypton_ir::SimpleExpr::TraitCall { trait_name, method_name, args } => {
+                if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
+                    let iface_method_ref = dispatch.method_refs[method_name];
+                    let iface_class = dispatch.interface_class;
+
+                    // args[0] is the dict, args[1..] are user args
+                    // Compile dict arg — cast to the trait interface
+                    let dict_jvm = self.compile_ir_atom(&args[0])?;
+                    if let JvmType::StructRef(idx) = dict_jvm {
+                        if idx != iface_class {
+                            self.builder.emit(Instruction::Checkcast(iface_class));
+                            self.builder.frame.pop_type();
+                            self.builder.frame.push_type(VerificationType::Object {
+                                cpool_index: iface_class,
+                            });
+                        }
+                    }
+
+                    // Compile user args (skip dict at args[0])
+                    let user_args = &args[1..];
+                    for arg in user_args {
+                        let arg_type = self.compile_ir_atom(arg)?;
+                        self.builder.box_if_needed(arg_type);
+                    }
+                    // invokeinterface: receiver + user_args
+                    self.builder.emit(Instruction::Invokeinterface(
+                        iface_method_ref, (user_args.len() + 1) as u8,
+                    ));
+                    for _ in user_args {
+                        self.builder.frame.pop_type();
+                    }
+                    self.builder.frame.pop_type(); // receiver (dict)
+                    let expected_ret = self.type_to_jvm(bind_ty)?;
+                    self.coerce_interface_return(expected_ret);
+                    Ok(expected_ret)
+                } else {
+                    Err(CodegenError::UnsupportedExpr(
+                        format!("no dispatch info for trait {trait_name}.{method_name}"), None))
                 }
             }
 

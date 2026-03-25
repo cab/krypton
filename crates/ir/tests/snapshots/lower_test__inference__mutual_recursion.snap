@@ -89,8 +89,6 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
-
 fn is_even(v0: Int) -> Bool =
   let_join v6(v3: Bool) =
     if v3 {
@@ -102,7 +100,7 @@ fn is_even(v0: Int) -> Bool =
     }
   in
   let v1: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v2: Bool = call eq(v1, v0, 0)
+  let v2: Bool = trait_call core/eq.Eq.eq(v1, v0, 0)
   jump v6(v2)
 
 fn is_odd(v7: Int) -> Bool =
@@ -116,5 +114,5 @@ fn is_odd(v7: Int) -> Bool =
     }
   in
   let v8: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v9: Bool = call eq(v8, v7, 0)
+  let v9: Bool = trait_call core/eq.Eq.eq(v8, v7, 0)
   jump v13(v9)

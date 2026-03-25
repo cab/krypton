@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module modules__type_qualify_trait
 
 trait MyEq[v7] { my_eq(v7, v7): Bool }
-instance modules__type_qualify_trait.MyEq[Int] { my_eq=f1 }
+instance modules__type_qualify_trait.MyEq[Int] { my_eq=MyEq$$Int$$my_eq }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,17 +92,15 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
-declare my_eq
 declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v0: Dict[modules__type_qualify_trait.MyEq, Int] = get_dict modules__type_qualify_trait.MyEq[Int]
-  let v1: Bool = call my_eq(v0, 42, 42)
+  let v1: Bool = trait_call modules__type_qualify_trait.MyEq.my_eq(v0, 42, 42)
   let v2: Unit = call println(v1)
   v2
 
 fn MyEq$$Int$$my_eq(v3: Int, v4: Int) -> Bool =
   let v5: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v6: Bool = call eq(v5, v3, v4)
+  let v6: Bool = trait_call core/eq.Eq.eq(v5, v3, v4)
   v6

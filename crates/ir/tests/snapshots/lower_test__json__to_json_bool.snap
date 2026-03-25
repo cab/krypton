@@ -228,11 +228,10 @@ import core/json/json_to_string as json_to_string(Json): String
 import core/json/to_json as to_json(o14): Json
 declare json_to_string: (Json) -> String
 declare println: (m) -> Unit
-declare to_json: (o14) -> Json
 
 fn main() -> Unit =
   let v1: Dict[core/json.ToJson, Bool] = get_dict core/json.ToJson[Bool]
-  let v2: Json = call to_json(v1, true)
+  let v2: Json = trait_call core/json.ToJson.to_json(v1, true)
   let v3: String = call json_to_string(v2)
   let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)

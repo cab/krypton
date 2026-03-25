@@ -230,6 +230,18 @@ impl LintContext {
                 Ok(())
             }
 
+            SimpleExpr::TraitCall { trait_name, args, .. } => {
+                if !self.known_traits.contains(&trait_name.local_name) {
+                    return Err(self.err(format!(
+                        "TraitCall references unknown trait '{trait_name}'"
+                    )));
+                }
+                for atom in args {
+                    self.check_atom_not_join(atom)?;
+                }
+                Ok(())
+            }
+
             SimpleExpr::CallClosure { closure, args } => {
                 self.check_atom_not_join(closure)?;
                 for atom in args {

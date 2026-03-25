@@ -176,6 +176,7 @@ import core/actor/spawn as spawn((Mailbox[p8]) -> Unit): Ref[p8]
 import core/actor/send as send(Ref[v8], v8): Unit
 import core/actor/receive as receive(Mailbox[g9]): g9
 import core/actor/ask as ask(Ref[n10], (Ref[o10]) -> n10, Int): Result[Timeout, o10]
+import core/actor/Timeout as Timeout(): Timeout
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 declare Get

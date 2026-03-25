@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__constrained_instance_multi_bound_ok
 
 type Pair[a, b] = Pair#0(a, b)
-instance core/show.Show[Pair$$Var0$$Var1] { show=f1 }
+instance core/show.Show[Pair$$Var0$$Var1] { show=Show$$Pair$$Var0$$Var1$$show }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -92,9 +92,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
-declare show: (g) -> String
 
 fn main() -> Unit =
   let_join v9(v7: Bool) =
@@ -106,8 +104,8 @@ fn main() -> Unit =
   let v2: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v3: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Dict[core/show.Show, Pair[Int, String]] = make_dict core/show.Show[Pair[Int, String]](v2, v3)
-  let v5: String = call show(v4, v1)
-  let v6: Bool = call eq(v0, v5, "pair")
+  let v5: String = trait_call core/show.Show.show(v4, v1)
+  let v6: Bool = trait_call core/eq.Eq.eq(v0, v5, "pair")
   jump v9(v6)
 
 fn Show$$Pair$$Var0$$Var1$$show(v10: Dict[core/eq.Eq, x7], v11: Dict[core/show.Show, y7], v12: Pair[x7, y7]) -> ~String =

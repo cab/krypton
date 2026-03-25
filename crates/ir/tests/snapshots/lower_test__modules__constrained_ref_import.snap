@@ -158,7 +158,6 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(m): Unit
 import constrained_ref_lib/render_it as render_it(v7): String
-declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 declare render_it: (v7) -> String
 
@@ -171,5 +170,5 @@ fn main() -> Unit =
   in
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: String = call_closure v0(42)
-  let v4: Bool = call eq(v2, v3, "42")
+  let v4: Bool = trait_call core/eq.Eq.eq(v2, v3, "42")
   jump v7(v4)
