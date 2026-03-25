@@ -351,7 +351,7 @@ impl Eq[Point] {
 #[test]
 fn test_extern_decl() {
     let src = r#"
-extern "java.lang.Math" {
+extern java "java.lang.Math" {
     fun abs(Int) -> Int
     fun max(Int, Int) -> Int
 }

@@ -82,14 +82,15 @@ impl<'a> Formatter<'a> {
                 ..
             } => self.fmt_impl(trait_name, target_type, type_params, type_constraints, methods),
             Decl::Import { is_pub, path, names, .. } => self.fmt_import(*is_pub, path, names),
-            Decl::ExternJava {
-                class_name,
+            Decl::Extern {
+                target,
+                module_path,
                 alias,
                 alias_visibility,
                 type_params,
                 methods,
                 ..
-            } => self.fmt_extern(class_name, alias.as_deref(), alias_visibility.as_ref(), type_params, methods),
+            } => self.fmt_extern(target, module_path, alias.as_deref(), alias_visibility.as_ref(), type_params, methods),
         }
     }
 
@@ -433,9 +434,14 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn fmt_extern(&mut self, class_name: &str, alias: Option<&str>, alias_visibility: Option<&Visibility>, type_params: &[String], methods: &[ExternMethod]) {
-        self.buf.push_str("extern \"");
-        self.buf.push_str(class_name);
+    fn fmt_extern(&mut self, target: &ExternTarget, module_path: &str, alias: Option<&str>, alias_visibility: Option<&Visibility>, type_params: &[String], methods: &[ExternMethod]) {
+        self.buf.push_str("extern ");
+        match target {
+            ExternTarget::Java => self.buf.push_str("java"),
+            ExternTarget::Js => self.buf.push_str("js"),
+        }
+        self.buf.push_str(" \"");
+        self.buf.push_str(module_path);
         self.buf.push('"');
         if let Some(name) = alias {
             self.buf.push_str(" as ");
@@ -454,8 +460,16 @@ impl<'a> Formatter<'a> {
         for m in methods {
             self.buf.push('\n');
             self.indent();
+            if m.nullable {
+                self.buf.push_str("@nullable ");
+            }
             self.buf.push_str("fun ");
             self.buf.push_str(&m.name);
+            if !m.type_params.is_empty() {
+                self.buf.push('[');
+                self.buf.push_str(&m.type_params.join(", "));
+                self.buf.push(']');
+            }
             self.buf.push('(');
             for (i, ty) in m.param_types.iter().enumerate() {
                 if i > 0 {
@@ -465,6 +479,25 @@ impl<'a> Formatter<'a> {
             }
             self.buf.push_str(") -> ");
             self.fmt_type_expr(&m.return_type);
+            if !m.where_clauses.is_empty() {
+                self.buf.push_str(" where ");
+                let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+                for c in &m.where_clauses {
+                    if let Some(group) = groups.iter_mut().find(|(tv, _)| tv == &c.type_var) {
+                        group.1.push(c.trait_name.clone());
+                    } else {
+                        groups.push((c.type_var.clone(), vec![c.trait_name.clone()]));
+                    }
+                }
+                for (i, (type_var, bounds)) in groups.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(", ");
+                    }
+                    self.buf.push_str(type_var);
+                    self.buf.push_str(": ");
+                    self.buf.push_str(&bounds.join(" + "));
+                }
+            }
         }
         self.indent_level -= 1;
         self.buf.push('\n');

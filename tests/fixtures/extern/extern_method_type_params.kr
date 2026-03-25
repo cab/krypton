@@ -1,0 +1,4 @@
+# expect: ok
+extern java "krypton.runtime.KryptonIO" {
+    fun raw_println[a](a) -> Unit
+}

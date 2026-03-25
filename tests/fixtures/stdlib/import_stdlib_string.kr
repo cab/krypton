@@ -2,7 +2,7 @@
 import core/string.{split}
 import core/vec.{nth}
 
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
   fun println(Object) -> Unit
 }
 

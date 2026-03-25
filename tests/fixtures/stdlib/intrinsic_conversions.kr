@@ -1,15 +1,15 @@
 # expect: output 3
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-extern "krypton.runtime.KryptonConvert" {
+extern java "krypton.runtime.KryptonConvert" {
     fun toFloat(Int) -> Float
     fun toInt(Float) -> Int
     fun intToString(Int) -> String
 }
 
-extern "krypton.runtime.KryptonString" {
+extern java "krypton.runtime.KryptonString" {
     fun concat(String, String) -> String
     fun length(String) -> Int
 }

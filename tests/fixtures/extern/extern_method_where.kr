@@ -1,0 +1,4 @@
+# expect: ok
+extern java "krypton.runtime.Collections" {
+    fun sort[a](Vec[a]) -> Vec[a] where a: Ord
+}

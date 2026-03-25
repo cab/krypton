@@ -2,7 +2,7 @@ import core/result.{Result, Ok, Err}
 import core/show.{Show, show}
 
 # core/io — I/O functions
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun raw_println(Object) -> Unit
     fun raw_print(Object) -> Unit
     pub fun readLine() -> String

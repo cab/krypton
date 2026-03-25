@@ -1290,28 +1290,53 @@ where
         });
 
     // --- Extern declaration ---
-    // extern "class.Name" { fun method(params) -> Ret }
+    // extern java "class.Name" { fun method(params) -> Ret }
+    // extern js "./path.mjs" { fun method(params) -> Ret }
     let extern_param_types = ty
         .clone()
         .separated_by(symbol(Token::Comma))
         .collect::<Vec<_>>()
         .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen));
 
-    let extern_method = symbol(Token::Pub).or_not()
+    let extern_method_type_params = select! { Token::Ident(s) => s.to_string() }
+        .separated_by(symbol(Token::Comma))
+        .collect::<Vec<_>>()
+        .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+        .or_not()
+        .map(|opt| opt.unwrap_or_default());
+
+    let extern_where_clause = where_clause_parser();
+
+    let extern_nullable = symbol(Token::At)
+        .then(select! { Token::Ident(s) if s == "nullable" => () })
+        .or_not();
+
+    let extern_method = extern_nullable
+        .then(symbol(Token::Pub).or_not())
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
+        .then(extern_method_type_params)
         .then(extern_param_types)
         .then(
             symbol(Token::Arrow)
                 .ignore_then(ty.clone()),
         )
-        .map_with(|(((pub_opt, name), param_types), return_type), e| ExternMethod {
+        .then(extern_where_clause)
+        .map_with(|((((((nullable_opt, pub_opt), name), method_type_params), param_types), return_type), where_clauses), e| ExternMethod {
+            nullable: nullable_opt.is_some(),
             visibility: if pub_opt.is_some() { Visibility::Pub } else { Visibility::Private },
             name,
+            type_params: method_type_params,
             param_types,
             return_type,
+            where_clauses,
             span: to_span(e.span()),
         });
+
+    let extern_target = select! {
+        Token::Ident(s) if s == "java" => ExternTarget::Java,
+        Token::Ident(s) if s == "js" => ExternTarget::Js,
+    };
 
     let extern_as_clause = symbol(Token::As)
         .ignore_then(symbol(Token::Pub).or_not())
@@ -1327,7 +1352,8 @@ where
         .or_not();
 
     let extern_decl = symbol(Token::Extern)
-        .ignore_then(select! { Token::String(s) => s.to_string() })
+        .ignore_then(extern_target)
+        .then(select! { Token::String(s) => s.to_string() })
         .then(extern_as_clause)
         .then(
             extern_method
@@ -1336,7 +1362,7 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
-        .map_with(|((class_name, as_clause), methods), e| {
+        .map_with(|(((target, module_path), as_clause), methods), e| {
             let (alias, alias_visibility, type_params) = match as_clause {
                 Some(((is_pub, name), params)) => {
                     let vis = if is_pub.is_some() { Visibility::Pub } else { Visibility::Private };
@@ -1344,8 +1370,9 @@ where
                 }
                 None => (None, None, vec![]),
             };
-            Decl::ExternJava {
-                class_name,
+            Decl::Extern {
+                target,
+                module_path,
                 alias,
                 alias_visibility,
                 type_params,

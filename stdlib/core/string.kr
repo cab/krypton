@@ -2,7 +2,7 @@
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
 
-extern "krypton.runtime.KryptonString" {
+extern java "krypton.runtime.KryptonString" {
     pub fun split(String, String) -> Vec[String]
     pub fun concat(String, String) -> String
     pub fun trim(String) -> String

@@ -6,9 +6,9 @@ import core/hash.{Hash}
 import core/ord.{Ord}
 import core/sub.{Sub}
 
-extern "krypton.runtime.KryptonMap" as pub Map[k, v] {}
+extern java "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 
-extern "krypton.runtime.KryptonMap" {
+extern java "krypton.runtime.KryptonMap" {
     fun staticEmpty() -> Object
     fun staticPut(Object, Object, Object, Object, Object) -> Object
     fun staticGetUnsafe(Object, Object) -> Object
@@ -21,7 +21,7 @@ extern "krypton.runtime.KryptonMap" {
     fun staticMerge(Object, Object) -> Object
 }
 
-extern "krypton.runtime.KryptonArray" {
+extern java "krypton.runtime.KryptonArray" {
     fun staticLength(Object) -> Int
     fun staticGet(Object, Int) -> Object
 }

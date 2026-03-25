@@ -203,7 +203,7 @@ impl ModuleInferenceState {
                     s.insert(name);
                 }
                 // Extern java type aliases (e.g. `extern "..." as Ref[m] {}`)
-                if let Decl::ExternJava { alias: Some(name), .. } = d {
+                if let Decl::Extern { alias: Some(name), .. } = d {
                     s.insert(name);
                 }
             }
@@ -221,7 +221,7 @@ impl ModuleInferenceState {
         // Build fn visibility map from parsed imported module (needed for extern method privacy)
         let mut fn_vis: HashMap<&str, &Visibility> = HashMap::new();
         for d in &imported_module.decls {
-            if let Decl::ExternJava { methods, .. } = d {
+            if let Decl::Extern { methods, .. } = d {
                 for m in methods {
                     fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
                 }
@@ -563,8 +563,8 @@ impl ModuleInferenceState {
 
         // Process extern declarations from imported module
         for sdecl in &imported_module.decls {
-            if let Decl::ExternJava {
-                class_name,
+            if let Decl::Extern {
+                module_path,
                 alias,
                 type_params,
                 methods,
@@ -587,7 +587,7 @@ impl ModuleInferenceState {
                             kind: crate::type_registry::TypeKind::Record { fields: vec![] },
                             is_prelude: false,
                         });
-                        self.imported_extern_java_types.push((name.clone(), class_name.clone()));
+                        self.imported_extern_java_types.push((name.clone(), module_path.clone()));
                         vars
                     };
                     // Mark user-visible if explicitly requested or import_all
@@ -608,7 +608,7 @@ impl ModuleInferenceState {
 
                 let tp_names = type_params.as_slice();
                 let mut fns = process_extern_methods(
-                    class_name, methods, &mut self.env, &mut self.gen, &self.registry, *ext_span, None,
+                    module_path, methods, &mut self.env, &mut self.gen, &self.registry, *ext_span, None,
                     &aliases, tp_map.as_ref(), tp_arity.as_ref(),
                     if tp_map.is_some() { Some(tp_names) } else { None },
                 )?;

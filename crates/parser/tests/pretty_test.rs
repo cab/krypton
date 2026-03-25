@@ -66,25 +66,34 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             names: names.clone(),
             span: (0, 0),
         },
-        Decl::ExternJava {
-            class_name,
+        Decl::Extern {
+            target,
+            module_path,
             alias,
             alias_visibility,
             type_params,
             methods,
             ..
-        } => Decl::ExternJava {
-            class_name: class_name.clone(),
+        } => Decl::Extern {
+            target: target.clone(),
+            module_path: module_path.clone(),
             alias: alias.clone(),
             alias_visibility: alias_visibility.clone(),
             type_params: type_params.clone(),
             methods: methods
                 .iter()
                 .map(|m| ExternMethod {
+                    nullable: m.nullable,
                     visibility: m.visibility.clone(),
                     name: m.name.clone(),
+                    type_params: m.type_params.clone(),
                     param_types: m.param_types.iter().map(zero_spans_type_expr).collect(),
                     return_type: zero_spans_type_expr(&m.return_type),
+                    where_clauses: m.where_clauses.iter().map(|c| TypeConstraint {
+                        trait_name: c.trait_name.clone(),
+                        type_var: c.type_var.clone(),
+                        span: (0, 0),
+                    }).collect(),
                     span: (0, 0),
                 })
                 .collect(),
@@ -552,9 +561,42 @@ fn roundtrip_impl() {
 
 #[test]
 fn roundtrip_extern() {
-    let src = r#"extern "java.lang.Math" {
+    let src = r#"extern java "java.lang.Math" {
     fun abs(Int) -> Int
     fun max(Int, Int) -> Int
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_extern_js() {
+    let src = r#"extern js "./runtime/js/io.mjs" {
+    fun raw_println(String) -> Unit
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_extern_nullable() {
+    let src = r#"extern java "java.lang.Integer" {
+    @nullable fun parse_int(String) -> Option[Int]
+    fun max_value() -> Int
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_extern_method_type_params() {
+    let src = r#"extern java "krypton.runtime.KryptonIO" {
+    fun raw_println[a](a) -> Unit
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_extern_method_where() {
+    let src = r#"extern java "krypton.runtime.Collections" {
+    fun sort[a](Vec[a]) -> Vec[a] where a: Ord
 }"#;
     assert_surface_roundtrip(src);
 }

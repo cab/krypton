@@ -6,7 +6,7 @@
 # then allocates locals at mismatched slot indices, producing incorrect
 # StackMapTable frames and a JVM VerifyError.
 # expect: output "1\n2\n3\n4"
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 

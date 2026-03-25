@@ -1,5 +1,5 @@
 # expect: error E0001
-extern "krypton.runtime.KryptonConvert" {
+extern java "krypton.runtime.KryptonConvert" {
     fun toFloat(Int) -> Float
 }
 

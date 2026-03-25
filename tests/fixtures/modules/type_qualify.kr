@@ -3,7 +3,7 @@ import core/list.{length}
 
 type Point = { x: Int, y: Int }
 
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
   fun println(Object) -> Unit
 }
 

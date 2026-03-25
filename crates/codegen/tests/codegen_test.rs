@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile;
 
-const PRINTLN_EXTERN: &str = r#"extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }"#;
+const PRINTLN_EXTERN: &str = r#"extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }"#;
 
 fn find_runtime_jar() -> Option<PathBuf> {
     let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

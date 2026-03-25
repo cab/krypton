@@ -159,8 +159,8 @@ fn test_adjacent_tokens() {
 
 #[test]
 fn test_error_recovery() {
-    let (tokens, error_count) = surface_lex_with_errors("foo @ bar");
-    assert!(error_count > 0, "expected at least one error for '@'");
+    let (tokens, error_count) = surface_lex_with_errors("foo $ bar");
+    assert!(error_count > 0, "expected at least one error for '$'");
     let non_error: Vec<_> = tokens.iter().filter(|t| !matches!(t, Token::Error)).collect();
     assert!(non_error.len() >= 2, "expected at least 2 valid tokens, got {non_error:?}");
 }

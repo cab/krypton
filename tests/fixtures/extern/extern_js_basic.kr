@@ -1,0 +1,4 @@
+# expect: ok
+extern js "./runtime/js/io.mjs" {
+    fun raw_println(String) -> Unit
+}

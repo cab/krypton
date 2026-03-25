@@ -1,7 +1,7 @@
 # expect: output "hello"
 import core/string.{split}
 
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 

@@ -1,4 +1,4 @@
 # expect: output "6"
 import transitive_leak_middle.{re_exported}
-extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
 fun main() = println(re_exported(3))

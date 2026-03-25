@@ -9,7 +9,7 @@ import core/hash.{Hash}
 pub type Json = JNull | JBool(Bool) | JNum(Float) | JStr(String)
               | JArr(List[Json]) | JObj(Map[String, Json])
 
-extern "krypton.runtime.JsonRuntime" {
+extern java "krypton.runtime.JsonRuntime" {
     fun staticParse(String) -> Object
     fun staticSerialize(Object) -> String
     fun staticRawType(Object) -> Int
@@ -28,7 +28,7 @@ extern "krypton.runtime.JsonRuntime" {
     fun staticObjPut(Object, Object, Object) -> Unit
 }
 
-extern "krypton.runtime.KryptonArray" {
+extern java "krypton.runtime.KryptonArray" {
     fun staticLength(Object) -> Int
     fun staticGet(Object, Int) -> Object
 }
@@ -113,7 +113,7 @@ pub fun json_get(j: Json, key: String) -> Option[Json] =
 
 # ── Int↔Float conversion ────────────────────────────────────────
 
-extern "krypton.runtime.KryptonConvert" {
+extern java "krypton.runtime.KryptonConvert" {
     fun toFloat(Int) -> Float
     fun toInt(Float) -> Int
 }

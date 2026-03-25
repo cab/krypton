@@ -1,5 +1,5 @@
 # expect: output "iter\nclosed\niter\nclosed\niter\nclosed\ndone"
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 

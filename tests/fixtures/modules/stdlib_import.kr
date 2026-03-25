@@ -1,7 +1,7 @@
 # expect: output "3"
 import core/list.{length}
 
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
   fun println(Object) -> Unit
 }
 

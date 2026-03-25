@@ -1,4 +1,4 @@
 # expect: error P0001
-extern {
+extern java {
   fun abs(Int) -> Int
 }

@@ -1,7 +1,7 @@
 # expect: ok
-extern "krypton.runtime.Ref" as Ref[m] {}
+extern java "krypton.runtime.Ref" as Ref[m] {}
 
-extern "krypton.runtime.KryptonActors" {
+extern java "krypton.runtime.KryptonActors" {
     fun raw_send(Ref[Int], Int) -> Unit
 }
 

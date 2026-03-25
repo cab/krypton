@@ -1,4 +1,4 @@
 # expect: output "0"
 import core/vec.{len}
-extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
 fun main() = println(len([]))

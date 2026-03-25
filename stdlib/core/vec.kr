@@ -5,7 +5,7 @@ import core/sub.{sub}
 import core/ord.{Ord, lt}
 
 # core/vec — Vec type (backed by KryptonArray)
-extern "krypton.runtime.KryptonArray" as Vec[a] {
+extern java "krypton.runtime.KryptonArray" as Vec[a] {
     fun staticLength(Vec[a]) -> Int
     fun staticGet(Vec[a], Int) -> a
     fun staticNew(Int) -> Vec[a]

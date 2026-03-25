@@ -73,6 +73,7 @@ pub enum Token<'src> {
     Or,
     Bang,
     Tilde,
+    At,
     // Error recovery
     Error,
 }
@@ -141,6 +142,7 @@ impl fmt::Display for Token<'_> {
             Token::Or => write!(f, "||"),
             Token::Bang => write!(f, "!"),
             Token::Tilde => write!(f, "~"),
+            Token::At => write!(f, "@"),
             Token::Error => write!(f, "<error>"),
         }
     }
@@ -253,6 +255,7 @@ pub fn lexer<'src>(
         just(',').to(Token::Comma),
         just(';').to(Token::Semicolon),
         just('~').to(Token::Tilde),
+        just('@').to(Token::At),
         just('_').to(Token::Underscore),
     ));
 

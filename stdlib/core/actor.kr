@@ -2,10 +2,10 @@
 import core/option.{Option}
 import core/result.{Result}
 
-extern "krypton.runtime.Mailbox" as Mailbox[m] {}
-extern "krypton.runtime.Ref" as Ref[m] {}
+extern java "krypton.runtime.Mailbox" as Mailbox[m] {}
+extern java "krypton.runtime.Ref" as Ref[m] {}
 
-extern "krypton.runtime.KryptonActors" {
+extern java "krypton.runtime.KryptonActors" {
     fun raw_spawn(Object) -> Object
     fun raw_send(Object, Object) -> Unit
     fun raw_receive(Object) -> Object

@@ -1255,8 +1255,8 @@ impl ModuleInferenceState {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
         let mut extern_java_types: Vec<(String, String)> = Vec::new();
         for decl in &module.decls {
-            if let Decl::ExternJava {
-                class_name,
+            if let Decl::Extern {
+                module_path,
                 alias,
                 type_params,
                 methods,
@@ -1283,7 +1283,7 @@ impl ModuleInferenceState {
                         vars
                     };
                     self.registry.mark_user_visible(name);
-                    extern_java_types.push((name.clone(), class_name.clone()));
+                    extern_java_types.push((name.clone(), module_path.clone()));
 
                     // Build type_param_map for method resolution
                     if !type_params.is_empty() {
@@ -1296,7 +1296,7 @@ impl ModuleInferenceState {
                 let no_aliases = HashMap::new();
                 let tp_names = type_params.as_slice();
                 let mut fns = process_extern_methods(
-                    class_name, methods, &mut self.env, &mut self.gen, &self.registry,
+                    module_path, methods, &mut self.env, &mut self.gen, &self.registry,
                     *span, None, &no_aliases,
                     tp_map.as_ref(), tp_arity.as_ref(),
                     if tp_map.is_some() { Some(tp_names) } else { None },
@@ -1313,7 +1313,7 @@ impl ModuleInferenceState {
         }
         for decl in &module.decls {
             match decl {
-                Decl::ExternJava { methods, .. } => {
+                Decl::Extern { methods, .. } => {
                     for m in methods {
                         if self.prelude_imported_names.contains(&m.name) {
                             self.imported_fn_constraint_requirements.remove(&m.name);
@@ -1674,7 +1674,7 @@ impl ModuleInferenceState {
             if let Decl::DefType(td) = decl {
                 type_visibility.insert(td.name.clone(), td.visibility.clone());
             }
-            if let Decl::ExternJava { alias: Some(name), alias_visibility, .. } = decl {
+            if let Decl::Extern { alias: Some(name), alias_visibility, .. } = decl {
                 type_visibility.insert(name.clone(), alias_visibility.clone().unwrap_or(Visibility::Private));
             }
         }

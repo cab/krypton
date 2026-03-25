@@ -1,7 +1,7 @@
 # expect: output 5
 import helpers_a
 
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
   fun println(Object) -> Unit
 }
 

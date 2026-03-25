@@ -1,9 +1,9 @@
 # expect: output "42"
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 
-extern "java.lang.Math" {
+extern java "java.lang.Math" {
     fun abs(Int) -> Int
 }
 

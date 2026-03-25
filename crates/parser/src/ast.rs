@@ -34,8 +34,9 @@ pub enum Decl {
         names: Vec<ImportName>,
         span: Span,
     },
-    ExternJava {
-        class_name: String,
+    Extern {
+        target: ExternTarget,
+        module_path: String,
         alias: Option<String>,
         alias_visibility: Option<Visibility>,
         type_params: Vec<String>,
@@ -59,11 +60,20 @@ pub enum Visibility {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ExternMethod {
+    pub nullable: bool,
     pub visibility: Visibility,
     pub name: String,
+    pub type_params: Vec<String>,
     pub param_types: Vec<TypeExpr>,
     pub return_type: TypeExpr,
+    pub where_clauses: Vec<TypeConstraint>,
     pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum ExternTarget {
+    Java,
+    Js,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

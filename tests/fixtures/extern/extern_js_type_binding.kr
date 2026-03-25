@@ -1,0 +1,4 @@
+# expect: ok
+extern js "./runtime/js/array.mjs" as JsArray[a] {
+    fun push(JsArray[a], a) -> Unit
+}

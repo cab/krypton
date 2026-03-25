@@ -2,7 +2,7 @@
 source: crates/krypton/tests/inspect_test.rs
 expression: output
 ---
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 

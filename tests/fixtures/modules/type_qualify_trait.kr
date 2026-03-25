@@ -7,7 +7,7 @@ impl MyEq[Int] {
   fun my_eq(x: Int, y: Int) -> Bool = x == y
 }
 
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
   fun println(Object) -> Unit
 }
 

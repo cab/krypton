@@ -1,5 +1,5 @@
 # expect: output "42"
-extern "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
 fun parse(x) -> Result[String, Int] = Ok(x)
 fun double(x) -> Result[String, Int] = Ok(x * 2)
 fun process(x) -> Result[String, Int] = {

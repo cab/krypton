@@ -1,5 +1,5 @@
 # expect: output timeout
-extern "krypton.runtime.KryptonIO" {
+extern java "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
 import core/actor.{Mailbox, Ref, spawn, ask, Timeout}
