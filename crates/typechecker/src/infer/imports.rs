@@ -492,7 +492,7 @@ impl ModuleInferenceState {
                         }
                         if matches!(td.visibility, Visibility::Pub) {
                             for (cname, scheme) in constructors {
-                                self.env.bind(cname, scheme);
+                                self.imports.bind_import(&mut self.env, cname.clone(), scheme, None, path.to_string(), cname, &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                             }
                         }
                     } else if effective_type_name != td.name {
