@@ -162,7 +162,7 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let_join v4(v0: ~Color) =
-    let v2: Dict[Show, Color] = get_dict Show[Color]
+    let v2: Dict[core/show.Show, Color] = get_dict core/show.Show[Color]
     let v3: Unit = call println(v2, v0)
     v3
   in

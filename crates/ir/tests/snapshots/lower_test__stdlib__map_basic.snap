@@ -136,19 +136,19 @@ declare put: (Map[y8, z8], y8, z8) -> Map[y8, z8]
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
-  let v2: Dict[Eq, String] = get_dict Eq[String]
-  let v3: Dict[Hash, String] = get_dict Hash[String]
+  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v0: Map[String, Int] = call put(v2, v3, v1, "key", 42)
-  let v4: Dict[Eq, String] = get_dict Eq[String]
-  let v5: Dict[Hash, String] = get_dict Hash[String]
+  let v4: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v5: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v6: Option[Int] = call get(v4, v5, v0, "key")
   switch v6 {
     0 (v7: Int) ->
-      let v8: Dict[Show, Int] = get_dict Show[Int]
+      let v8: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
       let v9: Unit = call println(v8, v7)
       v9
     1 ->
-      let v10: Dict[Show, Int] = get_dict Show[Int]
+      let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
       let v11: Unit = call println(v10, 0)
       v11
   }

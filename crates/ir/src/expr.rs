@@ -1,4 +1,4 @@
-use crate::{FnId, Type, VarId};
+use crate::{FnId, TraitName, Type, VarId};
 
 /// An IR expression. Every expression carries a `Type`.
 #[derive(Debug, Clone)]
@@ -109,11 +109,11 @@ pub enum SimpleExpr {
     PrimOp { op: PrimOp, args: Vec<Atom> },
 
     /// Reference a singleton trait dictionary (concrete type, no type vars).
-    GetDict { trait_name: String, ty: Type },
+    GetDict { trait_name: TraitName, ty: Type },
 
     /// Construct a parameterized trait dictionary from sub-dicts.
     MakeDict {
-        trait_name: String,
+        trait_name: TraitName,
         ty: Type,
         sub_dicts: Vec<Atom>,
     },

@@ -7,6 +7,7 @@ pub mod pretty;
 use std::collections::{BTreeSet, HashMap};
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
+pub use krypton_typechecker::typed_ast::TraitName;
 pub use krypton_typechecker::types::TypeVarId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -23,7 +24,7 @@ pub enum Type {
     Own(Box<Type>),
     Tuple(Vec<Type>),
     /// Trait dictionary. Only exists in IR — never in the typechecker.
-    Dict { trait_name: std::string::String, target: Box<Type> },
+    Dict { trait_name: TraitName, target: Box<Type> },
     /// HKT sentinel (carried over from TC for bind_type_vars/decompose_fn_for_app).
     FnHole,
 }
@@ -248,14 +249,14 @@ pub struct Module {
     pub instances: Vec<InstanceDef>,
     /// Set of tuple arities used in this module (for codegen class generation).
     pub tuple_arities: BTreeSet<usize>,
-    /// Module path for qualified type names (None for main module).
-    pub module_path: Option<String>,
+    /// Module path for qualified type names (empty for root module).
+    pub module_path: String,
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
-    pub fn_dict_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
+    pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     /// FnId → (trait_name, method_name) for trait method calls.
     /// Allows codegen to distinguish trait method calls from regular static calls.
-    pub trait_method_fn_ids: HashMap<FnId, (String, String)>,
+    pub trait_method_fn_ids: HashMap<FnId, (TraitName, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -345,11 +346,11 @@ pub struct TraitMethodDef {
 /// A trait instance declaration linking method FnDefs to a trait/type pair.
 #[derive(Debug, Clone)]
 pub struct InstanceDef {
-    pub trait_name: String,
+    pub trait_name: TraitName,
     pub target_type: Type,
     pub target_type_name: String,
     pub method_fn_ids: Vec<(String, FnId)>,
-    pub sub_dict_requirements: Vec<(String, TypeVarId)>,
+    pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
     pub is_intrinsic: bool,
     pub is_imported: bool,
 }
@@ -530,7 +531,7 @@ mod tests {
             traits: vec![],
             instances: vec![],
             tuple_arities: BTreeSet::new(),
-            module_path: None,
+            module_path: String::new(),
             fn_dict_requirements: HashMap::new(),
             trait_method_fn_ids: HashMap::new(),
         };

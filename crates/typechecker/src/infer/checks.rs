@@ -95,9 +95,9 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
 
 pub(super) fn check_constrained_function_refs(
     expr: &TypedExpr,
-    current_requirements: &[(String, TypeVarId)],
+    current_requirements: &[(TraitName, TypeVarId)],
     fn_schemes: &HashMap<String, TypeScheme>,
-    fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
+    fn_constraint_requirements: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     trait_registry: &TraitRegistry,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = vec![expr];
@@ -140,7 +140,7 @@ pub(super) fn check_constrained_function_refs(
 
                     for (req_trait_name, req_type_var) in &requirements {
                         let requirement_ty = resolve_function_ref_requirement_type(
-                            req_trait_name,
+                            &req_trait_name.name,
                             *req_type_var,
                             declared_param_types,
                             actual_param_types,
@@ -158,10 +158,12 @@ pub(super) fn check_constrained_function_refs(
 
                         let requirement_ty = strip_own(&requirement_ty);
                         if free_vars(&requirement_ty).is_empty() {
-                            if trait_registry
-                                .find_instance(req_trait_name, &requirement_ty)
-                                .is_none()
-                            {
+                            let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
+                                trait_registry.find_instance(req_trait_name, &requirement_ty).is_none()
+                            } else {
+                                true
+                            };
+                            if missing {
                                 return Err(no_instance_error(
                                     trait_registry,
                                     req_trait_name,
@@ -263,11 +265,12 @@ pub(super) fn check_constrained_function_refs(
 pub(super) fn detect_trait_constraints(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitName>,
+    trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
-    constraints: &mut Vec<(String, TypeVarId)>,
+    constraints: &mut Vec<(TraitName, TypeVarId)>,
 ) {
-    walk_trait_method_calls(expr, trait_method_map, subst, fn_type_param_vars, &mut |trait_name, var| {
+    walk_trait_method_calls(expr, trait_method_map, trait_registry, subst, fn_type_param_vars, &mut |trait_name, var| {
         constraints.push((trait_name, var));
     });
 }
@@ -276,18 +279,19 @@ pub(super) fn detect_trait_constraints(
 pub(super) fn validate_trait_constraints(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitName>,
+    trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
-    declared_constraints: &[(String, TypeVarId)],
+    declared_constraints: &[(TraitName, TypeVarId)],
     fn_name: &str,
     type_var_names: &HashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut first_error: Option<SpannedTypeError> = None;
-    walk_trait_method_calls(expr, trait_method_map, subst, fn_type_param_vars, &mut |trait_name, var| {
+    walk_trait_method_calls(expr, trait_method_map, trait_registry, subst, fn_type_param_vars, &mut |trait_name, var| {
         if first_error.is_some() {
             return;
         }
-        let is_declared = declared_constraints.iter().any(|(t, v)| t == &trait_name && *v == var);
+        let is_declared = declared_constraints.iter().any(|(t, v)| t.name == trait_name.name && *v == var);
         if !is_declared {
             let type_var_display = type_var_names
                 .get(&var)
@@ -296,7 +300,7 @@ pub(super) fn validate_trait_constraints(
             first_error = Some(super::spanned(
                 TypeError::MissingTraitBound {
                     fn_name: fn_name.to_string(),
-                    trait_name,
+                    trait_name: trait_name.name.clone(),
                     type_var: type_var_display,
                 },
                 expr.span,
@@ -313,9 +317,10 @@ pub(super) fn validate_trait_constraints(
 fn walk_trait_method_calls(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitName>,
+    trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
-    callback: &mut dyn FnMut(String, TypeVarId),
+    callback: &mut dyn FnMut(TraitName, TypeVarId),
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -342,7 +347,7 @@ fn walk_trait_method_calls(
                         });
                         if let Some(v) = candidate_var {
                             if fn_type_param_vars.contains(&v) {
-                                callback(trait_id.name.clone(), v);
+                                callback(trait_id.clone(), v);
                             }
                         }
                     }
@@ -391,7 +396,16 @@ fn walk_trait_method_calls(
                     let operand_ty = strip_own(&subst.apply(&lhs.ty));
                     if let Some(v) = leading_type_var(&operand_ty) {
                         if fn_type_param_vars.contains(&v) {
-                            callback(tn.to_string(), v);
+                            let module = match tn {
+                                "Semigroup" => "core/semigroup",
+                                "Sub" => "core/sub",
+                                "Mul" => "core/mul",
+                                "Div" => "core/div",
+                                "Eq" => "core/eq",
+                                "Ord" => "core/ord",
+                                _ => "",
+                            };
+                            callback(TraitName::new(module.into(), tn.into()), v);
                         }
                     }
                 }
@@ -403,7 +417,7 @@ fn walk_trait_method_calls(
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
                     if let Some(v) = leading_type_var(&operand_ty) {
                         if fn_type_param_vars.contains(&v) {
-                            callback("Neg".to_string(), v);
+                            callback(TraitName::new("core/neg".into(), "Neg".into()), v);
                         }
                     }
                 }
@@ -442,7 +456,7 @@ pub(super) fn check_trait_instances(
     trait_method_map: &HashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_constraint_requirements: &HashMap<String, Vec<(String, TypeVarId)>>,
+    fn_constraint_requirements: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     fn_schemes: &HashMap<String, TypeScheme>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
@@ -453,7 +467,7 @@ pub(super) fn check_trait_instances(
                 if let Some(name) = typed_callee_var_name(func) {
                     if let Some(trait_id) = trait_method_map.get(name) {
                         // trait_method_map is derived from trait_registry, so lookup cannot fail
-                        let info = trait_registry.lookup_trait(&trait_id.name)
+                        let info = trait_registry.lookup_trait(trait_id)
                             .expect("trait in trait_method_map must be in registry");
                         if let Some(method) = info.methods.iter().find(|m| m.name == name) {
                             let mut bindings = HashMap::new();
@@ -483,11 +497,11 @@ pub(super) fn check_trait_instances(
                                 ));
                             let concrete_ty = strip_own(dispatch_ty);
                             if leading_type_var(&concrete_ty).is_none()
-                                && trait_registry.find_instance(&trait_id.name, &concrete_ty).is_none()
+                                && trait_registry.find_instance(trait_id, &concrete_ty).is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,
-                                    &trait_id.name,
+                                    trait_id,
                                     &concrete_ty,
                                     expr.span,
                                 ));
@@ -498,7 +512,7 @@ pub(super) fn check_trait_instances(
                     if let Some(requirements) = fn_constraint_requirements.get(name) {
                         // Resolve each constraint's type via bind_type_vars approach
                         let fn_scheme = fn_schemes.get(name);
-                        for (trait_name, type_var) in requirements {
+                        for (req_trait_name, type_var) in requirements {
                             let resolved_ty = fn_scheme.and_then(|scheme| {
                                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                                     let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
@@ -520,13 +534,15 @@ pub(super) fn check_trait_instances(
                             if let Some(ty) = resolved_ty {
                                 let concrete_ty = strip_own(&ty);
                                 if leading_type_var(&concrete_ty).is_none() {
-                                    if trait_registry
-                                        .find_instance(trait_name, &concrete_ty)
-                                        .is_none()
-                                    {
+                                    let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
+                                        trait_registry.find_instance(req_trait_name, &concrete_ty).is_none()
+                                    } else {
+                                        true
+                                    };
+                                    if missing {
                                         return Err(no_instance_error(
                                             trait_registry,
-                                            trait_name,
+                                            req_trait_name,
                                             &concrete_ty,
                                             expr.span,
                                         ));
@@ -544,50 +560,47 @@ pub(super) fn check_trait_instances(
             TypedExprKind::TypeApp { expr, .. } => work.push(expr),
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let trait_name = match op {
-                    BinOp::Add => Some("Semigroup"),
-                    BinOp::Sub => Some("Sub"),
-                    BinOp::Mul => Some("Mul"),
-                    BinOp::Div => Some("Div"),
-                    BinOp::Eq | BinOp::Neq => Some("Eq"),
-                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some("Ord"),
+                    BinOp::Add => Some(TraitName::new("core/semigroup".into(), "Semigroup".into())),
+                    BinOp::Sub => Some(TraitName::new("core/sub".into(), "Sub".into())),
+                    BinOp::Mul => Some(TraitName::new("core/mul".into(), "Mul".into())),
+                    BinOp::Div => Some(TraitName::new("core/div".into(), "Div".into())),
+                    BinOp::Eq | BinOp::Neq => Some(TraitName::new("core/eq".into(), "Eq".into())),
+                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some(TraitName::new("core/ord".into(), "Ord".into())),
                     BinOp::And | BinOp::Or => None,
                 };
-                if let Some(trait_name) = trait_name {
+                if let Some(ref trait_name) = trait_name {
                     let operand_ty = strip_own(&subst.apply(&lhs.ty));
-                    if !matches!(operand_ty, Type::Var(_))
-                        && trait_registry
-                            .find_instance(trait_name, &operand_ty)
-                            .is_none()
-                    {
-                        return Err(no_instance_error(
-                            trait_registry,
-                            trait_name,
-                            &operand_ty,
-                            expr.span,
-                        ));
+                    if !matches!(operand_ty, Type::Var(_)) {
+                        if trait_registry.lookup_trait(trait_name).is_some()
+                            && trait_registry.find_instance(trait_name, &operand_ty).is_none()
+                        {
+                            return Err(no_instance_error(
+                                trait_registry,
+                                trait_name,
+                                &operand_ty,
+                                expr.span,
+                            ));
+                        }
                     }
                 }
                 work.push(lhs);
                 work.push(rhs);
             }
             TypedExprKind::UnaryOp { op, operand } => {
-                let trait_name = match op {
-                    UnaryOp::Neg => Some("Neg"),
-                    UnaryOp::Not => None,
-                };
-                if let Some(trait_name) = trait_name {
+                if matches!(op, UnaryOp::Neg) {
+                    let neg_trait = TraitName::new("core/neg".into(), "Neg".into());
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
-                    if !matches!(operand_ty, Type::Var(_))
-                        && trait_registry
-                            .find_instance(trait_name, &operand_ty)
-                            .is_none()
-                    {
-                        return Err(no_instance_error(
-                            trait_registry,
-                            trait_name,
-                            &operand_ty,
-                            expr.span,
-                        ));
+                    if !matches!(operand_ty, Type::Var(_)) {
+                        if trait_registry.lookup_trait(&neg_trait).is_some()
+                            && trait_registry.find_instance(&neg_trait, &operand_ty).is_none()
+                        {
+                            return Err(no_instance_error(
+                                trait_registry,
+                                &neg_trait,
+                                &operand_ty,
+                                expr.span,
+                            ));
+                        }
                     }
                 }
                 work.push(operand);

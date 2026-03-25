@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
-use krypton_ir::{FnDef, FnId, InstanceDef, Module, TraitDef, TraitMethodDef, Type, VarId};
+use krypton_ir::{FnDef, FnId, InstanceDef, Module, TraitDef, TraitMethodDef, TraitName, Type, VarId};
 use krypton_typechecker::types::TypeVarGen;
 
 fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) -> Module {
@@ -19,7 +19,7 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
         traits: vec![],
         instances: vec![],
         tuple_arities: std::collections::BTreeSet::new(),
-        module_path: None,
+        module_path: String::new(),
         fn_dict_requirements: std::collections::HashMap::new(),
         trait_method_fn_ids: std::collections::HashMap::new(),
     }
@@ -437,7 +437,7 @@ fn getdict_unknown_trait_is_error() {
                 bind: VarId(0),
                 ty: Type::Named("Dict".into(), vec![]),
                 value: SimpleExpr::GetDict {
-                    trait_name: "NonexistentTrait".into(),
+                    trait_name: TraitName::new(String::new(), "NonexistentTrait".to_string()),
                     ty: Type::Int,
                 },
                 body: Box::new(Expr {
@@ -480,7 +480,7 @@ fn getdict_valid_trait_and_instance_passes() {
                 bind: VarId(0),
                 ty: Type::Named("Dict".into(), vec![]),
                 value: SimpleExpr::GetDict {
-                    trait_name: "Show".into(),
+                    trait_name: TraitName::new("core/show".into(), "Show".into()),
                     ty: Type::Int,
                 },
                 body: Box::new(Expr {
@@ -502,7 +502,7 @@ fn getdict_valid_trait_and_instance_passes() {
         methods: vec![],
     });
     module.instances.push(InstanceDef {
-        trait_name: "Show".into(),
+        trait_name: TraitName::new("core/show".into(), "Show".into()),
         target_type: Type::Int,
         target_type_name: "Int".into(),
         method_fn_ids: vec![],

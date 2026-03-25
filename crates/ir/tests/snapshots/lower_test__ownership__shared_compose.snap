@@ -89,5 +89,5 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-fn assert_eq_show(v0: Dict[Eq, v7], v1: Dict[Show, v7], v2: v7, v3: v7) -> v7 =
+fn assert_eq_show(v0: Dict[core/eq.Eq, v7], v1: Dict[core/show.Show, v7], v2: v7, v3: v7) -> v7 =
   v2

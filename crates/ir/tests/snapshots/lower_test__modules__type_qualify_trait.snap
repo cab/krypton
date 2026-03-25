@@ -103,6 +103,6 @@ fn main() -> Unit =
   v2
 
 fn MyEq$$Int$$my_eq(v3: Int, v4: Int) -> Bool =
-  let v5: Dict[Eq, Int] = get_dict Eq[Int]
+  let v5: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v6: Bool = call eq(v5, v3, v4)
   v6

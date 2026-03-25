@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_basic
 
 struct Point { x: Int, y: Int }
-instance Eq[Point] { eq=f1 }
+instance core/eq.Eq[Point] { eq=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -97,14 +97,14 @@ declare eq: (g, g) -> Bool
 fn main() -> Bool =
   let v1: ~Point = call Point(1, 2)
   let v2: ~Point = call Point(1, 2)
-  let v0: Dict[Eq, Point] = get_dict Eq[Point]
+  let v0: Dict[core/eq.Eq, Point] = get_dict core/eq.Eq[Point]
   let v3: Bool = call eq(v0, v1, v2)
   v3
 
 fn Eq$$Point$$eq(v4: Point, v5: Point) -> Bool =
   let_join v15(v10: Bool) =
     if v10 {
-      let v11: Dict[Eq, Int] = get_dict Eq[Int]
+      let v11: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
       let v12: Int = project v4.1
       let v13: Int = project v5.1
       let v14: Bool = call eq(v11, v12, v13)
@@ -113,7 +113,7 @@ fn Eq$$Point$$eq(v4: Point, v5: Point) -> Bool =
       false
     }
   in
-  let v6: Dict[Eq, Int] = get_dict Eq[Int]
+  let v6: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v7: Int = project v4.0
   let v8: Int = project v5.0
   let v9: Bool = call eq(v6, v7, v8)

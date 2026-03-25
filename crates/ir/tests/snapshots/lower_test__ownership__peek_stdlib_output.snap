@@ -95,7 +95,7 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let_join v4(v0: ~String) =
     let v2: String = call peek(v0)
-    let v1: Dict[Show, String] = get_dict Show[String]
+    let v1: Dict[core/show.Show, String] = get_dict core/show.Show[String]
     let v3: Unit = call println(v1, v2)
     v3
   in

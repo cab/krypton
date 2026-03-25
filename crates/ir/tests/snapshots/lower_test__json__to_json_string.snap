@@ -231,9 +231,9 @@ declare println: (m) -> Unit
 declare to_json: (o14) -> Json
 
 fn main() -> Unit =
-  let v1: Dict[ToJson, String] = get_dict ToJson[String]
+  let v1: Dict[core/json.ToJson, String] = get_dict core/json.ToJson[String]
   let v2: Json = call to_json(v1, "hello")
   let v3: String = call json_to_string(v2)
-  let v0: Dict[Show, String] = get_dict Show[String]
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)
   v4

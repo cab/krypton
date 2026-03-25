@@ -37,7 +37,11 @@ pub(super) fn collect_derived_constraints_for_type(
         }
     }
 
-    let Some(instance) = trait_registry.find_instance(trait_name, field_type) else {
+    let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) else {
+        return false;
+    };
+    let full_trait_name = trait_info.trait_name();
+    let Some(instance) = trait_registry.find_instance(&full_trait_name, field_type) else {
         return false;
     };
 

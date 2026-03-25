@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_dict_param
 
 struct Point { x: Int, y: Int }
-instance Eq[Point] { eq=f2 }
+instance core/eq.Eq[Point] { eq=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -96,14 +96,14 @@ declare Point
 declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
-fn are_equal(v0: Dict[Eq, w7], v1: w7, v2: w7) -> Bool =
+fn are_equal(v0: Dict[core/eq.Eq, w7], v1: w7, v2: w7) -> Bool =
   let v3: Bool = call eq(v0, v1, v2)
   v3
 
 fn main() -> Unit =
   let v4: ~Point = call Point(1, 2)
   let v5: ~Point = call Point(1, 2)
-  let v6: Dict[Eq, Point] = get_dict Eq[Point]
+  let v6: Dict[core/eq.Eq, Point] = get_dict core/eq.Eq[Point]
   let v7: Bool = call are_equal(v6, v4, v5)
   let v8: Unit = call println(v7)
   v8
@@ -111,7 +111,7 @@ fn main() -> Unit =
 fn Eq$$Point$$eq(v9: Point, v10: Point) -> Bool =
   let_join v20(v15: Bool) =
     if v15 {
-      let v16: Dict[Eq, Int] = get_dict Eq[Int]
+      let v16: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
       let v17: Int = project v9.1
       let v18: Int = project v10.1
       let v19: Bool = call eq(v16, v17, v18)
@@ -120,7 +120,7 @@ fn Eq$$Point$$eq(v9: Point, v10: Point) -> Bool =
       false
     }
   in
-  let v11: Dict[Eq, Int] = get_dict Eq[Int]
+  let v11: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v12: Int = project v9.0
   let v13: Int = project v10.0
   let v14: Bool = call eq(v11, v12, v13)

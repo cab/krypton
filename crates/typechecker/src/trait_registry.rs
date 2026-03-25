@@ -6,26 +6,27 @@ use krypton_parser::ast::Span;
 use crate::types::{Type, TypeVarId, TypeVarGen, Substitution};
 use crate::unify::{TypeError, unify};
 
-/// Build a qualified key from module_path + name for TraitRegistry lookups.
-pub fn qualified_trait_key(module_path: &Option<String>, name: &str) -> String {
-    match module_path {
-        Some(path) => format!("{path}::{name}"),
-        None => name.to_string(),
-    }
-}
+use crate::typed_ast::TraitName;
 
 pub struct TraitInfo {
     pub name: String,
-    pub module_path: Option<String>,
+    pub module_path: String,
     pub type_var: String,
     pub type_var_id: TypeVarId,
     /// 0 = kind *, 1 = * -> *, 2 = * -> * -> *, etc.
     pub type_var_arity: usize,
-    pub superclasses: Vec<String>,
+    pub superclasses: Vec<TraitName>,
     pub methods: Vec<TraitMethod>,
     pub span: Span,
     /// True if this trait was imported from the prelude.
     pub is_prelude: bool,
+}
+
+impl TraitInfo {
+    /// Build a `TraitName` from this trait's module_path and name.
+    pub fn trait_name(&self) -> TraitName {
+        TraitName::new(self.module_path.clone(), self.name.clone())
+    }
 }
 
 pub struct TraitMethod {
@@ -35,7 +36,7 @@ pub struct TraitMethod {
 }
 
 pub struct InstanceInfo {
-    pub trait_name: String,
+    pub trait_name: TraitName,
     pub target_type: Type,
     pub target_type_name: String,
     pub type_var_ids: HashMap<String, TypeVarId>,
@@ -46,7 +47,7 @@ pub struct InstanceInfo {
 }
 
 pub struct TraitRegistry {
-    traits: HashMap<String, TraitInfo>,
+    traits: HashMap<TraitName, TraitInfo>,
     instances: Vec<InstanceInfo>,
 }
 
@@ -65,7 +66,7 @@ impl TraitRegistry {
     }
 
     pub fn register_trait(&mut self, info: TraitInfo) -> Result<(), TypeError> {
-        let key = qualified_trait_key(&info.module_path, &info.name);
+        let key = info.trait_name();
         if self.traits.contains_key(&key) {
             return Err(TypeError::OrphanInstance {
                 trait_name: info.name.clone(),
@@ -87,7 +88,7 @@ impl TraitRegistry {
                 let existing_names: std::collections::HashMap<crate::types::TypeVarId, &str> = existing.type_var_ids.iter()
                     .map(|(name, &id)| (id, name.as_str())).collect();
                 return Err((TypeError::DuplicateInstance {
-                    trait_name: info.trait_name.clone(),
+                    trait_name: info.trait_name.name.clone(),
                     ty: crate::types::format_type_with_var_map(&info.target_type, &names),
                     existing_ty: crate::types::format_type_with_var_map(&existing.target_type, &existing_names),
                 }, existing.span));
@@ -97,26 +98,27 @@ impl TraitRegistry {
         Ok(())
     }
 
-    pub fn lookup_trait(&self, name: &str) -> Option<&TraitInfo> {
-        // Try exact (qualified) key first, then fall back to bare name search
-        self.traits.get(name).or_else(|| {
-            self.traits.values().find(|info| info.name == name)
-        })
+    pub fn lookup_trait(&self, name: &TraitName) -> Option<&TraitInfo> {
+        self.traits.get(name)
     }
 
-    pub fn find_instance(&self, trait_name: &str, ty: &Type) -> Option<&InstanceInfo> {
+    /// Look up a trait by bare name (linear scan). Use only when module_path is unknown.
+    pub fn lookup_trait_by_name(&self, name: &str) -> Option<&TraitInfo> {
+        self.traits.values().find(|info| info.name == name)
+    }
+
+    pub fn find_instance(&self, trait_name: &TraitName, ty: &Type) -> Option<&InstanceInfo> {
         let mut resolution_stack = Vec::new();
-        // Resolve bare name to the instance's trait_name for matching
         self.find_instance_inner(trait_name, ty, &mut resolution_stack)
     }
 
     fn find_instance_inner<'a>(
         &'a self,
-        trait_name: &str,
+        trait_name: &TraitName,
         ty: &Type,
-        resolution_stack: &mut Vec<(String, String)>,
+        resolution_stack: &mut Vec<(TraitName, String)>,
     ) -> Option<&'a InstanceInfo> {
-        let key = (trait_name.to_string(), format!("{ty}"));
+        let key = (trait_name.clone(), format!("{ty}"));
         if resolution_stack.contains(&key) {
             return None;
         }
@@ -127,7 +129,7 @@ impl TraitRegistry {
             if info.type_var_arity > 0 {
                 resolution_stack.push(key);
                 let matched = self.instances.iter().find(|inst| {
-                    if inst.trait_name != trait_name {
+                    if inst.trait_name != *trait_name {
                         return false;
                     }
 
@@ -167,7 +169,10 @@ impl TraitRegistry {
                             return false;
                         };
                         let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
-                        self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
+                        let Some(constraint_trait) = self.resolve_constraint_trait_name(&constraint.trait_name) else {
+                            return false;
+                        };
+                        self.find_instance_inner(&constraint_trait, bound_ty, resolution_stack)
                             .is_some()
                     })
                 });
@@ -178,7 +183,7 @@ impl TraitRegistry {
 
         resolution_stack.push(key);
         let matched = self.instances.iter().find(|inst| {
-            if inst.trait_name != trait_name {
+            if inst.trait_name != *trait_name {
                 return false;
             }
 
@@ -194,7 +199,10 @@ impl TraitRegistry {
                 let Some(bound_ty) = bindings.get(type_var_id) else {
                     return false;
                 };
-                self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
+                let Some(constraint_trait) = self.resolve_constraint_trait_name(&constraint.trait_name) else {
+                    return false;
+                };
+                self.find_instance_inner(&constraint_trait, bound_ty, resolution_stack)
                     .is_some()
             })
         });
@@ -213,9 +221,9 @@ impl TraitRegistry {
                 .is_none()
             {
                 return Err(TypeError::NoInstance {
-                    trait_name: superclass.clone(),
+                    trait_name: superclass.name.clone(),
                     ty: instance.target_type_name.clone(),
-                    required_by: Some(instance.trait_name.clone()),
+                    required_by: Some(instance.trait_name.name.clone()),
                 });
             }
         }
@@ -224,18 +232,17 @@ impl TraitRegistry {
 
     pub fn find_instance_by_trait_and_span(
         &self,
-        trait_name: &str,
+        trait_name: &TraitName,
         span: Span,
     ) -> Option<&InstanceInfo> {
         self.instances
             .iter()
-            .find(|inst| inst.trait_name == trait_name && inst.span == span)
+            .find(|inst| inst.trait_name == *trait_name && inst.span == span)
     }
 
-    pub fn trait_method_names(&self) -> Vec<(String, crate::typed_ast::TraitName, bool)> {
+    pub fn trait_method_names(&self) -> Vec<(String, TraitName, bool)> {
         let mut result = Vec::new();
-        for (_trait_name, info) in &self.traits {
-            let trait_id = crate::typed_ast::TraitName::new(info.module_path.clone(), info.name.clone());
+        for (trait_id, info) in &self.traits {
             for method in &info.methods {
                 result.push((method.name.clone(), trait_id.clone(), info.is_prelude));
             }
@@ -243,7 +250,7 @@ impl TraitRegistry {
         result
     }
 
-    pub fn traits(&self) -> &HashMap<String, TraitInfo> {
+    pub fn traits(&self) -> &HashMap<TraitName, TraitInfo> {
         &self.traits
     }
 
@@ -251,17 +258,22 @@ impl TraitRegistry {
         &self.instances
     }
 
+    /// Resolve a bare constraint trait name (from parser TypeConstraint) to a full TraitName.
+    fn resolve_constraint_trait_name(&self, bare_name: &str) -> Option<TraitName> {
+        self.traits.keys().find(|tn| tn.name == bare_name).cloned()
+    }
+
     /// When `find_instance` returns None, explain why by finding instances that
     /// structurally match but have failing `where` constraints.
     /// Called only on the error path — zero impact on the happy path.
-    pub fn diagnose_missing_instance(&self, trait_name: &str, ty: &Type) -> Option<InstanceDiagnostic> {
+    pub fn diagnose_missing_instance(&self, trait_name: &TraitName, ty: &Type) -> Option<InstanceDiagnostic> {
         let trait_info = self.lookup_trait(trait_name);
 
         // HK trait path (arity > 0)
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
                 for inst in &self.instances {
-                    if inst.trait_name != trait_name || inst.constraints.is_empty() {
+                    if inst.trait_name != *trait_name || inst.constraints.is_empty() {
                         continue;
                     }
 
@@ -304,7 +316,8 @@ impl TraitRegistry {
                                 return None;
                             };
                             let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
-                            if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
+                            let constraint_trait = self.resolve_constraint_trait_name(&constraint.trait_name)?;
+                            if self.find_instance(&constraint_trait, bound_ty).is_none() {
                                 Some(UnsatisfiedBound {
                                     trait_name: constraint.trait_name.clone(),
                                     ty: format!("{}", bound_ty.strip_own()),
@@ -328,7 +341,7 @@ impl TraitRegistry {
 
         // Regular (non-HK) path
         for inst in &self.instances {
-            if inst.trait_name != trait_name || inst.constraints.is_empty() {
+            if inst.trait_name != *trait_name || inst.constraints.is_empty() {
                 continue;
             }
 
@@ -347,7 +360,8 @@ impl TraitRegistry {
                     let Some(bound_ty) = bindings.get(type_var_id) else {
                         return None;
                     };
-                    if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
+                    let constraint_trait = self.resolve_constraint_trait_name(&constraint.trait_name)?;
+                    if self.find_instance(&constraint_trait, bound_ty).is_none() {
                         Some(UnsatisfiedBound {
                             trait_name: constraint.trait_name.clone(),
                             ty: format!("{}", bound_ty.strip_own()),
@@ -607,9 +621,14 @@ fn freshen_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, TypeVarId>, gen: &m
 #[cfg(test)]
 mod tests {
     use super::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
+    use crate::typed_ast::TraitName;
     use crate::types::{Type, TypeVarGen};
     use krypton_parser::ast::TypeConstraint;
     use std::collections::HashMap;
+
+    fn tn(name: &str) -> TraitName {
+        TraitName::new(String::new(), name.to_string())
+    }
 
     fn trait_info(name: &str) -> TraitInfo {
         trait_info_with_arity(name, 0)
@@ -619,7 +638,7 @@ mod tests {
         let var_a = TypeVarGen::new().fresh();
         TraitInfo {
             name: name.to_string(),
-            module_path: None,
+            module_path: String::new(),
             type_var: "a".to_string(),
             type_var_id: var_a,
             type_var_arity,
@@ -638,7 +657,7 @@ mod tests {
     ) -> InstanceInfo {
         let var_a = TypeVarGen::new().fresh();
         InstanceInfo {
-            trait_name: trait_name.to_string(),
+            trait_name: tn(trait_name),
             target_type,
             target_type_name: target_type_name.to_string(),
             type_var_ids: HashMap::from([(String::from("a"), var_a)]),
@@ -676,8 +695,8 @@ mod tests {
             vec![Type::Named("Blob".to_string(), vec![])],
         );
 
-        assert!(registry.find_instance("Show", &option_int).is_some());
-        assert!(registry.find_instance("Show", &option_blob).is_none());
+        assert!(registry.find_instance(&tn("Show"), &option_int).is_some());
+        assert!(registry.find_instance(&tn("Show"), &option_blob).is_none());
     }
 
     #[test]
@@ -698,7 +717,7 @@ mod tests {
             ))
             .unwrap();
 
-        assert!(registry.find_instance("Show", &Type::Int).is_none());
+        assert!(registry.find_instance(&tn("Show"), &Type::Int).is_none());
     }
 
     #[test]
@@ -709,7 +728,7 @@ mod tests {
             .unwrap();
         registry
             .register_instance(InstanceInfo {
-                trait_name: "Functor".to_string(),
+                trait_name: tn("Functor"),
                 target_type: Type::Named("List".to_string(), vec![]),
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
@@ -722,7 +741,7 @@ mod tests {
 
         let list_int = Type::Named("List".to_string(), vec![Type::Int]);
 
-        assert!(registry.find_instance("Functor", &list_int).is_some());
+        assert!(registry.find_instance(&tn("Functor"), &list_int).is_some());
     }
 
     #[test]
@@ -739,7 +758,7 @@ mod tests {
             .unwrap();
         registry
             .register_instance(InstanceInfo {
-                trait_name: "Functor".to_string(),
+                trait_name: tn("Functor"),
                 target_type: Type::Named("List".to_string(), vec![]),
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
@@ -751,7 +770,7 @@ mod tests {
             .unwrap();
         registry
             .register_instance(InstanceInfo {
-                trait_name: "Foldable".to_string(),
+                trait_name: tn("Foldable"),
                 target_type: Type::Named("List".to_string(), vec![]),
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
@@ -763,7 +782,7 @@ mod tests {
             .unwrap();
         registry
             .register_instance(InstanceInfo {
-                trait_name: "Traversable".to_string(),
+                trait_name: tn("Traversable"),
                 target_type: Type::Named("List".to_string(), vec![]),
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
@@ -787,7 +806,7 @@ mod tests {
 
         let list_int = Type::Named("List".to_string(), vec![Type::Int]);
 
-        assert!(registry.find_instance("Traversable", &list_int).is_some());
+        assert!(registry.find_instance(&tn("Traversable"), &list_int).is_some());
     }
 
     #[test]
@@ -805,7 +824,7 @@ mod tests {
             .unwrap();
         registry
             .register_instance(InstanceInfo {
-                trait_name: "Functor".to_string(),
+                trait_name: tn("Functor"),
                 target_type: Type::Named("Result".to_string(), vec![Type::Var(var_e)]),
                 target_type_name: "Result".to_string(),
                 type_var_ids: HashMap::from([(String::from("e"), var_e)]),
@@ -827,8 +846,8 @@ mod tests {
             vec![Type::Named("Blob".to_string(), vec![]), Type::String],
         );
 
-        assert!(registry.find_instance("Functor", &result_int_string).is_some());
-        assert!(registry.find_instance("Functor", &result_blob_string).is_none());
+        assert!(registry.find_instance(&tn("Functor"), &result_int_string).is_some());
+        assert!(registry.find_instance(&tn("Functor"), &result_blob_string).is_none());
     }
 
     #[test]
@@ -885,7 +904,7 @@ mod tests {
             .unwrap();
 
         let vec_string = Type::Named("Vec".to_string(), vec![Type::String]);
-        let diag = registry.diagnose_missing_instance("Test", &vec_string);
+        let diag = registry.diagnose_missing_instance(&tn("Test"), &vec_string);
         assert!(diag.is_some());
         let diag = diag.unwrap();
         assert_eq!(diag.unsatisfied.len(), 1);
@@ -904,7 +923,7 @@ mod tests {
         registry.register_trait(trait_info("Show")).unwrap();
         registry
             .register_instance(InstanceInfo {
-                trait_name: "Show".to_string(),
+                trait_name: tn("Show"),
                 target_type: Type::Named(
                     "Map".to_string(),
                     vec![Type::Var(var_k), Type::Var(var_v)],
@@ -940,7 +959,7 @@ mod tests {
             ],
         );
         let diag = registry
-            .diagnose_missing_instance("Show", &map_blob_opaque)
+            .diagnose_missing_instance(&tn("Show"), &map_blob_opaque)
             .unwrap();
         assert_eq!(diag.unsatisfied.len(), 2);
         let note = diag.to_note();
@@ -951,7 +970,7 @@ mod tests {
     #[test]
     fn diagnose_no_candidate_returns_none() {
         let registry = TraitRegistry::new();
-        let result = registry.diagnose_missing_instance("Show", &Type::Int);
+        let result = registry.diagnose_missing_instance(&tn("Show"), &Type::Int);
         assert!(result.is_none());
     }
 
@@ -1002,7 +1021,7 @@ mod tests {
             .register_instance(instance("Show", Type::Int, "Int", vec![]))
             .unwrap();
         // Int has Show unconditionally, so diagnosis returns None
-        let result = registry.diagnose_missing_instance("Show", &Type::Int);
+        let result = registry.diagnose_missing_instance(&tn("Show"), &Type::Int);
         assert!(result.is_none());
     }
 }

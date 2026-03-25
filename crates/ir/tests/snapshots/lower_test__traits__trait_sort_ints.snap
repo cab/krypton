@@ -115,11 +115,11 @@ fn Cmp$$Int$$compare(v3: Int, v4: Int) -> Int =
           0
         }
       in
-      let v9: Dict[Ord, Int] = get_dict Ord[Int]
+      let v9: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
       let v10: Bool = call lt(v9, v4, v3)
       jump v12(v10)
     }
   in
-  let v5: Dict[Ord, Int] = get_dict Ord[Int]
+  let v5: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v6: Bool = call lt(v5, v3, v4)
   jump v13(v6)

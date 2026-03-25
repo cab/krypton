@@ -102,6 +102,6 @@ import core/io/println as println(m): Unit
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: Dict[Show, Int] = get_dict Show[Int]
+  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v1: Unit = call println(v0, 42)
   v1

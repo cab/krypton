@@ -681,7 +681,7 @@ impl ModuleInferenceState {
                 self.imported_trait_names.insert(trait_def.name.clone());
                 // Bind visible trait methods as imported functions (skip if already imported via fn_types)
                 let trait_id = TraitName::new(
-                    trait_def.module_path.clone().or_else(|| Some(path.to_string())),
+                    if trait_def.module_path.is_empty() { path.to_string() } else { trait_def.module_path.clone() },
                     trait_def.name.clone(),
                 );
                 let origin = Some(trait_id);

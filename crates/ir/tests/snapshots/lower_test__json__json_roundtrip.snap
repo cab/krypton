@@ -259,16 +259,16 @@ fn main() -> Unit =
       let v15: Result[String, Json] = call parse_json(v14)
       switch v15 {
         0 (v16: Json) ->
-          let v17: Dict[Show, String] = get_dict Show[String]
+          let v17: Dict[core/show.Show, String] = get_dict core/show.Show[String]
           let v18: Unit = call println(v17, "true")
           v18
         1 (v19: String) ->
-          let v20: Dict[Show, String] = get_dict Show[String]
+          let v20: Dict[core/show.Show, String] = get_dict core/show.Show[String]
           let v21: Unit = call println(v20, v19)
           v21
       }
     1 (v22: String) ->
-      let v23: Dict[Show, String] = get_dict Show[String]
+      let v23: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v24: Unit = call println(v23, v22)
       v24
   }

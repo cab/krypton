@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module modules__use_user_trait
 
 type Greeting = MkGreeting#0(String)
-instance Printable[Greeting] { display=f1 }
+instance user_trait_lib.Printable[Greeting] { display=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -165,9 +165,9 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Greeting = construct Greeting::MkGreeting#0("hi")
-  let v2: Dict[Printable, Greeting] = get_dict Printable[Greeting]
+  let v2: Dict[user_trait_lib.Printable, Greeting] = get_dict user_trait_lib.Printable[Greeting]
   let v3: String = call display(v2, v1)
-  let v0: Dict[Show, String] = get_dict Show[String]
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)
   v4
 

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_sub_syntax
 
 struct Vec2 { x: Int, y: Int }
-instance Sub[Vec2] { sub=f1 }
+instance core/sub.Sub[Vec2] { sub=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -107,7 +107,7 @@ fn main() -> Unit =
     let v7: Int = project v6.0
     jump v11(v7)
   in
-  let v4: Dict[Sub, Vec2] = get_dict Sub[Vec2]
+  let v4: Dict[core/sub.Sub, Vec2] = get_dict core/sub.Sub[Vec2]
   let v5: Vec2 = call sub(v4, v0, v1)
   jump v8(v5)
 

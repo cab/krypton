@@ -26,8 +26,11 @@ fn concrete_type_name(ty: &Type) -> Option<&str> {
 fn is_owned_resource(ty: &Type, registry: &TraitRegistry) -> Option<String> {
     if let Type::Own(inner) = ty {
         if let Some(name) = concrete_type_name(inner) {
-            if registry.find_instance("Resource", inner).is_some() {
-                return Some(name.to_string());
+            {
+                let resource_tn = crate::typed_ast::TraitName::new("core/resource".into(), "Resource".into());
+                if registry.find_instance(&resource_tn, inner).is_some() {
+                    return Some(name.to_string());
+                }
             }
         } else {
             // #6: Panic on unexpected type inside Own.
@@ -448,7 +451,8 @@ pub fn compute_auto_close(
     registry: &TraitRegistry,
     ownership_moves: &HashMap<Span, String>,
 ) -> Result<AutoCloseInfo, SpannedTypeError> {
-    if registry.lookup_trait("Resource").is_none() {
+    let resource_tn = crate::typed_ast::TraitName::new("core/resource".into(), "Resource".into());
+    if registry.lookup_trait(&resource_tn).is_none() {
         return Ok(AutoCloseInfo::default());
     }
 

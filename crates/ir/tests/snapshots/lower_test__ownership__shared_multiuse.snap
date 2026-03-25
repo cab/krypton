@@ -97,6 +97,6 @@ fn dup(v0: v7) -> (v7, v7) =
 
 fn test(v2: ~String) -> Unit =
   let v3: (String, String) = call dup(v2)
-  let v4: Dict[Show, String] = get_dict Show[String]
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v4, v2)
   v5

@@ -544,14 +544,14 @@ pub(super) fn duplicate_instance_spanned(
 /// Construct a NoInstance error with diagnostic note when a near-miss instance exists.
 pub(super) fn no_instance_error(
     trait_registry: &TraitRegistry,
-    trait_name: &str,
+    trait_name: &TraitName,
     ty: &Type,
     span: Span,
 ) -> SpannedTypeError {
     let display_ty = ty.strip_own();
     let mut err = spanned(
         TypeError::NoInstance {
-            trait_name: trait_name.to_string(),
+            trait_name: trait_name.name.clone(),
             ty: format!("{display_ty}"),
             required_by: None,
         },
@@ -973,7 +973,7 @@ fn process_extern_methods(
 pub fn infer_module(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
-    root_module_path: Option<String>,
+    root_module_path: String,
 ) -> Result<Vec<TypedModule>, InferError> {
     use krypton_modules::module_graph;
     use krypton_modules::stdlib_loader::StdlibLoader;
@@ -1003,7 +1003,7 @@ pub fn infer_module(
                 &resolved.module,
                 &mut cache,
                 &parsed_modules,
-                Some(resolved.path.clone()),
+                resolved.path.clone(),
                 &graph.prelude_tree_paths,
             ).map_err(|mut e| {
                 if e.source_file.is_none() {
@@ -1025,8 +1025,8 @@ pub fn infer_module(
         }
     }
 
-    // Type-check the root module (None = root file, not a named module)
-    let main = infer_module_inner(module, &mut cache, &parsed_modules, None, &graph.prelude_tree_paths)
+    // Type-check the root module
+    let main = infer_module_inner(module, &mut cache, &parsed_modules, root_module_path, &graph.prelude_tree_paths)
         .map_err(|e| InferError::TypeError { error: e, error_source: None })?;
 
     let mut result = vec![main];
@@ -1064,7 +1064,7 @@ pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<TypedModule, InferError> {
-    let mut modules = infer_module(module, resolver, None)?;
+    let mut modules = infer_module(module, resolver, String::new())?;
     Ok(modules.remove(0))
 }
 
@@ -1101,7 +1101,7 @@ impl ImportContext {
         prelude_imported_names: &HashSet<String>,
         gen: &mut TypeVarGen,
         span: Span,
-        imported_fn_constraint_requirements: &mut HashMap<String, Vec<(String, TypeVarId)>>,
+        imported_fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, TypeVarId)>>,
     ) -> Result<(), SpannedTypeError> {
         // Explicit import shadows any prelude entry for the same name
         if prelude_imported_names.contains(&name) {
@@ -1206,7 +1206,7 @@ pub(crate) struct ModuleInferenceState {
     // Import accumulation
     pub(super) imports: ImportContext,
     pub(super) type_provenance: HashMap<String, String>,
-    pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
+    pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
     pub(super) imported_extern_java_types: Vec<(String, String)>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
@@ -1377,14 +1377,14 @@ impl ModuleInferenceState {
     fn assemble_typed_module(
         mut self,
         module: &Module,
-        module_path: Option<String>,
+        module_path: String,
         fn_decls: &[&krypton_parser::ast::FnDecl],
         result_schemes: Vec<Option<TypeScheme>>,
         fn_bodies: Vec<Option<TypedExpr>>,
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
         imported_instance_defs: Vec<InstanceDefInfo>,
-        fn_constraint_requirements: &mut HashMap<String, Vec<(String, TypeVarId)>>,
+        fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, TypeVarId)>>,
         trait_method_map: &HashMap<String, TraitName>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
@@ -1426,7 +1426,7 @@ impl ModuleInferenceState {
         // Add instance method types to the flat list for internal analysis passes
         for inst in &instance_defs {
             for m in &inst.methods {
-                let qualified = typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name);
+                let qualified = typed_ast::mangled_method_name(&inst.trait_name.name, &inst.target_type_name, &m.name);
                 results.push(typed_ast::FnTypeEntry {
                     name: qualified,
                     scheme: m.scheme.clone(),
@@ -1488,8 +1488,8 @@ impl ModuleInferenceState {
         // Build temporary flat list of instance method bodies for internal analysis passes
         for inst in &instance_defs {
             for m in &inst.methods {
-                let qualified = typed_ast::mangled_method_name(&inst.trait_name, &inst.target_type_name, &m.name);
-                let close_self_type = if inst.trait_name == "Resource" && m.name == "close" {
+                let qualified = typed_ast::mangled_method_name(&inst.trait_name.name, &inst.target_type_name, &m.name);
+                let close_self_type = if inst.trait_name.name == "Resource" && m.name == "close" {
                     Some(inst.target_type_name.clone())
                 } else {
                     None
@@ -1538,6 +1538,7 @@ impl ModuleInferenceState {
             checks::detect_trait_constraints(
                 &func.body,
                 trait_method_map,
+                trait_registry,
                 &self.subst,
                 &fn_type_param_vars,
                 &mut constraints,
@@ -1775,7 +1776,7 @@ fn process_traits_and_deriving(
     state: &mut ModuleInferenceState,
     module: &Module,
     cache: &HashMap<String, TypedModule>,
-    module_path: &Option<String>,
+    module_path: &str,
     is_core_module: bool,
 ) -> Result<
     (
@@ -1834,7 +1835,7 @@ fn process_traits_and_deriving(
     for (method_name, trait_id, is_prelude) in trait_registry.trait_method_names() {
         if let Some(existing) = trait_method_map.get(&method_name) {
             let existing_is_prelude = trait_registry
-                .lookup_trait(&existing.name)
+                .lookup_trait(existing)
                 .map_or(false, |info| info.is_prelude);
             if !existing_is_prelude && !is_prelude {
                 // Two non-prelude traits with same method name → error
@@ -1887,7 +1888,7 @@ fn import_cached_instances(
             source_modules.insert(source_path.as_str());
         }
 
-        let mut seen_instances: HashSet<(String, Type)> = HashSet::new();
+        let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
         for mod_path in &source_modules {
             if let Some(cached_module) = cache.get(*mod_path) {
                 for inst in &cached_module.instance_defs {
@@ -1928,7 +1929,7 @@ fn register_imported_trait_defs(
 ) {
     // Register trait definitions imported from other modules
     for trait_def in imported_trait_defs {
-        if trait_registry.lookup_trait(&trait_def.name).is_some() {
+        if trait_registry.lookup_trait_by_name(&trait_def.name).is_some() {
             continue;
         }
         let new_tv_id = gen.fresh();
@@ -1951,6 +1952,7 @@ fn register_imported_trait_defs(
         }
 
         let is_prelude = prelude_imported_names.contains(&trait_def.name);
+        let superclass_names: Vec<TraitName> = trait_def.superclasses.clone();
         trait_registry
             .register_trait(TraitInfo {
                 name: trait_def.name.clone(),
@@ -1958,7 +1960,7 @@ fn register_imported_trait_defs(
                 type_var: trait_def.type_var.clone(),
                 type_var_id: new_tv_id,
                 type_var_arity: trait_def.type_var_arity,
-                superclasses: trait_def.superclasses.clone(),
+                superclasses: superclass_names,
                 methods: trait_methods,
                 span: (0, 0),
                 is_prelude,
@@ -1972,7 +1974,7 @@ fn register_local_traits(
     state: &mut ModuleInferenceState,
     trait_registry: &mut TraitRegistry,
     module: &Module,
-    module_path: &Option<String>,
+    module_path: &str,
 ) -> Result<Vec<ExportedTraitDef>, SpannedTypeError> {
     // Process DefTrait declarations
     let mut exported_trait_defs: Vec<ExportedTraitDef> = Vec::new();
@@ -1986,7 +1988,7 @@ fn register_local_traits(
             span,
         } = decl
         {
-            if trait_registry.lookup_trait(name).is_some() {
+            if trait_registry.lookup_trait_by_name(name).is_some() {
                 return Err(spanned(
                     TypeError::DuplicateType { name: name.clone() },
                     *span,
@@ -2069,14 +2071,19 @@ fn register_local_traits(
                 });
             }
 
+            let superclass_names: Vec<TraitName> = superclasses.iter().map(|sc| {
+                trait_registry.lookup_trait_by_name(sc)
+                    .map(|ti| ti.trait_name())
+                    .unwrap_or_else(|| TraitName::new(module_path.to_string(), sc.clone()))
+            }).collect();
             trait_registry
                 .register_trait(TraitInfo {
                     name: name.clone(),
-                    module_path: module_path.clone(),
+                    module_path: module_path.to_string(),
                     type_var: type_param.name.clone(),
                     type_var_id: tv_id,
                     type_var_arity,
-                    superclasses: superclasses.clone(),
+                    superclasses: superclass_names.clone(),
                     methods: trait_methods,
                     span: *span,
                     is_prelude: false,
@@ -2086,11 +2093,11 @@ fn register_local_traits(
             exported_trait_defs.push(ExportedTraitDef {
                 visibility: visibility.clone(),
                 name: name.clone(),
-                module_path: module_path.clone(),
+                module_path: module_path.to_string(),
                 type_var: type_param.name.clone(),
                 type_var_id: tv_id,
                 type_var_arity,
-                superclasses: superclasses.clone(),
+                superclasses: superclass_names,
                 methods: exported_methods,
             });
         }
@@ -2103,7 +2110,7 @@ fn process_deriving(
     trait_registry: &mut TraitRegistry,
     module: &Module,
     registry: &TypeRegistry,
-    module_path: &Option<String>,
+    module_path: &str,
 ) -> Result<Vec<InstanceDefInfo>, SpannedTypeError> {
     // Deriving pass
     let mut derived_instance_defs: Vec<InstanceDefInfo> = Vec::new();
@@ -2115,7 +2122,7 @@ fn process_deriving(
             let type_info = registry.lookup_type(&type_decl.name).unwrap();
 
             for trait_name in &type_decl.deriving {
-                if trait_registry.lookup_trait(trait_name).is_none() {
+                if trait_registry.lookup_trait_by_name(trait_name).is_none() {
                     return Err(spanned(
                         TypeError::NoInstance {
                             trait_name: trait_name.clone(),
@@ -2183,8 +2190,11 @@ fn process_deriving(
                     _ => continue,
                 };
 
+                let derive_full_trait_name = trait_registry.lookup_trait_by_name(trait_name)
+                    .map(|ti| ti.trait_name())
+                    .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
                 let instance = InstanceInfo {
-                    trait_name: trait_name.clone(),
+                    trait_name: derive_full_trait_name.clone(),
                     target_type: target_type.clone(),
                     target_type_name: target_type_name.clone(),
                     type_var_ids: derived_type_var_ids.clone(),
@@ -2198,8 +2208,7 @@ fn process_deriving(
                     .map_err(|(e, existing_span)| duplicate_instance_spanned(e, type_decl.span, existing_span))?;
 
                 let syn_span: Span = (0, 0);
-                let trait_id_for_synth = trait_registry.lookup_trait(trait_name)
-                    .map(|ti| TraitName::new(ti.module_path.clone(), ti.name.clone()));
+                let trait_id_for_synth = Some(derive_full_trait_name.clone());
                 let (body, fn_ty) = match trait_name.as_str() {
                     "Eq" => derive::synthesize_eq_body(type_info, &target_type, syn_span),
                     "Show" => derive::synthesize_show_body(type_info, &target_type, syn_span, trait_id_for_synth.clone()),
@@ -2219,12 +2228,8 @@ fn process_deriving(
                     var_names: HashMap::new(),
                 };
 
-                let derive_trait_id = trait_registry.lookup_trait(trait_name)
-                    .map(|ti| TraitName::new(ti.module_path.clone(), ti.name.clone()))
-                    .unwrap_or_else(|| TraitName::new(module_path.clone(), trait_name.clone()));
                 derived_instance_defs.push(InstanceDefInfo {
-                    trait_name: trait_name.clone(),
-                    trait_id: derive_trait_id,
+                    trait_name: derive_full_trait_name.clone(),
                     target_type_name,
                     target_type,
                     type_var_ids: derived_type_var_ids.clone(),
@@ -2250,7 +2255,7 @@ fn register_impl_instances(
     state: &mut ModuleInferenceState,
     trait_registry: &mut TraitRegistry,
     module: &Module,
-    _module_path: &Option<String>,
+    module_path: &str,
 ) -> Result<(), SpannedTypeError> {
     // Collect locally-defined trait names for orphan check
     let local_trait_names: HashSet<String> = module
@@ -2388,7 +2393,7 @@ fn register_impl_instances(
 
             for constraint in type_constraints {
                 if constraint.trait_name != "shared" {
-                    if trait_registry.lookup_trait(&constraint.trait_name).is_none() {
+                    if trait_registry.lookup_trait_by_name(&constraint.trait_name).is_none() {
                         return Err(spanned(
                             TypeError::UnknownTrait {
                                 name: constraint.trait_name.clone(),
@@ -2399,7 +2404,7 @@ fn register_impl_instances(
                 }
             }
 
-            if let Some(trait_info) = trait_registry.lookup_trait(trait_name) {
+            if let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) {
                 let expected_arity = trait_info.type_var_arity;
                 if expected_arity > 0 {
                     if wildcard_count > 0 {
@@ -2460,8 +2465,11 @@ fn register_impl_instances(
             let method_names: Vec<String> = methods.iter().map(|m| m.name.clone()).collect();
 
             let target_type_name = type_to_canonical_name(&resolved_target);
+            let impl_full_trait_name = trait_registry.lookup_trait_by_name(trait_name)
+                .map(|ti| ti.trait_name())
+                .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
             let instance = InstanceInfo {
-                trait_name: trait_name.clone(),
+                trait_name: impl_full_trait_name,
                 target_type: resolved_target,
                 target_type_name,
                 type_var_ids: type_param_map.clone(),
@@ -2575,12 +2583,13 @@ fn infer_function_bodies<'a>(
     extern_fns: &[ExternFnInfo],
     trait_registry: &TraitRegistry,
     trait_method_map: &HashMap<String, TraitName>,
+    mod_path: &str,
 ) -> Result<
     (
         Vec<&'a krypton_parser::ast::FnDecl>,
         Vec<Option<TypeScheme>>,
         Vec<Option<TypedExpr>>,
-        HashMap<String, Vec<(String, TypeVarId)>>,
+        HashMap<String, Vec<(TraitName, TypeVarId)>>,
         HashMap<String, HashSet<String>>,
     ),
     SpannedTypeError,
@@ -2629,7 +2638,7 @@ fn infer_function_bodies<'a>(
 
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
-    let mut fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>> = HashMap::new();
+    let mut fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     let mut shared_type_vars: HashMap<String, HashSet<String>> = HashMap::new();
     let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
 
@@ -2674,7 +2683,7 @@ fn infer_function_bodies<'a>(
 
                 for constraint in &decl.constraints {
                     if constraint.trait_name != "shared" {
-                        if trait_registry.lookup_trait(&constraint.trait_name).is_none() {
+                        if trait_registry.lookup_trait_by_name(&constraint.trait_name).is_none() {
                             return Err(spanned(
                                 TypeError::UnknownTrait {
                                     name: constraint.trait_name.clone(),
@@ -2685,7 +2694,7 @@ fn infer_function_bodies<'a>(
                     }
                 }
 
-                let requirements: Vec<(String, TypeVarId)> = decl
+                let requirements: Vec<(TraitName, TypeVarId)> = decl
                     .constraints
                     .iter()
                     .filter(|c| c.trait_name != "shared")
@@ -2693,7 +2702,12 @@ fn infer_function_bodies<'a>(
                         type_param_map
                             .get(&constraint.type_var)
                             .copied()
-                            .map(|type_var| (constraint.trait_name.clone(), type_var))
+                            .map(|type_var| {
+                                let tn = trait_registry.lookup_trait_by_name(&constraint.trait_name)
+                                    .map(|ti| ti.trait_name())
+                                    .unwrap_or_else(|| TraitName::new(mod_path.to_string(), constraint.trait_name.clone()));
+                                (tn, type_var)
+                            })
                     })
                     .collect();
                 if !requirements.is_empty() {
@@ -2877,6 +2891,7 @@ fn infer_function_bodies<'a>(
             checks::validate_trait_constraints(
                 body,
                 trait_method_map,
+                trait_registry,
                 &state.subst,
                 &fn_type_param_vars,
                 &declared,
@@ -2926,7 +2941,7 @@ fn infer_function_bodies<'a>(
 fn typecheck_impl_methods(
     state: &mut ModuleInferenceState,
     module: &Module,
-    module_path: &Option<String>,
+    module_path: &str,
     trait_registry: &TraitRegistry,
     trait_method_map: &HashMap<String, TraitName>,
     extern_fns: &[ExternFnInfo],
@@ -2942,11 +2957,12 @@ fn typecheck_impl_methods(
             ..
         } = decl
         {
-            let trait_info = trait_registry.lookup_trait(trait_name).unwrap();
+            let trait_info = trait_registry.lookup_trait_by_name(trait_name).unwrap();
+            let impl_trait_name = trait_info.trait_name();
             let tv_id = trait_info.type_var_id;
 
             let instance = trait_registry
-                .find_instance_by_trait_and_span(trait_name, *span)
+                .find_instance_by_trait_and_span(&impl_trait_name, *span)
                 .unwrap();
             // For HKT partial application, strip anonymous type var args from the
             // target type so it acts as a partial constructor for substitution.
@@ -3125,12 +3141,11 @@ fn typecheck_impl_methods(
                 });
             }
 
-            let inst_trait_id = trait_registry.lookup_trait(trait_name)
-                .map(|ti| TraitName::new(ti.module_path.clone(), ti.name.clone()))
-                .unwrap_or_else(|| TraitName::new(module_path.clone(), trait_name.clone()));
+            let inst_trait_name = trait_registry.lookup_trait_by_name(trait_name)
+                .map(|ti| ti.trait_name())
+                .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
             instance_defs.push(InstanceDefInfo {
-                trait_name: trait_name.clone(),
-                trait_id: inst_trait_id,
+                trait_name: inst_trait_name,
                 target_type_name,
                 target_type: resolved_target,
                 type_var_ids: instance.type_var_ids.clone(),
@@ -3172,12 +3187,11 @@ pub(crate) fn infer_module_inner(
     module: &Module,
     cache: &mut HashMap<String, TypedModule>,
     parsed_modules: &HashMap<String, &Module>,
-    module_path: Option<String>,
+    module_path: String,
     prelude_tree_paths: &HashSet<String>,
 ) -> Result<TypedModule, SpannedTypeError> {
-    let is_core_module = module_path.as_ref().is_some_and(|p| p.starts_with("core/"));
-    let is_prelude_tree = module_path.as_ref()
-        .is_some_and(|p| prelude_tree_paths.contains(p));
+    let is_core_module = !module_path.is_empty() && module_path.starts_with("core/");
+    let is_prelude_tree = !module_path.is_empty() && prelude_tree_paths.contains(&module_path);
 
     let mut state = ModuleInferenceState::new(is_core_module);
 
@@ -3212,6 +3226,7 @@ pub(crate) fn infer_module_inner(
             &extern_fns,
             &trait_registry,
             &trait_method_map,
+            &module_path,
         )?;
 
     // Phase: impl method type-checking

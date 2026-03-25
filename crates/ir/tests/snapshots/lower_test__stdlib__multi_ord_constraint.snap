@@ -103,7 +103,7 @@ declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 declare show: (g) -> String
 
-fn both_less(v0: Dict[Ord, v7], v1: Dict[Ord, w7], v2: v7, v3: v7, v4: w7, v5: w7) -> Bool =
+fn both_less(v0: Dict[core/ord.Ord, v7], v1: Dict[core/ord.Ord, w7], v2: v7, v3: v7, v4: w7, v5: w7) -> Bool =
   let_join v13(v6: Bool) =
     let_join v12(v8: Bool) =
       let_join v11(v10: Bool) =
@@ -122,11 +122,11 @@ fn both_less(v0: Dict[Ord, v7], v1: Dict[Ord, w7], v2: v7, v3: v7, v4: w7, v5: w
   jump v13(v7)
 
 fn main() -> Unit =
-  let v15: Dict[Ord, Int] = get_dict Ord[Int]
-  let v16: Dict[Ord, Float] = get_dict Ord[Float]
+  let v15: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v16: Dict[core/ord.Ord, Float] = get_dict core/ord.Ord[Float]
   let v17: Bool = call both_less(v15, v16, 1, 2, 3.0, 4.0)
-  let v18: Dict[Show, Bool] = get_dict Show[Bool]
+  let v18: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v19: String = call show(v18, v17)
-  let v14: Dict[Show, String] = get_dict Show[String]
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v20: Unit = call println(v14, v19)
   v20

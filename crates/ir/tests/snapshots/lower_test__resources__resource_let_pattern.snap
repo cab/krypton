@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_let_pattern
 
 type Handle = MkHandle#0(String)
-instance Resource[Handle] { close=f2 }
+instance core/resource.Resource[Handle] { close=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -105,7 +105,7 @@ fn main() -> Unit =
   let v3: Int = tuple_project v2.0
   let v4: ~Handle = tuple_project v2.1
   let v5: Unit = call println("opened")
-  let v6: Dict[Resource, Handle] = get_dict Resource[Handle]
+  let v6: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
   let v7: Unit = call close(v6, v4)
   v5
 

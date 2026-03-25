@@ -136,17 +136,17 @@ declare put: (Map[y8, z8], y8, z8) -> Map[y8, z8]
 
 fn main() -> Unit =
   let v0: Map[d11, e11] = call empty()
-  let v2: Dict[Eq, String] = get_dict Eq[String]
-  let v3: Dict[Hash, String] = get_dict Hash[String]
+  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)
-  let v4: Dict[Eq, String] = get_dict Eq[String]
-  let v5: Dict[Hash, String] = get_dict Hash[String]
+  let v4: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v5: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v6: Bool = call contains(v4, v5, v0, "x")
-  let v7: Dict[Show, Bool] = get_dict Show[Bool]
+  let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v8: Unit = call println(v7, v6)
-  let v10: Dict[Eq, String] = get_dict Eq[String]
-  let v11: Dict[Hash, String] = get_dict Hash[String]
+  let v10: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v11: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v12: Bool = call contains(v10, v11, v1, "x")
-  let v9: Dict[Show, Bool] = get_dict Show[Bool]
+  let v9: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v13: Unit = call println(v9, v12)
   v13

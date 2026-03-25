@@ -242,6 +242,6 @@ fn main() -> Unit =
   let v7: ~List[Json] = construct List::Cons#0(v1, v6)
   let v0: ~Json = construct Json::JArr#4(v7)
   let v9: String = call json_to_string(v0)
-  let v8: Dict[Show, String] = get_dict Show[String]
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v10: Unit = call println(v8, v9)
   v10

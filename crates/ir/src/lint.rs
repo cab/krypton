@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::expr::{Atom, Expr, ExprKind, PrimOp, SimpleExpr};
 use crate::pass::{IrPass, IrPassError};
-use crate::{FnDef, FnId, Module, Type, VarId};
+use crate::{FnDef, FnId, Module, TraitName, Type, VarId};
 
 /// Validates structural invariants of an IR module.
 pub struct LintPass;
@@ -28,9 +28,9 @@ struct LintContext {
     known_fns: HashSet<FnId>,
     known_traits: HashSet<String>,
     /// (trait_name, target_type_name) pairs for concrete instances.
-    known_instances: HashSet<(String, String)>,
+    known_instances: HashSet<(TraitName, String)>,
     /// trait_name → sub_dict count for each instance.
-    instance_sub_dict_counts: Vec<(String, String, usize)>,
+    instance_sub_dict_counts: Vec<(TraitName, String, usize)>,
 }
 
 impl LintContext {
@@ -47,13 +47,13 @@ impl LintContext {
             .map(|t| t.name.clone())
             .collect();
 
-        let known_instances: HashSet<(String, String)> = module
+        let known_instances: HashSet<(TraitName, String)> = module
             .instances
             .iter()
             .map(|i| (i.trait_name.clone(), i.target_type_name.clone()))
             .collect();
 
-        let instance_sub_dict_counts: Vec<(String, String, usize)> = module
+        let instance_sub_dict_counts: Vec<(TraitName, String, usize)> = module
             .instances
             .iter()
             .map(|i| (i.trait_name.clone(), i.target_type_name.clone(), i.sub_dict_requirements.len()))
@@ -285,13 +285,13 @@ impl LintContext {
             SimpleExpr::TupleProject { value, .. } => self.check_atom_not_join(value),
 
             SimpleExpr::GetDict { trait_name, ty } => {
-                if !self.known_traits.contains(trait_name) {
+                if !self.known_traits.contains(&trait_name.name) {
                     return Err(self.err(format!(
                         "GetDict references unknown trait '{trait_name}'"
                     )));
                 }
                 if let Some(type_name) = concrete_type_name(ty) {
-                    if !self.known_instances.contains(&(trait_name.clone(), type_name.clone())) {
+                    if !self.known_instances.iter().any(|(tn, ttn)| tn == trait_name && ttn == &type_name) {
                         return Err(self.err(format!(
                             "GetDict references unknown instance '{trait_name}' for type '{type_name}'"
                         )));
@@ -301,7 +301,7 @@ impl LintContext {
             }
 
             SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
-                if !self.known_traits.contains(trait_name) {
+                if !self.known_traits.contains(&trait_name.name) {
                     return Err(self.err(format!(
                         "MakeDict references unknown trait '{trait_name}'"
                     )));

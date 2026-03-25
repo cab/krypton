@@ -103,12 +103,12 @@ fn main() -> Unit =
   let v3: Dict[MyEq, String] = get_dict MyEq[String]
   let v4: Dict[MyEq, Wrapper[String]] = make_dict MyEq[Wrapper[String]](v3)
   let v5: Bool = call my_eq(v4, v0, v1)
-  let v2: Dict[Show, Bool] = get_dict Show[Bool]
+  let v2: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v6: Unit = call println(v2, v5)
   v6
 
 fn MyEq$$String$$my_eq(v7: String, v8: String) -> Bool =
-  let v9: Dict[Eq, String] = get_dict Eq[String]
+  let v9: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v10: Bool = call eq(v9, v7, v8)
   v10
 

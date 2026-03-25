@@ -108,6 +108,6 @@ fn main() -> Unit =
   v10
 
 fn lambda$52(v4: Int) -> Bool =
-  let v5: Dict[Ord, Int] = get_dict Ord[Int]
+  let v5: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v6: Bool = call lt(v5, 1, v4)
   v6

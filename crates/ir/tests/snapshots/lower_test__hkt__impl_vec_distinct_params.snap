@@ -100,11 +100,11 @@ fn main() -> Unit =
   let v1: Vec[String] = make_vec("a", "b", "c")
   let v2: Dict[Tag, Vec[Int]] = get_dict Tag[Vec[Int]]
   let v3: String = call tag(v2, v0)
-  let v4: Dict[Show, String] = get_dict Show[String]
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v4, v3)
   let v7: Dict[Tag, Vec[String]] = get_dict Tag[Vec[String]]
   let v8: String = call tag(v7, v1)
-  let v6: Dict[Show, String] = get_dict Show[String]
+  let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v9: Unit = call println(v6, v8)
   v9
 

@@ -28,7 +28,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
     pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
     pub(super) extern_fn_names: &'a HashSet<String>,
-    pub(super) enclosing_fn_constraints: &'a [(String, TypeVarId)],
+    pub(super) enclosing_fn_constraints: &'a [(TraitName, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
     pub(super) trait_method_map: &'a HashMap<String, TraitName>,
     pub(super) self_type: Option<Type>,
@@ -308,7 +308,7 @@ impl<'a> InferenceContext<'a> {
             }
         }
         // Validate enclosing function has a where constraint for this trait
-        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t == &trait_name);
+        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t.name == trait_name);
         if !has_constraint {
             return Err(super::spanned(
                 TypeError::UnsupportedExpr {

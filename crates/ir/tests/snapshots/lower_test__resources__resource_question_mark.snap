@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_question_mark
 
 type Handle = MkHandle#0(String)
-instance Resource[Handle] { close=f3 }
+instance core/resource.Resource[Handle] { close=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -107,7 +107,7 @@ fn work() -> Result[String, Int] =
   let v4: Unit = call println("opened")
   let_join v13(v5: Int) =
     let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
-    let v14: Dict[Resource, Handle] = get_dict Resource[Handle]
+    let v14: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
     let v15: Unit = call close(v14, v3)
     v12
   in
@@ -117,7 +117,7 @@ fn work() -> Result[String, Int] =
       jump v13(v7)
     1 (v8: String) ->
       let v9: Result[String, Int] = construct Result::Err#1(v8)
-      let v10: Dict[Resource, Handle] = get_dict Resource[Handle]
+      let v10: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
       let v11: Unit = call close(v10, v3)
       jump v1(v9)
   }

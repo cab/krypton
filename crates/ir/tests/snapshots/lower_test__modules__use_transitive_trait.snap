@@ -281,8 +281,8 @@ declare render: (u7) -> String
 
 fn main() -> Unit =
   let v1: ~Msg = construct Msg::MkMsg#0("hi")
-  let v2: Dict[Render, Msg] = get_dict Render[Msg]
+  let v2: Dict[trait_origin_lib.Render, Msg] = get_dict trait_origin_lib.Render[Msg]
   let v3: String = call render(v2, v1)
-  let v0: Dict[Show, String] = get_dict Show[String]
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)
   v4

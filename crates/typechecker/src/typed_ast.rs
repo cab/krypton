@@ -16,16 +16,16 @@ pub enum ParamQualifier {
 }
 
 /// Module-qualified trait identity.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TraitName {
-    /// Source module path, e.g., "core/semigroup". None for the current module.
-    pub module_path: Option<String>,
+    /// Source module path, e.g., "core/semigroup". Empty string for the current/root module.
+    pub module_path: String,
     /// Bare trait name, e.g., "Semigroup"
     pub name: String,
 }
 
 impl TraitName {
-    pub fn new(module_path: Option<String>, name: String) -> Self {
+    pub fn new(module_path: String, name: String) -> Self {
         TraitName { module_path, name }
     }
 
@@ -36,10 +36,10 @@ impl TraitName {
 
 impl fmt::Display for TraitName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(path) = &self.module_path {
-            write!(f, "{}.{}", path, self.name)
-        } else {
+        if self.module_path.is_empty() {
             write!(f, "{}", self.name)
+        } else {
+            write!(f, "{}.{}", self.module_path, self.name)
         }
     }
 }
@@ -234,12 +234,12 @@ pub struct TraitDefInfo {
 pub struct ExportedTraitDef {
     pub visibility: Visibility,
     pub name: String,
-    pub module_path: Option<String>,
+    pub module_path: String,
     pub type_var: String,
     pub type_var_id: TypeVarId,
     /// 0 = kind *, 1 = * -> *, etc.
     pub type_var_arity: usize,
-    pub superclasses: Vec<String>,
+    pub superclasses: Vec<TraitName>,
     pub methods: Vec<ExportedTraitMethod>,
 }
 
@@ -260,8 +260,7 @@ pub struct InstanceMethod {
 
 #[derive(Clone)]
 pub struct InstanceDefInfo {
-    pub trait_name: String,
-    pub trait_id: TraitName,
+    pub trait_name: TraitName,
     pub target_type_name: String,
     pub target_type: Type,
     pub type_var_ids: HashMap<String, TypeVarId>,
@@ -330,7 +329,7 @@ pub struct SumDecl {
 }
 
 pub struct TypedModule {
-    pub module_path: Option<String>,
+    pub module_path: String,
     pub fn_types: Vec<FnTypeEntry>,
     /// Public API: only locally-defined pub functions, pub (transparent) constructors,
     /// and trait instance methods. Used by downstream importers.
@@ -340,9 +339,9 @@ pub struct TypedModule {
     pub instance_defs: Vec<InstanceDefInfo>,
     /// Instance definitions imported from dependency modules.
     pub imported_instance_defs: Vec<InstanceDefInfo>,
-    pub fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
+    pub fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     /// TypeVarId-based constraint requirements inherited from imported modules.
-    pub imported_fn_constraint_requirements: HashMap<String, Vec<(String, TypeVarId)>>,
+    pub imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
     /// Extern java type bindings: (krypton_name, java_class_dotted).
@@ -379,7 +378,7 @@ impl TypedModule {
     /// Check whether a type name was imported from another module.
     pub fn is_type_imported(&self, name: &str) -> bool {
         self.type_provenance.get(name)
-            .is_some_and(|src| self.module_path.as_deref() != Some(src.as_str()))
+            .is_some_and(|src| self.module_path != *src)
     }
 }
 

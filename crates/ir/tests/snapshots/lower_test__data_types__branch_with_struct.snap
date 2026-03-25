@@ -105,7 +105,7 @@ fn pick(v0: Int) -> Wrapper =
       v5
     }
   in
-  let v1: Dict[Ord, Int] = get_dict Ord[Int]
+  let v1: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v2: Bool = call lt(v1, 0, v0)
   jump v6(v2)
 

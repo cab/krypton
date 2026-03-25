@@ -165,11 +165,11 @@ declare render_it: (v7) -> String
 fn main() -> Unit =
   let v0: (Int) -> String = make_closure(render_it, [])
   let_join v7(v5: Bool) =
-    let v1: Dict[Show, Bool] = get_dict Show[Bool]
+    let v1: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v6: Unit = call println(v1, v5)
     v6
   in
-  let v2: Dict[Eq, String] = get_dict Eq[String]
+  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: String = call_closure v0(42)
   let v4: Bool = call eq(v2, v3, "42")
   jump v7(v4)
@@ -262,28 +262,28 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare show: (g) -> String
 
-fn render_it(v0: Dict[Show, v7], v1: v7) -> String =
+fn render_it(v0: Dict[core/show.Show, v7], v1: v7) -> String =
   let v2: String = call show(v0, v1)
   v2
 module core/div
 
 trait Div[g] { div(g, g): g }
-instance Div[Int] {  } [intrinsic]
-instance Div[Float] {  } [intrinsic]
+instance core/div.Div[Int] {  } [intrinsic]
+instance core/div.Div[Float] {  } [intrinsic]
 module core/eq
 
 trait Eq[g] { eq(g, g): Bool }
-instance Eq[Int] {  } [intrinsic]
-instance Eq[Float] {  } [intrinsic]
-instance Eq[String] {  } [intrinsic]
-instance Eq[Bool] {  } [intrinsic]
+instance core/eq.Eq[Int] {  } [intrinsic]
+instance core/eq.Eq[Float] {  } [intrinsic]
+instance core/eq.Eq[String] {  } [intrinsic]
+instance core/eq.Eq[Bool] {  } [intrinsic]
 module core/hash
 
 trait Hash[g] { hash(g): Int }
-instance Hash[Int] {  } [intrinsic]
-instance Hash[Float] {  } [intrinsic]
-instance Hash[String] {  } [intrinsic]
-instance Hash[Bool] {  } [intrinsic]
+instance core/hash.Hash[Int] {  } [intrinsic]
+instance core/hash.Hash[Float] {  } [intrinsic]
+instance core/hash.Hash[String] {  } [intrinsic]
+instance core/hash.Hash[Bool] {  } [intrinsic]
 module core/io
 
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
@@ -298,12 +298,12 @@ declare raw_print: (Object) -> Unit
 declare raw_println: (Object) -> Unit
 declare show: (g) -> String
 
-fn println(v0: Dict[Show, m], v1: m) -> Unit =
+fn println(v0: Dict[core/show.Show, m], v1: m) -> Unit =
   let v2: String = call show(v0, v1)
   let v3: Unit = call raw_println(v2)
   v3
 
-fn print(v4: Dict[Show, t], v5: t) -> Unit =
+fn print(v4: Dict[core/show.Show, t], v5: t) -> Unit =
   let v6: String = call show(v4, v5)
   let v7: Unit = call raw_print(v6)
   v7
@@ -453,7 +453,7 @@ fn split(v60: List[h4]) -> (List[h4], List[h4]) =
       }
   }
 
-fn merge_by(v84: Dict[Ord, a5], v85: List[y4], v86: List[y4], v87: (y4) -> a5) -> List[y4] =
+fn merge_by(v84: Dict[core/ord.Ord, a5], v85: List[y4], v86: List[y4], v87: (y4) -> a5) -> List[y4] =
   switch v85 {
     1 ->
       v86
@@ -482,7 +482,7 @@ fn merge_by(v84: Dict[Ord, a5], v85: List[y4], v86: List[y4], v87: (y4) -> a5) -
       }
   }
 
-fn sort_by(v103: Dict[Ord, n5], v104: List[y5], v105: (y5) -> n5) -> List[y5] =
+fn sort_by(v103: Dict[core/ord.Ord, n5], v104: List[y5], v105: (y5) -> n5) -> List[y5] =
   switch v104 {
     1 ->
       let v106: ~List[y5] = construct List::Nil#1()
@@ -565,13 +565,13 @@ fn empty() -> Map[t8, u8] =
   let v0: Map[t8, u8] = call staticEmpty()
   v0
 
-fn put(v1: Dict[Eq, y8], v2: Dict[Hash, y8], v3: Map[y8, z8], v4: y8, v5: z8) -> Map[y8, z8] =
+fn put(v1: Dict[core/eq.Eq, y8], v2: Dict[core/hash.Hash, y8], v3: Map[y8, z8], v4: y8, v5: z8) -> Map[y8, z8] =
   let v6: l9 = v1
   let v7: o9 = v2
   let v8: Map[y8, z8] = call staticPut(v3, v4, v5, v6, v7)
   v8
 
-fn get(v9: Dict[Eq, r9], v10: Dict[Hash, r9], v11: Map[r9, e10], v12: r9) -> Option[e10] =
+fn get(v9: Dict[core/eq.Eq, r9], v10: Dict[core/hash.Hash, r9], v11: Map[r9, e10], v12: r9) -> Option[e10] =
   let v13: Bool = call staticContainsKey(v11, v12)
   if v13 {
     let v14: e10 = call staticGetUnsafe(v11, v12)
@@ -582,11 +582,11 @@ fn get(v9: Dict[Eq, r9], v10: Dict[Hash, r9], v11: Map[r9, e10], v12: r9) -> Opt
     v16
   }
 
-fn delete(v17: Dict[Eq, g10], v18: Dict[Hash, g10], v19: Map[g10, h10], v20: g10) -> Map[g10, h10] =
+fn delete(v17: Dict[core/eq.Eq, g10], v18: Dict[core/hash.Hash, g10], v19: Map[g10, h10], v20: g10) -> Map[g10, h10] =
   let v21: Map[g10, h10] = call staticDelete(v19, v20)
   v21
 
-fn contains(v22: Dict[Eq, p10], v23: Dict[Hash, p10], v24: Map[p10, q10], v25: p10) -> Bool =
+fn contains(v22: Dict[core/eq.Eq, p10], v23: Dict[core/hash.Hash, p10], v24: Map[p10, q10], v25: p10) -> Bool =
   let v26: Bool = call staticContainsKey(v24, v25)
   v26
 
@@ -615,7 +615,7 @@ fn entries_go(v33: Object, v34: Int, v35: List[(p11, q11)]) -> List[(p11, q11)] 
       v45
     }
   in
-  let v36: Dict[Ord, Int] = get_dict Ord[Int]
+  let v36: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v37: Bool = call lt(v36, v34, 0)
   jump v46(v37)
 
@@ -630,7 +630,7 @@ fn entries(v47: Map[k12, l12]) -> List[(k12, l12)] =
   let v51: ~List[(k12, l12)] = construct List::Nil#1()
   jump v54(v51)
 
-fn from_list(v55: Dict[Eq, e13], v56: Dict[Hash, e13], v57: List[(e13, f13)]) -> Map[e13, f13] =
+fn from_list(v55: Dict[core/eq.Eq, e13], v56: Dict[core/hash.Hash, e13], v57: List[(e13, f13)]) -> Map[e13, f13] =
   let v58: Map[e13, f13] = call empty()
   let v66: (Map[e13, f13], (e13, f13)) -> Map[e13, f13] = make_closure(lambda$40, [v55, v56])
   let v67: Map[e13, f13] = call fold(v57, v58, v66)
@@ -640,11 +640,11 @@ fn size(v68: Map[l13, m13]) -> Int =
   let v69: Int = call staticSize(v68)
   v69
 
-fn merge(v70: Dict[Eq, r13], v71: Dict[Hash, r13], v72: Map[r13, s13], v73: Map[r13, s13]) -> Map[r13, s13] =
+fn merge(v70: Dict[core/eq.Eq, r13], v71: Dict[core/hash.Hash, r13], v72: Map[r13, s13], v73: Map[r13, s13]) -> Map[r13, s13] =
   let v74: Map[r13, s13] = call staticMerge(v72, v73)
   v74
 
-fn lambda$40(v59: Dict[Eq, e13], v60: Dict[Hash, e13], v61: Map[e13, f13], v62: (e13, f13)) -> Map[e13, f13] =
+fn lambda$40(v59: Dict[core/eq.Eq, e13], v60: Dict[core/hash.Hash, e13], v61: Map[e13, f13], v62: (e13, f13)) -> Map[e13, f13] =
   let v63: e13 = tuple_project v62.0
   let v64: f13 = tuple_project v62.1
   let v65: Map[e13, f13] = call put(v59, v60, v61, v63, v64)
@@ -652,17 +652,17 @@ fn lambda$40(v59: Dict[Eq, e13], v60: Dict[Hash, e13], v61: Map[e13, f13], v62: 
 module core/mul
 
 trait Mul[g] { mul(g, g): g }
-instance Mul[Int] {  } [intrinsic]
-instance Mul[Float] {  } [intrinsic]
+instance core/mul.Mul[Int] {  } [intrinsic]
+instance core/mul.Mul[Float] {  } [intrinsic]
 module core/neg
 
 trait Neg[g] { neg(g): g }
-instance Neg[Int] {  } [intrinsic]
-instance Neg[Float] {  } [intrinsic]
+instance core/neg.Neg[Int] {  } [intrinsic]
+instance core/neg.Neg[Float] {  } [intrinsic]
 module core/option
 
 type Option[g] = Some#0(g) | None#1
-instance Show[Option] { show=f1 }
+instance core/show.Show[Option] { show=f1 }
 declare panic
 declare show
 
@@ -675,7 +675,7 @@ fn unwrap(v0: Option[o]) -> o =
       v2
   }
 
-fn Show$$Option$$show(v3: Dict[Show, g], v4: Option[g]) -> String =
+fn Show$$Option$$show(v3: Dict[core/show.Show, g], v4: Option[g]) -> String =
   switch v4 {
     0 (v5: g) ->
       let v6: String = call show(v3, v5)
@@ -688,8 +688,8 @@ fn Show$$Option$$show(v3: Dict[Show, g], v4: Option[g]) -> String =
 module core/ord
 
 trait Ord[h] { lt(h, h): Bool }
-instance Ord[Int] {  } [intrinsic]
-instance Ord[Float] {  } [intrinsic]
+instance core/ord.Ord[Int] {  } [intrinsic]
+instance core/ord.Ord[Float] {  } [intrinsic]
 module core/ordering
 
 type Ordering = LT#0 | EQ#1 | GT#2
@@ -708,21 +708,21 @@ type Result[g, h] = Ok#0(h) | Err#1(g)
 module core/semigroup
 
 trait Semigroup[g] { combine(g, g): g }
-instance Semigroup[Int] {  } [intrinsic]
-instance Semigroup[Float] {  } [intrinsic]
-instance Semigroup[String] {  } [intrinsic]
+instance core/semigroup.Semigroup[Int] {  } [intrinsic]
+instance core/semigroup.Semigroup[Float] {  } [intrinsic]
+instance core/semigroup.Semigroup[String] {  } [intrinsic]
 module core/show
 
 trait Show[g] { show(g): String }
-instance Show[Int] {  } [intrinsic]
-instance Show[Float] {  } [intrinsic]
-instance Show[Bool] {  } [intrinsic]
-instance Show[String] {  } [intrinsic]
+instance core/show.Show[Int] {  } [intrinsic]
+instance core/show.Show[Float] {  } [intrinsic]
+instance core/show.Show[Bool] {  } [intrinsic]
+instance core/show.Show[String] {  } [intrinsic]
 module core/sub
 
 trait Sub[g] { sub(g, g): g }
-instance Sub[Int] {  } [intrinsic]
-instance Sub[Float] {  } [intrinsic]
+instance core/sub.Sub[Int] {  } [intrinsic]
+instance core/sub.Sub[Float] {  } [intrinsic]
 module core/vec
 
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
@@ -774,13 +774,13 @@ fn nth(v2: Vec[s6], v3: Int) -> Option[s6] =
           v14
         }
       in
-      let v8: Dict[Ord, Int] = get_dict Ord[Int]
+      let v8: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
       let v9: Int = call staticLength(v2)
       let v10: Bool = call lt(v8, v3, v9)
       jump v15(v10)
     }
   in
-  let v4: Dict[Ord, Int] = get_dict Ord[Int]
+  let v4: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v5: Bool = call lt(v4, v3, 0)
   jump v16(v5)
 
@@ -796,7 +796,7 @@ fn vec_from_vec_go(v17: Vec[a7], v18: Int, v19: List[a7]) -> List[a7] =
       v26
     }
   in
-  let v20: Dict[Ord, Int] = get_dict Ord[Int]
+  let v20: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v21: Bool = call lt(v20, v18, 0)
   jump v27(v21)
 
@@ -841,7 +841,7 @@ fn last(v48: Vec[p8]) -> Option[p8] =
       v56
     }
   in
-  let v50: Dict[Ord, Int] = get_dict Ord[Int]
+  let v50: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v51: Bool = call lt(v50, v49, 1)
   jump v57(v51)
 
@@ -862,7 +862,7 @@ fn fold(v68: Vec[o9], v69: x9, v70: (x9, o9) -> x9) -> x9 =
   let v72: x9 = call list_fold(v71, v69, v70)
   v72
 
-fn sort_by(v73: Dict[Ord, a10], v74: Vec[z9], v75: (z9) -> a10) -> Vec[z9] =
+fn sort_by(v73: Dict[core/ord.Ord, a10], v74: Vec[z9], v75: (z9) -> a10) -> Vec[z9] =
   let v76: List[z9] = call to_list(v74)
   let v77: List[z9] = call list_sort_by(v73, v76, v75)
   let v78: Vec[z9] = call from_list(v77)

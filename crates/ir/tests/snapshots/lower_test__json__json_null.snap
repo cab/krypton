@@ -241,16 +241,16 @@ fn main() -> Unit =
     0 (v3: d) ->
       switch v3 {
         0 ->
-          let v4: Dict[Show, String] = get_dict Show[String]
+          let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
           let v5: Unit = call println(v4, v0)
           v5
         _ ->
-          let v6: Dict[Show, String] = get_dict Show[String]
+          let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
           let v7: Unit = call println(v6, "FAIL")
           v7
       }
     _ ->
-      let v8: Dict[Show, String] = get_dict Show[String]
+      let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v9: Unit = call println(v8, "FAIL")
       v9
   }

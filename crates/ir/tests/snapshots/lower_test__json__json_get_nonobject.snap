@@ -236,11 +236,11 @@ fn main() -> Unit =
   let v1: Option[Json] = call json_get(v0, "x")
   switch v1 {
     1 ->
-      let v2: Dict[Show, String] = get_dict Show[String]
+      let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v3: Unit = call println(v2, "None")
       v3
     0 (v4: Json) ->
-      let v5: Dict[Show, String] = get_dict Show[String]
+      let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v6: Unit = call println(v5, "FAIL")
       v6
   }

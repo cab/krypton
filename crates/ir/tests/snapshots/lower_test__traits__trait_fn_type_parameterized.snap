@@ -105,12 +105,12 @@ fn main() -> Unit =
   let v1: () -> String = make_closure(f, [])
   let v2: Dict[Test, () -> String] = get_dict Test[() -> String]
   let v3: String = call test(v2, v1)
-  let v4: Dict[Show, String] = get_dict Show[String]
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v4, v3)
   let v7: (Int) -> String = make_closure(g, [])
   let v8: Dict[Test, (Int) -> String] = get_dict Test[(Int) -> String]
   let v9: String = call test(v8, v7)
-  let v6: Dict[Show, String] = get_dict Show[String]
+  let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v10: Unit = call println(v6, v9)
   v10
 

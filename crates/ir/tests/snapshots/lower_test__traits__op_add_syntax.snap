@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_add_syntax
 
 struct Vec2 { x: Int, y: Int }
-instance Semigroup[Vec2] { combine=f1 }
+instance core/semigroup.Semigroup[Vec2] { combine=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -107,7 +107,7 @@ fn main() -> Unit =
     let v7: Int = project v6.0
     jump v11(v7)
   in
-  let v4: Dict[Semigroup, Vec2] = get_dict Semigroup[Vec2]
+  let v4: Dict[core/semigroup.Semigroup, Vec2] = get_dict core/semigroup.Semigroup[Vec2]
   let v5: Vec2 = call combine(v4, v0, v1)
   jump v8(v5)
 

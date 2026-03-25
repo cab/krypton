@@ -98,7 +98,7 @@ fn make_fn(v0: ~String) -> ~() -> String =
 fn main() -> Unit =
   let v4: ~() -> String = call make_fn("hello")
   let v5: String = call_closure v4()
-  let v3: Dict[Show, String] = get_dict Show[String]
+  let v3: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v6: Unit = call println(v3, v5)
   v6
 

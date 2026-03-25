@@ -163,11 +163,11 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let_join v11(v9: Bool) =
-    let v0: Dict[Show, Bool] = get_dict Show[Bool]
+    let v0: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v10: Unit = call println(v0, v9)
     v10
   in
-  let v1: Dict[Eq, Dir] = get_dict Eq[Dir]
+  let v1: Dict[core/eq.Eq, Dir] = get_dict core/eq.Eq[Dir]
   let_join v8(v3: ~Dir) =
     let_join v7(v5: ~Dir) =
       let v6: Bool = call eq(v1, v3, v5)

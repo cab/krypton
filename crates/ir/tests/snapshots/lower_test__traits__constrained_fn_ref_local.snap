@@ -103,18 +103,18 @@ declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 declare show: (g) -> String
 
-fn show_it(v0: Dict[Show, v7], v1: v7) -> String =
+fn show_it(v0: Dict[core/show.Show, v7], v1: v7) -> String =
   let v2: String = call show(v0, v1)
   v2
 
 fn main() -> Unit =
   let v3: (Int) -> String = make_closure(show_it, [])
   let_join v10(v8: Bool) =
-    let v4: Dict[Show, Bool] = get_dict Show[Bool]
+    let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v9: Unit = call println(v4, v8)
     v9
   in
-  let v5: Dict[Eq, String] = get_dict Eq[String]
+  let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v6: String = call_closure v3(42)
   let v7: Bool = call eq(v5, v6, "42")
   jump v10(v7)

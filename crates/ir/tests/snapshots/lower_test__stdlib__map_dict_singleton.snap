@@ -142,41 +142,41 @@ declare size: (Map[l13, m13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
-  let v2: Dict[Eq, String] = get_dict Eq[String]
-  let v3: Dict[Hash, String] = get_dict Hash[String]
+  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v4: Map[String, Int] = call put(v2, v3, v1, "a", 42)
-  let v5: Dict[Eq, String] = get_dict Eq[String]
-  let v6: Dict[Hash, String] = get_dict Hash[String]
+  let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v6: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v0: Map[String, Int] = call put(v5, v6, v4, "b", 99)
   let_join v32(v15: Unit) =
-    let v16: Dict[Eq, String] = get_dict Eq[String]
-    let v17: Dict[Hash, String] = get_dict Hash[String]
+    let v16: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+    let v17: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
     let v18: Bool = call contains(v16, v17, v0, "b")
-    let v19: Dict[Show, Bool] = get_dict Show[Bool]
+    let v19: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v20: Unit = call println(v19, v18)
     let v22: (~String, ~Int) = tuple("hello", 1)
     let v23: (~String, ~Int) = tuple("world", 2)
     let v24: ~List[(~String, ~Int)] = construct List::Nil#1()
     let v25: ~List[(~String, ~Int)] = construct List::Cons#0(v23, v24)
     let v26: ~List[(~String, ~Int)] = construct List::Cons#0(v22, v25)
-    let v27: Dict[Eq, String] = get_dict Eq[String]
-    let v28: Dict[Hash, String] = get_dict Hash[String]
+    let v27: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+    let v28: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
     let v21: Map[String, Int] = call from_list(v27, v28, v26)
     let v30: Int = call size(v21)
-    let v29: Dict[Show, Int] = get_dict Show[Int]
+    let v29: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
     let v31: Unit = call println(v29, v30)
     v31
   in
-  let v7: Dict[Eq, String] = get_dict Eq[String]
-  let v8: Dict[Hash, String] = get_dict Hash[String]
+  let v7: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v8: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v9: Option[Int] = call get(v7, v8, v0, "a")
   switch v9 {
     0 (v10: Int) ->
-      let v11: Dict[Show, Int] = get_dict Show[Int]
+      let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
       let v12: Unit = call println(v11, v10)
       jump v32(v12)
     1 ->
-      let v13: Dict[Show, Int] = get_dict Show[Int]
+      let v13: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
       let v14: Unit = call println(v13, 0)
       jump v32(v14)
   }

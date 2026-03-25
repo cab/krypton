@@ -11,11 +11,12 @@ use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 
 /// Derive a module path from a file path (e.g., "hello.kr" → "hello").
-fn root_module_path(file: &str) -> Option<String> {
+fn root_module_path(file: &str) -> String {
     std::path::Path::new(file)
         .file_stem()
         .and_then(|s| s.to_str())
         .map(|s| s.to_string())
+        .unwrap_or_default()
 }
 
 fn find_runtime_jar() -> Option<PathBuf> {
@@ -461,7 +462,7 @@ fn main() {
                 let mod_name = if i == 0 {
                     stem.to_string()
                 } else {
-                    typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
+                    if typed.module_path.is_empty() { format!("module_{i}") } else { typed.module_path.clone() }
                 };
                 let t = Instant::now();
                 match krypton_ir::lower::lower_module(typed, &mod_name) {

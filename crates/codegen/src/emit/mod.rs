@@ -12,7 +12,7 @@ mod registration;
 use std::collections::HashMap;
 
 use krypton_typechecker::typed_ast::TypedModule;
-use krypton_ir::{Type, TypeVarId};
+use krypton_ir::{TraitName, Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method,
@@ -65,15 +65,16 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
 
 /// Qualify a type name using the module's path (IR version).
 /// IR only contains locally-defined types, so no type_provenance lookup needed.
-fn qualify_ir(module_path: &Option<String>, bare_name: &str) -> String {
-    match module_path.as_deref() {
-        Some(path) => format!("{path}/{bare_name}"),
-        None => bare_name.to_string(),
+fn qualify_ir(module_path: &str, bare_name: &str) -> String {
+    if module_path.is_empty() {
+        bare_name.to_string()
+    } else {
+        format!("{module_path}/{bare_name}")
     }
 }
 
 /// Qualify a name using cross-module provenance, falling back to module_path for local names.
-fn qualify_with_provenance(module_path: &Option<String>, bare_name: &str, type_provenance: &HashMap<String, String>) -> String {
+fn qualify_with_provenance(module_path: &str, bare_name: &str, type_provenance: &HashMap<String, String>) -> String {
     if let Some(qualified) = type_provenance.get(bare_name) {
         return qualified.clone();
     }
@@ -119,8 +120,11 @@ pub fn compile_modules(
     // Lower each TypedModule to an IR Module.
     let mut ir_modules: Vec<krypton_ir::Module> = Vec::new();
     let mut typed_with_ir: Vec<(&TypedModule, usize)> = Vec::new(); // (typed_module, ir_index)
+    // The first module is the root/main module; subsequent ones are library modules.
+    let root_module_path = typed_modules.first().map(|tm| tm.module_path.as_str()).unwrap_or("");
     for tm in typed_modules {
-        let name = tm.module_path.as_deref().unwrap_or(main_class_name);
+        let is_root = tm.module_path == root_module_path;
+        let name = if is_root { main_class_name } else { &tm.module_path };
         let ir = krypton_ir::lower::lower_module(tm, name)
             .map_err(|e| CodegenError::TypeError(
                 format!("IR lowering error in module {name}: {e}"), None,
@@ -136,7 +140,8 @@ pub fn compile_modules(
     // bare names when module_path is None.
     let mut global_type_provenance: HashMap<String, String> = HashMap::new();
     for ir_module in &ir_modules {
-        if let Some(path) = &ir_module.module_path {
+        if ir_module.name != main_class_name {
+            let path = &ir_module.module_path;
             for trait_def in &ir_module.traits {
                 if !trait_def.is_imported {
                     global_type_provenance.entry(trait_def.name.clone())
@@ -155,14 +160,14 @@ pub fn compile_modules(
     }
 
     // Build instance class name map from all library modules
-    let mut instance_class_map: HashMap<(String, String), ImportedInstanceInfo> = HashMap::new();
+    let mut instance_class_map: HashMap<(TraitName, String), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
     for ir_module in &ir_modules {
-        if ir_module.module_path.is_some() {
+        if ir_module.name != main_class_name {
             for inst in &ir_module.instances {
                 if inst.is_imported { continue; }
-                if intrinsic_registry.get(&inst.trait_name, &inst.target_type_name).is_some() { continue; }
-                let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name, &global_type_provenance);
+                if intrinsic_registry.get(&inst.trait_name.name, &inst.target_type_name).is_some() { continue; }
+                let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name.name, &global_type_provenance);
                 let class_name = format!("{}$${}", q_trait, inst.target_type_name);
                 let requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
                     .map(|(trait_name, type_var)| DictRequirement {
@@ -212,15 +217,17 @@ pub fn compile_modules(
     // Compile all library modules
     for &(typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
-        if let Some(path) = &ir_module.module_path {
+        if ir_module.name != main_class_name {
+            let path = &ir_module.module_path;
             let empty_map = HashMap::new();
             let classes = compile_module_inner(ir_module, &ir_modules, path, false, &empty_map, &global_sum_types, &global_type_provenance)
                 .map_err(|e| {
-                    if let (Some(p), Some(s)) = (&typed_module.module_path, &typed_module.module_source) {
-                        e.with_source(p.clone(), s.clone())
-                    } else {
-                        e
+                    if !typed_module.module_path.is_empty() {
+                        if let Some(s) = &typed_module.module_source {
+                            return e.with_source(typed_module.module_path.clone(), s.clone());
+                        }
                     }
+                    e
                 })?;
             all_classes.extend(classes);
         }
@@ -229,7 +236,7 @@ pub fn compile_modules(
     // Compile main module with instance map
     for &(_typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
-        if ir_module.module_path.is_none() {
+        if ir_module.name == main_class_name {
             let classes = compile_module_inner(ir_module, &ir_modules, main_class_name, true, &instance_class_map, &global_sum_types, &global_type_provenance)?;
             all_classes.extend(classes);
         }
@@ -243,7 +250,7 @@ fn compile_module_inner(
     all_ir_modules: &[krypton_ir::Module],
     class_name: &str,
     is_main: bool,
-    imported_instances: &HashMap<(String, String), ImportedInstanceInfo>,
+    imported_instances: &HashMap<(TraitName, String), ImportedInstanceInfo>,
     global_sum_types: &HashMap<String, String>,
     type_provenance: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {

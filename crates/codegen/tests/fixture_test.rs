@@ -32,7 +32,7 @@ fn run_program_with_resolver(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, resolver, None).unwrap_or_else(|e| {
+    let typed_modules = infer_module(&module, resolver, String::new()).unwrap_or_else(|e| {
         let rendered = render_infer_error(fixture_name, source, &e);
         panic!("fixture {fixture_name}: type check failed:\n{rendered}");
     });
@@ -111,7 +111,7 @@ fn codegen_fixture(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, None).unwrap_or_else(|e| {
+                let typed_modules = infer_module(&module, &resolver, String::new()).unwrap_or_else(|e| {
                     let rendered = render_infer_error(&name, &fixture.source, &e);
                     panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                 });
@@ -155,7 +155,7 @@ fn codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, None).unwrap_or_else(|e| {
+                let typed_modules = infer_module(&module, &resolver, String::new()).unwrap_or_else(|e| {
                     let rendered = render_infer_error(&name, &fixture.source, &e);
                     panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                 });

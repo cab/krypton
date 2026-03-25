@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module resources__resource_indirect_consume
 
 type Handle = MkHandle#0(String)
-instance Resource[Handle] { close=f2 }
+instance core/resource.Resource[Handle] { close=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -96,7 +96,7 @@ declare close: (~g) -> Unit
 declare println: (m) -> Unit
 
 fn use_handle(v0: ~Handle) -> Unit =
-  let v1: Dict[Resource, Handle] = get_dict Resource[Handle]
+  let v1: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
   let v2: Unit = call close(v1, v0)
   v2
 

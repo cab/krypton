@@ -103,7 +103,7 @@ fn countdown(v0: Int) -> Int =
         jump v1(v6)
       }
     in
-    let v3: Dict[Eq, Int] = get_dict Eq[Int]
+    let v3: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
     let v4: Bool = call eq(v3, v2, 0)
     jump v7(v4)
   in

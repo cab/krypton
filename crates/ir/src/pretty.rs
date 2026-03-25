@@ -863,7 +863,7 @@ mod tests {
             traits: vec![],
             instances: vec![],
             tuple_arities: std::collections::BTreeSet::new(),
-            module_path: None,
+            module_path: String::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],

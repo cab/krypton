@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::Type;
+use krypton_ir::{TraitName, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 use ristretto_classfile::Method;
 
@@ -488,8 +488,28 @@ impl Compiler {
                 })
                 .collect();
 
+            // Build TraitName from the qualified trait path
+            let trait_key = if trait_def.is_imported {
+                // For imported traits, extract module_path from the qualified name
+                if let Some(pos) = qualified_trait.rfind('/') {
+                    TraitName {
+                        module_path: qualified_trait[..pos].to_string(),
+                        name: trait_def.name.clone(),
+                    }
+                } else {
+                    TraitName {
+                        module_path: String::new(),
+                        name: trait_def.name.clone(),
+                    }
+                }
+            } else {
+                TraitName {
+                    module_path: ir_module.module_path.clone(),
+                    name: trait_def.name.clone(),
+                }
+            };
             self.traits.trait_dispatch.insert(
-                trait_def.name.clone(),
+                trait_key,
                 TraitDispatchInfo {
                     interface_class: iface_class,
                     method_refs,
@@ -515,7 +535,11 @@ impl Compiler {
             .collect();
         let registry = intrinsics::IntrinsicRegistry::new();
         for entry in registry.iter() {
-            if self.traits.trait_dispatch.contains_key(entry.trait_name) {
+            // Find the TraitName key matching this intrinsic's bare trait name
+            let trait_key = self.traits.trait_dispatch.keys()
+                .find(|tn| tn.name == entry.trait_name)
+                .cloned();
+            if let Some(trait_key) = trait_key {
                 let q_trait = qualify_with_provenance(
                     &ir_module.module_path,
                     entry.trait_name,
@@ -542,7 +566,7 @@ impl Compiler {
                         .add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
                 let builtin_type = name_to_builtin_type(entry.type_name);
                 self.traits.instance_singletons.insert(
-                    (entry.trait_name.to_string(), builtin_type),
+                    (trait_key, builtin_type),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             }
@@ -552,7 +576,7 @@ impl Compiler {
 
     pub(super) fn register_imported_instances(
         &mut self,
-        imported_instances: &HashMap<(String, String), ImportedInstanceInfo>,
+        imported_instances: &HashMap<(TraitName, String), ImportedInstanceInfo>,
     ) -> Result<(), CodegenError> {
         for ((trait_name, _type_name), imported_instance) in imported_instances {
             let inst_class_idx = self.cp.add_class(&imported_instance.class_name)?;
@@ -600,7 +624,7 @@ impl Compiler {
                 continue;
             }
             let q_trait =
-                qualify_with_provenance(&ir_module.module_path, &inst.trait_name, type_provenance);
+                qualify_with_provenance(&ir_module.module_path, &inst.trait_name.name, type_provenance);
             let instance_class_name = format!("{}$${}", q_trait, inst.target_type_name);
             let dict_requirements: Vec<DictRequirement> = inst
                 .sub_dict_requirements
@@ -619,7 +643,7 @@ impl Compiler {
             for (method_name, fn_id) in &inst.method_fn_ids {
                 let mangled = format!(
                     "{}$${}$${}",
-                    inst.trait_name, inst.target_type_name, method_name
+                    inst.trait_name.name, inst.target_type_name, method_name
                 );
 
                 // Look up the FnDef to get param/return types

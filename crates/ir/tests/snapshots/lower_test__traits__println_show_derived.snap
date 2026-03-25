@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__println_show_derived
 
 type MyOption[a] = MySome#0(a) | MyNone#1
-instance Show[MyOption] { show=f1 }
+instance core/show.Show[MyOption] { show=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -106,12 +106,12 @@ declare show: (g) -> String
 
 fn main() -> Unit =
   let v2: ~MyOption[Int] = construct MyOption::MySome#0(1)
-  let v0: Dict[Show, Int] = get_dict Show[Int]
-  let v1: Dict[Show, MyOption[Int]] = make_dict Show[MyOption[Int]](v0)
+  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v1: Dict[core/show.Show, MyOption[Int]] = make_dict core/show.Show[MyOption[Int]](v0)
   let v3: Unit = call println(v1, v2)
   v3
 
-fn Show$$MyOption$$show(v4: Dict[Show, k7], v5: MyOption[k7]) -> String =
+fn Show$$MyOption$$show(v4: Dict[core/show.Show, k7], v5: MyOption[k7]) -> String =
   switch v5 {
     0 (v6: k7) ->
       let v7: String = call show(v4, v6)

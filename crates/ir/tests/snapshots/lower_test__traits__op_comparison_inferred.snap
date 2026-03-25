@@ -103,15 +103,15 @@ declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 declare show: (g) -> String
 
-fn is_equal(v0: Dict[Eq, v7], v1: v7, v2: v7) -> Bool =
+fn is_equal(v0: Dict[core/eq.Eq, v7], v1: v7, v2: v7) -> Bool =
   let v3: Bool = call eq(v0, v1, v2)
   v3
 
 fn main() -> Unit =
-  let v5: Dict[Eq, Int] = get_dict Eq[Int]
+  let v5: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v6: Bool = call is_equal(v5, 1, 1)
-  let v7: Dict[Show, Bool] = get_dict Show[Bool]
+  let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v8: String = call show(v7, v6)
-  let v4: Dict[Show, String] = get_dict Show[String]
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v9: Unit = call println(v4, v8)
   v9

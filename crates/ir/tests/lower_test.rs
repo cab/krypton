@@ -60,7 +60,7 @@ fn ir_lower(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, &resolver, None)
+    let typed_modules = infer_module(&module, &resolver, String::new())
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     let ir_module = lower_module(&typed_modules[0], &name)
@@ -94,7 +94,7 @@ fn ir_link(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, &resolver, None)
+    let typed_modules = infer_module(&module, &resolver, String::new())
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     // Lower and lint each module, then concatenate output.
@@ -103,7 +103,7 @@ fn ir_link(
         let mod_name = if i == 0 {
             stem.clone()
         } else {
-            typed.module_path.clone().unwrap_or_else(|| format!("module_{i}"))
+            if typed.module_path.is_empty() { format!("module_{i}") } else { typed.module_path.clone() }
         };
         let ir_module = lower_module(typed, &mod_name)
             .unwrap_or_else(|e| panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}"));

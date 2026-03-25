@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{Type, TypeVarId};
+use krypton_ir::{TraitName, Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo};
@@ -141,7 +141,7 @@ impl Compiler {
 
     pub(super) fn emit_dict_argument_for_type(
         &mut self,
-        trait_name: &str,
+        trait_name: &TraitName,
         ty: &Type,
         pushed_class: u16,
     ) -> Result<(), CodegenError> {
@@ -174,8 +174,8 @@ impl Compiler {
 
         let lookup_type = ty.strip_own();
         // Try full type first (concrete instances), then head-only (HKT instances like Functor[Box])
-        let singleton_key = (trait_name.to_string(), lookup_type.clone());
-        let head_key = (trait_name.to_string(), Type::Named(krypton_ir::head_type_name(ty), vec![]));
+        let singleton_key = (trait_name.clone(), lookup_type.clone());
+        let head_key = (trait_name.clone(), Type::Named(krypton_ir::head_type_name(ty), vec![]));
         if let Some(singleton) = self
             .traits
             .instance_singletons

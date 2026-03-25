@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use krypton_parser::ast::Span;
-use krypton_ir::{Type, TypeVarId};
+use krypton_ir::{TraitName, Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
 
@@ -252,41 +252,49 @@ pub(super) struct InstanceSingletonInfo {
 
 /// Trait dispatch state for codegen.
 pub(super) struct TraitState {
-    pub(super) trait_dispatch: HashMap<String, TraitDispatchInfo>,
-    pub(super) instance_singletons: HashMap<(String, Type), InstanceSingletonInfo>,
+    pub(super) trait_dispatch: HashMap<TraitName, TraitDispatchInfo>,
+    pub(super) instance_singletons: HashMap<(TraitName, Type), InstanceSingletonInfo>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
-    pub(super) dict_locals: HashMap<(String, TypeVarId), u16>,
-    pub(super) parameterized_instances: HashMap<String, Vec<ParameterizedInstanceInfo>>,
+    pub(super) dict_locals: HashMap<(TraitName, TypeVarId), u16>,
+    pub(super) parameterized_instances: HashMap<TraitName, Vec<ParameterizedInstanceInfo>>,
 }
 
 impl TraitState {
     /// Look up a dict local by trait name and type variable ID.
-    pub(super) fn get_dict_local(&self, trait_name: &str, var_id: TypeVarId) -> Option<u16> {
-        self.dict_locals.get(&(trait_name.to_string(), var_id)).copied()
+    pub(super) fn get_dict_local(&self, trait_name: &TraitName, var_id: TypeVarId) -> Option<u16> {
+        self.dict_locals.get(&(trait_name.clone(), var_id)).copied()
     }
 
     /// Look up a dict local by trait name only (for single-constraint lookups like trait_dict).
     /// Returns the first match if multiple exist.
-    pub(super) fn get_dict_local_by_trait(&self, trait_name: &str) -> Option<u16> {
+    pub(super) fn get_dict_local_by_trait(&self, trait_name: &TraitName) -> Option<u16> {
         self.dict_locals.iter()
             .find(|((tn, _), _)| tn == trait_name)
             .map(|(_, &slot)| slot)
     }
 
+    /// Look up a dict local by bare trait name (matches TraitName.name field).
+    /// Used for legacy trait_dict lookups where only the bare name is available.
+    pub(super) fn get_dict_local_by_bare_name(&self, bare_name: &str) -> Option<u16> {
+        self.dict_locals.iter()
+            .find(|((tn, _), _)| tn.name == bare_name)
+            .map(|(_, &slot)| slot)
+    }
+
     /// Check if any dict local exists for the given trait name.
-    pub(super) fn has_dict_for_trait(&self, trait_name: &str) -> bool {
+    pub(super) fn has_dict_for_trait(&self, trait_name: &TraitName) -> bool {
         self.dict_locals.keys().any(|(tn, _)| tn == trait_name)
     }
 }
 
 #[derive(Clone)]
 pub(super) struct DictRequirement {
-    pub(super) trait_name: String,
+    pub(super) trait_name: TraitName,
     pub(super) type_var: TypeVarId,
 }
 
 impl DictRequirement {
-    pub(super) fn trait_name(&self) -> &str {
+    pub(super) fn trait_name(&self) -> &TraitName {
         &self.trait_name
     }
 
@@ -1044,7 +1052,7 @@ impl Compiler {
                             "trait_dict argument must be a var".to_string(), None)),
                     };
                     let object_class = self.builder.refs.object_class;
-                    if let Some(dict_slot) = self.traits.get_dict_local_by_trait(&trait_name) {
+                    if let Some(dict_slot) = self.traits.get_dict_local_by_bare_name(&trait_name) {
                         self.builder.emit_load(dict_slot, JvmType::StructRef(object_class));
                         return Ok(JvmType::StructRef(object_class));
                     }
@@ -2339,7 +2347,7 @@ impl Compiler {
             let slot = self.builder.next_local;
             let jvm_ty = JvmType::StructRef(self.builder.refs.object_class);
             self.traits.dict_locals.insert(
-                (requirement.trait_name().to_string(), requirement.type_var_id()), slot);
+                (requirement.trait_name().clone(), requirement.type_var_id()), slot);
             fn_params.push((slot, jvm_ty));
             // Also register in var_locals for the IR param (dict params are at the front)
             if di < fn_def.params.len() {

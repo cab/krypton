@@ -94,15 +94,15 @@ declare hash: (g) -> Int
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v1: Dict[Hash, Int] = get_dict Hash[Int]
+  let v1: Dict[core/hash.Hash, Int] = get_dict core/hash.Hash[Int]
   let v0: Int = call hash(v1, 42)
   let_join v9(v7: Bool) =
-    let v2: Dict[Show, Bool] = get_dict Show[Bool]
+    let v2: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v8: Unit = call println(v2, v7)
     v8
   in
-  let v3: Dict[Eq, Int] = get_dict Eq[Int]
-  let v4: Dict[Hash, Int] = get_dict Hash[Int]
+  let v3: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+  let v4: Dict[core/hash.Hash, Int] = get_dict core/hash.Hash[Int]
   let v5: Int = call hash(v4, 42)
   let v6: Bool = call eq(v3, v0, v5)
   jump v9(v6)

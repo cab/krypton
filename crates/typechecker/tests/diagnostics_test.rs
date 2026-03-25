@@ -81,7 +81,7 @@ fn render_module_error_with_resolver(
 ) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, resolver, None) {
+    let err = match infer::infer_module(&module, resolver, String::new()) {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
@@ -402,7 +402,7 @@ fn import_ctor_expr_ok() {
     let src = "import shapes.{Circle}\nfun wrap(x) = Circle(x)\nfun main() -> Int = 0";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, None);
+    let result = infer::infer_module(&module, &Resolver, String::new());
     assert!(
         result.is_ok(),
         "importing constructors and using them in expressions should succeed: {:?}",
@@ -429,7 +429,7 @@ fn import_type_explicitly_allows_annotation() {
     let src = "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, None);
+    let result = infer::infer_module(&module, &Resolver, String::new());
     assert!(
         result.is_ok(),
         "explicitly importing a type should allow it in annotations: {:?}",
@@ -454,7 +454,7 @@ fn parse_error_in_imported_module() {
     let src = "import bad.{f}\nfun main() -> Int = f()";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, &BadParseResolver, None) {
+    let err = match infer::infer_module(&module, &BadParseResolver, String::new()) {
         Ok(_) => panic!("expected a parse error from bad module"),
         Err(e) => e,
     };
@@ -491,7 +491,7 @@ fn type_error_in_imported_module() {
     let src = "import badmod.{f}\nfun main() -> Int = f()";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, &BadTypeResolver, None) {
+    let err = match infer::infer_module(&module, &BadTypeResolver, String::new()) {
         Ok(_) => panic!("expected a type error from badmod"),
         Err(e) => e,
     };
