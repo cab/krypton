@@ -317,6 +317,7 @@ pub struct InstanceDefInfo {
 pub struct ExternFnInfo {
     pub name: String,
     pub java_class: String,
+    pub target: krypton_parser::ast::ExternTarget,
     pub param_types: Vec<Type>,
     pub return_type: Type,
 }

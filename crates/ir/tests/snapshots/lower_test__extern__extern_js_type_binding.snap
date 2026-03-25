@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module extern__extern_js_type_binding
 
-extern java "./runtime/js/array.mjs" push(Object, Object): Unit
+extern js "./runtime/js/array.mjs" push(Object, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

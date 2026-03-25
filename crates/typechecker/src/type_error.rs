@@ -54,6 +54,8 @@ pub enum TypeErrorCode {
     E0311, // Trait method collision
     E0312, // Missing trait bound
     E0313, // Ambiguous trait name
+    E0601, // Extern signature mismatch across targets
+    E0602, // Invalid @nullable return type
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -247,6 +249,17 @@ pub enum TypeError {
         existing_module: String,
         new_module: String,
     },
+    ExternSignatureMismatch {
+        name: String,
+        target1: String,
+        target2: String,
+        type1: Type,
+        type2: Type,
+    },
+    InvalidNullableReturn {
+        name: String,
+        actual_return_type: Type,
+    },
 }
 
 impl TypeError {
@@ -308,6 +321,8 @@ impl TypeError {
             TypeError::TraitMethodCollision { .. } => TypeErrorCode::E0311,
             TypeError::MissingTraitBound { .. } => TypeErrorCode::E0312,
             TypeError::AmbiguousTraitName { .. } => TypeErrorCode::E0313,
+            TypeError::ExternSignatureMismatch { .. } => TypeErrorCode::E0601,
+            TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
         }
     }
 
@@ -520,6 +535,12 @@ impl TypeError {
             }
             TypeError::AmbiguousTraitName { name, .. } => {
                 Some(format!("use `import module.{{{}  as Alias}}` to disambiguate", name))
+            }
+            TypeError::ExternSignatureMismatch { .. } => {
+                Some("extern blocks for different targets must declare identical Krypton-level signatures for the same function".to_string())
+            }
+            TypeError::InvalidNullableReturn { .. } => {
+                Some("@nullable functions must return Option[T] so the compiler can wrap null values".to_string())
             }
         }
     }
@@ -890,6 +911,22 @@ impl fmt::Display for TypeError {
                     f,
                     "ambiguous trait name `{}`: defined in both `{}` and `{}`",
                     name, existing_module, new_module
+                )
+            }
+            TypeError::ExternSignatureMismatch { name, target1, target2, type1, type2 } => {
+                let renamed = renumber_types_for_display(&[type1, type2]);
+                write!(
+                    f,
+                    "extern signature mismatch for `{}`: `extern {}` declares {} but `extern {}` declares {}",
+                    name, target1, renamed[0], target2, renamed[1]
+                )
+            }
+            TypeError::InvalidNullableReturn { name, actual_return_type } => {
+                let actual = actual_return_type.renumber_for_display();
+                write!(
+                    f,
+                    "@nullable on extern function `{}` requires return type Option[T], found {}",
+                    name, actual
                 )
             }
         }

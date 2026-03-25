@@ -4458,12 +4458,18 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         .chain(typed.imported_extern_fns.iter())
     {
         if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
+            let ir_target = match &ext.target {
+                krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
+                    class: ext.java_class.clone(),
+                },
+                krypton_parser::ast::ExternTarget::Js => ExternTarget::Js {
+                    module: ext.java_class.clone(),
+                },
+            };
             extern_fns.push(ExternFnDef {
                 id: fn_id,
                 name: ext.name.clone(),
-                target: ExternTarget::Java {
-                    class: ext.java_class.clone(),
-                },
+                target: ir_target,
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
             });

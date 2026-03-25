@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{Decl, ImportName, Module, Span, TypeDecl, Visibility};
+use krypton_parser::ast::{Decl, ExternTarget, ImportName, Module, Span, TypeDecl, Visibility};
 
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::ExportedTypeInfo;
@@ -607,12 +607,20 @@ impl ModuleInferenceState {
                 }
 
                 let tp_names = type_params.as_slice();
-                let mut fns = process_extern_methods(
-                    module_path, methods, &mut self.env, &mut self.gen, &self.registry, *ext_span, None,
+                let target = match sdecl {
+                    Decl::Extern { target, .. } => target.clone(),
+                    _ => ExternTarget::Java,
+                };
+                let empty_trait_lookup = HashMap::new();
+                let result = process_extern_methods(
+                    module_path, &target, methods, &mut self.env, &mut self.gen, &self.registry,
+                    &empty_trait_lookup, path,
+                    *ext_span, None,
                     &aliases, tp_map.as_ref(), tp_arity.as_ref(),
                     if tp_map.is_some() { Some(tp_names) } else { None },
                 )?;
-                self.imported_extern_fns.append(&mut fns);
+                self.imported_extern_fns.extend(result.extern_fns);
+                // Extern fn constraints from imported modules come through cached.fn_constraint_requirements
             }
         }
 

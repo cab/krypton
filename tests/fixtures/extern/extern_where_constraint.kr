@@ -1,0 +1,5 @@
+# expect: ok
+extern java "krypton.runtime.Collections" {
+    fun sort[a](Vec[a]) -> Vec[a] where a: Ord
+    fun contains[a](Vec[a], a) -> Bool where a: Eq
+}

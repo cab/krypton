@@ -1,0 +1,8 @@
+# expect: error E0601
+extern java "krypton.runtime.KryptonIO" {
+    fun foo(Int) -> String
+}
+
+extern js "./runtime/js/io.mjs" {
+    fun foo(String) -> String
+}

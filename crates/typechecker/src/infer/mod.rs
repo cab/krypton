@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
-    Decl, Expr, ExternMethod, Module, Span, TypeConstraint,
+    Decl, Expr, ExternMethod, ExternTarget, Module, Span, TypeConstraint,
     TypeDecl, TypeDeclKind, TypeExpr, TypeParam, Variant, Visibility,
 };
 
@@ -859,21 +859,31 @@ fn build_type_param_map(
     (map, arity)
 }
 
+/// Result of processing extern methods: function info for codegen + dict requirements.
+pub(super) struct ExternMethodsResult {
+    pub(super) extern_fns: Vec<ExternFnInfo>,
+    /// Dict requirements for extern functions with `where` clauses.
+    pub(super) fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+}
+
 /// Process extern methods from an `extern "class" { ... }` block, binding their
 /// types into the environment and returning `ExternFnInfo` entries for codegen.
 fn process_extern_methods(
     class_name: &str,
+    target: &ExternTarget,
     methods: &[ExternMethod],
     env: &mut TypeEnv,
     gen: &mut TypeVarGen,
     registry: &TypeRegistry,
+    trait_name_lookup: &HashMap<String, TraitName>,
+    module_path_str: &str,
     span: Span,
     name_filter: Option<&HashSet<&str>>,
     aliases: &HashMap<String, String>,
     type_param_map: Option<&HashMap<String, TypeVarId>>,
     type_param_arity: Option<&HashMap<String, usize>>,
     type_param_names: Option<&[String]>,
-) -> Result<Vec<ExternFnInfo>, SpannedTypeError> {
+) -> Result<ExternMethodsResult, SpannedTypeError> {
     let empty_map = HashMap::new();
     let empty_arity = HashMap::new();
     let resolve_map = type_param_map.unwrap_or(&empty_map);
@@ -885,6 +895,7 @@ fn process_extern_methods(
     };
     let has_type_params = type_param_map.is_some();
     let mut extern_fns = Vec::new();
+    let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for method in methods {
         let bind_name = aliases.get(&method.name).unwrap_or(&method.name);
         if let Some(filter) = name_filter {
@@ -894,12 +905,36 @@ fn process_extern_methods(
         }
 
         let mut scheme_vars = base_scheme_vars.clone();
+
+        // Build method-level type param map (merged with block-level)
+        let mut method_resolve_map;
+        let mut method_resolve_arity;
+        let effective_resolve_map: &HashMap<String, TypeVarId>;
+        let effective_resolve_arity: &HashMap<String, usize>;
+        if !method.type_params.is_empty() {
+            method_resolve_map = resolve_map.clone();
+            method_resolve_arity = resolve_arity.clone();
+            for tp_name in &method.type_params {
+                let fresh = gen.fresh();
+                method_resolve_map.insert(tp_name.clone(), fresh);
+                method_resolve_arity.insert(tp_name.clone(), 0);
+                scheme_vars.push(fresh);
+            }
+            effective_resolve_map = &method_resolve_map;
+            effective_resolve_arity = &method_resolve_arity;
+        } else {
+            effective_resolve_map = resolve_map;
+            effective_resolve_arity = resolve_arity;
+        }
+
+        let has_any_type_params = has_type_params || !method.type_params.is_empty();
+
         let mut param_types = Vec::new();
         for ty_expr in &method.param_types {
             let resolved =
-                type_registry::resolve_type_expr(ty_expr, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation, None)
+                type_registry::resolve_type_expr(ty_expr, effective_resolve_map, effective_resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
-            if !has_type_params && matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
+            if !has_any_type_params && matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
                 let fresh = gen.fresh();
                 scheme_vars.push(fresh);
                 param_types.push(Type::Var(fresh));
@@ -909,9 +944,9 @@ fn process_extern_methods(
         }
 
         let return_type =
-            type_registry::resolve_type_expr(&method.return_type, resolve_map, resolve_arity, registry, ResolutionContext::UserAnnotation, None)
+            type_registry::resolve_type_expr(&method.return_type, effective_resolve_map, effective_resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
-        let ret = if !has_type_params && matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
+        let ret = if !has_any_type_params && matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
         {
             let fresh = gen.fresh();
             scheme_vars.push(fresh);
@@ -919,6 +954,20 @@ fn process_extern_methods(
         } else {
             return_type.clone()
         };
+
+        // Validate @nullable: return type must be Option[T]
+        if method.nullable {
+            let is_option = matches!(&ret, Type::Named(n, _) if n == "Option");
+            if !is_option {
+                return Err(spanned(
+                    TypeError::InvalidNullableReturn {
+                        name: bind_name.clone(),
+                        actual_return_type: ret.clone(),
+                    },
+                    method.span,
+                ));
+            }
+        }
 
         let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
         let scheme = if scheme_vars.is_empty() {
@@ -931,6 +980,25 @@ fn process_extern_methods(
             }
         };
         env.bind(bind_name.clone(), scheme);
+
+        // Register where clause dict requirements
+        if !method.where_clauses.is_empty() {
+            let mut requirements = Vec::new();
+            for constraint in &method.where_clauses {
+                if constraint.trait_name == "shared" {
+                    continue;
+                }
+                if let Some(&type_var) = effective_resolve_map.get(&constraint.type_var) {
+                    let tn = trait_name_lookup.get(&constraint.trait_name)
+                        .cloned()
+                        .unwrap_or_else(|| TraitName::new(module_path_str.to_string(), constraint.trait_name.clone()));
+                    requirements.push((tn, type_var));
+                }
+            }
+            if !requirements.is_empty() {
+                fn_constraints.insert(bind_name.clone(), requirements);
+            }
+        }
 
         // Store concrete types for codegen — resolve without type param map so
         // erased positions stay as Object (JVM erasure). Bare type params like `a`
@@ -952,11 +1020,12 @@ fn process_extern_methods(
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),
             java_class: class_name.to_string(),
+            target: target.clone(),
             param_types: concrete_params,
             return_type: codegen_return,
         });
     }
-    Ok(extern_fns)
+    Ok(ExternMethodsResult { extern_fns, fn_constraints })
 }
 
 /// Infer types for all top-level definitions in a module.
@@ -1251,11 +1320,27 @@ impl ModuleInferenceState {
         }
     }
 
-    fn process_local_externs(&mut self, module: &Module) -> Result<(Vec<ExternFnInfo>, Vec<(String, String)>), SpannedTypeError> {
+    fn process_local_externs(&mut self, module: &Module, mod_path: &str) -> Result<(Vec<ExternFnInfo>, Vec<(String, String)>, HashMap<String, Vec<(TraitName, TypeVarId)>>), SpannedTypeError> {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
         let mut extern_java_types: Vec<(String, String)> = Vec::new();
+        let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
+
+        // Build trait name lookup from imported trait defs
+        let mut trait_name_lookup: HashMap<String, TraitName> = HashMap::new();
+        for td in &self.imported_trait_defs {
+            trait_name_lookup.insert(
+                td.name.clone(),
+                TraitName::new(td.module_path.clone(), td.name.clone()),
+            );
+        }
+
+        // Track extern function signatures for cross-target validation
+        // Maps fn name -> (target_name, fn_type, span)
+        let mut seen_extern_sigs: HashMap<String, (String, Type, Span)> = HashMap::new();
+
         for decl in &module.decls {
             if let Decl::Extern {
+                target,
                 module_path,
                 alias,
                 type_params,
@@ -1293,18 +1378,53 @@ impl ModuleInferenceState {
                     }
                 }
 
+                let target_name = match target {
+                    ExternTarget::Java => "java",
+                    ExternTarget::Js => "js",
+                };
+
+                // Snapshot env before processing to extract fn types for cross-target matching
                 let no_aliases = HashMap::new();
                 let tp_names = type_params.as_slice();
-                let mut fns = process_extern_methods(
-                    module_path, methods, &mut self.env, &mut self.gen, &self.registry,
+                let result = process_extern_methods(
+                    module_path, target, methods, &mut self.env, &mut self.gen, &self.registry,
+                    &trait_name_lookup, mod_path,
                     *span, None, &no_aliases,
                     tp_map.as_ref(), tp_arity.as_ref(),
                     if tp_map.is_some() { Some(tp_names) } else { None },
                 )?;
-                extern_fns.append(&mut fns);
+
+                // Cross-target signature matching
+                for ext_fn in &result.extern_fns {
+                    // Look up the type that was bound in env
+                    if let Some(scheme) = self.env.lookup(&ext_fn.name) {
+                        let fn_ty = scheme.ty.clone();
+                        if let Some((prev_target, prev_ty, _prev_span)) = seen_extern_sigs.get(&ext_fn.name) {
+                            if prev_target != target_name && prev_ty != &fn_ty {
+                                return Err(spanned(
+                                    TypeError::ExternSignatureMismatch {
+                                        name: ext_fn.name.clone(),
+                                        target1: prev_target.clone(),
+                                        target2: target_name.to_string(),
+                                        type1: prev_ty.clone(),
+                                        type2: fn_ty.clone(),
+                                    },
+                                    *span,
+                                ));
+                            }
+                        } else {
+                            seen_extern_sigs.insert(ext_fn.name.clone(), (target_name.to_string(), fn_ty, *span));
+                        }
+                    }
+                }
+
+                for (name, reqs) in result.fn_constraints {
+                    extern_fn_constraints.insert(name, reqs);
+                }
+                extern_fns.extend(result.extern_fns);
             }
         }
-        Ok((extern_fns, extern_java_types))
+        Ok((extern_fns, extern_java_types, extern_fn_constraints))
     }
 
     fn cleanup_prelude_shadows(&mut self, module: &Module) {
@@ -3225,7 +3345,7 @@ pub(crate) fn infer_module_inner(
 
     state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let (extern_fns, extern_java_types) = state.process_local_externs(module)?;
+    let (extern_fns, extern_java_types, extern_fn_constraints) = state.process_local_externs(module, &module_path)?;
     state.cleanup_prelude_shadows(module);
     state.preregister_type_names(module);
     let constructor_schemes = state.process_local_type_decls(module)?;
@@ -3250,6 +3370,11 @@ pub(crate) fn infer_module_inner(
             &trait_method_map,
             &module_path,
         )?;
+
+    // Merge extern function where-clause dict requirements
+    for (name, reqs) in extern_fn_constraints {
+        fn_constraint_requirements.entry(name).or_insert(reqs);
+    }
 
     // Phase: impl method type-checking
     let instance_defs = typecheck_impl_methods(

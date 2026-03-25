@@ -2,9 +2,9 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module extern__extern_js_basic
+module extern__extern_method_where
 
-extern js "./runtime/js/io.mjs" raw_println(String): Unit
+extern java "krypton.runtime.Collections" sort(Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

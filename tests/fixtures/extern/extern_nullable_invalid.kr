@@ -1,0 +1,4 @@
+# expect: error E0602
+extern java "java.lang.Integer" {
+    @nullable fun parse(String) -> String
+}
