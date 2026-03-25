@@ -96,26 +96,22 @@ declare eq: (g, g) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v10(v8: Bool) =
-    let v9: Unit = call println(v8)
-    v9
+  let_join v8(v6: Bool) =
+    let v7: Unit = call println(v6)
+    v7
   in
   let v0: Dict[core/eq.Eq, Color] = get_dict core/eq.Eq[Color]
-  let_join v7(v2: ~Color) =
-    let_join v6(v4: ~Color) =
-      let v5: Bool = call eq(v0, v2, v4)
-      jump v10(v5)
-    in
-    let v3: ~Color = construct Color::Green#1()
-    jump v6(v3)
-  in
   let v1: ~Color = construct Color::Red#0()
-  jump v7(v1)
+  let v2: ~Color = v1
+  let v3: ~Color = construct Color::Green#1()
+  let v4: ~Color = v3
+  let v5: Bool = call eq(v0, v2, v4)
+  jump v8(v5)
 
-fn Eq$$Color$$eq(v11: Color, v12: Color) -> Bool =
-  switch v11 {
+fn Eq$$Color$$eq(v9: Color, v10: Color) -> Bool =
+  switch v9 {
     0 ->
-      switch v12 {
+      switch v10 {
         0 ->
           true
         _ ->

@@ -102,12 +102,10 @@ fn unwrap_or(v0: Option[b8], v1: b8) -> b8 =
   }
 
 fn main() -> Unit =
-  let_join v9(v3: ~Option[e8]) =
-    let v5: ~Option[Int] = construct Option::Some#1(42)
-    let v6: Int = call unwrap_or(v5, 0)
-    let v7: Int = call unwrap_or(v3, v6)
-    let v8: Unit = call println(v7)
-    v8
-  in
   let v4: ~Option[e8] = construct Option::None#0()
-  jump v9(v4)
+  let v3: ~Option[e8] = v4
+  let v5: ~Option[Int] = construct Option::Some#1(42)
+  let v6: Int = call unwrap_or(v5, 0)
+  let v7: Int = call unwrap_or(v3, v6)
+  let v8: Unit = call println(v7)
+  v8

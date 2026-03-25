@@ -90,7 +90,5 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 fn test() -> String =
-  let_join v1(v0: ~String) =
-    v0
-  in
-  jump v1("hello")
+  let v0: ~String = "hello"
+  v0

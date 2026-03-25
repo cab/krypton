@@ -92,9 +92,7 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
 fn test(v0: ~String) -> MyList =
-  let_join v4(v2: ~MyList) =
-    let v3: ~MyList = construct MyList::Cons#0(v0, v2)
-    v3
-  in
   let v1: ~MyList = construct MyList::Nil#1()
-  jump v4(v1)
+  let v2: ~MyList = v1
+  let v3: ~MyList = construct MyList::Cons#0(v0, v2)
+  v3

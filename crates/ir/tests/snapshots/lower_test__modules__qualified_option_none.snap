@@ -96,10 +96,8 @@ import core/option/unwrap as __qual$option$unwrap(Option[o]): o
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v4(v0: ~Option[x7]) =
-    let v2: ~Option[Int] = construct Option::Some#0(42)
-    let v3: Unit = call println(v0)
-    v3
-  in
   let v1: ~Option[x7] = construct Option::None#1()
-  jump v4(v1)
+  let v0: ~Option[x7] = v1
+  let v2: ~Option[Int] = construct Option::Some#0(42)
+  let v3: Unit = call println(v0)
+  v3

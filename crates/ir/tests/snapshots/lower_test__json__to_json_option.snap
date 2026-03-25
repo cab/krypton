@@ -233,19 +233,17 @@ declare println: (m) -> Unit
 declare to_json: (o14) -> Json
 
 fn main() -> Unit =
-  let_join v13(v0: ~Option[Int]) =
-    let v2: Dict[core/json.ToJson, Option[Int]] = get_dict core/json.ToJson[Option[Int]]
-    let v3: Json = call to_json(v2, v0)
-    let v4: String = call json_to_string(v3)
-    let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-    let v6: Unit = call println(v5, v4)
-    let v8: ~Option[Int] = construct Option::Some#0(42)
-    let v9: Dict[core/json.ToJson, Option[Int]] = get_dict core/json.ToJson[Option[Int]]
-    let v10: Json = call to_json(v9, v8)
-    let v11: String = call json_to_string(v10)
-    let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-    let v12: Unit = call println(v7, v11)
-    v12
-  in
   let v1: ~Option[Int] = construct Option::None#1()
-  jump v13(v1)
+  let v0: ~Option[Int] = v1
+  let v2: Dict[core/json.ToJson, Option[Int]] = get_dict core/json.ToJson[Option[Int]]
+  let v3: Json = call to_json(v2, v0)
+  let v4: String = call json_to_string(v3)
+  let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v6: Unit = call println(v5, v4)
+  let v8: ~Option[Int] = construct Option::Some#0(42)
+  let v9: Dict[core/json.ToJson, Option[Int]] = get_dict core/json.ToJson[Option[Int]]
+  let v10: Json = call to_json(v9, v8)
+  let v11: String = call json_to_string(v10)
+  let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v12: Unit = call println(v7, v11)
+  v12

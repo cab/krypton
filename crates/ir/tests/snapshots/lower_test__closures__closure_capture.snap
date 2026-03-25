@@ -93,13 +93,11 @@ import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v7(v0: ~Int) =
-    let v1: ~(Int) -> Int = make_closure(lambda$51, [v0])
-    let v5: Int = call_closure v1(5)
-    let v6: Unit = call println(v5)
-    v6
-  in
-  jump v7(10)
+  let v0: ~Int = 10
+  let v1: ~(Int) -> Int = make_closure(lambda$51, [v0])
+  let v5: Int = call_closure v1(5)
+  let v6: Unit = call println(v5)
+  v6
 
 fn lambda$51(v2: ~Int, v3: Int) -> Int =
   let v4: Int = add_int(v3, v2)

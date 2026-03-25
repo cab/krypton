@@ -161,10 +161,8 @@ import trait_lib/Red as Red(): Color
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v4(v0: ~Color) =
-    let v2: Dict[core/show.Show, Color] = get_dict core/show.Show[Color]
-    let v3: Unit = call println(v2, v0)
-    v3
-  in
   let v1: ~Color = construct Color::Red#0()
-  jump v4(v1)
+  let v0: ~Color = v1
+  let v2: Dict[core/show.Show, Color] = get_dict core/show.Show[Color]
+  let v3: Unit = call println(v2, v0)
+  v3

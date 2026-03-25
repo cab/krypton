@@ -151,15 +151,13 @@ import core/ordering/GT as GT(): Ordering
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let_join v4(v1: ~Color) =
-    switch v1 {
-      0 ->
-        let v2: Unit = call println("Red")
-        v2
-      1 ->
-        let v3: Unit = call println("Blue")
-        v3
-    }
-  in
   let v0: ~Color = construct Color::Red#0()
-  jump v4(v0)
+  let v1: ~Color = v0
+  switch v1 {
+    0 ->
+      let v2: Unit = call println("Red")
+      v2
+    1 ->
+      let v3: Unit = call println("Blue")
+      v3
+  }

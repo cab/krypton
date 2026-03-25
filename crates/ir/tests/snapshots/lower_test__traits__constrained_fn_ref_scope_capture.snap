@@ -108,21 +108,19 @@ fn show_it(v0: Dict[core/show.Show, v7], v1: v7) -> String =
   v2
 
 fn use_it(v3: Dict[core/show.Show, a8], v4: a8) -> String =
-  let_join v8(v5: (c8) -> String) =
-    let v7: String = call_closure v5(v4)
-    v7
-  in
   let v6: (c8) -> String = make_closure(show_it, [])
-  jump v8(v6)
+  let v5: (c8) -> String = v6
+  let v7: String = call_closure v5(v4)
+  v7
 
 fn main() -> Unit =
-  let_join v16(v14: Bool) =
-    let v9: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
-    let v15: Unit = call println(v9, v14)
-    v15
+  let_join v15(v13: Bool) =
+    let v8: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+    let v14: Unit = call println(v8, v13)
+    v14
   in
-  let v10: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v12: String = call use_it(v11, 42)
-  let v13: Bool = call eq(v10, v12, "42")
-  jump v16(v13)
+  let v9: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v11: String = call use_it(v10, 42)
+  let v12: Bool = call eq(v9, v11, "42")
+  jump v15(v12)

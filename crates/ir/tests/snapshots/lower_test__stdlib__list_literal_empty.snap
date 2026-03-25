@@ -90,13 +90,11 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 fn main() -> Int =
-  let_join v4(v1: ~List[y7]) =
-    switch v1 {
-      0 (v2: a, v3: List[a]) ->
-        1
-      1 ->
-        0
-    }
-  in
   let v0: ~List[y7] = construct List::Nil#1()
-  jump v4(v0)
+  let v1: ~List[y7] = v0
+  switch v1 {
+    0 (v2: a, v3: List[a]) ->
+      1
+    1 ->
+      0
+  }

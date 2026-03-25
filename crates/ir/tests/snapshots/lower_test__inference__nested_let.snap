@@ -90,8 +90,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 fn main() -> Int =
-  let_join v2(v0: ~Int) =
-    let v1: Int = add_int(v0, 2)
-    v1
-  in
-  jump v2(1)
+  let v0: ~Int = 1
+  let v1: Int = add_int(v0, 2)
+  v1

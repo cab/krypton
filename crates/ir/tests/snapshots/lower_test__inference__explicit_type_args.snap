@@ -109,9 +109,7 @@ fn standalone() -> Int =
   v4
 
 fn method_site(v5: List[Int]) -> List[String] =
-  let_join v9(v7: (Int) -> String) =
-    let v8: List[String] = call map(v5, v7)
-    v8
-  in
   let v6: (Int) -> String = make_closure(stringify, [])
-  jump v9(v6)
+  let v7: (Int) -> String = v6
+  let v8: List[String] = call map(v5, v7)
+  v8

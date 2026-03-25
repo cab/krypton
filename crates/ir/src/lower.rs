@@ -1661,10 +1661,13 @@ impl LowerCtx {
     /// or as a full Expr (for compound expressions like If, Do, nested Let, or atoms).
     fn try_lower_as_simple(&mut self, expr: &TypedExpr) -> Result<LoweredValue, LowerError> {
         match &expr.kind {
-            // Atoms, compound expressions, and short-circuit ops produce Expr trees
-            TypedExprKind::Lit(_)
-            | TypedExprKind::Var(_)
-            | TypedExprKind::If { .. }
+            // Atoms (Lit, Var) produce Simple bindings directly
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {
+                let (bindings, atom) = self.lower_to_atom(expr)?;
+                Ok(LoweredValue::Simple(bindings, SimpleExpr::Atom(atom)))
+            }
+            // Compound expressions and short-circuit ops produce Expr trees
+            TypedExprKind::If { .. }
             | TypedExprKind::Do(_)
             | TypedExprKind::Let { .. }
             | TypedExprKind::Match { .. }
