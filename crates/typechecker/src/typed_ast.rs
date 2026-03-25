@@ -35,11 +35,6 @@ impl QualifiedName {
     pub fn display_name(&self) -> &str {
         &self.local_name
     }
-
-    /// Returns the slash-qualified form, e.g. "core/semigroup/Semigroup".
-    pub fn qualified(&self) -> String {
-        format!("{}/{}", self.module_path, self.local_name)
-    }
 }
 
 impl fmt::Display for QualifiedName {

@@ -21,7 +21,7 @@ use super::trait_class_gen::{
     generate_instance_class, generate_parameterized_instance_class, generate_trait_interface_class,
 };
 use super::{
-    qualify_ir, type_has_vars, type_references_var, ImportedInstanceInfo,
+    qualify_ir, type_has_vars, type_references_var, ImportedInstanceInfo, JvmQualifiedName,
 };
 
 fn name_to_builtin_type(name: &str) -> Type {
@@ -432,7 +432,7 @@ impl Compiler {
         }
 
         for trait_def in &ir_module.traits {
-            let qualified_trait = trait_def.trait_name.qualified();
+            let qualified_trait = trait_def.trait_name.jvm_qualified();
 
             if !trait_def.is_imported {
                 let methods_for_gen: Vec<(String, usize)> = trait_def
@@ -510,7 +510,7 @@ impl Compiler {
                 let class_name = format!("{}/{}$${}", trait_key.module_path, entry.trait_name, entry.type_name);
 
                 // The trait interface class uses the qualified trait name
-                let q_trait = trait_key.qualified();
+                let q_trait = trait_key.jvm_qualified();
                 if local_traits.contains(entry.trait_name) {
                     let bytes = if entry.is_show() {
                         generate_builtin_show_instance_class(&class_name, &q_trait, entry)?
@@ -588,7 +588,7 @@ impl Compiler {
             }
             let instance_class_name = format!("{}/{}$${}", ir_module.module_path, inst.trait_name.local_name, inst.target_type_name);
             // The trait interface class uses the qualified trait name
-            let q_trait = inst.trait_name.qualified();
+            let q_trait = inst.trait_name.jvm_qualified();
             let dict_requirements: Vec<DictRequirement> = inst
                 .sub_dict_requirements
                 .iter()

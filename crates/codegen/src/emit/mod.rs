@@ -23,6 +23,20 @@ pub use compiler::{CodegenError, CodegenErrorKind, JvmType};
 
 use compiler::{Compiler, DictRequirement};
 
+use krypton_typechecker::typed_ast::QualifiedName;
+
+/// Extension trait for JVM-specific qualified name formatting.
+trait JvmQualifiedName {
+    /// Returns the slash-separated JVM class path form, e.g. "core/semigroup/Semigroup".
+    fn jvm_qualified(&self) -> String;
+}
+
+impl JvmQualifiedName for QualifiedName {
+    fn jvm_qualified(&self) -> String {
+        format!("{}/{}", self.module_path, self.local_name)
+    }
+}
+
 /// Java 21 class file version (major 65).
 const JAVA_21: Version = Version::Java21 { minor: 0 };
 
@@ -124,7 +138,6 @@ pub fn compile_modules(
         typed_with_ir.push((tm, idx));
     }
 
-    // Build global type provenance: bare_name → qualified_name for cross-module lookups.
     // Build instance class name map from ALL modules' non-imported instances
     let mut instance_class_map: HashMap<(TraitName, String), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
