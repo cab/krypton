@@ -1570,10 +1570,11 @@ impl<'a> InferenceContext<'a> {
                         ty
                     };
                     // Check if this var is a trait method
-                    let origin = self.imported_fn_types.iter()
-                        .find(|f| f.name == *name)
-                        .and_then(|f| f.origin.clone())
-                        .or_else(|| self.trait_method_map.get(name).cloned());
+                    // trait_method_map first (handles local-shadows-prelude), then imports
+                    let origin = self.trait_method_map.get(name).cloned()
+                        .or_else(|| self.imported_fn_types.iter()
+                            .find(|f| f.name == *name)
+                            .and_then(|f| f.origin.clone()));
                     Ok(TypedExpr {
                         kind: TypedExprKind::Var(name.clone()),
                         ty,

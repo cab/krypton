@@ -1,4 +1,4 @@
-# expect: output "0\n1"
+# expect: output "0\n1\n0"
 extern "krypton.runtime.KryptonIO" {
     fun println(Object) -> Unit
 }
@@ -13,7 +13,11 @@ impl Monoid[Int] {
     fun combine(x, y) = x + y
 }
 
+# Use a thunk to exercise trait method as value (not just call head)
+fun apply_thunk(f: () -> Int) -> Int = f()
+
 fun main() {
-    println(empty[Int]());
+    println(empty[Int]())
     println(combine(empty[Int](), 1))
+    println(apply_thunk(empty[Int]))
 }
