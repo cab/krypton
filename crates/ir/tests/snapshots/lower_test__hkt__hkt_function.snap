@@ -7,8 +7,8 @@ module hkt__hkt_function
 type Box[a] = Box#0(a)
 trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
 trait Hoist[y7] { hoist(z7[y7], (z7[y7]) -> a8[y7]): a8[y7] }
-instance Functor[Box] { fmap=f2 }
-instance Hoist[Int] { hoist=f3 }
+instance hkt__hkt_function.Functor[Box] { fmap=f2 }
+instance hkt__hkt_function.Hoist[Int] { hoist=f3 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -96,13 +96,13 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 declare fmap
 
-fn apply(v0: Dict[Functor, c8], v1: c8[d8]) -> c8[d8] =
+fn apply(v0: Dict[hkt__hkt_function.Functor, c8], v1: c8[d8]) -> c8[d8] =
   let v4: (d8) -> d8 = make_closure(lambda$57, [])
   let v5: c8[d8] = call fmap(v0, v1, v4)
   v5
 
 fn main(v6: Box[Int]) -> Box[Int] =
-  let v7: Dict[Functor, Box] = get_dict Functor[Box]
+  let v7: Dict[hkt__hkt_function.Functor, Box] = get_dict hkt__hkt_function.Functor[Box]
   let v8: Box[Int] = call apply(v7, v6)
   v8
 

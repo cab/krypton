@@ -37,7 +37,7 @@ fn run_program(source: &str) -> String {
     let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check should succeed");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check should succeed");
     let classes = compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
 
     let dir = tempfile::tempdir().unwrap();
@@ -224,7 +224,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         span: (0, 0),
     };
 
-    let render_trait_id = TraitName::new(String::new(), "Render".to_string());
+    let render_trait_id = TraitName::new("test".to_string(),"Render".to_string());
     let render_inner = trait_app_expr(
         "render",
         Type::Fn(vec![a_ty.clone()], Box::new(Type::String)),
@@ -332,7 +332,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             ),
             close_self_type: None,
         });
-        fn_constraint_requirements.insert("render_wrap".to_string(), vec![(TraitName::new(String::new(), "Render".to_string()), var_a)]);
+        fn_constraint_requirements.insert("render_wrap".to_string(), vec![(TraitName::new("test".to_string(),"Render".to_string()), var_a)]);
     }
 
     functions.push(TypedFnDecl {
@@ -352,13 +352,13 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
     });
 
     TypedModule {
-        module_path: String::new(),
+        module_path: "test".to_string(),
         fn_types,
         exported_fn_types: vec![],
         functions,
         trait_defs: vec![TraitDefInfo {
             name: "Render".to_string(),
-            trait_id: TraitName::new(String::new(), "Render".to_string()),
+            trait_id: TraitName::new("test".to_string(),"Render".to_string()),
             methods: vec![("render".to_string(), 1)],
             is_imported: false,
             type_var_id: render_type_var,
@@ -370,7 +370,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         }],
         instance_defs: vec![
             InstanceDefInfo {
-                trait_name: TraitName::new(String::new(), "Render".to_string()),
+                trait_name: TraitName::new("test".to_string(),"Render".to_string()),
                 target_type_name: "Int".to_string(),
                 target_type: Type::Int,
                 type_var_ids: HashMap::new(),
@@ -381,12 +381,12 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 is_derived: false,
             },
             InstanceDefInfo {
-                trait_name: TraitName::new(String::new(), "Render".to_string()),
+                trait_name: TraitName::new("test".to_string(),"Render".to_string()),
                 target_type_name: "Wrap".to_string(),
                 target_type: wrap_a_ty.clone(),
                 type_var_ids: HashMap::from([("a".to_string(), var_a)]),
                 constraints: vec![ResolvedConstraint {
-                    trait_name: TraitName::new(String::new(), "Render".to_string()),
+                    trait_name: TraitName::new("test".to_string(),"Render".to_string()),
                     type_var: "a".to_string(),
                     span: (0, 0),
                 }],
@@ -571,7 +571,7 @@ fun main() = println(sum(100, 0))
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("fun main() = 42");
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
@@ -632,7 +632,7 @@ fun main() = None
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -644,7 +644,7 @@ fun main() = None
     }
     let output = Command::new("javap")
         .arg("-v")
-        .arg(dir.path().join("Option.class"))
+        .arg(dir.path().join("test/Option.class"))
         .output()
         .expect("javap");
     let javap_out = String::from_utf8_lossy(&output.stdout);
@@ -823,7 +823,7 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -852,7 +852,7 @@ fn test_typed_module_direct() {
     let source = format!("{PRINTLN_EXTERN}\nfun main() = println(42)");
     let (module, errors) = parse(&source);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
@@ -886,7 +886,7 @@ fun main() = println(Some(42))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -1006,7 +1006,7 @@ fun main() = println(render(Wrap(42)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -1018,7 +1018,7 @@ fun main() = println(render(Wrap(42)))
     }
     // Find the parameterized instance class for Render[Wrap[a]]
     let render_wrap_class = classes.iter()
-        .find(|(n, _)| n.starts_with("Render$$Wrap"))
+        .find(|(n, _)| n.contains("Render$$Wrap"))
         .expect("should have a Render$$Wrap* instance class");
     let class_output = javap_output(&dir.path().join(format!("{}.class", render_wrap_class.0)), false);
     assert!(
@@ -1099,7 +1099,7 @@ fun main() = {
     let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let typed_modules =
-        infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check should succeed");
+        infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check should succeed");
     let dir = compile_typed_modules(&typed_modules);
     let test_output = javap_output(&dir.path().join("Test.class"), true);
     assert!(
@@ -1132,7 +1132,7 @@ fun main() = println(default[Int]())
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
     let typed_modules =
-        infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).expect("type check");
+        infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
     let dir = compile_typed_modules(&typed_modules);
     let javap_out = javap_output(&dir.path().join("Test.class"), false);
     assert!(

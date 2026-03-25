@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_zero_arg_context
 
 trait Default[v7] { default(): v7 }
-instance Default[Int] { default=f3 }
+instance traits__trait_zero_arg_context.Default[Int] { default=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -96,18 +96,18 @@ declare default
 declare println: (m) -> Unit
 
 fn int_default() -> Int =
-  let v0: Dict[Default, Int] = get_dict Default[Int]
+  let v0: Dict[traits__trait_zero_arg_context.Default, Int] = get_dict traits__trait_zero_arg_context.Default[Int]
   let v1: Int = call default(v0)
   v1
 
-fn default2(v2: Dict[Default, c8]) -> c8 =
+fn default2(v2: Dict[traits__trait_zero_arg_context.Default, c8]) -> c8 =
   let v3: c8 = call default(v2)
   v3
 
 fn main() -> Unit =
   let v4: Int = call int_default()
   let v5: Unit = call println(v4)
-  let v6: Dict[Default, Int] = get_dict Default[Int]
+  let v6: Dict[traits__trait_zero_arg_context.Default, Int] = get_dict traits__trait_zero_arg_context.Default[Int]
   let v7: Int = call default2(v6)
   let v8: Unit = call println(v7)
   v8

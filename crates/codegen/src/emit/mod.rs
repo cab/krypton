@@ -64,22 +64,11 @@ fn jvm_type_to_base_field_type(ty: JvmType) -> FieldType {
 }
 
 /// Qualify a type name using the module's path (IR version).
-/// IR only contains locally-defined types, so no type_provenance lookup needed.
+/// Qualify a type name using the module's path.
 fn qualify_ir(module_path: &str, bare_name: &str) -> String {
-    if module_path.is_empty() {
-        bare_name.to_string()
-    } else {
-        format!("{module_path}/{bare_name}")
-    }
+    format!("{module_path}/{bare_name}")
 }
 
-/// Qualify a name using cross-module provenance, falling back to module_path for local names.
-fn qualify_with_provenance(module_path: &str, bare_name: &str, type_provenance: &HashMap<String, String>) -> String {
-    if let Some(qualified) = type_provenance.get(bare_name) {
-        return qualified.clone();
-    }
-    qualify_ir(module_path, bare_name)
-}
 
 /// Check if a Type references any of the given type variable IDs (for JVM erasure).
 fn type_references_var(ty: &Type, vars: &[TypeVarId]) -> bool {
@@ -124,10 +113,11 @@ pub fn compile_modules(
     let root_module_path = typed_modules.first().map(|tm| tm.module_path.as_str()).unwrap_or("");
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
-        let name = if is_root { main_class_name } else { &tm.module_path };
-        let ir = krypton_ir::lower::lower_module(tm, name)
+        // JVM class name: main_class_name for the entry module, module_path for libraries.
+        let jvm_class_name = if is_root { main_class_name } else { &tm.module_path };
+        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name)
             .map_err(|e| CodegenError::TypeError(
-                format!("IR lowering error in module {name}: {e}"), None,
+                format!("IR lowering error in module {jvm_class_name}: {e}"), None,
             ))?;
         let idx = ir_modules.len();
         ir_modules.push(ir);
@@ -135,111 +125,44 @@ pub fn compile_modules(
     }
 
     // Build global type provenance: bare_name → qualified_name for cross-module lookups.
-    // Only library modules (with Some(module_path)) contribute here. Main-module types
-    // are excluded: qualify_with_provenance falls through to qualify_ir, which returns
-    // bare names when module_path is None.
-    let mut global_type_provenance: HashMap<String, String> = HashMap::new();
-    for ir_module in &ir_modules {
-        if ir_module.name != main_class_name {
-            let path = &ir_module.module_path;
-            for trait_def in &ir_module.traits {
-                if !trait_def.is_imported {
-                    global_type_provenance.entry(trait_def.name.clone())
-                        .or_insert_with(|| format!("{path}/{}", trait_def.name));
-                }
-            }
-            for struct_def in &ir_module.structs {
-                global_type_provenance.entry(struct_def.name.clone())
-                    .or_insert_with(|| format!("{path}/{}", struct_def.name));
-            }
-            for sum_def in &ir_module.sum_types {
-                global_type_provenance.entry(sum_def.name.clone())
-                    .or_insert_with(|| format!("{path}/{}", sum_def.name));
-            }
-        }
-    }
-
-    // Build instance class name map from all library modules
+    // Build instance class name map from ALL modules' non-imported instances
     let mut instance_class_map: HashMap<(TraitName, String), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
     for ir_module in &ir_modules {
-        if ir_module.name != main_class_name {
-            for inst in &ir_module.instances {
-                if inst.is_imported { continue; }
-                if intrinsic_registry.get(&inst.trait_name.local_name, &inst.target_type_name).is_some() { continue; }
-                let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name.local_name, &global_type_provenance);
-                let class_name = format!("{}$${}", q_trait, inst.target_type_name);
-                let requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
-                    .map(|(trait_name, type_var)| DictRequirement {
-                        trait_name: trait_name.clone(),
-                        type_var: *type_var,
-                    })
-                    .collect();
-                instance_class_map.insert(
-                    (inst.trait_name.clone(), inst.target_type_name.clone()),
-                    ImportedInstanceInfo {
-                        class_name,
-                        target_type: inst.target_type.clone(),
-                        requirements,
-                    },
-                );
-            }
+        for inst in &ir_module.instances {
+            if inst.is_imported { continue; }
+            if intrinsic_registry.get(&inst.trait_name.local_name, &inst.target_type_name).is_some() { continue; }
+            let class_name = format!("{}/{}$${}", ir_module.module_path, inst.trait_name.local_name, inst.target_type_name);
+            let requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
+                .map(|(trait_name, type_var)| DictRequirement {
+                    trait_name: trait_name.clone(),
+                    type_var: *type_var,
+                })
+                .collect();
+            instance_class_map.insert(
+                (inst.trait_name.clone(), inst.target_type_name.clone()),
+                ImportedInstanceInfo {
+                    class_name,
+                    target_type: inst.target_type.clone(),
+                    requirements,
+                },
+            );
         }
     }
 
-    // Build global sum type map: bare_name → qualified_name (for cross-module references)
-    // Detect collisions when two different library modules define the same bare name.
-    let mut global_sum_types: HashMap<String, String> = HashMap::new();
-    for ir_module in &ir_modules {
-        for sum_def in &ir_module.sum_types {
-            let sum_name = &sum_def.name;
-            let qualified = qualify_ir(&ir_module.module_path, sum_name);
-            match global_sum_types.entry(sum_name.clone()) {
-                std::collections::hash_map::Entry::Occupied(e) => {
-                    let existing = e.get();
-                    if existing != &qualified
-                        && existing != sum_name
-                        && qualified != *sum_name
-                    {
-                        return Err(CodegenError::TypeError(format!(
-                            "sum type name collision: '{}' defined as both '{}' and '{}'",
-                            sum_name, existing, qualified
-                        ), None));
-                    }
-                }
-                std::collections::hash_map::Entry::Vacant(e) => {
-                    e.insert(qualified);
-                }
-            }
-        }
-    }
-
-    // Compile all library modules
+    // Compile all modules in one pass — every module gets the full instance map
     for &(typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
-        if ir_module.name != main_class_name {
-            let path = &ir_module.module_path;
-            let empty_map = HashMap::new();
-            let classes = compile_module_inner(ir_module, &ir_modules, path, false, &empty_map, &global_sum_types, &global_type_provenance)
-                .map_err(|e| {
-                    if !typed_module.module_path.is_empty() {
-                        if let Some(s) = &typed_module.module_source {
-                            return e.with_source(typed_module.module_path.clone(), s.clone());
-                        }
-                    }
-                    e
-                })?;
-            all_classes.extend(classes);
-        }
-    }
-
-    // Compile main module with instance map
-    for &(_typed_module, ir_idx) in &typed_with_ir {
-        let ir_module = &ir_modules[ir_idx];
-        if ir_module.name == main_class_name {
-            let classes = compile_module_inner(ir_module, &ir_modules, main_class_name, true, &instance_class_map, &global_sum_types, &global_type_provenance)?;
-            all_classes.extend(classes);
-        }
+        let is_entry = ir_module.module_path == root_module_path;
+        let class_name = if is_entry { main_class_name } else { &ir_module.module_path };
+        let classes = compile_module_inner(ir_module, &ir_modules, class_name, is_entry, &instance_class_map)
+            .map_err(|e| {
+                if let Some(s) = &typed_module.module_source {
+                    return e.with_source(typed_module.module_path.clone(), s.clone());
+                }
+                e
+            })?;
+        all_classes.extend(classes);
     }
 
     Ok(all_classes)
@@ -251,8 +174,6 @@ fn compile_module_inner(
     class_name: &str,
     is_main: bool,
     imported_instances: &HashMap<(TraitName, String), ImportedInstanceInfo>,
-    global_sum_types: &HashMap<String, String>,
-    type_provenance: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     if is_main && !ir_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction());
@@ -276,24 +197,14 @@ fn compile_module_inner(
         compiler.register_imported_sum_types_ir(other_module)?;
     }
 
-    // Register cross-module sum type references that weren't covered
-    for (bare_name, qualified_name) in global_sum_types {
-        if !compiler.types.sum_type_info.contains_key(bare_name) {
-            let class_index = compiler.cp.add_class(qualified_name)?;
-            let desc = format!("L{qualified_name};");
-            compiler.types.class_descriptors.insert(class_index, desc);
-            compiler.types.extern_sum_class_indices.insert(bare_name.clone(), class_index);
-        }
-    }
-
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
     compiler.register_fun_interfaces_ir(ir_module)?;
     // Vec's class descriptor must exist before instances referencing Vec[T] are registered.
     compiler.register_vec()?;
-    result_classes.extend(compiler.register_traits_ir(ir_module, &type_provenance)?);
-    result_classes.extend(compiler.register_builtin_instances_ir(ir_module, &type_provenance)?);
+    result_classes.extend(compiler.register_traits_ir(ir_module)?);
+    result_classes.extend(compiler.register_builtin_instances_ir(ir_module)?);
     compiler.register_imported_instances(imported_instances)?;
-    result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name, &type_provenance)?);
+    result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name)?);
 
     // Phase 3: Register tuples and functions
     compiler.register_tuples_ir(ir_module)?;

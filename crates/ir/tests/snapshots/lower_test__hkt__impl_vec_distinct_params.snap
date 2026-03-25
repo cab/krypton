@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module hkt__impl_vec_distinct_params
 
 trait Tag[u7] { tag(u7): String }
-instance Tag[Vec$Int] { tag=f1 }
-instance Tag[Vec$String] { tag=f2 }
+instance hkt__impl_vec_distinct_params.Tag[Vec$Int] { tag=f1 }
+instance hkt__impl_vec_distinct_params.Tag[Vec$String] { tag=f2 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -98,11 +98,11 @@ declare tag
 fn main() -> Unit =
   let v0: Vec[Int] = make_vec(1, 2, 3)
   let v1: Vec[String] = make_vec("a", "b", "c")
-  let v2: Dict[Tag, Vec[Int]] = get_dict Tag[Vec[Int]]
+  let v2: Dict[hkt__impl_vec_distinct_params.Tag, Vec[Int]] = get_dict hkt__impl_vec_distinct_params.Tag[Vec[Int]]
   let v3: String = call tag(v2, v0)
   let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v4, v3)
-  let v7: Dict[Tag, Vec[String]] = get_dict Tag[Vec[String]]
+  let v7: Dict[hkt__impl_vec_distinct_params.Tag, Vec[String]] = get_dict hkt__impl_vec_distinct_params.Tag[Vec[String]]
   let v8: String = call tag(v7, v1)
   let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v9: Unit = call println(v6, v8)

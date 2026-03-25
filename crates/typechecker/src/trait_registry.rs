@@ -634,7 +634,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn tn(name: &str) -> TraitName {
-        TraitName::new(String::new(), name.to_string())
+        TraitName::new("test".to_string(), name.to_string())
     }
 
     fn rc(trait_name: &str, type_var: &str) -> ResolvedConstraint {
@@ -653,7 +653,7 @@ mod tests {
         let var_a = TypeVarGen::new().fresh();
         TraitInfo {
             name: name.to_string(),
-            module_path: String::new(),
+            module_path: "test".to_string(),
             type_var: "a".to_string(),
             type_var_id: var_a,
             type_var_arity,

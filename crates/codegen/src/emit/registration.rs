@@ -21,7 +21,7 @@ use super::trait_class_gen::{
     generate_instance_class, generate_parameterized_instance_class, generate_trait_interface_class,
 };
 use super::{
-    qualify_ir, qualify_with_provenance, type_has_vars, type_references_var, ImportedInstanceInfo,
+    qualify_ir, type_has_vars, type_references_var, ImportedInstanceInfo,
 };
 
 fn name_to_builtin_type(name: &str) -> Type {
@@ -424,7 +424,6 @@ impl Compiler {
     pub(super) fn register_traits_ir(
         &mut self,
         ir_module: &krypton_ir::Module,
-        type_provenance: &HashMap<String, String>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
@@ -445,8 +444,7 @@ impl Compiler {
         }
 
         for trait_def in &ir_module.traits {
-            let qualified_trait =
-                qualify_with_provenance(&ir_module.module_path, &trait_def.name, type_provenance);
+            let qualified_trait = trait_def.trait_name.qualified();
 
             if !trait_def.is_imported {
                 let methods_for_gen: Vec<(String, usize)> = trait_def
@@ -505,7 +503,6 @@ impl Compiler {
     pub(super) fn register_builtin_instances_ir(
         &mut self,
         ir_module: &krypton_ir::Module,
-        type_provenance: &HashMap<String, String>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         let local_traits: std::collections::HashSet<&str> = ir_module
@@ -521,13 +518,11 @@ impl Compiler {
                 .find(|tn| tn.local_name == entry.trait_name)
                 .cloned();
             if let Some(trait_key) = trait_key {
-                let q_trait = qualify_with_provenance(
-                    &ir_module.module_path,
-                    entry.trait_name,
-                    type_provenance,
-                );
-                let class_name = format!("{q_trait}$${}", entry.type_name);
+                // Builtin instance classes live in the trait's defining module.
+                let class_name = format!("{}/{}$${}", trait_key.module_path, entry.trait_name, entry.type_name);
 
+                // The trait interface class uses the qualified trait name
+                let q_trait = trait_key.qualified();
                 if local_traits.contains(entry.trait_name) {
                     let bytes = if entry.is_show() {
                         generate_builtin_show_instance_class(&class_name, &q_trait, entry)?
@@ -592,7 +587,6 @@ impl Compiler {
         &mut self,
         ir_module: &krypton_ir::Module,
         class_name: &str,
-        type_provenance: &HashMap<String, String>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
@@ -604,9 +598,9 @@ impl Compiler {
             if inst.is_intrinsic || inst.is_imported {
                 continue;
             }
-            let q_trait =
-                qualify_with_provenance(&ir_module.module_path, &inst.trait_name.local_name, type_provenance);
-            let instance_class_name = format!("{}$${}", q_trait, inst.target_type_name);
+            let instance_class_name = format!("{}/{}$${}", ir_module.module_path, inst.trait_name.local_name, inst.target_type_name);
+            // The trait interface class uses the qualified trait name
+            let q_trait = inst.trait_name.qualified();
             let dict_requirements: Vec<DictRequirement> = inst
                 .sub_dict_requirements
                 .iter()

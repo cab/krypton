@@ -6,7 +6,7 @@ module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
 trait Contravariant[w7] { contramap(w7[x7], (y7) -> x7): w7[y7] }
-instance Contravariant[Predicate$$Var0$$Var1] { contramap=f0 }
+instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=f0 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

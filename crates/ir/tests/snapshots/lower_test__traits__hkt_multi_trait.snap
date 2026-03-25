@@ -7,8 +7,8 @@ module traits__hkt_multi_trait
 type Box[a] = Box#0(a)
 trait Container[y7] { wrap(z7): y7[z7] }
 trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
-instance Functor[Box] { fmap=f0 }
-instance Container[Box] { wrap=f1 }
+instance traits__hkt_multi_trait.Functor[Box] { fmap=f0 }
+instance traits__hkt_multi_trait.Container[Box] { wrap=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

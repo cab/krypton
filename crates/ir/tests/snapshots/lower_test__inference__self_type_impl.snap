@@ -6,7 +6,7 @@ module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
 trait MyEq[u7] { my_eq(u7, u7): Bool }
-instance MyEq[Point] { my_eq=f1 }
+instance inference__self_type_impl.MyEq[Point] { my_eq=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -99,7 +99,7 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let v0: ~Point = construct Point(1, 2)
   let v1: ~Point = construct Point(1, 2)
-  let v3: Dict[MyEq, Point] = get_dict MyEq[Point]
+  let v3: Dict[inference__self_type_impl.MyEq, Point] = get_dict inference__self_type_impl.MyEq[Point]
   let v4: Bool = call my_eq(v3, v0, v1)
   let v2: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v5: Unit = call println(v2, v4)

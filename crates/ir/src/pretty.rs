@@ -434,7 +434,10 @@ impl fmt::Display for Module {
         }
         for inst in self.instances.iter().filter(|i| !i.is_imported) {
             let methods: Vec<String> = inst.method_fn_ids.iter()
-                .map(|(name, id)| format!("{name}=f{}", id.0))
+                .map(|(name, id)| {
+                    let fn_name = self.fn_names.get(id).map(|s| s.as_str()).unwrap_or("?");
+                    format!("{name}={fn_name}")
+                })
                 .collect();
             let intrinsic = if inst.is_intrinsic { " [intrinsic]" } else { "" };
             writeln!(f, "instance {}[{}] {{ {} }}{}", inst.trait_name, inst.target_type_name, methods.join(", "), intrinsic)?;
@@ -863,7 +866,7 @@ mod tests {
             traits: vec![],
             instances: vec![],
             tuple_arities: std::collections::BTreeSet::new(),
-            module_path: String::new(),
+            module_path: "test".to_string(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],

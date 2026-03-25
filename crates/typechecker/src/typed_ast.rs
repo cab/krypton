@@ -27,6 +27,8 @@ pub struct QualifiedName {
 
 impl QualifiedName {
     pub fn new(module_path: String, local_name: String) -> Self {
+        assert!(!module_path.is_empty(),
+            "ICE: QualifiedName created with empty module_path for `{local_name}`");
         QualifiedName { module_path, local_name }
     }
 
@@ -36,21 +38,13 @@ impl QualifiedName {
 
     /// Returns the slash-qualified form, e.g. "core/semigroup/Semigroup".
     pub fn qualified(&self) -> String {
-        if self.module_path.is_empty() {
-            self.local_name.clone()
-        } else {
-            format!("{}/{}", self.module_path, self.local_name)
-        }
+        format!("{}/{}", self.module_path, self.local_name)
     }
 }
 
 impl fmt::Display for QualifiedName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.module_path.is_empty() {
-            write!(f, "{}", self.local_name)
-        } else {
-            write!(f, "{}.{}", self.module_path, self.local_name)
-        }
+        write!(f, "{}.{}", self.module_path, self.local_name)
     }
 }
 

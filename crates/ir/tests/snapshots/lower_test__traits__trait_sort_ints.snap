@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_sort_ints
 
 trait Cmp[v7] { compare(v7, v7): Int }
-instance Cmp[Int] { compare=f1 }
+instance traits__trait_sort_ints.Cmp[Int] { compare=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -97,7 +97,7 @@ declare lt: (h, h) -> Bool
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: Dict[Cmp, Int] = get_dict Cmp[Int]
+  let v0: Dict[traits__trait_sort_ints.Cmp, Int] = get_dict traits__trait_sort_ints.Cmp[Int]
   let v1: Int = call compare(v0, 1, 2)
   let v2: Unit = call println(v1)
   v2

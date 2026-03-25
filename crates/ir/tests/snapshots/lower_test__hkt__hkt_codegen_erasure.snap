@@ -6,7 +6,7 @@ module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
 trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
-instance Functor[Box] { fmap=f2 }
+instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=f2 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object

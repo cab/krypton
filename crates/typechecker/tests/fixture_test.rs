@@ -18,7 +18,7 @@ fn infer_module_snapshot_with_resolver(
     if !errors.is_empty() {
         return Err(errors[0].code.to_string());
     }
-    match infer::infer_module(&module, resolver, String::new()) {
+    match infer::infer_module(&module, resolver, "test".to_string()) {
         Ok(modules) => {
             let lines: Vec<String> = modules[0]
                 .fn_types

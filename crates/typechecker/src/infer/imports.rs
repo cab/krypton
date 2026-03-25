@@ -681,7 +681,7 @@ impl ModuleInferenceState {
                 self.imported_trait_names.insert(effective_name.clone());
                 // Build canonical TraitName (always uses original name, not alias)
                 let trait_id = TraitName::new(
-                    if trait_def.module_path.is_empty() { path.to_string() } else { trait_def.module_path.clone() },
+                    trait_def.module_path.clone(),
                     trait_def.name.clone(),
                 );
                 // Register alias if different from original

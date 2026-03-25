@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module modules__local_trait_imported_type
 
 trait Describable[u7] { describe(u7): String }
-instance Describable[Point] { describe=f1 }
+instance modules__local_trait_imported_type.Describable[Point] { describe=f1 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -165,7 +165,7 @@ declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Point = construct Point::MkPoint#0(1, 2)
-  let v2: Dict[Describable, Point] = get_dict Describable[Point]
+  let v2: Dict[modules__local_trait_imported_type.Describable, Point] = get_dict modules__local_trait_imported_type.Describable[Point]
   let v3: String = call describe(v2, v1)
   let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)

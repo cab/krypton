@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__op_same_method_name
 
 trait Joinable[u7] { join(u7, u7): u7 }
-instance Joinable[String] { join=f3 }
+instance traits__op_same_method_name.Joinable[String] { join=f3 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
@@ -110,7 +110,7 @@ fn apply_combine(v0: Dict[core/semigroup.Semigroup, a8], v1: a8, v2: a8) -> a8 =
   let v3: a8 = call combine(v0, v1, v2)
   v3
 
-fn apply_join(v4: Dict[Joinable, g8], v5: g8, v6: g8) -> g8 =
+fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, g8], v5: g8, v6: g8) -> g8 =
   let v7: g8 = call join(v4, v5, v6)
   v7
 
@@ -121,7 +121,7 @@ fn main() -> Unit =
   let v11: String = call show(v10, v9)
   let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v13: Unit = call println(v12, v11)
-  let v15: Dict[Joinable, String] = get_dict Joinable[String]
+  let v15: Dict[traits__op_same_method_name.Joinable, String] = get_dict traits__op_same_method_name.Joinable[String]
   let v16: String = call apply_join(v15, "hello", "world")
   let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v17: Unit = call println(v14, v16)

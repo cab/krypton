@@ -462,7 +462,7 @@ fn main() {
                 let mod_name = if i == 0 {
                     stem.to_string()
                 } else {
-                    if typed.module_path.is_empty() { format!("module_{i}") } else { typed.module_path.clone() }
+                    typed.module_path.clone()
                 };
                 let t = Instant::now();
                 match krypton_ir::lower::lower_module(typed, &mod_name) {

@@ -6,7 +6,7 @@ module hkt__partial_apply_result
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
 trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
-instance Functor[Result$$Var0$$Var1] { fmap=f0 }
+instance hkt__partial_apply_result.Functor[Result$$Var0$$Var1] { fmap=f0 }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

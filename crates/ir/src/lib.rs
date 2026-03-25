@@ -532,7 +532,7 @@ mod tests {
             traits: vec![],
             instances: vec![],
             tuple_arities: BTreeSet::new(),
-            module_path: String::new(),
+            module_path: "test".to_string(),
             fn_dict_requirements: HashMap::new(),
             trait_method_fn_ids: HashMap::new(),
         };

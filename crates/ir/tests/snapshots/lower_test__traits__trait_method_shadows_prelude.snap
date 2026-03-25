@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_method_shadows_prelude
 
 trait Multiply[v7] { times(v7, v7): v7 }
-instance Multiply[Int] { times=f1 }
+instance traits__trait_method_shadows_prelude.Multiply[Int] { times=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -97,7 +97,7 @@ declare show: (g) -> String
 declare times
 
 fn main() -> Unit =
-  let v0: Dict[Multiply, Int] = get_dict Multiply[Int]
+  let v0: Dict[traits__trait_method_shadows_prelude.Multiply, Int] = get_dict traits__trait_method_shadows_prelude.Multiply[Int]
   let v1: Int = call times(v0, 2, 3)
   let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v3: String = call show(v2, v1)

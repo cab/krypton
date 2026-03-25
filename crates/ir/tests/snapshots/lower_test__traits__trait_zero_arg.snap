@@ -6,8 +6,8 @@ module traits__trait_zero_arg
 
 type MyStruct = MyStruct#0(Int)
 trait Default[v7] { default(): v7 }
-instance Default[Int] { default=f1 }
-instance Default[MyStruct] { default=f2 }
+instance traits__trait_zero_arg.Default[Int] { default=f1 }
+instance traits__trait_zero_arg.Default[MyStruct] { default=f2 }
 instance core/show.Show[MyStruct] { show=f3 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
@@ -100,10 +100,10 @@ declare println: (m) -> Unit
 declare show: (g) -> String
 
 fn main() -> Unit =
-  let v0: Dict[Default, Int] = get_dict Default[Int]
+  let v0: Dict[traits__trait_zero_arg.Default, Int] = get_dict traits__trait_zero_arg.Default[Int]
   let v1: Int = call default(v0)
   let v2: Unit = call println(v1)
-  let v3: Dict[Default, MyStruct] = get_dict Default[MyStruct]
+  let v3: Dict[traits__trait_zero_arg.Default, MyStruct] = get_dict traits__trait_zero_arg.Default[MyStruct]
   let v4: MyStruct = call default(v3)
   let v5: Unit = call println(v4)
   v5

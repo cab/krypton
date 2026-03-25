@@ -18,7 +18,7 @@ fn parse_expr_via_module(src: &str) -> krypton_parser::ast::Expr {
 fn infer_module_fn(src: &str, fn_name: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    match infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new()) {
+    match infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()) {
         Ok(modules) => modules[0]
             .fn_types
             .iter()
@@ -133,7 +133,7 @@ fn parse_module(src: &str) -> Module {
 
 fn infer_module_types(src: &str) -> String {
     let module = parse_module(src);
-    match infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new()) {
+    match infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()) {
         Ok(modules) => modules[0]
             .fn_types
             .iter()
@@ -166,7 +166,7 @@ fn infer_module_with_custom_resolver() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
     let modules = result.unwrap();
     let info = &modules[0];
@@ -190,7 +190,7 @@ fn impl_where_clause_constraints_are_stored_on_instance_defs() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
 
-    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).unwrap();
+    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).unwrap();
     let instance = modules[0]
         .instance_defs
         .iter()
@@ -218,7 +218,7 @@ fn impl_without_where_clause_stores_empty_constraints() {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
 
-    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).unwrap();
+    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).unwrap();
     let instance = modules[0]
         .instance_defs
         .iter()
@@ -1177,7 +1177,7 @@ fn explicit_hkt_type_param_generalized() {
 fn explicit_hkt_type_param_wrong_arity_is_error() {
     let src = "fun bad[f[_], a, b](x: f[a, b]) -> f[a] = x";
     let module = parse_module(src);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_err(), "expected kind mismatch");
     let err = result.err().unwrap();
     assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0507");
@@ -1195,7 +1195,7 @@ fn trait_and_impl_methods_accept_hkt_type_params() {
         }
     "#;
     let module = parse_module(src);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_ok(), "expected method-level HKTs to typecheck");
 }
 
@@ -1224,7 +1224,7 @@ fn explicit_type_args_call_site_mismatch_is_error() {
         fun use_it() = identity[Int]("hello")
     "#;
     let module = parse_module(src);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_err(), "expected mismatch error");
     let err = result.err().unwrap();
     assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0001");
@@ -1237,7 +1237,7 @@ fn explicit_type_args_wrong_count_is_error() {
         fun use_it() = identity[Int, String](42)
     "#;
     let module = parse_module(src);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_err(), "expected wrong arity error");
     let err = result.err().unwrap();
     assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0005");
@@ -1269,7 +1269,7 @@ fn constrained_polymorphic_function_reference_is_rejected() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_err(), "expected constrained polymorphic ref to fail");
     let err = result.err().unwrap();
     assert_eq!(err.type_error().unwrap().error.error_code().to_string(), "E0001");
@@ -1389,7 +1389,7 @@ fn infer_module_returns_all_modules() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let modules = infer::infer_module(&module, &FakeResolver, String::new()).unwrap();
+    let modules = infer::infer_module(&module, &FakeResolver, "test".to_string()).unwrap();
     // Main module + mylib
     assert!(
         modules.len() >= 2,
@@ -1397,8 +1397,8 @@ fn infer_module_returns_all_modules() {
         modules.len()
     );
     assert!(
-        modules[0].module_path.is_empty(),
-        "first module should be main (empty path)"
+        modules[0].module_path == "test",
+        "first module should have path 'test'"
     );
     assert!(
         modules
@@ -1427,7 +1427,7 @@ fn infer_module_provenance_on_bindings() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let modules = infer::infer_module(&module, &FakeResolver, String::new()).unwrap();
+    let modules = infer::infer_module(&module, &FakeResolver, "test".to_string()).unwrap();
     // The main module should have `add` in fn_types with provenance
     let main = &modules[0];
     assert!(
@@ -1461,7 +1461,7 @@ fn infer_module_cache_prevents_recheck() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let modules = infer::infer_module(&module, &CountingResolver, String::new()).unwrap();
+    let modules = infer::infer_module(&module, &CountingResolver, "test".to_string()).unwrap();
     // Only one TypedModule for mylib despite resolver being called
     let mylib_count = modules
         .iter()
@@ -1489,7 +1489,7 @@ fn infer_module_circular_import_detected() {
     let src = "import a.{foo}\nfun main() -> Int = foo(1)";
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &CircularResolver, String::new());
+    let result = infer::infer_module(&module, &CircularResolver, "test".to_string());
     assert!(result.is_err(), "should detect circular import");
     let err = match result {
         Err(e) => e,
@@ -1506,7 +1506,7 @@ fn infer_module_stdlib_own_typed_module() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new()).unwrap();
+    let modules = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).unwrap();
     // Should have a TypedModule for core/option
     assert!(
         modules
@@ -1535,7 +1535,7 @@ fn infer_module_cross_module_typecheck() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let modules = infer::infer_module(&module, &FakeResolver, String::new()).unwrap();
+    let modules = infer::infer_module(&module, &FakeResolver, "test".to_string()).unwrap();
     let main = &modules[0];
     let quad_type = main
         .fn_types
@@ -1565,7 +1565,7 @@ fn infer_module_private_by_default() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "importing private fn should fail");
     let err = match result {
         Err(e) => e,
@@ -1580,7 +1580,7 @@ fn infer_module_private_by_default() {
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
-    let result2 = infer::infer_module(&module2, &FakeResolver, String::new());
+    let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string());
     assert!(
         result2.is_ok(),
         "importing pub fn should work: {:?}",
@@ -1606,7 +1606,7 @@ fn infer_module_bare_import_binds_qualifier() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_ok(), "bare import should resolve qualified names: {:?}", result.err());
 }
 
@@ -1628,7 +1628,7 @@ fn infer_module_import_alias_binds_only_alias() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "original import name should stay out of scope");
     let err = match result {
         Err(err) => err,
@@ -1655,7 +1655,7 @@ fn infer_module_missing_qualified_export_errors_clearly() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "missing qualified export should fail");
     let err = match result {
         Err(err) => err,
@@ -1682,7 +1682,7 @@ fn infer_module_qualifier_used_as_value_errors_clearly() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "module qualifier as value should fail");
     let err = match result {
         Err(err) => err,
@@ -1709,7 +1709,7 @@ fn infer_module_qualified_nullary_constructor_value_resolves() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(
         result.is_ok(),
         "qualified nullary constructor should resolve as a value: {:?}",
@@ -1739,7 +1739,7 @@ fn infer_module_qualified_constructor_call_typechecks() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(
         result.is_ok(),
         "qualified constructor call should succeed: {:?}",
@@ -1773,7 +1773,7 @@ fn infer_module_constructor_alias_resolves() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_ok(), "constructor alias should resolve: {:?}", result.err().map(|e| e.type_error().map(|te| te.error.error_code().to_string())));
 }
 
@@ -1795,7 +1795,7 @@ fn infer_module_pub_import_reexport() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(
         result.is_ok(),
         "pub import re-export should succeed: {:?}",
@@ -1832,7 +1832,7 @@ fn infer_module_pub_import_reexport_private_error() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(
         result.is_err(),
         "pub import of non-existent name should fail"
@@ -1863,7 +1863,7 @@ fn cross_module_deriving_show() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, String::new());
+    let result = infer::infer_module(&module, &Resolver, "test".to_string());
     assert!(
         result.is_ok(),
         "cross-module deriving Show should work: {:?}",
@@ -1893,7 +1893,7 @@ fn cross_module_derived_constrained_instance_resolves_when_inner_instance_exists
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, String::new());
+    let result = infer::infer_module(&module, &Resolver, "test".to_string());
     assert!(
         result.is_ok(),
         "cross-module derived constrained instance should resolve: {:?}",
@@ -1923,7 +1923,7 @@ fn cross_module_derived_constrained_instance_reports_e0301_when_inner_instance_m
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let err = match infer::infer_module(&module, &Resolver, String::new()) {
+    let err = match infer::infer_module(&module, &Resolver, "test".to_string()) {
         Ok(_) => panic!("expected E0301"),
         Err(err) => err,
     };
@@ -1948,7 +1948,7 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let modules = infer::infer_module(&module, &Resolver, String::new()).expect("typecheck should succeed");
+    let modules = infer::infer_module(&module, &Resolver, "test".to_string()).expect("typecheck should succeed");
     let imported = modules
         .iter()
         .find(|typed_module| typed_module.module_path == "mylib")
@@ -1975,7 +1975,7 @@ fn local_prelude_shadow_can_derive_show_without_importing_prelude_instance() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &StdlibResolver, String::new());
+    let result = infer::infer_module(&module, &StdlibResolver, "test".to_string());
     assert!(
         result.is_ok(),
         "local shadowed prelude type should derive Show independently: {:?}",
@@ -1995,7 +1995,7 @@ fn empty_impl_is_rejected() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new()) {
+    let err = match infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()) {
         Ok(_) => panic!("expected E0306"),
         Err(err) => err,
     };
@@ -2043,7 +2043,7 @@ fn infer_module_private_trait() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "importing private trait should fail");
     let err = match result {
         Err(e) => e,
@@ -2058,7 +2058,7 @@ fn infer_module_private_trait() {
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
-    let result2 = infer::infer_module(&module2, &FakeResolver, String::new());
+    let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string());
     assert!(
         result2.is_ok(),
         "wildcard import should skip private traits: {:?}",
@@ -2084,7 +2084,7 @@ fn infer_module_parse_error_produces_e0506() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, String::new());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(
         result.is_err(),
         "import of module with parse errors should fail"
@@ -2182,7 +2182,7 @@ fn prelude_fn_shadowable() {
 fn reserved_name_krypton_intrinsic_rejected() {
     let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
     let module = parse_module(src);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_err(), "should reject __krypton_intrinsic");
     let err = match result {
         Err(e) => e,
@@ -2195,7 +2195,7 @@ fn reserved_name_krypton_intrinsic_rejected() {
 fn reserved_name_krypton_prefix_rejected() {
     let src = "fun __krypton_foo() = 1\nfun main() = __krypton_foo()";
     let module = parse_module(src);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(result.is_err(), "should reject __krypton_ prefix");
     let err = match result {
         Err(e) => e,
@@ -2224,7 +2224,7 @@ fn prelude_not_imported_in_prelude_tree() {
         .expect("prelude should be resolvable");
     let (module, errors) = parse(&prelude_src);
     assert!(errors.is_empty(), "prelude parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     assert!(
         result.is_ok(),
         "prelude module should type-check without self-import: {:?}",
@@ -2292,7 +2292,7 @@ fn shadowed_prelude_fn_note_on_ufcs_mismatch() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), String::new());
+    let result = infer::infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string());
     let err = match result {
         Err(e) => e,
         Ok(_) => panic!("should fail with type mismatch"),

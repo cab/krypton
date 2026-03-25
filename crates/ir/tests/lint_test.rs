@@ -19,7 +19,7 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
         traits: vec![],
         instances: vec![],
         tuple_arities: std::collections::BTreeSet::new(),
-        module_path: String::new(),
+        module_path: "test".to_string(),
         fn_dict_requirements: std::collections::HashMap::new(),
         trait_method_fn_ids: std::collections::HashMap::new(),
     }
@@ -437,7 +437,7 @@ fn getdict_unknown_trait_is_error() {
                 bind: VarId(0),
                 ty: Type::Named("Dict".into(), vec![]),
                 value: SimpleExpr::GetDict {
-                    trait_name: TraitName::new(String::new(), "NonexistentTrait".to_string()),
+                    trait_name: TraitName::new("test".to_string(), "NonexistentTrait".to_string()),
                     ty: Type::Int,
                 },
                 body: Box::new(Expr {

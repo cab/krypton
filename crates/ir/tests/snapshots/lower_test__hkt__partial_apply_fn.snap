@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__partial_apply_fn
 
 trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
-instance Functor[$Fun1$$Var0$$Var1] { fmap=f1 }
+instance hkt__partial_apply_fn.Functor[$Fun1$$Var0$$Var1] { fmap=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -98,7 +98,7 @@ declare println: (m) -> Unit
 fn main() -> Unit =
   let v0: (Int) -> Int = make_closure(lambda$53, [])
   let v6: (Int) -> Int = make_closure(lambda$54, [])
-  let v7: Dict[Functor, (Int) -> _] = get_dict Functor[(Int) -> _]
+  let v7: Dict[hkt__partial_apply_fn.Functor, (Int) -> _] = get_dict hkt__partial_apply_fn.Functor[(Int) -> _]
   let v3: (Int) -> Int = call fmap(v7, v0, v6)
   let v8: Int = call_closure v3(10)
   let v9: Unit = call println(v8)

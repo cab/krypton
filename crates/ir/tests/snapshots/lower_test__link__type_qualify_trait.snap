@@ -5,7 +5,7 @@ expression: output
 module type_qualify_trait
 
 trait MyEq[v7] { my_eq(v7, v7): Bool }
-instance MyEq[Int] { my_eq=f1 }
+instance type_qualify_trait.MyEq[Int] { my_eq=f1 }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -97,7 +97,7 @@ declare my_eq
 declare println: (m) -> Unit
 
 fn main() -> Unit =
-  let v0: Dict[MyEq, Int] = get_dict MyEq[Int]
+  let v0: Dict[type_qualify_trait.MyEq, Int] = get_dict type_qualify_trait.MyEq[Int]
   let v1: Bool = call my_eq(v0, 42, 42)
   let v2: Unit = call println(v1)
   v2

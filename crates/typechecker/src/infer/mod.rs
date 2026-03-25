@@ -1064,7 +1064,7 @@ pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<TypedModule, InferError> {
-    let mut modules = infer_module(module, resolver, String::new())?;
+    let mut modules = infer_module(module, resolver, "main".to_string())?;
     Ok(modules.remove(0))
 }
 
@@ -1927,8 +1927,7 @@ fn register_imported_trait_defs(
     for trait_def in imported_trait_defs {
         // Skip if this exact trait (same TraitName) is already registered
         let trait_id = TraitName::new(
-            if trait_def.module_path.is_empty() { String::new() }
-            else { trait_def.module_path.clone() },
+            trait_def.module_path.clone(),
             trait_def.name.clone(),
         );
         if trait_registry.lookup_trait(&trait_id).is_some() {
@@ -3213,8 +3212,8 @@ pub(crate) fn infer_module_inner(
     module_path: String,
     prelude_tree_paths: &HashSet<String>,
 ) -> Result<TypedModule, SpannedTypeError> {
-    let is_core_module = !module_path.is_empty() && module_path.starts_with("core/");
-    let is_prelude_tree = !module_path.is_empty() && prelude_tree_paths.contains(&module_path);
+    let is_core_module = module_path.starts_with("core/");
+    let is_prelude_tree = prelude_tree_paths.contains(&module_path);
 
     let mut state = ModuleInferenceState::new(is_core_module);
 
