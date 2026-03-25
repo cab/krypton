@@ -1063,9 +1063,9 @@ impl Compiler {
 
                 // Trait method call
                 // The IR already includes the dict as args[0] and user args as args[1..].
-                if let Some((trait_name, _method_name)) = ir_module.trait_method_fn_ids.get(func) {
+                if let Some((trait_name, method_name)) = ir_module.trait_method_fn_ids.get(func) {
                     if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
-                        let iface_method_ref = dispatch.method_refs[&name];
+                        let iface_method_ref = dispatch.method_refs[method_name];
                         let iface_class = dispatch.interface_class;
 
                         // args[0] is the dict, args[1..] are user args

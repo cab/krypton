@@ -7,12 +7,12 @@ use krypton_typechecker::typed_ast::{
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
+use crate::Type as IrType;
 use crate::{
     Atom, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FnDef, FnId, ImportedFnDef,
     InstanceDef, Literal, Module, PrimOp, SimpleExpr, StructDef, SumTypeDef, SwitchBranch,
     TraitDef, TraitMethodDef, VarId, VariantDef,
 };
-use crate::Type as IrType;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -92,7 +92,10 @@ fn is_wildcard_or_var(pat: &TypedPattern) -> bool {
         pat,
         TypedPattern::Wildcard { .. }
             | TypedPattern::Var { .. }
-            | TypedPattern::Lit { value: Lit::Unit, .. }
+            | TypedPattern::Lit {
+                value: Lit::Unit,
+                ..
+            }
     )
 }
 
@@ -157,10 +160,7 @@ fn free_vars_inner(
             free_vars_inner(else_, bound, free, seen);
         }
         TypedExprKind::Let {
-            name,
-            value,
-            body,
-            ..
+            name, value, body, ..
         } => {
             free_vars_inner(value, bound, free, seen);
             if let Some(body) = body {
@@ -174,7 +174,10 @@ fn free_vars_inner(
             for e in exprs {
                 free_vars_inner(e, &do_bound, free, seen);
                 // Let with no body introduces a binding for subsequent exprs
-                if let TypedExprKind::Let { name, body: None, .. } = &e.kind {
+                if let TypedExprKind::Let {
+                    name, body: None, ..
+                } = &e.kind
+                {
                     do_bound.insert(name.clone());
                 }
             }
@@ -294,7 +297,9 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
         }
         TypedExprKind::Let { value, body, .. } => {
             contains_expr_kind(value, pred)
-                || body.as_deref().map_or(false, |b| contains_expr_kind(b, pred))
+                || body
+                    .as_deref()
+                    .map_or(false, |b| contains_expr_kind(b, pred))
         }
         TypedExprKind::Do(exprs) => exprs.iter().any(|e| contains_expr_kind(e, pred)),
         TypedExprKind::Lambda { body, .. } => contains_expr_kind(body, pred),
@@ -315,7 +320,9 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
         TypedExprKind::Recur(args) => args.iter().any(|a| contains_expr_kind(a, pred)),
         TypedExprKind::LetPattern { value, body, .. } => {
             contains_expr_kind(value, pred)
-                || body.as_deref().map_or(false, |b| contains_expr_kind(b, pred))
+                || body
+                    .as_deref()
+                    .map_or(false, |b| contains_expr_kind(b, pred))
         }
     }
 }
@@ -325,7 +332,9 @@ fn contains_recur(expr: &TypedExpr) -> bool {
 }
 
 fn contains_question_mark(expr: &TypedExpr) -> bool {
-    contains_expr_kind(expr, &|kind| matches!(kind, TypedExprKind::QuestionMark { .. }))
+    contains_expr_kind(expr, &|kind| {
+        matches!(kind, TypedExprKind::QuestionMark { .. })
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +351,12 @@ fn referenced_vars_in_expr(expr: &Expr) -> HashSet<VarId> {
 fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
     match &expr.kind {
         ExprKind::Atom(atom) => referenced_vars_atom(atom, vars),
-        ExprKind::Let { bind: _, ty: _, value, body } => {
+        ExprKind::Let {
+            bind: _,
+            ty: _,
+            value,
+            body,
+        } => {
             referenced_vars_simple(value, vars);
             referenced_vars_walk(body, vars);
         }
@@ -354,7 +368,13 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
             }
             referenced_vars_walk(body, vars);
         }
-        ExprKind::LetJoin { name: _, params: _, join_body, body, is_recur: _ } => {
+        ExprKind::LetJoin {
+            name: _,
+            params: _,
+            join_body,
+            body,
+            is_recur: _,
+        } => {
             referenced_vars_walk(join_body, vars);
             referenced_vars_walk(body, vars);
         }
@@ -363,12 +383,20 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
                 referenced_vars_atom(atom, vars);
             }
         }
-        ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+        ExprKind::BoolSwitch {
+            scrutinee,
+            true_body,
+            false_body,
+        } => {
             referenced_vars_atom(scrutinee, vars);
             referenced_vars_walk(true_body, vars);
             referenced_vars_walk(false_body, vars);
         }
-        ExprKind::Switch { scrutinee, branches, default } => {
+        ExprKind::Switch {
+            scrutinee,
+            branches,
+            default,
+        } => {
             referenced_vars_atom(scrutinee, vars);
             for branch in branches {
                 referenced_vars_walk(&branch.body, vars);
@@ -383,36 +411,57 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
 fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
     match simple {
         SimpleExpr::Call { func: _, args } => {
-            for atom in args { referenced_vars_atom(atom, vars); }
+            for atom in args {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::CallClosure { closure, args } => {
             referenced_vars_atom(closure, vars);
-            for atom in args { referenced_vars_atom(atom, vars); }
+            for atom in args {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::MakeClosure { func: _, captures } => {
-            for atom in captures { referenced_vars_atom(atom, vars); }
+            for atom in captures {
+                referenced_vars_atom(atom, vars);
+            }
         }
-        SimpleExpr::Construct { type_name: _, fields } => {
-            for atom in fields { referenced_vars_atom(atom, vars); }
+        SimpleExpr::Construct {
+            type_name: _,
+            fields,
+        } => {
+            for atom in fields {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::ConstructVariant { fields, .. } => {
-            for atom in fields { referenced_vars_atom(atom, vars); }
+            for atom in fields {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::Project { value, .. } => referenced_vars_atom(value, vars),
         SimpleExpr::Tag { value } => referenced_vars_atom(value, vars),
         SimpleExpr::MakeTuple { elements } => {
-            for atom in elements { referenced_vars_atom(atom, vars); }
+            for atom in elements {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::TupleProject { value, .. } => referenced_vars_atom(value, vars),
         SimpleExpr::PrimOp { op: _, args } => {
-            for atom in args { referenced_vars_atom(atom, vars); }
+            for atom in args {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::GetDict { .. } => {}
         SimpleExpr::MakeDict { sub_dicts, .. } => {
-            for atom in sub_dicts { referenced_vars_atom(atom, vars); }
+            for atom in sub_dicts {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::MakeVec { elements, .. } => {
-            for atom in elements { referenced_vars_atom(atom, vars); }
+            for atom in elements {
+                referenced_vars_atom(atom, vars);
+            }
         }
         SimpleExpr::Atom(atom) => referenced_vars_atom(atom, vars),
     }
@@ -498,10 +547,7 @@ impl LowerCtx {
     }
 
     fn push_var(&mut self, name: &str, id: VarId) {
-        self.var_scope
-            .entry(name.to_string())
-            .or_default()
-            .push(id);
+        self.var_scope.entry(name.to_string()).or_default().push(id);
         if self.fn_exit_track.contains(name) {
             self.fn_exit_vars.insert(name.to_string(), id);
         }
@@ -547,10 +593,11 @@ impl LowerCtx {
             return Ok(id);
         }
         let id = self
-            .lookup_trait_method(&TraitName::new("core/resource".to_string(), "Resource".to_string()), "close")
-            .ok_or_else(|| {
-                LowerError::InternalError("Resource.close not found".to_string())
-            })?;
+            .lookup_trait_method(
+                &TraitName::new("core/resource".to_string(), "Resource".to_string()),
+                "close",
+            )
+            .ok_or_else(|| LowerError::InternalError("Resource.close not found".to_string()))?;
         self.close_fn_id = Some(id);
         Ok(id)
     }
@@ -564,7 +611,10 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         let close_fn_id = self.get_close_fn_id()?;
         let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
-        let (dict_bindings, dict_atom) = self.resolve_dict(&TraitName::new("core/resource".to_string(), "Resource".to_string()), &dict_ty)?;
+        let (dict_bindings, dict_atom) = self.resolve_dict(
+            &TraitName::new("core/resource".to_string(), "Resource".to_string()),
+            &dict_ty,
+        )?;
         let unit_var = self.fresh_var();
         let close_expr = Expr {
             ty: body.ty.clone(),
@@ -600,7 +650,10 @@ impl LowerCtx {
                     ))
                 })?;
             let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
-            let (dict_bindings, dict_atom) = self.resolve_dict(&TraitName::new("core/resource".to_string(), "Resource".to_string()), &dict_ty)?;
+            let (dict_bindings, dict_atom) = self.resolve_dict(
+                &TraitName::new("core/resource".to_string(), "Resource".to_string()),
+                &dict_ty,
+            )?;
             resolved.push(ResolvedClose {
                 close_fn_id,
                 binding_var,
@@ -696,7 +749,11 @@ impl LowerCtx {
                     },
                 })
             }
-            ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+            ExprKind::BoolSwitch {
+                scrutinee,
+                true_body,
+                false_body,
+            } => {
                 let new_true = self.wrap_tail_with_closes(*true_body, resolved)?;
                 let new_false = self.wrap_tail_with_closes(*false_body, resolved)?;
                 Ok(Expr {
@@ -782,10 +839,7 @@ impl LowerCtx {
     /// Otherwise lower to SimpleExpr, bind to a fresh VarId, emit a LetBinding.
     /// For compound expressions (If, Do), returns an error — callers should use
     /// lower_expr + inline_compound_let instead.
-    fn lower_to_atom(
-        &mut self,
-        expr: &TypedExpr,
-    ) -> Result<(Vec<LetBinding>, Atom), LowerError> {
+    fn lower_to_atom(&mut self, expr: &TypedExpr) -> Result<(Vec<LetBinding>, Atom), LowerError> {
         match &expr.kind {
             TypedExprKind::Lit(lit) => Ok((vec![], Atom::Lit(convert_lit(lit)))),
             TypedExprKind::Var(name) => {
@@ -958,7 +1012,15 @@ impl LowerCtx {
             }
             TypedExprKind::TypeApp { expr: inner, .. } => self.lower_to_simple(inner),
             TypedExprKind::BinaryOp {
-                op: BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge,
+                op:
+                    BinOp::And
+                    | BinOp::Or
+                    | BinOp::Eq
+                    | BinOp::Neq
+                    | BinOp::Lt
+                    | BinOp::Gt
+                    | BinOp::Le
+                    | BinOp::Ge,
                 ..
             } => Err(LowerError::InternalError(
                 "And/Or/comparison ops must be lowered as compound expr".to_string(),
@@ -1008,9 +1070,7 @@ impl LowerCtx {
                 }
                 Ok((bindings, SimpleExpr::MakeTuple { elements: atoms }))
             }
-            TypedExprKind::StructLit { name, fields } => {
-                self.lower_struct_lit(name, fields)
-            }
+            TypedExprKind::StructLit { name, fields } => self.lower_struct_lit(name, fields),
             TypedExprKind::FieldAccess { expr: base, field } => {
                 let (bindings, base_atom) = self.lower_to_atom(base)?;
                 let type_name = type_name_of(&base.ty).ok_or_else(|| {
@@ -1043,19 +1103,15 @@ impl LowerCtx {
                     std::mem::discriminant(&expr.kind)
                 )))
             }
-            TypedExprKind::Lambda { params, body } => {
-                self.lower_lambda(params, body, &expr.ty)
-            }
-            TypedExprKind::Match { .. }
-            | TypedExprKind::LetPattern { .. } => {
+            TypedExprKind::Lambda { params, body } => self.lower_lambda(params, body, &expr.ty),
+            TypedExprKind::Match { .. } | TypedExprKind::LetPattern { .. } => {
                 // These are compound expressions — must go through lower_expr
                 Err(LowerError::InternalError(format!(
                     "lower_to_simple called on compound expr {:?}",
                     std::mem::discriminant(&expr.kind)
                 )))
             }
-            TypedExprKind::Recur(_)
-            | TypedExprKind::QuestionMark { .. } => {
+            TypedExprKind::Recur(_) | TypedExprKind::QuestionMark { .. } => {
                 // These are compound expressions — must go through lower_expr
                 Err(LowerError::InternalError(format!(
                     "lower_to_simple called on compound expr {:?}",
@@ -1087,7 +1143,13 @@ impl LowerCtx {
                 } else {
                     Type::Unit
                 };
-                Ok((bindings, SimpleExpr::MakeVec { element_type: element_type.into(), elements: atoms }))
+                Ok((
+                    bindings,
+                    SimpleExpr::MakeVec {
+                        element_type: element_type.into(),
+                        elements: atoms,
+                    },
+                ))
             }
         }
     }
@@ -1230,9 +1292,7 @@ impl LowerCtx {
                 })
             }
 
-            TypedExprKind::App { func, args } => {
-                self.lower_app_expr(func, args, &expr.ty)
-            }
+            TypedExprKind::App { func, args } => self.lower_app_expr(func, args, &expr.ty),
 
             // Short-circuit: lhs && rhs → switch lhs { 1 -> rhs | _ -> false }
             TypedExprKind::BinaryOp {
@@ -1392,21 +1452,19 @@ impl LowerCtx {
                 };
                 Ok(Self::wrap_bindings(all_bindings, inner))
             }
-            TypedExprKind::Match { scrutinee, arms } => {
-                self.lower_match(scrutinee, arms, &expr.ty)
-            }
+            TypedExprKind::Match { scrutinee, arms } => self.lower_match(scrutinee, arms, &expr.ty),
 
             TypedExprKind::LetPattern {
                 pattern,
                 value,
                 body,
-            } => {
-                self.lower_let_pattern(pattern, value, body.as_deref(), &expr.ty)
-            }
+            } => self.lower_let_pattern(pattern, value, body.as_deref(), &expr.ty),
 
             TypedExprKind::Recur(args) => {
                 let (join_name, _join_params) = self.recur_join.clone().ok_or_else(|| {
-                    LowerError::InternalError("recur outside of a recur-enabled function".to_string())
+                    LowerError::InternalError(
+                        "recur outside of a recur-enabled function".to_string(),
+                    )
                 })?;
                 let result_ty = expr.ty.clone();
                 let recur_close_bindings = self.auto_close.recur_closes.get(&expr.span).cloned();
@@ -1425,7 +1483,10 @@ impl LowerCtx {
                 })
             }
 
-            TypedExprKind::QuestionMark { expr: inner, is_option } => {
+            TypedExprKind::QuestionMark {
+                expr: inner,
+                is_option,
+            } => {
                 let early_return = self.early_return_join.ok_or_else(|| {
                     LowerError::InternalError("? outside of a ?-enabled function".to_string())
                 })?;
@@ -1490,7 +1551,9 @@ impl LowerCtx {
                     } else {
                         // Result[E, T]: Ok#0(T) | Err#1(E)
                         let (err_ty, ok_ty) = match &inner_stripped_ty {
-                            Type::Named(_, args) if args.len() >= 2 => (args[0].clone(), args[1].clone()),
+                            Type::Named(_, args) if args.len() >= 2 => {
+                                (args[0].clone(), args[1].clone())
+                            }
                             _ => (Type::Unit, Type::Unit),
                         };
                         let err_var = ctx.fresh_var();
@@ -1555,7 +1618,10 @@ impl LowerCtx {
                 } else if let Type::Own(inner) = &expr.ty {
                     if let Type::Named(_, args) = inner.as_ref() {
                         args.first().cloned().unwrap_or_else(|| {
-                            eprintln!("ICE: VecLit type Own(Named) has no type args: {:?}", expr.ty);
+                            eprintln!(
+                                "ICE: VecLit type Own(Named) has no type args: {:?}",
+                                expr.ty
+                            );
                             Type::Unit
                         })
                     } else {
@@ -1593,10 +1659,7 @@ impl LowerCtx {
 
     /// Try to lower a value expression as either a SimpleExpr (for direct Let binding)
     /// or as a full Expr (for compound expressions like If, Do, nested Let, or atoms).
-    fn try_lower_as_simple(
-        &mut self,
-        expr: &TypedExpr,
-    ) -> Result<LoweredValue, LowerError> {
+    fn try_lower_as_simple(&mut self, expr: &TypedExpr) -> Result<LoweredValue, LowerError> {
         match &expr.kind {
             // Atoms, compound expressions, and short-circuit ops produce Expr trees
             TypedExprKind::Lit(_)
@@ -1751,10 +1814,18 @@ impl LowerCtx {
         let head_kind = self.classify_column(&clauses, col);
 
         match head_kind {
-            ColumnKind::Constructor => self.compile_constructor_column(&scrutinees, clauses, col, result_ty),
-            ColumnKind::Literal => self.compile_literal_column(&scrutinees, clauses, col, result_ty),
-            ColumnKind::Tuple(arity) => self.compile_tuple_column(&scrutinees, clauses, col, result_ty, arity),
-            ColumnKind::Struct(name) => self.compile_struct_column(&scrutinees, clauses, col, result_ty, &name),
+            ColumnKind::Constructor => {
+                self.compile_constructor_column(&scrutinees, clauses, col, result_ty)
+            }
+            ColumnKind::Literal => {
+                self.compile_literal_column(&scrutinees, clauses, col, result_ty)
+            }
+            ColumnKind::Tuple(arity) => {
+                self.compile_tuple_column(&scrutinees, clauses, col, result_ty, arity)
+            }
+            ColumnKind::Struct(name) => {
+                self.compile_struct_column(&scrutinees, clauses, col, result_ty, &name)
+            }
         }
     }
 
@@ -1871,7 +1942,9 @@ impl LowerCtx {
             if let TypedPattern::Constructor { name, .. } = &clause.patterns[col] {
                 if seen_names.insert(name.clone()) {
                     // Look up tag and field types from sum_variants
-                    if let Some((type_name, tag, field_types)) = self.sum_variants.get(name.as_str()).cloned() {
+                    if let Some((type_name, tag, field_types)) =
+                        self.sum_variants.get(name.as_str()).cloned()
+                    {
                         let _ = type_name;
                         seen_tags.push((name.clone(), tag, field_types));
                     } else {
@@ -1898,7 +1971,8 @@ impl LowerCtx {
             }
 
             // Specialize the clause matrix for this constructor
-            let specialized = self.specialize_for_constructor(&clauses, col, ctor_name, field_types, &scrut);
+            let specialized =
+                self.specialize_for_constructor(&clauses, col, ctor_name, field_types, &scrut);
 
             // Build new scrutinee list: replace col with field atoms
             let mut new_scrutinees = Vec::new();
@@ -1913,15 +1987,25 @@ impl LowerCtx {
             let body = self.compile_clauses(new_scrutinees, specialized, result_ty)?;
 
             // Use concrete types updated during lowering, not abstract field types
-            let concrete_bindings: Vec<(VarId, Type)> = field_bindings.iter()
+            let concrete_bindings: Vec<(VarId, Type)> = field_bindings
+                .iter()
                 .map(|(v, abstract_t)| {
-                    (*v, self.var_types.get(v).cloned().unwrap_or_else(|| abstract_t.clone()))
+                    (
+                        *v,
+                        self.var_types
+                            .get(v)
+                            .cloned()
+                            .unwrap_or_else(|| abstract_t.clone()),
+                    )
                 })
                 .collect();
 
             branches.push(SwitchBranch {
                 tag: *tag,
-                bindings: concrete_bindings.into_iter().map(|(v, t)| (v, t.into())).collect(),
+                bindings: concrete_bindings
+                    .into_iter()
+                    .map(|(v, t)| (v, t.into()))
+                    .collect(),
                 body,
             });
         }
@@ -1937,7 +2021,11 @@ impl LowerCtx {
                     new_scrutinees.push(s.clone());
                 }
             }
-            Some(Box::new(self.compile_clauses(new_scrutinees, default_clauses, result_ty)?))
+            Some(Box::new(self.compile_clauses(
+                new_scrutinees,
+                default_clauses,
+                result_ty,
+            )?))
         };
 
         Ok(Expr {
@@ -1986,7 +2074,11 @@ impl LowerCtx {
                 ty: result_ty.clone().into(),
             }
         } else {
-            self.compile_clauses(new_scrutinees_for_default.clone(), default_clauses, result_ty)?
+            self.compile_clauses(
+                new_scrutinees_for_default.clone(),
+                default_clauses,
+                result_ty,
+            )?
         };
 
         // Chain literals in reverse order so the first literal tested is the first one encountered
@@ -2043,7 +2135,10 @@ impl LowerCtx {
 
         // Get the scrutinee type for fallback in tuple_element_type
         let scrut_ty = if let Atom::Var(id) = &scrut {
-            self.var_types.get(id).cloned().unwrap_or_else(|| pattern_type(&clauses[0].patterns[col]))
+            self.var_types
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| pattern_type(&clauses[0].patterns[col]))
         } else {
             pattern_type(&clauses[0].patterns[col])
         };
@@ -2232,7 +2327,10 @@ impl LowerCtx {
             match &clause.patterns[col] {
                 TypedPattern::Lit { value, .. } if value == lit => {
                     // Literals have no sub-patterns; just remove the column
-                    let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                    let new_pats: Vec<_> = clause
+                        .patterns
+                        .iter()
+                        .enumerate()
                         .filter(|(i, _)| *i != col)
                         .map(|(_, p)| p.clone())
                         .collect();
@@ -2243,7 +2341,10 @@ impl LowerCtx {
                     });
                 }
                 TypedPattern::Wildcard { .. } => {
-                    let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                    let new_pats: Vec<_> = clause
+                        .patterns
+                        .iter()
+                        .enumerate()
                         .filter(|(i, _)| *i != col)
                         .map(|(_, p)| p.clone())
                         .collect();
@@ -2254,7 +2355,10 @@ impl LowerCtx {
                     });
                 }
                 TypedPattern::Var { name, ty, .. } => {
-                    let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                    let new_pats: Vec<_> = clause
+                        .patterns
+                        .iter()
+                        .enumerate()
                         .filter(|(i, _)| *i != col)
                         .map(|(_, p)| p.clone())
                         .collect();
@@ -2278,7 +2382,10 @@ impl LowerCtx {
         for clause in clauses {
             let pat = &clause.patterns[col];
             if is_wildcard_or_var(pat) {
-                let new_pats: Vec<_> = clause.patterns.iter().enumerate()
+                let new_pats: Vec<_> = clause
+                    .patterns
+                    .iter()
+                    .enumerate()
                     .filter(|(i, _)| *i != col)
                     .map(|(_, p)| p.clone())
                     .collect();
@@ -2297,7 +2404,13 @@ impl LowerCtx {
     }
 
     /// Expand a clause's tuple pattern at `col` into element sub-patterns.
-    fn expand_tuple_clause(&self, clause: Clause, col: usize, arity: usize, scrut_at_col: &Atom) -> Clause {
+    fn expand_tuple_clause(
+        &self,
+        clause: Clause,
+        col: usize,
+        arity: usize,
+        scrut_at_col: &Atom,
+    ) -> Clause {
         let mut new_pats = Vec::new();
         let mut extra = clause.extra_bindings;
         for (i, p) in clause.patterns.into_iter().enumerate() {
@@ -2309,12 +2422,18 @@ impl LowerCtx {
                     TypedPattern::Var { name, ty, span } => {
                         extra.push((name, scrut_at_col.clone(), ty.clone()));
                         for _ in 0..arity {
-                            new_pats.push(TypedPattern::Wildcard { ty: ty.clone(), span });
+                            new_pats.push(TypedPattern::Wildcard {
+                                ty: ty.clone(),
+                                span,
+                            });
                         }
                     }
                     TypedPattern::Wildcard { ty, span } => {
                         for _ in 0..arity {
-                            new_pats.push(TypedPattern::Wildcard { ty: ty.clone(), span });
+                            new_pats.push(TypedPattern::Wildcard {
+                                ty: ty.clone(),
+                                span,
+                            });
                         }
                     }
                     _ => {
@@ -2392,7 +2511,13 @@ impl LowerCtx {
     }
 
     /// Get the type of a tuple element from the patterns in a column.
-    fn tuple_element_type(&self, clauses: &[Clause], col: usize, index: usize, scrut_ty: &Type) -> Type {
+    fn tuple_element_type(
+        &self,
+        clauses: &[Clause],
+        col: usize,
+        index: usize,
+        scrut_ty: &Type,
+    ) -> Type {
         for clause in clauses {
             if let TypedPattern::Tuple { elements, .. } = &clause.patterns[col] {
                 if let Some(elem) = elements.get(index) {
@@ -2416,7 +2541,9 @@ impl LowerCtx {
             Lit::Float(_) => Ok(PrimOp::EqFloat),
             Lit::Bool(_) => Ok(PrimOp::EqInt), // booleans compared as ints
             Lit::String(_) => Ok(PrimOp::EqString),
-            Lit::Unit => Err(LowerError::UnsupportedOp("matching on Unit literal".to_string())),
+            Lit::Unit => Err(LowerError::UnsupportedOp(
+                "matching on Unit literal".to_string(),
+            )),
         }
     }
 
@@ -2444,9 +2571,11 @@ impl LowerCtx {
             // If the single expression is a Let/LetPattern with no body, it's a trailing
             // statement — fall through to the Do-block Let handler which will use the
             // empty rest (→ Unit) as the body.
-            if !matches!(&exprs[0].kind,
-                TypedExprKind::Let { body: None, .. } | TypedExprKind::LetPattern { body: None, .. })
-            {
+            if !matches!(
+                &exprs[0].kind,
+                TypedExprKind::Let { body: None, .. }
+                    | TypedExprKind::LetPattern { body: None, .. }
+            ) {
                 return self.lower_expr(&exprs[0]);
             }
         }
@@ -2455,7 +2584,12 @@ impl LowerCtx {
         let rest = &exprs[1..];
 
         // Special case: Let { body: None } in a Do block — the body is the rest of the block
-        if let TypedExprKind::Let { name, value, body: None } = &expr.kind {
+        if let TypedExprKind::Let {
+            name,
+            value,
+            body: None,
+        } = &expr.kind
+        {
             // Check for shadow_close before pushing the new binding
             let shadow_close = self.auto_close.shadow_closes.get(&expr.span).cloned();
             let old_var = if shadow_close.is_some() {
@@ -2561,15 +2695,21 @@ impl LowerCtx {
         let lhs_var = self.fresh_var();
 
         let (true_branch, false_branch) = if is_and {
-            (self.lower_expr(rhs)?, Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Bool(false))),
-                ty: Type::Bool.into(),
-            })
+            (
+                self.lower_expr(rhs)?,
+                Expr {
+                    kind: ExprKind::Atom(Atom::Lit(Literal::Bool(false))),
+                    ty: Type::Bool.into(),
+                },
+            )
         } else {
-            (Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Bool(true))),
-                ty: Type::Bool.into(),
-            }, self.lower_expr(rhs)?)
+            (
+                Expr {
+                    kind: ExprKind::Atom(Atom::Lit(Literal::Bool(true))),
+                    ty: Type::Bool.into(),
+                },
+                self.lower_expr(rhs)?,
+            )
         };
 
         let switch = Expr {
@@ -2594,12 +2734,42 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name, swap, negate) = match op {
-            BinOp::Eq => (TraitName::new("core/eq".to_string(), "Eq".to_string()), "eq", false, false),
-            BinOp::Neq => (TraitName::new("core/eq".to_string(), "Eq".to_string()), "eq", false, true),
-            BinOp::Lt => (TraitName::new("core/ord".to_string(), "Ord".to_string()), "lt", false, false),
-            BinOp::Gt => (TraitName::new("core/ord".to_string(), "Ord".to_string()), "lt", true, false),
-            BinOp::Le => (TraitName::new("core/ord".to_string(), "Ord".to_string()), "lt", true, true),
-            BinOp::Ge => (TraitName::new("core/ord".to_string(), "Ord".to_string()), "lt", false, true),
+            BinOp::Eq => (
+                TraitName::new("core/eq".to_string(), "Eq".to_string()),
+                "eq",
+                false,
+                false,
+            ),
+            BinOp::Neq => (
+                TraitName::new("core/eq".to_string(), "Eq".to_string()),
+                "eq",
+                false,
+                true,
+            ),
+            BinOp::Lt => (
+                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                "lt",
+                false,
+                false,
+            ),
+            BinOp::Gt => (
+                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                "lt",
+                true,
+                false,
+            ),
+            BinOp::Le => (
+                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                "lt",
+                true,
+                true,
+            ),
+            BinOp::Ge => (
+                TraitName::new("core/ord".to_string(), "Ord".to_string()),
+                "lt",
+                false,
+                true,
+            ),
             _ => unreachable!(),
         };
 
@@ -2609,9 +2779,9 @@ impl LowerCtx {
         // Resolve dict + method fn_id BEFORE entering CPS chain
         let fn_id = self
             .lookup_trait_method(&trait_name, method_name)
-            .ok_or_else(|| LowerError::UnresolvedVar(
-                format!("{}.{}", trait_name.name, method_name),
-            ))?;
+            .ok_or_else(|| {
+                LowerError::UnresolvedVar(format!("{}.{}", trait_name.name, method_name))
+            })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
@@ -2668,10 +2838,22 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name) = match op {
-            BinOp::Add => (TraitName::new("core/semigroup".to_string(), "Semigroup".to_string()), "combine"),
-            BinOp::Sub => (TraitName::new("core/sub".to_string(), "Sub".to_string()), "sub"),
-            BinOp::Mul => (TraitName::new("core/mul".to_string(), "Mul".to_string()), "mul"),
-            BinOp::Div => (TraitName::new("core/div".to_string(), "Div".to_string()), "div"),
+            BinOp::Add => (
+                TraitName::new("core/semigroup".to_string(), "Semigroup".to_string()),
+                "combine",
+            ),
+            BinOp::Sub => (
+                TraitName::new("core/sub".to_string(), "Sub".to_string()),
+                "sub",
+            ),
+            BinOp::Mul => (
+                TraitName::new("core/mul".to_string(), "Mul".to_string()),
+                "mul",
+            ),
+            BinOp::Div => (
+                TraitName::new("core/div".to_string(), "Div".to_string()),
+                "div",
+            ),
             _ => unreachable!(),
         };
 
@@ -2679,9 +2861,9 @@ impl LowerCtx {
 
         let fn_id = self
             .lookup_trait_method(&trait_name, method_name)
-            .ok_or_else(|| LowerError::UnresolvedVar(
-                format!("{}.{}", trait_name.name, method_name),
-            ))?;
+            .ok_or_else(|| {
+                LowerError::UnresolvedVar(format!("{}.{}", trait_name.name, method_name))
+            })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
@@ -2717,7 +2899,10 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name) = match op {
-            UnaryOp::Neg => (TraitName::new("core/neg".to_string(), "Neg".to_string()), "neg"),
+            UnaryOp::Neg => (
+                TraitName::new("core/neg".to_string(), "Neg".to_string()),
+                "neg",
+            ),
             _ => unreachable!(),
         };
 
@@ -2725,9 +2910,9 @@ impl LowerCtx {
 
         let fn_id = self
             .lookup_trait_method(&trait_name, method_name)
-            .ok_or_else(|| LowerError::UnresolvedVar(
-                format!("{}.{}", trait_name.name, method_name),
-            ))?;
+            .ok_or_else(|| {
+                LowerError::UnresolvedVar(format!("{}.{}", trait_name.name, method_name))
+            })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
         let result_ty = result_ty.clone();
@@ -2797,37 +2982,33 @@ impl LowerCtx {
         // Handle trait method dispatch (origin-tagged calls)
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                if let Some(fn_id) = self.lookup_fn(name) {
-                    // Resolve the dispatch type from trait method type patterns
-                    let dict_ty = self.resolve_trait_dispatch_type(
-                        trait_id,
-                        name,
-                        args,
-                        &type_args,
-                        func,
-                    );
-                    if let Some(dict_ty) = dict_ty {
-                        let (dict_bindings, dict_atom) =
-                            self.resolve_dict(trait_id, &dict_ty)?;
-                        bindings.extend(dict_bindings);
-
-                        // Dict is prepended as first argument
-                        let mut all_args = vec![dict_atom];
-                        all_args.extend(arg_atoms);
-                        return Ok((bindings, SimpleExpr::Call { func: fn_id, args: all_args }));
-                    }
-                    return Err(LowerError::InternalError(format!(
-                        "could not resolve trait dispatch type for {}.{}",
+                let fn_id = self.lookup_trait_method(trait_id, name).ok_or_else(|| {
+                    LowerError::InternalError(format!(
+                        "ICE: no FnId for trait method {}.{}",
                         trait_id.name, name
-                    )));
-                }
+                    ))
+                })?;
+                let dict_ty =
+                    self.resolve_trait_dispatch_type(trait_id, name, args, &type_args, func)?;
+                let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
+                bindings.extend(dict_bindings);
+
+                // Dict is prepended as first argument
+                let mut all_args = vec![dict_atom];
+                all_args.extend(arg_atoms);
+                return Ok((
+                    bindings,
+                    SimpleExpr::Call {
+                        func: fn_id,
+                        args: all_args,
+                    },
+                ));
             }
         }
 
         if let Some(name) = &func_name {
             // Check if it's a variant constructor
-            if let Some((type_name, tag, _fields)) = self.sum_variants.get(name.as_str()).cloned()
-            {
+            if let Some((type_name, tag, _fields)) = self.sum_variants.get(name.as_str()).cloned() {
                 return Ok((
                     bindings,
                     SimpleExpr::ConstructVariant {
@@ -2848,7 +3029,13 @@ impl LowerCtx {
 
                 let mut all_args = dict_atoms;
                 all_args.extend(arg_atoms);
-                return Ok((bindings, SimpleExpr::Call { func: fn_id, args: all_args }));
+                return Ok((
+                    bindings,
+                    SimpleExpr::Call {
+                        func: fn_id,
+                        args: all_args,
+                    },
+                ));
             }
 
             // Local variable with function type — closure call
@@ -2901,9 +3088,9 @@ impl LowerCtx {
         // Reorder to canonical field order
         let mut ordered_atoms = vec![];
         for (fname, _) in &canonical_fields {
-            let atom = field_map.remove(fname).ok_or_else(|| {
-                LowerError::UnresolvedField(name.to_string(), fname.clone())
-            })?;
+            let atom = field_map
+                .remove(fname)
+                .ok_or_else(|| LowerError::UnresolvedField(name.to_string(), fname.clone()))?;
             ordered_atoms.push(atom);
         }
 
@@ -2948,43 +3135,38 @@ impl LowerCtx {
         // Handle trait method dispatch
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                if let Some(fn_id) = self.lookup_fn(name) {
-                    let dict_ty = self.resolve_trait_dispatch_type(
-                        trait_id,
-                        name,
-                        args,
-                        &type_args,
-                        func,
-                    );
-                    if let Some(dict_ty) = dict_ty {
-                        let (dict_bindings, dict_atom) =
-                            self.resolve_dict(trait_id, &dict_ty)?;
-
-                        return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
-                            let mut all_args = vec![dict_atom];
-                            all_args.extend(arg_atoms);
-                            let var = ctx.fresh_var();
-                            let ty = result_ty;
-                            let call_expr = Expr {
-                                ty: ty.clone().into(),
-                                kind: ExprKind::Let {
-                                    bind: var,
-                                    ty: ty.clone().into(),
-                                    value: SimpleExpr::Call { func: fn_id, args: all_args },
-                                    body: Box::new(Expr {
-                                        ty: ty.into(),
-                                        kind: ExprKind::Atom(Atom::Var(var)),
-                                    }),
-                                },
-                            };
-                            Ok(Self::wrap_bindings(dict_bindings, call_expr))
-                        });
-                    }
-                    return Err(LowerError::InternalError(format!(
-                        "could not resolve trait dispatch type for {}.{}",
+                let fn_id = self.lookup_trait_method(trait_id, name).ok_or_else(|| {
+                    LowerError::InternalError(format!(
+                        "ICE: no FnId for trait method {}.{}",
                         trait_id.name, name
-                    )));
-                }
+                    ))
+                })?;
+                let dict_ty =
+                    self.resolve_trait_dispatch_type(trait_id, name, args, &type_args, func)?;
+                let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
+
+                return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                    let mut all_args = vec![dict_atom];
+                    all_args.extend(arg_atoms);
+                    let var = ctx.fresh_var();
+                    let ty = result_ty;
+                    let call_expr = Expr {
+                        ty: ty.clone().into(),
+                        kind: ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone().into(),
+                            value: SimpleExpr::Call {
+                                func: fn_id,
+                                args: all_args,
+                            },
+                            body: Box::new(Expr {
+                                ty: ty.into(),
+                                kind: ExprKind::Atom(Atom::Var(var)),
+                            }),
+                        },
+                    };
+                    Ok(Self::wrap_bindings(dict_bindings, call_expr))
+                });
             }
         }
 
@@ -3030,7 +3212,10 @@ impl LowerCtx {
                         kind: ExprKind::Let {
                             bind: var,
                             ty: ty.clone().into(),
-                            value: SimpleExpr::Call { func: fn_id, args: all_args },
+                            value: SimpleExpr::Call {
+                                func: fn_id,
+                                args: all_args,
+                            },
                             body: Box::new(Expr {
                                 ty: ty.into(),
                                 kind: ExprKind::Atom(Atom::Var(var)),
@@ -3105,12 +3290,13 @@ impl LowerCtx {
             .clone();
 
         // Reorder field expressions to canonical order
-        let field_map: HashMap<&str, &TypedExpr> = fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
+        let field_map: HashMap<&str, &TypedExpr> =
+            fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
         let mut ordered_exprs = vec![];
         for (fname, _) in &canonical_fields {
-            let fexpr = field_map.get(fname.as_str()).ok_or_else(|| {
-                LowerError::UnresolvedField(name.to_string(), fname.clone())
-            })?;
+            let fexpr = field_map
+                .get(fname.as_str())
+                .ok_or_else(|| LowerError::UnresolvedField(name.to_string(), fname.clone()))?;
             ordered_exprs.push((*fexpr).clone());
         }
 
@@ -3145,10 +3331,7 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let type_name = type_name_of(&base.ty).ok_or_else(|| {
-            LowerError::InternalError(format!(
-                "StructUpdate on non-named type: {:?}",
-                base.ty
-            ))
+            LowerError::InternalError(format!("StructUpdate on non-named type: {:?}", base.ty))
         })?;
 
         let canonical_fields = self
@@ -3164,11 +3347,8 @@ impl LowerCtx {
         // Lower base first, then update field values
         self.lower_to_atom_then(base, |ctx, base_atom| {
             ctx.lower_atoms_then(&update_exprs, vec![], |ctx, update_atoms| {
-                let mut update_map: HashMap<String, Atom> = update_names
-                    .iter()
-                    .cloned()
-                    .zip(update_atoms)
-                    .collect();
+                let mut update_map: HashMap<String, Atom> =
+                    update_names.iter().cloned().zip(update_atoms).collect();
 
                 let mut bindings = vec![];
                 let mut field_atoms = vec![];
@@ -3222,7 +3402,8 @@ impl LowerCtx {
         const MAX_DICT_DEPTH: u32 = 64;
         if self.dict_depth >= MAX_DICT_DEPTH {
             return Err(LowerError::InternalError(format!(
-                "dict resolution depth exceeded for {}[{ty}]", trait_name.name
+                "dict resolution depth exceeded for {}[{ty}]",
+                trait_name.name
             )));
         }
         self.dict_depth += 1;
@@ -3253,7 +3434,10 @@ impl LowerCtx {
         Ok((
             vec![LetBinding {
                 bind: var,
-                ty: IrType::Dict { trait_name: trait_name.clone(), target: Box::new(ty.clone().into()) },
+                ty: IrType::Dict {
+                    trait_name: trait_name.clone(),
+                    target: Box::new(ty.clone().into()),
+                },
                 value: SimpleExpr::GetDict {
                     trait_name: trait_name.clone(),
                     ty: ty.clone().into(),
@@ -3266,10 +3450,7 @@ impl LowerCtx {
     /// Look up a dict param VarId for a type variable.
     fn lookup_dict_var(&self, trait_name: &TraitName, ty: &Type) -> Option<VarId> {
         match ty {
-            Type::Var(id) => self
-                .dict_params
-                .get(&(trait_name.clone(), *id))
-                .copied(),
+            Type::Var(id) => self.dict_params.get(&(trait_name.clone(), *id)).copied(),
             _ => None,
         }
     }
@@ -3315,7 +3496,10 @@ impl LowerCtx {
         let var = self.fresh_var();
         all_bindings.push(LetBinding {
             bind: var,
-            ty: IrType::Dict { trait_name: trait_name.clone(), target: Box::new(ty.clone().into()) },
+            ty: IrType::Dict {
+                trait_name: trait_name.clone(),
+                target: Box::new(ty.clone().into()),
+            },
             value: SimpleExpr::MakeDict {
                 trait_name: trait_name.clone(),
                 ty: ty.clone().into(),
@@ -3384,13 +3568,24 @@ impl LowerCtx {
         args: &[TypedExpr],
         type_args: &[Type],
         func: &TypedExpr,
-    ) -> Option<Type> {
+    ) -> Result<Type, LowerError> {
         // Find the trait's type var and method types
-        let (type_var_id, method_types) = self.trait_method_types.get(trait_name)?;
+        let (type_var_id, method_types) =
+            self.trait_method_types.get(trait_name).ok_or_else(|| {
+                LowerError::InternalError(format!(
+                    "ICE: no trait_method_types for trait {}",
+                    trait_name.name
+                ))
+            })?;
         let type_var_id = *type_var_id;
 
         // Get method type patterns
-        let (param_patterns, ret_pattern) = method_types.get(method_name)?;
+        let (param_patterns, ret_pattern) = method_types.get(method_name).ok_or_else(|| {
+            LowerError::InternalError(format!(
+                "ICE: no method type patterns for {}.{}",
+                trait_name.name, method_name
+            ))
+        })?;
 
         let mut bindings = HashMap::new();
 
@@ -3408,10 +3603,17 @@ impl LowerCtx {
 
         // Bind from explicit type application
         if !type_args.is_empty() {
-            bindings.entry(type_var_id).or_insert_with(|| type_args[0].clone());
+            bindings
+                .entry(type_var_id)
+                .or_insert_with(|| type_args[0].clone());
         }
 
-        bindings.get(&type_var_id).cloned()
+        bindings.get(&type_var_id).cloned().ok_or_else(|| {
+            LowerError::InternalError(format!(
+                "ICE: could not resolve dispatch type var for {}.{}",
+                trait_name.name, method_name
+            ))
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -3474,7 +3676,10 @@ impl LowerCtx {
         let mut capture_var_mappings = vec![];
         for (name, old_var_id) in &capture_params {
             let new_var = self.fresh_var();
-            let ty = self.var_types.get(old_var_id).cloned()
+            let ty = self
+                .var_types
+                .get(old_var_id)
+                .cloned()
                 .unwrap_or_else(|| Type::Var(self.type_var_gen.fresh()));
             capture_var_mappings.push((name.clone(), new_var, *old_var_id, ty));
         }
@@ -3493,7 +3698,11 @@ impl LowerCtx {
         for (i, param_name) in params.iter().enumerate() {
             let new_var = self.fresh_var();
             let ty = param_types.get(i).cloned().unwrap_or_else(|| {
-                eprintln!("ICE: lambda param {} has no type (param_types len={})", i, param_types.len());
+                eprintln!(
+                    "ICE: lambda param {} has no type (param_types len={})",
+                    i,
+                    param_types.len()
+                );
                 Type::Unit
             });
             lambda_var_mappings.push((param_name.clone(), new_var, ty));
@@ -3526,12 +3735,16 @@ impl LowerCtx {
 
         // 7. Filter dict captures to only those actually used in the body
         let used_vars = referenced_vars_in_expr(&lowered_body);
-        let dict_var_mappings: Vec<_> = dict_var_mappings.into_iter()
+        let dict_var_mappings: Vec<_> = dict_var_mappings
+            .into_iter()
             .filter(|(_, new_var)| used_vars.contains(new_var))
             .collect();
-        let dict_capture_atoms: Vec<_> = dict_entries.iter()
+        let dict_capture_atoms: Vec<_> = dict_entries
+            .iter()
             .filter(|((trait_name, tv_id), _)| {
-                dict_var_mappings.iter().any(|((tn, tid), _)| tn == trait_name && tid == tv_id)
+                dict_var_mappings
+                    .iter()
+                    .any(|((tn, tid), _)| tn == trait_name && tid == tv_id)
             })
             .map(|(_, var_id)| Atom::Var(**var_id))
             .collect();
@@ -3542,7 +3755,13 @@ impl LowerCtx {
             lifted_params.push((*new_var, ty.clone().into()));
         }
         for (key, new_var) in &dict_var_mappings {
-            lifted_params.push((*new_var, IrType::Dict { trait_name: key.0.clone(), target: Box::new(IrType::Var(key.1)) }));
+            lifted_params.push((
+                *new_var,
+                IrType::Dict {
+                    trait_name: key.0.clone(),
+                    target: Box::new(IrType::Var(key.1)),
+                },
+            ));
         }
         for (_, new_var, ty) in &lambda_var_mappings {
             lifted_params.push((*new_var, ty.clone().into()));
@@ -3564,10 +3783,13 @@ impl LowerCtx {
         let mut all_captures = capture_atoms;
         all_captures.extend(dict_capture_atoms);
 
-        Ok((vec![], SimpleExpr::MakeClosure {
-            func: fn_id,
-            captures: all_captures,
-        }))
+        Ok((
+            vec![],
+            SimpleExpr::MakeClosure {
+                func: fn_id,
+                captures: all_captures,
+            },
+        ))
     }
 
     // -----------------------------------------------------------------------
@@ -3598,7 +3820,13 @@ impl LowerCtx {
                 let var = self.fresh_var();
                 self.dict_params
                     .insert((trait_name.clone(), *type_var_id), var);
-                params.push((var, IrType::Dict { trait_name: trait_name.clone(), target: Box::new(IrType::Var(*type_var_id)) }));
+                params.push((
+                    var,
+                    IrType::Dict {
+                        trait_name: trait_name.clone(),
+                        target: Box::new(IrType::Var(*type_var_id)),
+                    },
+                ));
             }
         }
 
@@ -3606,13 +3834,14 @@ impl LowerCtx {
         let mut regular_param_vars = vec![];
         for (i, param_name) in decl.params.iter().enumerate() {
             let var = self.fresh_var();
-            let ty = param_types
-                .get(i)
-                .cloned()
-                .unwrap_or_else(|| {
-                    eprintln!("ICE: fn param {} has no type (param_types len={})", i, param_types.len());
-                    Type::Unit
-                });
+            let ty = param_types.get(i).cloned().unwrap_or_else(|| {
+                eprintln!(
+                    "ICE: fn param {} has no type (param_types len={})",
+                    i,
+                    param_types.len()
+                );
+                Type::Unit
+            });
             self.var_types.insert(var, ty.clone());
             self.push_var(param_name, var);
             params.push((var, ty.into()));
@@ -3713,15 +3942,16 @@ impl LowerCtx {
                 })
                 .collect();
             // Original param atoms for the initial jump
-            let original_atoms: Vec<Atom> = regular_param_vars
-                .iter()
-                .map(|&v| Atom::Var(v))
-                .collect();
+            let original_atoms: Vec<Atom> =
+                regular_param_vars.iter().map(|&v| Atom::Var(v)).collect();
             body = Expr {
                 ty: return_type.clone().into(),
                 kind: ExprKind::LetJoin {
                     name: join_name,
-                    params: join_params.into_iter().map(|(v, t)| (v, t.into())).collect(),
+                    params: join_params
+                        .into_iter()
+                        .map(|(v, t)| (v, t.into()))
+                        .collect(),
                     join_body: Box::new(body),
                     body: Box::new(Expr {
                         ty: return_type.clone().into(),
@@ -3764,27 +3994,45 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_constraints.insert(name.clone(), reqs.clone());
     }
     for (name, reqs) in &typed.imported_fn_constraint_requirements {
-        fn_constraints.entry(name.clone()).or_insert_with(|| reqs.clone());
+        fn_constraints
+            .entry(name.clone())
+            .or_insert_with(|| reqs.clone());
     }
 
     // Build a bare-name → TraitName lookup from trait_defs for resolving parser constraints
-    let trait_name_lookup: HashMap<String, TraitName> = typed.trait_defs.iter()
+    let trait_name_lookup: HashMap<String, TraitName> = typed
+        .trait_defs
+        .iter()
         .map(|t| (t.name.clone(), t.trait_id.clone()))
         .collect();
 
     // Add instance method constraints so lower_fn prepends dict params
     for inst in &typed.instance_defs {
-        if inst.constraints.is_empty() { continue; }
-        let constraint_pairs: Vec<(TraitName, TypeVarId)> = inst.constraints.iter().filter_map(|c| {
-            let tn = trait_name_lookup.get(&c.trait_name)
-                .cloned()
-                .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
-            inst.type_var_ids.get(&c.type_var).map(|&tv| (tn, tv))
-        }).collect();
-        if constraint_pairs.is_empty() { continue; }
+        if inst.constraints.is_empty() {
+            continue;
+        }
+        let constraint_pairs: Vec<(TraitName, TypeVarId)> = inst
+            .constraints
+            .iter()
+            .filter_map(|c| {
+                let tn = trait_name_lookup
+                    .get(&c.trait_name)
+                    .cloned()
+                    .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
+                inst.type_var_ids.get(&c.type_var).map(|&tv| (tn, tv))
+            })
+            .collect();
+        if constraint_pairs.is_empty() {
+            continue;
+        }
         for m in &inst.methods {
-            let mangled = format!("{}$${}$${}", inst.trait_name.name, inst.target_type_name, m.name);
-            fn_constraints.entry(mangled).or_insert_with(|| constraint_pairs.clone());
+            let mangled = format!(
+                "{}$${}$${}",
+                inst.trait_name.name, inst.target_type_name, m.name
+            );
+            fn_constraints
+                .entry(mangled)
+                .or_insert_with(|| constraint_pairs.clone());
         }
     }
 
@@ -3819,7 +4067,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                     .constraints
                     .iter()
                     .map(|c| {
-                        let tn = trait_name_lookup.get(&c.trait_name)
+                        let tn = trait_name_lookup
+                            .get(&c.trait_name)
                             .cloned()
                             .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
                         (tn, c.type_var.clone())
@@ -3968,8 +4217,6 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             if !ctx.trait_method_ids.contains_key(&key) {
                 let id = ctx.fresh_fn();
                 ctx.trait_method_ids.insert(key, id);
-                // Also register in fn_ids for unqualified lookups (first wins)
-                ctx.fn_ids.entry(method_name.clone()).or_insert(id);
             }
         }
     }
@@ -3990,8 +4237,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         .map(|decl| {
             let (type_params, fields) =
                 if let Some(info) = typed.exported_type_infos.get(&decl.name) {
-                    let fields =
-                        ctx.struct_fields.get(&decl.name).cloned().unwrap_or_default();
+                    let fields = ctx
+                        .struct_fields
+                        .get(&decl.name)
+                        .cloned()
+                        .unwrap_or_default();
                     (info.type_param_vars.clone(), fields)
                 } else {
                     // Private type — reuse cached TypeVarIds from step 1
@@ -4000,8 +4250,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                         .get(&decl.name)
                         .cloned()
                         .unwrap_or_default();
-                    let fields =
-                        ctx.struct_fields.get(&decl.name).cloned().unwrap_or_default();
+                    let fields = ctx
+                        .struct_fields
+                        .get(&decl.name)
+                        .cloned()
+                        .unwrap_or_default();
                     (type_params, fields)
                 };
             StructDef {
@@ -4018,16 +4271,15 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         .iter()
         .filter(|decl| !typed.type_provenance.contains_key(&decl.name))
         .map(|decl| {
-            let type_params =
-                if let Some(info) = typed.exported_type_infos.get(&decl.name) {
-                    info.type_param_vars.clone()
-                } else {
-                    // Reuse cached TypeVarIds from step 2
-                    ctx.private_type_params
-                        .get(&decl.name)
-                        .cloned()
-                        .unwrap_or_default()
-                };
+            let type_params = if let Some(info) = typed.exported_type_infos.get(&decl.name) {
+                info.type_param_vars.clone()
+            } else {
+                // Reuse cached TypeVarIds from step 2
+                ctx.private_type_params
+                    .get(&decl.name)
+                    .cloned()
+                    .unwrap_or_default()
+            };
             let variants = decl
                 .variants
                 .iter()
@@ -4067,19 +4319,36 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     let mut fn_names = HashMap::new();
     for (name, &id) in &ctx.fn_ids {
         if let Some(existing) = fn_names.get(&id) {
-            debug_assert_eq!(existing, name, "ICE: FnId {:?} maps to both '{}' and '{}'", id, existing, name);
+            assert_eq!(
+                existing, name,
+                "ICE: FnId {:?} maps to both '{}' and '{}'",
+                id, existing, name
+            );
         }
         fn_names.insert(id, name.clone());
     }
 
+    // Also register trait method dispatch FnIds with their bare method name.
+    // These are dispatch-only FnIds (no FnDef) — codegen uses them with
+    // invokeinterface via trait_method_fn_ids.
+    for ((_, method_name), &fn_id) in &ctx.trait_method_ids {
+        fn_names.entry(fn_id).or_insert(method_name.clone());
+    }
+
     // 8. Build enriched extern_fns from typed_module extern function info
     let mut extern_fns = vec![];
-    for ext in typed.extern_fns.iter().chain(typed.imported_extern_fns.iter()) {
+    for ext in typed
+        .extern_fns
+        .iter()
+        .chain(typed.imported_extern_fns.iter())
+    {
         if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
             extern_fns.push(ExternFnDef {
                 id: fn_id,
                 name: ext.name.clone(),
-                target: ExternTarget::Java { class: ext.java_class.clone() },
+                target: ExternTarget::Java {
+                    class: ext.java_class.clone(),
+                },
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
             });
@@ -4088,10 +4357,16 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
 
     // 10. Build extern_types from typed_module extern type info
     let mut extern_types = vec![];
-    for (krypton_name, java_class) in typed.extern_java_types.iter().chain(typed.imported_extern_java_types.iter()) {
+    for (krypton_name, java_class) in typed
+        .extern_java_types
+        .iter()
+        .chain(typed.imported_extern_java_types.iter())
+    {
         extern_types.push(ExternTypeDef {
             name: krypton_name.clone(),
-            target: ExternTarget::Java { class: java_class.clone() },
+            target: ExternTarget::Java {
+                class: java_class.clone(),
+            },
         });
     }
 
@@ -4119,18 +4394,23 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     // 12. Build trait definitions from typed_module trait_defs
     let mut traits = vec![];
     for trait_def in &typed.trait_defs {
-        let methods = trait_def.methods.iter().map(|(method_name, param_count)| {
-            let (param_types, return_type) = trait_def.method_tc_types
-                .get(method_name)
-                .cloned()
-                .unwrap_or_else(|| (vec![], Type::Unit));
-            TraitMethodDef {
-                name: method_name.clone(),
-                param_count: *param_count,
-                param_types: param_types.into_iter().map(Into::into).collect(),
-                return_type: return_type.into(),
-            }
-        }).collect();
+        let methods = trait_def
+            .methods
+            .iter()
+            .map(|(method_name, param_count)| {
+                let (param_types, return_type) = trait_def
+                    .method_tc_types
+                    .get(method_name)
+                    .cloned()
+                    .unwrap_or_else(|| (vec![], Type::Unit));
+                TraitMethodDef {
+                    name: method_name.clone(),
+                    param_count: *param_count,
+                    param_types: param_types.into_iter().map(Into::into).collect(),
+                    return_type: return_type.into(),
+                }
+            })
+            .collect();
         traits.push(TraitDef {
             name: trait_def.name.clone(),
             type_var: trait_def.type_var_id,
@@ -4145,26 +4425,49 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     // Instance method FnIds are looked up by mangled name (Trait$$Type$$method).
     // For local instances, all methods must have FnIds (allocated during step 3).
     // For imported instances, methods may not be present (they're defined elsewhere).
-    let lower_instance = |inst: &krypton_typechecker::typed_ast::InstanceDefInfo, is_imported: bool, ctx: &LowerCtx| {
+    let lower_instance = |inst: &krypton_typechecker::typed_ast::InstanceDefInfo,
+                          is_imported: bool,
+                          ctx: &LowerCtx| {
         let method_fn_ids = if is_imported {
-            inst.methods.iter().filter_map(|m| {
-                let mangled = format!("{}$${}$${}", inst.trait_name.name, inst.target_type_name, m.name);
-                ctx.fn_ids.get(&mangled).map(|&fn_id| (m.name.clone(), fn_id))
-            }).collect()
+            inst.methods
+                .iter()
+                .filter_map(|m| {
+                    let mangled = format!(
+                        "{}$${}$${}",
+                        inst.trait_name.name, inst.target_type_name, m.name
+                    );
+                    ctx.fn_ids
+                        .get(&mangled)
+                        .map(|&fn_id| (m.name.clone(), fn_id))
+                })
+                .collect()
         } else {
-            inst.methods.iter().map(|m| {
-                let mangled = format!("{}$${}$${}", inst.trait_name.name, inst.target_type_name, m.name);
-                let fn_id = ctx.fn_ids.get(&mangled)
-                    .unwrap_or_else(|| panic!("ICE: no FnId for instance method {mangled}"));
-                (m.name.clone(), *fn_id)
-            }).collect()
+            inst.methods
+                .iter()
+                .map(|m| {
+                    let mangled = format!(
+                        "{}$${}$${}",
+                        inst.trait_name.name, inst.target_type_name, m.name
+                    );
+                    let fn_id = ctx
+                        .fn_ids
+                        .get(&mangled)
+                        .unwrap_or_else(|| panic!("ICE: no FnId for instance method {mangled}"));
+                    (m.name.clone(), *fn_id)
+                })
+                .collect()
         };
-        let sub_dict_requirements = inst.constraints.iter().filter_map(|c| {
-            let tn = trait_name_lookup.get(&c.trait_name)
-                .cloned()
-                .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
-            inst.type_var_ids.get(&c.type_var).map(|&tv| (tn, tv))
-        }).collect();
+        let sub_dict_requirements = inst
+            .constraints
+            .iter()
+            .filter_map(|c| {
+                let tn = trait_name_lookup
+                    .get(&c.trait_name)
+                    .cloned()
+                    .unwrap_or_else(|| TraitName::new(String::new(), c.trait_name.clone()));
+                inst.type_var_ids.get(&c.type_var).map(|&tv| (tn, tv))
+            })
+            .collect();
         InstanceDef {
             trait_name: inst.trait_name.clone(),
             target_type: inst.target_type.clone().into(),
@@ -4244,16 +4547,18 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
                 },
             }
         }
-        ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
-            Expr {
-                ty: result_ty,
-                kind: ExprKind::BoolSwitch {
-                    scrutinee,
-                    true_body: Box::new(replace_tail_with_jump(*true_body, target)),
-                    false_body: Box::new(replace_tail_with_jump(*false_body, target)),
-                },
-            }
-        }
+        ExprKind::BoolSwitch {
+            scrutinee,
+            true_body,
+            false_body,
+        } => Expr {
+            ty: result_ty,
+            kind: ExprKind::BoolSwitch {
+                scrutinee,
+                true_body: Box::new(replace_tail_with_jump(*true_body, target)),
+                false_body: Box::new(replace_tail_with_jump(*false_body, target)),
+            },
+        },
         ExprKind::Switch {
             scrutinee,
             branches,
@@ -4267,8 +4572,7 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
                     body: replace_tail_with_jump(b.body, target),
                 })
                 .collect();
-            let new_default = default
-                .map(|d| Box::new(replace_tail_with_jump(*d, target)));
+            let new_default = default.map(|d| Box::new(replace_tail_with_jump(*d, target)));
             Expr {
                 ty: result_ty,
                 kind: ExprKind::Switch {
@@ -4517,11 +4821,7 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
         // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
         (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
             p_args.len() == a_args.len()
-                && bind_type_vars(
-                    p_ctor,
-                    &Type::Named(a_name.clone(), Vec::new()),
-                    bindings,
-                )
+                && bind_type_vars(p_ctor, &Type::Named(a_name.clone(), Vec::new()), bindings)
                 && p_args
                     .iter()
                     .zip(a_args.iter())
@@ -4584,7 +4884,9 @@ fn collect_tuple_arities_from_type(ty: &IrType, arities: &mut std::collections::
 fn collect_tuple_arities_from_expr(expr: &Expr, arities: &mut std::collections::BTreeSet<usize>) {
     collect_tuple_arities_from_type(&expr.ty, arities);
     match &expr.kind {
-        ExprKind::Let { ty, value, body, .. } => {
+        ExprKind::Let {
+            ty, value, body, ..
+        } => {
             collect_tuple_arities_from_type(ty, arities);
             collect_tuple_arities_from_simple(value, arities);
             collect_tuple_arities_from_expr(body, arities);
@@ -4595,18 +4897,29 @@ fn collect_tuple_arities_from_expr(expr: &Expr, arities: &mut std::collections::
             }
             collect_tuple_arities_from_expr(body, arities);
         }
-        ExprKind::LetJoin { params, join_body, body, .. } => {
+        ExprKind::LetJoin {
+            params,
+            join_body,
+            body,
+            ..
+        } => {
             for (_, ty) in params {
                 collect_tuple_arities_from_type(ty, arities);
             }
             collect_tuple_arities_from_expr(join_body, arities);
             collect_tuple_arities_from_expr(body, arities);
         }
-        ExprKind::BoolSwitch { true_body, false_body, .. } => {
+        ExprKind::BoolSwitch {
+            true_body,
+            false_body,
+            ..
+        } => {
             collect_tuple_arities_from_expr(true_body, arities);
             collect_tuple_arities_from_expr(false_body, arities);
         }
-        ExprKind::Switch { branches, default, .. } => {
+        ExprKind::Switch {
+            branches, default, ..
+        } => {
             for branch in branches {
                 for (_, ty) in &branch.bindings {
                     collect_tuple_arities_from_type(ty, arities);
@@ -4621,7 +4934,10 @@ fn collect_tuple_arities_from_expr(expr: &Expr, arities: &mut std::collections::
     }
 }
 
-fn collect_tuple_arities_from_simple(expr: &SimpleExpr, arities: &mut std::collections::BTreeSet<usize>) {
+fn collect_tuple_arities_from_simple(
+    expr: &SimpleExpr,
+    arities: &mut std::collections::BTreeSet<usize>,
+) {
     match expr {
         SimpleExpr::MakeTuple { elements } => {
             arities.insert(elements.len());
@@ -4632,4 +4948,3 @@ fn collect_tuple_arities_from_simple(expr: &SimpleExpr, arities: &mut std::colle
         _ => {}
     }
 }
-
