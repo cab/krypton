@@ -1030,11 +1030,11 @@ pub fn infer_module(
         .map_err(|e| InferError::TypeError { error: e, error_source: None })?;
 
     let mut result = vec![main];
-    // Collect cached imported modules (stable ordering by path)
-    let mut paths: Vec<String> = cache.keys().cloned().collect();
-    paths.sort();
-    for path in paths {
-        result.push(cache.remove(&path).unwrap());
+    // Collect cached imported modules in topological order (dependencies first)
+    for resolved in &graph.modules {
+        if let Some(typed) = cache.remove(&resolved.path) {
+            result.push(typed);
+        }
     }
     Ok(result)
 }

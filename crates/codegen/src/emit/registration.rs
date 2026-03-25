@@ -335,22 +335,10 @@ impl Compiler {
         other_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
         for sum_def in &other_module.sum_types {
-            let qualified_sum = qualify_ir(&other_module.module_path, &sum_def.name);
             if self.types.sum_type_info.contains_key(&sum_def.name) {
-                // Sum type already registered (e.g. local shadow). Merge imported
-                // variants into the existing info so function bodies referencing
-                // imported variants (e.g. stdlib `head` returning Some) can resolve.
-                for variant in &sum_def.variants {
-                    if self.types.variant_to_sum.contains_key(&variant.name) {
-                        continue; // Already registered (local variant)
-                    }
-                    let (name, _, vi) = self.register_variant_metadata(variant, sum_def, &qualified_sum)?;
-                    if let Some(info) = self.types.sum_type_info.get_mut(&sum_def.name) {
-                        info.variants.insert(name, vi);
-                    }
-                }
                 continue;
             }
+            let qualified_sum = qualify_ir(&other_module.module_path, &sum_def.name);
             self.register_sum_type_metadata(sum_def, &qualified_sum)?;
         }
         Ok(())
@@ -1029,11 +1017,15 @@ impl Compiler {
         &mut self,
         ir_module: &krypton_ir::Module,
         all_ir_modules: &[krypton_ir::Module],
+        dep_paths: &std::collections::HashSet<&str>,
     ) -> Result<Vec<Method>, CodegenError> {
         self.fn_names = ir_module.fn_names.clone();
 
-        // Build variant_tags, sum_type_params, and variant_field_types from all IR modules
+        // Build variant_tags, sum_type_params, and variant_field_types from dependency modules
+        // Iterate all_ir_modules (topo order) filtered to deps
         for module in all_ir_modules {
+            if module.module_path == ir_module.module_path { continue; }
+            if !dep_paths.contains(module.module_path.as_str()) { continue; }
             for sum_def in &module.sum_types {
                 let mut tag_map = std::collections::HashMap::new();
                 for variant in &sum_def.variants {

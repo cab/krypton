@@ -9,7 +9,7 @@ mod intrinsics;
 mod lambda;
 mod registration;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use krypton_typechecker::typed_ast::TypedModule;
 use krypton_ir::{TraitName, Type, TypeVarId};
@@ -184,18 +184,33 @@ fn compile_module_inner(
         .class_descriptors
         .insert(compiler.builder.refs.object_class, "Ljava/lang/Object;".to_string());
 
+    // Compute dependency set from imports, traits, and instances
+    let mut dep_paths: HashSet<&str> = HashSet::new();
+    for imp in &ir_module.imported_fns {
+        dep_paths.insert(&imp.source_module);
+    }
+    for t in &ir_module.traits {
+        if t.is_imported { dep_paths.insert(&t.trait_name.module_path); }
+    }
+    for inst in &ir_module.instances {
+        if inst.is_imported { dep_paths.insert(&inst.trait_name.module_path); }
+    }
+
     // Phase 1: Register types
     compiler.register_extern_types_ir(ir_module)?;
+
+    // Register imported types from dependencies first (in topo order) so that
+    // field type descriptors resolve correctly during own-type registration.
+    for dep_module in all_ir_modules {
+        if dep_module.module_path == ir_module.module_path { continue; }
+        if !dep_paths.contains(dep_module.module_path.as_str()) { continue; }
+        compiler.register_imported_structs_ir(dep_module)?;
+        compiler.register_imported_sum_types_ir(dep_module)?;
+    }
+
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     result_classes.extend(compiler.register_structs_ir(ir_module)?);
     result_classes.extend(compiler.register_sum_types_ir(ir_module)?);
-
-    // Register imported types from other modules (class indices, variant mappings, no bytecode)
-    for other_module in all_ir_modules {
-        if other_module.module_path == ir_module.module_path { continue; }
-        compiler.register_imported_structs_ir(other_module)?;
-        compiler.register_imported_sum_types_ir(other_module)?;
-    }
 
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
     compiler.register_fun_interfaces_ir(ir_module)?;
@@ -211,7 +226,7 @@ fn compile_module_inner(
     compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies from IR
-    let extra_methods = compiler.compile_function_bodies_ir(ir_module, all_ir_modules)?;
+    let extra_methods = compiler.compile_function_bodies_ir(ir_module, all_ir_modules, &dep_paths)?;
     if is_main {
         compiler.emit_main_wrapper()?;
     }

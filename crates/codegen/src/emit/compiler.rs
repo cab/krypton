@@ -503,8 +503,10 @@ impl Compiler {
                 } else if let Some(&class_index) = self.types.extern_sum_class_indices.get(name) {
                     Ok(JvmType::StructRef(class_index))
                 } else {
-                    // Unknown named type — erase to Object (may come from cross-module imports)
-                    Ok(JvmType::StructRef(self.builder.refs.object_class))
+                    Err(CodegenError::TypeError(
+                        format!("ICE: unknown named type `{name}` — not registered as struct, sum type, or extern"),
+                        None,
+                    ))
                 }
             }
             Type::Var(_) => Ok(JvmType::StructRef(self.builder.refs.object_class)),
