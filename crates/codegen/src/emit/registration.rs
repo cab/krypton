@@ -518,7 +518,7 @@ impl Compiler {
         for entry in registry.iter() {
             // Find the TraitName key matching this intrinsic's bare trait name
             let trait_key = self.traits.trait_dispatch.keys()
-                .find(|tn| tn.name == entry.trait_name)
+                .find(|tn| tn.local_name == entry.trait_name)
                 .cloned();
             if let Some(trait_key) = trait_key {
                 let q_trait = qualify_with_provenance(
@@ -605,7 +605,7 @@ impl Compiler {
                 continue;
             }
             let q_trait =
-                qualify_with_provenance(&ir_module.module_path, &inst.trait_name.name, type_provenance);
+                qualify_with_provenance(&ir_module.module_path, &inst.trait_name.local_name, type_provenance);
             let instance_class_name = format!("{}$${}", q_trait, inst.target_type_name);
             let dict_requirements: Vec<DictRequirement> = inst
                 .sub_dict_requirements
@@ -624,7 +624,7 @@ impl Compiler {
             for (method_name, fn_id) in &inst.method_fn_ids {
                 let mangled = format!(
                     "{}$${}$${}",
-                    inst.trait_name.name, inst.target_type_name, method_name
+                    inst.trait_name.local_name, inst.target_type_name, method_name
                 );
 
                 // Look up the FnDef to get param/return types

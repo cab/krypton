@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
 
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
 use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant, Visibility};
@@ -15,22 +16,55 @@ pub enum ParamQualifier {
     Shared,
 }
 
-/// Module-qualified trait identity.
+/// Module-qualified name: always carries the defining module's path and the bare local name.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TraitName {
-    /// Source module path, e.g., "core/semigroup". Empty string for the current/root module.
+pub struct QualifiedName {
+    /// Module path, e.g., "core/semigroup".
     pub module_path: String,
-    /// Bare trait name, e.g., "Semigroup"
-    pub name: String,
+    /// Bare local name, e.g., "Semigroup".
+    pub local_name: String,
 }
 
-impl TraitName {
-    pub fn new(module_path: String, name: String) -> Self {
-        TraitName { module_path, name }
+impl QualifiedName {
+    pub fn new(module_path: String, local_name: String) -> Self {
+        QualifiedName { module_path, local_name }
     }
 
     pub fn display_name(&self) -> &str {
-        &self.name
+        &self.local_name
+    }
+
+    /// Returns the slash-qualified form, e.g. "core/semigroup/Semigroup".
+    pub fn qualified(&self) -> String {
+        if self.module_path.is_empty() {
+            self.local_name.clone()
+        } else {
+            format!("{}/{}", self.module_path, self.local_name)
+        }
+    }
+}
+
+impl fmt::Display for QualifiedName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.module_path.is_empty() {
+            write!(f, "{}", self.local_name)
+        } else {
+            write!(f, "{}.{}", self.module_path, self.local_name)
+        }
+    }
+}
+
+/// Module-qualified trait identity (newtype over QualifiedName for type safety).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TraitName(pub QualifiedName);
+
+impl TraitName {
+    pub fn new(module_path: String, name: String) -> Self {
+        TraitName(QualifiedName::new(module_path, name))
+    }
+
+    pub fn display_name(&self) -> &str {
+        self.0.display_name()
     }
 
     // Core trait constructors
@@ -44,13 +78,16 @@ impl TraitName {
     pub fn core_resource() -> Self { TraitName::new("core/resource".into(), "Resource".into()) }
 }
 
+impl Deref for TraitName {
+    type Target = QualifiedName;
+    fn deref(&self) -> &QualifiedName {
+        &self.0
+    }
+}
+
 impl fmt::Display for TraitName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.module_path.is_empty() {
-            write!(f, "{}", self.name)
-        } else {
-            write!(f, "{}.{}", self.module_path, self.name)
-        }
+        self.0.fmt(f)
     }
 }
 
@@ -60,8 +97,7 @@ pub struct ImportedFn {
     pub name: String,
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
-    pub source_module: String,
-    pub original_name: String,
+    pub qualified_name: QualifiedName,
 }
 
 /// Entry in fn_types — local or imported function visible in a module.
@@ -70,8 +106,7 @@ pub struct FnTypeEntry {
     pub name: String,
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
-    /// Provenance for imported functions (source_module, original_name). None for local.
-    pub provenance: Option<(String, String)>,
+    pub qualified_name: QualifiedName,
 }
 
 #[derive(Debug, Clone)]
@@ -338,12 +373,14 @@ pub struct StructDecl {
     pub name: String,
     pub type_params: Vec<String>,
     pub fields: Vec<(String, TypeExpr)>,
+    pub qualified_name: QualifiedName,
 }
 
 pub struct SumDecl {
     pub name: String,
     pub type_params: Vec<String>,
     pub variants: Vec<Variant>,
+    pub qualified_name: QualifiedName,
 }
 
 pub struct TypedModule {
@@ -367,9 +404,6 @@ pub struct TypedModule {
     pub imported_extern_java_types: Vec<(String, String)>,
     pub struct_decls: Vec<StructDecl>,
     pub sum_decls: Vec<SumDecl>,
-    /// Maps type_name → source_module_path for types originating from other modules.
-    /// Used by codegen to qualify type class names (e.g., `core/list/List`).
-    pub type_provenance: HashMap<String, String>,
     /// Maps type_name → visibility for types declared in this module.
     pub type_visibility: HashMap<String, Visibility>,
     /// Functions re-exported via `pub use` — these become part of this module's public API.
@@ -393,10 +427,14 @@ pub struct TypedModule {
 }
 
 impl TypedModule {
-    /// Check whether a type name was imported from another module.
-    pub fn is_type_imported(&self, name: &str) -> bool {
-        self.type_provenance.get(name)
-            .is_some_and(|src| self.module_path != *src)
+    /// Get the source module path for a type by searching struct/sum declarations.
+    pub fn type_origin(&self, name: &str) -> Option<&str> {
+        self.struct_decls.iter()
+            .find(|d| d.name == name)
+            .map(|d| d.qualified_name.module_path.as_str())
+            .or_else(|| self.sum_decls.iter()
+                .find(|d| d.name == name)
+                .map(|d| d.qualified_name.module_path.as_str()))
     }
 }
 

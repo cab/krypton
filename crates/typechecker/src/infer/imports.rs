@@ -68,8 +68,8 @@ impl ModuleInferenceState {
                 .cloned()
                 .unwrap_or(Visibility::Opaque);
             if matches!(vis, Visibility::Pub) {
-                if let Some(orig_path) = cached.type_provenance.get(type_name) {
-                    if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
+                if let Some(orig_path) = cached.type_origin(type_name) {
+                    if let Some(orig_module) = parsed_modules.get(orig_path) {
                         if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
                             prelude_constructor_names.extend(constructor_names(td));
                         }
@@ -322,7 +322,7 @@ impl ModuleInferenceState {
                 let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
                 let original_prov = cached.fn_types.iter()
                     .find(|e| e.name == ef.name)
-                    .and_then(|e| e.provenance.clone())
+                    .map(|e| (e.qualified_name.module_path.clone(), e.qualified_name.local_name.clone()))
                     .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
                 qualified_exports.insert(
                     ef.name.clone(),
@@ -341,9 +341,9 @@ impl ModuleInferenceState {
                 let effective_name = aliases.get(&ef.name).cloned().unwrap_or_else(|| ef.name.clone());
                 let original_prov = cached.fn_types.iter()
                     .find(|e| e.name == ef.name)
-                    .and_then(|e| e.provenance.clone())
+                    .map(|e| (e.qualified_name.module_path.clone(), e.qualified_name.local_name.clone()))
                     .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
-                self.env.bind_with_provenance(effective_name.clone(), ef.scheme.clone(), path.to_string());
+                self.env.bind(effective_name.clone(), ef.scheme.clone());
                 // Store definition span for re-exported function
                 if let Some(ds) = ef.def_span {
                     let source_module = original_prov.0.clone();
@@ -357,8 +357,7 @@ impl ModuleInferenceState {
                     name: effective_name.clone(),
                     scheme: ef.scheme.clone(),
                     origin: ef.origin.clone(),
-                    source_module: original_prov.0,
-                    original_name: original_prov.1,
+                    qualified_name: typed_ast::QualifiedName::new(original_prov.0, original_prov.1),
                 });
                 if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
                     self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
@@ -382,7 +381,7 @@ impl ModuleInferenceState {
                     .cloned()
                     .unwrap_or(Visibility::Opaque);
                 if self.registry.lookup_type(reex_type_name).is_none() {
-                    let original_path = cached.type_provenance.get(reex_type_name);
+                    let original_path = cached.type_origin(reex_type_name).map(|s| s.to_string());
                     // Try pre-resolved export from the original source module's cache
                     let export_info = original_path.as_ref().and_then(|orig_path| {
                         cache.get(orig_path.as_str())
@@ -416,7 +415,6 @@ impl ModuleInferenceState {
                             orig_path.clone(),
                             original_vis.clone(),
                         );
-                        self.type_provenance.insert(export.name.clone(), orig_path.clone());
                     } else if let Some(orig_path) = original_path {
                         if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
                             if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name)
@@ -446,7 +444,6 @@ impl ModuleInferenceState {
                                     orig_path.clone(),
                                     original_vis.clone(),
                                 );
-                                self.type_provenance.insert(td.name.clone(), orig_path.clone());
                             }
                         }
                     }
@@ -507,7 +504,6 @@ impl ModuleInferenceState {
                     // mark_user_visible canonicalizes internally, so one call suffices
                     self.registry.mark_user_visible(&td.name);
                     self.imports.bind_type_info(effective_type_name.clone(), path.to_string(), td.visibility.clone());
-                    self.type_provenance.insert(td.name.clone(), path.to_string());
                 } else if import_all {
                     if matches!(td.visibility, Visibility::Private) {
                         continue;
@@ -549,7 +545,6 @@ impl ModuleInferenceState {
                     // Track the parent type so codegen can resolve it
                     // (importing constructors implicitly depends on the type)
                     self.imports.bind_type_info(td.name.clone(), path.to_string(), td.visibility.clone());
-                    self.type_provenance.insert(td.name.clone(), path.to_string());
                 }
             }
         }
@@ -708,12 +703,6 @@ impl ModuleInferenceState {
                         self.imports.bind_import(&mut self.env, method.name.clone(), scheme, origin.clone(), path.to_string(), method.name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
                     }
                 }
-                let prov = cached
-                    .type_provenance
-                    .get(&trait_def.name)
-                    .cloned()
-                    .unwrap_or_else(|| path.to_string());
-                self.type_provenance.insert(trait_def.name.clone(), prov);
             }
         }
 

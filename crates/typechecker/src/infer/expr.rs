@@ -88,7 +88,7 @@ impl<'a> InferenceContext<'a> {
             .map(|f| OverloadOption {
                 scheme: f.scheme.clone(),
                 origin: f.origin.clone(),
-                module: f.source_module.clone(),
+                module: f.qualified_name.module_path.clone(),
             })
             .collect();
         // Deduplicate by module — only flag overload if distinct modules
@@ -308,7 +308,7 @@ impl<'a> InferenceContext<'a> {
             }
         }
         // Validate enclosing function has a where constraint for this trait
-        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t.name == trait_name);
+        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t.local_name == trait_name);
         if !has_constraint {
             return Err(super::spanned(
                 TypeError::UnsupportedExpr {

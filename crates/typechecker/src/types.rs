@@ -561,7 +561,6 @@ pub struct DefSpan {
 pub struct TypeEnv {
     scopes: Vec<HashMap<std::string::String, TypeScheme>>,
     pub fn_return_type: Option<Type>,
-    provenance: HashMap<std::string::String, std::string::String>,
     def_spans: HashMap<std::string::String, DefSpan>,
 }
 
@@ -571,7 +570,6 @@ impl TypeEnv {
         TypeEnv {
             scopes: vec![HashMap::new()],
             fn_return_type: None,
-            provenance: HashMap::new(),
             def_spans: HashMap::new(),
         }
     }
@@ -610,22 +608,6 @@ impl TypeEnv {
         for scope in &mut self.scopes {
             scope.remove(name);
         }
-    }
-
-    /// Bind a name in the current scope with provenance (source module path).
-    pub fn bind_with_provenance(
-        &mut self,
-        name: std::string::String,
-        scheme: TypeScheme,
-        module_path: std::string::String,
-    ) {
-        self.bind(name.clone(), scheme);
-        self.provenance.insert(name, module_path);
-    }
-
-    /// Get the provenance (source module path) for a binding, if any.
-    pub fn get_provenance(&self, name: &str) -> Option<&str> {
-        self.provenance.get(name).map(|s| s.as_str())
     }
 
     /// Bind a name and record its definition span (for secondary diagnostics).

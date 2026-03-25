@@ -285,7 +285,7 @@ impl LintContext {
             SimpleExpr::TupleProject { value, .. } => self.check_atom_not_join(value),
 
             SimpleExpr::GetDict { trait_name, ty } => {
-                if !self.known_traits.contains(&trait_name.name) {
+                if !self.known_traits.contains(&trait_name.local_name) {
                     return Err(self.err(format!(
                         "GetDict references unknown trait '{trait_name}'"
                     )));
@@ -301,7 +301,7 @@ impl LintContext {
             }
 
             SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
-                if !self.known_traits.contains(&trait_name.name) {
+                if !self.known_traits.contains(&trait_name.local_name) {
                     return Err(self.err(format!(
                         "MakeDict references unknown trait '{trait_name}'"
                     )));

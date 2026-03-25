@@ -277,7 +277,7 @@ impl TraitState {
     /// Used for legacy trait_dict lookups where only the bare name is available.
     pub(super) fn get_dict_local_by_bare_name(&self, bare_name: &str) -> Option<u16> {
         self.dict_locals.iter()
-            .find(|((tn, _), _)| tn.name == bare_name)
+            .find(|((tn, _), _)| tn.local_name == bare_name)
             .map(|(_, &slot)| slot)
     }
 

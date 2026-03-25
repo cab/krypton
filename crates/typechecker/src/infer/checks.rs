@@ -140,7 +140,7 @@ pub(super) fn check_constrained_function_refs(
 
                     for (req_trait_name, req_type_var) in &requirements {
                         let requirement_ty = resolve_function_ref_requirement_type(
-                            &req_trait_name.name,
+                            &req_trait_name.local_name,
                             *req_type_var,
                             declared_param_types,
                             actual_param_types,
@@ -291,7 +291,7 @@ pub(super) fn validate_trait_constraints(
         if first_error.is_some() {
             return;
         }
-        let is_declared = declared_constraints.iter().any(|(t, v)| t.name == trait_name.name && *v == var);
+        let is_declared = declared_constraints.iter().any(|(t, v)| t.local_name == trait_name.local_name && *v == var);
         if !is_declared {
             let type_var_display = type_var_names
                 .get(&var)
@@ -300,7 +300,7 @@ pub(super) fn validate_trait_constraints(
             first_error = Some(super::spanned(
                 TypeError::MissingTraitBound {
                     fn_name: fn_name.to_string(),
-                    trait_name: trait_name.name.clone(),
+                    trait_name: trait_name.local_name.clone(),
                     type_var: type_var_display,
                 },
                 expr.span,
@@ -493,7 +493,7 @@ pub(super) fn check_trait_instances(
                             let dispatch_ty = bindings.get(&info.type_var_id)
                                 .unwrap_or_else(|| panic!(
                                     "ICE: trait type var for `{}::{}` not bound from method signature",
-                                    trait_id.name, name
+                                    trait_id.local_name, name
                                 ));
                             let concrete_ty = strip_own(dispatch_ty);
                             if leading_type_var(&concrete_ty).is_none()

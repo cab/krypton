@@ -99,7 +99,7 @@ impl TraitRegistry {
                 let existing_names: std::collections::HashMap<crate::types::TypeVarId, &str> = existing.type_var_ids.iter()
                     .map(|(name, &id)| (id, name.as_str())).collect();
                 return Err((TypeError::DuplicateInstance {
-                    trait_name: info.trait_name.name.clone(),
+                    trait_name: info.trait_name.local_name.clone(),
                     ty: crate::types::format_type_with_var_map(&info.target_type, &names),
                     existing_ty: crate::types::format_type_with_var_map(&existing.target_type, &existing_names),
                 }, existing.span));
@@ -231,9 +231,9 @@ impl TraitRegistry {
                 .is_none()
             {
                 return Err(TypeError::NoInstance {
-                    trait_name: superclass.name.clone(),
+                    trait_name: superclass.local_name.clone(),
                     ty: instance.target_type_name.clone(),
-                    required_by: Some(instance.trait_name.name.clone()),
+                    required_by: Some(instance.trait_name.local_name.clone()),
                 });
             }
         }
@@ -327,7 +327,7 @@ impl TraitRegistry {
                             let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
                             if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
                                 Some(UnsatisfiedBound {
-                                    trait_name: constraint.trait_name.name.clone(),
+                                    trait_name: constraint.trait_name.local_name.clone(),
                                     ty: format!("{}", bound_ty.strip_own()),
                                 })
                             } else {
@@ -370,7 +370,7 @@ impl TraitRegistry {
                     };
                     if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
                         Some(UnsatisfiedBound {
-                            trait_name: constraint.trait_name.name.clone(),
+                            trait_name: constraint.trait_name.local_name.clone(),
                             ty: format!("{}", bound_ty.strip_own()),
                         })
                     } else {

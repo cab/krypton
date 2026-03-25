@@ -551,7 +551,7 @@ pub(super) fn no_instance_error(
     let display_ty = ty.strip_own();
     let mut err = spanned(
         TypeError::NoInstance {
-            trait_name: trait_name.name.clone(),
+            trait_name: trait_name.local_name.clone(),
             ty: format!("{display_ty}"),
             required_by: None,
         },
@@ -1107,7 +1107,7 @@ impl ImportContext {
         if prelude_imported_names.contains(&name) {
             // Record shadowed prelude functions before removing
             for f in self.imported_fn_types.iter().filter(|f| f.name == name) {
-                self.shadowed_prelude_fns.push((f.name.clone(), f.source_module.clone()));
+                self.shadowed_prelude_fns.push((f.name.clone(), f.qualified_name.module_path.clone()));
             }
             self.imported_fn_types.retain(|f| f.name != name);
             imported_fn_constraint_requirements.remove(&name);
@@ -1118,7 +1118,7 @@ impl ImportContext {
             let new_first_param = Self::extract_first_param(&scheme);
             for existing in &self.imported_fn_types {
                 if existing.name == name
-                    && existing.source_module != source_module
+                    && existing.qualified_name.module_path != source_module
                     && !prelude_imported_names.contains(&existing.name)
                 {
                     let existing_first = Self::extract_first_param(&existing.scheme);
@@ -1139,7 +1139,7 @@ impl ImportContext {
                                 return Err(spanned(
                                     TypeError::AmbiguousCall {
                                         name: name.clone(),
-                                        modules: vec![existing.source_module.clone(), source_module.clone()],
+                                        modules: vec![existing.qualified_name.module_path.clone(), source_module.clone()],
                                     },
                                     span,
                                 ));
@@ -1149,13 +1149,12 @@ impl ImportContext {
                 }
             }
         }
-        env.bind_with_provenance(name.clone(), scheme.clone(), source_module.clone());
+        env.bind(name.clone(), scheme.clone());
         self.imported_fn_types.push(typed_ast::ImportedFn {
             name: name.clone(),
             scheme,
             origin,
-            source_module: source_module.clone(),
-            original_name,
+            qualified_name: typed_ast::QualifiedName::new(source_module, original_name),
         });
         Ok(())
     }
@@ -1180,8 +1179,7 @@ impl ImportContext {
             name,
             scheme,
             origin,
-            source_module: provenance.0,
-            original_name: provenance.1,
+            qualified_name: typed_ast::QualifiedName::new(provenance.0, provenance.1),
         });
     }
 
@@ -1205,7 +1203,6 @@ pub(crate) struct ModuleInferenceState {
     pub(super) lambda_own_captures: HashMap<Span, String>,
     // Import accumulation
     pub(super) imports: ImportContext,
-    pub(super) type_provenance: HashMap<String, String>,
     pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
     pub(super) imported_extern_java_types: Vec<(String, String)>,
@@ -1231,11 +1228,6 @@ impl ModuleInferenceState {
 
         crate::intrinsics::register_intrinsics(&mut env, &mut gen, is_core_module);
 
-        let mut type_provenance: HashMap<String, String> = HashMap::new();
-        for name in &["Int", "Float", "Bool", "String", "Unit", "Vec"] {
-            type_provenance.insert(name.to_string(), "core".to_string());
-        }
-
         ModuleInferenceState {
             env,
             subst: Substitution::new(),
@@ -1244,7 +1236,6 @@ impl ModuleInferenceState {
             let_own_spans: HashSet::new(),
             lambda_own_captures: HashMap::new(),
             imports: ImportContext::new(),
-            type_provenance,
             imported_fn_constraint_requirements: HashMap::new(),
             imported_extern_fns: Vec::new(),
             imported_extern_java_types: Vec::new(),
@@ -1359,7 +1350,6 @@ impl ModuleInferenceState {
                                 self.env.unbind(&v.name);
                             }
                         }
-                        self.type_provenance.remove(&type_decl.name);
                         self.imports.imported_type_info.remove(&type_decl.name);
                     }
                 }
@@ -1405,14 +1395,14 @@ impl ModuleInferenceState {
                 name: f.name,
                 scheme: f.scheme,
                 origin: f.origin,
-                provenance: Some((f.source_module, f.original_name)),
+                qualified_name: f.qualified_name,
             })
             .collect();
         results.extend(constructor_schemes.iter().map(|(n, s)| typed_ast::FnTypeEntry {
             name: n.clone(),
             scheme: s.clone(),
             origin: None,
-            provenance: None,
+            qualified_name: typed_ast::QualifiedName::new(module_path.to_string(), n.clone()),
         }));
         results.extend(
             fn_decls
@@ -1422,18 +1412,18 @@ impl ModuleInferenceState {
                     name: d.name.clone(),
                     scheme: result_schemes[i].clone().unwrap(),
                     origin: None,
-                    provenance: None,
+                    qualified_name: typed_ast::QualifiedName::new(module_path.to_string(), d.name.clone()),
                 }),
         );
         // Add instance method types to the flat list for internal analysis passes
         for inst in &instance_defs {
             for m in &inst.methods {
-                let qualified = typed_ast::mangled_method_name(&inst.trait_name.name, &inst.target_type_name, &m.name);
+                let qualified = typed_ast::mangled_method_name(&inst.trait_name.local_name, &inst.target_type_name, &m.name);
                 results.push(typed_ast::FnTypeEntry {
-                    name: qualified,
+                    name: qualified.clone(),
                     scheme: m.scheme.clone(),
                     origin: None,
-                    provenance: None,
+                    qualified_name: typed_ast::QualifiedName::new(module_path.to_string(), qualified),
                 });
             }
         }
@@ -1490,8 +1480,8 @@ impl ModuleInferenceState {
         // Build temporary flat list of instance method bodies for internal analysis passes
         for inst in &instance_defs {
             for m in &inst.methods {
-                let qualified = typed_ast::mangled_method_name(&inst.trait_name.name, &inst.target_type_name, &m.name);
-                let close_self_type = if inst.trait_name.name == "Resource" && m.name == "close" {
+                let qualified = typed_ast::mangled_method_name(&inst.trait_name.local_name, &inst.target_type_name, &m.name);
+                let close_self_type = if inst.trait_name.local_name == "Resource" && m.name == "close" {
                     Some(inst.target_type_name.clone())
                 } else {
                     None
@@ -1617,6 +1607,7 @@ impl ModuleInferenceState {
                         name: td.name.clone(),
                         type_params: td.type_params.clone(),
                         fields: fields.clone(),
+                        qualified_name: typed_ast::QualifiedName::new(module_path.to_string(), td.name.clone()),
                     }),
                     _ => None,
                 },
@@ -1634,6 +1625,7 @@ impl ModuleInferenceState {
                             name: td.name.clone(),
                             type_params: td.type_params.clone(),
                             variants: variants.clone(),
+                            qualified_name: typed_ast::QualifiedName::new(module_path.to_string(), td.name.clone()),
                         })
                     }
                     _ => None,
@@ -1654,11 +1646,11 @@ impl ModuleInferenceState {
                 if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {
                     if let Some(td) = find_type_decl(&imported_mod.decls, type_name) {
                         if let TypeDeclKind::Sum { variants } = &td.kind {
-                            self.type_provenance.insert(td.name.clone(), source_path.clone());
                             sum_decls.push(SumDecl {
                                 name: td.name.clone(),
                                 type_params: td.type_params.clone(),
                                 variants: variants.clone(),
+                                qualified_name: typed_ast::QualifiedName::new(source_path.clone(), td.name.clone()),
                             });
                         }
                     }
@@ -1677,12 +1669,6 @@ impl ModuleInferenceState {
                 }
             })
             .collect();
-        for (type_name, (source_path, _)) in &self.imports.imported_type_info {
-            if !local_type_names.contains(type_name) {
-                self.type_provenance.insert(type_name.clone(), source_path.clone());
-            }
-        }
-
         let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
         for decl in &module.decls {
             if let Decl::DefType(td) = decl {
@@ -1752,7 +1738,6 @@ impl ModuleInferenceState {
             imported_extern_java_types: self.imported_extern_java_types,
             struct_decls,
             sum_decls,
-            type_provenance: self.type_provenance,
             type_visibility,
             reexported_fn_types: self.reexported_fn_types,
             reexported_type_names: self.reexported_type_names,
@@ -1792,8 +1777,8 @@ fn process_traits_and_deriving(
     // Phase 1: Import instances from cached modules via orphan-rule lookup
     let imported_instance_defs = import_cached_instances(
         &mut trait_registry,
-        &state.type_provenance,
         &state.imports.imported_type_info,
+        &state.imported_trait_defs,
         cache,
     );
 
@@ -1846,8 +1831,8 @@ fn process_traits_and_deriving(
                 return Err(spanned(
                     TypeError::TraitMethodCollision {
                         method_name: method_name.clone(),
-                        trait1: existing.name.clone(),
-                        trait2: trait_id.name.clone(),
+                        trait1: existing.local_name.clone(),
+                        trait2: trait_id.local_name.clone(),
                     },
                     (0, 0),
                 ));
@@ -1875,8 +1860,8 @@ fn process_traits_and_deriving(
 /// Phase 1: Import instances from cached modules via orphan-rule lookup.
 fn import_cached_instances(
     trait_registry: &mut TraitRegistry,
-    type_provenance: &HashMap<String, String>,
     imported_type_info: &HashMap<String, (String, Visibility)>,
+    imported_trait_defs: &[ExportedTraitDef],
     cache: &HashMap<String, TypedModule>,
 ) -> Vec<InstanceDefInfo> {
     let mut imported_instance_defs = Vec::new();
@@ -1885,11 +1870,13 @@ fn import_cached_instances(
     // module defining the type or the trait.
     {
         let mut source_modules: HashSet<&str> = HashSet::new();
-        for (_, source_path) in type_provenance {
-            source_modules.insert(source_path.as_str());
-        }
         for (_, (source_path, _)) in imported_type_info {
             source_modules.insert(source_path.as_str());
+        }
+        // Include modules that define imported traits (covers core modules
+        // providing instances for builtin types like Int, Bool, etc.)
+        for td in imported_trait_defs {
+            source_modules.insert(td.module_path.as_str());
         }
 
         let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
@@ -2373,7 +2360,7 @@ fn register_impl_instances(
                         ));
                     }
                     let trait_is_local = local_trait_names.contains(trait_name);
-                    let type_is_local = !state.type_provenance.contains_key(name);
+                    let type_is_local = !state.imports.imported_type_info.contains_key(name);
                     if !type_is_local && !trait_is_local {
                         return Err(spanned(
                             TypeError::OrphanInstance {
@@ -2575,7 +2562,7 @@ fn check_trait_name_conflicts(
                         return Err(SpannedTypeError {
                             error: TypeError::DefinitionConflictsWithTraitMethod {
                                 def_name: f.name.clone(),
-                                trait_name: trait_id.name.clone(),
+                                trait_name: trait_id.local_name.clone(),
                             },
                             span: f.span,
                             note: None,

@@ -166,8 +166,8 @@ pub fn compile_modules(
         if ir_module.name != main_class_name {
             for inst in &ir_module.instances {
                 if inst.is_imported { continue; }
-                if intrinsic_registry.get(&inst.trait_name.name, &inst.target_type_name).is_some() { continue; }
-                let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name.name, &global_type_provenance);
+                if intrinsic_registry.get(&inst.trait_name.local_name, &inst.target_type_name).is_some() { continue; }
+                let q_trait = qualify_with_provenance(&ir_module.module_path, &inst.trait_name.local_name, &global_type_provenance);
                 let class_name = format!("{}$${}", q_trait, inst.target_type_name);
                 let requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
                     .map(|(trait_name, type_var)| DictRequirement {

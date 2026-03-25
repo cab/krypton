@@ -2899,7 +2899,7 @@ impl LowerCtx {
         let fn_id = self
             .lookup_trait_method(&trait_name, method_name)
             .ok_or_else(|| {
-                LowerError::UnresolvedVar(format!("{}.{}", trait_name.name, method_name))
+                LowerError::UnresolvedVar(format!("{}.{}", trait_name.local_name, method_name))
             })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
@@ -2981,7 +2981,7 @@ impl LowerCtx {
         let fn_id = self
             .lookup_trait_method(&trait_name, method_name)
             .ok_or_else(|| {
-                LowerError::UnresolvedVar(format!("{}.{}", trait_name.name, method_name))
+                LowerError::UnresolvedVar(format!("{}.{}", trait_name.local_name, method_name))
             })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
@@ -3030,7 +3030,7 @@ impl LowerCtx {
         let fn_id = self
             .lookup_trait_method(&trait_name, method_name)
             .ok_or_else(|| {
-                LowerError::UnresolvedVar(format!("{}.{}", trait_name.name, method_name))
+                LowerError::UnresolvedVar(format!("{}.{}", trait_name.local_name, method_name))
             })?;
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
 
@@ -3060,7 +3060,7 @@ impl LowerCtx {
     /// Look up the dict param VarId for a given trait name (bare name match).
     fn lookup_dict_param(&self, trait_name: &str) -> Result<VarId, LowerError> {
         for ((t, _), var_id) in &self.dict_params {
-            if t.name == trait_name {
+            if t.local_name == trait_name {
                 return Ok(*var_id);
             }
         }
@@ -3104,7 +3104,7 @@ impl LowerCtx {
                 let fn_id = self.lookup_trait_method(trait_id, name).ok_or_else(|| {
                     LowerError::InternalError(format!(
                         "ICE: no FnId for trait method {}.{}",
-                        trait_id.name, name
+                        trait_id.local_name, name
                     ))
                 })?;
                 let dict_ty =
@@ -3257,7 +3257,7 @@ impl LowerCtx {
                 let fn_id = self.lookup_trait_method(trait_id, name).ok_or_else(|| {
                     LowerError::InternalError(format!(
                         "ICE: no FnId for trait method {}.{}",
-                        trait_id.name, name
+                        trait_id.local_name, name
                     ))
                 })?;
                 let dict_ty =
@@ -3522,7 +3522,7 @@ impl LowerCtx {
         if self.dict_depth >= MAX_DICT_DEPTH {
             return Err(LowerError::InternalError(format!(
                 "dict resolution depth exceeded for {}[{ty}]",
-                trait_name.name
+                trait_name.local_name
             )));
         }
         self.dict_depth += 1;
@@ -3695,7 +3695,7 @@ impl LowerCtx {
             self.trait_method_types.get(trait_name).ok_or_else(|| {
                 LowerError::InternalError(format!(
                     "ICE: no trait_method_types for trait {}",
-                    trait_name.name
+                    trait_name.local_name
                 ))
             })?;
         let type_var_id = *type_var_id;
@@ -3703,7 +3703,7 @@ impl LowerCtx {
         let (param_patterns, ret_pattern) = method_types.get(method_name).ok_or_else(|| {
             LowerError::InternalError(format!(
                 "ICE: no method type patterns for {}.{}",
-                trait_name.name, method_name
+                trait_name.local_name, method_name
             ))
         })?;
 
@@ -3729,7 +3729,7 @@ impl LowerCtx {
         bindings.get(&type_var_id).cloned().ok_or_else(|| {
             LowerError::InternalError(format!(
                 "ICE: could not resolve dispatch type var for {}.{}",
-                trait_name.name, method_name
+                trait_name.local_name, method_name
             ))
         })
     }
@@ -3747,7 +3747,7 @@ impl LowerCtx {
         let dispatch_fn_id = self.lookup_trait_method(trait_name, method_name).ok_or_else(|| {
             LowerError::InternalError(format!(
                 "ICE: no FnId for trait method {}.{}",
-                trait_name.name, method_name
+                trait_name.local_name, method_name
             ))
         })?;
 
@@ -4228,7 +4228,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         for m in &inst.methods {
             let mangled = format!(
                 "{}$${}$${}",
-                inst.trait_name.name, inst.target_type_name, m.name
+                inst.trait_name.local_name, inst.target_type_name, m.name
             );
             fn_constraints
                 .entry(mangled)
@@ -4427,7 +4427,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     let structs: Vec<StructDef> = typed
         .struct_decls
         .iter()
-        .filter(|decl| !typed.type_provenance.contains_key(&decl.name))
+        .filter(|decl| decl.qualified_name.module_path == typed.module_path)
         .map(|decl| {
             let (type_params, fields) =
                 if let Some(info) = typed.exported_type_infos.get(&decl.name) {
@@ -4463,7 +4463,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     let sum_types: Vec<SumTypeDef> = typed
         .sum_decls
         .iter()
-        .filter(|decl| !typed.type_provenance.contains_key(&decl.name))
+        .filter(|decl| decl.qualified_name.module_path == typed.module_path)
         .map(|decl| {
             let type_params = if let Some(info) = typed.exported_type_infos.get(&decl.name) {
                 info.type_param_vars.clone()
@@ -4567,7 +4567,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     // 11. Build imported_fns from fn_types entries with provenance
     let mut imported_fns = vec![];
     for entry in &typed.fn_types {
-        if let Some((ref source_module, ref original_name)) = entry.provenance {
+        if entry.qualified_name.module_path != typed.module_path {
             if let Some(&fn_id) = ctx.fn_ids.get(&entry.name) {
                 let (param_types, return_type) = match &entry.scheme.ty {
                     Type::Fn(params, ret) => (params.clone(), (**ret).clone()),
@@ -4576,8 +4576,8 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 imported_fns.push(ImportedFnDef {
                     id: fn_id,
                     name: entry.name.clone(),
-                    source_module: source_module.clone(),
-                    original_name: original_name.clone(),
+                    source_module: entry.qualified_name.module_path.clone(),
+                    original_name: entry.qualified_name.local_name.clone(),
                     param_types: param_types.into_iter().map(Into::into).collect(),
                     return_type: return_type.into(),
                 });
@@ -4629,7 +4629,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 .filter_map(|m| {
                     let mangled = format!(
                         "{}$${}$${}",
-                        inst.trait_name.name, inst.target_type_name, m.name
+                        inst.trait_name.local_name, inst.target_type_name, m.name
                     );
                     ctx.fn_ids
                         .get(&mangled)
@@ -4642,7 +4642,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                 .map(|m| {
                     let mangled = format!(
                         "{}$${}$${}",
-                        inst.trait_name.name, inst.target_type_name, m.name
+                        inst.trait_name.local_name, inst.target_type_name, m.name
                     );
                     let fn_id = ctx
                         .fn_ids

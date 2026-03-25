@@ -23,25 +23,17 @@ pub(super) fn collect_derived_constraints_for_type(
     }
 
     let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) else {
-        if let Type::Var(type_var) = field_type {
-            if let Some(type_var_name) = local_type_params.get(type_var) {
-                if !constraints.iter().any(|c| c.trait_name.name == trait_name && c.type_var == *type_var_name) {
-                    // Can't resolve without trait_info — use bare fallback
-                    constraints.push(ResolvedConstraint {
-                        trait_name: TraitName::new(String::new(), trait_name.to_string()),
-                        type_var: type_var_name.clone(),
-                        span: (0, 0),
-                    });
-                }
-                return true;
-            }
-        }
-        return false;
+        // The caller checks trait existence before calling this function,
+        // so this can only happen on recursive calls for superclass constraints.
+        // If a trait isn't in the registry at this point, the import pipeline is broken.
+        panic!(
+            "ICE: trait `{trait_name}` not found in registry during deriving constraint collection"
+        );
     };
 
     if let Type::Var(type_var) = field_type {
         if let Some(type_var_name) = local_type_params.get(type_var) {
-            if !constraints.iter().any(|c| c.trait_name.name == trait_name && c.type_var == *type_var_name) {
+            if !constraints.iter().any(|c| c.trait_name.local_name == trait_name && c.type_var == *type_var_name) {
                 constraints.push(ResolvedConstraint {
                     trait_name: trait_info.trait_name(),
                     type_var: type_var_name.clone(),
@@ -74,7 +66,7 @@ pub(super) fn collect_derived_constraints_for_type(
         };
         if !collect_derived_constraints_for_type(
             trait_registry,
-            &constraint.trait_name.name,
+            &constraint.trait_name.local_name,
             required_type,
             local_type_params,
             visited,

@@ -815,7 +815,7 @@ pub fn render_inspect(
                 output.push_str(" {\n");
                 // Find the matching InstanceDefInfo
                 let inst = instance_defs.iter().find(|i| {
-                    i.trait_name.name == *trait_name && i.target_type_name == target_name
+                    i.trait_name.local_name == *trait_name && i.target_type_name == target_name
                 });
                 for m in methods {
                     if let Some(inst) = inst {

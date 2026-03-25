@@ -194,12 +194,12 @@ fn impl_where_clause_constraints_are_stored_on_instance_defs() {
     let instance = modules[0]
         .instance_defs
         .iter()
-        .find(|inst| inst.trait_name.name == "MyEq" && inst.target_type_name == "Option$$Var0")
+        .find(|inst| inst.trait_name.local_name == "MyEq" && inst.target_type_name == "Option$$Var0")
         .expect("expected MyEq[Option[a]] instance");
 
     assert_eq!(instance.constraints.len(), 1);
     assert_eq!(instance.constraints[0].type_var, "a");
-    assert_eq!(instance.constraints[0].trait_name.name, "MyEq");
+    assert_eq!(instance.constraints[0].trait_name.local_name, "MyEq");
 }
 
 #[test]
@@ -222,7 +222,7 @@ fn impl_without_where_clause_stores_empty_constraints() {
     let instance = modules[0]
         .instance_defs
         .iter()
-        .find(|inst| inst.trait_name.name == "MyEq" && inst.target_type_name == "Point")
+        .find(|inst| inst.trait_name.local_name == "MyEq" && inst.target_type_name == "Point")
         .expect("expected MyEq[Point] instance");
 
     assert!(instance.constraints.is_empty());
@@ -1808,12 +1808,10 @@ fn infer_module_pub_import_reexport() {
         main_mod.fn_types.iter().any(|e| e.name == "helper"),
         "main module should have 'helper' in fn_types"
     );
-    // provenance should point to the original module (lib_a), not the facade
+    // qualified_name should point to the original module (lib_a), not the facade
     let helper_entry = main_mod.fn_types.iter().find(|e| e.name == "helper").unwrap();
-    assert_eq!(
-        helper_entry.provenance,
-        Some(("lib_a".to_string(), "helper".to_string()))
-    );
+    assert_eq!(helper_entry.qualified_name.module_path, "lib_a");
+    assert_eq!(helper_entry.qualified_name.local_name, "helper");
 }
 
 #[test]
@@ -1958,11 +1956,11 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
     let instance = imported
         .instance_defs
         .iter()
-        .find(|inst| inst.trait_name.name == "Show" && inst.target_type_name == "Box")
+        .find(|inst| inst.trait_name.local_name == "Show" && inst.target_type_name == "Box")
         .expect("expected derived Show[Box[a]] instance");
 
     assert_eq!(instance.constraints.len(), 1);
-    assert_eq!(instance.constraints[0].trait_name.name, "Show");
+    assert_eq!(instance.constraints[0].trait_name.local_name, "Show");
     assert_eq!(instance.constraints[0].type_var, "a");
     assert!(instance.type_var_ids.contains_key("a"));
 }
