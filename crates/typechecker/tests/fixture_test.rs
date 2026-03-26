@@ -104,8 +104,7 @@ fn typecheck_module(
     }
 
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
-    let resolver =
-        CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
+    let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
     for expectation in &fixture.expectations {
         match expectation {

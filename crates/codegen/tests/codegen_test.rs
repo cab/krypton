@@ -16,12 +16,17 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile;
 
-const PRINTLN_EXTERN: &str = r#"extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }"#;
+const PRINTLN_EXTERN: &str =
+    r#"extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }"#;
 
 fn find_runtime_jar() -> Option<PathBuf> {
     let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../runtime/build/libs/krypton-runtime.jar");
-    if jar.exists() { Some(jar) } else { None }
+    if jar.exists() {
+        Some(jar)
+    } else {
+        None
+    }
 }
 
 fn build_classpath(class_dir: &std::path::Path) -> String {
@@ -37,8 +42,14 @@ fn run_program(source: &str) -> String {
     let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check should succeed");
-    let classes = compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check should succeed");
+    let classes =
+        compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -150,7 +161,13 @@ fn app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type) -> Ty
     }
 }
 
-fn trait_app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type, trait_id: TraitName) -> TypedExpr {
+fn trait_app_expr(
+    name: &str,
+    func_ty: Type,
+    args: Vec<TypedExpr>,
+    ret_ty: Type,
+    trait_id: TraitName,
+) -> TypedExpr {
     TypedExpr {
         kind: TypedExprKind::App {
             func: Box::new(TypedExpr {
@@ -188,7 +205,10 @@ fn wrap_expr(inner: TypedExpr) -> TypedExpr {
     let inner_ty = inner.ty.clone();
     app_expr(
         "Wrap",
-        Type::Fn(vec![inner_ty.clone()], Box::new(wrap_type(inner_ty.clone()))),
+        Type::Fn(
+            vec![inner_ty.clone()],
+            Box::new(wrap_type(inner_ty.clone())),
+        ),
         vec![inner],
         wrap_type(inner_ty),
     )
@@ -225,7 +245,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         span: (0, 0),
     };
 
-    let render_trait_id = TraitName::new("test".to_string(),"Render".to_string());
+    let render_trait_id = TraitName::new("test".to_string(), "Render".to_string());
     let render_inner = trait_app_expr(
         "render",
         Type::Fn(vec![a_ty.clone()], Box::new(Type::String)),
@@ -284,14 +304,12 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         var_names: HashMap::new(),
     };
 
-    let mut fn_types = vec![
-        FnTypeEntry {
-            name: "main".to_string(),
-            scheme: TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
-            origin: None,
-            qualified_name: QualifiedName::new("test".to_string(), "main".to_string()),
-        },
-    ];
+    let mut fn_types = vec![FnTypeEntry {
+        name: "main".to_string(),
+        scheme: TypeScheme::mono(Type::Fn(vec![], Box::new(Type::Unit))),
+        origin: None,
+        qualified_name: QualifiedName::new("test".to_string(), "main".to_string()),
+    }];
 
     let render_int_method = InstanceMethod {
         name: "render".to_string(),
@@ -333,7 +351,13 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             ),
             close_self_type: None,
         });
-        fn_constraint_requirements.insert("render_wrap".to_string(), vec![(TraitName::new("test".to_string(),"Render".to_string()), var_a)]);
+        fn_constraint_requirements.insert(
+            "render_wrap".to_string(),
+            vec![(
+                TraitName::new("test".to_string(), "Render".to_string()),
+                var_a,
+            )],
+        );
     }
 
     functions.push(TypedFnDecl {
@@ -342,10 +366,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         params: vec![],
         body: app_expr(
             "println",
-            Type::Fn(
-                vec![Type::Var(println_var)],
-                Box::new(Type::Unit),
-            ),
+            Type::Fn(vec![Type::Var(println_var)], Box::new(Type::Unit)),
             vec![rendered_main_value],
             Type::Unit,
         ),
@@ -359,19 +380,22 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         functions,
         trait_defs: vec![TraitDefInfo {
             name: "Render".to_string(),
-            trait_id: TraitName::new("test".to_string(),"Render".to_string()),
+            trait_id: TraitName::new("test".to_string(), "Render".to_string()),
             methods: vec![("render".to_string(), 1)],
             is_imported: false,
             type_var_id: render_type_var,
             method_tc_types: {
                 let mut m = std::collections::HashMap::new();
-                m.insert("render".to_string(), (vec![Type::Var(render_type_var)], Type::String));
+                m.insert(
+                    "render".to_string(),
+                    (vec![Type::Var(render_type_var)], Type::String),
+                );
                 m
             },
         }],
         instance_defs: vec![
             InstanceDefInfo {
-                trait_name: TraitName::new("test".to_string(),"Render".to_string()),
+                trait_name: TraitName::new("test".to_string(), "Render".to_string()),
                 target_type_name: "Int".to_string(),
                 target_type: Type::Int,
                 type_var_ids: HashMap::new(),
@@ -382,12 +406,12 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 is_derived: false,
             },
             InstanceDefInfo {
-                trait_name: TraitName::new("test".to_string(),"Render".to_string()),
+                trait_name: TraitName::new("test".to_string(), "Render".to_string()),
                 target_type_name: "Wrap".to_string(),
                 target_type: wrap_a_ty.clone(),
                 type_var_ids: HashMap::from([("a".to_string(), var_a)]),
                 constraints: vec![ResolvedConstraint {
-                    trait_name: TraitName::new("test".to_string(),"Render".to_string()),
+                    trait_name: TraitName::new("test".to_string(), "Render".to_string()),
                     type_var: "a".to_string(),
                     span: (0, 0),
                 }],
@@ -484,10 +508,7 @@ fn test_bool_literal() {
 
 #[test]
 fn test_string_literal() {
-    assert_eq!(
-        run_program(r#"fun main() = println("hello")"#),
-        "hello"
-    );
+    assert_eq!(run_program(r#"fun main() = println("hello")"#), "hello");
 }
 
 #[test]
@@ -573,8 +594,14 @@ fun main() = println(sum(100, 0))
 fn test_java_21_classfile_version() {
     let (module, errors) = parse("fun main() = 42");
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
-    let classes = compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
+    let classes =
+        compile_modules(&typed_modules, "Test").expect("compile_module_standalone should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
@@ -634,7 +661,12 @@ fun main() = None
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -642,7 +674,10 @@ fun main() = None
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
     }
     let output = Command::new("javap")
         .arg("-v")
@@ -825,7 +860,12 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -833,7 +873,10 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
     }
     let output = Command::new("javap")
         .arg("-p")
@@ -854,7 +897,12 @@ fn test_typed_module_direct() {
     let source = format!("{PRINTLN_EXTERN}\nfun main() = println(42)");
     let (module, errors) = parse(&source);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
@@ -863,7 +911,10 @@ fn test_typed_module_direct() {
         if let Some(parent) = class_path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        std::fs::File::create(&class_path).unwrap().write_all(bytes).unwrap();
+        std::fs::File::create(&class_path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
     }
 
     let output = Command::new("java")
@@ -873,7 +924,11 @@ fn test_typed_module_direct() {
         .output()
         .expect("java command should run");
 
-    assert!(output.status.success(), "java exited with {}", output.status);
+    assert!(
+        output.status.success(),
+        "java exited with {}",
+        output.status
+    );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "42");
 }
 
@@ -888,7 +943,12 @@ fun main() = println(Some(42))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -896,7 +956,10 @@ fun main() = println(Some(42))
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
     }
     let output = Command::new("javap")
         .arg("-v")
@@ -1008,7 +1071,12 @@ fun main() = println(render(Wrap(42)))
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules = infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
     let classes = compile_modules(&typed_modules, "Test").expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -1016,20 +1084,30 @@ fun main() = println(render(Wrap(42)))
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        std::fs::File::create(&path).unwrap().write_all(bytes).unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
     }
     // Find the parameterized instance class for Render[Wrap[a]]
-    let render_wrap_class = classes.iter()
+    let render_wrap_class = classes
+        .iter()
         .find(|(n, _)| n.contains("Render$$Wrap"))
         .expect("should have a Render$$Wrap* instance class");
-    let class_output = javap_output(&dir.path().join(format!("{}.class", render_wrap_class.0)), false);
+    let class_output = javap_output(
+        &dir.path().join(format!("{}.class", render_wrap_class.0)),
+        false,
+    );
     assert!(
         class_output.contains("java.lang.Object dict0;"),
         "expected constrained instance to store dictionary field, javap output:\n{class_output}"
     );
 
     let test_output = javap_output(&dir.path().join("Test.class"), true);
-    let expected_ctor = format!("Method {}.\"<init>\":(Ljava/lang/Object;)V", render_wrap_class.0);
+    let expected_ctor = format!(
+        "Method {}.\"<init>\":(Ljava/lang/Object;)V",
+        render_wrap_class.0
+    );
     assert!(
         test_output.contains(&expected_ctor),
         "expected constrained instance construction with dictionary arg, javap output:\n{test_output}"
@@ -1100,12 +1178,17 @@ fun main() = {
     let full_source = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let typed_modules =
-        infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check should succeed");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check should succeed");
     let dir = compile_typed_modules(&typed_modules);
     let test_output = javap_output(&dir.path().join("Test.class"), true);
     assert!(
-        test_output.contains("InvokeDynamic") && test_output.contains("apply:(Ljava/lang/Object;)Lkrypton/runtime/Fun1;"),
+        test_output.contains("InvokeDynamic")
+            && test_output.contains("apply:(Ljava/lang/Object;)Lkrypton/runtime/Fun1;"),
         "expected constrained function ref to capture a dictionary, javap output:\n{test_output}"
     );
     assert!(
@@ -1133,8 +1216,12 @@ fun main() = println(default[Int]())
     let full_src = format!("{PRINTLN_EXTERN}\n{src}");
     let (module, errors) = parse(&full_src);
     assert!(errors.is_empty());
-    let typed_modules =
-        infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string()).expect("type check");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("type check");
     let dir = compile_typed_modules(&typed_modules);
     let javap_out = javap_output(&dir.path().join("Test.class"), false);
     assert!(

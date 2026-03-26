@@ -24,10 +24,23 @@ pub struct ModuleGraph {
 /// Errors that can occur during module graph resolution.
 #[derive(Debug)]
 pub enum ModuleGraphError {
-    CircularImport { cycle: Vec<String>, span: Span },
-    UnknownModule { path: String, span: Span },
-    BareImport { path: String, span: Span },
-    ParseError { path: String, source: String, errors: Vec<ParseError> },
+    CircularImport {
+        cycle: Vec<String>,
+        span: Span,
+    },
+    UnknownModule {
+        path: String,
+        span: Span,
+    },
+    BareImport {
+        path: String,
+        span: Span,
+    },
+    ParseError {
+        path: String,
+        source: String,
+        errors: Vec<ParseError>,
+    },
 }
 
 /// Build a topologically-sorted module graph from a root module.
@@ -47,18 +60,36 @@ pub fn build_module_graph(
     let mut result: Vec<ResolvedModule> = Vec::new();
 
     // Auto-add prelude and its transitive deps (uses stdlib resolver internally)
-    visit_prelude_tree("prelude", resolver, &mut visited, &mut stack, &mut stack_set, &mut result)?;
+    visit_prelude_tree(
+        "prelude",
+        resolver,
+        &mut visited,
+        &mut stack,
+        &mut stack_set,
+        &mut result,
+    )?;
 
     let prelude_tree_paths: HashSet<String> = result.iter().map(|m| m.path.clone()).collect();
 
     // Walk root imports with proper span tracking for error messages
     for decl in &root.decls {
         if let Decl::Import { path, span, .. } = decl {
-            visit_user_module(path, *span, resolver, &mut visited, &mut stack, &mut stack_set, &mut result)?;
+            visit_user_module(
+                path,
+                *span,
+                resolver,
+                &mut visited,
+                &mut stack,
+                &mut stack_set,
+                &mut result,
+            )?;
         }
     }
 
-    Ok(ModuleGraph { modules: result, prelude_tree_paths })
+    Ok(ModuleGraph {
+        modules: result,
+        prelude_tree_paths,
+    })
 }
 
 /// DFS visit a prelude-tree module (stdlib fallback, zero spans for errors).
@@ -151,10 +182,12 @@ fn visit_user_module(
         });
     }
 
-    let source = resolver.resolve(path).ok_or_else(|| ModuleGraphError::UnknownModule {
-        path: path.to_string(),
-        span: import_span,
-    })?;
+    let source = resolver
+        .resolve(path)
+        .ok_or_else(|| ModuleGraphError::UnknownModule {
+            path: path.to_string(),
+            span: import_span,
+        })?;
 
     let (module, parse_errors) = krypton_parser::parser::parse(&source);
     if !parse_errors.is_empty() {
@@ -169,7 +202,12 @@ fn visit_user_module(
     stack_set.insert(path.to_string());
 
     for decl in &module.decls {
-        if let Decl::Import { path: dep_path, span, .. } = decl {
+        if let Decl::Import {
+            path: dep_path,
+            span,
+            ..
+        } = decl
+        {
             visit_user_module(dep_path, *span, resolver, visited, stack, stack_set, result)?;
         }
     }

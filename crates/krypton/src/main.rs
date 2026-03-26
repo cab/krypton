@@ -62,13 +62,9 @@ enum Commands {
         format: OutputFormat,
     },
     /// Parse and pretty-print a file
-    Fmt {
-        file: String,
-    },
+    Fmt { file: String },
     /// Type-check a file and print inferred types
-    Check {
-        file: String,
-    },
+    Check { file: String },
     /// Compile a file to a JVM .jar file
     Compile {
         file: String,
@@ -77,9 +73,7 @@ enum Commands {
         output: Option<String>,
     },
     /// Compile and run a file on the JVM
-    Run {
-        file: String,
-    },
+    Run { file: String },
     /// Pretty-print the ANF intermediate representation
     DumpIr {
         file: String,
@@ -88,9 +82,7 @@ enum Commands {
         all: bool,
     },
     /// Inspect resource ownership: show close and move insertion points
-    Inspect {
-        file: String,
-    },
+    Inspect { file: String },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -99,7 +91,12 @@ enum OutputFormat {
     Surface,
 }
 
-fn do_parse(source: &str) -> (krypton_parser::ast::Module, Vec<krypton_parser::diagnostics::ParseError>) {
+fn do_parse(
+    source: &str,
+) -> (
+    krypton_parser::ast::Module,
+    Vec<krypton_parser::diagnostics::ParseError>,
+) {
     krypton_parser::parser::parse(source)
 }
 
@@ -165,7 +162,9 @@ fn main() {
             }
             match format {
                 OutputFormat::Debug => println!("{:#?}", module),
-                OutputFormat::Surface => println!("{}", krypton_parser::pretty::pretty_print(&module)),
+                OutputFormat::Surface => {
+                    println!("{}", krypton_parser::pretty::pretty_print(&module))
+                }
             }
         }
         Commands::Fmt { file } => {
@@ -204,7 +203,11 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(
+                &module,
+                &resolver,
+                root_module_path(&file),
+            ) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -226,9 +229,7 @@ fn main() {
                 let mut c = stem.chars();
                 let base = match c.next() {
                     None => "Main".to_string(),
-                    Some(first) => {
-                        first.to_uppercase().to_string() + c.as_str()
-                    }
+                    Some(first) => first.to_uppercase().to_string() + c.as_str(),
                 };
                 format!("Kr${base}")
             };
@@ -268,7 +269,8 @@ fn main() {
                     phases.push(("emit", t.elapsed()));
                 }
                 Err(e) => {
-                    let diag = krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
+                    let diag =
+                        krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
                     eprint!("{}", diag);
                     process::exit(1);
                 }
@@ -301,7 +303,11 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(
+                &module,
+                &resolver,
+                root_module_path(&file),
+            ) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -369,7 +375,8 @@ fn main() {
                     process::exit(status.code().unwrap_or(1));
                 }
                 Err(e) => {
-                    let diag = krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
+                    let diag =
+                        krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
                     eprint!("{}", diag);
                     process::exit(1);
                 }
@@ -396,7 +403,11 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
+            match krypton_typechecker::infer::infer_module(
+                &module,
+                &resolver,
+                root_module_path(&file),
+            ) {
                 Ok(modules) => {
                     phases.push(("typecheck", t.elapsed()));
                     let info = &modules[0];
@@ -437,7 +448,11 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
+            let typed_modules = match krypton_typechecker::infer::infer_module(
+                &module,
+                &resolver,
+                root_module_path(&file),
+            ) {
                 Ok(modules) => modules,
                 Err(e) => {
                     let diag =
@@ -469,11 +484,13 @@ fn main() {
                     Ok(ir_module) => {
                         lower_dur += t.elapsed();
                         let t = Instant::now();
-                        let ir_module = krypton_ir::lint::LintPass.run(ir_module)
-                            .unwrap_or_else(|e| {
-                                eprintln!("IR lint error (module {}): {}", mod_name, e);
-                                std::process::exit(1);
-                            });
+                        let ir_module =
+                            krypton_ir::lint::LintPass
+                                .run(ir_module)
+                                .unwrap_or_else(|e| {
+                                    eprintln!("IR lint error (module {}): {}", mod_name, e);
+                                    std::process::exit(1);
+                                });
                         lint_dur += t.elapsed();
                         print!("{}", ir_module);
                     }
@@ -507,7 +524,11 @@ fn main() {
             let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
-            match krypton_typechecker::infer::infer_module(&module, &resolver, root_module_path(&file)) {
+            match krypton_typechecker::infer::infer_module(
+                &module,
+                &resolver,
+                root_module_path(&file),
+            ) {
                 Ok(modules) => {
                     let info = &modules[0];
                     let output = inspect::render_inspect(

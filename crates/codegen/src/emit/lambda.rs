@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 
-use krypton_typechecker::types::Type as TcType;
 use krypton_ir::Type;
+use krypton_typechecker::types::Type as TcType;
 use ristretto_classfile::attributes::{BootstrapMethod, Instruction, VerificationType};
 use ristretto_classfile::{ConstantPool, Method, MethodAccessFlags, ReferenceKind};
 
 use super::builder::BytecodeBuilder;
-use super::compiler::{Compiler, CodegenError, JvmType};
+use super::compiler::{CodegenError, Compiler, JvmType};
 
 /// Lambda/closure compilation state.
 pub(super) struct LambdaState {
@@ -47,7 +47,10 @@ impl LambdaState {
         Ok(())
     }
 
-    pub(super) fn ensure_metafactory(&mut self, cp: &mut ConstantPool) -> Result<u16, CodegenError> {
+    pub(super) fn ensure_metafactory(
+        &mut self,
+        cp: &mut ConstantPool,
+    ) -> Result<u16, CodegenError> {
         if let Some(handle) = self.metafactory_handle {
             return Ok(handle);
         }
@@ -87,11 +90,14 @@ impl Compiler {
             cpool_index: self.builder.refs.object_class,
         });
         match actual_type {
-            JvmType::Long | JvmType::Double | JvmType::Int => self.builder.unbox_if_needed(actual_type),
+            JvmType::Long | JvmType::Double | JvmType::Int => {
+                self.builder.unbox_if_needed(actual_type)
+            }
             JvmType::StructRef(idx) if idx != self.builder.refs.object_class => {
                 self.builder.emit(Instruction::Checkcast(idx));
                 self.builder.frame.pop_type();
-                self.builder.frame
+                self.builder
+                    .frame
                     .push_type(VerificationType::Object { cpool_index: idx });
             }
             JvmType::StructRef(_) => {}
@@ -147,7 +153,11 @@ impl Compiler {
         Ok(result_type)
     }
 
-    pub(super) fn compile_fn_ref(&mut self, name: &str, expr_ty: &TcType) -> Result<JvmType, CodegenError> {
+    pub(super) fn compile_fn_ref(
+        &mut self,
+        name: &str,
+        expr_ty: &TcType,
+    ) -> Result<JvmType, CodegenError> {
         let fn_type = match expr_ty {
             TcType::Own(inner) => inner.as_ref(),
             other => other,
@@ -155,9 +165,10 @@ impl Compiler {
         let (param_types, ret_type) = match fn_type {
             TcType::Fn(param_types, ret_type) => (param_types, ret_type),
             other => {
-                return Err(CodegenError::TypeError(format!(
-                    "function reference has non-function type: {other}"
-                ), None))
+                return Err(CodegenError::TypeError(
+                    format!("function reference has non-function type: {other}"),
+                    None,
+                ))
             }
         };
         let param_jvm_types = param_types
@@ -171,7 +182,9 @@ impl Compiler {
             .ensure_fun_interface(arity, &mut self.cp, &mut self.types.class_descriptors)?;
         let fun_class_idx = self.lambda.fun_classes[&arity];
 
-        let dict_requirements = self.traits.impl_dict_requirements
+        let dict_requirements = self
+            .traits
+            .impl_dict_requirements
             .get(name)
             .cloned()
             .unwrap_or_default();
@@ -191,14 +204,20 @@ impl Compiler {
         self.builder.next_local = (dict_requirements.len() + param_jvm_types.len()) as u16;
 
         for _ in &dict_requirements {
-            self.builder.frame.local_types.push(VerificationType::Object {
-                cpool_index: self.builder.refs.object_class,
-            });
+            self.builder
+                .frame
+                .local_types
+                .push(VerificationType::Object {
+                    cpool_index: self.builder.refs.object_class,
+                });
         }
         for _ in &param_jvm_types {
-            self.builder.frame.local_types.push(VerificationType::Object {
-                cpool_index: self.builder.refs.object_class,
-            });
+            self.builder
+                .frame
+                .local_types
+                .push(VerificationType::Object {
+                    cpool_index: self.builder.refs.object_class,
+                });
         }
 
         if let Some(info) = self.types.get_function(name) {
@@ -208,9 +227,10 @@ impl Compiler {
             let method_ref = info.method_ref;
 
             if param_types.len() != dict_requirements.len() + param_jvm_types.len() {
-                return Err(CodegenError::UnsupportedExpr(format!(
-                    "function reference `{name}` has mismatched parameter metadata"
-                ), None));
+                return Err(CodegenError::UnsupportedExpr(
+                    format!("function reference `{name}` has mismatched parameter metadata"),
+                    None,
+                ));
             }
 
             let mut bridge_slot = 0u16;
@@ -245,8 +265,7 @@ impl Compiler {
             } else {
                 self.builder.push_jvm_type(return_type);
                 match ret_jvm {
-                    JvmType::Long | JvmType::Double | JvmType::Int
-                        if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class) =>
+                    JvmType::Long | JvmType::Double | JvmType::Int if matches!(return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class) =>
                     {
                         self.builder.unbox_if_needed(ret_jvm);
                     }
@@ -256,7 +275,8 @@ impl Compiler {
                     {
                         self.builder.emit(Instruction::Checkcast(idx));
                         self.builder.frame.pop_type();
-                        self.builder.frame
+                        self.builder
+                            .frame
                             .push_type(VerificationType::Object { cpool_index: idx });
                     }
                     _ => {}
@@ -273,7 +293,8 @@ impl Compiler {
                 self.load_bridge_arg(i as u16, actual_type);
             }
 
-            self.builder.emit(Instruction::Invokespecial(constructor_ref));
+            self.builder
+                .emit(Instruction::Invokespecial(constructor_ref));
             for actual_type in field_types.iter().rev().copied() {
                 self.builder.pop_jvm_type(actual_type);
             }
@@ -285,8 +306,10 @@ impl Compiler {
 
             self.builder.emit_new_dup(class_idx);
 
-            for (i, (f, actual_type)) in
-                fields.iter().zip(param_jvm_types.iter().copied()).enumerate()
+            for (i, (f, actual_type)) in fields
+                .iter()
+                .zip(param_jvm_types.iter().copied())
+                .enumerate()
             {
                 self.load_bridge_arg(i as u16, actual_type);
                 if f.is_erased {
@@ -341,10 +364,13 @@ impl Compiler {
                     &ir_param_types,
                 )
                 .ok_or_else(|| {
-                    CodegenError::UndefinedVariable(format!(
+                    CodegenError::UndefinedVariable(
+                        format!(
                         "could not resolve function reference dictionary requirement {} for {name}",
                         requirement.trait_name()
-                    ), None)
+                    ),
+                        None,
+                    )
                 })?;
                 self.emit_dict_argument_for_type(
                     requirement.trait_name(),
@@ -362,5 +388,4 @@ impl Compiler {
             dict_requirements.len(),
         )
     }
-
 }

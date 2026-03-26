@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
-use krypton_ir::{FnDef, FnId, InstanceDef, Module, TraitDef, TraitMethodDef, TraitName, Type, VarId};
+use krypton_ir::{
+    FnDef, FnId, InstanceDef, Module, TraitDef, TraitMethodDef, TraitName, Type, VarId,
+};
 use krypton_typechecker::types::TypeVarGen;
 
 fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) -> Module {
@@ -40,10 +42,7 @@ fn well_formed_module_passes() {
         return_type: Type::Unit,
         body: unit_atom(),
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "main".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "main".into())]));
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -122,12 +121,13 @@ fn duplicate_var_id_is_error() {
             ty: Type::Int,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
-    assert!(err.message.contains("duplicate VarId"), "got: {}", err.message);
+    assert!(
+        err.message.contains("duplicate VarId"),
+        "got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -152,10 +152,7 @@ fn join_point_used_as_value_is_error() {
             ty: Type::Unit,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
     assert!(err.message.contains("join point"), "got: {}", err.message);
 }
@@ -176,12 +173,13 @@ fn jump_to_non_join_point_is_error() {
             ty: Type::Unit,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
-    assert!(err.message.contains("not a join point"), "got: {}", err.message);
+    assert!(
+        err.message.contains("not a join point"),
+        "got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -207,12 +205,13 @@ fn call_to_unknown_fn_id_is_error() {
             ty: Type::Int,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
-    assert!(err.message.contains("unknown FnId(99)"), "got: {}", err.message);
+    assert!(
+        err.message.contains("unknown FnId(99)"),
+        "got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -238,12 +237,13 @@ fn make_closure_unknown_fn_id_is_error() {
             ty: Type::Fn(vec![], Box::new(Type::Unit)),
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
-    assert!(err.message.contains("unknown FnId(99)"), "got: {}", err.message);
+    assert!(
+        err.message.contains("unknown FnId(99)"),
+        "got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -266,12 +266,13 @@ fn letrec_unknown_fn_id_is_error() {
             ty: Type::Unit,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
-    assert!(err.message.contains("unknown FnId(99)"), "got: {}", err.message);
+    assert!(
+        err.message.contains("unknown FnId(99)"),
+        "got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -298,12 +299,13 @@ fn primop_type_mismatch_is_error() {
             ty: Type::Bool,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
-    assert!(err.message.contains("type mismatch"), "got: {}", err.message);
+    assert!(
+        err.message.contains("type mismatch"),
+        "got: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -330,10 +332,7 @@ fn well_formed_join_point_passes() {
             ty: Type::Unit,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "good".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -376,10 +375,7 @@ fn letjoin_param_varid_reusable_in_body() {
             ty: Type::Int,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "good".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -417,10 +413,7 @@ fn switch_branch_varid_reusable_across_branches() {
             ty: Type::Int,
         },
     };
-    let module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "good".into())]),
-    );
+    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -447,10 +440,7 @@ fn getdict_unknown_trait_is_error() {
             ty: Type::Unit,
         },
     };
-    let mut module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "bad".into())]),
-    );
+    let mut module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     module.traits.push(TraitDef {
         name: "Show".into(),
         trait_name: TraitName::new("core/show".into(), "Show".into()),
@@ -491,10 +481,7 @@ fn getdict_valid_trait_and_instance_passes() {
             ty: Type::Unit,
         },
     };
-    let mut module = make_simple_module(
-        vec![func],
-        HashMap::from([(FnId(0), "good".into())]),
-    );
+    let mut module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     module.traits.push(TraitDef {
         name: "Show".into(),
         trait_name: TraitName::new("core/show".into(), "Show".into()),

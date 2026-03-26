@@ -1,5 +1,5 @@
-use krypton_parser::parser::parse;
 use insta::assert_yaml_snapshot;
+use krypton_parser::parser::parse;
 
 #[test]
 fn test_literal_int() {
@@ -224,7 +224,9 @@ fun h(xs: List[Int], f: (Int) -> String) = xs.map[String](f)
             krypton_parser::ast::Expr::App { func, args, .. } => {
                 assert_eq!(args.len(), 1);
                 match func.as_ref() {
-                    krypton_parser::ast::Expr::TypeApp { expr, type_args, .. } => {
+                    krypton_parser::ast::Expr::TypeApp {
+                        expr, type_args, ..
+                    } => {
                         assert_eq!(type_args.len(), 1);
                         assert!(matches!(
                             expr.as_ref(),
@@ -241,7 +243,9 @@ fun h(xs: List[Int], f: (Int) -> String) = xs.map[String](f)
 
     match &module.decls[2] {
         krypton_parser::ast::Decl::DefFn(f) => match &*f.body {
-            krypton_parser::ast::Expr::TypeApp { expr, type_args, .. } => {
+            krypton_parser::ast::Expr::TypeApp {
+                expr, type_args, ..
+            } => {
                 assert_eq!(type_args.len(), 1);
                 assert!(matches!(
                     expr.as_ref(),
@@ -258,7 +262,9 @@ fun h(xs: List[Int], f: (Int) -> String) = xs.map[String](f)
             krypton_parser::ast::Expr::App { func, args, .. } => {
                 assert_eq!(args.len(), 2);
                 match func.as_ref() {
-                    krypton_parser::ast::Expr::TypeApp { expr, type_args, .. } => {
+                    krypton_parser::ast::Expr::TypeApp {
+                        expr, type_args, ..
+                    } => {
                         assert_eq!(type_args.len(), 1);
                         assert!(matches!(
                             expr.as_ref(),
@@ -318,7 +324,8 @@ fn test_where_clause() {
 
 #[test]
 fn test_recur() {
-    let (module, errors) = parse("fun f(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }");
+    let (module, errors) =
+        parse("fun f(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }");
     assert!(errors.is_empty(), "errors: {errors:?}");
     assert_yaml_snapshot!(module);
 }
@@ -395,7 +402,9 @@ fn test_trait_method_missing_annotation() {
     let (_, errors) = parse(src);
     assert!(!errors.is_empty(), "expected a parse error");
     assert!(
-        errors[0].message.contains("trait method parameters require types"),
+        errors[0]
+            .message
+            .contains("trait method parameters require types"),
         "expected helpful error about typed parameters, got: {}",
         errors[0].message,
     );

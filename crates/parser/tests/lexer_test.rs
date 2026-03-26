@@ -1,7 +1,7 @@
 use chumsky::Parser;
 use insta::assert_yaml_snapshot;
-use krypton_parser::lexer::Token;
 use krypton_parser::lexer::lexer;
+use krypton_parser::lexer::Token;
 
 fn surface_lex(input: &str) -> Vec<Token<'_>> {
     let (tokens, errors) = lexer().parse(input).into_output_errors();
@@ -161,8 +161,14 @@ fn test_adjacent_tokens() {
 fn test_error_recovery() {
     let (tokens, error_count) = surface_lex_with_errors("foo $ bar");
     assert!(error_count > 0, "expected at least one error for '$'");
-    let non_error: Vec<_> = tokens.iter().filter(|t| !matches!(t, Token::Error)).collect();
-    assert!(non_error.len() >= 2, "expected at least 2 valid tokens, got {non_error:?}");
+    let non_error: Vec<_> = tokens
+        .iter()
+        .filter(|t| !matches!(t, Token::Error))
+        .collect();
+    assert!(
+        non_error.len() >= 2,
+        "expected at least 2 valid tokens, got {non_error:?}"
+    );
 }
 
 // --- Spans ---

@@ -79,7 +79,8 @@ fn test_nested_package_paths() {
 
 #[test]
 fn test_bundle_runtime_classes() {
-    let runtime_jar = find_runtime_jar().expect("runtime JAR should exist (build with gradle first)");
+    let runtime_jar =
+        find_runtime_jar().expect("runtime JAR should exist (build with gradle first)");
 
     let class_bytes = generate_empty_main("Test").expect("generate_empty_main should succeed");
     let classes = vec![("Test".to_string(), class_bytes)];
@@ -113,12 +114,16 @@ fn test_bundle_runtime_classes() {
 
     // META-INF from runtime should NOT be duplicated
     let meta_count = names.iter().filter(|n| n.starts_with("META-INF/")).count();
-    assert_eq!(meta_count, 1, "should have exactly one META-INF entry (manifest)");
+    assert_eq!(
+        meta_count, 1,
+        "should have exactly one META-INF entry (manifest)"
+    );
 }
 
 #[test]
 fn test_fat_jar_runs_with_java_jar() {
-    let runtime_jar = find_runtime_jar().expect("runtime JAR should exist (build with gradle first)");
+    let runtime_jar =
+        find_runtime_jar().expect("runtime JAR should exist (build with gradle first)");
 
     // Compile a hello-world program that uses println (requires runtime)
     let source = "import core/io.{println}\nfun main() = println(\"hello from fat jar\")";
@@ -127,14 +132,15 @@ fn test_fat_jar_runs_with_java_jar() {
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let resolver = krypton_modules::module_resolver::CompositeResolver::stdlib_only();
-    let typed_modules = krypton_typechecker::infer::infer_module(&module, &resolver, "test".to_string())
-        .expect("type checking should succeed");
+    let typed_modules =
+        krypton_typechecker::infer::infer_module(&module, &resolver, "test".to_string())
+            .expect("type checking should succeed");
 
     let classes = krypton_codegen::emit::compile_modules(&typed_modules, "FatJarTest")
         .expect("codegen should succeed");
 
-    let jar_bytes = write_jar(&classes, "FatJarTest", Some(&runtime_jar))
-        .expect("write_jar should succeed");
+    let jar_bytes =
+        write_jar(&classes, "FatJarTest", Some(&runtime_jar)).expect("write_jar should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     let jar_path = dir.path().join("fatjar.jar");

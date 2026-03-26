@@ -93,17 +93,13 @@ fn codegen_fixture(
     }
 
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
-    let resolver =
-        CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
+    let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
     for expectation in &fixture.expectations {
         match expectation {
             Expectation::Output(expected) => {
                 let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
-                assert_eq!(
-                    actual, *expected,
-                    "fixture {name}: output mismatch"
-                );
+                assert_eq!(actual, *expected, "fixture {name}: output mismatch");
             }
             Expectation::Ok => {
                 let (module, errors) = parse(&fixture.source);
@@ -111,12 +107,17 @@ fn codegen_fixture(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, "test".to_string()).unwrap_or_else(|e| {
-                    let rendered = render_infer_error(&name, &fixture.source, &e);
-                    panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
-                });
+                let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                    .unwrap_or_else(|e| {
+                        let rendered = render_infer_error(&name, &fixture.source, &e);
+                        panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                    });
                 match compile_modules(&typed_modules, "Kr$Test") {
-                    Ok(_) | Err(krypton_codegen::emit::CodegenError { kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction, .. }) => {}
+                    Ok(_)
+                    | Err(krypton_codegen::emit::CodegenError {
+                        kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
+                        ..
+                    }) => {}
                     Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
                 }
             }
@@ -137,17 +138,13 @@ fn codegen_module(
     }
 
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
-    let resolver =
-        CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
+    let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
     for expectation in &fixture.expectations {
         match expectation {
             Expectation::Output(expected) => {
                 let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
-                assert_eq!(
-                    actual, *expected,
-                    "fixture {name}: output mismatch"
-                );
+                assert_eq!(actual, *expected, "fixture {name}: output mismatch");
             }
             Expectation::Ok => {
                 let (module, errors) = parse(&fixture.source);
@@ -155,12 +152,17 @@ fn codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, "test".to_string()).unwrap_or_else(|e| {
-                    let rendered = render_infer_error(&name, &fixture.source, &e);
-                    panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
-                });
+                let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                    .unwrap_or_else(|e| {
+                        let rendered = render_infer_error(&name, &fixture.source, &e);
+                        panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                    });
                 match compile_modules(&typed_modules, "Kr$Test") {
-                    Ok(_) | Err(krypton_codegen::emit::CodegenError { kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction, .. }) => {}
+                    Ok(_)
+                    | Err(krypton_codegen::emit::CodegenError {
+                        kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
+                        ..
+                    }) => {}
                     Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
                 }
             }

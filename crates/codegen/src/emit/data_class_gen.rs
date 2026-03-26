@@ -6,8 +6,8 @@ use ristretto_classfile::{
     MethodAccessFlags,
 };
 
-use super::{JAVA_21, jvm_type_to_field_descriptor, jvm_type_to_base_field_type};
-use super::compiler::{JvmType, CodegenError, VariantField};
+use super::compiler::{CodegenError, JvmType, VariantField};
+use super::{jvm_type_to_base_field_type, jvm_type_to_field_descriptor, JAVA_21};
 
 pub(super) fn generate_struct_class(
     name: &str,
@@ -50,7 +50,7 @@ pub(super) fn generate_struct_class(
         let field_type = match jt {
             JvmType::StructRef(_) => {
                 // fdesc is "LClassName;" — extract "ClassName"
-                FieldType::Object(fdesc[1..fdesc.len()-1].to_string())
+                FieldType::Object(fdesc[1..fdesc.len() - 1].to_string())
             }
             other => jvm_type_to_base_field_type(*other),
         };
@@ -219,7 +219,8 @@ pub(super) fn generate_variant_class(
             ctor_desc.push_str("Ljava/lang/Object;");
         } else {
             let desc = match f.jvm_type {
-                JvmType::StructRef(idx) => class_descriptors.get(&idx)
+                JvmType::StructRef(idx) => class_descriptors
+                    .get(&idx)
                     .cloned()
                     .unwrap_or_else(|| jvm_type_to_field_descriptor(f.jvm_type)),
                 _ => jvm_type_to_field_descriptor(f.jvm_type),
@@ -238,7 +239,8 @@ pub(super) fn generate_variant_class(
             "Ljava/lang/Object;".to_string()
         } else {
             match f.jvm_type {
-                JvmType::StructRef(idx) => class_descriptors.get(&idx)
+                JvmType::StructRef(idx) => class_descriptors
+                    .get(&idx)
                     .cloned()
                     .unwrap_or_else(|| jvm_type_to_field_descriptor(f.jvm_type)),
                 _ => jvm_type_to_field_descriptor(f.jvm_type),
@@ -253,9 +255,7 @@ pub(super) fn generate_variant_class(
             FieldType::Object("java/lang/Object".to_string())
         } else {
             match f.jvm_type {
-                JvmType::StructRef(_) => {
-                    FieldType::Object(fdesc[1..fdesc.len()-1].to_string())
-                }
+                JvmType::StructRef(_) => FieldType::Object(fdesc[1..fdesc.len() - 1].to_string()),
                 _ => jvm_type_to_base_field_type(f.jvm_type),
             }
         };
@@ -346,7 +346,9 @@ pub(super) fn generate_variant_class(
         methods.push(clinit);
 
         singleton_field = Some(Field {
-            access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
+            access_flags: FieldAccessFlags::PUBLIC
+                | FieldAccessFlags::STATIC
+                | FieldAccessFlags::FINAL,
             name_index: instance_name,
             descriptor_index: instance_desc_idx,
             field_type: FieldType::Object(variant_name.to_string()),

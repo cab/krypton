@@ -6,9 +6,9 @@ use ristretto_classfile::{
     MethodAccessFlags,
 };
 
-use super::JAVA_21;
-use super::compiler::{JvmType, CodegenError};
+use super::compiler::{CodegenError, JvmType};
 use super::intrinsics::IntrinsicEntry;
+use super::JAVA_21;
 
 /// Generate a trait interface class file (e.g., `Eq.class`).
 /// All methods take and return Object (type erasure).
@@ -72,7 +72,10 @@ pub(super) fn generate_trait_interface_class(
         for i in 1..=(param_count as u8) {
             bridge_code.push(Instruction::Aload(i));
         }
-        bridge_code.push(Instruction::Invokeinterface(method_ref, (param_count + 1) as u8));
+        bridge_code.push(Instruction::Invokeinterface(
+            method_ref,
+            (param_count + 1) as u8,
+        ));
         bridge_code.push(Instruction::Areturn);
 
         jvm_methods.push(Method {
@@ -201,10 +204,12 @@ pub(super) fn generate_instance_class(
         }
         iface_desc.push_str(")Ljava/lang/Object;");
 
-        let concrete_params = param_jvm_types.get(iface_method_name)
+        let concrete_params = param_jvm_types
+            .get(iface_method_name)
             .cloned()
             .unwrap_or_default();
-        let concrete_ret = return_jvm_types.get(iface_method_name)
+        let concrete_ret = return_jvm_types
+            .get(iface_method_name)
             .copied()
             .unwrap_or(JvmType::Int);
 
@@ -217,7 +222,8 @@ pub(super) fn generate_instance_class(
         let mut bridge_code: Vec<Instruction> = Vec::new();
         let mut slot: u8 = 1; // slot 0 = this
 
-        let class_names_for_method = param_class_names.get(iface_method_name)
+        let class_names_for_method = param_class_names
+            .get(iface_method_name)
             .cloned()
             .unwrap_or_default();
 
@@ -542,7 +548,6 @@ pub(super) fn generate_builtin_trait_instance_class(
     Ok(buffer)
 }
 
-
 /// Generate a parameterized instance class with constructor taking subdictionaries.
 pub(super) fn generate_parameterized_instance_class(
     class_name: &str,
@@ -635,8 +640,14 @@ pub(super) fn generate_parameterized_instance_class(
         }
         iface_desc.push_str(")Ljava/lang/Object;");
 
-        let concrete_params = param_jvm_types.get(iface_method_name).cloned().unwrap_or_default();
-        let concrete_ret = return_jvm_types.get(iface_method_name).copied().unwrap_or(JvmType::Int);
+        let concrete_params = param_jvm_types
+            .get(iface_method_name)
+            .cloned()
+            .unwrap_or_default();
+        let concrete_ret = return_jvm_types
+            .get(iface_method_name)
+            .copied()
+            .unwrap_or(JvmType::Int);
 
         let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
         let method_name_idx = cp.add_utf8(iface_method_name)?;
@@ -652,7 +663,10 @@ pub(super) fn generate_parameterized_instance_class(
 
         // Load and unbox user params
         let mut slot: u8 = 1;
-        let class_names_for_method = param_class_names.get(iface_method_name).cloned().unwrap_or_default();
+        let class_names_for_method = param_class_names
+            .get(iface_method_name)
+            .cloned()
+            .unwrap_or_default();
         for (param_idx, pt) in concrete_params.iter().enumerate() {
             bridge_code.push(Instruction::Aload(slot));
             match pt {

@@ -28,10 +28,19 @@ fn timings_flag_prints_phase_durations_for_compile() {
         .args(["--timings", "compile", "hello.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     for phase in &["parse:", "typecheck:", "codegen:", "emit:", "total:"] {
-        assert!(stderr.contains(phase), "stderr should contain '{}': {}", phase, stderr);
+        assert!(
+            stderr.contains(phase),
+            "stderr should contain '{}': {}",
+            phase,
+            stderr
+        );
     }
 }
 
@@ -41,9 +50,17 @@ fn timings_flag_with_run_includes_jvm() {
         .args(["--timings", "run", "tests/fixtures/functions/hello.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "run should succeed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("jvm:"), "stderr should contain 'jvm:': {}", stderr);
+    assert!(
+        stderr.contains("jvm:"),
+        "stderr should contain 'jvm:': {}",
+        stderr
+    );
 }
 
 #[test]
@@ -57,23 +74,56 @@ fn no_timings_flag_prints_nothing_extra() {
         .args(["compile", "hello.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!stderr.contains("parse:"), "stderr should NOT contain 'parse:': {}", stderr);
-    assert!(!stderr.contains("total:"), "stderr should NOT contain 'total:': {}", stderr);
+    assert!(
+        !stderr.contains("parse:"),
+        "stderr should NOT contain 'parse:': {}",
+        stderr
+    );
+    assert!(
+        !stderr.contains("total:"),
+        "stderr should NOT contain 'total:': {}",
+        stderr
+    );
 }
 
 #[test]
 fn timings_with_check_subcommand() {
     let output = krypton_bin()
-        .args(["--timings", "check", "tests/fixtures/functions/arithmetic.kr"])
+        .args([
+            "--timings",
+            "check",
+            "tests/fixtures/functions/arithmetic.kr",
+        ])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "check should succeed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "check should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     for phase in &["parse:", "typecheck:", "total:"] {
-        assert!(stderr.contains(phase), "stderr should contain '{}': {}", phase, stderr);
+        assert!(
+            stderr.contains(phase),
+            "stderr should contain '{}': {}",
+            phase,
+            stderr
+        );
     }
-    assert!(!stderr.contains("codegen:"), "stderr should NOT contain 'codegen:': {}", stderr);
-    assert!(!stderr.contains("emit:"), "stderr should NOT contain 'emit:': {}", stderr);
+    assert!(
+        !stderr.contains("codegen:"),
+        "stderr should NOT contain 'codegen:': {}",
+        stderr
+    );
+    assert!(
+        !stderr.contains("emit:"),
+        "stderr should NOT contain 'emit:': {}",
+        stderr
+    );
 }

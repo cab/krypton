@@ -63,15 +63,24 @@ pub struct IntrinsicEntry {
 
 impl IntrinsicEntry {
     pub fn is_unary(&self) -> bool {
-        matches!(self.op, IntrinsicOp::UnaryArith(_) | IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString)
+        matches!(
+            self.op,
+            IntrinsicOp::UnaryArith(_) | IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString
+        )
     }
 
     pub fn is_show(&self) -> bool {
-        matches!(self.op, IntrinsicOp::ShowVia { .. } | IntrinsicOp::ShowIdentity)
+        matches!(
+            self.op,
+            IntrinsicOp::ShowVia { .. } | IntrinsicOp::ShowIdentity
+        )
     }
 
     pub fn is_hash(&self) -> bool {
-        matches!(self.op, IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString)
+        matches!(
+            self.op,
+            IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString
+        )
     }
 }
 
@@ -86,92 +95,145 @@ impl IntrinsicRegistry {
         let entries = vec![
             // Semigroup Int
             IntrinsicEntry {
-                trait_name: "Semigroup", type_name: "Int", method_name: "combine",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::BinaryArith(Instruction::Ladd),
+                trait_name: "Semigroup",
+                type_name: "Int",
+                method_name: "combine",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::BinaryArith(Instruction::Ladd),
             },
             // Sub Int
             IntrinsicEntry {
-                trait_name: "Sub", type_name: "Int", method_name: "sub",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::BinaryArith(Instruction::Lsub),
+                trait_name: "Sub",
+                type_name: "Int",
+                method_name: "sub",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::BinaryArith(Instruction::Lsub),
             },
             // Mul Int
             IntrinsicEntry {
-                trait_name: "Mul", type_name: "Int", method_name: "mul",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::BinaryArith(Instruction::Lmul),
+                trait_name: "Mul",
+                type_name: "Int",
+                method_name: "mul",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::BinaryArith(Instruction::Lmul),
             },
             // Div Int
             IntrinsicEntry {
-                trait_name: "Div", type_name: "Int", method_name: "div",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::BinaryArith(Instruction::Ldiv),
+                trait_name: "Div",
+                type_name: "Int",
+                method_name: "div",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::BinaryArith(Instruction::Ldiv),
             },
             // Neg Int
             IntrinsicEntry {
-                trait_name: "Neg", type_name: "Int", method_name: "neg",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::UnaryArith(Instruction::Lneg),
+                trait_name: "Neg",
+                type_name: "Int",
+                method_name: "neg",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::UnaryArith(Instruction::Lneg),
             },
             // Eq Int
             IntrinsicEntry {
-                trait_name: "Eq", type_name: "Int", method_name: "eq",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::NumericEq,
+                trait_name: "Eq",
+                type_name: "Int",
+                method_name: "eq",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::NumericEq,
             },
             // Ord Int
             IntrinsicEntry {
-                trait_name: "Ord", type_name: "Int", method_name: "lt",
-                jvm_type: PrimitiveJvm::Long, op: IntrinsicOp::NumericOrd,
+                trait_name: "Ord",
+                type_name: "Int",
+                method_name: "lt",
+                jvm_type: PrimitiveJvm::Long,
+                op: IntrinsicOp::NumericOrd,
             },
             // Semigroup Float
             IntrinsicEntry {
-                trait_name: "Semigroup", type_name: "Float", method_name: "combine",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::BinaryArith(Instruction::Dadd),
+                trait_name: "Semigroup",
+                type_name: "Float",
+                method_name: "combine",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::BinaryArith(Instruction::Dadd),
             },
             // Sub Float
             IntrinsicEntry {
-                trait_name: "Sub", type_name: "Float", method_name: "sub",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::BinaryArith(Instruction::Dsub),
+                trait_name: "Sub",
+                type_name: "Float",
+                method_name: "sub",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::BinaryArith(Instruction::Dsub),
             },
             // Mul Float
             IntrinsicEntry {
-                trait_name: "Mul", type_name: "Float", method_name: "mul",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::BinaryArith(Instruction::Dmul),
+                trait_name: "Mul",
+                type_name: "Float",
+                method_name: "mul",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::BinaryArith(Instruction::Dmul),
             },
             // Div Float
             IntrinsicEntry {
-                trait_name: "Div", type_name: "Float", method_name: "div",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::BinaryArith(Instruction::Ddiv),
+                trait_name: "Div",
+                type_name: "Float",
+                method_name: "div",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::BinaryArith(Instruction::Ddiv),
             },
             // Neg Float
             IntrinsicEntry {
-                trait_name: "Neg", type_name: "Float", method_name: "neg",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::UnaryArith(Instruction::Dneg),
+                trait_name: "Neg",
+                type_name: "Float",
+                method_name: "neg",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::UnaryArith(Instruction::Dneg),
             },
             // Eq Float
             IntrinsicEntry {
-                trait_name: "Eq", type_name: "Float", method_name: "eq",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::NumericEq,
+                trait_name: "Eq",
+                type_name: "Float",
+                method_name: "eq",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::NumericEq,
             },
             // Ord Float
             IntrinsicEntry {
-                trait_name: "Ord", type_name: "Float", method_name: "lt",
-                jvm_type: PrimitiveJvm::Double, op: IntrinsicOp::NumericOrd,
+                trait_name: "Ord",
+                type_name: "Float",
+                method_name: "lt",
+                jvm_type: PrimitiveJvm::Double,
+                op: IntrinsicOp::NumericOrd,
             },
             // Semigroup String
             IntrinsicEntry {
-                trait_name: "Semigroup", type_name: "String", method_name: "combine",
-                jvm_type: PrimitiveJvm::Ref, op: IntrinsicOp::StringConcat,
+                trait_name: "Semigroup",
+                type_name: "String",
+                method_name: "combine",
+                jvm_type: PrimitiveJvm::Ref,
+                op: IntrinsicOp::StringConcat,
             },
             // Eq String
             IntrinsicEntry {
-                trait_name: "Eq", type_name: "String", method_name: "eq",
-                jvm_type: PrimitiveJvm::Ref, op: IntrinsicOp::StringEq,
+                trait_name: "Eq",
+                type_name: "String",
+                method_name: "eq",
+                jvm_type: PrimitiveJvm::Ref,
+                op: IntrinsicOp::StringEq,
             },
             // Eq Bool
             IntrinsicEntry {
-                trait_name: "Eq", type_name: "Bool", method_name: "eq",
-                jvm_type: PrimitiveJvm::Int, op: IntrinsicOp::BoolEq,
+                trait_name: "Eq",
+                type_name: "Bool",
+                method_name: "eq",
+                jvm_type: PrimitiveJvm::Int,
+                op: IntrinsicOp::BoolEq,
             },
             // Show Int
             IntrinsicEntry {
-                trait_name: "Show", type_name: "Int", method_name: "show",
+                trait_name: "Show",
+                type_name: "Int",
+                method_name: "show",
                 jvm_type: PrimitiveJvm::Long,
                 op: IntrinsicOp::ShowVia {
                     box_class: "java/lang/Long",
@@ -182,7 +244,9 @@ impl IntrinsicRegistry {
             },
             // Show Float
             IntrinsicEntry {
-                trait_name: "Show", type_name: "Float", method_name: "show",
+                trait_name: "Show",
+                type_name: "Float",
+                method_name: "show",
                 jvm_type: PrimitiveJvm::Double,
                 op: IntrinsicOp::ShowVia {
                     box_class: "java/lang/Double",
@@ -193,7 +257,9 @@ impl IntrinsicRegistry {
             },
             // Show Bool
             IntrinsicEntry {
-                trait_name: "Show", type_name: "Bool", method_name: "show",
+                trait_name: "Show",
+                type_name: "Bool",
+                method_name: "show",
                 jvm_type: PrimitiveJvm::Int,
                 op: IntrinsicOp::ShowVia {
                     box_class: "java/lang/Boolean",
@@ -204,13 +270,17 @@ impl IntrinsicRegistry {
             },
             // Show String
             IntrinsicEntry {
-                trait_name: "Show", type_name: "String", method_name: "show",
+                trait_name: "Show",
+                type_name: "String",
+                method_name: "show",
                 jvm_type: PrimitiveJvm::Ref,
                 op: IntrinsicOp::ShowIdentity,
             },
             // Hash Int
             IntrinsicEntry {
-                trait_name: "Hash", type_name: "Int", method_name: "hash",
+                trait_name: "Hash",
+                type_name: "Int",
+                method_name: "hash",
                 jvm_type: PrimitiveJvm::Long,
                 op: IntrinsicOp::HashVia {
                     box_class: "java/lang/Long",
@@ -221,7 +291,9 @@ impl IntrinsicRegistry {
             },
             // Hash Float
             IntrinsicEntry {
-                trait_name: "Hash", type_name: "Float", method_name: "hash",
+                trait_name: "Hash",
+                type_name: "Float",
+                method_name: "hash",
                 jvm_type: PrimitiveJvm::Double,
                 op: IntrinsicOp::HashVia {
                     box_class: "java/lang/Double",
@@ -232,7 +304,9 @@ impl IntrinsicRegistry {
             },
             // Hash Bool
             IntrinsicEntry {
-                trait_name: "Hash", type_name: "Bool", method_name: "hash",
+                trait_name: "Hash",
+                type_name: "Bool",
+                method_name: "hash",
                 jvm_type: PrimitiveJvm::Int,
                 op: IntrinsicOp::HashVia {
                     box_class: "java/lang/Boolean",
@@ -243,7 +317,9 @@ impl IntrinsicRegistry {
             },
             // Hash String
             IntrinsicEntry {
-                trait_name: "Hash", type_name: "String", method_name: "hash",
+                trait_name: "Hash",
+                type_name: "String",
+                method_name: "hash",
                 jvm_type: PrimitiveJvm::Ref,
                 op: IntrinsicOp::HashString,
             },
@@ -260,7 +336,9 @@ impl IntrinsicRegistry {
     /// Look up an intrinsic by (trait_name, type_name).
     #[allow(dead_code)]
     pub fn get(&self, trait_name: &str, type_name: &str) -> Option<&IntrinsicEntry> {
-        self.index.get(&(trait_name, type_name)).map(|&i| &self.entries[i])
+        self.index
+            .get(&(trait_name, type_name))
+            .map(|&i| &self.entries[i])
     }
 
     /// Iterate over all entries.
@@ -332,10 +410,7 @@ fn add_unbox_refs(
     }
 }
 
-fn add_box_ref(
-    cp: &mut ConstantPool,
-    jvm_type: PrimitiveJvm,
-) -> Result<u16, CodegenError> {
+fn add_box_ref(cp: &mut ConstantPool, jvm_type: PrimitiveJvm) -> Result<u16, CodegenError> {
     match jvm_type {
         PrimitiveJvm::Long => {
             let cls = cp.add_class("java/lang/Long")?;
@@ -395,7 +470,9 @@ pub fn build_bridge_bytecode(
         IntrinsicOp::StringConcat => {
             let string_class = cp.add_class("java/lang/String")?;
             let string_concat = cp.add_method_ref(
-                string_class, "concat", "(Ljava/lang/String;)Ljava/lang/String;",
+                string_class,
+                "concat",
+                "(Ljava/lang/String;)Ljava/lang/String;",
             )?;
             code.push(Instruction::Aload(1));
             code.push(Instruction::Checkcast(string_class));
@@ -438,12 +515,18 @@ pub fn build_bridge_bytecode(
             code.push(Instruction::Iconst_0);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
+            Ok((
+                code,
+                4,
+                3,
+                branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals),
+            ))
         }
 
         IntrinsicOp::StringEq => {
             let string_class = cp.add_class("java/lang/String")?;
-            let string_equals = cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
+            let string_equals =
+                cp.add_method_ref(string_class, "equals", "(Ljava/lang/Object;)Z")?;
             let bool_class = cp.add_class("java/lang/Boolean")?;
             let bool_box = cp.add_method_ref(bool_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
             code.push(Instruction::Aload(1));
@@ -473,7 +556,12 @@ pub fn build_bridge_bytecode(
             code.push(Instruction::Iconst_1);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 2, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
+            Ok((
+                code,
+                2,
+                3,
+                branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals),
+            ))
         }
 
         IntrinsicOp::NumericOrd => {
@@ -497,10 +585,20 @@ pub fn build_bridge_bytecode(
             code.push(Instruction::Iconst_0);
             code.push(Instruction::Invokestatic(bool_box));
             code.push(Instruction::Areturn);
-            Ok((code, 4, 3, branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals)))
+            Ok((
+                code,
+                4,
+                3,
+                branch_bridge_frames(branch_idx + 3, branch_idx + 4, &locals),
+            ))
         }
 
-        IntrinsicOp::ShowVia { box_class, unbox_method, unbox_desc, valueof_desc } => {
+        IntrinsicOp::ShowVia {
+            box_class,
+            unbox_method,
+            unbox_desc,
+            valueof_desc,
+        } => {
             let box_cls = cp.add_class(box_class)?;
             let unbox_ref = cp.add_method_ref(box_cls, unbox_method, unbox_desc)?;
             let string_class = cp.add_class("java/lang/String")?;
@@ -521,7 +619,12 @@ pub fn build_bridge_bytecode(
             Ok((code, 4, 2, vec![]))
         }
 
-        IntrinsicOp::HashVia { box_class, unbox_method, unbox_desc, hash_desc } => {
+        IntrinsicOp::HashVia {
+            box_class,
+            unbox_method,
+            unbox_desc,
+            hash_desc,
+        } => {
             let box_cls = cp.add_class(box_class)?;
             let unbox_ref = cp.add_method_ref(box_cls, unbox_method, unbox_desc)?;
             let hash_ref = cp.add_method_ref(box_cls, "hashCode", hash_desc)?;

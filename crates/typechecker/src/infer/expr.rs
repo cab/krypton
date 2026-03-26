@@ -35,16 +35,30 @@ pub(crate) struct InferenceContext<'a> {
 }
 
 impl<'a> InferenceContext<'a> {
-
-    pub fn unify_spanned(&mut self, t1: &Type, t2: &Type, span: Span) -> Result<(), SpannedTypeError> {
+    pub fn unify_spanned(
+        &mut self,
+        t1: &Type,
+        t2: &Type,
+        span: Span,
+    ) -> Result<(), SpannedTypeError> {
         unify(t1, t2, self.subst).map_err(|e| super::spanned(e, span))
     }
 
-    pub fn coerce_unify_spanned(&mut self, actual: &Type, expected: &Type, span: Span) -> Result<(), SpannedTypeError> {
+    pub fn coerce_unify_spanned(
+        &mut self,
+        actual: &Type,
+        expected: &Type,
+        span: Span,
+    ) -> Result<(), SpannedTypeError> {
         coerce_unify(actual, expected, self.subst).map_err(|e| super::spanned(e, span))
     }
 
-    pub fn join_types_spanned(&mut self, a: &Type, b: &Type, span: Span) -> Result<(), SpannedTypeError> {
+    pub fn join_types_spanned(
+        &mut self,
+        a: &Type,
+        b: &Type,
+        span: Span,
+    ) -> Result<(), SpannedTypeError> {
         join_types(a, b, self.subst).map_err(|e| super::spanned(e, span))
     }
 
@@ -56,7 +70,11 @@ impl<'a> InferenceContext<'a> {
             matches!(&resolved, Type::Own(_))
         });
         let resolved = self.subst.apply(&branch_types[0]);
-        if all_own { resolved } else { super::strip_own(&resolved) }
+        if all_own {
+            resolved
+        } else {
+            super::strip_own(&resolved)
+        }
     }
 
     pub fn resolve_type_expr_spanned(
@@ -72,8 +90,15 @@ impl<'a> InferenceContext<'a> {
                 span,
             )
         })?;
-        type_registry::resolve_type_expr(ty_expr, self.type_param_map, self.type_param_arity, reg, ResolutionContext::UserAnnotation, self.self_type.as_ref())
-            .map_err(|e| super::spanned(e, span))
+        type_registry::resolve_type_expr(
+            ty_expr,
+            self.type_param_map,
+            self.type_param_arity,
+            reg,
+            ResolutionContext::UserAnnotation,
+            self.self_type.as_ref(),
+        )
+        .map_err(|e| super::spanned(e, span))
     }
 
     /// Find overloaded candidates for a function name.
@@ -82,7 +107,8 @@ impl<'a> InferenceContext<'a> {
     /// Prelude entries are excluded: if the user explicitly imports a name that the prelude
     /// also provides, that's a shadow, not an overload.
     fn find_overloaded_candidates(&self, name: &str) -> Vec<OverloadOption> {
-        let all: Vec<_> = self.imported_fn_types
+        let all: Vec<_> = self
+            .imported_fn_types
             .iter()
             .filter(|f| f.name == name)
             .map(|f| OverloadOption {
@@ -152,24 +178,26 @@ impl<'a> InferenceContext<'a> {
             } else {
                 None
             };
-            let a_typed = self.infer_expr_inner(
-                a,
-                arg_expected_type.as_ref(),
-            ).map_err(|mut err| {
-                if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
-                    if let Some(cname) = callee_name {
-                        if let Some(def) = self.env.get_def_span(cname) {
-                            let resolved_fn_ty = self.subst.apply(func_ty);
-                            err.secondary_span = Some(SecondaryLabel {
-                                span: def.span,
-                                message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
-                                source_file: def.source_module.clone(),
-                            });
+            let a_typed = self
+                .infer_expr_inner(a, arg_expected_type.as_ref())
+                .map_err(|mut err| {
+                    if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
+                        if let Some(cname) = callee_name {
+                            if let Some(def) = self.env.get_def_span(cname) {
+                                let resolved_fn_ty = self.subst.apply(func_ty);
+                                err.secondary_span = Some(SecondaryLabel {
+                                    span: def.span,
+                                    message: format!(
+                                        "`{cname}` defined here, expects {}",
+                                        resolved_fn_ty.renumber_for_display()
+                                    ),
+                                    source_file: def.source_module.clone(),
+                                });
+                            }
                         }
                     }
-                }
-                err
-            })?;
+                    err
+                })?;
             arg_types.push(a_typed.ty.clone());
             args_typed.push(a_typed);
         }
@@ -191,7 +219,8 @@ impl<'a> InferenceContext<'a> {
                     ));
                 }
                 // Per-arg coerce_unify: directional, catches fabrication structurally
-                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
+                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate()
+                {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
@@ -220,8 +249,7 @@ impl<'a> InferenceContext<'a> {
                     })?;
                 }
                 // Propagate return type — plain unify preserves Own from resolved type
-                unify(ret_type, &ret_var, self.subst)
-                    .map_err(|e| super::spanned(e, span))?;
+                unify(ret_type, &ret_var, self.subst).map_err(|e| super::spanned(e, span))?;
             }
             _ => {
                 if super::is_concrete_non_function(func_ty, self.subst) {
@@ -231,10 +259,10 @@ impl<'a> InferenceContext<'a> {
                 // Function type not yet resolved — fall back to building expected Fn and unifying.
                 // Strip Own from arg types to avoid baking ownership into the function's type
                 // variable (ownership is handled by coerce_unify at resolved call sites).
-                let stripped_args: Vec<Type> = arg_types.iter().map(|t| super::strip_own(t)).collect();
+                let stripped_args: Vec<Type> =
+                    arg_types.iter().map(|t| super::strip_own(t)).collect();
                 let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
-                unify(&unwrapped, &expected_fn, self.subst)
-                    .map_err(|e| super::spanned(e, span))?;
+                unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
 
@@ -308,7 +336,10 @@ impl<'a> InferenceContext<'a> {
             }
         }
         // Validate enclosing function has a where constraint for this trait
-        let has_constraint = self.enclosing_fn_constraints.iter().any(|(t, _)| t.local_name == trait_name);
+        let has_constraint = self
+            .enclosing_fn_constraints
+            .iter()
+            .any(|(t, _)| t.local_name == trait_name);
         if !has_constraint {
             return Err(super::spanned(
                 TypeError::UnsupportedExpr {
@@ -355,26 +386,24 @@ impl<'a> InferenceContext<'a> {
     ) -> Option<Result<TypedExpr, SpannedTypeError>> {
         let qualified_call = match (func, args.first()) {
             (
-                Expr::Var { name: export_name, .. },
+                Expr::Var {
+                    name: export_name, ..
+                },
                 Some(Expr::Var {
                     name: qualifier, ..
                 }),
             ) => Some((qualifier.clone(), export_name.clone(), Vec::new())),
             (
                 Expr::TypeApp {
-                    expr,
-                    type_args,
-                    ..
+                    expr, type_args, ..
                 },
                 Some(Expr::Var {
                     name: qualifier, ..
                 }),
             ) => match expr.as_ref() {
-                Expr::Var { name: export_name, .. } => Some((
-                    qualifier.clone(),
-                    export_name.clone(),
-                    type_args.clone(),
-                )),
+                Expr::Var {
+                    name: export_name, ..
+                } => Some((qualifier.clone(), export_name.clone(), type_args.clone())),
                 _ => None,
             },
             _ => None,
@@ -384,7 +413,14 @@ impl<'a> InferenceContext<'a> {
             return None;
         }
         let binding = self.qualified_modules.get(&qualifier)?;
-        Some(self.infer_qualified_var_call_inner(binding, &qualifier, &export_name, &explicit_type_args, args, span))
+        Some(self.infer_qualified_var_call_inner(
+            binding,
+            &qualifier,
+            &export_name,
+            &explicit_type_args,
+            args,
+            span,
+        ))
     }
 
     fn infer_qualified_var_call_inner(
@@ -407,8 +443,7 @@ impl<'a> InferenceContext<'a> {
             ));
         };
 
-        let is_constructor =
-            self.registry.is_some_and(|r| r.is_constructor(export_name));
+        let is_constructor = self.registry.is_some_and(|r| r.is_constructor(export_name));
         let resolved_name = if is_constructor {
             export_name.to_string()
         } else {
@@ -420,9 +455,8 @@ impl<'a> InferenceContext<'a> {
             let reg = self.registry.ok_or_else(|| {
                 super::spanned(
                     TypeError::UnsupportedExpr {
-                        description:
-                            "explicit type application requires the type registry"
-                                .to_string(),
+                        description: "explicit type application requires the type registry"
+                            .to_string(),
                     },
                     span,
                 )
@@ -441,12 +475,7 @@ impl<'a> InferenceContext<'a> {
                     .map_err(|e| super::spanned(e, span))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            super::instantiate_scheme_with_types(
-                &export.scheme,
-                &explicit_types,
-                span,
-                self.gen,
-            )?
+            super::instantiate_scheme_with_types(&export.scheme, &explicit_types, span, self.gen)?
         };
         let func_typed = TypedExpr {
             kind: TypedExprKind::Var(resolved_name),
@@ -455,13 +484,7 @@ impl<'a> InferenceContext<'a> {
             origin: None,
         };
         let actual_args = &args[1..];
-        self.infer_call_args_and_unify(
-            func_typed,
-            &func_ty,
-            actual_args,
-            is_constructor,
-            span,
-        )
+        self.infer_call_args_and_unify(func_typed, &func_ty, actual_args, is_constructor, span)
     }
 
     /// Path 3: Qualified module call via field-access syntax — `Module.fn(args...)`.
@@ -475,12 +498,14 @@ impl<'a> InferenceContext<'a> {
             expr: qualifier_expr,
             field,
             ..
-        } = func else {
+        } = func
+        else {
             return None;
         };
         let Expr::Var {
             name: qualifier, ..
-        } = qualifier_expr.as_ref() else {
+        } = qualifier_expr.as_ref()
+        else {
             return None;
         };
         if self.env.lookup(qualifier).is_some() {
@@ -497,8 +522,7 @@ impl<'a> InferenceContext<'a> {
                 span,
             )));
         };
-        let is_constructor =
-            self.registry.is_some_and(|r| r.is_constructor(field));
+        let is_constructor = self.registry.is_some_and(|r| r.is_constructor(field));
         let resolved_name = if is_constructor {
             field.clone()
         } else {
@@ -507,8 +531,7 @@ impl<'a> InferenceContext<'a> {
         let func_ty = export.scheme.instantiate(&mut || self.gen.fresh());
         let func_typed = TypedExpr {
             kind: TypedExprKind::Var(resolved_name),
-            ty: if is_constructor && !matches!(&func_ty, Type::Fn(_, _))
-            {
+            ty: if is_constructor && !matches!(&func_ty, Type::Fn(_, _)) {
                 Type::Own(Box::new(func_ty.clone()))
             } else {
                 func_ty.clone()
@@ -517,13 +540,7 @@ impl<'a> InferenceContext<'a> {
             origin: None,
         };
 
-        Some(self.infer_call_args_and_unify(
-            func_typed,
-            &func_ty,
-            args,
-            is_constructor,
-            span,
-        ))
+        Some(self.infer_call_args_and_unify(func_typed, &func_ty, args, is_constructor, span))
     }
 
     /// Path 4: UFCS overload resolution — when multiple same-named imports exist,
@@ -670,24 +687,26 @@ impl<'a> InferenceContext<'a> {
             } else {
                 None
             };
-            let a_typed = self.infer_expr_inner(
-                a,
-                arg_expected_type.as_ref(),
-            ).map_err(|mut err| {
-                if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
-                    if let Some(cname) = callee_name {
-                        if let Some(def) = self.env.get_def_span(cname) {
-                            let resolved_fn_ty = self.subst.apply(&func_typed.ty);
-                            err.secondary_span = Some(SecondaryLabel {
-                                span: def.span,
-                                message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
-                                source_file: def.source_module.clone(),
-                            });
+            let a_typed = self
+                .infer_expr_inner(a, arg_expected_type.as_ref())
+                .map_err(|mut err| {
+                    if err.secondary_span.is_none() && matches!(a, Expr::Lambda { .. }) {
+                        if let Some(cname) = callee_name {
+                            if let Some(def) = self.env.get_def_span(cname) {
+                                let resolved_fn_ty = self.subst.apply(&func_typed.ty);
+                                err.secondary_span = Some(SecondaryLabel {
+                                    span: def.span,
+                                    message: format!(
+                                        "`{cname}` defined here, expects {}",
+                                        resolved_fn_ty.renumber_for_display()
+                                    ),
+                                    source_file: def.source_module.clone(),
+                                });
+                            }
                         }
                     }
-                }
-                err
-            })?;
+                    err
+                })?;
             let a_ty = a_typed.ty.clone();
             arg_types.push(a_ty.clone());
             args_typed.push(a_typed);
@@ -725,7 +744,8 @@ impl<'a> InferenceContext<'a> {
                     ));
                 }
                 // Per-arg coerce_unify: directional, catches fabrication structurally
-                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
+                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate()
+                {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         // Add ownership-specific notes
@@ -780,8 +800,7 @@ impl<'a> InferenceContext<'a> {
                     })?;
                 }
                 // Propagate return type — plain unify preserves Own from resolved type
-                unify(ret_type, &ret_var, self.subst)
-                    .map_err(|e| super::spanned(e, span))?;
+                unify(ret_type, &ret_var, self.subst).map_err(|e| super::spanned(e, span))?;
             }
             _ => {
                 if super::is_concrete_non_function(&func_typed.ty, self.subst) {
@@ -791,10 +810,10 @@ impl<'a> InferenceContext<'a> {
                 // Function type not yet resolved — fall back to building expected Fn and unifying.
                 // Strip Own from arg types to avoid baking ownership into the function's type
                 // variable (ownership is handled by coerce_unify at resolved call sites).
-                let stripped_args: Vec<Type> = arg_types.iter().map(|t| super::strip_own(t)).collect();
+                let stripped_args: Vec<Type> =
+                    arg_types.iter().map(|t| super::strip_own(t)).collect();
                 let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
-                unify(&unwrapped, &expected_fn, self.subst)
-                    .map_err(|e| super::spanned(e, span))?;
+                unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
 
@@ -806,7 +825,10 @@ impl<'a> InferenceContext<'a> {
         };
 
         // Enforce: trait_dict(...) can only appear as an argument to extern functions
-        if let Expr::Var { name: call_name, .. } = func {
+        if let Expr::Var {
+            name: call_name, ..
+        } = func
+        {
             if !self.extern_fn_names.contains(call_name) {
                 for arg in &args_typed {
                     if let TypedExprKind::App {
@@ -888,7 +910,9 @@ impl<'a> InferenceContext<'a> {
         let body_ty = self.subst.apply(&body_typed.ty);
         let fn_ty = Type::Fn(param_types, Box::new(body_ty));
         let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
-        let ty = if let Some(cap_name) = super::first_own_capture(body, &param_names, self.env, self.subst) {
+        let ty = if let Some(cap_name) =
+            super::first_own_capture(body, &param_names, self.env, self.subst)
+        {
             if let Some(ref mut captures) = self.lambda_own_captures {
                 captures.insert(span, cap_name);
             }
@@ -934,8 +958,7 @@ impl<'a> InferenceContext<'a> {
         } else {
             return Err(super::spanned(
                 TypeError::UnsupportedExpr {
-                    description: "explicit type application requires the type registry"
-                        .to_string(),
+                    description: "explicit type application requires the type registry".to_string(),
                 },
                 span,
             ));
@@ -954,9 +977,8 @@ impl<'a> InferenceContext<'a> {
             _ => {
                 return Err(super::spanned(
                     TypeError::UnsupportedExpr {
-                        description:
-                            "explicit type arguments are only supported on named values"
-                                .to_string(),
+                        description: "explicit type arguments are only supported on named values"
+                            .to_string(),
                     },
                     span,
                 ))
@@ -1083,7 +1105,10 @@ impl<'a> InferenceContext<'a> {
         field: &str,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
-        if let Expr::Var { name: qualifier, .. } = target {
+        if let Expr::Var {
+            name: qualifier, ..
+        } = target
+        {
             if self.env.lookup(qualifier).is_none() {
                 if let Some(binding) = self.qualified_modules.get(qualifier) {
                     let Some(export) = binding.exports.get(field) else {
@@ -1103,8 +1128,7 @@ impl<'a> InferenceContext<'a> {
                         export.local_name.clone()
                     };
                     let export_ty = export.scheme.instantiate(&mut || self.gen.fresh());
-                    let ty = if is_constructor && !matches!(&export_ty, Type::Fn(_, _))
-                    {
+                    let ty = if is_constructor && !matches!(&export_ty, Type::Fn(_, _)) {
                         Type::Own(Box::new(export_ty.clone()))
                     } else {
                         export_ty.clone()
@@ -1254,12 +1278,8 @@ impl<'a> InferenceContext<'a> {
         match body {
             Some(body) => {
                 self.env.push_scope();
-                let typed_pattern = self.check_pattern(
-                    pattern,
-                    &binding_ty,
-                    span,
-                    scrutinee_is_owned,
-                )?;
+                let typed_pattern =
+                    self.check_pattern(pattern, &binding_ty, span, scrutinee_is_owned)?;
                 let body_typed = self.infer_expr_inner(body, None)?;
                 self.env.pop_scope();
                 let ty = body_typed.ty.clone();
@@ -1275,12 +1295,8 @@ impl<'a> InferenceContext<'a> {
                 })
             }
             None => {
-                let typed_pattern = self.check_pattern(
-                    pattern,
-                    &binding_ty,
-                    span,
-                    scrutinee_is_owned,
-                )?;
+                let typed_pattern =
+                    self.check_pattern(pattern, &binding_ty, span, scrutinee_is_owned)?;
                 Ok(TypedExpr {
                     kind: TypedExprKind::LetPattern {
                         pattern: typed_pattern,
@@ -1301,11 +1317,22 @@ impl<'a> InferenceContext<'a> {
         fields: &[(String, Expr)],
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
-        let reg = self.registry
-            .ok_or_else(|| super::spanned(TypeError::UnknownVariable { name: name.to_string() }, span))?;
-        let info = reg
-            .lookup_type(name)
-            .ok_or_else(|| super::spanned(TypeError::UnknownVariable { name: name.to_string() }, span))?;
+        let reg = self.registry.ok_or_else(|| {
+            super::spanned(
+                TypeError::UnknownVariable {
+                    name: name.to_string(),
+                },
+                span,
+            )
+        })?;
+        let info = reg.lookup_type(name).ok_or_else(|| {
+            super::spanned(
+                TypeError::UnknownVariable {
+                    name: name.to_string(),
+                },
+                span,
+            )
+        })?;
         match &info.kind {
             type_registry::TypeKind::Record {
                 fields: record_fields,
@@ -1395,7 +1422,11 @@ impl<'a> InferenceContext<'a> {
             }
             Type::Var(_) => {
                 // Inner type is unknown — try to constrain it based on return type
-                let fn_ret = self.env.fn_return_type.as_ref().map(|t| self.subst.apply(t));
+                let fn_ret = self
+                    .env
+                    .fn_return_type
+                    .as_ref()
+                    .map(|t| self.subst.apply(t));
                 match fn_ret.as_ref().map(super::strip_own) {
                     Some(Type::Named(name, _)) if name == "Option" => {
                         let a = Type::Var(self.fresh());
@@ -1431,7 +1462,11 @@ impl<'a> InferenceContext<'a> {
         };
 
         // Now check that the function's return type is compatible
-        let fn_ret = self.env.fn_return_type.as_ref().map(|t| self.subst.apply(t));
+        let fn_ret = self
+            .env
+            .fn_return_type
+            .as_ref()
+            .map(|t| self.subst.apply(t));
         let fn_ret_unwrapped = fn_ret.map(|t| super::strip_own(&t));
 
         match &fn_ret_unwrapped {
@@ -1551,7 +1586,8 @@ impl<'a> InferenceContext<'a> {
                     // Check for ambiguous overloaded name (bare reference)
                     let candidates = self.find_overloaded_candidates(name);
                     if candidates.len() > 1 {
-                        let modules: Vec<String> = candidates.iter().map(|c| c.module.clone()).collect();
+                        let modules: Vec<String> =
+                            candidates.iter().map(|c| c.module.clone()).collect();
                         return Err(super::spanned(
                             TypeError::AmbiguousCall {
                                 name: name.clone(),
@@ -1571,10 +1607,12 @@ impl<'a> InferenceContext<'a> {
                     };
                     // Check if this var is a trait method
                     // trait_method_map first (handles local-shadows-prelude), then imports
-                    let origin = self.trait_method_map.get(name).cloned()
-                        .or_else(|| self.imported_fn_types.iter()
+                    let origin = self.trait_method_map.get(name).cloned().or_else(|| {
+                        self.imported_fn_types
+                            .iter()
                             .find(|f| f.name == *name)
-                            .and_then(|f| f.origin.clone()));
+                            .and_then(|f| f.origin.clone())
+                    });
                     Ok(TypedExpr {
                         kind: TypedExprKind::Var(name.clone()),
                         ty,
@@ -1605,7 +1643,11 @@ impl<'a> InferenceContext<'a> {
             } => self.infer_lambda(params, body, *span, expected_type),
 
             Expr::App {
-                func, args, is_ufcs, span, ..
+                func,
+                args,
+                is_ufcs,
+                span,
+                ..
             } => {
                 // Dispatch: trait_dict intrinsic → qualified Mod.fn → qualified field access
                 //         → UFCS overload resolution → general HM application
@@ -1650,7 +1692,8 @@ impl<'a> InferenceContext<'a> {
                 let then_typed = self.infer_expr_inner(then_, None)?;
                 let else_typed = self.infer_expr_inner(else_, None)?;
                 self.join_types_spanned(&then_typed.ty, &else_typed.ty, *span)?;
-                let ty = self.resolve_join_ownership(&[then_typed.ty.clone(), else_typed.ty.clone()]);
+                let ty =
+                    self.resolve_join_ownership(&[then_typed.ty.clone(), else_typed.ty.clone()]);
                 Ok(TypedExpr {
                     kind: TypedExprKind::If {
                         cond: Box::new(cond_typed),
@@ -1697,9 +1740,7 @@ impl<'a> InferenceContext<'a> {
             } => {
                 let operand_typed = self.infer_expr_inner(operand, None)?;
                 let ty = match op {
-                    UnaryOp::Neg => {
-                        super::strip_own(&self.subst.apply(&operand_typed.ty))
-                    }
+                    UnaryOp::Neg => super::strip_own(&self.subst.apply(&operand_typed.ty)),
                     UnaryOp::Not => {
                         self.coerce_unify_spanned(&operand_typed.ty, &Type::Bool, *span)?;
                         Type::Bool
@@ -1814,7 +1855,11 @@ impl<'a> InferenceContext<'a> {
                 let mut typed_elems = Vec::new();
                 for elem in elements {
                     let typed = self.infer_expr_inner(elem, None)?;
-                    self.join_types_spanned(&self.subst.apply(&typed.ty), &self.subst.apply(&elem_var), *span)?;
+                    self.join_types_spanned(
+                        &self.subst.apply(&typed.ty),
+                        &self.subst.apply(&elem_var),
+                        *span,
+                    )?;
                     typed_elems.push(typed);
                 }
                 let resolved_elem = self.subst.apply(&elem_var);
@@ -1828,5 +1873,4 @@ impl<'a> InferenceContext<'a> {
             Expr::QuestionMark { expr, span } => self.infer_question_mark(expr, *span),
         }
     }
-
 }

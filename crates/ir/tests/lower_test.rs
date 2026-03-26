@@ -105,10 +105,12 @@ fn ir_link(
         } else {
             typed.module_path.clone()
         };
-        let ir_module = lower_module(typed, &mod_name)
-            .unwrap_or_else(|e| panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}"));
-        let ir_module = LintPass.run(ir_module)
-            .unwrap_or_else(|e| panic!("fixture {name}: IR lint failed for module {mod_name}: {e}"));
+        let ir_module = lower_module(typed, &mod_name).unwrap_or_else(|e| {
+            panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}")
+        });
+        let ir_module = LintPass.run(ir_module).unwrap_or_else(|e| {
+            panic!("fixture {name}: IR lint failed for module {mod_name}: {e}")
+        });
         output.push_str(&ir_module.to_string());
     }
 

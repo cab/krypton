@@ -332,9 +332,7 @@ fn qualified_export_table_has_no_mangled_names() {
     impl ModuleResolver for Resolver {
         fn resolve(&self, module_path: &str) -> Option<String> {
             match module_path {
-                "tlib" => Some(
-                    "pub type Color = Red | Green | Blue deriving (Show)".to_string(),
-                ),
+                "tlib" => Some("pub type Color = Red | Green | Blue deriving (Show)".to_string()),
                 _ => None,
             }
         }
@@ -375,7 +373,8 @@ fn import_ctor_no_parent_type_in_annotation() {
     }
 
     // Import only constructors — Shape should NOT be available in annotations
-    let src = "import shapes.{Circle, Square}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
+    let src =
+        "import shapes.{Circle, Square}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
     let output = render_module_error_with_resolver(src, &Resolver);
     assert!(
         output.contains("E0011"),
@@ -426,7 +425,8 @@ fn import_type_explicitly_allows_annotation() {
     }
 
     // Import the type explicitly — Shape should be available in annotations
-    let src = "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
+    let src =
+        "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(&module, &Resolver, "test".to_string());
@@ -497,7 +497,10 @@ fn type_error_in_imported_module() {
     };
     // Should be a TypeError with error_source pointing at badmod
     match &err {
-        InferError::TypeError { error, error_source } => {
+        InferError::TypeError {
+            error,
+            error_source,
+        } => {
             assert_eq!(
                 error.source_file.as_deref(),
                 Some("badmod"),
@@ -524,10 +527,7 @@ fn type_error_in_imported_module() {
 fn nullary_constructor_call_diagnostic() {
     let output = render_fixture_error("../../tests/fixtures/ownership/nullary_ctor_call.kr");
     insta::assert_snapshot!(output);
-    assert!(
-        output.contains("E0004"),
-        "expected E0004 in:\n{output}"
-    );
+    assert!(output.contains("E0004"), "expected E0004 in:\n{output}");
     assert!(
         output.contains("remove `()`"),
         "expected help text about removing () in:\n{output}"
@@ -569,7 +569,9 @@ fn unsolved_type_var_diagnostic() {
     // The error should show clean type names
     let has_raw_var = output.lines().any(|line| {
         // Skip file path lines
-        if line.contains(".kr") { return false; }
+        if line.contains(".kr") {
+            return false;
+        }
         // Look for patterns like single letter followed by digit (raw var names)
         let mut chars = line.chars().peekable();
         while let Some(c) = chars.next() {

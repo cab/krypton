@@ -4,7 +4,9 @@ use krypton_parser::ast::{BinOp, Lit, Span};
 
 use crate::trait_registry::TraitRegistry;
 use crate::type_registry::TypeInfo;
-use crate::typed_ast::{ResolvedConstraint, TraitName, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern};
+use crate::typed_ast::{
+    ResolvedConstraint, TraitName, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern,
+};
 use crate::types::{Type, TypeVarId};
 
 use super::match_type_with_bindings;
@@ -33,7 +35,10 @@ pub(super) fn collect_derived_constraints_for_type(
 
     if let Type::Var(type_var) = field_type {
         if let Some(type_var_name) = local_type_params.get(type_var) {
-            if !constraints.iter().any(|c| c.trait_name.local_name == trait_name && c.type_var == *type_var_name) {
+            if !constraints
+                .iter()
+                .any(|c| c.trait_name.local_name == trait_name && c.type_var == *type_var_name)
+            {
                 constraints.push(ResolvedConstraint {
                     trait_name: trait_info.trait_name(),
                     type_var: type_var_name.clone(),
@@ -569,7 +574,10 @@ pub(super) fn synthesize_hash_body(
                         result = combine_hash(result, hash_call(var_expr));
                     }
 
-                    TypedMatchArm { pattern, body: result }
+                    TypedMatchArm {
+                        pattern,
+                        body: result,
+                    }
                 })
                 .collect();
 

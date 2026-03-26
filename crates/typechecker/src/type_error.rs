@@ -1,6 +1,6 @@
 use krypton_parser::ast::Span;
 
-use crate::types::{Type, TypeVarId, format_type_with_var_map, renumber_types_for_display};
+use crate::types::{format_type_with_var_map, renumber_types_for_display, Type, TypeVarId};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -590,7 +590,11 @@ impl TypeError {
                     format_type_with_var_map(actual, names),
                 )
             }
-            TypeError::InvalidImpl { trait_name, target_type, .. } => {
+            TypeError::InvalidImpl {
+                trait_name,
+                target_type,
+                ..
+            } => {
                 format!(
                     "invalid impl: `{}` for `{}` does not match trait requirements",
                     trait_name, target_type,
@@ -621,24 +625,18 @@ impl TypeError {
                     ))
                 }
             }
-            TypeError::NotAStruct { actual } => {
-                Some(format!(
-                    "the expression has type `{}`, which is not a struct",
-                    format_type_with_var_map(actual, names),
-                ))
-            }
-            TypeError::QuestionMarkBadReturn { actual } => {
-                Some(format!(
-                    "function returns `{}`, but `?` requires `Result` or `Option`",
-                    format_type_with_var_map(actual, names),
-                ))
-            }
-            TypeError::QuestionMarkBadOperand { actual } => {
-                Some(format!(
-                    "`?` can only be applied to `Result` or `Option`, found `{}`",
-                    format_type_with_var_map(actual, names),
-                ))
-            }
+            TypeError::NotAStruct { actual } => Some(format!(
+                "the expression has type `{}`, which is not a struct",
+                format_type_with_var_map(actual, names),
+            )),
+            TypeError::QuestionMarkBadReturn { actual } => Some(format!(
+                "function returns `{}`, but `?` requires `Result` or `Option`",
+                format_type_with_var_map(actual, names),
+            )),
+            TypeError::QuestionMarkBadOperand { actual } => Some(format!(
+                "`?` can only be applied to `Result` or `Option`, found `{}`",
+                format_type_with_var_map(actual, names),
+            )),
             // All other variants: delegate to help()
             other => other.help(),
         }
@@ -650,11 +648,19 @@ impl fmt::Display for TypeError {
         match self {
             TypeError::Mismatch { expected, actual } => {
                 let renamed = renumber_types_for_display(&[expected, actual]);
-                write!(f, "type mismatch: expected {}, found {}", renamed[0], renamed[1])
+                write!(
+                    f,
+                    "type mismatch: expected {}, found {}",
+                    renamed[0], renamed[1]
+                )
             }
             TypeError::InfiniteType { var, ty } => {
                 let renamed = renumber_types_for_display(&[&Type::Var(*var), ty]);
-                write!(f, "infinite type: variable {} occurs in {}", renamed[0], renamed[1])
+                write!(
+                    f,
+                    "infinite type: variable {} occurs in {}",
+                    renamed[0], renamed[1]
+                )
             }
             TypeError::WrongArity { expected, actual } => {
                 write!(
@@ -707,7 +713,11 @@ impl fmt::Display for TypeError {
             }
             TypeError::OwnershipMismatch { expected, actual } => {
                 let renamed = renumber_types_for_display(&[expected, actual]);
-                write!(f, "ownership mismatch: expected `{}`, found `{}`", renamed[0], renamed[1])
+                write!(
+                    f,
+                    "ownership mismatch: expected `{}`, found `{}`",
+                    renamed[0], renamed[1]
+                )
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
@@ -901,35 +911,56 @@ impl fmt::Display for TypeError {
                     missing.join(", ")
                 )
             }
-            TypeError::TraitMethodCollision { method_name, trait1, trait2 } => {
+            TypeError::TraitMethodCollision {
+                method_name,
+                trait1,
+                trait2,
+            } => {
                 write!(
                     f,
                     "trait method collision: `{}` is defined by both `{}` and `{}`",
                     method_name, trait1, trait2
                 )
             }
-            TypeError::MissingTraitBound { fn_name, trait_name, type_var } => {
+            TypeError::MissingTraitBound {
+                fn_name,
+                trait_name,
+                type_var,
+            } => {
                 write!(
                     f,
                     "function `{}` uses trait method from `{}` on type variable `{}` without a corresponding bound",
                     fn_name, trait_name, type_var
                 )
             }
-            TypeError::AmbiguousTraitName { name, existing_module, new_module } => {
+            TypeError::AmbiguousTraitName {
+                name,
+                existing_module,
+                new_module,
+            } => {
                 write!(
                     f,
                     "ambiguous trait name `{}`: defined in both `{}` and `{}`",
                     name, existing_module, new_module
                 )
             }
-            TypeError::ExternSignatureMismatch { name, target1, target2, sig1, sig2 } => {
+            TypeError::ExternSignatureMismatch {
+                name,
+                target1,
+                target2,
+                sig1,
+                sig2,
+            } => {
                 write!(
                     f,
                     "extern signature mismatch for `{}`: `extern {}` declares `{}` but `extern {}` declares `{}`",
                     name, target1, sig1, target2, sig2
                 )
             }
-            TypeError::InvalidNullableReturn { name, actual_return_type } => {
+            TypeError::InvalidNullableReturn {
+                name,
+                actual_return_type,
+            } => {
                 let actual = actual_return_type.renumber_for_display();
                 write!(
                     f,
@@ -937,7 +968,10 @@ impl fmt::Display for TypeError {
                     name, actual
                 )
             }
-            TypeError::AmbiguousType { trait_name, method_name } => {
+            TypeError::AmbiguousType {
+                trait_name,
+                method_name,
+            } => {
                 write!(
                     f,
                     "ambiguous type: could not infer the type for trait `{}` in call to `{}`",
@@ -974,7 +1008,8 @@ impl SpannedTypeError {
     pub fn format_message(&self) -> String {
         match &self.var_names {
             Some(names) => {
-                let map: HashMap<TypeVarId, &str> = names.iter().map(|(id, n)| (*id, n.as_str())).collect();
+                let map: HashMap<TypeVarId, &str> =
+                    names.iter().map(|(id, n)| (*id, n.as_str())).collect();
                 self.error.format_with_names(&map)
             }
             None => self.error.to_string(),
@@ -985,7 +1020,8 @@ impl SpannedTypeError {
     pub fn format_help(&self) -> Option<String> {
         match &self.var_names {
             Some(names) => {
-                let map: HashMap<TypeVarId, &str> = names.iter().map(|(id, n)| (*id, n.as_str())).collect();
+                let map: HashMap<TypeVarId, &str> =
+                    names.iter().map(|(id, n)| (*id, n.as_str())).collect();
                 self.error.help_with_names(&map)
             }
             None => self.error.help(),
@@ -1000,5 +1036,3 @@ impl fmt::Display for SpannedTypeError {
 }
 
 impl std::error::Error for TypeError {}
-
-

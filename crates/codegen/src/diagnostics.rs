@@ -46,19 +46,37 @@ mod tests {
         let source = "fun main() = recur(1)";
         let error = CodegenError::RecurNotInTailPosition(Some((14, 21)));
         let output = render_codegen_error("test.kr", source, &error);
-        assert!(output.contains("C0006"), "should contain error code: {output}");
-        assert!(output.contains("recur must be in tail position"), "should contain message: {output}");
-        assert!(output.contains("test.kr"), "should contain filename: {output}");
+        assert!(
+            output.contains("C0006"),
+            "should contain error code: {output}"
+        );
+        assert!(
+            output.contains("recur must be in tail position"),
+            "should contain message: {output}"
+        );
+        assert!(
+            output.contains("test.kr"),
+            "should contain filename: {output}"
+        );
     }
 
     #[test]
     fn render_error_without_span() {
         let error = CodegenError::NoMainFunction();
         let output = render_codegen_error("test.kr", "fun foo() = 1", &error);
-        assert!(output.contains("C0002"), "should contain error code: {output}");
-        assert!(output.contains("no main function found"), "should contain message: {output}");
+        assert!(
+            output.contains("C0002"),
+            "should contain error code: {output}"
+        );
+        assert!(
+            output.contains("no main function found"),
+            "should contain message: {output}"
+        );
         // Should be a plain error line, not an ariadne report
-        assert!(output.starts_with("error["), "should be plain format: {output}");
+        assert!(
+            output.starts_with("error["),
+            "should be plain format: {output}"
+        );
     }
 
     #[test]
@@ -66,8 +84,14 @@ mod tests {
         let source = "fun main() = something_weird";
         let error = CodegenError::UnsupportedExpr("test expr".to_string(), Some((14, 28)));
         let output = render_codegen_error("test.kr", source, &error);
-        assert!(output.contains("C0003"), "should contain error code: {output}");
-        assert!(output.contains("unsupported expression"), "should contain message: {output}");
+        assert!(
+            output.contains("C0003"),
+            "should contain error code: {output}"
+        );
+        assert!(
+            output.contains("unsupported expression"),
+            "should contain message: {output}"
+        );
     }
 
     #[test]
@@ -75,16 +99,31 @@ mod tests {
         let source = "fun main() = x\n";
         let error = CodegenError::UndefinedVariable("x".to_string(), Some((14, 15)));
         let output = render_codegen_error("test.kr", source, &error);
-        assert!(output.contains("C0004"), "should contain error code: {output}");
-        assert!(output.contains("undefined variable: x"), "should contain message: {output}");
+        assert!(
+            output.contains("C0004"),
+            "should contain error code: {output}"
+        );
+        assert!(
+            output.contains("undefined variable: x"),
+            "should contain message: {output}"
+        );
     }
 
     #[test]
     fn render_type_error_no_span() {
         let error = CodegenError::TypeError("unknown named type: Foo".to_string(), None);
         let output = render_codegen_error("test.kr", "fun main() = 1", &error);
-        assert!(output.contains("C0005"), "should contain error code: {output}");
-        assert!(output.contains("type error"), "should contain message: {output}");
-        assert!(output.starts_with("error["), "should be plain format: {output}");
+        assert!(
+            output.contains("C0005"),
+            "should contain error code: {output}"
+        );
+        assert!(
+            output.contains("type error"),
+            "should contain message: {output}"
+        );
+        assert!(
+            output.starts_with("error["),
+            "should be plain format: {output}"
+        );
     }
 }

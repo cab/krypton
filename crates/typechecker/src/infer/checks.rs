@@ -8,7 +8,9 @@ use crate::types;
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
-use super::{free_vars, leading_type_var, match_type_with_bindings, no_instance_error, spanned, strip_own};
+use super::{
+    free_vars, leading_type_var, match_type_with_bindings, no_instance_error, spanned, strip_own,
+};
 
 fn bare_function_ref_name(expr: &TypedExpr) -> Option<&str> {
     match &expr.kind {
@@ -57,7 +59,9 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
             }
         }
         // Cross-arm for HKT: pattern App(Var(f), [a]) vs actual Named("Box", [Int])
-        (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) if p_args.len() == a_args.len() => {
+        (Type::App(p_ctor, p_args), Type::Named(a_name, a_args))
+            if p_args.len() == a_args.len() =>
+        {
             bind_type_vars_simple(p_ctor, &Type::Named(a_name.clone(), vec![]), bindings);
             for (p, a) in p_args.iter().zip(a_args.iter()) {
                 bind_type_vars_simple(p, a, bindings);
@@ -67,7 +71,8 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
         (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
             if types::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
         {
-            let (ctor_fn, remaining) = types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+            let (ctor_fn, remaining) =
+                types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
             bind_type_vars_simple(p_ctor, &ctor_fn, bindings);
             for (p, a) in p_args.iter().zip(remaining.iter()) {
                 bind_type_vars_simple(p, a, bindings);
@@ -159,7 +164,9 @@ pub(super) fn check_constrained_function_refs(
                         let requirement_ty = strip_own(&requirement_ty);
                         if free_vars(&requirement_ty).is_empty() {
                             let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
-                                trait_registry.find_instance(req_trait_name, &requirement_ty).is_none()
+                                trait_registry
+                                    .find_instance(req_trait_name, &requirement_ty)
+                                    .is_none()
                             } else {
                                 true
                             };
@@ -175,9 +182,12 @@ pub(super) fn check_constrained_function_refs(
                         }
 
                         if let Type::Var(type_var) = requirement_ty {
-                            if current_requirements.iter().any(|(trait_name, current_type_var)| {
-                                trait_name == req_trait_name && *current_type_var == type_var
-                            }) {
+                            if current_requirements
+                                .iter()
+                                .any(|(trait_name, current_type_var)| {
+                                    trait_name == req_trait_name && *current_type_var == type_var
+                                })
+                            {
                                 continue;
                             }
                         }
@@ -270,9 +280,16 @@ pub(super) fn detect_trait_constraints(
     fn_type_param_vars: &HashSet<TypeVarId>,
     constraints: &mut Vec<(TraitName, TypeVarId)>,
 ) {
-    walk_trait_method_calls(expr, trait_method_map, trait_registry, subst, fn_type_param_vars, &mut |trait_name, var| {
-        constraints.push((trait_name, var));
-    });
+    walk_trait_method_calls(
+        expr,
+        trait_method_map,
+        trait_registry,
+        subst,
+        fn_type_param_vars,
+        &mut |trait_name, var| {
+            constraints.push((trait_name, var));
+        },
+    );
 }
 
 /// Validate that all trait method calls on type variables have corresponding declared constraints.
@@ -287,26 +304,35 @@ pub(super) fn validate_trait_constraints(
     type_var_names: &HashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut first_error: Option<SpannedTypeError> = None;
-    walk_trait_method_calls(expr, trait_method_map, trait_registry, subst, fn_type_param_vars, &mut |trait_name, var| {
-        if first_error.is_some() {
-            return;
-        }
-        let is_declared = declared_constraints.iter().any(|(t, v)| t.local_name == trait_name.local_name && *v == var);
-        if !is_declared {
-            let type_var_display = type_var_names
-                .get(&var)
-                .cloned()
-                .unwrap_or_else(|| format!("?{}", var.0));
-            first_error = Some(super::spanned(
-                TypeError::MissingTraitBound {
-                    fn_name: fn_name.to_string(),
-                    trait_name: trait_name.local_name.clone(),
-                    type_var: type_var_display,
-                },
-                expr.span,
-            ));
-        }
-    });
+    walk_trait_method_calls(
+        expr,
+        trait_method_map,
+        trait_registry,
+        subst,
+        fn_type_param_vars,
+        &mut |trait_name, var| {
+            if first_error.is_some() {
+                return;
+            }
+            let is_declared = declared_constraints
+                .iter()
+                .any(|(t, v)| t.local_name == trait_name.local_name && *v == var);
+            if !is_declared {
+                let type_var_display = type_var_names
+                    .get(&var)
+                    .cloned()
+                    .unwrap_or_else(|| format!("?{}", var.0));
+                first_error = Some(super::spanned(
+                    TypeError::MissingTraitBound {
+                        fn_name: fn_name.to_string(),
+                        trait_name: trait_name.local_name.clone(),
+                        type_var: type_var_display,
+                    },
+                    expr.span,
+                ));
+            }
+        },
+    );
     match first_error {
         Some(err) => Err(err),
         None => Ok(()),
@@ -468,13 +494,18 @@ pub(super) fn check_trait_instances(
                 if let Some(name) = typed_callee_var_name(func) {
                     if let Some(trait_id) = trait_method_map.get(name) {
                         // trait_method_map is derived from trait_registry, so lookup cannot fail
-                        let info = trait_registry.lookup_trait(trait_id)
+                        let info = trait_registry
+                            .lookup_trait(trait_id)
                             .expect("trait in trait_method_map must be in registry");
                         if let Some(method) = info.methods.iter().find(|m| m.name == name) {
                             let mut bindings = HashMap::new();
                             // Bind from params
                             for (pattern, arg) in method.param_types.iter().zip(args.iter()) {
-                                bind_type_vars_simple(pattern, &subst.apply(&arg.ty), &mut bindings);
+                                bind_type_vars_simple(
+                                    pattern,
+                                    &subst.apply(&arg.ty),
+                                    &mut bindings,
+                                );
                             }
                             // Bind from return type
                             let ret_ty = subst.apply(&func.ty);
@@ -486,7 +517,9 @@ pub(super) fn check_trait_instances(
                             // Bind from explicit type application
                             if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
                                 if !type_args.is_empty() {
-                                    bindings.entry(info.type_var_id).or_insert_with(|| type_args[0].clone());
+                                    bindings
+                                        .entry(info.type_var_id)
+                                        .or_insert_with(|| type_args[0].clone());
                                 }
                             }
                             // Check dispatch type var — must always be bindable from the
@@ -507,7 +540,9 @@ pub(super) fn check_trait_instances(
                                         expr.span,
                                     ));
                                 }
-                            } else if trait_registry.find_instance(trait_id, &concrete_ty).is_none()
+                            } else if trait_registry
+                                .find_instance(trait_id, &concrete_ty)
+                                .is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,
@@ -527,13 +562,21 @@ pub(super) fn check_trait_instances(
                                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                                     let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
                                     for (pattern, arg) in param_types.iter().zip(args.iter()) {
-                                        bind_type_vars_simple(pattern, &subst.apply(&arg.ty), &mut bindings);
+                                        bind_type_vars_simple(
+                                            pattern,
+                                            &subst.apply(&arg.ty),
+                                            &mut bindings,
+                                        );
                                     }
                                     if bindings.get(type_var).is_none() {
                                         // Also try return type
                                         let ret_actual = subst.apply(&func.ty);
                                         if let Type::Fn(_, actual_ret) = &ret_actual {
-                                            bind_type_vars_simple(ret_ty, actual_ret, &mut bindings);
+                                            bind_type_vars_simple(
+                                                ret_ty,
+                                                actual_ret,
+                                                &mut bindings,
+                                            );
                                         }
                                     }
                                     bindings.get(type_var).cloned()
@@ -544,11 +587,14 @@ pub(super) fn check_trait_instances(
                             if let Some(ty) = resolved_ty {
                                 let concrete_ty = strip_own(&ty);
                                 if leading_type_var(&concrete_ty).is_none() {
-                                    let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
-                                        trait_registry.find_instance(req_trait_name, &concrete_ty).is_none()
-                                    } else {
-                                        true
-                                    };
+                                    let missing =
+                                        if trait_registry.lookup_trait(req_trait_name).is_some() {
+                                            trait_registry
+                                                .find_instance(req_trait_name, &concrete_ty)
+                                                .is_none()
+                                        } else {
+                                            true
+                                        };
                                     if missing {
                                         return Err(no_instance_error(
                                             trait_registry,
@@ -582,7 +628,9 @@ pub(super) fn check_trait_instances(
                     let operand_ty = strip_own(&subst.apply(&lhs.ty));
                     if !matches!(operand_ty, Type::Var(_)) {
                         if trait_registry.lookup_trait(trait_name).is_some()
-                            && trait_registry.find_instance(trait_name, &operand_ty).is_none()
+                            && trait_registry
+                                .find_instance(trait_name, &operand_ty)
+                                .is_none()
                         {
                             return Err(no_instance_error(
                                 trait_registry,
@@ -602,7 +650,9 @@ pub(super) fn check_trait_instances(
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
                     if !matches!(operand_ty, Type::Var(_)) {
                         if trait_registry.lookup_trait(&neg_trait).is_some()
-                            && trait_registry.find_instance(&neg_trait, &operand_ty).is_none()
+                            && trait_registry
+                                .find_instance(&neg_trait, &operand_ty)
+                                .is_none()
                         {
                             return Err(no_instance_error(
                                 trait_registry,

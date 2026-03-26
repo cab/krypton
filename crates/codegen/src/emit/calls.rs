@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use krypton_ir::{TraitName, Type, TypeVarId};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
-use super::compiler::{Compiler, CodegenError, DictRequirement, JvmType, ParameterizedInstanceInfo};
+use super::compiler::{
+    CodegenError, Compiler, DictRequirement, JvmType, ParameterizedInstanceInfo,
+};
 
 impl Compiler {
     /// Coerce an Object result from invokeinterface to the expected JVM type.
@@ -32,7 +34,11 @@ impl Compiler {
 
     // --- Dict / trait resolution helpers ---
 
-    pub(super) fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) -> bool {
+    pub(super) fn bind_type_vars(
+        pattern: &Type,
+        actual: &Type,
+        bindings: &mut HashMap<TypeVarId, Type>,
+    ) -> bool {
         match (pattern, actual) {
             (Type::Var(id), ty) => {
                 bindings.insert(*id, ty.clone());
@@ -76,14 +82,16 @@ impl Compiler {
             (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
                 if krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
             {
-                let (ctor_fn, remaining) = krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+                let (ctor_fn, remaining) =
+                    krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
                 if !Self::bind_type_vars(p_ctor, &ctor_fn, bindings) {
                     return false;
                 }
                 remaining.len() == p_args.len()
-                    && p_args.iter().zip(remaining.iter()).all(|(p, a)| {
-                        Self::bind_type_vars(p, a, bindings)
-                    })
+                    && p_args
+                        .iter()
+                        .zip(remaining.iter())
+                        .all(|(p, a)| Self::bind_type_vars(p, a, bindings))
             }
             (Type::Dict { .. }, _) => true,
             (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
@@ -108,7 +116,6 @@ impl Compiler {
             _ => pattern == actual,
         }
     }
-
 
     pub(super) fn resolve_dict_requirement_type(
         requirement: &DictRequirement,
@@ -175,14 +182,18 @@ impl Compiler {
         let lookup_type = ty.strip_own();
         // Try full type first (concrete instances), then head-only (HKT instances like Functor[Box])
         let singleton_key = (trait_name.clone(), lookup_type.clone());
-        let head_key = (trait_name.clone(), Type::Named(krypton_ir::head_type_name(ty), vec![]));
+        let head_key = (
+            trait_name.clone(),
+            Type::Named(krypton_ir::head_type_name(ty), vec![]),
+        );
         if let Some(singleton) = self
             .traits
             .instance_singletons
             .get(&singleton_key)
             .or_else(|| self.traits.instance_singletons.get(&head_key))
         {
-            self.builder.emit(Instruction::Getstatic(singleton.instance_field_ref));
+            self.builder
+                .emit(Instruction::Getstatic(singleton.instance_field_ref));
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: pushed_class,
             });
@@ -223,10 +234,13 @@ impl Compiler {
                 let requirement_ty =
                     Self::resolve_dict_requirement_type(requirement, &instance_info, ty)
                         .ok_or_else(|| {
-                            CodegenError::UndefinedVariable(format!(
-                                "could not resolve dictionary requirement {} for {ty}",
-                                requirement.trait_name()
-                            ), None)
+                            CodegenError::UndefinedVariable(
+                                format!(
+                                    "could not resolve dictionary requirement {} for {ty}",
+                                    requirement.trait_name()
+                                ),
+                                None,
+                            )
                         })?;
                 self.emit_dict_argument_for_type(
                     requirement.trait_name(),
@@ -242,8 +256,9 @@ impl Compiler {
             return Ok(());
         }
 
-        Err(CodegenError::UndefinedVariable(format!(
-            "no instance of {trait_name} for {ty}"
-        ), None))
+        Err(CodegenError::UndefinedVariable(
+            format!("no instance of {trait_name} for {ty}"),
+            None,
+        ))
     }
 }

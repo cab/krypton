@@ -24,7 +24,10 @@ pub enum Type {
     Own(Box<Type>),
     Tuple(Vec<Type>),
     /// Trait dictionary. Only exists in IR — never in the typechecker.
-    Dict { trait_name: TraitName, target: Box<Type> },
+    Dict {
+        trait_name: TraitName,
+        target: Box<Type>,
+    },
     /// HKT sentinel (carried over from TC for bind_type_vars/decompose_fn_for_app).
     FnHole,
 }
@@ -60,10 +63,9 @@ impl Type {
     pub fn strip_own(&self) -> Type {
         match self {
             Type::Own(inner) => inner.strip_own(),
-            Type::Named(name, args) => Type::Named(
-                name.clone(),
-                args.iter().map(|a| a.strip_own()).collect(),
-            ),
+            Type::Named(name, args) => {
+                Type::Named(name.clone(), args.iter().map(|a| a.strip_own()).collect())
+            }
             other => other.clone(),
         }
     }
@@ -80,7 +82,9 @@ impl std::fmt::Display for Type {
             Type::Fn(params, ret) => {
                 write!(f, "(")?;
                 for (i, p) in params.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", p)?;
                 }
                 write!(f, ") -> {}", ret)
@@ -91,7 +95,9 @@ impl std::fmt::Display for Type {
                 if !args.is_empty() {
                     write!(f, "[")?;
                     for (i, a) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{}", a)?;
                     }
                     write!(f, "]")?;
@@ -103,7 +109,9 @@ impl std::fmt::Display for Type {
                 if !args.is_empty() {
                     write!(f, "[")?;
                     for (i, a) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{}", a)?;
                     }
                     write!(f, "]")?;
@@ -114,7 +122,9 @@ impl std::fmt::Display for Type {
             Type::Tuple(elems) => {
                 write!(f, "(")?;
                 for (i, e) in elems.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", e)?;
                 }
                 write!(f, ")")
@@ -146,7 +156,11 @@ pub fn head_type_name(ty: &Type) -> std::string::String {
 
 /// Decompose a concrete `Fn` type into (partial_ctor, remaining_args) for matching
 /// against `App(ctor, args)` in HKT contexts.
-pub fn decompose_fn_for_app(params: &[Type], ret: &Type, applied_count: usize) -> Option<(Type, Vec<Type>)> {
+pub fn decompose_fn_for_app(
+    params: &[Type],
+    ret: &Type,
+    applied_count: usize,
+) -> Option<(Type, Vec<Type>)> {
     let total = params.len() + 1;
     if applied_count == 0 || applied_count > total {
         return None;
@@ -289,9 +303,13 @@ pub struct FnDef {
 /// Target-specific binding for extern declarations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExternTarget {
-    Java { class: String },
+    Java {
+        class: String,
+    },
     /// Not yet constructed — forward declaration for JS backend.
-    Js { module: String },
+    Js {
+        module: String,
+    },
 }
 
 /// An extern FFI function binding (Java/JS).
@@ -482,7 +500,12 @@ mod tests {
         };
 
         let _letrec = ExprKind::LetRec {
-            bindings: vec![(VarId(20), Type::Fn(vec![Type::Int], Box::new(Type::Int)), FnId(5), vec![])],
+            bindings: vec![(
+                VarId(20),
+                Type::Fn(vec![Type::Int], Box::new(Type::Int)),
+                FnId(5),
+                vec![],
+            )],
             body: Box::new(body),
         };
     }

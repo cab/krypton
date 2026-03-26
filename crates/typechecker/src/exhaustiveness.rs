@@ -34,9 +34,10 @@ enum Pat {
 fn convert(pat: &TypedPattern) -> Pat {
     match pat {
         TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => Pat::Wild,
-        TypedPattern::Constructor { name, args, .. } => {
-            Pat::Con(Con::Variant(name.clone()), args.iter().map(convert).collect())
-        }
+        TypedPattern::Constructor { name, args, .. } => Pat::Con(
+            Con::Variant(name.clone()),
+            args.iter().map(convert).collect(),
+        ),
         TypedPattern::Lit { value, .. } => match value {
             Lit::Bool(b) => Pat::Con(Con::BoolLit(*b), vec![]),
             Lit::Int(n) => Pat::Con(Con::Literal(n.to_string()), vec![]),
@@ -44,14 +45,11 @@ fn convert(pat: &TypedPattern) -> Pat {
             Lit::String(s) => Pat::Con(Con::Literal(s.clone()), vec![]),
             Lit::Unit => Pat::Con(Con::Tuple(0), vec![]),
         },
-        TypedPattern::Tuple { elements, .. } => {
-            Pat::Con(Con::Tuple(elements.len()), elements.iter().map(convert).collect())
-        }
-        TypedPattern::StructPat {
-            name,
-            fields,
-            ..
-        } => {
+        TypedPattern::Tuple { elements, .. } => Pat::Con(
+            Con::Tuple(elements.len()),
+            elements.iter().map(convert).collect(),
+        ),
+        TypedPattern::StructPat { name, fields, .. } => {
             let sub_pats: Vec<Pat> = fields.iter().map(|(_, p)| convert(p)).collect();
             Pat::Con(Con::Record(name.clone()), sub_pats)
         }
@@ -71,9 +69,12 @@ fn all_constructors(ty: &Type, registry: &TypeRegistry, depth: usize) -> Option<
         Type::Named(name, _) => {
             let info = registry.lookup_type(name)?;
             match &info.kind {
-                TypeKind::Sum { variants } => {
-                    Some(variants.iter().map(|v| Con::Variant(v.name.clone())).collect())
-                }
+                TypeKind::Sum { variants } => Some(
+                    variants
+                        .iter()
+                        .map(|v| Con::Variant(v.name.clone()))
+                        .collect(),
+                ),
                 TypeKind::Record { .. } => Some(vec![Con::Record(name.clone())]),
             }
         }
@@ -134,7 +135,9 @@ fn sub_types(con: &Con, ty: &Type, registry: &TypeRegistry) -> Vec<Type> {
                                 return v
                                     .fields
                                     .iter()
-                                    .map(|f| substitute_type_params(f, &info.type_param_vars, type_args))
+                                    .map(|f| {
+                                        substitute_type_params(f, &info.type_param_vars, type_args)
+                                    })
                                     .collect();
                             }
                         }
@@ -149,7 +152,9 @@ fn sub_types(con: &Con, ty: &Type, registry: &TypeRegistry) -> Vec<Type> {
                     if let Type::Named(_, type_args) = ty {
                         return fields
                             .iter()
-                            .map(|(_, f)| substitute_type_params(f, &info.type_param_vars, type_args))
+                            .map(|(_, f)| {
+                                substitute_type_params(f, &info.type_param_vars, type_args)
+                            })
                             .collect();
                     }
                     return fields.iter().map(|(_, f)| f.clone()).collect();
@@ -196,9 +201,9 @@ fn substitute_type_params(
                 .collect(),
             Box::new(substitute_type_params(ret, param_vars, type_args)),
         ),
-        Type::Own(inner) => {
-            Type::Own(Box::new(substitute_type_params(inner, param_vars, type_args)))
-        }
+        Type::Own(inner) => Type::Own(Box::new(substitute_type_params(
+            inner, param_vars, type_args,
+        ))),
         _ => ty.clone(),
     }
 }
@@ -312,7 +317,13 @@ fn is_useful(
             }
             // Incomplete or infinite: use default matrix
             let def = default_matrix(matrix);
-            is_useful(&def, &pattern_vec[1..], &type_stack[1..], registry, depth + 1)
+            is_useful(
+                &def,
+                &pattern_vec[1..],
+                &type_stack[1..],
+                registry,
+                depth + 1,
+            )
         }
     }
 }
@@ -405,7 +416,11 @@ fn format_pat(pat: &Pat) -> String {
                 if subs.is_empty() {
                     name.clone()
                 } else {
-                    format!("{}({})", name, subs.iter().map(format_pat).collect::<Vec<_>>().join(", "))
+                    format!(
+                        "{}({})",
+                        name,
+                        subs.iter().map(format_pat).collect::<Vec<_>>().join(", ")
+                    )
                 }
             }
             Con::BoolLit(b) => b.to_string(),
@@ -414,7 +429,10 @@ fn format_pat(pat: &Pat) -> String {
                 if *n == 0 {
                     "()".to_string()
                 } else {
-                    format!("({})", subs.iter().map(format_pat).collect::<Vec<_>>().join(", "))
+                    format!(
+                        "({})",
+                        subs.iter().map(format_pat).collect::<Vec<_>>().join(", ")
+                    )
                 }
             }
             Con::Record(name) => {

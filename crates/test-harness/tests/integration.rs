@@ -14,7 +14,10 @@ fn fixtures_dir() -> &'static Path {
 fn discovers_smoke_fixtures() {
     let dir = fixtures_dir().join("tests/fixtures/smoke");
     let paths = discover_fixtures(&dir);
-    assert!(!paths.is_empty(), "should find at least one fixture in smoke/");
+    assert!(
+        !paths.is_empty(),
+        "should find at least one fixture in smoke/"
+    );
     assert!(
         paths.iter().any(|p| p.ends_with("empty.kr")),
         "should find empty.kr"

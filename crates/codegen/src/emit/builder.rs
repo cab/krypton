@@ -83,7 +83,10 @@ impl FrameState {
     pub(super) fn record_frame(&mut self, instr_idx: u16) {
         self.frames.insert(
             instr_idx,
-            (compact_types(&self.local_types), compact_types(&self.stack_types)),
+            (
+                compact_types(&self.local_types),
+                compact_types(&self.stack_types),
+            ),
         );
     }
 
@@ -177,7 +180,9 @@ fn compute_byte_offsets(code: &[Instruction]) -> Vec<u16> {
     let mut cursor = std::io::Cursor::new(Vec::new());
     for instr in code {
         offsets.push(cursor.position() as u16);
-        instr.to_bytes(&mut cursor).expect("ICE: instruction serialization failed");
+        instr
+            .to_bytes(&mut cursor)
+            .expect("ICE: instruction serialization failed");
     }
     offsets
 }
@@ -358,9 +363,11 @@ impl BytecodeBuilder {
     pub(super) fn emit_new_dup(&mut self, class_index: u16) {
         let new_offset = self.code.len() as u16;
         self.emit(Instruction::New(class_index));
-        self.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
+        self.frame
+            .push_type(VerificationType::Uninitialized { offset: new_offset });
         self.emit(Instruction::Dup);
-        self.frame.push_type(VerificationType::Uninitialized { offset: new_offset });
+        self.frame
+            .push_type(VerificationType::Uninitialized { offset: new_offset });
     }
 
     /// Emit a placeholder instruction (e.g. Goto(0) or Ifeq(0)), returning its index for later patching.

@@ -17,9 +17,9 @@
 
 use std::collections::HashSet;
 
+pub use crate::type_error::{SecondaryLabel, SpannedTypeError, TypeError, TypeErrorCode};
 use crate::types;
 use crate::types::{Substitution, Type, TypeVarId};
-pub use crate::type_error::{TypeError, TypeErrorCode, SpannedTypeError, SecondaryLabel};
 
 /// Resolve type variable chains through the substitution.
 fn walk(ty: &Type, subst: &Substitution) -> Type {
@@ -180,7 +180,8 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         | (Type::Fn(params, ret), Type::App(ctor, args))
             if types::decompose_fn_for_app(params, ret, args.len()).is_some() =>
         {
-            let (ctor_fn, remaining) = types::decompose_fn_for_app(params, ret, args.len()).unwrap();
+            let (ctor_fn, remaining) =
+                types::decompose_fn_for_app(params, ret, args.len()).unwrap();
             unify(ctor, &ctor_fn, subst)?;
             if remaining.len() != args.len() {
                 return Err(TypeError::WrongArity {
@@ -222,7 +223,11 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
 /// Key rule: when expected is an unbound Var, strip Own before binding.
 /// This means `fold(list, 0, f)` works (B = Int, not Own(Int)), but
 /// `identity(owned_val)` returns T not ~T. Use explicit type app for the latter.
-pub fn coerce_unify(actual: &Type, expected: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
+pub fn coerce_unify(
+    actual: &Type,
+    expected: &Type,
+    subst: &mut Substitution,
+) -> Result<(), TypeError> {
     let actual = walk(actual, subst);
     let expected = walk(expected, subst);
 

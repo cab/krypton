@@ -35,17 +35,9 @@ struct LintContext {
 
 impl LintContext {
     fn new(module: &Module) -> Self {
-        let known_fns: HashSet<FnId> = module
-            .fn_names
-            .keys()
-            .copied()
-            .collect();
+        let known_fns: HashSet<FnId> = module.fn_names.keys().copied().collect();
 
-        let known_traits: HashSet<String> = module
-            .traits
-            .iter()
-            .map(|t| t.name.clone())
-            .collect();
+        let known_traits: HashSet<String> = module.traits.iter().map(|t| t.name.clone()).collect();
 
         let known_instances: HashSet<(TraitName, String)> = module
             .instances
@@ -56,7 +48,13 @@ impl LintContext {
         let instance_sub_dict_counts: Vec<(TraitName, String, usize)> = module
             .instances
             .iter()
-            .map(|i| (i.trait_name.clone(), i.target_type_name.clone(), i.sub_dict_requirements.len()))
+            .map(|i| {
+                (
+                    i.trait_name.clone(),
+                    i.target_type_name.clone(),
+                    i.sub_dict_requirements.len(),
+                )
+            })
             .collect();
 
         LintContext {
@@ -127,10 +125,9 @@ impl LintContext {
                 // All FnIds in LetRec must reference known functions.
                 for (var, _, fn_id, _) in bindings {
                     if !self.known_fns.contains(fn_id) {
-                        return Err(self.err(format!(
-                            "LetRec references unknown FnId({})",
-                            fn_id.0
-                        )));
+                        return Err(
+                            self.err(format!("LetRec references unknown FnId({})", fn_id.0))
+                        );
                     }
                     self.bind_var(*var)?;
                 }
@@ -165,10 +162,7 @@ impl LintContext {
 
             ExprKind::Jump { target, args } => {
                 if !self.join_points.contains(target) {
-                    return Err(self.err(format!(
-                        "Jump target v{} is not a join point",
-                        target.0
-                    )));
+                    return Err(self.err(format!("Jump target v{} is not a join point", target.0)));
                 }
                 for atom in args {
                     self.check_atom_not_join(atom)?;
@@ -176,7 +170,11 @@ impl LintContext {
                 Ok(())
             }
 
-            ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+            ExprKind::BoolSwitch {
+                scrutinee,
+                true_body,
+                false_body,
+            } => {
                 self.check_atom_not_join(scrutinee)?;
                 self.check_expr(true_body)?;
                 self.check_expr(false_body)?;
@@ -219,10 +217,7 @@ impl LintContext {
         match expr {
             SimpleExpr::Call { func, args } => {
                 if !self.known_fns.contains(func) {
-                    return Err(self.err(format!(
-                        "Call references unknown FnId({})",
-                        func.0
-                    )));
+                    return Err(self.err(format!("Call references unknown FnId({})", func.0)));
                 }
                 for atom in args {
                     self.check_atom_not_join(atom)?;
@@ -230,11 +225,13 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::TraitCall { trait_name, args, .. } => {
+            SimpleExpr::TraitCall {
+                trait_name, args, ..
+            } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
-                    return Err(self.err(format!(
-                        "TraitCall references unknown trait '{trait_name}'"
-                    )));
+                    return Err(
+                        self.err(format!("TraitCall references unknown trait '{trait_name}'"))
+                    );
                 }
                 for atom in args {
                     self.check_atom_not_join(atom)?;
@@ -252,10 +249,9 @@ impl LintContext {
 
             SimpleExpr::MakeClosure { func, captures } => {
                 if !self.known_fns.contains(func) {
-                    return Err(self.err(format!(
-                        "MakeClosure references unknown FnId({})",
-                        func.0
-                    )));
+                    return Err(
+                        self.err(format!("MakeClosure references unknown FnId({})", func.0))
+                    );
                 }
                 for atom in captures {
                     self.check_atom_not_join(atom)?;
@@ -275,8 +271,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::Construct { fields, .. }
-            | SimpleExpr::ConstructVariant { fields, .. } => {
+            SimpleExpr::Construct { fields, .. } | SimpleExpr::ConstructVariant { fields, .. } => {
                 for atom in fields {
                     self.check_atom_not_join(atom)?;
                 }
@@ -298,12 +293,16 @@ impl LintContext {
 
             SimpleExpr::GetDict { trait_name, ty } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
-                    return Err(self.err(format!(
-                        "GetDict references unknown trait '{trait_name}'"
-                    )));
+                    return Err(
+                        self.err(format!("GetDict references unknown trait '{trait_name}'"))
+                    );
                 }
                 if let Some(type_name) = concrete_type_name(ty) {
-                    if !self.known_instances.iter().any(|(tn, ttn)| tn == trait_name && ttn == &type_name) {
+                    if !self
+                        .known_instances
+                        .iter()
+                        .any(|(tn, ttn)| tn == trait_name && ttn == &type_name)
+                    {
                         return Err(self.err(format!(
                             "GetDict references unknown instance '{trait_name}' for type '{type_name}'"
                         )));
@@ -312,14 +311,20 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
+            SimpleExpr::MakeDict {
+                trait_name,
+                ty,
+                sub_dicts,
+            } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
-                    return Err(self.err(format!(
-                        "MakeDict references unknown trait '{trait_name}'"
-                    )));
+                    return Err(
+                        self.err(format!("MakeDict references unknown trait '{trait_name}'"))
+                    );
                 }
                 if let Some(type_name) = concrete_type_name(ty) {
-                    if let Some((_, _, expected)) = self.instance_sub_dict_counts.iter()
+                    if let Some((_, _, expected)) = self
+                        .instance_sub_dict_counts
+                        .iter()
                         .find(|(tn, ttn, _)| tn == trait_name && ttn == &type_name)
                     {
                         if sub_dicts.len() != *expected {
@@ -413,17 +418,26 @@ fn types_compatible(a: &Type, b: &Type) -> bool {
         | (Type::Unit, Type::Unit) => true,
         (Type::Fn(a_args, a_ret), Type::Fn(b_args, b_ret)) => {
             a_args.len() == b_args.len()
-                && a_args.iter().zip(b_args).all(|(x, y)| types_compatible(x, y))
+                && a_args
+                    .iter()
+                    .zip(b_args)
+                    .all(|(x, y)| types_compatible(x, y))
                 && types_compatible(a_ret, b_ret)
         }
         (Type::Named(a_name, a_args), Type::Named(b_name, b_args)) => {
             a_name == b_name
                 && a_args.len() == b_args.len()
-                && a_args.iter().zip(b_args).all(|(x, y)| types_compatible(x, y))
+                && a_args
+                    .iter()
+                    .zip(b_args)
+                    .all(|(x, y)| types_compatible(x, y))
         }
         (Type::Tuple(a_elts), Type::Tuple(b_elts)) => {
             a_elts.len() == b_elts.len()
-                && a_elts.iter().zip(b_elts).all(|(x, y)| types_compatible(x, y))
+                && a_elts
+                    .iter()
+                    .zip(b_elts)
+                    .all(|(x, y)| types_compatible(x, y))
         }
         (Type::Own(a_inner), Type::Own(b_inner)) => types_compatible(a_inner, b_inner),
         _ => false,

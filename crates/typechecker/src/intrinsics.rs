@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::types::{Type, TypeEnv, TypeScheme, TypeVarGen};
+use std::collections::HashMap;
 
 pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_module: bool) {
     // panic: forall a. fn(String) -> a

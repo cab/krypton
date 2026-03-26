@@ -60,7 +60,11 @@ fn collect_moved_vars(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>)
     result
 }
 
-fn collect_moved_vars_inner(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>, acc: &mut Vec<String>) {
+fn collect_moved_vars_inner(
+    expr: &TypedExpr,
+    ownership_moves: &HashMap<Span, String>,
+    acc: &mut Vec<String>,
+) {
     match &expr.kind {
         TypedExprKind::Var(name) => {
             if ownership_moves.get(&expr.span).is_some_and(|n| n == name) {
@@ -232,10 +236,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                                 .consumptions
                                 .entry(arg.span)
                                 .or_default()
-                                .push(AutoCloseBinding {
-                                    name,
-                                    type_name,
-                                });
+                                .push(AutoCloseBinding { name, type_name });
                         }
                     }
                 }
@@ -442,12 +443,15 @@ impl<'a> AutoCloseAnalyzer<'a> {
     }
 }
 
-
 /// Compute auto-close information for all functions in the module.
 /// Returns the auto-close info and any diagnostic errors (e.g., branch leaks).
 pub fn compute_auto_close(
     functions: &[TypedFnDecl],
-    fn_types: &[(String, crate::types::TypeScheme, Option<crate::typed_ast::TraitName>)],
+    fn_types: &[(
+        String,
+        crate::types::TypeScheme,
+        Option<crate::typed_ast::TraitName>,
+    )],
     registry: &TraitRegistry,
     ownership_moves: &HashMap<Span, String>,
 ) -> Result<AutoCloseInfo, SpannedTypeError> {

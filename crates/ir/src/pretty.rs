@@ -2,11 +2,11 @@ use std::fmt;
 
 use std::collections::{HashMap, HashSet};
 
+use crate::Type;
 use crate::{
     expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch},
     FnDef, FnId, Module, StructDef, SumTypeDef, VarId,
 };
-use crate::Type;
 
 // --- Display impls for leaf types ---
 
@@ -99,8 +99,16 @@ impl fmt::Display for SimpleExpr {
             SimpleExpr::Call { func, args } => {
                 write!(f, "call {func}({})", fmt_atoms(args))
             }
-            SimpleExpr::TraitCall { trait_name, method_name, args } => {
-                write!(f, "trait_call {trait_name}.{method_name}({})", fmt_atoms(args))
+            SimpleExpr::TraitCall {
+                trait_name,
+                method_name,
+                args,
+            } => {
+                write!(
+                    f,
+                    "trait_call {trait_name}.{method_name}({})",
+                    fmt_atoms(args)
+                )
             }
             SimpleExpr::CallClosure { closure, args } => {
                 write!(f, "call_closure {closure}({})", fmt_atoms(args))
@@ -173,8 +181,16 @@ struct IndentWriter<'a, 'b> {
 }
 
 impl<'a, 'b> IndentWriter<'a, 'b> {
-    fn new(f: &'a mut fmt::Formatter<'b>, indent: usize, fn_names: &'a HashMap<FnId, String>) -> Self {
-        Self { f, indent, fn_names }
+    fn new(
+        f: &'a mut fmt::Formatter<'b>,
+        indent: usize,
+        fn_names: &'a HashMap<FnId, String>,
+    ) -> Self {
+        Self {
+            f,
+            indent,
+            fn_names,
+        }
     }
 
     fn fmt_fn(&self, id: &FnId) -> String {
@@ -189,20 +205,42 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             SimpleExpr::Call { func, args } => {
                 write!(self.f, "call {}({})", self.fmt_fn(func), fmt_atoms(args))
             }
-            SimpleExpr::TraitCall { trait_name, method_name, args } => {
-                write!(self.f, "trait_call {trait_name}.{method_name}({})", fmt_atoms(args))
+            SimpleExpr::TraitCall {
+                trait_name,
+                method_name,
+                args,
+            } => {
+                write!(
+                    self.f,
+                    "trait_call {trait_name}.{method_name}({})",
+                    fmt_atoms(args)
+                )
             }
             SimpleExpr::CallClosure { closure, args } => {
                 write!(self.f, "call_closure {closure}({})", fmt_atoms(args))
             }
             SimpleExpr::MakeClosure { func, captures } => {
-                write!(self.f, "make_closure({}, [{}])", self.fmt_fn(func), fmt_atoms(captures))
+                write!(
+                    self.f,
+                    "make_closure({}, [{}])",
+                    self.fmt_fn(func),
+                    fmt_atoms(captures)
+                )
             }
             SimpleExpr::Construct { type_name, fields } => {
                 write!(self.f, "construct {type_name}({})", fmt_atoms(fields))
             }
-            SimpleExpr::ConstructVariant { type_name, variant, tag, fields } => {
-                write!(self.f, "construct {type_name}::{variant}#{tag}({})", fmt_atoms(fields))
+            SimpleExpr::ConstructVariant {
+                type_name,
+                variant,
+                tag,
+                fields,
+            } => {
+                write!(
+                    self.f,
+                    "construct {type_name}::{variant}#{tag}({})",
+                    fmt_atoms(fields)
+                )
             }
             SimpleExpr::Project { value, field_index } => {
                 write!(self.f, "project {value}.{field_index}")
@@ -222,8 +260,16 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             SimpleExpr::GetDict { trait_name, ty } => {
                 write!(self.f, "get_dict {trait_name}[{ty}]")
             }
-            SimpleExpr::MakeDict { trait_name, ty, sub_dicts } => {
-                write!(self.f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
+            SimpleExpr::MakeDict {
+                trait_name,
+                ty,
+                sub_dicts,
+            } => {
+                write!(
+                    self.f,
+                    "make_dict {trait_name}[{ty}]({})",
+                    fmt_atoms(sub_dicts)
+                )
             }
             SimpleExpr::MakeVec { elements, .. } => {
                 write!(self.f, "make_vec({})", fmt_atoms(elements))
@@ -295,7 +341,11 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 self.write_indent()?;
                 writeln!(self.f, "jump {target}({})", fmt_atoms(args))
             }
-            ExprKind::BoolSwitch { scrutinee, true_body, false_body } => {
+            ExprKind::BoolSwitch {
+                scrutinee,
+                true_body,
+                false_body,
+            } => {
                 self.write_indent()?;
                 writeln!(self.f, "if {scrutinee} {{")?;
                 let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
@@ -407,7 +457,11 @@ impl fmt::Display for FnDef {
 }
 
 impl FnDef {
-    fn fmt_with_names(&self, f: &mut fmt::Formatter<'_>, fn_names: &HashMap<FnId, String>) -> fmt::Result {
+    fn fmt_with_names(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        fn_names: &HashMap<FnId, String>,
+    ) -> fmt::Result {
         writeln!(
             f,
             "fn {}({}) -> {} =",
@@ -432,21 +486,45 @@ impl fmt::Display for Module {
         }
 
         for t in self.traits.iter().filter(|t| !t.is_imported) {
-            let methods: Vec<String> = t.methods.iter().map(|m| {
-                let params: Vec<String> = m.param_types.iter().map(|t| format!("{t}")).collect();
-                format!("{}({}): {}", m.name, params.join(", "), m.return_type)
-            }).collect();
-            writeln!(f, "trait {}[{}] {{ {} }}", t.name, t.type_var, methods.join("; "))?;
+            let methods: Vec<String> = t
+                .methods
+                .iter()
+                .map(|m| {
+                    let params: Vec<String> =
+                        m.param_types.iter().map(|t| format!("{t}")).collect();
+                    format!("{}({}): {}", m.name, params.join(", "), m.return_type)
+                })
+                .collect();
+            writeln!(
+                f,
+                "trait {}[{}] {{ {} }}",
+                t.name,
+                t.type_var,
+                methods.join("; ")
+            )?;
         }
         for inst in self.instances.iter().filter(|i| !i.is_imported) {
-            let methods: Vec<String> = inst.method_fn_ids.iter()
+            let methods: Vec<String> = inst
+                .method_fn_ids
+                .iter()
                 .map(|(name, id)| {
                     let fn_name = self.fn_names.get(id).map(|s| s.as_str()).unwrap_or("?");
                     format!("{name}={fn_name}")
                 })
                 .collect();
-            let intrinsic = if inst.is_intrinsic { " [intrinsic]" } else { "" };
-            writeln!(f, "instance {}[{}] {{ {} }}{}", inst.trait_name, inst.target_type_name, methods.join(", "), intrinsic)?;
+            let intrinsic = if inst.is_intrinsic {
+                " [intrinsic]"
+            } else {
+                ""
+            };
+            writeln!(
+                f,
+                "instance {}[{}] {{ {} }}{}",
+                inst.trait_name,
+                inst.target_type_name,
+                methods.join(", "),
+                intrinsic
+            )?;
         }
         for ext in &self.extern_fns {
             let target = match &ext.target {
@@ -454,7 +532,13 @@ impl fmt::Display for Module {
                 crate::ExternTarget::Js { module } => format!("js \"{module}\""),
             };
             let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
-            writeln!(f, "extern {target} {}({}): {}", ext.name, params.join(", "), ext.return_type)?;
+            writeln!(
+                f,
+                "extern {target} {}({}): {}",
+                ext.name,
+                params.join(", "),
+                ext.return_type
+            )?;
         }
         for ext in &self.extern_types {
             let target = match &ext.target {
@@ -465,7 +549,15 @@ impl fmt::Display for Module {
         }
         for imp in &self.imported_fns {
             let params: Vec<String> = imp.param_types.iter().map(|t| format!("{t}")).collect();
-            writeln!(f, "import {}/{} as {}({}): {}", imp.source_module, imp.original_name, imp.name, params.join(", "), imp.return_type)?;
+            writeln!(
+                f,
+                "import {}/{} as {}({}): {}",
+                imp.source_module,
+                imp.original_name,
+                imp.name,
+                params.join(", "),
+                imp.return_type
+            )?;
         }
 
         // Print declarations for imported/extern functions referenced in bodies
@@ -485,11 +577,17 @@ impl fmt::Display for Module {
         let mut fn_type_lookup: HashMap<FnId, String> = HashMap::new();
         for ext in &self.extern_fns {
             let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
-            fn_type_lookup.insert(ext.id, format!("({}) -> {}", params.join(", "), ext.return_type));
+            fn_type_lookup.insert(
+                ext.id,
+                format!("({}) -> {}", params.join(", "), ext.return_type),
+            );
         }
         for imp in &self.imported_fns {
             let params: Vec<String> = imp.param_types.iter().map(|t| format!("{t}")).collect();
-            fn_type_lookup.insert(imp.id, format!("({}) -> {}", params.join(", "), imp.return_type));
+            fn_type_lookup.insert(
+                imp.id,
+                format!("({}) -> {}", params.join(", "), imp.return_type),
+            );
         }
         for (name, id) in &declares {
             if let Some(ty) = fn_type_lookup.get(id) {
@@ -526,15 +624,23 @@ fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
             }
             collect_referenced_fns(body, ids);
         }
-        ExprKind::LetJoin { join_body, body, .. } => {
+        ExprKind::LetJoin {
+            join_body, body, ..
+        } => {
             collect_referenced_fns(join_body, ids);
             collect_referenced_fns(body, ids);
         }
-        ExprKind::BoolSwitch { true_body, false_body, .. } => {
+        ExprKind::BoolSwitch {
+            true_body,
+            false_body,
+            ..
+        } => {
             collect_referenced_fns(true_body, ids);
             collect_referenced_fns(false_body, ids);
         }
-        ExprKind::Switch { branches, default, .. } => {
+        ExprKind::Switch {
+            branches, default, ..
+        } => {
             for branch in branches {
                 collect_referenced_fns(&branch.body, ids);
             }
@@ -715,9 +821,12 @@ mod tests {
     fn pretty_let_rec() {
         let expr = Expr {
             kind: ExprKind::LetRec {
-                bindings: vec![
-                    (VarId(0), Type::Fn(vec![Type::Int], Box::new(Type::Int)), FnId(1), vec![]),
-                ],
+                bindings: vec![(
+                    VarId(0),
+                    Type::Fn(vec![Type::Int], Box::new(Type::Int)),
+                    FnId(1),
+                    vec![],
+                )],
                 body: Box::new(Expr {
                     kind: ExprKind::Atom(Atom::Var(VarId(0))),
                     ty: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
@@ -780,16 +889,14 @@ mod tests {
         let expr = Expr {
             kind: ExprKind::Switch {
                 scrutinee: Atom::Var(VarId(0)),
-                branches: vec![
-                    SwitchBranch {
-                        tag: 0,
-                        bindings: vec![(VarId(1), Type::Int)],
-                        body: Expr {
-                            kind: ExprKind::Atom(Atom::Var(VarId(1))),
-                            ty: Type::Int,
-                        },
+                branches: vec![SwitchBranch {
+                    tag: 0,
+                    bindings: vec![(VarId(1), Type::Int)],
+                    body: Expr {
+                        kind: ExprKind::Atom(Atom::Var(VarId(1))),
+                        ty: Type::Int,
                     },
-                ],
+                }],
                 default: Some(Box::new(Expr {
                     kind: ExprKind::Atom(Atom::Lit(Literal::Int(0))),
                     ty: Type::Int,

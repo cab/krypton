@@ -36,10 +36,7 @@ pub enum ExprKind {
     },
 
     /// Tail call to a join point.
-    Jump {
-        target: VarId,
-        args: Vec<Atom>,
-    },
+    Jump { target: VarId, args: Vec<Atom> },
 
     /// Two-way branch on a boolean value (if/else, literal equality, short-circuit ops).
     /// Codegen emits ifeq/ifne; no instanceof or variant bindings.
@@ -127,7 +124,10 @@ pub enum SimpleExpr {
     },
 
     /// Construct a Vec from elements.
-    MakeVec { element_type: Type, elements: Vec<Atom> },
+    MakeVec {
+        element_type: Type,
+        elements: Vec<Atom>,
+    },
 
     /// A trivial atom (used for binding literal scrutinees to variables).
     Atom(Atom),

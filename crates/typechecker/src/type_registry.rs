@@ -210,20 +210,39 @@ pub fn resolve_type_expr(
     self_type: Option<&Type>,
 ) -> Result<Type, TypeError> {
     match texpr {
-        TypeExpr::Named { name, .. } | TypeExpr::Qualified { name, .. } => {
-            resolve_named(name, type_param_map, type_param_arity, registry, context, self_type)
-        }
+        TypeExpr::Named { name, .. } | TypeExpr::Qualified { name, .. } => resolve_named(
+            name,
+            type_param_map,
+            type_param_arity,
+            registry,
+            context,
+            self_type,
+        ),
         TypeExpr::Var { name, .. } => {
             if let Some(&var_id) = type_param_map.get(name) {
                 Ok(Type::Var(var_id))
             } else {
-                resolve_named(name, type_param_map, type_param_arity, registry, context, self_type)
+                resolve_named(
+                    name,
+                    type_param_map,
+                    type_param_arity,
+                    registry,
+                    context,
+                    self_type,
+                )
             }
         }
         TypeExpr::App { name, args, .. } => {
             let mut resolved_args = Vec::new();
             for a in args {
-                resolved_args.push(resolve_type_expr(a, type_param_map, type_param_arity, registry, context, self_type)?);
+                resolved_args.push(resolve_type_expr(
+                    a,
+                    type_param_map,
+                    type_param_arity,
+                    registry,
+                    context,
+                    self_type,
+                )?);
             }
             // If the name is a type parameter (HKT variable), produce Type::App
             if let Some(&var_id) = type_param_map.get(name) {
@@ -239,7 +258,14 @@ pub fn resolve_type_expr(
                 return Ok(Type::App(Box::new(Type::Var(var_id)), resolved_args));
             }
             // Validate the type name
-            resolve_named(name, type_param_map, type_param_arity, registry, context, self_type)?;
+            resolve_named(
+                name,
+                type_param_map,
+                type_param_arity,
+                registry,
+                context,
+                self_type,
+            )?;
             // Kind check: verify arity matches
             let expected = registry.expected_arity(name);
             if let Some(expected) = expected {
@@ -259,9 +285,23 @@ pub fn resolve_type_expr(
         TypeExpr::Fn { params, ret, .. } => {
             let mut param_types = Vec::new();
             for p in params {
-                param_types.push(resolve_type_expr(p, type_param_map, type_param_arity, registry, context, self_type)?);
+                param_types.push(resolve_type_expr(
+                    p,
+                    type_param_map,
+                    type_param_arity,
+                    registry,
+                    context,
+                    self_type,
+                )?);
             }
-            let ret_type = resolve_type_expr(ret, type_param_map, type_param_arity, registry, context, self_type)?;
+            let ret_type = resolve_type_expr(
+                ret,
+                type_param_map,
+                type_param_arity,
+                registry,
+                context,
+                self_type,
+            )?;
             Ok(Type::Fn(param_types, Box::new(ret_type)))
         }
         TypeExpr::Own { inner, .. } => Ok(Type::Own(Box::new(resolve_type_expr(
@@ -275,13 +315,18 @@ pub fn resolve_type_expr(
         TypeExpr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
-                elem_types.push(resolve_type_expr(e, type_param_map, type_param_arity, registry, context, self_type)?);
+                elem_types.push(resolve_type_expr(
+                    e,
+                    type_param_map,
+                    type_param_arity,
+                    registry,
+                    context,
+                    self_type,
+                )?);
             }
             Ok(Type::Tuple(elem_types))
         }
-        TypeExpr::Wildcard { span } => {
-            Err(TypeError::WildcardNotAllowed { span: *span })
-        }
+        TypeExpr::Wildcard { span } => Err(TypeError::WildcardNotAllowed { span: *span }),
     }
 }
 
@@ -381,7 +426,14 @@ pub fn process_type_decl(
         TypeDeclKind::Record { fields } => {
             let mut resolved_fields: Vec<(String, Type)> = Vec::new();
             for (name, texpr) in fields {
-                let ty = resolve_type_expr(texpr, &type_param_map, &type_param_arity, registry, ResolutionContext::InternalDecl, None)?;
+                let ty = resolve_type_expr(
+                    texpr,
+                    &type_param_map,
+                    &type_param_arity,
+                    registry,
+                    ResolutionContext::InternalDecl,
+                    None,
+                )?;
                 resolved_fields.push((name.clone(), ty));
             }
 
@@ -565,25 +617,22 @@ fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
                 ty.clone()
             }
         }
-        Type::Named(name, args) => {
-            Type::Named(name.clone(), args.iter().map(|a| remap_vars(a, mapping)).collect())
-        }
-        Type::Fn(params, ret) => {
-            Type::Fn(
-                params.iter().map(|p| remap_vars(p, mapping)).collect(),
-                Box::new(remap_vars(ret, mapping)),
-            )
-        }
-        Type::Tuple(elems) => {
-            Type::Tuple(elems.iter().map(|e| remap_vars(e, mapping)).collect())
-        }
+        Type::Named(name, args) => Type::Named(
+            name.clone(),
+            args.iter().map(|a| remap_vars(a, mapping)).collect(),
+        ),
+        Type::Fn(params, ret) => Type::Fn(
+            params.iter().map(|p| remap_vars(p, mapping)).collect(),
+            Box::new(remap_vars(ret, mapping)),
+        ),
+        Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| remap_vars(e, mapping)).collect()),
         Type::Own(inner) => Type::Own(Box::new(remap_vars(inner, mapping))),
-        Type::App(base, args) => {
-            Type::App(
-                Box::new(remap_vars(base, mapping)),
-                args.iter().map(|a| remap_vars(a, mapping)).collect(),
-            )
+        Type::App(base, args) => Type::App(
+            Box::new(remap_vars(base, mapping)),
+            args.iter().map(|a| remap_vars(a, mapping)).collect(),
+        ),
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => {
+            ty.clone()
         }
-        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => ty.clone(),
     }
 }

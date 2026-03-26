@@ -1,7 +1,7 @@
+use insta::assert_snapshot;
 use krypton_parser::ast::*;
 use krypton_parser::parser::parse;
 use krypton_parser::pretty::{pretty_print, pretty_print_with, PrettyConfig};
-use insta::assert_snapshot;
 
 // --- Zero-span helpers (copied from pretty_test.rs) ---
 
@@ -44,11 +44,14 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
         } => Decl::DefImpl {
             trait_name: trait_name.clone(),
             target_type: zero_spans_type_expr(target_type),
-            type_params: type_params.iter().map(|tp| TypeParam {
-                name: tp.name.clone(),
-                arity: tp.arity,
-                span: (0, 0),
-            }).collect(),
+            type_params: type_params
+                .iter()
+                .map(|tp| TypeParam {
+                    name: tp.name.clone(),
+                    arity: tp.arity,
+                    span: (0, 0),
+                })
+                .collect(),
             type_constraints: type_constraints
                 .iter()
                 .map(|c| TypeConstraint {
@@ -60,7 +63,12 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             methods: methods.iter().map(zero_spans_fn_decl).collect(),
             span: (0, 0),
         },
-        Decl::Import { is_pub, path, names, .. } => Decl::Import {
+        Decl::Import {
+            is_pub,
+            path,
+            names,
+            ..
+        } => Decl::Import {
             is_pub: *is_pub,
             path: path.clone(),
             names: names.clone(),
@@ -87,13 +95,21 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                     visibility: m.visibility.clone(),
                     name: m.name.clone(),
                     type_params: m.type_params.clone(),
-                    params: m.params.iter().map(|(name, ty)| (name.clone(), zero_spans_type_expr(ty))).collect(),
+                    params: m
+                        .params
+                        .iter()
+                        .map(|(name, ty)| (name.clone(), zero_spans_type_expr(ty)))
+                        .collect(),
                     return_type: zero_spans_type_expr(&m.return_type),
-                    where_clauses: m.where_clauses.iter().map(|c| TypeConstraint {
-                        trait_name: c.trait_name.clone(),
-                        type_var: c.type_var.clone(),
-                        span: (0, 0),
-                    }).collect(),
+                    where_clauses: m
+                        .where_clauses
+                        .iter()
+                        .map(|c| TypeConstraint {
+                            trait_name: c.trait_name.clone(),
+                            type_var: c.type_var.clone(),
+                            span: (0, 0),
+                        })
+                        .collect(),
                     span: (0, 0),
                 })
                 .collect(),
@@ -180,11 +196,7 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             operand: Box::new(zero_spans_expr(operand)),
             span: (0, 0),
         },
-        Expr::Lambda {
-            params,
-            body,
-            ..
-        } => Expr::Lambda {
+        Expr::Lambda { params, body, .. } => Expr::Lambda {
             params: params
                 .iter()
                 .map(|p| Param {
@@ -197,7 +209,11 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             span: (0, 0),
         },
         Expr::Let {
-            name, ty, value, body, ..
+            name,
+            ty,
+            value,
+            body,
+            ..
         } => Expr::Let {
             name: name.clone(),
             ty: ty.as_ref().map(zero_spans_type_expr),
@@ -217,7 +233,12 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             else_: Box::new(zero_spans_expr(else_)),
             span: (0, 0),
         },
-        Expr::App { func, args, is_ufcs, .. } => Expr::App {
+        Expr::App {
+            func,
+            args,
+            is_ufcs,
+            ..
+        } => Expr::App {
             func: Box::new(zero_spans_expr(func)),
             args: args.iter().map(zero_spans_expr).collect(),
             is_ufcs: *is_ufcs,
@@ -366,9 +387,7 @@ fn zero_spans_type_expr(ty: &TypeExpr) -> TypeExpr {
             name: name.clone(),
             span: (0, 0),
         },
-        TypeExpr::Wildcard { .. } => TypeExpr::Wildcard {
-            span: (0, 0),
-        },
+        TypeExpr::Wildcard { .. } => TypeExpr::Wildcard { span: (0, 0) },
     }
 }
 
@@ -661,9 +680,7 @@ fn roundtrip_question_mark() {
 
 #[test]
 fn roundtrip_recur() {
-    assert_surface_roundtrip(
-        "fun f(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }",
-    );
+    assert_surface_roundtrip("fun f(n: Int) -> Int = if n <= 1 { 1 } else { n * recur(n - 1) }");
 }
 
 #[test]

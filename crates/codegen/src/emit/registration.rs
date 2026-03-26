@@ -208,9 +208,9 @@ impl Compiler {
         }
         ctor_desc.push_str(")V");
 
-        let constructor_ref =
-            self.cp
-                .add_method_ref(variant_class_index, "<init>", &ctor_desc)?;
+        let constructor_ref = self
+            .cp
+            .add_method_ref(variant_class_index, "<init>", &ctor_desc)?;
 
         let mut field_refs = Vec::new();
         for f in &fields {
@@ -267,7 +267,8 @@ impl Compiler {
         let mut variant_pairs = Vec::new();
 
         for variant in &sum_def.variants {
-            let (name, qualified, info) = self.register_variant_metadata(variant, sum_def, qualified_sum)?;
+            let (name, qualified, info) =
+                self.register_variant_metadata(variant, sum_def, qualified_sum)?;
             variant_pairs.push((name.clone(), qualified));
             variant_infos.insert(name, info);
         }
@@ -502,12 +503,18 @@ impl Compiler {
         let registry = intrinsics::IntrinsicRegistry::new();
         for entry in registry.iter() {
             // Find the TraitName key matching this intrinsic's bare trait name
-            let trait_key = self.traits.trait_dispatch.keys()
+            let trait_key = self
+                .traits
+                .trait_dispatch
+                .keys()
                 .find(|tn| tn.local_name == entry.trait_name)
                 .cloned();
             if let Some(trait_key) = trait_key {
                 // Builtin instance classes live in the trait's defining module.
-                let class_name = format!("{}/{}$${}", trait_key.module_path, entry.trait_name, entry.type_name);
+                let class_name = format!(
+                    "{}/{}$${}",
+                    trait_key.module_path, entry.trait_name, entry.type_name
+                );
 
                 // The trait interface class uses the qualified trait name
                 let q_trait = trait_key.jvm_qualified();
@@ -586,7 +593,10 @@ impl Compiler {
             if inst.is_intrinsic || inst.is_imported {
                 continue;
             }
-            let instance_class_name = format!("{}/{}$${}", ir_module.module_path, inst.trait_name.local_name, inst.target_type_name);
+            let instance_class_name = format!(
+                "{}/{}$${}",
+                ir_module.module_path, inst.trait_name.local_name, inst.target_type_name
+            );
             // The trait interface class uses the qualified trait name
             let q_trait = inst.trait_name.jvm_qualified();
             let dict_requirements: Vec<DictRequirement> = inst
@@ -1024,8 +1034,12 @@ impl Compiler {
         // Build variant_tags, sum_type_params, and variant_field_types from dependency modules
         // Iterate all_ir_modules (topo order) filtered to deps
         for module in all_ir_modules {
-            if module.module_path == ir_module.module_path { continue; }
-            if !dep_paths.contains(module.module_path.as_str()) { continue; }
+            if module.module_path == ir_module.module_path {
+                continue;
+            }
+            if !dep_paths.contains(module.module_path.as_str()) {
+                continue;
+            }
             for sum_def in &module.sum_types {
                 let mut tag_map = std::collections::HashMap::new();
                 for variant in &sum_def.variants {

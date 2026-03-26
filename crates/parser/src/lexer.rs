@@ -191,39 +191,44 @@ pub fn lexer<'src>(
 
     // Identifiers and keywords (including _prefixed like _foo, _0)
     let ident = just('_')
-        .then(any().filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_').repeated().at_least(1))
+        .then(
+            any()
+                .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
+                .repeated()
+                .at_least(1),
+        )
         .to_slice()
         .map(|s: &str| Token::Ident(s))
         .or(text::ascii::ident().map(|s: &str| match s {
-        "fun" => Token::Fun,
-        "def" => Token::Def,
-        "fn" => Token::Fn,
-        "let" => Token::Let,
-        "if" => Token::If,
-        "else" => Token::Else,
-        "match" => Token::Match,
-        "type" => Token::Type,
-        "trait" => Token::Trait,
-        "impl" => Token::Impl,
-        "import" => Token::Import,
-        "use" => Token::Use,
-        "pub" => Token::Pub,
-        "opaque" => Token::Opaque,
-        "where" => Token::Where,
-        "recur" => Token::Recur,
-        "own" => Token::Own,
-        "deriving" => Token::Deriving,
-        "extern" => Token::Extern,
-        "as" => Token::As,
-        "shared" => Token::Shared,
-        "do" => Token::Do,
-        "self" => Token::Self_,
-        "tuple" => Token::Tuple,
-        "true" => Token::Bool(true),
-        "false" => Token::Bool(false),
-        "_" => Token::Underscore,
-        _ => Token::Ident(s),
-    }));
+            "fun" => Token::Fun,
+            "def" => Token::Def,
+            "fn" => Token::Fn,
+            "let" => Token::Let,
+            "if" => Token::If,
+            "else" => Token::Else,
+            "match" => Token::Match,
+            "type" => Token::Type,
+            "trait" => Token::Trait,
+            "impl" => Token::Impl,
+            "import" => Token::Import,
+            "use" => Token::Use,
+            "pub" => Token::Pub,
+            "opaque" => Token::Opaque,
+            "where" => Token::Where,
+            "recur" => Token::Recur,
+            "own" => Token::Own,
+            "deriving" => Token::Deriving,
+            "extern" => Token::Extern,
+            "as" => Token::As,
+            "shared" => Token::Shared,
+            "do" => Token::Do,
+            "self" => Token::Self_,
+            "tuple" => Token::Tuple,
+            "true" => Token::Bool(true),
+            "false" => Token::Bool(false),
+            "_" => Token::Underscore,
+            _ => Token::Ident(s),
+        }));
 
     // Multi-char operators (must come before single-char)
     let multi_op = choice((
@@ -277,11 +282,7 @@ pub fn lexer<'src>(
         .then(any().and_is(just('\n').not()).repeated())
         .ignored();
 
-    let trivia = choice((
-        one_of(" \t\r").ignored(),
-        comment,
-    ))
-    .repeated();
+    let trivia = choice((one_of(" \t\r").ignored(), comment)).repeated();
 
     let token = choice((newline, num, string, multi_op, ident, single_op, delim));
 

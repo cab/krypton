@@ -2,21 +2,20 @@
 
 mod builder;
 mod calls;
-mod data_class_gen;
-mod trait_class_gen;
 mod compiler;
+mod data_class_gen;
 mod intrinsics;
 mod lambda;
 mod registration;
+mod trait_class_gen;
 
 use std::collections::{HashMap, HashSet};
 
-use krypton_typechecker::typed_ast::TypedModule;
 use krypton_ir::{TraitName, Type, TypeVarId};
+use krypton_typechecker::typed_ast::TypedModule;
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
-    ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method,
-    MethodAccessFlags, Version,
+    ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method, MethodAccessFlags, Version,
 };
 
 pub use compiler::{CodegenError, CodegenErrorKind, JvmType};
@@ -53,9 +52,10 @@ fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
         Type::Float => Ok(JvmType::Double),
         Type::Bool => Ok(JvmType::Int),
         Type::Unit => Ok(JvmType::Int),
-        other => Err(CodegenError::TypeError(format!(
-            "cannot map type to JVM: {other:?}"
-        ), None)),
+        other => Err(CodegenError::TypeError(
+            format!("cannot map type to JVM: {other:?}"),
+            None,
+        )),
     }
 }
 
@@ -83,14 +83,17 @@ fn qualify_ir(module_path: &str, bare_name: &str) -> String {
     format!("{module_path}/{bare_name}")
 }
 
-
 /// Check if a Type references any of the given type variable IDs (for JVM erasure).
 fn type_references_var(ty: &Type, vars: &[TypeVarId]) -> bool {
     match ty {
         Type::Var(id) => vars.contains(id),
         Type::Named(_, args) => args.iter().any(|a| type_references_var(a, vars)),
-        Type::App(ctor, args) => type_references_var(ctor, vars) || args.iter().any(|a| type_references_var(a, vars)),
-        Type::Fn(params, ret) => params.iter().any(|p| type_references_var(p, vars)) || type_references_var(ret, vars),
+        Type::App(ctor, args) => {
+            type_references_var(ctor, vars) || args.iter().any(|a| type_references_var(a, vars))
+        }
+        Type::Fn(params, ret) => {
+            params.iter().any(|p| type_references_var(p, vars)) || type_references_var(ret, vars)
+        }
         Type::Tuple(elems) => elems.iter().any(|e| type_references_var(e, vars)),
         Type::Own(inner) => type_references_var(inner, vars),
         Type::Dict { target, .. } => type_references_var(target, vars),
@@ -123,16 +126,25 @@ pub fn compile_modules(
     // Lower each TypedModule to an IR Module.
     let mut ir_modules: Vec<krypton_ir::Module> = Vec::new();
     let mut typed_with_ir: Vec<(&TypedModule, usize)> = Vec::new(); // (typed_module, ir_index)
-    // The first module is the root/main module; subsequent ones are library modules.
-    let root_module_path = typed_modules.first().map(|tm| tm.module_path.as_str()).unwrap_or("");
+                                                                    // The first module is the root/main module; subsequent ones are library modules.
+    let root_module_path = typed_modules
+        .first()
+        .map(|tm| tm.module_path.as_str())
+        .unwrap_or("");
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
         // JVM class name: main_class_name for the entry module, module_path for libraries.
-        let jvm_class_name = if is_root { main_class_name } else { &tm.module_path };
-        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name)
-            .map_err(|e| CodegenError::TypeError(
-                format!("IR lowering error in module {jvm_class_name}: {e}"), None,
-            ))?;
+        let jvm_class_name = if is_root {
+            main_class_name
+        } else {
+            &tm.module_path
+        };
+        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name).map_err(|e| {
+            CodegenError::TypeError(
+                format!("IR lowering error in module {jvm_class_name}: {e}"),
+                None,
+            )
+        })?;
         let idx = ir_modules.len();
         ir_modules.push(ir);
         typed_with_ir.push((tm, idx));
@@ -143,10 +155,22 @@ pub fn compile_modules(
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
-            if inst.is_imported { continue; }
-            if intrinsic_registry.get(&inst.trait_name.local_name, &inst.target_type_name).is_some() { continue; }
-            let class_name = format!("{}/{}$${}", ir_module.module_path, inst.trait_name.local_name, inst.target_type_name);
-            let requirements: Vec<DictRequirement> = inst.sub_dict_requirements.iter()
+            if inst.is_imported {
+                continue;
+            }
+            if intrinsic_registry
+                .get(&inst.trait_name.local_name, &inst.target_type_name)
+                .is_some()
+            {
+                continue;
+            }
+            let class_name = format!(
+                "{}/{}$${}",
+                ir_module.module_path, inst.trait_name.local_name, inst.target_type_name
+            );
+            let requirements: Vec<DictRequirement> = inst
+                .sub_dict_requirements
+                .iter()
                 .map(|(trait_name, type_var)| DictRequirement {
                     trait_name: trait_name.clone(),
                     type_var: *type_var,
@@ -167,14 +191,24 @@ pub fn compile_modules(
     for &(typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
         let is_entry = ir_module.module_path == root_module_path;
-        let class_name = if is_entry { main_class_name } else { &ir_module.module_path };
-        let classes = compile_module_inner(ir_module, &ir_modules, class_name, is_entry, &instance_class_map)
-            .map_err(|e| {
-                if let Some(s) = &typed_module.module_source {
-                    return e.with_source(typed_module.module_path.clone(), s.clone());
-                }
-                e
-            })?;
+        let class_name = if is_entry {
+            main_class_name
+        } else {
+            &ir_module.module_path
+        };
+        let classes = compile_module_inner(
+            ir_module,
+            &ir_modules,
+            class_name,
+            is_entry,
+            &instance_class_map,
+        )
+        .map_err(|e| {
+            if let Some(s) = &typed_module.module_source {
+                return e.with_source(typed_module.module_path.clone(), s.clone());
+            }
+            e
+        })?;
         all_classes.extend(classes);
     }
 
@@ -193,9 +227,10 @@ fn compile_module_inner(
     }
 
     let mut compiler = Compiler::new(class_name)?;
-    compiler.types
-        .class_descriptors
-        .insert(compiler.builder.refs.object_class, "Ljava/lang/Object;".to_string());
+    compiler.types.class_descriptors.insert(
+        compiler.builder.refs.object_class,
+        "Ljava/lang/Object;".to_string(),
+    );
 
     // Compute dependency set from imports, traits, and instances
     let mut dep_paths: HashSet<&str> = HashSet::new();
@@ -203,10 +238,14 @@ fn compile_module_inner(
         dep_paths.insert(&imp.source_module);
     }
     for t in &ir_module.traits {
-        if t.is_imported { dep_paths.insert(&t.trait_name.module_path); }
+        if t.is_imported {
+            dep_paths.insert(&t.trait_name.module_path);
+        }
     }
     for inst in &ir_module.instances {
-        if inst.is_imported { dep_paths.insert(&inst.trait_name.module_path); }
+        if inst.is_imported {
+            dep_paths.insert(&inst.trait_name.module_path);
+        }
     }
 
     // Phase 1: Register types
@@ -215,8 +254,12 @@ fn compile_module_inner(
     // Register imported types from dependencies first (in topo order) so that
     // field type descriptors resolve correctly during own-type registration.
     for dep_module in all_ir_modules {
-        if dep_module.module_path == ir_module.module_path { continue; }
-        if !dep_paths.contains(dep_module.module_path.as_str()) { continue; }
+        if dep_module.module_path == ir_module.module_path {
+            continue;
+        }
+        if !dep_paths.contains(dep_module.module_path.as_str()) {
+            continue;
+        }
         compiler.register_imported_structs_ir(dep_module)?;
         compiler.register_imported_sum_types_ir(dep_module)?;
     }
@@ -239,7 +282,8 @@ fn compile_module_inner(
     compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies from IR
-    let extra_methods = compiler.compile_function_bodies_ir(ir_module, all_ir_modules, &dep_paths)?;
+    let extra_methods =
+        compiler.compile_function_bodies_ir(ir_module, all_ir_modules, &dep_paths)?;
     if is_main {
         compiler.emit_main_wrapper()?;
     }

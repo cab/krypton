@@ -80,8 +80,19 @@ impl<'a> Formatter<'a> {
                 type_constraints,
                 methods,
                 ..
-            } => self.fmt_impl(trait_name, target_type, type_params, type_constraints, methods),
-            Decl::Import { is_pub, path, names, .. } => self.fmt_import(*is_pub, path, names),
+            } => self.fmt_impl(
+                trait_name,
+                target_type,
+                type_params,
+                type_constraints,
+                methods,
+            ),
+            Decl::Import {
+                is_pub,
+                path,
+                names,
+                ..
+            } => self.fmt_import(*is_pub, path, names),
             Decl::Extern {
                 target,
                 module_path,
@@ -90,7 +101,14 @@ impl<'a> Formatter<'a> {
                 type_params,
                 methods,
                 ..
-            } => self.fmt_extern(target, module_path, alias.as_deref(), alias_visibility.as_ref(), type_params, methods),
+            } => self.fmt_extern(
+                target,
+                module_path,
+                alias.as_deref(),
+                alias_visibility.as_ref(),
+                type_params,
+                methods,
+            ),
         }
     }
 
@@ -331,7 +349,13 @@ impl<'a> Formatter<'a> {
             self.buf.push_str(" -> ");
             self.fmt_type_expr(ret);
         }
-        let is_unit_body = matches!(&*m.body, Expr::Lit { value: Lit::Unit, .. });
+        let is_unit_body = matches!(
+            &*m.body,
+            Expr::Lit {
+                value: Lit::Unit,
+                ..
+            }
+        );
         if !is_unit_body {
             match &*m.body {
                 Expr::Do { exprs, .. } => {
@@ -434,7 +458,15 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn fmt_extern(&mut self, target: &ExternTarget, module_path: &str, alias: Option<&str>, alias_visibility: Option<&Visibility>, type_params: &[String], methods: &[ExternMethod]) {
+    fn fmt_extern(
+        &mut self,
+        target: &ExternTarget,
+        module_path: &str,
+        alias: Option<&str>,
+        alias_visibility: Option<&Visibility>,
+        type_params: &[String],
+        methods: &[ExternMethod],
+    ) {
         self.buf.push_str("extern ");
         match target {
             ExternTarget::Java => self.buf.push_str("java"),
@@ -579,7 +611,9 @@ impl<'a> Formatter<'a> {
                 }
                 self.buf.push(')');
             }
-            Expr::TypeApp { expr, type_args, .. } => {
+            Expr::TypeApp {
+                expr, type_args, ..
+            } => {
                 self.fmt_expr_prec(expr, 7);
                 self.buf.push('[');
                 for (i, arg) in type_args.iter().enumerate() {
@@ -591,10 +625,7 @@ impl<'a> Formatter<'a> {
                 self.buf.push(']');
             }
             Expr::If {
-                cond,
-                then_,
-                else_,
-                ..
+                cond, then_, else_, ..
             } => {
                 self.buf.push_str("if ");
                 self.fmt_expr(cond);
@@ -602,14 +633,24 @@ impl<'a> Formatter<'a> {
                 self.fmt_expr(then_);
                 self.buf.push_str(" }");
                 // Omit else if Unit
-                if !matches!(&**else_, Expr::Lit { value: Lit::Unit, .. }) {
+                if !matches!(
+                    &**else_,
+                    Expr::Lit {
+                        value: Lit::Unit,
+                        ..
+                    }
+                ) {
                     self.buf.push_str(" else { ");
                     self.fmt_expr(else_);
                     self.buf.push_str(" }");
                 }
             }
             Expr::Let {
-                name, ty, value, body, ..
+                name,
+                ty,
+                value,
+                body,
+                ..
             } => {
                 match body {
                     Some(body_expr) => {
@@ -644,33 +685,31 @@ impl<'a> Formatter<'a> {
                 value,
                 body,
                 ..
-            } => {
-                match body {
-                    Some(body_expr) => {
-                        self.buf.push_str("{ let ");
-                        self.fmt_pattern(pattern);
-                        if let Some(ty) = ty {
-                            self.buf.push_str(": ");
-                            self.fmt_type_expr(ty);
-                        }
-                        self.buf.push_str(" = ");
-                        self.fmt_expr(value);
-                        self.buf.push_str("; ");
-                        self.fmt_expr(body_expr);
-                        self.buf.push_str(" }");
+            } => match body {
+                Some(body_expr) => {
+                    self.buf.push_str("{ let ");
+                    self.fmt_pattern(pattern);
+                    if let Some(ty) = ty {
+                        self.buf.push_str(": ");
+                        self.fmt_type_expr(ty);
                     }
-                    None => {
-                        self.buf.push_str("let ");
-                        self.fmt_pattern(pattern);
-                        if let Some(ty) = ty {
-                            self.buf.push_str(": ");
-                            self.fmt_type_expr(ty);
-                        }
-                        self.buf.push_str(" = ");
-                        self.fmt_expr(value);
-                    }
+                    self.buf.push_str(" = ");
+                    self.fmt_expr(value);
+                    self.buf.push_str("; ");
+                    self.fmt_expr(body_expr);
+                    self.buf.push_str(" }");
                 }
-            }
+                None => {
+                    self.buf.push_str("let ");
+                    self.fmt_pattern(pattern);
+                    if let Some(ty) = ty {
+                        self.buf.push_str(": ");
+                        self.fmt_type_expr(ty);
+                    }
+                    self.buf.push_str(" = ");
+                    self.fmt_expr(value);
+                }
+            },
             Expr::Do { exprs, .. } => {
                 self.buf.push('{');
                 self.fmt_block_body(exprs);
@@ -852,10 +891,7 @@ impl<'a> Formatter<'a> {
                 self.buf.push(')');
             }
             Pattern::StructPat {
-                name,
-                fields,
-                rest,
-                ..
+                name, fields, rest, ..
             } => {
                 self.buf.push_str(name);
                 self.buf.push_str(" { ");

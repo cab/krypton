@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use krypton_parser::ast::Span;
 
-use crate::types::{Type, TypeVarId, TypeVarGen, Substitution};
-use crate::unify::{TypeError, unify};
+use crate::types::{Substitution, Type, TypeVarGen, TypeVarId};
+use crate::unify::{unify, TypeError};
 
-use crate::typed_ast::{TraitName, ResolvedConstraint};
+use crate::typed_ast::{ResolvedConstraint, TraitName};
 
 pub struct TraitInfo {
     pub name: String,
@@ -94,15 +94,28 @@ impl TraitRegistry {
             if existing.trait_name == info.trait_name
                 && types_overlap(&existing.target_type, &info.target_type)
             {
-                let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info.type_var_ids.iter()
-                    .map(|(name, &id)| (id, name.as_str())).collect();
-                let existing_names: std::collections::HashMap<crate::types::TypeVarId, &str> = existing.type_var_ids.iter()
-                    .map(|(name, &id)| (id, name.as_str())).collect();
-                return Err((TypeError::DuplicateInstance {
-                    trait_name: info.trait_name.local_name.clone(),
-                    ty: crate::types::format_type_with_var_map(&info.target_type, &names),
-                    existing_ty: crate::types::format_type_with_var_map(&existing.target_type, &existing_names),
-                }, existing.span));
+                let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info
+                    .type_var_ids
+                    .iter()
+                    .map(|(name, &id)| (id, name.as_str()))
+                    .collect();
+                let existing_names: std::collections::HashMap<crate::types::TypeVarId, &str> =
+                    existing
+                        .type_var_ids
+                        .iter()
+                        .map(|(name, &id)| (id, name.as_str()))
+                        .collect();
+                return Err((
+                    TypeError::DuplicateInstance {
+                        trait_name: info.trait_name.local_name.clone(),
+                        ty: crate::types::format_type_with_var_map(&info.target_type, &names),
+                        existing_ty: crate::types::format_type_with_var_map(
+                            &existing.target_type,
+                            &existing_names,
+                        ),
+                    },
+                    existing.span,
+                ));
             }
         }
         self.instances.push(info);
@@ -116,9 +129,12 @@ impl TraitRegistry {
     /// Look up a trait by bare name (linear scan). Use only when module_path is unknown.
     /// Also checks trait aliases as a fallback.
     pub fn lookup_trait_by_name(&self, name: &str) -> Option<&TraitInfo> {
-        self.traits.values().find(|info| info.name == name)
+        self.traits
+            .values()
+            .find(|info| info.name == name)
             .or_else(|| {
-                self.trait_aliases.get(name)
+                self.trait_aliases
+                    .get(name)
                     .and_then(|tn| self.traits.get(tn))
             })
     }
@@ -167,13 +183,11 @@ impl TraitRegistry {
                     }
 
                     let mut bindings = HashMap::new();
-                    if !inst_bound_args
-                        .iter()
-                        .zip(actual_bound_args.iter())
-                        .all(|(pattern_arg, actual_arg)| {
+                    if !inst_bound_args.iter().zip(actual_bound_args.iter()).all(
+                        |(pattern_arg, actual_arg)| {
                             types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
-                        })
-                    {
+                        },
+                    ) {
                         return false;
                     }
 
@@ -275,7 +289,11 @@ impl TraitRegistry {
     /// When `find_instance` returns None, explain why by finding instances that
     /// structurally match but have failing `where` constraints.
     /// Called only on the error path — zero impact on the happy path.
-    pub fn diagnose_missing_instance(&self, trait_name: &TraitName, ty: &Type) -> Option<InstanceDiagnostic> {
+    pub fn diagnose_missing_instance(
+        &self,
+        trait_name: &TraitName,
+        ty: &Type,
+    ) -> Option<InstanceDiagnostic> {
         let trait_info = self.lookup_trait(trait_name);
 
         // HK trait path (arity > 0)
@@ -304,13 +322,11 @@ impl TraitRegistry {
                     }
 
                     let mut bindings = HashMap::new();
-                    if !inst_bound_args
-                        .iter()
-                        .zip(actual_bound_args.iter())
-                        .all(|(pattern_arg, actual_arg)| {
+                    if !inst_bound_args.iter().zip(actual_bound_args.iter()).all(
+                        |(pattern_arg, actual_arg)| {
                             types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
-                        })
-                    {
+                        },
+                    ) {
                         continue;
                     }
 
@@ -321,11 +337,15 @@ impl TraitRegistry {
                         .constraints
                         .iter()
                         .filter_map(|constraint| {
-                            let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                            let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var)
+                            else {
                                 return None;
                             };
                             let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
-                            if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
+                            if self
+                                .find_instance(&constraint.trait_name, bound_ty)
+                                .is_none()
+                            {
                                 Some(UnsatisfiedBound {
                                     trait_name: constraint.trait_name.local_name.clone(),
                                     ty: format!("{}", bound_ty.strip_own()),
@@ -368,7 +388,10 @@ impl TraitRegistry {
                     let Some(bound_ty) = bindings.get(type_var_id) else {
                         return None;
                     };
-                    if self.find_instance(&constraint.trait_name, bound_ty).is_none() {
+                    if self
+                        .find_instance(&constraint.trait_name, bound_ty)
+                        .is_none()
+                    {
                         Some(UnsatisfiedBound {
                             trait_name: constraint.trait_name.local_name.clone(),
                             ty: format!("{}", bound_ty.strip_own()),
@@ -403,13 +426,19 @@ fn format_type_with_names(ty: &Type, id_to_name: &HashMap<TypeVarId, &str>) -> S
         }
         Type::Named(name, args) if args.is_empty() => name.clone(),
         Type::Named(name, args) => {
-            let arg_strs: Vec<String> = args.iter().map(|a| format_type_with_names(a, id_to_name)).collect();
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| format_type_with_names(a, id_to_name))
+                .collect();
             format!("{name}[{}]", arg_strs.join(", "))
         }
         Type::Own(inner) => format!("own {}", format_type_with_names(inner, id_to_name)),
         Type::App(ctor, args) => {
             let ctor_str = format_type_with_names(ctor, id_to_name);
-            let arg_strs: Vec<String> = args.iter().map(|a| format_type_with_names(a, id_to_name)).collect();
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| format_type_with_names(a, id_to_name))
+                .collect();
             format!("{ctor_str}[{}]", arg_strs.join(", "))
         }
         _ => format!("{ty}"),
@@ -504,12 +533,9 @@ fn types_match_with_bindings(
                 ca.is_empty()
                     && cn == n
                     && args1.len() == args2.len()
-                    && args2
-                        .iter()
-                        .zip(args1)
-                        .all(|(pattern_arg, actual_arg)| {
-                            types_match_with_bindings(pattern_arg, actual_arg, bindings)
-                        })
+                    && args2.iter().zip(args1).all(|(pattern_arg, actual_arg)| {
+                        types_match_with_bindings(pattern_arg, actual_arg, bindings)
+                    })
             } else {
                 false
             }
@@ -599,29 +625,45 @@ fn freshen_type_vars(ty: &Type, gen: &mut TypeVarGen) -> Type {
     freshen_inner(ty, &mut var_map, gen)
 }
 
-fn freshen_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, TypeVarId>, gen: &mut TypeVarGen) -> Type {
+fn freshen_inner(
+    ty: &Type,
+    var_map: &mut HashMap<TypeVarId, TypeVarId>,
+    gen: &mut TypeVarGen,
+) -> Type {
     match ty {
         Type::Var(id) => {
             let fresh = *var_map.entry(*id).or_insert_with(|| gen.fresh());
             Type::Var(fresh)
         }
         Type::Fn(params, ret) => Type::Fn(
-            params.iter().map(|p| freshen_inner(p, var_map, gen)).collect(),
+            params
+                .iter()
+                .map(|p| freshen_inner(p, var_map, gen))
+                .collect(),
             Box::new(freshen_inner(ret, var_map, gen)),
         ),
         Type::Named(name, args) => Type::Named(
             name.clone(),
-            args.iter().map(|a| freshen_inner(a, var_map, gen)).collect(),
+            args.iter()
+                .map(|a| freshen_inner(a, var_map, gen))
+                .collect(),
         ),
         Type::App(ctor, args) => Type::App(
             Box::new(freshen_inner(ctor, var_map, gen)),
-            args.iter().map(|a| freshen_inner(a, var_map, gen)).collect(),
+            args.iter()
+                .map(|a| freshen_inner(a, var_map, gen))
+                .collect(),
         ),
         Type::Own(inner) => Type::Own(Box::new(freshen_inner(inner, var_map, gen))),
         Type::Tuple(elems) => Type::Tuple(
-            elems.iter().map(|e| freshen_inner(e, var_map, gen)).collect(),
+            elems
+                .iter()
+                .map(|e| freshen_inner(e, var_map, gen))
+                .collect(),
         ),
-        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => ty.clone(),
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => {
+            ty.clone()
+        }
     }
 }
 
@@ -793,10 +835,7 @@ mod tests {
                 target_type: Type::Named("List".to_string(), vec![]),
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
-                constraints: vec![
-                    rc("Functor", "f"),
-                    rc("Foldable", "f"),
-                ],
+                constraints: vec![rc("Functor", "f"), rc("Foldable", "f")],
                 methods: vec![],
                 span: (0, 0),
                 is_builtin: false,
@@ -805,16 +844,16 @@ mod tests {
 
         let list_int = Type::Named("List".to_string(), vec![Type::Int]);
 
-        assert!(registry.find_instance(&tn("Traversable"), &list_int).is_some());
+        assert!(registry
+            .find_instance(&tn("Traversable"), &list_int)
+            .is_some());
     }
 
     #[test]
     fn constrained_hkt_instance_binds_partially_applied_constructor_arguments() {
         let var_e = TypeVarGen::new().fresh();
         let mut registry = TraitRegistry::new();
-        registry
-            .register_trait(trait_info("Show"))
-            .unwrap();
+        registry.register_trait(trait_info("Show")).unwrap();
         registry
             .register_trait(trait_info_with_arity("Functor", 1))
             .unwrap();
@@ -834,15 +873,18 @@ mod tests {
             })
             .unwrap();
 
-        let result_int_string =
-            Type::Named("Result".to_string(), vec![Type::Int, Type::String]);
+        let result_int_string = Type::Named("Result".to_string(), vec![Type::Int, Type::String]);
         let result_blob_string = Type::Named(
             "Result".to_string(),
             vec![Type::Named("Blob".to_string(), vec![]), Type::String],
         );
 
-        assert!(registry.find_instance(&tn("Functor"), &result_int_string).is_some());
-        assert!(registry.find_instance(&tn("Functor"), &result_blob_string).is_none());
+        assert!(registry
+            .find_instance(&tn("Functor"), &result_int_string)
+            .is_some());
+        assert!(registry
+            .find_instance(&tn("Functor"), &result_blob_string)
+            .is_none());
     }
 
     #[test]
@@ -902,7 +944,9 @@ mod tests {
         assert_eq!(diag.unsatisfied[0].trait_name, "Test");
         assert_eq!(diag.unsatisfied[0].ty, "String");
         assert!(diag.to_note().contains("an impl for"));
-        assert!(diag.to_note().contains("`Test` is not implemented for `String`"));
+        assert!(diag
+            .to_note()
+            .contains("`Test` is not implemented for `String`"));
     }
 
     #[test]
@@ -924,10 +968,7 @@ mod tests {
                     (String::from("k"), var_k),
                     (String::from("v"), var_v),
                 ]),
-                constraints: vec![
-                    rc("Show", "k"),
-                    rc("Show", "v"),
-                ],
+                constraints: vec![rc("Show", "k"), rc("Show", "v")],
                 methods: vec![],
                 span: (0, 0),
                 is_builtin: false,
@@ -983,7 +1024,10 @@ mod tests {
     #[test]
     fn types_overlap_fn_type_subsumption() {
         let mut gen = TypeVarGen::new();
-        let a = Type::Fn(vec![Type::Var(gen.fresh())], Box::new(Type::Var(gen.fresh())));
+        let a = Type::Fn(
+            vec![Type::Var(gen.fresh())],
+            Box::new(Type::Var(gen.fresh())),
+        );
         let b = Type::Fn(vec![Type::Int], Box::new(Type::Var(gen.fresh())));
         assert!(super::types_overlap(&a, &b));
     }
@@ -1012,17 +1056,19 @@ mod tests {
     fn trait_alias_lookup() {
         let mut registry = TraitRegistry::new();
         let trait_name = TraitName::new("other/module".to_string(), "Eq".to_string());
-        registry.register_trait(TraitInfo {
-            name: "Eq".to_string(),
-            module_path: "other/module".to_string(),
-            type_var: "a".to_string(),
-            type_var_id: TypeVarGen::new().fresh(),
-            type_var_arity: 0,
-            superclasses: vec![],
-            methods: Vec::<TraitMethod>::new(),
-            span: (0, 0),
-            is_prelude: false,
-        }).unwrap();
+        registry
+            .register_trait(TraitInfo {
+                name: "Eq".to_string(),
+                module_path: "other/module".to_string(),
+                type_var: "a".to_string(),
+                type_var_id: TypeVarGen::new().fresh(),
+                type_var_arity: 0,
+                superclasses: vec![],
+                methods: Vec::<TraitMethod>::new(),
+                span: (0, 0),
+                is_prelude: false,
+            })
+            .unwrap();
         registry.register_trait_alias("MyEq".to_string(), trait_name.clone());
 
         // Lookup by alias should work
@@ -1038,17 +1084,19 @@ mod tests {
     #[test]
     fn bare_name_collision_detected() {
         let mut registry = TraitRegistry::new();
-        registry.register_trait(TraitInfo {
-            name: "Eq".to_string(),
-            module_path: "module_a".to_string(),
-            type_var: "a".to_string(),
-            type_var_id: TypeVarGen::new().fresh(),
-            type_var_arity: 0,
-            superclasses: vec![],
-            methods: Vec::<TraitMethod>::new(),
-            span: (0, 0),
-            is_prelude: false,
-        }).unwrap();
+        registry
+            .register_trait(TraitInfo {
+                name: "Eq".to_string(),
+                module_path: "module_a".to_string(),
+                type_var: "a".to_string(),
+                type_var_id: TypeVarGen::new().fresh(),
+                type_var_arity: 0,
+                superclasses: vec![],
+                methods: Vec::<TraitMethod>::new(),
+                span: (0, 0),
+                is_prelude: false,
+            })
+            .unwrap();
 
         // Registering a trait with the same bare name from a different module should error
         let result = registry.register_trait(TraitInfo {
@@ -1064,7 +1112,11 @@ mod tests {
         });
         assert!(result.is_err());
         match result.unwrap_err() {
-            TypeError::AmbiguousTraitName { name, existing_module, new_module } => {
+            TypeError::AmbiguousTraitName {
+                name,
+                existing_module,
+                new_module,
+            } => {
                 assert_eq!(name, "Eq");
                 assert_eq!(existing_module, "module_a");
                 assert_eq!(new_module, "module_b");

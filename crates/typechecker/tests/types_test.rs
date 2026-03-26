@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use krypton_typechecker::types::*;
+use std::collections::HashMap;
 
 // ── 1a. Types construct, substitute, and pretty-print ──
 
@@ -242,8 +242,8 @@ fn type_scheme_instantiate() {
     };
     let instantiated = scheme.instantiate(&mut || gen.fresh());
     let c = gen.fresh(); // this is the 5th var (index 4), but we need the 3rd and 4th
-    // gen produced vars 2 and 3 during instantiate; var 4 is `c` above
-    // Instead, just check the structure: two fresh vars replaced a and b
+                         // gen produced vars 2 and 3 during instantiate; var 4 is `c` above
+                         // Instead, just check the structure: two fresh vars replaced a and b
     drop(c);
     // Re-check: instantiate consumed vars 2,3 from gen. Verify the result has them.
     match &instantiated {

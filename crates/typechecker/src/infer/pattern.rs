@@ -53,7 +53,8 @@ impl<'a> InferenceContext<'a> {
                 } else {
                     expected.clone()
                 };
-                self.env.bind(name.clone(), TypeScheme::mono(bind_ty.clone()));
+                self.env
+                    .bind(name.clone(), TypeScheme::mono(bind_ty.clone()));
                 Ok(TypedPattern::Var {
                     name: name.clone(),
                     ty: bind_ty,
@@ -150,13 +151,17 @@ impl<'a> InferenceContext<'a> {
                 elements,
                 span: pat_span,
             } => {
-                let fresh_vars: Vec<Type> = elements.iter().map(|_| Type::Var(self.fresh())).collect();
+                let fresh_vars: Vec<Type> =
+                    elements.iter().map(|_| Type::Var(self.fresh())).collect();
                 self.unify_spanned(expected, &Type::Tuple(fresh_vars.clone()), span)?;
                 let mut typed_elems = Vec::new();
                 for (elem_pat, fresh_var) in elements.iter().zip(fresh_vars.iter()) {
                     let resolved = self.subst.apply(fresh_var);
                     typed_elems.push(self.check_pattern(
-                        elem_pat, &resolved, span, scrutinee_is_owned,
+                        elem_pat,
+                        &resolved,
+                        span,
+                        scrutinee_is_owned,
                     )?);
                 }
                 Ok(TypedPattern::Tuple {
@@ -180,9 +185,9 @@ impl<'a> InferenceContext<'a> {
                         span,
                     )
                 })?;
-                let info = reg
-                    .lookup_type(name)
-                    .ok_or_else(|| super::spanned(TypeError::UnknownVariable { name: name.clone() }, span))?;
+                let info = reg.lookup_type(name).ok_or_else(|| {
+                    super::spanned(TypeError::UnknownVariable { name: name.clone() }, span)
+                })?;
                 // Create fresh type args for the struct's type params
                 let fresh_args: Vec<Type> = info
                     .type_param_vars
@@ -204,7 +209,10 @@ impl<'a> InferenceContext<'a> {
                                         super::instantiate_field_type(field_ty, info, &fresh_args);
                                     let resolved = self.subst.apply(&instantiated);
                                     let typed_field_pat = self.check_pattern(
-                                        field_pat, &resolved, span, scrutinee_is_owned,
+                                        field_pat,
+                                        &resolved,
+                                        span,
+                                        scrutinee_is_owned,
                                     )?;
                                     typed_fields.push((field_name.clone(), typed_field_pat));
                                 }
@@ -269,7 +277,8 @@ impl<'a> InferenceContext<'a> {
                         let field_ty = fields.iter().find(|(n, _)| n == field_name);
                         match field_ty {
                             Some((_, ty)) => {
-                                let instantiated = super::instantiate_field_type(ty, info, type_args);
+                                let instantiated =
+                                    super::instantiate_field_type(ty, info, type_args);
                                 Ok(instantiated)
                             }
                             None => Err(super::spanned(
@@ -332,7 +341,8 @@ impl<'a> InferenceContext<'a> {
                             let record_field = record_fields.iter().find(|(n, _)| n == field_name);
                             match record_field {
                                 Some((_, expected_ty)) => {
-                                    let expected = super::instantiate_field_type(expected_ty, info, type_args);
+                                    let expected =
+                                        super::instantiate_field_type(expected_ty, info, type_args);
                                     let field_typed = self.infer_expr_inner(field_expr, None)?;
                                     self.coerce_unify_spanned(&field_typed.ty, &expected, span)?;
                                     typed_fields.push((field_name.clone(), field_typed));

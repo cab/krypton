@@ -28,8 +28,7 @@ fn register_type_with_fallback(
             .map_err(|e| spanned(e, span))
     } else {
         registry.register_name(&td.name);
-        type_registry::process_type_decl(td, registry, gen)
-            .map_err(|e| spanned(e, span))
+        type_registry::process_type_decl(td, registry, gen).map_err(|e| spanned(e, span))
     }
 }
 
@@ -131,14 +130,7 @@ impl ModuleInferenceState {
                 span,
             } = decl
             {
-                self.process_single_import(
-                    *is_pub,
-                    path,
-                    names,
-                    *span,
-                    cache,
-                    parsed_modules,
-                )?;
+                self.process_single_import(*is_pub, path, names, *span, cache, parsed_modules)?;
             }
         }
         Ok(())
@@ -203,7 +195,10 @@ impl ModuleInferenceState {
                     s.insert(name);
                 }
                 // Extern java type aliases (e.g. `extern "..." as Ref[m] {}`)
-                if let Decl::Extern { alias: Some(name), .. } = d {
+                if let Decl::Extern {
+                    alias: Some(name), ..
+                } = d
+                {
                     s.insert(name);
                 }
             }
@@ -229,7 +224,8 @@ impl ModuleInferenceState {
         }
 
         for name in &requested {
-            if !exported_fn_names.contains(name) && !reexported_fn_names.contains(name)
+            if !exported_fn_names.contains(name)
+                && !reexported_fn_names.contains(name)
                 && !type_or_trait_names.contains(name)
             {
                 // Check if the name exists in fn_types (i.e. it's private, not missing)
@@ -291,18 +287,37 @@ impl ModuleInferenceState {
                 continue;
             }
             if requested.contains(ef.name.as_str()) {
-                let effective_name = aliases.get(&ef.name).cloned().unwrap_or_else(|| ef.name.clone());
-                self.imports.bind_import(&mut self.env, effective_name.clone(), ef.scheme.clone(), ef.origin.clone(), path.to_string(), ef.name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                let effective_name = aliases
+                    .get(&ef.name)
+                    .cloned()
+                    .unwrap_or_else(|| ef.name.clone());
+                self.imports.bind_import(
+                    &mut self.env,
+                    effective_name.clone(),
+                    ef.scheme.clone(),
+                    ef.origin.clone(),
+                    path.to_string(),
+                    ef.name.clone(),
+                    &self.prelude_imported_names,
+                    &mut self.gen,
+                    span,
+                    &mut self.imported_fn_constraint_requirements,
+                )?;
                 // Store definition span for imported function
                 if let Some(ds) = ef.def_span {
                     self.env.bind_with_def_span(
                         effective_name.clone(),
                         ef.scheme.clone(),
-                        crate::types::DefSpan { span: ds, source_module: Some(path.to_string()) },
+                        crate::types::DefSpan {
+                            span: ds,
+                            source_module: Some(path.to_string()),
+                        },
                     );
                 }
                 if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
-                    self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
+                    self.imports
+                        .imported_fn_qualifiers
+                        .insert(effective_name, quals.clone());
                 }
             } else if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
@@ -313,16 +328,28 @@ impl ModuleInferenceState {
                         scheme: ef.scheme.clone(),
                     },
                 );
-                self.imports.bind_hidden_fn(hidden_name, ef.scheme.clone(), ef.origin.clone(), (path.to_string(), ef.name.clone()));
+                self.imports.bind_hidden_fn(
+                    hidden_name,
+                    ef.scheme.clone(),
+                    ef.origin.clone(),
+                    (path.to_string(), ef.name.clone()),
+                );
             }
         }
 
         for ef in &cached.reexported_fn_types {
             if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
-                let original_prov = cached.fn_types.iter()
+                let original_prov = cached
+                    .fn_types
+                    .iter()
                     .find(|e| e.name == ef.name)
-                    .map(|e| (e.qualified_name.module_path.clone(), e.qualified_name.local_name.clone()))
+                    .map(|e| {
+                        (
+                            e.qualified_name.module_path.clone(),
+                            e.qualified_name.local_name.clone(),
+                        )
+                    })
                     .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
                 qualified_exports.insert(
                     ef.name.clone(),
@@ -331,17 +358,32 @@ impl ModuleInferenceState {
                         scheme: ef.scheme.clone(),
                     },
                 );
-                self.imports.bind_hidden_fn(hidden_name, ef.scheme.clone(), ef.origin.clone(), original_prov);
+                self.imports.bind_hidden_fn(
+                    hidden_name,
+                    ef.scheme.clone(),
+                    ef.origin.clone(),
+                    original_prov,
+                );
             }
         }
 
         // Process re-exported functions from the cached module.
         for ef in &cached.reexported_fn_types {
             if requested.contains(ef.name.as_str()) {
-                let effective_name = aliases.get(&ef.name).cloned().unwrap_or_else(|| ef.name.clone());
-                let original_prov = cached.fn_types.iter()
+                let effective_name = aliases
+                    .get(&ef.name)
+                    .cloned()
+                    .unwrap_or_else(|| ef.name.clone());
+                let original_prov = cached
+                    .fn_types
+                    .iter()
                     .find(|e| e.name == ef.name)
-                    .map(|e| (e.qualified_name.module_path.clone(), e.qualified_name.local_name.clone()))
+                    .map(|e| {
+                        (
+                            e.qualified_name.module_path.clone(),
+                            e.qualified_name.local_name.clone(),
+                        )
+                    })
                     .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
                 self.env.bind(effective_name.clone(), ef.scheme.clone());
                 // Store definition span for re-exported function
@@ -350,7 +392,10 @@ impl ModuleInferenceState {
                     self.env.bind_with_def_span(
                         effective_name.clone(),
                         ef.scheme.clone(),
-                        crate::types::DefSpan { span: ds, source_module: Some(source_module) },
+                        crate::types::DefSpan {
+                            span: ds,
+                            source_module: Some(source_module),
+                        },
                     );
                 }
                 self.imports.imported_fn_types.push(typed_ast::ImportedFn {
@@ -360,7 +405,9 @@ impl ModuleInferenceState {
                     qualified_name: typed_ast::QualifiedName::new(original_prov.0, original_prov.1),
                 });
                 if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
-                    self.imports.imported_fn_qualifiers.insert(effective_name, quals.clone());
+                    self.imports
+                        .imported_fn_qualifiers
+                        .insert(effective_name, quals.clone());
                 }
             }
         }
@@ -384,8 +431,11 @@ impl ModuleInferenceState {
                     let original_path = cached.type_origin(reex_type_name).map(|s| s.to_string());
                     // Try pre-resolved export from the original source module's cache
                     let export_info = original_path.as_ref().and_then(|orig_path| {
-                        cache.get(orig_path.as_str())
-                            .and_then(|orig_cached| orig_cached.exported_type_infos.get(reex_type_name.as_str()))
+                        cache
+                            .get(orig_path.as_str())
+                            .and_then(|orig_cached| {
+                                orig_cached.exported_type_infos.get(reex_type_name.as_str())
+                            })
                             .cloned()
                     });
                     if let Some(ref export) = export_info {
@@ -407,7 +457,18 @@ impl ModuleInferenceState {
                         }
                         if matches!(original_vis, Visibility::Pub) {
                             for (cname, scheme) in &constructors {
-                                self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), None, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                                self.imports.bind_import(
+                                    &mut self.env,
+                                    cname.clone(),
+                                    scheme.clone(),
+                                    None,
+                                    orig_path.clone(),
+                                    cname.clone(),
+                                    &self.prelude_imported_names,
+                                    &mut self.gen,
+                                    span,
+                                    &mut self.imported_fn_constraint_requirements,
+                                )?;
                             }
                         }
                         self.imports.bind_type_info(
@@ -417,8 +478,7 @@ impl ModuleInferenceState {
                         );
                     } else if let Some(orig_path) = original_path {
                         if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                            if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name)
-                            {
+                            if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name) {
                                 self.registry.register_name(&td.name);
                                 let constructors = type_registry::process_type_decl(
                                     td,
@@ -436,7 +496,18 @@ impl ModuleInferenceState {
                                 }
                                 if matches!(original_vis, Visibility::Pub) {
                                     for (cname, scheme) in &constructors {
-                                        self.imports.bind_import(&mut self.env, cname.clone(), scheme.clone(), None, orig_path.clone(), cname.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                                        self.imports.bind_import(
+                                            &mut self.env,
+                                            cname.clone(),
+                                            scheme.clone(),
+                                            None,
+                                            orig_path.clone(),
+                                            cname.clone(),
+                                            &self.prelude_imported_names,
+                                            &mut self.gen,
+                                            span,
+                                            &mut self.imported_fn_constraint_requirements,
+                                        )?;
                                     }
                                 }
                                 self.imports.bind_type_info(
@@ -480,7 +551,10 @@ impl ModuleInferenceState {
                     if self.registry.lookup_type(&td.name).is_none() {
                         let constructors = register_type_with_fallback(
                             cached.exported_type_infos.get(td.name.as_str()),
-                            td, &mut self.registry, &mut self.gen, span,
+                            td,
+                            &mut self.registry,
+                            &mut self.gen,
+                            span,
                         )?;
                         if effective_type_name != td.name {
                             self.registry
@@ -492,7 +566,18 @@ impl ModuleInferenceState {
                         }
                         if matches!(td.visibility, Visibility::Pub) {
                             for (cname, scheme) in constructors {
-                                self.imports.bind_import(&mut self.env, cname.clone(), scheme, None, path.to_string(), cname, &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                                self.imports.bind_import(
+                                    &mut self.env,
+                                    cname.clone(),
+                                    scheme,
+                                    None,
+                                    path.to_string(),
+                                    cname,
+                                    &self.prelude_imported_names,
+                                    &mut self.gen,
+                                    span,
+                                    &mut self.imported_fn_constraint_requirements,
+                                )?;
                             }
                         }
                     } else if effective_type_name != td.name {
@@ -503,7 +588,11 @@ impl ModuleInferenceState {
                     // Branch A: type explicitly requested — mark user-visible
                     // mark_user_visible canonicalizes internally, so one call suffices
                     self.registry.mark_user_visible(&td.name);
-                    self.imports.bind_type_info(effective_type_name.clone(), path.to_string(), td.visibility.clone());
+                    self.imports.bind_type_info(
+                        effective_type_name.clone(),
+                        path.to_string(),
+                        td.visibility.clone(),
+                    );
                 } else if import_all {
                     if matches!(td.visibility, Visibility::Private) {
                         continue;
@@ -513,15 +602,17 @@ impl ModuleInferenceState {
                     if self.registry.lookup_type(&td.name).is_none() {
                         let constructors = register_type_with_fallback(
                             cached.exported_type_infos.get(td.name.as_str()),
-                            td, &mut self.registry, &mut self.gen, span,
+                            td,
+                            &mut self.registry,
+                            &mut self.gen,
+                            span,
                         )?;
                         if path == "prelude" {
                             self.registry.set_prelude(&td.name);
                         }
                         if matches!(td.visibility, Visibility::Pub) {
                             for (cname, scheme) in constructors {
-                                let hidden_name =
-                                    format!("__qual${}${}", qualifier_name, cname);
+                                let hidden_name = format!("__qual${}${}", qualifier_name, cname);
                                 qualified_exports.insert(
                                     cname.clone(),
                                     QualifiedExport {
@@ -529,7 +620,12 @@ impl ModuleInferenceState {
                                         scheme: scheme.clone(),
                                     },
                                 );
-                                self.imports.bind_hidden_fn(hidden_name, scheme.clone(), None, (path.to_string(), cname.clone()));
+                                self.imports.bind_hidden_fn(
+                                    hidden_name,
+                                    scheme.clone(),
+                                    None,
+                                    (path.to_string(), cname.clone()),
+                                );
                                 self.env.bind(cname, scheme);
                             }
                         }
@@ -537,14 +633,21 @@ impl ModuleInferenceState {
                 } else if self.registry.lookup_type(&td.name).is_none() {
                     let constructors = register_type_with_fallback(
                         cached.exported_type_infos.get(td.name.as_str()),
-                        td, &mut self.registry, &mut self.gen, span,
+                        td,
+                        &mut self.registry,
+                        &mut self.gen,
+                        span,
                     )?;
                     for (cname, scheme) in constructors {
                         self.env.bind(cname, scheme);
                     }
                     // Track the parent type so codegen can resolve it
                     // (importing constructors implicitly depends on the type)
-                    self.imports.bind_type_info(td.name.clone(), path.to_string(), td.visibility.clone());
+                    self.imports.bind_type_info(
+                        td.name.clone(),
+                        path.to_string(),
+                        td.visibility.clone(),
+                    );
                 }
             }
         }
@@ -600,12 +703,18 @@ impl ModuleInferenceState {
                         self.registry.mark_user_visible(name);
                     }
                     // Track visibility so pub re-exports can find this type
-                    let vis = cached.type_visibility.get(name).cloned().unwrap_or(Visibility::Private);
-                    self.imports.bind_type_info(name.clone(), path.to_string(), vis);
+                    let vis = cached
+                        .type_visibility
+                        .get(name)
+                        .cloned()
+                        .unwrap_or(Visibility::Private);
+                    self.imports
+                        .bind_type_info(name.clone(), path.to_string(), vis);
 
                     // Build type_param_map for method resolution
                     if !type_params.is_empty() {
-                        let (map, arity) = build_type_param_map(type_params, &type_param_vars, name);
+                        let (map, arity) =
+                            build_type_param_map(type_params, &type_param_vars, name);
                         tp_map = Some(map);
                         tp_arity = Some(arity);
                     }
@@ -614,11 +723,24 @@ impl ModuleInferenceState {
                 let tp_names = type_params.as_slice();
                 let empty_trait_lookup = HashMap::new();
                 let result = process_extern_methods(
-                    module_path, target, methods, &mut self.env, &mut self.gen, &self.registry,
-                    &empty_trait_lookup, path,
-                    *ext_span, None,
-                    &aliases, tp_map.as_ref(), tp_arity.as_ref(),
-                    if tp_map.is_some() { Some(tp_names) } else { None },
+                    module_path,
+                    target,
+                    methods,
+                    &mut self.env,
+                    &mut self.gen,
+                    &self.registry,
+                    &empty_trait_lookup,
+                    path,
+                    *ext_span,
+                    None,
+                    &aliases,
+                    tp_map.as_ref(),
+                    tp_arity.as_ref(),
+                    if tp_map.is_some() {
+                        Some(tp_names)
+                    } else {
+                        None
+                    },
                 )?;
                 self.imported_extern_fns.extend(result.extern_fns);
                 // Extern fn constraints from imported modules come through cached.fn_constraint_requirements
@@ -662,7 +784,8 @@ impl ModuleInferenceState {
         // Propagate trait definitions from the imported module
         for trait_def in &cached.exported_trait_defs {
             // Compute effective (possibly aliased) name
-            let effective_name = aliases.get(&trait_def.name)
+            let effective_name = aliases
+                .get(&trait_def.name)
                 .cloned()
                 .unwrap_or_else(|| trait_def.name.clone());
 
@@ -689,27 +812,44 @@ impl ModuleInferenceState {
                 self.imported_trait_defs.push(trait_def.clone());
                 self.imported_trait_names.insert(effective_name.clone());
                 // Build canonical TraitName (always uses original name, not alias)
-                let trait_id = TraitName::new(
-                    trait_def.module_path.clone(),
-                    trait_def.name.clone(),
-                );
+                let trait_id =
+                    TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
                 // Register alias if different from original
                 if effective_name != trait_def.name {
-                    self.trait_aliases.push((effective_name.clone(), trait_id.clone()));
+                    self.trait_aliases
+                        .push((effective_name.clone(), trait_id.clone()));
                 }
                 let origin = Some(trait_id);
                 // Bind visible trait methods as imported functions (skip if already imported via fn_types)
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
-                    let already_imported = self.imports.imported_fn_types.iter().any(|f| f.name == method.name);
+                    let already_imported = self
+                        .imports
+                        .imported_fn_types
+                        .iter()
+                        .any(|f| f.name == method.name);
                     if is_visible && !already_imported {
-                        let fn_ty = Type::Fn(method.param_types.clone(), Box::new(method.return_type.clone()));
+                        let fn_ty = Type::Fn(
+                            method.param_types.clone(),
+                            Box::new(method.return_type.clone()),
+                        );
                         let scheme = TypeScheme {
                             vars: vec![trait_def.type_var_id],
                             ty: fn_ty,
                             var_names: HashMap::new(),
                         };
-                        self.imports.bind_import(&mut self.env, method.name.clone(), scheme, origin.clone(), path.to_string(), method.name.clone(), &self.prelude_imported_names, &mut self.gen, span, &mut self.imported_fn_constraint_requirements)?;
+                        self.imports.bind_import(
+                            &mut self.env,
+                            method.name.clone(),
+                            scheme,
+                            origin.clone(),
+                            path.to_string(),
+                            method.name.clone(),
+                            &self.prelude_imported_names,
+                            &mut self.gen,
+                            span,
+                            &mut self.imported_fn_constraint_requirements,
+                        )?;
                     }
                 }
             }
@@ -723,8 +863,15 @@ impl ModuleInferenceState {
                     .as_ref()
                     .unwrap_or(&import_name.name)
                     .clone();
-                let found_fn = self.imports.imported_fn_types.iter().any(|f| f.name == effective_name);
-                let found_type = self.imports.imported_type_info.contains_key(&effective_name);
+                let found_fn = self
+                    .imports
+                    .imported_fn_types
+                    .iter()
+                    .any(|f| f.name == effective_name);
+                let found_type = self
+                    .imports
+                    .imported_type_info
+                    .contains_key(&effective_name);
                 let found_trait = self.imported_trait_names.contains(&effective_name);
 
                 if !found_fn && !found_type && !found_trait {
@@ -736,13 +883,15 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    if let Some(f) = self.imports.imported_fn_types
+                    if let Some(f) = self
+                        .imports
+                        .imported_fn_types
                         .iter()
                         .find(|f| f.name == effective_name)
                     {
                         // Try to propagate def_span from the source module's exports
-                        let reexport_def_span = self.env.get_def_span(&effective_name)
-                            .map(|d| d.span);
+                        let reexport_def_span =
+                            self.env.get_def_span(&effective_name).map(|d| d.span);
                         self.reexported_fn_types.push(typed_ast::ExportedFn {
                             name: effective_name.clone(),
                             scheme: f.scheme.clone(),
@@ -753,14 +902,18 @@ impl ModuleInferenceState {
                 }
                 if found_type {
                     self.reexported_type_names.push(effective_name.clone());
-                    let original_vis = self.imports.imported_type_info
+                    let original_vis = self
+                        .imports
+                        .imported_type_info
                         .get(&effective_name)
                         .map(|(_, vis)| vis.clone())
                         .unwrap_or(Visibility::Opaque);
-                    self.reexported_type_visibility.insert(effective_name.clone(), original_vis);
+                    self.reexported_type_visibility
+                        .insert(effective_name.clone(), original_vis);
                 }
                 if found_trait {
-                    if let Some(td) = self.imported_trait_defs
+                    if let Some(td) = self
+                        .imported_trait_defs
                         .iter()
                         .find(|td| td.name == effective_name)
                     {

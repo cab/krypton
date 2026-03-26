@@ -27,7 +27,10 @@ fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
         }
         Type::Own(inner) => format!("~{}", type_to_source(inner, var_names)),
         Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| type_to_source(p, var_names)).collect();
+            let ps: Vec<String> = params
+                .iter()
+                .map(|p| type_to_source(p, var_names))
+                .collect();
             format!("({}) -> {}", ps.join(", "), type_to_source(ret, var_names))
         }
         Type::Named(name, args) => {
@@ -115,11 +118,7 @@ impl<'a> TypedFormatter<'a> {
         }
     }
 
-    fn fmt_fn_decl(
-        &mut self,
-        typed_fn: &TypedFnDecl,
-        fn_type: &Type,
-    ) {
+    fn fmt_fn_decl(&mut self, typed_fn: &TypedFnDecl, fn_type: &Type) {
         let (param_types, ret_type) = match fn_type {
             Type::Fn(params, ret) => (params.clone(), self.type_str(ret)),
             _ => (vec![], self.type_str(fn_type)),
@@ -165,12 +164,7 @@ impl<'a> TypedFormatter<'a> {
     }
 
     /// Format an impl method with types from the TypedAST.
-    fn fmt_impl_method(
-        &mut self,
-        display_name: &str,
-        typed_fn: &TypedFnDecl,
-        fn_type: &Type,
-    ) {
+    fn fmt_impl_method(&mut self, display_name: &str, typed_fn: &TypedFnDecl, fn_type: &Type) {
         let (param_types, ret_type) = match fn_type {
             Type::Fn(params, ret) => (params.clone(), self.type_str(ret)),
             _ => (vec![], self.type_str(fn_type)),
@@ -229,7 +223,10 @@ impl<'a> TypedFormatter<'a> {
             let is_last = i == exprs.len() - 1;
 
             // Check for shadow closes on Let expressions
-            if matches!(&expr.kind, TypedExprKind::Let { .. } | TypedExprKind::LetPattern { .. }) {
+            if matches!(
+                &expr.kind,
+                TypedExprKind::Let { .. } | TypedExprKind::LetPattern { .. }
+            ) {
                 self.emit_close_comments_for_span(&expr.span, "shadow");
             }
 
@@ -285,7 +282,11 @@ impl<'a> TypedFormatter<'a> {
 
     fn fmt_stmt(&mut self, expr: &TypedExpr, fn_name: &str) {
         match &expr.kind {
-            TypedExprKind::Let { name, value, body: None } => {
+            TypedExprKind::Let {
+                name,
+                value,
+                body: None,
+            } => {
                 self.buf.push_str("let ");
                 self.buf.push_str(name);
                 self.buf.push_str(": ");
@@ -293,7 +294,11 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str(" = ");
                 self.fmt_expr(value);
             }
-            TypedExprKind::Let { name, value, body: Some(body) } => {
+            TypedExprKind::Let {
+                name,
+                value,
+                body: Some(body),
+            } => {
                 self.buf.push_str("let ");
                 self.buf.push_str(name);
                 self.buf.push_str(": ");
@@ -306,7 +311,11 @@ impl<'a> TypedFormatter<'a> {
                 self.indent();
                 self.fmt_stmt(body, fn_name);
             }
-            TypedExprKind::LetPattern { pattern, value, body: None } => {
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body: None,
+            } => {
                 self.buf.push_str("let ");
                 self.fmt_typed_pattern(pattern);
                 self.buf.push_str(": ");
@@ -314,7 +323,11 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str(" = ");
                 self.fmt_expr(value);
             }
-            TypedExprKind::LetPattern { pattern, value, body: Some(body) } => {
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body: Some(body),
+            } => {
                 self.buf.push_str("let ");
                 self.fmt_typed_pattern(pattern);
                 self.buf.push_str(": ");
@@ -359,7 +372,10 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str(" { ");
                 self.fmt_expr(then_);
                 self.buf.push_str(" }");
-                if !matches!(&else_.kind, TypedExprKind::Lit(krypton_parser::ast::Lit::Unit)) {
+                if !matches!(
+                    &else_.kind,
+                    TypedExprKind::Lit(krypton_parser::ast::Lit::Unit)
+                ) {
                     self.buf.push_str(" else { ");
                     self.fmt_expr(else_);
                     self.buf.push_str(" }");
@@ -389,29 +405,31 @@ impl<'a> TypedFormatter<'a> {
                     }
                 }
             }
-            TypedExprKind::LetPattern { pattern, value, body } => {
-                match body {
-                    Some(body_expr) => {
-                        self.buf.push_str("{ let ");
-                        self.fmt_typed_pattern(pattern);
-                        self.buf.push_str(": ");
-                        self.buf.push_str(&self.type_str(&value.ty));
-                        self.buf.push_str(" = ");
-                        self.fmt_expr(value);
-                        self.buf.push_str("; ");
-                        self.fmt_expr(body_expr);
-                        self.buf.push_str(" }");
-                    }
-                    None => {
-                        self.buf.push_str("let ");
-                        self.fmt_typed_pattern(pattern);
-                        self.buf.push_str(": ");
-                        self.buf.push_str(&self.type_str(&value.ty));
-                        self.buf.push_str(" = ");
-                        self.fmt_expr(value);
-                    }
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body,
+            } => match body {
+                Some(body_expr) => {
+                    self.buf.push_str("{ let ");
+                    self.fmt_typed_pattern(pattern);
+                    self.buf.push_str(": ");
+                    self.buf.push_str(&self.type_str(&value.ty));
+                    self.buf.push_str(" = ");
+                    self.fmt_expr(value);
+                    self.buf.push_str("; ");
+                    self.fmt_expr(body_expr);
+                    self.buf.push_str(" }");
                 }
-            }
+                None => {
+                    self.buf.push_str("let ");
+                    self.fmt_typed_pattern(pattern);
+                    self.buf.push_str(": ");
+                    self.buf.push_str(&self.type_str(&value.ty));
+                    self.buf.push_str(" = ");
+                    self.fmt_expr(value);
+                }
+            },
             TypedExprKind::Do(exprs) => {
                 self.buf.push_str("{\n");
                 self.indent_level += 1;
@@ -635,10 +653,7 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push(')');
             }
             TypedPattern::StructPat {
-                name,
-                fields,
-                rest,
-                ..
+                name, fields, rest, ..
             } => {
                 self.buf.push_str(name);
                 self.buf.push_str(" { ");
@@ -741,7 +756,10 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
 /// Extract the base type name from a TypeExpr (for mangled name lookup).
 fn type_expr_base_name(ty: &TypeExpr) -> &str {
     match ty {
-        TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } | TypeExpr::App { name, .. } | TypeExpr::Qualified { name, .. } => name,
+        TypeExpr::Named { name, .. }
+        | TypeExpr::Var { name, .. }
+        | TypeExpr::App { name, .. }
+        | TypeExpr::Qualified { name, .. } => name,
         TypeExpr::Own { inner, .. } => type_expr_base_name(inner),
         _ => "",
     }
@@ -841,9 +859,9 @@ pub fn render_inspect(
                         }
                     }
                     output.push_str("    ");
-                    output.push_str(&krypton_parser::pretty::pretty_print_decl(
-                        &Decl::DefFn(m.clone()),
-                    ));
+                    output.push_str(&krypton_parser::pretty::pretty_print_decl(&Decl::DefFn(
+                        m.clone(),
+                    )));
                     output.push('\n');
                 }
                 output.push('}');

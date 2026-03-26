@@ -25,13 +25,21 @@ fn test_parse_prints_ast() {
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("DefFn"), "stdout should contain DefFn: {stdout}");
+    assert!(
+        stdout.contains("DefFn"),
+        "stdout should contain DefFn: {stdout}"
+    );
 }
 
 #[test]
 fn test_parse_surface_format() {
     let output = krypton_bin()
-        .args(["parse", "--format", "surface", "tests/fixtures/parser/basic_hello.kr"])
+        .args([
+            "parse",
+            "--format",
+            "surface",
+            "tests/fixtures/parser/basic_hello.kr",
+        ])
         .output()
         .expect("failed to run krypton");
     assert!(output.status.success(), "exit code should be 0");
@@ -123,8 +131,15 @@ fn test_compile_produces_jar() {
         .args(["compile", "hello.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(dir.path().join("hello.jar").exists(), "hello.jar should be created");
+    assert!(
+        output.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        dir.path().join("hello.jar").exists(),
+        "hello.jar should be created"
+    );
 }
 
 #[test]
@@ -138,7 +153,11 @@ fn test_compile_jar_runs_with_java() {
         .args(["compile", "hello.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(compile.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&compile.stderr));
+    assert!(
+        compile.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
 
     let run = Command::new("java")
         .current_dir(dir.path())
@@ -146,8 +165,15 @@ fn test_compile_jar_runs_with_java() {
         .output()
         .expect("failed to run java");
     let stdout = String::from_utf8_lossy(&run.stdout);
-    assert!(run.status.success(), "java -jar should succeed: {}", String::from_utf8_lossy(&run.stderr));
-    assert!(stdout.contains("hello world"), "stdout should contain 'hello world': {stdout}");
+    assert!(
+        run.status.success(),
+        "java -jar should succeed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        stdout.contains("hello world"),
+        "stdout should contain 'hello world': {stdout}"
+    );
 }
 
 #[test]
@@ -161,8 +187,15 @@ fn test_compile_custom_output() {
         .args(["compile", "hello.kr", "-o", "build/out.jar"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "compile should succeed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(dir.path().join("build/out.jar").exists(), "build/out.jar should be created");
+    assert!(
+        output.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        dir.path().join("build/out.jar").exists(),
+        "build/out.jar should be created"
+    );
 }
 
 #[test]
@@ -171,7 +204,11 @@ fn test_run_hello_world() {
         .args(["run", "tests/fixtures/functions/hello.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "exit code should be 0: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("hello world"),
@@ -185,7 +222,11 @@ fn test_run_factorial() {
         .args(["run", "tests/fixtures/functions/factorial.kr"])
         .output()
         .expect("failed to run krypton");
-    assert!(output.status.success(), "exit code should be 0: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "exit code should be 0: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("3628800"),

@@ -196,7 +196,12 @@ fn coerce_own_to_bare_ok() {
 fn coerce_own_to_own_ok() {
     let mut subst = Substitution::new();
     // coerce_unify(Own(Int), Own(Int)) → OK
-    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Own(Box::new(Type::Int)), &mut subst).is_ok());
+    assert!(coerce_unify(
+        &Type::Own(Box::new(Type::Int)),
+        &Type::Own(Box::new(Type::Int)),
+        &mut subst
+    )
+    .is_ok());
 }
 
 #[test]
@@ -239,7 +244,12 @@ fn coerce_fn_param_contravariant_preserves_own() {
 fn join_own_own_preserves() {
     let mut subst = Substitution::new();
     // join_types(Own(Int), Own(Int)) → OK (preserves structure)
-    assert!(join_types(&Type::Own(Box::new(Type::Int)), &Type::Own(Box::new(Type::Int)), &mut subst).is_ok());
+    assert!(join_types(
+        &Type::Own(Box::new(Type::Int)),
+        &Type::Own(Box::new(Type::Int)),
+        &mut subst
+    )
+    .is_ok());
 }
 
 #[test]
@@ -275,7 +285,10 @@ fn mismatch_with_var_names() {
     };
     let msg = err.format_message();
     assert!(msg.contains("elem"), "expected user name 'elem' in: {msg}");
-    assert!(msg.contains("(elem) -> Int"), "expected '(elem) -> Int' in: {msg}");
+    assert!(
+        msg.contains("(elem) -> Int"),
+        "expected '(elem) -> Int' in: {msg}"
+    );
 }
 
 #[test]
@@ -292,6 +305,12 @@ fn mismatch_without_var_names() {
         var_names: None,
     };
     let msg = err.format_message();
-    assert!(msg.contains("expected Int"), "expected 'expected Int' in: {msg}");
-    assert!(msg.contains("found String"), "expected 'found String' in: {msg}");
+    assert!(
+        msg.contains("expected Int"),
+        "expected 'expected Int' in: {msg}"
+    );
+    assert!(
+        msg.contains("found String"),
+        "expected 'found String' in: {msg}"
+    );
 }

@@ -138,7 +138,11 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
                 0
             } else {
                 let uses = count_max_uses(body, name, &inner_bound);
-                if uses > 0 { 1 } else { 0 }
+                if uses > 0 {
+                    1
+                } else {
+                    0
+                }
             }
         }
 
@@ -320,13 +324,19 @@ fn collect_owned_pattern_vars_inner(pattern: &TypedPattern, out: &mut Vec<String
             }
         }
         TypedPattern::Constructor { args, .. } => {
-            for arg in args { collect_owned_pattern_vars_inner(arg, out); }
+            for arg in args {
+                collect_owned_pattern_vars_inner(arg, out);
+            }
         }
         TypedPattern::Tuple { elements, .. } => {
-            for elem in elements { collect_owned_pattern_vars_inner(elem, out); }
+            for elem in elements {
+                collect_owned_pattern_vars_inner(elem, out);
+            }
         }
         TypedPattern::StructPat { fields, .. } => {
-            for (_, pat) in fields { collect_owned_pattern_vars_inner(pat, out); }
+            for (_, pat) in fields {
+                collect_owned_pattern_vars_inner(pat, out);
+            }
         }
         TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
     }
@@ -343,13 +353,19 @@ fn collect_pattern_var_names_inner(pattern: &TypedPattern, out: &mut Vec<String>
     match pattern {
         TypedPattern::Var { name, .. } => out.push(name.clone()),
         TypedPattern::Constructor { args, .. } => {
-            for arg in args { collect_pattern_var_names_inner(arg, out); }
+            for arg in args {
+                collect_pattern_var_names_inner(arg, out);
+            }
         }
         TypedPattern::Tuple { elements, .. } => {
-            for elem in elements { collect_pattern_var_names_inner(elem, out); }
+            for elem in elements {
+                collect_pattern_var_names_inner(elem, out);
+            }
         }
         TypedPattern::StructPat { fields, .. } => {
-            for (_, pat) in fields { collect_pattern_var_names_inner(pat, out); }
+            for (_, pat) in fields {
+                collect_pattern_var_names_inner(pat, out);
+            }
         }
         TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
     }
@@ -380,7 +396,9 @@ fn collect_free_owned(
         }
         TypedExprKind::App { func, args } => {
             collect_free_owned(func, owned, bound, acc);
-            for a in args { collect_free_owned(a, owned, bound, acc); }
+            for a in args {
+                collect_free_owned(a, owned, bound, acc);
+            }
         }
         TypedExprKind::TypeApp { expr, .. } => collect_free_owned(expr, owned, bound, acc),
         TypedExprKind::Let { name, value, body } => {
@@ -391,7 +409,11 @@ fn collect_free_owned(
                 collect_free_owned(body, owned, &inner_bound, acc);
             }
         }
-        TypedExprKind::LetPattern { pattern, value, body } => {
+        TypedExprKind::LetPattern {
+            pattern,
+            value,
+            body,
+        } => {
             collect_free_owned(value, owned, bound, acc);
             if let Some(body) = body {
                 let mut inner_bound = bound.clone();
@@ -402,7 +424,9 @@ fn collect_free_owned(
             }
         }
         TypedExprKind::Do(exprs) => {
-            for e in exprs { collect_free_owned(e, owned, bound, acc); }
+            for e in exprs {
+                collect_free_owned(e, owned, bound, acc);
+            }
         }
         TypedExprKind::If { cond, then_, else_ } => {
             collect_free_owned(cond, owned, bound, acc);
@@ -428,21 +452,31 @@ fn collect_free_owned(
         }
         TypedExprKind::Lambda { params, body } => {
             let mut inner_bound = bound.clone();
-            for p in params { inner_bound.insert(p.clone()); }
+            for p in params {
+                inner_bound.insert(p.clone());
+            }
             collect_free_owned(body, owned, &inner_bound, acc);
         }
         TypedExprKind::FieldAccess { expr, .. } => {
             collect_free_owned(expr, owned, bound, acc);
         }
         TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields { collect_free_owned(e, owned, bound, acc); }
+            for (_, e) in fields {
+                collect_free_owned(e, owned, bound, acc);
+            }
         }
         TypedExprKind::StructUpdate { base, fields } => {
             collect_free_owned(base, owned, bound, acc);
-            for (_, e) in fields { collect_free_owned(e, owned, bound, acc); }
+            for (_, e) in fields {
+                collect_free_owned(e, owned, bound, acc);
+            }
         }
-        TypedExprKind::Tuple(elements) | TypedExprKind::Recur(elements) | TypedExprKind::VecLit(elements) => {
-            for e in elements { collect_free_owned(e, owned, bound, acc); }
+        TypedExprKind::Tuple(elements)
+        | TypedExprKind::Recur(elements)
+        | TypedExprKind::VecLit(elements) => {
+            for e in elements {
+                collect_free_owned(e, owned, bound, acc);
+            }
         }
         TypedExprKind::QuestionMark { expr, .. } => {
             collect_free_owned(expr, owned, bound, acc);
@@ -512,7 +546,9 @@ pub fn check_ownership(
     // Compute qualifier requirements per function (stays on surface AST)
     let mut fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types, shared_type_vars);
     for (name, quals) in imported_fn_qualifiers {
-        fn_qualifiers.entry(name.clone()).or_insert_with(|| quals.clone());
+        fn_qualifiers
+            .entry(name.clone())
+            .or_insert_with(|| quals.clone());
     }
 
     let mut all_moves: HashMap<Span, String> = HashMap::new();
@@ -565,7 +601,9 @@ impl<'a> OwnershipChecker<'a> {
     fn is_owned_expr(&self, expr: &TypedExpr) -> bool {
         match &expr.kind {
             TypedExprKind::Lit(_) => true,
-            TypedExprKind::Var(name) => self.owned.contains(name) || self.registry.is_constructor(name),
+            TypedExprKind::Var(name) => {
+                self.owned.contains(name) || self.registry.is_constructor(name)
+            }
             TypedExprKind::StructLit { .. }
             | TypedExprKind::StructUpdate { .. }
             | TypedExprKind::Tuple(_)
@@ -584,9 +622,7 @@ impl<'a> OwnershipChecker<'a> {
             TypedExprKind::Match { arms, .. } => {
                 !arms.is_empty() && arms.iter().all(|arm| self.is_owned_expr(&arm.body))
             }
-            TypedExprKind::Do(exprs) => {
-                exprs.last().is_some_and(|last| self.is_owned_expr(last))
-            }
+            TypedExprKind::Do(exprs) => exprs.last().is_some_and(|last| self.is_owned_expr(last)),
             TypedExprKind::Let { body, .. } | TypedExprKind::LetPattern { body, .. } => {
                 body.as_ref().is_some_and(|b| self.is_owned_expr(b))
             }
@@ -594,23 +630,40 @@ impl<'a> OwnershipChecker<'a> {
         }
     }
 
-    fn check_not_consumed(&self, name: &str, span: Span, note: Option<String>) -> Result<(), SpannedTypeError> {
+    fn check_not_consumed(
+        &self,
+        name: &str,
+        span: Span,
+        note: Option<String>,
+    ) -> Result<(), SpannedTypeError> {
         if let Some(&first_span) = self.consumed.get(name) {
             return Err(SpannedTypeError {
-                error: TypeError::AlreadyMoved { name: name.to_string() },
+                error: TypeError::AlreadyMoved {
+                    name: name.to_string(),
+                },
                 span,
                 note,
-                secondary_span: Some(SecondaryLabel { span: first_span, message: "first use here".into(), source_file: None }),
+                secondary_span: Some(SecondaryLabel {
+                    span: first_span,
+                    message: "first use here".into(),
+                    source_file: None,
+                }),
                 source_file: None,
                 var_names: None,
             });
         }
         if let Some(&branch_span) = self.partially_consumed.get(name) {
             return Err(SpannedTypeError {
-                error: TypeError::MovedInBranch { name: name.to_string() },
+                error: TypeError::MovedInBranch {
+                    name: name.to_string(),
+                },
                 span,
                 note: None,
-                secondary_span: Some(SecondaryLabel { span: branch_span, message: "consumed here".into(), source_file: None }),
+                secondary_span: Some(SecondaryLabel {
+                    span: branch_span,
+                    message: "consumed here".into(),
+                    source_file: None,
+                }),
                 source_file: None,
                 var_names: None,
             });
@@ -619,11 +672,16 @@ impl<'a> OwnershipChecker<'a> {
     }
 
     fn check_exprs(&mut self, exprs: &[TypedExpr]) -> Result<(), SpannedTypeError> {
-        for e in exprs { self.check_expr(e)?; }
+        for e in exprs {
+            self.check_expr(e)?;
+        }
         Ok(())
     }
 
-    fn check_branch(&mut self, expr: &TypedExpr) -> Result<(HashMap<String, Span>, HashMap<String, Span>), SpannedTypeError> {
+    fn check_branch(
+        &mut self,
+        expr: &TypedExpr,
+    ) -> Result<(HashMap<String, Span>, HashMap<String, Span>), SpannedTypeError> {
         let saved_consumed = self.consumed.clone();
         let saved_partial = self.partially_consumed.clone();
         self.check_expr(expr)?;
@@ -645,8 +703,10 @@ impl<'a> OwnershipChecker<'a> {
 
             TypedExprKind::App { func, args } => {
                 self.check_expr(func)?;
-                let callee_params = callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
-                let callee_qualifiers = callee_var_name(func).and_then(|name| self.fn_qualifiers.get(name));
+                let callee_params =
+                    callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
+                let callee_qualifiers =
+                    callee_var_name(func).and_then(|name| self.fn_qualifiers.get(name));
                 for (i, arg) in args.iter().enumerate() {
                     // Check qualifier mismatch: affine Var arg passed to RequiresU param
                     if let TypedExprKind::Var(arg_name) = &arg.kind {
@@ -654,8 +714,9 @@ impl<'a> OwnershipChecker<'a> {
                             if let Some(quals) = callee_qualifiers {
                                 if let Some((qualifier, param_name)) = quals.get(i) {
                                     if matches!(qualifier, ParamQualifier::RequiresU) {
-                                        let callee_name =
-                                            callee_var_name(func).unwrap_or("<anonymous>").to_string();
+                                        let callee_name = callee_var_name(func)
+                                            .unwrap_or("<anonymous>")
+                                            .to_string();
                                         return Err(SpannedTypeError {
                                             error: TypeError::QualifierMismatch {
                                                 name: arg_name.clone(),
@@ -689,8 +750,9 @@ impl<'a> OwnershipChecker<'a> {
                                 if let Some((qualifier, param_name)) = quals.get(i) {
                                     match qualifier {
                                         ParamQualifier::RequiresU | ParamQualifier::Shared => {
-                                            let callee_name =
-                                                callee_var_name(func).unwrap_or("<anonymous>").to_string();
+                                            let callee_name = callee_var_name(func)
+                                                .unwrap_or("<anonymous>")
+                                                .to_string();
                                             return Err(SpannedTypeError {
                                                 error: TypeError::QualifierMismatch {
                                                     name: "<lambda>".to_string(),
@@ -778,7 +840,11 @@ impl<'a> OwnershipChecker<'a> {
                 Ok(())
             }
 
-            TypedExprKind::LetPattern { pattern, value, body } => {
+            TypedExprKind::LetPattern {
+                pattern,
+                value,
+                body,
+            } => {
                 self.check_expr(value)?;
                 // Fabrication guard for let-pattern
                 if self.let_own_spans.contains(&expr.span) {
@@ -824,10 +890,18 @@ impl<'a> OwnershipChecker<'a> {
 
                 let then_keys: HashSet<String> = then_consumed.keys().cloned().collect();
                 let else_keys: HashSet<String> = else_consumed.keys().cloned().collect();
-                let newly_in_then: HashSet<String> = then_keys.difference(&before).cloned().collect();
-                let newly_in_else: HashSet<String> = else_keys.difference(&before).cloned().collect();
-                let in_all: HashSet<String> = newly_in_then.intersection(&newly_in_else).cloned().collect();
-                let in_some: HashSet<String> = newly_in_then.symmetric_difference(&newly_in_else).cloned().collect();
+                let newly_in_then: HashSet<String> =
+                    then_keys.difference(&before).cloned().collect();
+                let newly_in_else: HashSet<String> =
+                    else_keys.difference(&before).cloned().collect();
+                let in_all: HashSet<String> = newly_in_then
+                    .intersection(&newly_in_else)
+                    .cloned()
+                    .collect();
+                let in_some: HashSet<String> = newly_in_then
+                    .symmetric_difference(&newly_in_else)
+                    .cloned()
+                    .collect();
 
                 for name in &in_all {
                     if let Some(&span) = then_consumed.get(name) {
@@ -923,7 +997,11 @@ impl<'a> OwnershipChecker<'a> {
                             error: TypeError::CapturedMoved { name: name.clone() },
                             span: expr.span,
                             note: None,
-                            secondary_span: Some(SecondaryLabel { span: first_span, message: "consumed here".into(), source_file: None }),
+                            secondary_span: Some(SecondaryLabel {
+                                span: first_span,
+                                message: "consumed here".into(),
+                                source_file: None,
+                            }),
                             source_file: None,
                             var_names: None,
                         });
@@ -955,12 +1033,16 @@ impl<'a> OwnershipChecker<'a> {
             }
 
             TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields { self.check_expr(e)?; }
+                for (_, e) in fields {
+                    self.check_expr(e)?;
+                }
                 Ok(())
             }
 
             TypedExprKind::StructUpdate { base, fields } => {
-                for (_, e) in fields { self.check_expr(e)?; }
+                for (_, e) in fields {
+                    self.check_expr(e)?;
+                }
 
                 // Read base type directly from the typed AST
                 let base_is_owned = matches!(&base.ty, Type::Own(_));
@@ -971,8 +1053,12 @@ impl<'a> OwnershipChecker<'a> {
 
                 let (type_name, base_consumed) = if let Type::Named(name, _) = inner_ty {
                     if let Some(info) = self.registry.lookup_type(name) {
-                        if let TypeKind::Record { fields: record_fields } = &info.kind {
-                            let updated_fields: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                        if let TypeKind::Record {
+                            fields: record_fields,
+                        } = &info.kind
+                        {
+                            let updated_fields: HashSet<&str> =
+                                fields.iter().map(|(n, _)| n.as_str()).collect();
                             let has_unreplaced_own = record_fields.iter().any(|(fname, fty)| {
                                 type_contains_own(fty) && !updated_fields.contains(fname.as_str())
                             });
@@ -994,10 +1080,16 @@ impl<'a> OwnershipChecker<'a> {
                         let mut first_owned_field_ty: Option<Type> = None;
                         if let Some(type_name) = type_name {
                             if let Some(info) = self.registry.lookup_type(type_name) {
-                                if let TypeKind::Record { fields: record_fields } = &info.kind {
-                                    let updated_fields: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                                if let TypeKind::Record {
+                                    fields: record_fields,
+                                } = &info.kind
+                                {
+                                    let updated_fields: HashSet<&str> =
+                                        fields.iter().map(|(n, _)| n.as_str()).collect();
                                     for (fname, fty) in record_fields {
-                                        if type_contains_own(fty) && !updated_fields.contains(fname.as_str()) {
+                                        if type_contains_own(fty)
+                                            && !updated_fields.contains(fname.as_str())
+                                        {
                                             if first_owned_field_ty.is_none() {
                                                 first_owned_field_ty = Some(fty.clone());
                                             }

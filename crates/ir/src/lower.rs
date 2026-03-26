@@ -410,8 +410,7 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
 
 fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
     match simple {
-        SimpleExpr::Call { func: _, args }
-        | SimpleExpr::TraitCall { args, .. } => {
+        SimpleExpr::Call { func: _, args } | SimpleExpr::TraitCall { args, .. } => {
             for atom in args {
                 referenced_vars_atom(atom, vars);
             }
@@ -567,7 +566,6 @@ impl LowerCtx {
         self.fn_ids.get(name).copied()
     }
 
-
     /// Emit close() calls for a list of AutoCloseBindings, wrapping `inner`.
     /// Resolves variable names and dicts from current scope.
     fn emit_close_calls(
@@ -588,10 +586,7 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
         let trait_name = TraitName::core_resource();
-        let (dict_bindings, dict_atom) = self.resolve_dict(
-            &trait_name,
-            &dict_ty,
-        )?;
+        let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
         let unit_var = self.fresh_var();
         let close_expr = Expr {
             ty: body.ty.clone(),
@@ -628,10 +623,7 @@ impl LowerCtx {
                     ))
                 })?;
             let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
-            let (dict_bindings, dict_atom) = self.resolve_dict(
-                &trait_name,
-                &dict_ty,
-            )?;
+            let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
             resolved.push(ResolvedClose {
                 trait_name: trait_name.clone(),
                 binding_var,
@@ -868,7 +860,10 @@ impl LowerCtx {
                     Err(LowerError::UnresolvedVar(name.clone()))
                 }
             }
-            TypedExprKind::TypeApp { expr: inner, type_args } => {
+            TypedExprKind::TypeApp {
+                expr: inner,
+                type_args,
+            } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
                 if let TypedExprKind::Var(name) = &inner.kind {
                     if let Some(ref origin) = inner.origin {
@@ -1033,7 +1028,10 @@ impl LowerCtx {
                     "lower_to_simple called on plain Var({name})"
                 )))
             }
-            TypedExprKind::TypeApp { expr: inner, type_args } => {
+            TypedExprKind::TypeApp {
+                expr: inner,
+                type_args,
+            } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
                 if let TypedExprKind::Var(name) = &inner.kind {
                     if let Some(ref origin) = inner.origin {
@@ -1280,7 +1278,10 @@ impl LowerCtx {
                 }
             }
 
-            TypedExprKind::TypeApp { expr: inner, type_args } => {
+            TypedExprKind::TypeApp {
+                expr: inner,
+                type_args,
+            } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
                 if let TypedExprKind::Var(name) = &inner.kind {
                     if let Some(ref origin) = inner.origin {
@@ -2832,42 +2833,12 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name, swap, negate) = match op {
-            BinOp::Eq => (
-                TraitName::core_eq(),
-                "eq",
-                false,
-                false,
-            ),
-            BinOp::Neq => (
-                TraitName::core_eq(),
-                "eq",
-                false,
-                true,
-            ),
-            BinOp::Lt => (
-                TraitName::core_ord(),
-                "lt",
-                false,
-                false,
-            ),
-            BinOp::Gt => (
-                TraitName::core_ord(),
-                "lt",
-                true,
-                false,
-            ),
-            BinOp::Le => (
-                TraitName::core_ord(),
-                "lt",
-                true,
-                true,
-            ),
-            BinOp::Ge => (
-                TraitName::core_ord(),
-                "lt",
-                false,
-                true,
-            ),
+            BinOp::Eq => (TraitName::core_eq(), "eq", false, false),
+            BinOp::Neq => (TraitName::core_eq(), "eq", false, true),
+            BinOp::Lt => (TraitName::core_ord(), "lt", false, false),
+            BinOp::Gt => (TraitName::core_ord(), "lt", true, false),
+            BinOp::Le => (TraitName::core_ord(), "lt", true, true),
+            BinOp::Ge => (TraitName::core_ord(), "lt", false, true),
             _ => unreachable!(),
         };
 
@@ -2933,22 +2904,10 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name) = match op {
-            BinOp::Add => (
-                TraitName::core_semigroup(),
-                "combine",
-            ),
-            BinOp::Sub => (
-                TraitName::core_sub(),
-                "sub",
-            ),
-            BinOp::Mul => (
-                TraitName::core_mul(),
-                "mul",
-            ),
-            BinOp::Div => (
-                TraitName::core_div(),
-                "div",
-            ),
+            BinOp::Add => (TraitName::core_semigroup(), "combine"),
+            BinOp::Sub => (TraitName::core_sub(), "sub"),
+            BinOp::Mul => (TraitName::core_mul(), "mul"),
+            BinOp::Div => (TraitName::core_div(), "div"),
             _ => unreachable!(),
         };
 
@@ -2991,10 +2950,7 @@ impl LowerCtx {
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
         let (trait_name, method_name) = match op {
-            UnaryOp::Neg => (
-                TraitName::core_neg(),
-                "neg",
-            ),
+            UnaryOp::Neg => (TraitName::core_neg(), "neg"),
             _ => unreachable!(),
         };
 
@@ -3071,8 +3027,7 @@ impl LowerCtx {
         // Handle trait method dispatch (origin-tagged calls)
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let dict_ty =
-                    self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
+                let dict_ty = self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
                 bindings.extend(dict_bindings);
 
@@ -3219,8 +3174,7 @@ impl LowerCtx {
         // Handle trait method dispatch
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let dict_ty =
-                    self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
+                let dict_ty = self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
 
                 let trait_id = trait_id.clone();
@@ -3706,7 +3660,8 @@ impl LowerCtx {
         type_args: &[Type],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         // 1. Resolve the dispatch type
-        let dispatch_ty = self.resolve_dispatch_type(trait_name, method_name, expr_ty, type_args)?;
+        let dispatch_ty =
+            self.resolve_dispatch_type(trait_name, method_name, expr_ty, type_args)?;
 
         // 2. Resolve the dict
         let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dispatch_ty)?;
@@ -4174,7 +4129,9 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .constraints
             .iter()
             .filter_map(|c| {
-                inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
+                inst.type_var_ids
+                    .get(&c.type_var)
+                    .map(|&tv| (c.trait_name.clone(), tv))
             })
             .collect();
         if constraint_pairs.is_empty() {
@@ -4585,7 +4542,9 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .constraints
             .iter()
             .filter_map(|c| {
-                inst.type_var_ids.get(&c.type_var).map(|&tv| (c.trait_name.clone(), tv))
+                inst.type_var_ids
+                    .get(&c.type_var)
+                    .map(|&tv| (c.trait_name.clone(), tv))
             })
             .collect();
         InstanceDef {

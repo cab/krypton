@@ -10,12 +10,15 @@ use krypton_modules::stdlib_loader::StdlibLoader;
 /// For module parse errors, delegates to the parser's own diagnostic renderer.
 pub fn render_infer_error(filename: &str, source: &str, err: &InferError) -> String {
     match err {
-        InferError::TypeError { error, error_source } => {
-            render_type_error_with_source(filename, source, error, error_source.as_ref())
-        }
-        InferError::ModuleParseError { path, source: mod_source, errors } => {
-            krypton_parser::diagnostics::render_errors(path, mod_source, errors)
-        }
+        InferError::TypeError {
+            error,
+            error_source,
+        } => render_type_error_with_source(filename, source, error, error_source.as_ref()),
+        InferError::ModuleParseError {
+            path,
+            source: mod_source,
+            errors,
+        } => krypton_parser::diagnostics::render_errors(path, mod_source, errors),
     }
 }
 

@@ -11,7 +11,10 @@ struct MapResolver {
 impl MapResolver {
     fn new(modules: Vec<(&str, &str)>) -> Self {
         Self {
-            modules: modules.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            modules: modules
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
         }
     }
 }
@@ -30,14 +33,17 @@ fn parse(source: &str) -> krypton_parser::ast::Module {
 
 #[test]
 fn graph_single_import() {
-    let resolver = MapResolver::new(vec![
-        ("mylib", "pub fun add(x: Int, y: Int) -> Int = x + y"),
-    ]);
+    let resolver = MapResolver::new(vec![(
+        "mylib",
+        "pub fun add(x: Int, y: Int) -> Int = x + y",
+    )]);
     let root = parse("import mylib.{add}\nfun main() -> Int = add(1, 2)");
     let graph = build_module_graph(&root, &resolver).unwrap();
 
     // Should contain prelude tree + mylib
-    let user_modules: Vec<&str> = graph.modules.iter()
+    let user_modules: Vec<&str> = graph
+        .modules
+        .iter()
         .filter(|m| !m.path.starts_with("core/") && m.path != "prelude")
         .map(|m| m.path.as_str())
         .collect();
@@ -54,7 +60,9 @@ fn graph_transitive_imports() {
     let root = parse("import a.{bar}\nfun main() -> Int = bar()");
     let graph = build_module_graph(&root, &resolver).unwrap();
 
-    let user_modules: Vec<&str> = graph.modules.iter()
+    let user_modules: Vec<&str> = graph
+        .modules
+        .iter()
         .filter(|m| !m.path.starts_with("core/") && m.path != "prelude")
         .map(|m| m.path.as_str())
         .collect();
@@ -72,7 +80,9 @@ fn graph_diamond_dedup() {
     let root = parse("import b.{fb}\nimport c.{fc}\nfun main() -> Int = fb() + fc()");
     let graph = build_module_graph(&root, &resolver).unwrap();
 
-    let user_modules: Vec<&str> = graph.modules.iter()
+    let user_modules: Vec<&str> = graph
+        .modules
+        .iter()
         .filter(|m| !m.path.starts_with("core/") && m.path != "prelude")
         .map(|m| m.path.as_str())
         .collect();
@@ -121,13 +131,13 @@ fn graph_unknown_module() {
 
 #[test]
 fn graph_bare_import() {
-    let resolver = MapResolver::new(vec![
-        ("foo", "pub fun bar() -> Int = 1"),
-    ]);
+    let resolver = MapResolver::new(vec![("foo", "pub fun bar() -> Int = 1")]);
     let root = parse("import foo\nfun main() -> Int = 1");
     let graph = build_module_graph(&root, &resolver).unwrap();
 
-    let user_modules: Vec<&str> = graph.modules.iter()
+    let user_modules: Vec<&str> = graph
+        .modules
+        .iter()
         .filter(|m| !m.path.starts_with("core/") && m.path != "prelude")
         .map(|m| m.path.as_str())
         .collect();
@@ -142,15 +152,27 @@ fn graph_prelude_included() {
 
     let paths: Vec<&str> = graph.modules.iter().map(|m| m.path.as_str()).collect();
     assert!(paths.contains(&"prelude"), "prelude should be in graph");
-    assert!(paths.contains(&"core/option"), "core/option should be in graph");
-    assert!(paths.contains(&"core/result"), "core/result should be in graph");
+    assert!(
+        paths.contains(&"core/option"),
+        "core/option should be in graph"
+    );
+    assert!(
+        paths.contains(&"core/result"),
+        "core/result should be in graph"
+    );
     assert!(paths.contains(&"core/list"), "core/list should be in graph");
-    assert!(paths.contains(&"core/ordering"), "core/ordering should be in graph");
+    assert!(
+        paths.contains(&"core/ordering"),
+        "core/ordering should be in graph"
+    );
 
     // Prelude should come after its deps
     let prelude_pos = paths.iter().position(|&p| p == "prelude").unwrap();
     let option_pos = paths.iter().position(|&p| p == "core/option").unwrap();
-    assert!(option_pos < prelude_pos, "core/option should come before prelude");
+    assert!(
+        option_pos < prelude_pos,
+        "core/option should come before prelude"
+    );
 }
 
 #[test]

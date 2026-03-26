@@ -63,11 +63,19 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
         }
         // Partial fn application: Fn([r], FnHole) applied to [a] → Fn([r], a)
         Type::Fn(params, hole) if args.len() == 1 => {
-            debug_assert_eq!(*hole, Type::FnHole, "normalize_app: expected FnHole sentinel in partial fn constructor");
+            debug_assert_eq!(
+                *hole,
+                Type::FnHole,
+                "normalize_app: expected FnHole sentinel in partial fn constructor"
+            );
             Type::Fn(params, Box::new(args.into_iter().next().unwrap()))
         }
         Type::Fn(mut params, hole) => {
-            debug_assert_eq!(*hole, Type::FnHole, "normalize_app: expected FnHole sentinel in partial fn constructor");
+            debug_assert_eq!(
+                *hole,
+                Type::FnHole,
+                "normalize_app: expected FnHole sentinel in partial fn constructor"
+            );
             // Multiple holes: first args extend params, last becomes ret
             let ret = args.last().unwrap().clone();
             params.extend(args[..args.len() - 1].iter().cloned());
@@ -85,7 +93,11 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
 ///   - remaining = `[R, S]` (the applied arguments)
 ///
 /// Returns `None` if `applied_count` is 0 or exceeds total arity (params + ret).
-pub fn decompose_fn_for_app(params: &[Type], ret: &Type, applied_count: usize) -> Option<(Type, Vec<Type>)> {
+pub fn decompose_fn_for_app(
+    params: &[Type],
+    ret: &Type,
+    applied_count: usize,
+) -> Option<(Type, Vec<Type>)> {
     let total = params.len() + 1;
     if applied_count == 0 || applied_count > total {
         return None;
@@ -106,7 +118,11 @@ impl Type {
         self.renumber_inner(&mut mapping, &mut next_id)
     }
 
-    fn renumber_inner(&self, mapping: &mut HashMap<TypeVarId, TypeVarId>, next_id: &mut u32) -> Type {
+    fn renumber_inner(
+        &self,
+        mapping: &mut HashMap<TypeVarId, TypeVarId>,
+        next_id: &mut u32,
+    ) -> Type {
         match self {
             Type::Var(id) => {
                 let new_id = *mapping.entry(*id).or_insert_with(|| {
@@ -117,20 +133,30 @@ impl Type {
                 Type::Var(new_id)
             }
             Type::Fn(params, ret) => Type::Fn(
-                params.iter().map(|p| p.renumber_inner(mapping, next_id)).collect(),
+                params
+                    .iter()
+                    .map(|p| p.renumber_inner(mapping, next_id))
+                    .collect(),
                 Box::new(ret.renumber_inner(mapping, next_id)),
             ),
             Type::Named(n, args) => Type::Named(
                 n.clone(),
-                args.iter().map(|a| a.renumber_inner(mapping, next_id)).collect(),
+                args.iter()
+                    .map(|a| a.renumber_inner(mapping, next_id))
+                    .collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.renumber_inner(mapping, next_id))),
             Type::Tuple(elems) => Type::Tuple(
-                elems.iter().map(|e| e.renumber_inner(mapping, next_id)).collect(),
+                elems
+                    .iter()
+                    .map(|e| e.renumber_inner(mapping, next_id))
+                    .collect(),
             ),
             Type::App(ctor, args) => Type::App(
                 Box::new(ctor.renumber_inner(mapping, next_id)),
-                args.iter().map(|a| a.renumber_inner(mapping, next_id)).collect(),
+                args.iter()
+                    .map(|a| a.renumber_inner(mapping, next_id))
+                    .collect(),
             ),
             other => other.clone(),
         }
@@ -145,12 +171,13 @@ impl Type {
                 Box::new(ret.remap_vars(mapping)),
             ),
             Type::Named(n, args) => Type::Named(
-                n.clone(), args.iter().map(|a| a.remap_vars(mapping)).collect(),
+                n.clone(),
+                args.iter().map(|a| a.remap_vars(mapping)).collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.remap_vars(mapping))),
-            Type::Tuple(elems) => Type::Tuple(
-                elems.iter().map(|e| e.remap_vars(mapping)).collect(),
-            ),
+            Type::Tuple(elems) => {
+                Type::Tuple(elems.iter().map(|e| e.remap_vars(mapping)).collect())
+            }
             Type::App(ctor, args) => Type::App(
                 Box::new(ctor.remap_vars(mapping)),
                 args.iter().map(|a| a.remap_vars(mapping)).collect(),
@@ -164,7 +191,10 @@ impl Type {
 pub fn renumber_types_for_display(types: &[&Type]) -> Vec<Type> {
     let mut mapping = HashMap::new();
     let mut next_id = 0u32;
-    types.iter().map(|t| t.renumber_inner(&mut mapping, &mut next_id)).collect()
+    types
+        .iter()
+        .map(|t| t.renumber_inner(&mut mapping, &mut next_id))
+        .collect()
 }
 
 impl fmt::Display for Type {
@@ -281,12 +311,24 @@ impl TypeScheme {
         }
         let new_ty = subst.apply(&self.ty);
         let new_vars = mapping.iter().map(|&(_, new)| new).collect();
-        let new_var_names = self.var_names.iter()
+        let new_var_names = self
+            .var_names
+            .iter()
             .filter_map(|(old, name)| {
-                mapping.iter().find(|(o, _)| o == old).map(|(_, new)| (*new, name.clone()))
+                mapping
+                    .iter()
+                    .find(|(o, _)| o == old)
+                    .map(|(_, new)| (*new, name.clone()))
             })
             .collect();
-        (TypeScheme { vars: new_vars, ty: new_ty, var_names: new_var_names }, mapping)
+        (
+            TypeScheme {
+                vars: new_vars,
+                ty: new_ty,
+                var_names: new_var_names,
+            },
+            mapping,
+        )
     }
 }
 
@@ -675,10 +717,9 @@ impl Type {
     pub fn strip_own(&self) -> Type {
         match self {
             Type::Own(inner) => inner.strip_own(),
-            Type::Named(name, args) => Type::Named(
-                name.clone(),
-                args.iter().map(|a| a.strip_own()).collect(),
-            ),
+            Type::Named(name, args) => {
+                Type::Named(name.clone(), args.iter().map(|a| a.strip_own()).collect())
+            }
             other => other.clone(),
         }
     }
@@ -717,11 +758,17 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
         Type::Unit => "Unit".to_string(),
         Type::Named(name, args) if args.is_empty() => name.clone(),
         Type::Named(name, args) => {
-            let arg_strs: Vec<String> = args.iter().map(|a| canonical_name_inner(a, var_map)).collect();
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| canonical_name_inner(a, var_map))
+                .collect();
             format!("{}${}", name, arg_strs.join("$"))
         }
         Type::Fn(params, ret) => {
-            let mut parts: Vec<String> = params.iter().map(|p| canonical_name_inner(p, var_map)).collect();
+            let mut parts: Vec<String> = params
+                .iter()
+                .map(|p| canonical_name_inner(p, var_map))
+                .collect();
             parts.push(canonical_name_inner(ret, var_map));
             format!("$Fun{}${}", params.len(), parts.join("$"))
         }
@@ -812,7 +859,10 @@ mod tests {
         // (a) -> Int  vs  (a) -> Bool
         let ty_int = Type::Fn(vec![Type::Var(TypeVarId(0))], Box::new(Type::Int));
         let ty_bool = Type::Fn(vec![Type::Var(TypeVarId(0))], Box::new(Type::Bool));
-        assert_ne!(type_to_canonical_name(&ty_int), type_to_canonical_name(&ty_bool));
+        assert_ne!(
+            type_to_canonical_name(&ty_int),
+            type_to_canonical_name(&ty_bool)
+        );
     }
 
     #[test]
@@ -822,7 +872,10 @@ mod tests {
         // The $ prefix on function types prevents collision with user type "Fun1"
         let fn_ty = Type::Fn(vec![Type::Int], Box::new(Type::Bool));
         let named_ty = Type::Named("Fun1".into(), vec![Type::Int, Type::Bool]);
-        assert_ne!(type_to_canonical_name(&fn_ty), type_to_canonical_name(&named_ty));
+        assert_ne!(
+            type_to_canonical_name(&fn_ty),
+            type_to_canonical_name(&named_ty)
+        );
     }
 
     #[test]
@@ -830,19 +883,43 @@ mod tests {
         // Parameterized fn type impl should produce JVM-safe identifiers (no spaces, parens, arrows)
         let ty = Type::Fn(vec![], Box::new(Type::Var(TypeVarId(42))));
         let name = type_to_canonical_name(&ty);
-        assert!(!name.contains(' '), "canonical name must not contain spaces: {name}");
-        assert!(!name.contains('('), "canonical name must not contain parens: {name}");
-        assert!(!name.contains(')'), "canonical name must not contain parens: {name}");
-        assert!(!name.contains('>'), "canonical name must not contain arrows: {name}");
-        assert!(!name.contains('-'), "canonical name must not contain dashes: {name}");
+        assert!(
+            !name.contains(' '),
+            "canonical name must not contain spaces: {name}"
+        );
+        assert!(
+            !name.contains('('),
+            "canonical name must not contain parens: {name}"
+        );
+        assert!(
+            !name.contains(')'),
+            "canonical name must not contain parens: {name}"
+        );
+        assert!(
+            !name.contains('>'),
+            "canonical name must not contain arrows: {name}"
+        );
+        assert!(
+            !name.contains('-'),
+            "canonical name must not contain dashes: {name}"
+        );
     }
 
     #[test]
     fn head_type_name_basics() {
         assert_eq!(head_type_name(&Type::Int), "Int");
-        assert_eq!(head_type_name(&Type::Named("Vec".into(), vec![Type::Int])), "Vec");
-        assert_eq!(head_type_name(&Type::Fn(vec![], Box::new(Type::Int))), "$Fun0");
-        assert_eq!(head_type_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))), "$Fun1");
+        assert_eq!(
+            head_type_name(&Type::Named("Vec".into(), vec![Type::Int])),
+            "Vec"
+        );
+        assert_eq!(
+            head_type_name(&Type::Fn(vec![], Box::new(Type::Int))),
+            "$Fun0"
+        );
+        assert_eq!(
+            head_type_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))),
+            "$Fun1"
+        );
         assert_eq!(
             head_type_name(&Type::Own(Box::new(Type::Named("Foo".into(), vec![])))),
             "Foo"
