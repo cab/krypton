@@ -1,6 +1,6 @@
 # expect: output true
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 type Box = { val: Int }

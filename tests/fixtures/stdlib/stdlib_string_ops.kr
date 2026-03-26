@@ -1,6 +1,6 @@
 # expect: output "hello world"
 import core/string.{concat, trim}
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 
 fun main() {
     println(trim(concat("  hello", " world  ")));

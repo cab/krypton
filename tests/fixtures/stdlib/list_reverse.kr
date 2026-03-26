@@ -1,6 +1,6 @@
 # expect: output "3"
 import core/list.{reverse}
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun main() = match reverse(Cons(1, Cons(2, Cons(3, Nil)))) {
     Cons(h, _) => println(h),
     Nil => println(0),

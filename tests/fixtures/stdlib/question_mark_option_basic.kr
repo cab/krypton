@@ -1,5 +1,5 @@
 # expect: output "42"
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun lookup(x) -> Option[Int] = Some(x)
 fun process(x) -> Option[Int] = {
   let a = lookup(x)?;

@@ -2167,7 +2167,7 @@ fn prelude_fn_shadowable() {
     // User declares extern println that shadows prelude's println — no Show constraint
     let result = infer_module_fn(
         r#"extern java "java/io/PrintStream" {
-            fun println[a](a) -> Unit
+            fun println[a](x: a) -> Unit
         }
         fun greet() = println(42)"#,
         "greet",

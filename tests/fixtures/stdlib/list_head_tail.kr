@@ -1,6 +1,6 @@
 # expect: output "1"
 import core/list.{head}
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun main() = match head(Cons(1, Cons(2, Cons(3, Nil)))) {
     Some(h) => println(h),
     None => println(0),

@@ -1,7 +1,7 @@
 # expect: ok
 extern java "java.lang.Math" {
-    fun abs(Int) -> Int
-    fun max(Int, Int) -> Int
+    fun abs(n: Int) -> Int
+    fun max(a: Int, b: Int) -> Int
 }
 
 fun main() = max(abs(5), 3)

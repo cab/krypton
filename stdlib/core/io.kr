@@ -3,11 +3,11 @@ import core/show.{Show, show}
 
 # core/io — I/O functions
 extern java "krypton.runtime.KryptonIO" {
-    fun raw_println[a](a) -> Unit
-    fun raw_print[a](a) -> Unit
+    fun raw_println[a](x: a) -> Unit
+    fun raw_print[a](x: a) -> Unit
     pub fun readLine() -> String
-    pub fun read_file(String) -> Result[String, String]
-    pub fun write_file(String, String) -> Result[String, Unit]
+    pub fun read_file(path: String) -> Result[String, String]
+    pub fun write_file(path: String, content: String) -> Result[String, Unit]
 }
 
 pub fun println[a](x: a) -> Unit where a: Show + shared = raw_println(show(x))

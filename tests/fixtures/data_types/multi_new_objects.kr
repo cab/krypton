@@ -1,6 +1,6 @@
 # expect: output "10\n20\n30\n40"
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 type Point = { x: Int, y: Int }

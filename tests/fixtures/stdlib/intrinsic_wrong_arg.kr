@@ -1,6 +1,6 @@
 # expect: error E0001
 extern java "krypton.runtime.KryptonConvert" {
-    fun toFloat(Int) -> Float
+    fun toFloat(n: Int) -> Float
 }
 
 fun main() = toFloat("hello")

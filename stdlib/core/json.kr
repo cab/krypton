@@ -10,27 +10,27 @@ pub type Json = JNull | JBool(Bool) | JNum(Float) | JStr(String)
               | JArr(List[Json]) | JObj(Map[String, Json])
 
 extern java "krypton.runtime.JsonRuntime" {
-    fun staticParse[a](String) -> a
-    fun staticSerialize[a](a) -> String
-    fun staticRawType[a](a) -> Int
-    fun staticRawBool[a](a) -> Bool
-    fun staticRawNum[a](a) -> Float
-    fun staticRawStr[a](a) -> String
-    fun staticRawArr[a, b](a) -> b
-    fun staticRawEntries[a, b](a) -> b
+    fun staticParse[a](s: String) -> a
+    fun staticSerialize[a](x: a) -> String
+    fun staticRawType[a](x: a) -> Int
+    fun staticRawBool[a](x: a) -> Bool
+    fun staticRawNum[a](x: a) -> Float
+    fun staticRawStr[a](x: a) -> String
+    fun staticRawArr[a, b](x: a) -> b
+    fun staticRawEntries[a, b](x: a) -> b
     fun staticMkNull[a]() -> a
-    fun staticMkBool[a](Bool) -> a
-    fun staticMkNum[a](Float) -> a
-    fun staticMkStr[a](String) -> a
+    fun staticMkBool[a](v: Bool) -> a
+    fun staticMkNum[a](v: Float) -> a
+    fun staticMkStr[a](v: String) -> a
     fun staticNewArr[a]() -> a
-    fun staticArrPush[a, b](a, b) -> Unit
+    fun staticArrPush[a, b](arr: a, item: b) -> Unit
     fun staticNewObj[a]() -> a
-    fun staticObjPut[a, b, c](a, b, c) -> Unit
+    fun staticObjPut[a, b, c](obj: a, key: b, value: c) -> Unit
 }
 
 extern java "krypton.runtime.KryptonArray" {
-    fun staticLength[a](a) -> Int
-    fun staticGet[a, b](a, Int) -> b
+    fun staticLength[a](xs: a) -> Int
+    fun staticGet[a, b](xs: a, index: Int) -> b
 }
 
 # ── Parse direction: JavaJson → Krypton Json ──────────────────────
@@ -114,8 +114,8 @@ pub fun json_get(j: Json, key: String) -> Option[Json] =
 # ── Int↔Float conversion ────────────────────────────────────────
 
 extern java "krypton.runtime.KryptonConvert" {
-    fun toFloat(Int) -> Float
-    fun toInt(Float) -> Int
+    fun toFloat(n: Int) -> Float
+    fun toInt(n: Float) -> Int
 }
 
 # ── ToJson trait ─────────────────────────────────────────────────

@@ -87,7 +87,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                     visibility: m.visibility.clone(),
                     name: m.name.clone(),
                     type_params: m.type_params.clone(),
-                    param_types: m.param_types.iter().map(zero_spans_type_expr).collect(),
+                    params: m.params.iter().map(|(name, ty)| (name.clone(), zero_spans_type_expr(ty))).collect(),
                     return_type: zero_spans_type_expr(&m.return_type),
                     where_clauses: m.where_clauses.iter().map(|c| TypeConstraint {
                         trait_name: c.trait_name.clone(),
@@ -562,8 +562,8 @@ fn roundtrip_impl() {
 #[test]
 fn roundtrip_extern() {
     let src = r#"extern java "java.lang.Math" {
-    fun abs(Int) -> Int
-    fun max(Int, Int) -> Int
+    fun abs(x: Int) -> Int
+    fun max(a: Int, b: Int) -> Int
 }"#;
     assert_surface_roundtrip(src);
 }
@@ -571,7 +571,7 @@ fn roundtrip_extern() {
 #[test]
 fn roundtrip_extern_js() {
     let src = r#"extern js "./runtime/js/io.mjs" {
-    fun raw_println(String) -> Unit
+    fun raw_println(s: String) -> Unit
 }"#;
     assert_surface_roundtrip(src);
 }
@@ -579,7 +579,7 @@ fn roundtrip_extern_js() {
 #[test]
 fn roundtrip_extern_nullable() {
     let src = r#"extern java "java.lang.Integer" {
-    @nullable fun parse_int(String) -> Option[Int]
+    @nullable fun parse_int(s: String) -> Option[Int]
     fun max_value() -> Int
 }"#;
     assert_surface_roundtrip(src);
@@ -588,7 +588,7 @@ fn roundtrip_extern_nullable() {
 #[test]
 fn roundtrip_extern_method_type_params() {
     let src = r#"extern java "krypton.runtime.KryptonIO" {
-    fun raw_println[a](a) -> Unit
+    fun raw_println[a](x: a) -> Unit
 }"#;
     assert_surface_roundtrip(src);
 }
@@ -596,7 +596,7 @@ fn roundtrip_extern_method_type_params() {
 #[test]
 fn roundtrip_extern_method_where() {
     let src = r#"extern java "krypton.runtime.Collections" {
-    fun sort[a](Vec[a]) -> Vec[a] where a: Ord
+    fun sort[a](xs: Vec[a]) -> Vec[a] where a: Ord
 }"#;
     assert_surface_roundtrip(src);
 }

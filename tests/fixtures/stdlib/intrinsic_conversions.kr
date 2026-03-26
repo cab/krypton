@@ -1,17 +1,17 @@
 # expect: output 3
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 extern java "krypton.runtime.KryptonConvert" {
-    fun toFloat(Int) -> Float
-    fun toInt(Float) -> Int
-    fun intToString(Int) -> String
+    fun toFloat(n: Int) -> Float
+    fun toInt(x: Float) -> Int
+    fun intToString(n: Int) -> String
 }
 
 extern java "krypton.runtime.KryptonString" {
-    fun concat(String, String) -> String
-    fun length(String) -> Int
+    fun concat(a: String, b: String) -> String
+    fun length(s: String) -> Int
 }
 
 fun main() = println(length(concat(intToString(toInt(toFloat(1))), "ab")))

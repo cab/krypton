@@ -7,7 +7,7 @@
 # StackMapTable frames and a JVM VerifyError.
 # expect: output "1\n2\n3\n4"
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 type Option[a] = Some(a) | None

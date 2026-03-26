@@ -1,5 +1,5 @@
 # expect: ok
 extern java "java.lang.Integer" {
-    @nullable fun parse_int(String) -> Option[Int]
+    @nullable fun parse_int(s: String) -> Option[Int]
     fun max_value() -> Int
 }

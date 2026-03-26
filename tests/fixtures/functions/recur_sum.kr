@@ -1,6 +1,6 @@
 # expect: output 5050
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 fun sum(n, acc) = if n == 0 { acc } else { recur(n - 1, acc + n) }

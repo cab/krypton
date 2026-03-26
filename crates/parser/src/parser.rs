@@ -1292,8 +1292,11 @@ where
     // --- Extern declaration ---
     // extern java "class.Name" { fun method(params) -> Ret }
     // extern js "./path.mjs" { fun method(params) -> Ret }
-    let extern_param_types = ty
-        .clone()
+    let extern_param = select! { Token::Ident(s) => s.to_string() }
+        .then_ignore(symbol(Token::Colon))
+        .then(ty.clone());
+
+    let extern_params = extern_param
         .separated_by(symbol(Token::Comma))
         .collect::<Vec<_>>()
         .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen));
@@ -1316,18 +1319,18 @@ where
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(extern_method_type_params)
-        .then(extern_param_types)
+        .then(extern_params)
         .then(
             symbol(Token::Arrow)
                 .ignore_then(ty.clone()),
         )
         .then(extern_where_clause)
-        .map_with(|((((((nullable_opt, pub_opt), name), method_type_params), param_types), return_type), where_clauses), e| ExternMethod {
+        .map_with(|((((((nullable_opt, pub_opt), name), method_type_params), params), return_type), where_clauses), e| ExternMethod {
             nullable: nullable_opt.is_some(),
             visibility: if pub_opt.is_some() { Visibility::Pub } else { Visibility::Private },
             name,
             type_params: method_type_params,
-            param_types,
+            params,
             return_type,
             where_clauses,
             span: to_span(e.span()),

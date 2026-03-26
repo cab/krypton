@@ -352,8 +352,8 @@ impl Eq[Point] {
 fn test_extern_decl() {
     let src = r#"
 extern java "java.lang.Math" {
-    fun abs(Int) -> Int
-    fun max(Int, Int) -> Int
+    fun abs(x: Int) -> Int
+    fun max(a: Int, b: Int) -> Int
 }
 "#;
     let (module, errors) = parse(src);

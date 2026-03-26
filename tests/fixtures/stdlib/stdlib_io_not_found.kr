@@ -1,6 +1,6 @@
 # expect: output "got error"
 import core/io.{read_file}
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 
 fun handle(r) = match r {
     Ok(_) => println("unexpected"),

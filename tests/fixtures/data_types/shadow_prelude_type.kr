@@ -2,7 +2,7 @@
 # Local type named `Ok` shadows the prelude Result::Ok variant constructor.
 # Verifies that local sum types aren't filtered by type_provenance.
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 type Ok = A | B

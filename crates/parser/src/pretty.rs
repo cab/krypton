@@ -471,10 +471,12 @@ impl<'a> Formatter<'a> {
                 self.buf.push(']');
             }
             self.buf.push('(');
-            for (i, ty) in m.param_types.iter().enumerate() {
+            for (i, (name, ty)) in m.params.iter().enumerate() {
                 if i > 0 {
                     self.buf.push_str(", ");
                 }
+                self.buf.push_str(name);
+                self.buf.push_str(": ");
                 self.fmt_type_expr(ty);
             }
             self.buf.push_str(") -> ");

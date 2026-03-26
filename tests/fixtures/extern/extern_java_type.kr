@@ -2,7 +2,7 @@
 extern java "krypton.runtime.Ref" as Ref[m] {}
 
 extern java "krypton.runtime.KryptonActors" {
-    fun raw_send(Ref[Int], Int) -> Unit
+    fun raw_send(r: Ref[Int], msg: Int) -> Unit
 }
 
 fun use_ref(r: Ref[Int]) -> Ref[Int] = r

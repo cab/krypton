@@ -3,21 +3,21 @@ import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
 
 extern java "krypton.runtime.KryptonString" {
-    pub fun split(String, String) -> Vec[String]
-    pub fun concat(String, String) -> String
-    pub fun trim(String) -> String
-    pub fun substring(String, Int, Int) -> String
-    pub fun length(String) -> Int
-    fun parseIntSafe[a](String) -> a
-    fun parseFloatSafe[a](String) -> a
-    fun containsStr(String, String) -> Bool
-    fun startsWith(String, String) -> Bool
-    fun endsWith(String, String) -> Bool
-    fun indexOf(String, String) -> Int
-    fun toLower(String) -> String
-    fun toUpper(String) -> String
-    fun replaceStr(String, String, String) -> String
-    fun charAt[a](String, Int) -> a
+    pub fun split(s: String, delim: String) -> Vec[String]
+    pub fun concat(a: String, b: String) -> String
+    pub fun trim(s: String) -> String
+    pub fun substring(s: String, start: Int, end: Int) -> String
+    pub fun length(s: String) -> Int
+    fun parseIntSafe[a](s: String) -> a
+    fun parseFloatSafe[a](s: String) -> a
+    fun containsStr(s: String, substr: String) -> Bool
+    fun startsWith(s: String, prefix: String) -> Bool
+    fun endsWith(s: String, suffix: String) -> Bool
+    fun indexOf(s: String, substr: String) -> Int
+    fun toLower(s: String) -> String
+    fun toUpper(s: String) -> String
+    fun replaceStr(s: String, from: String, to: String) -> String
+    fun charAt[a](s: String, index: Int) -> a
 }
 
 pub fun parse_int(s: String) -> Option[Int] = {

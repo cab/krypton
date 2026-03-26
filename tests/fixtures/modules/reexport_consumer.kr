@@ -1,4 +1,4 @@
 # expect: output "6"
 import reexport_lib.{public_fn}
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun main() = println(public_fn(5))

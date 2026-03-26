@@ -64,7 +64,7 @@ pub struct ExternMethod {
     pub visibility: Visibility,
     pub name: String,
     pub type_params: Vec<String>,
-    pub param_types: Vec<TypeExpr>,
+    pub params: Vec<(String, TypeExpr)>,
     pub return_type: TypeExpr,
     pub where_clauses: Vec<TypeConstraint>,
     pub span: Span,

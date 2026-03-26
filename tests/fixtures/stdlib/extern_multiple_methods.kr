@@ -1,6 +1,6 @@
 # expect: ok
 extern java "java.lang.Math" {
-    fun abs(Int) -> Int
-    fun max(Int, Int) -> Int
-    fun min(Int, Int) -> Int
+    fun abs(n: Int) -> Int
+    fun max(a: Int, b: Int) -> Int
+    fun min(a: Int, b: Int) -> Int
 }

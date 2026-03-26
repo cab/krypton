@@ -6,11 +6,11 @@ import core/ord.{Ord, lt}
 
 # core/vec — Vec type (backed by KryptonArray)
 extern java "krypton.runtime.KryptonArray" as Vec[a] {
-    fun staticLength(Vec[a]) -> Int
-    fun staticGet(Vec[a], Int) -> a
-    fun staticNew(Int) -> Vec[a]
-    fun staticSet(Vec[a], Int, a) -> Unit
-    fun staticFreeze(Vec[a]) -> Vec[a]
+    fun staticLength(xs: Vec[a]) -> Int
+    fun staticGet(xs: Vec[a], index: Int) -> a
+    fun staticNew(size: Int) -> Vec[a]
+    fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
+    fun staticFreeze(xs: Vec[a]) -> Vec[a]
 }
 
 pub fun len[a](xs: Vec[a]) -> Int = staticLength(xs)

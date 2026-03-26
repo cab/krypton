@@ -1,10 +1,10 @@
 # expect: output "42"
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 extern java "java.lang.Math" {
-    fun abs(Int) -> Int
+    fun abs(n: Int) -> Int
 }
 
 fun main() {

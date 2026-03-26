@@ -1,5 +1,5 @@
 # expect: output "0"
-extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun first(x) -> Option[Int] = Some(x)
 fun second(x) -> Option[Int] = None
 fun process(x) -> Option[Int] = {

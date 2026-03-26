@@ -1,6 +1,6 @@
 # expect: error E0001
 extern java "java.lang.Math" {
-    fun abs(Int) -> Int
+    fun abs(n: Int) -> Int
 }
 
 fun main() = abs("hello")

@@ -1,4 +1,4 @@
 # expect: ok
 extern java "java.lang.Math" {
-    fun abs(Int) -> Int
+    fun abs(n: Int) -> Int
 }

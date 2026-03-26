@@ -2,7 +2,7 @@
 import helpers_a
 
 extern java "krypton.runtime.KryptonIO" {
-  fun println[a](a) -> Unit
+  fun println[a](x: a) -> Unit
 }
 
 fun main() = println(helpers_a.compute(-5))

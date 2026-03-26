@@ -1,6 +1,6 @@
 # expect: output 20
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 type List[a] = Cons(a, List[a]) | Nil
