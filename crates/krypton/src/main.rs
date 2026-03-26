@@ -338,7 +338,10 @@ fn main() {
                             phases.push(("emit", t.elapsed()));
                         }
                         Err(e) => {
-                            eprintln!("JS codegen error: {}", e);
+                            let diag = krypton_codegen_js::diagnostics::render_js_codegen_error(
+                                &file, &source, &e,
+                            );
+                            eprint!("{}", diag);
                             process::exit(1);
                         }
                     }
@@ -502,7 +505,10 @@ fn main() {
                             process::exit(status.code().unwrap_or(1));
                         }
                         Err(e) => {
-                            eprintln!("JS codegen error: {}", e);
+                            let diag = krypton_codegen_js::diagnostics::render_js_codegen_error(
+                                &file, &source, &e,
+                            );
+                            eprint!("{}", diag);
                             process::exit(1);
                         }
                     }

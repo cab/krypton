@@ -4,7 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+ariadne.workspace = true
 krypton-ir = { path = "../ir" }
+krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }
 
 [dev-dependencies]

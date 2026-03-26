@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::expr::{Atom, Expr, ExprKind, PrimOp, SimpleExpr};
+use crate::expr::{Atom, Expr, ExprKind, PrimOp, SimpleExpr, SimpleExprKind};
 use crate::pass::{IrPass, IrPassError};
 use crate::{FnDef, FnId, Module, TraitName, Type, VarId};
 
@@ -214,8 +214,8 @@ impl LintContext {
         expr: &SimpleExpr,
         let_ty: Option<&Type>,
     ) -> Result<(), IrPassError> {
-        match expr {
-            SimpleExpr::Call { func, args } => {
+        match &expr.kind {
+            SimpleExprKind::Call { func, args } => {
                 if !self.known_fns.contains(func) {
                     return Err(self.err(format!("Call references unknown FnId({})", func.0)));
                 }
@@ -225,7 +225,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::TraitCall {
+            SimpleExprKind::TraitCall {
                 trait_name, args, ..
             } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
@@ -239,7 +239,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::CallClosure { closure, args } => {
+            SimpleExprKind::CallClosure { closure, args } => {
                 self.check_atom_not_join(closure)?;
                 for atom in args {
                     self.check_atom_not_join(atom)?;
@@ -247,7 +247,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::MakeClosure { func, captures } => {
+            SimpleExprKind::MakeClosure { func, captures } => {
                 if !self.known_fns.contains(func) {
                     return Err(
                         self.err(format!("MakeClosure references unknown FnId({})", func.0))
@@ -259,7 +259,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::PrimOp { op, args } => {
+            SimpleExprKind::PrimOp { op, args } => {
                 if let Some(let_ty) = let_ty {
                     let expected_ret = primop_return_type(*op);
                     check_type_match(let_ty, &expected_ret, &format!("PrimOp {op:?}"))
@@ -271,27 +271,29 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::Construct { fields, .. } | SimpleExpr::ConstructVariant { fields, .. } => {
+            SimpleExprKind::Construct { fields, .. }
+            | SimpleExprKind::ConstructVariant { fields, .. } => {
                 for atom in fields {
                     self.check_atom_not_join(atom)?;
                 }
                 Ok(())
             }
 
-            SimpleExpr::Project { value, .. } | SimpleExpr::Tag { value } => {
+            SimpleExprKind::Project { value, .. } | SimpleExprKind::Tag { value } => {
                 self.check_atom_not_join(value)
             }
 
-            SimpleExpr::MakeTuple { elements } | SimpleExpr::MakeVec { elements, .. } => {
+            SimpleExprKind::MakeTuple { elements }
+            | SimpleExprKind::MakeVec { elements, .. } => {
                 for atom in elements {
                     self.check_atom_not_join(atom)?;
                 }
                 Ok(())
             }
 
-            SimpleExpr::TupleProject { value, .. } => self.check_atom_not_join(value),
+            SimpleExprKind::TupleProject { value, .. } => self.check_atom_not_join(value),
 
-            SimpleExpr::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
                     return Err(
                         self.err(format!("GetDict references unknown trait '{trait_name}'"))
@@ -311,7 +313,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::MakeDict {
+            SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
@@ -341,7 +343,7 @@ impl LintContext {
                 Ok(())
             }
 
-            SimpleExpr::Atom(atom) => self.check_atom_not_join(atom),
+            SimpleExprKind::Atom(atom) => self.check_atom_not_join(atom),
         }
     }
 

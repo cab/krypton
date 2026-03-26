@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
+use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
 use krypton_ir::{
@@ -26,11 +26,16 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
     }
 }
 
+fn expr(ty: Type, kind: ExprKind) -> Expr {
+    Expr::new((0, 0), ty, kind)
+}
+
+fn simple(kind: SimpleExprKind) -> SimpleExpr {
+    SimpleExpr::new((0, 0), kind)
+}
+
 fn unit_atom() -> Expr {
-    Expr {
-        kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-        ty: Type::Unit,
-    }
+    expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit)))
 }
 
 #[test]
@@ -53,31 +58,25 @@ fn well_formed_with_let_and_call() {
         name: "callee".into(),
         params: vec![(VarId(0), Type::Int)],
         return_type: Type::Int,
-        body: Expr {
-            kind: ExprKind::Atom(Atom::Var(VarId(0))),
-            ty: Type::Int,
-        },
+        body: expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(0)))),
     };
     let main_fn = FnDef {
         id: FnId(1),
         name: "main".into(),
         params: vec![],
         return_type: Type::Int,
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Int,
+            ExprKind::Let {
                 bind: VarId(1),
                 ty: Type::Int,
-                value: SimpleExpr::Call {
+                value: simple(SimpleExprKind::Call {
                     func: FnId(0),
                     args: vec![Atom::Lit(Literal::Int(42))],
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(1))),
-                    ty: Type::Int,
                 }),
+                body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1))))),
             },
-            ty: Type::Int,
-        },
+        ),
     };
     let module = make_simple_module(
         vec![func, main_fn],
@@ -94,32 +93,29 @@ fn duplicate_var_id_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Int,
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Int,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Int,
-                value: SimpleExpr::PrimOp {
+                value: simple(SimpleExprKind::PrimOp {
                     op: PrimOp::AddInt,
                     args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Let {
+                }),
+                body: Box::new(expr(
+                    Type::Int,
+                    ExprKind::Let {
                         bind: VarId(0), // duplicate!
                         ty: Type::Int,
-                        value: SimpleExpr::PrimOp {
+                        value: simple(SimpleExprKind::PrimOp {
                             op: PrimOp::AddInt,
                             args: vec![Atom::Lit(Literal::Int(3)), Atom::Lit(Literal::Int(4))],
-                        },
-                        body: Box::new(Expr {
-                            kind: ExprKind::Atom(Atom::Var(VarId(0))),
-                            ty: Type::Int,
                         }),
+                        body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(0))))),
                     },
-                    ty: Type::Int,
-                }),
+                )),
             },
-            ty: Type::Int,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -138,19 +134,19 @@ fn join_point_used_as_value_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
-        body: Expr {
-            kind: ExprKind::LetJoin {
+        body: expr(
+            Type::Unit,
+            ExprKind::LetJoin {
                 name: VarId(0),
                 params: vec![],
                 join_body: Box::new(unit_atom()),
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(0))), // using join point as value!
-                    ty: Type::Unit,
-                }),
+                body: Box::new(expr(
+                    Type::Unit,
+                    ExprKind::Atom(Atom::Var(VarId(0))),
+                )),
                 is_recur: false,
             },
-            ty: Type::Unit,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -165,13 +161,13 @@ fn jump_to_non_join_point_is_error() {
         name: "bad".into(),
         params: vec![(VarId(0), Type::Unit)],
         return_type: Type::Unit,
-        body: Expr {
-            kind: ExprKind::Jump {
+        body: expr(
+            Type::Unit,
+            ExprKind::Jump {
                 target: VarId(0), // not a join point
                 args: vec![],
             },
-            ty: Type::Unit,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -189,21 +185,18 @@ fn call_to_unknown_fn_id_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Int,
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Int,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Int,
-                value: SimpleExpr::Call {
+                value: simple(SimpleExprKind::Call {
                     func: FnId(99), // unknown!
                     args: vec![],
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(0))),
-                    ty: Type::Int,
                 }),
+                body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(0))))),
             },
-            ty: Type::Int,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -221,21 +214,21 @@ fn make_closure_unknown_fn_id_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Fn(vec![], Box::new(Type::Unit)),
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Fn(vec![], Box::new(Type::Unit)),
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Fn(vec![], Box::new(Type::Unit)),
-                value: SimpleExpr::MakeClosure {
+                value: simple(SimpleExprKind::MakeClosure {
                     func: FnId(99), // unknown!
                     captures: vec![],
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(0))),
-                    ty: Type::Fn(vec![], Box::new(Type::Unit)),
                 }),
+                body: Box::new(expr(
+                    Type::Fn(vec![], Box::new(Type::Unit)),
+                    ExprKind::Atom(Atom::Var(VarId(0))),
+                )),
             },
-            ty: Type::Fn(vec![], Box::new(Type::Unit)),
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -253,8 +246,9 @@ fn letrec_unknown_fn_id_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
-        body: Expr {
-            kind: ExprKind::LetRec {
+        body: expr(
+            Type::Unit,
+            ExprKind::LetRec {
                 bindings: vec![(
                     VarId(0),
                     Type::Fn(vec![Type::Int], Box::new(Type::Int)),
@@ -263,8 +257,7 @@ fn letrec_unknown_fn_id_is_error() {
                 )],
                 body: Box::new(unit_atom()),
             },
-            ty: Type::Unit,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -283,21 +276,18 @@ fn primop_type_mismatch_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Bool,
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Bool,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Bool, // wrong! AddInt returns Int
-                value: SimpleExpr::PrimOp {
+                value: simple(SimpleExprKind::PrimOp {
                     op: PrimOp::AddInt,
                     args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(0))),
-                    ty: Type::Bool,
                 }),
+                body: Box::new(expr(Type::Bool, ExprKind::Atom(Atom::Var(VarId(0))))),
             },
-            ty: Type::Bool,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     let err = LintPass.run(module).unwrap_err();
@@ -315,22 +305,22 @@ fn well_formed_join_point_passes() {
         name: "good".into(),
         params: vec![],
         return_type: Type::Unit,
-        body: Expr {
-            kind: ExprKind::LetJoin {
+        body: expr(
+            Type::Unit,
+            ExprKind::LetJoin {
                 name: VarId(0),
                 params: vec![(VarId(1), Type::Int)],
                 join_body: Box::new(unit_atom()),
-                body: Box::new(Expr {
-                    kind: ExprKind::Jump {
+                body: Box::new(expr(
+                    Type::Unit,
+                    ExprKind::Jump {
                         target: VarId(0),
                         args: vec![Atom::Lit(Literal::Int(42))],
                     },
-                    ty: Type::Unit,
-                }),
+                )),
                 is_recur: false,
             },
-            ty: Type::Unit,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     assert!(LintPass.run(module).is_ok());
@@ -344,36 +334,33 @@ fn letjoin_param_varid_reusable_in_body() {
         name: "good".into(),
         params: vec![],
         return_type: Type::Int,
-        body: Expr {
-            kind: ExprKind::LetJoin {
+        body: expr(
+            Type::Int,
+            ExprKind::LetJoin {
                 name: VarId(0),
                 params: vec![(VarId(1), Type::Int)],
-                join_body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(1))),
-                    ty: Type::Int,
-                }),
-                body: Box::new(Expr {
-                    kind: ExprKind::Let {
+                join_body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1))))),
+                body: Box::new(expr(
+                    Type::Int,
+                    ExprKind::Let {
                         bind: VarId(1), // same as join param — legal because param is out of scope
                         ty: Type::Int,
-                        value: SimpleExpr::PrimOp {
+                        value: simple(SimpleExprKind::PrimOp {
                             op: PrimOp::AddInt,
                             args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-                        },
-                        body: Box::new(Expr {
-                            kind: ExprKind::Jump {
+                        }),
+                        body: Box::new(expr(
+                            Type::Int,
+                            ExprKind::Jump {
                                 target: VarId(0),
                                 args: vec![Atom::Var(VarId(1))],
                             },
-                            ty: Type::Int,
-                        }),
+                        )),
                     },
-                    ty: Type::Int,
-                }),
+                )),
                 is_recur: false,
             },
-            ty: Type::Int,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     assert!(LintPass.run(module).is_ok());
@@ -387,31 +374,25 @@ fn switch_branch_varid_reusable_across_branches() {
         name: "good".into(),
         params: vec![(VarId(0), Type::Int)],
         return_type: Type::Int,
-        body: Expr {
-            kind: ExprKind::Switch {
+        body: expr(
+            Type::Int,
+            ExprKind::Switch {
                 scrutinee: Atom::Var(VarId(0)),
                 branches: vec![
                     SwitchBranch {
                         tag: 0,
                         bindings: vec![(VarId(1), Type::Int)],
-                        body: Expr {
-                            kind: ExprKind::Atom(Atom::Var(VarId(1))),
-                            ty: Type::Int,
-                        },
+                        body: expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1)))),
                     },
                     SwitchBranch {
                         tag: 1,
                         bindings: vec![(VarId(1), Type::Int)], // same VarId as branch 0
-                        body: Expr {
-                            kind: ExprKind::Atom(Atom::Var(VarId(1))),
-                            ty: Type::Int,
-                        },
+                        body: expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1)))),
                     },
                 ],
                 default: None,
             },
-            ty: Type::Int,
-        },
+        ),
     };
     let module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     assert!(LintPass.run(module).is_ok());
@@ -424,21 +405,18 @@ fn getdict_unknown_trait_is_error() {
         name: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Unit,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Named("Dict".into(), vec![]),
-                value: SimpleExpr::GetDict {
+                value: simple(SimpleExprKind::GetDict {
                     trait_name: TraitName::new("test".to_string(), "NonexistentTrait".to_string()),
                     ty: Type::Int,
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                    ty: Type::Unit,
                 }),
+                body: Box::new(unit_atom()),
             },
-            ty: Type::Unit,
-        },
+        ),
     };
     let mut module = make_simple_module(vec![func], HashMap::from([(FnId(0), "bad".into())]));
     module.traits.push(TraitDef {
@@ -465,21 +443,18 @@ fn getdict_valid_trait_and_instance_passes() {
         name: "good".into(),
         params: vec![],
         return_type: Type::Unit,
-        body: Expr {
-            kind: ExprKind::Let {
+        body: expr(
+            Type::Unit,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Named("Dict".into(), vec![]),
-                value: SimpleExpr::GetDict {
+                value: simple(SimpleExprKind::GetDict {
                     trait_name: TraitName::new("core/show".into(), "Show".into()),
                     ty: Type::Int,
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                    ty: Type::Unit,
                 }),
+                body: Box::new(unit_atom()),
             },
-            ty: Type::Unit,
-        },
+        ),
     };
     let mut module = make_simple_module(vec![func], HashMap::from([(FnId(0), "good".into())]));
     module.traits.push(TraitDef {

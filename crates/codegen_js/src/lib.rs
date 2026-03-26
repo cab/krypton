@@ -1,3 +1,4 @@
+pub mod diagnostics;
 pub mod emit;
 
 pub use emit::{compile_modules_js, JsCodegenError};
@@ -8,6 +9,14 @@ mod tests {
 
     use krypton_ir::*;
     use krypton_typechecker::types::TypeVarGen;
+
+    fn expr(ty: Type, kind: ExprKind) -> Expr {
+        Expr::new((0, 0), ty, kind)
+    }
+
+    fn simple(kind: SimpleExprKind) -> SimpleExpr {
+        SimpleExpr::new((0, 0), kind)
+    }
 
     /// Build a minimal IR Module with the given fields.
     fn make_module(name: &str) -> Module {
@@ -61,21 +70,18 @@ mod tests {
             name: "add".to_string(),
             params: vec![(x, Type::Int), (y, Type::Int)],
             return_type: Type::Int,
-            body: Expr {
-                kind: ExprKind::Let {
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
                     bind: result,
                     ty: Type::Int,
-                    value: SimpleExpr::PrimOp {
+                    value: simple(SimpleExprKind::PrimOp {
                         op: PrimOp::AddInt,
                         args: vec![Atom::Var(x), Atom::Var(y)],
-                    },
-                    body: Box::new(Expr {
-                        kind: ExprKind::Atom(Atom::Var(result)),
-                        ty: Type::Int,
                     }),
+                    body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(result)))),
                 },
-                ty: Type::Int,
-            },
+            ),
         });
         module.fn_names.insert(FnId(0), "add".to_string());
 
@@ -243,10 +249,7 @@ mod tests {
             name: "filter".to_string(),
             params: vec![],
             return_type: Type::Unit,
-            body: Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                ty: Type::Unit,
-            },
+            body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
         module.fn_names.insert(FnId(0), "filter".to_string());
         module.imported_fns.push(ImportedFnDef {
@@ -323,10 +326,7 @@ mod tests {
             name: "combine".to_string(),
             params: vec![],
             return_type: Type::Unit,
-            body: Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                ty: Type::Unit,
-            },
+            body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
         module.fn_names.insert(FnId(0), "combine".to_string());
         module.imported_fns.push(ImportedFnDef {
@@ -371,10 +371,7 @@ mod tests {
             name: "answer".to_string(),
             params: vec![],
             return_type: Type::Int,
-            body: Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Int(42))),
-                ty: Type::Int,
-            },
+            body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
         });
         module.fn_names.insert(FnId(0), "answer".to_string());
 
@@ -390,10 +387,10 @@ mod tests {
             name: "greeting".to_string(),
             params: vec![],
             return_type: Type::String,
-            body: Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::String("hello".to_string()))),
-                ty: Type::String,
-            },
+            body: expr(
+                Type::String,
+                ExprKind::Atom(Atom::Lit(Literal::String("hello".to_string()))),
+            ),
         });
         module.fn_names.insert(FnId(0), "greeting".to_string());
 
@@ -412,10 +409,7 @@ mod tests {
             name: "yes".to_string(),
             params: vec![],
             return_type: Type::Bool,
-            body: Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Bool(true))),
-                ty: Type::Bool,
-            },
+            body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
         });
         module.fn_names.insert(FnId(0), "yes".to_string());
 
@@ -431,10 +425,7 @@ mod tests {
             name: "noop".to_string(),
             params: vec![],
             return_type: Type::Unit,
-            body: Expr {
-                kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                ty: Type::Unit,
-            },
+            body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
         module.fn_names.insert(FnId(0), "noop".to_string());
 
@@ -468,12 +459,12 @@ mod tests {
             name: "Eq$$Point$$eq".to_string(),
             params: vec![],
             return_type: Type::Bool,
-            body: krypton_ir::Expr {
-                kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(
+            body: expr(
+                Type::Bool,
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(
                     true,
                 ))),
-                ty: Type::Bool,
-            },
+            ),
         });
         module
             .fn_names
@@ -527,12 +518,12 @@ mod tests {
             name: "Show$$Option$$show".to_string(),
             params: vec![],
             return_type: Type::String,
-            body: krypton_ir::Expr {
-                kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
+            body: expr(
+                Type::String,
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
                     krypton_ir::Literal::String("x".to_string()),
                 )),
-                ty: Type::String,
-            },
+            ),
         });
         module
             .fn_names
@@ -578,24 +569,24 @@ mod tests {
             name: "test_fn".to_string(),
             params: vec![],
             return_type: Type::Unit,
-            body: krypton_ir::Expr {
-                kind: krypton_ir::ExprKind::Let {
+            body: expr(
+                Type::Unit,
+                krypton_ir::ExprKind::Let {
                     bind: d,
                     ty: Type::Dict {
                         trait_name: make_trait_name("Eq"),
                         target: Box::new(Type::Int),
                     },
-                    value: krypton_ir::SimpleExpr::GetDict {
+                    value: simple(krypton_ir::SimpleExprKind::GetDict {
                         trait_name: make_trait_name("Eq"),
                         ty: Type::Int,
-                    },
-                    body: Box::new(krypton_ir::Expr {
-                        kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(d)),
-                        ty: Type::Unit,
                     }),
+                    body: Box::new(expr(
+                        Type::Unit,
+                        krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(d)),
+                    )),
                 },
-                ty: Type::Unit,
-            },
+            ),
         });
         module.fn_names.insert(FnId(0), "test_fn".to_string());
 
@@ -617,12 +608,12 @@ mod tests {
             name: "Show$$Option$$show".to_string(),
             params: vec![],
             return_type: Type::String,
-            body: krypton_ir::Expr {
-                kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
+            body: expr(
+                Type::String,
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
                     krypton_ir::Literal::String("x".to_string()),
                 )),
-                ty: Type::String,
-            },
+            ),
         });
         module
             .fn_names
@@ -645,22 +636,22 @@ mod tests {
             name: "test_fn".to_string(),
             params: vec![(d_var, Type::Unit)],
             return_type: Type::Unit,
-            body: krypton_ir::Expr {
-                kind: krypton_ir::ExprKind::Let {
+            body: expr(
+                Type::Unit,
+                krypton_ir::ExprKind::Let {
                     bind: x_var,
                     ty: Type::Unit,
-                    value: krypton_ir::SimpleExpr::MakeDict {
+                    value: simple(krypton_ir::SimpleExprKind::MakeDict {
                         trait_name: make_trait_name("Show"),
                         ty: Type::Named("Option".to_string(), vec![Type::Int]),
                         sub_dicts: vec![krypton_ir::Atom::Var(d_var)],
-                    },
-                    body: Box::new(krypton_ir::Expr {
-                        kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(x_var)),
-                        ty: Type::Unit,
                     }),
+                    body: Box::new(expr(
+                        Type::Unit,
+                        krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(x_var)),
+                    )),
                 },
-                ty: Type::Unit,
-            },
+            ),
         });
         module.fn_names.insert(FnId(0), "test_fn".to_string());
 

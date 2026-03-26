@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::Type;
 use crate::{
-    expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch},
+    expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch},
     FnDef, FnId, Module, StructDef, SumTypeDef, VarId,
 };
 
@@ -95,11 +95,11 @@ impl fmt::Display for PrimOp {
 
 impl fmt::Display for SimpleExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SimpleExpr::Call { func, args } => {
+        match &self.kind {
+            SimpleExprKind::Call { func, args } => {
                 write!(f, "call {func}({})", fmt_atoms(args))
             }
-            SimpleExpr::TraitCall {
+            SimpleExprKind::TraitCall {
                 trait_name,
                 method_name,
                 args,
@@ -110,16 +110,16 @@ impl fmt::Display for SimpleExpr {
                     fmt_atoms(args)
                 )
             }
-            SimpleExpr::CallClosure { closure, args } => {
+            SimpleExprKind::CallClosure { closure, args } => {
                 write!(f, "call_closure {closure}({})", fmt_atoms(args))
             }
-            SimpleExpr::MakeClosure { func, captures } => {
+            SimpleExprKind::MakeClosure { func, captures } => {
                 write!(f, "make_closure({func}, [{}])", fmt_atoms(captures))
             }
-            SimpleExpr::Construct { type_name, fields } => {
+            SimpleExprKind::Construct { type_name, fields } => {
                 write!(f, "construct {type_name}({})", fmt_atoms(fields))
             }
-            SimpleExpr::ConstructVariant {
+            SimpleExprKind::ConstructVariant {
                 type_name,
                 variant,
                 tag,
@@ -131,35 +131,35 @@ impl fmt::Display for SimpleExpr {
                     fmt_atoms(fields)
                 )
             }
-            SimpleExpr::Project { value, field_index } => {
+            SimpleExprKind::Project { value, field_index } => {
                 write!(f, "project {value}.{field_index}")
             }
-            SimpleExpr::Tag { value } => {
+            SimpleExprKind::Tag { value } => {
                 write!(f, "tag {value}")
             }
-            SimpleExpr::MakeTuple { elements } => {
+            SimpleExprKind::MakeTuple { elements } => {
                 write!(f, "tuple({})", fmt_atoms(elements))
             }
-            SimpleExpr::TupleProject { value, index } => {
+            SimpleExprKind::TupleProject { value, index } => {
                 write!(f, "tuple_project {value}.{index}")
             }
-            SimpleExpr::PrimOp { op, args } => {
+            SimpleExprKind::PrimOp { op, args } => {
                 write!(f, "{op}({})", fmt_atoms(args))
             }
-            SimpleExpr::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty } => {
                 write!(f, "get_dict {trait_name}[{ty}]")
             }
-            SimpleExpr::MakeDict {
+            SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
             } => {
                 write!(f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
             }
-            SimpleExpr::MakeVec { elements, .. } => {
+            SimpleExprKind::MakeVec { elements, .. } => {
                 write!(f, "make_vec({})", fmt_atoms(elements))
             }
-            SimpleExpr::Atom(atom) => write!(f, "{atom}"),
+            SimpleExprKind::Atom(atom) => write!(f, "{atom}"),
         }
     }
 }
@@ -201,11 +201,11 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
     }
 
     fn write_simple_expr(&mut self, expr: &SimpleExpr) -> fmt::Result {
-        match expr {
-            SimpleExpr::Call { func, args } => {
+        match &expr.kind {
+            SimpleExprKind::Call { func, args } => {
                 write!(self.f, "call {}({})", self.fmt_fn(func), fmt_atoms(args))
             }
-            SimpleExpr::TraitCall {
+            SimpleExprKind::TraitCall {
                 trait_name,
                 method_name,
                 args,
@@ -216,10 +216,10 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     fmt_atoms(args)
                 )
             }
-            SimpleExpr::CallClosure { closure, args } => {
+            SimpleExprKind::CallClosure { closure, args } => {
                 write!(self.f, "call_closure {closure}({})", fmt_atoms(args))
             }
-            SimpleExpr::MakeClosure { func, captures } => {
+            SimpleExprKind::MakeClosure { func, captures } => {
                 write!(
                     self.f,
                     "make_closure({}, [{}])",
@@ -227,10 +227,10 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     fmt_atoms(captures)
                 )
             }
-            SimpleExpr::Construct { type_name, fields } => {
+            SimpleExprKind::Construct { type_name, fields } => {
                 write!(self.f, "construct {type_name}({})", fmt_atoms(fields))
             }
-            SimpleExpr::ConstructVariant {
+            SimpleExprKind::ConstructVariant {
                 type_name,
                 variant,
                 tag,
@@ -242,25 +242,25 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     fmt_atoms(fields)
                 )
             }
-            SimpleExpr::Project { value, field_index } => {
+            SimpleExprKind::Project { value, field_index } => {
                 write!(self.f, "project {value}.{field_index}")
             }
-            SimpleExpr::Tag { value } => {
+            SimpleExprKind::Tag { value } => {
                 write!(self.f, "tag {value}")
             }
-            SimpleExpr::MakeTuple { elements } => {
+            SimpleExprKind::MakeTuple { elements } => {
                 write!(self.f, "tuple({})", fmt_atoms(elements))
             }
-            SimpleExpr::TupleProject { value, index } => {
+            SimpleExprKind::TupleProject { value, index } => {
                 write!(self.f, "tuple_project {value}.{index}")
             }
-            SimpleExpr::PrimOp { op, args } => {
+            SimpleExprKind::PrimOp { op, args } => {
                 write!(self.f, "{op}({})", fmt_atoms(args))
             }
-            SimpleExpr::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty } => {
                 write!(self.f, "get_dict {trait_name}[{ty}]")
             }
-            SimpleExpr::MakeDict {
+            SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
@@ -271,10 +271,10 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     fmt_atoms(sub_dicts)
                 )
             }
-            SimpleExpr::MakeVec { elements, .. } => {
+            SimpleExprKind::MakeVec { elements, .. } => {
                 write!(self.f, "make_vec({})", fmt_atoms(elements))
             }
-            SimpleExpr::Atom(atom) => write!(self.f, "{atom}"),
+            SimpleExprKind::Atom(atom) => write!(self.f, "{atom}"),
         }
     }
 
@@ -653,8 +653,8 @@ fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
 }
 
 fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashSet<FnId>) {
-    match expr {
-        SimpleExpr::Call { func, .. } | SimpleExpr::MakeClosure { func, .. } => {
+    match &expr.kind {
+        SimpleExprKind::Call { func, .. } | SimpleExprKind::MakeClosure { func, .. } => {
             ids.insert(*func);
         }
         _ => {}
@@ -674,6 +674,18 @@ mod tests {
     use super::*;
     use crate::VariantDef;
     use krypton_typechecker::types::TypeVarGen;
+
+    fn simple(kind: SimpleExprKind) -> SimpleExpr {
+        SimpleExpr { kind, span: (0, 0) }
+    }
+
+    fn expr(ty: Type, kind: ExprKind) -> Expr {
+        Expr {
+            kind,
+            ty,
+            span: (0, 0),
+        }
+    }
 
     fn gen_type_var_ids(n: usize) -> Vec<krypton_typechecker::types::TypeVarId> {
         let mut gen = TypeVarGen::new();
@@ -699,111 +711,108 @@ mod tests {
 
     #[test]
     fn pretty_simple_expr_call() {
-        let expr = SimpleExpr::Call {
+        let expr = simple(SimpleExprKind::Call {
             func: FnId(1),
             args: vec![Atom::Var(VarId(0)), Atom::Lit(Literal::Int(42))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"call f1(v0, 42)");
     }
 
     #[test]
     fn pretty_simple_expr_call_closure() {
-        let expr = SimpleExpr::CallClosure {
+        let expr = simple(SimpleExprKind::CallClosure {
             closure: Atom::Var(VarId(5)),
             args: vec![Atom::Lit(Literal::Int(1))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"call_closure v5(1)");
     }
 
     #[test]
     fn pretty_simple_expr_make_closure() {
-        let expr = SimpleExpr::MakeClosure {
+        let expr = simple(SimpleExprKind::MakeClosure {
             func: FnId(2),
             captures: vec![Atom::Var(VarId(0))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"make_closure(f2, [v0])");
     }
 
     #[test]
     fn pretty_simple_expr_construct() {
-        let expr = SimpleExpr::Construct {
+        let expr = simple(SimpleExprKind::Construct {
             type_name: "Point".into(),
             fields: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"construct Point(1, 2)");
     }
 
     #[test]
     fn pretty_simple_expr_construct_variant() {
-        let expr = SimpleExpr::ConstructVariant {
+        let expr = simple(SimpleExprKind::ConstructVariant {
             type_name: "Option".into(),
             variant: "Some".into(),
             tag: 0,
             fields: vec![Atom::Lit(Literal::Int(42))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"construct Option::Some#0(42)");
     }
 
     #[test]
     fn pretty_simple_expr_project() {
-        let expr = SimpleExpr::Project {
+        let expr = simple(SimpleExprKind::Project {
             value: Atom::Var(VarId(0)),
             field_index: 1,
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"project v0.1");
     }
 
     #[test]
     fn pretty_simple_expr_tag() {
-        let expr = SimpleExpr::Tag {
+        let expr = simple(SimpleExprKind::Tag {
             value: Atom::Var(VarId(3)),
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"tag v3");
     }
 
     #[test]
     fn pretty_simple_expr_make_tuple() {
-        let expr = SimpleExpr::MakeTuple {
+        let expr = simple(SimpleExprKind::MakeTuple {
             elements: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Bool(true))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"tuple(1, true)");
     }
 
     #[test]
     fn pretty_simple_expr_tuple_project() {
-        let expr = SimpleExpr::TupleProject {
+        let expr = simple(SimpleExprKind::TupleProject {
             value: Atom::Var(VarId(0)),
             index: 0,
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"tuple_project v0.0");
     }
 
     #[test]
     fn pretty_simple_expr_primop() {
-        let expr = SimpleExpr::PrimOp {
+        let expr = simple(SimpleExprKind::PrimOp {
             op: PrimOp::AddInt,
             args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-        };
+        });
         insta::assert_snapshot!(expr.to_string(), @"add_int(1, 2)");
     }
 
     #[test]
     fn pretty_let_binding() {
-        let expr = Expr {
-            kind: ExprKind::Let {
+        let expr = expr(
+            Type::Int,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Int,
-                value: SimpleExpr::PrimOp {
+                value: simple(SimpleExprKind::PrimOp {
                     op: PrimOp::AddInt,
                     args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-                },
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(0))),
-                    ty: Type::Int,
                 }),
+                body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(0))))),
             },
-            ty: Type::Int,
-        };
+        );
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "add".into(),
@@ -819,21 +828,21 @@ mod tests {
 
     #[test]
     fn pretty_let_rec() {
-        let expr = Expr {
-            kind: ExprKind::LetRec {
+        let expr = expr(
+            Type::Fn(vec![Type::Int], Box::new(Type::Int)),
+            ExprKind::LetRec {
                 bindings: vec![(
                     VarId(0),
                     Type::Fn(vec![Type::Int], Box::new(Type::Int)),
                     FnId(1),
                     vec![],
                 )],
-                body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(0))),
-                    ty: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
-                }),
+                body: Box::new(expr(
+                    Type::Fn(vec![Type::Int], Box::new(Type::Int)),
+                    ExprKind::Atom(Atom::Var(VarId(0))),
+                )),
             },
-            ty: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
-        };
+        );
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "test".into(),
@@ -850,25 +859,22 @@ mod tests {
 
     #[test]
     fn pretty_let_join() {
-        let expr = Expr {
-            kind: ExprKind::LetJoin {
+        let expr = expr(
+            Type::Int,
+            ExprKind::LetJoin {
                 name: VarId(10),
                 params: vec![(VarId(11), Type::Int)],
-                join_body: Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Var(VarId(11))),
-                    ty: Type::Int,
-                }),
-                body: Box::new(Expr {
-                    kind: ExprKind::Jump {
+                join_body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(11))))),
+                body: Box::new(expr(
+                    Type::Int,
+                    ExprKind::Jump {
                         target: VarId(10),
                         args: vec![Atom::Lit(Literal::Int(42))],
                     },
-                    ty: Type::Int,
-                }),
+                )),
                 is_recur: false,
             },
-            ty: Type::Int,
-        };
+        );
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "test".into(),
@@ -886,24 +892,21 @@ mod tests {
 
     #[test]
     fn pretty_switch() {
-        let expr = Expr {
-            kind: ExprKind::Switch {
+        let expr = expr(
+            Type::Int,
+            ExprKind::Switch {
                 scrutinee: Atom::Var(VarId(0)),
                 branches: vec![SwitchBranch {
                     tag: 0,
                     bindings: vec![(VarId(1), Type::Int)],
-                    body: Expr {
-                        kind: ExprKind::Atom(Atom::Var(VarId(1))),
-                        ty: Type::Int,
-                    },
+                    body: expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1)))),
                 }],
-                default: Some(Box::new(Expr {
-                    kind: ExprKind::Atom(Atom::Lit(Literal::Int(0))),
-                    ty: Type::Int,
-                })),
+                default: Some(Box::new(expr(
+                    Type::Int,
+                    ExprKind::Atom(Atom::Lit(Literal::Int(0))),
+                ))),
             },
-            ty: Type::Int,
-        };
+        );
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "test".into(),
@@ -1006,10 +1009,7 @@ mod tests {
                 name: "main".into(),
                 params: vec![],
                 return_type: Type::Unit,
-                body: Expr {
-                    kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                    ty: Type::Unit,
-                },
+                body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
             }],
             fn_dict_requirements: std::collections::HashMap::new(),
         };

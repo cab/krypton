@@ -337,6 +337,8 @@ pub struct InstanceDefInfo {
 #[derive(Clone)]
 pub struct ExternFnInfo {
     pub name: String,
+    pub declaring_module_path: String,
+    pub span: Span,
     pub module_path: String,
     pub target: krypton_parser::ast::ExternTarget,
     pub param_types: Vec<Type>,

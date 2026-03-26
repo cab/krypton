@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use krypton_ir::{
-    head_type_name, Atom, Expr, ExprKind, FnId, Literal, Module, PrimOp, SimpleExpr, StructDef,
-    SumTypeDef, Type, VarId,
+    head_type_name, Atom, Expr, ExprKind, FnId, Literal, Module, PrimOp, SimpleExpr,
+    SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
 };
+use krypton_parser::ast::Span;
 use krypton_typechecker::typed_ast::TypedModule;
 
 /// Errors that can occur during JS code generation.
@@ -12,6 +13,20 @@ use krypton_typechecker::typed_ast::TypedModule;
 pub enum JsCodegenError {
     LowerError(String),
     UnsupportedFeature(String),
+    MissingExternTarget(Vec<MissingExternTarget>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingExternTarget {
+    pub function_name: String,
+    pub referencing_module: String,
+    pub available_targets: Vec<String>,
+    pub referencing_module_source: Option<String>,
+    pub is_root_module: bool,
+    pub use_span: Span,
+    pub declaring_module: String,
+    pub declaring_module_source: Option<String>,
+    pub declaration_span: Span,
 }
 
 impl fmt::Display for JsCodegenError {
@@ -20,6 +35,21 @@ impl fmt::Display for JsCodegenError {
             JsCodegenError::LowerError(msg) => write!(f, "IR lowering error: {msg}"),
             JsCodegenError::UnsupportedFeature(msg) => {
                 write!(f, "unsupported JS feature: {msg}")
+            }
+            JsCodegenError::MissingExternTarget(items) => {
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        writeln!(f)?;
+                    }
+                    write!(
+                        f,
+                        "JS codegen error: extern function `{}` referenced from module `{}` has no JS target declaration (available targets: {})",
+                        item.function_name,
+                        item.referencing_module,
+                        item.available_targets.join(", ")
+                    )?;
+                }
+                Ok(())
             }
         }
     }
@@ -40,6 +70,7 @@ pub fn compile_modules_js(
         .unwrap_or("");
 
     let mut ir_modules: Vec<Module> = Vec::new();
+    let mut module_sources: HashMap<String, Option<String>> = HashMap::new();
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
         let mod_name = if is_root {
@@ -51,6 +82,8 @@ pub fn compile_modules_js(
             JsCodegenError::LowerError(format!("module {mod_name}: {e}"))
         })?;
         ir_modules.push(ir);
+        module_sources.insert(mod_name.to_string(), tm.module_source.clone());
+        module_sources.insert(tm.module_path.clone(), tm.module_source.clone());
     }
 
     // Build variant lookup from all modules: (type_name, tag) → variant_name
@@ -76,6 +109,9 @@ pub fn compile_modules_js(
         }
     }
 
+    let reachable_modules = collect_reachable_modules(&ir_modules, &instance_source_modules);
+    validate_js_extern_targets(&ir_modules, &reachable_modules, &module_sources)?;
+
     let mut results = Vec::new();
     for (i, ir_module) in ir_modules.iter().enumerate() {
         let is_main = i == 0;
@@ -87,6 +123,192 @@ pub fn compile_modules_js(
     }
 
     Ok(results)
+}
+
+fn validate_js_extern_targets(
+    ir_modules: &[Module],
+    reachable_modules: &HashSet<String>,
+    module_sources: &HashMap<String, Option<String>>,
+) -> Result<(), JsCodegenError> {
+    let mut missing = Vec::new();
+
+    for ir_module in ir_modules {
+        if !reachable_modules.contains(&ir_module.name) {
+            continue;
+        }
+        let referenced = collect_referenced_fns(ir_module);
+        let mut externs_by_id: HashMap<FnId, Vec<&krypton_ir::ExternFnDef>> = HashMap::new();
+        for ext in &ir_module.extern_fns {
+            if referenced.contains_key(&ext.id) {
+                externs_by_id.entry(ext.id).or_default().push(ext);
+            }
+        }
+
+        for (fn_id, use_span) in referenced {
+            let Some(entries) = externs_by_id.get(&fn_id) else {
+                continue;
+            };
+            if entries
+                .iter()
+                .any(|ext| matches!(ext.target, krypton_ir::ExternTarget::Js { .. }))
+            {
+                continue;
+            }
+
+            let fn_name = ir_module.fn_names.get(&fn_id).cloned().unwrap_or_else(|| {
+                entries
+                    .first()
+                    .map(|ext| ext.name.clone())
+                    .unwrap_or_else(|| format!("fn_{}", fn_id.0))
+            });
+            let mut available_targets: Vec<String> =
+                entries.iter().map(|ext| format_extern_target(&ext.target)).collect();
+            available_targets.sort();
+            available_targets.dedup();
+            let declaration = entries
+                .first()
+                .expect("extern entry missing after map lookup");
+            missing.push(MissingExternTarget {
+                function_name: fn_name,
+                referencing_module: ir_module.module_path.clone(),
+                referencing_module_source: module_sources
+                    .get(&ir_module.module_path)
+                    .cloned()
+                    .flatten()
+                    .or_else(|| module_sources.get(&ir_module.name).cloned().flatten()),
+                available_targets,
+                is_root_module: ir_module.name == ir_modules[0].name,
+                use_span,
+                declaring_module: declaration.declaring_module_path.clone(),
+                declaring_module_source: module_sources
+                    .get(&declaration.declaring_module_path)
+                    .cloned()
+                    .flatten(),
+                declaration_span: declaration.span,
+            });
+        }
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        missing.sort_by(|a, b| {
+            a.referencing_module
+                .cmp(&b.referencing_module)
+                .then(a.function_name.cmp(&b.function_name))
+        });
+        missing.dedup();
+        Err(JsCodegenError::MissingExternTarget(missing))
+    }
+}
+
+fn collect_reachable_modules(
+    ir_modules: &[Module],
+    instance_source_modules: &HashMap<(String, String), String>,
+) -> HashSet<String> {
+    let mut by_name: HashMap<&str, &Module> = HashMap::new();
+    for module in ir_modules {
+        by_name.insert(module.name.as_str(), module);
+    }
+
+    let Some(root) = ir_modules.first() else {
+        return HashSet::new();
+    };
+
+    let mut reachable = HashSet::new();
+    let mut stack = vec![root.name.clone()];
+    while let Some(module_name) = stack.pop() {
+        if !reachable.insert(module_name.clone()) {
+            continue;
+        }
+        let Some(module) = by_name.get(module_name.as_str()) else {
+            continue;
+        };
+        for imported in &module.imported_fns {
+            if !reachable.contains(&imported.source_module) {
+                stack.push(imported.source_module.clone());
+            }
+        }
+        for inst in &module.instances {
+            if inst.is_imported && !inst.is_intrinsic {
+                let key = (
+                    inst.trait_name.local_name.clone(),
+                    inst.target_type_name.clone(),
+                );
+                if let Some(source_module) = instance_source_modules.get(&key) {
+                    if !reachable.contains(source_module) {
+                        stack.push(source_module.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    reachable
+}
+
+fn format_extern_target(target: &krypton_ir::ExternTarget) -> String {
+    match target {
+        krypton_ir::ExternTarget::Java { class } => format!("java:{class}"),
+        krypton_ir::ExternTarget::Js { module } => format!("js:{module}"),
+    }
+}
+
+fn collect_referenced_fns(module: &Module) -> HashMap<FnId, Span> {
+    let mut ids = HashMap::new();
+    for func in &module.functions {
+        collect_referenced_fns_expr(&func.body, &mut ids);
+    }
+    ids
+}
+
+fn collect_referenced_fns_expr(expr: &Expr, ids: &mut HashMap<FnId, Span>) {
+    match &expr.kind {
+        ExprKind::Let { value, body, .. } => {
+            collect_referenced_fns_simple(value, ids);
+            collect_referenced_fns_expr(body, ids);
+        }
+        ExprKind::LetRec { bindings, body } => {
+            for (_, _, fn_id, _) in bindings {
+                ids.entry(*fn_id).or_insert(expr.span);
+            }
+            collect_referenced_fns_expr(body, ids);
+        }
+        ExprKind::LetJoin {
+            join_body, body, ..
+        } => {
+            collect_referenced_fns_expr(join_body, ids);
+            collect_referenced_fns_expr(body, ids);
+        }
+        ExprKind::BoolSwitch {
+            true_body,
+            false_body,
+            ..
+        } => {
+            collect_referenced_fns_expr(true_body, ids);
+            collect_referenced_fns_expr(false_body, ids);
+        }
+        ExprKind::Switch {
+            branches, default, ..
+        } => {
+            for branch in branches {
+                collect_referenced_fns_expr(&branch.body, ids);
+            }
+            if let Some(default) = default {
+                collect_referenced_fns_expr(default, ids);
+            }
+        }
+        ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
+    }
+}
+
+fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashMap<FnId, Span>) {
+    match &expr.kind {
+        SimpleExprKind::Call { func, .. } | SimpleExprKind::MakeClosure { func, .. } => {
+            ids.entry(*func).or_insert(expr.span);
+        }
+        _ => {}
+    }
 }
 
 /// Tracks info about a recur join point for while(true) + continue emission.
@@ -880,24 +1102,24 @@ impl<'a> JsEmitter<'a> {
     }
 
     fn emit_simple_expr(&mut self, expr: &'a SimpleExpr) {
-        match expr {
-            SimpleExpr::Atom(atom) => {
+        match &expr.kind {
+            SimpleExprKind::Atom(atom) => {
                 self.write(&self.emit_atom(atom));
             }
-            SimpleExpr::PrimOp { op, args } => {
+            SimpleExprKind::PrimOp { op, args } => {
                 self.emit_prim_op(*op, args);
             }
-            SimpleExpr::Call { func, args } => {
+            SimpleExprKind::Call { func, args } => {
                 let fn_name = self.fn_name(*func);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{fn_name}({})", arg_strs.join(", ")));
             }
-            SimpleExpr::CallClosure { closure, args } => {
+            SimpleExprKind::CallClosure { closure, args } => {
                 let closure_str = self.emit_atom(closure);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{closure_str}({})", arg_strs.join(", ")));
             }
-            SimpleExpr::MakeClosure { func, captures } => {
+            SimpleExprKind::MakeClosure { func, captures } => {
                 let fn_name = self.fn_name(*func);
                 if captures.is_empty() {
                     self.write(&fn_name);
@@ -914,12 +1136,12 @@ impl<'a> JsEmitter<'a> {
                     ));
                 }
             }
-            SimpleExpr::Construct { type_name, fields } => {
+            SimpleExprKind::Construct { type_name, fields } => {
                 let arg_strs: Vec<String> = fields.iter().map(|a| self.emit_atom(a)).collect();
                 let bare_name = type_name.rsplit('/').next().unwrap_or(type_name);
                 self.write(&format!("new {bare_name}({})", arg_strs.join(", ")));
             }
-            SimpleExpr::ConstructVariant {
+            SimpleExprKind::ConstructVariant {
                 variant,
                 fields,
                 ..
@@ -932,24 +1154,26 @@ impl<'a> JsEmitter<'a> {
                     self.write(&format!("new {variant}({})", arg_strs.join(", ")));
                 }
             }
-            SimpleExpr::Project { value, field_index } => {
+            SimpleExprKind::Project { value, field_index } => {
                 let val = self.emit_atom(value);
                 let field_name = self.resolve_field_name(value, *field_index);
                 self.write(&format!("{val}.{field_name}"));
             }
-            SimpleExpr::Tag { value } => {
+            SimpleExprKind::Tag { value } => {
                 let val = self.emit_atom(value);
                 self.write(&format!("{val}.$tag"));
             }
-            SimpleExpr::MakeTuple { elements } => {
+            SimpleExprKind::MakeTuple { elements } => {
                 let elems: Vec<String> = elements.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("[{}]", elems.join(", ")));
             }
-            SimpleExpr::TupleProject { value, index } => {
+            SimpleExprKind::TupleProject { value, index } => {
                 let val = self.emit_atom(value);
                 self.write(&format!("{val}[{index}]"));
             }
-            SimpleExpr::TraitCall { method_name, args, .. } => {
+            SimpleExprKind::TraitCall {
+                method_name, args, ..
+            } => {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                 if arg_strs.is_empty() {
                     self.write(&format!("/* trait call {method_name} */ undefined"));
@@ -962,11 +1186,11 @@ impl<'a> JsEmitter<'a> {
                     ));
                 }
             }
-            SimpleExpr::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty } => {
                 let dict_name = self.dict_constant_name(trait_name, ty);
                 self.write(&dict_name);
             }
-            SimpleExpr::MakeDict {
+            SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
@@ -975,7 +1199,7 @@ impl<'a> JsEmitter<'a> {
                 let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{factory_name}({})", args.join(", ")));
             }
-            SimpleExpr::MakeVec { elements, .. } => {
+            SimpleExprKind::MakeVec { elements, .. } => {
                 let elems: Vec<String> = elements.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("[{}]", elems.join(", ")));
             }
@@ -1155,4 +1379,110 @@ fn js_intrinsic_dicts() -> Vec<(&'static str, &'static str, Vec<(&'static str, &
         }
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krypton_ir::{ExternFnDef, ExternTarget, FnDef, Module};
+    use std::collections::{BTreeSet, HashMap, HashSet};
+
+    fn expr(ty: Type, kind: ExprKind) -> Expr {
+        Expr::new((0, 0), ty, kind)
+    }
+
+    fn simple(kind: SimpleExprKind) -> SimpleExpr {
+        SimpleExpr::new((0, 0), kind)
+    }
+
+    fn test_module(name: &str) -> Module {
+        Module {
+            name: name.to_string(),
+            structs: vec![],
+            sum_types: vec![],
+            functions: vec![],
+            fn_names: HashMap::new(),
+            extern_fns: vec![],
+            extern_types: vec![],
+            imported_fns: vec![],
+            traits: vec![],
+            instances: vec![],
+            tuple_arities: BTreeSet::new(),
+            module_path: name.to_string(),
+            fn_dict_requirements: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn referenced_java_only_extern_fails_validation() {
+        let mut module = test_module("test");
+        let bind = VarId(0);
+        let extern_fn = FnId(1);
+        module.fn_names.insert(extern_fn, "println".to_string());
+        module.extern_fns.push(ExternFnDef {
+            id: extern_fn,
+            name: "println".to_string(),
+            declaring_module_path: "test".to_string(),
+            span: (0, 0),
+            target: ExternTarget::Java {
+                class: "krypton.runtime.KryptonIO".to_string(),
+            },
+            param_types: vec![Type::Int],
+            return_type: Type::Unit,
+        });
+        module.functions.push(FnDef {
+            id: FnId(0),
+            name: "main".to_string(),
+            params: vec![],
+            return_type: Type::Unit,
+            body: expr(
+                Type::Unit,
+                ExprKind::Let {
+                    bind,
+                    ty: Type::Unit,
+                    value: simple(SimpleExprKind::Call {
+                        func: extern_fn,
+                        args: vec![Atom::Lit(Literal::Int(42))],
+                    }),
+                    body: Box::new(expr(Type::Unit, ExprKind::Atom(Atom::Var(bind)))),
+                },
+            ),
+        });
+
+        let reachable = HashSet::from([module.name.clone()]);
+        let module_sources = HashMap::from([("test".to_string(), None)]);
+        let err = validate_js_extern_targets(&[module], &reachable, &module_sources)
+            .expect_err("referenced Java-only extern should fail");
+        assert!(err.to_string().contains("println"));
+    }
+
+    #[test]
+    fn unreferenced_java_only_extern_passes_validation() {
+        let mut module = test_module("test");
+        let extern_fn = FnId(1);
+        module.fn_names.insert(extern_fn, "println".to_string());
+        module.extern_fns.push(ExternFnDef {
+            id: extern_fn,
+            name: "println".to_string(),
+            declaring_module_path: "test".to_string(),
+            span: (0, 0),
+            target: ExternTarget::Java {
+                class: "krypton.runtime.KryptonIO".to_string(),
+            },
+            param_types: vec![Type::Int],
+            return_type: Type::Unit,
+        });
+        module.functions.push(FnDef {
+            id: FnId(0),
+            name: "main".to_string(),
+            params: vec![],
+            return_type: Type::Int,
+            body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
+        });
+
+        let reachable = HashSet::from([module.name.clone()]);
+        let module_sources = HashMap::from([("test".to_string(), None)]);
+        validate_js_extern_targets(&[module], &reachable, &module_sources)
+            .expect("unreferenced Java-only extern should pass");
+    }
 }

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{TraitName, Type, TypeVarId};
+use krypton_ir::{SimpleExprKind, TraitName, Type, TypeVarId};
 use krypton_parser::ast::Span;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
@@ -1055,12 +1055,12 @@ impl Compiler {
         bind_ty: &Type,
         _ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
-        match value {
-            krypton_ir::SimpleExpr::Atom(atom) => self.compile_ir_atom(atom),
+        match &value.kind {
+            SimpleExprKind::Atom(atom) => self.compile_ir_atom(atom),
 
-            krypton_ir::SimpleExpr::PrimOp { op, args } => self.compile_ir_primop(*op, args),
+            SimpleExprKind::PrimOp { op, args } => self.compile_ir_primop(*op, args),
 
-            krypton_ir::SimpleExpr::Call { func, args } => {
+            SimpleExprKind::Call { func, args } => {
                 let name = self
                     .fn_names
                     .get(func)
@@ -1234,7 +1234,7 @@ impl Compiler {
                 }
             }
 
-            krypton_ir::SimpleExpr::TraitCall {
+            SimpleExprKind::TraitCall {
                 trait_name,
                 method_name,
                 args,
@@ -1282,7 +1282,7 @@ impl Compiler {
                 }
             }
 
-            krypton_ir::SimpleExpr::CallClosure { closure, args } => {
+            SimpleExprKind::CallClosure { closure, args } => {
                 // Determine arity from closure type
                 let closure_ty = match closure {
                     krypton_ir::Atom::Var(var_id) => {
@@ -1340,7 +1340,7 @@ impl Compiler {
                 Ok(ret_jvm)
             }
 
-            krypton_ir::SimpleExpr::MakeClosure { func, captures } => {
+            SimpleExprKind::MakeClosure { func, captures } => {
                 let func_name = self
                     .fn_names
                     .get(func)
@@ -1581,7 +1581,7 @@ impl Compiler {
                 )
             }
 
-            krypton_ir::SimpleExpr::Construct { type_name, fields } => {
+            SimpleExprKind::Construct { type_name, fields } => {
                 let si = self.types.struct_info.get(type_name).ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown struct: {type_name}"), None)
                 })?;
@@ -1607,7 +1607,7 @@ impl Compiler {
                 Ok(result_type)
             }
 
-            krypton_ir::SimpleExpr::ConstructVariant {
+            SimpleExprKind::ConstructVariant {
                 type_name: _,
                 variant,
                 tag: _,
@@ -1625,7 +1625,7 @@ impl Compiler {
                 Ok(self.emit_variant_invokespecial(ctor_ref, &variant_fields, iface_idx))
             }
 
-            krypton_ir::SimpleExpr::Project { value, field_index } => {
+            SimpleExprKind::Project { value, field_index } => {
                 let val_type = self.compile_ir_atom(value)?;
                 // Look up struct name from var_types
                 let struct_name = match value {
@@ -1676,11 +1676,11 @@ impl Compiler {
                 Ok(field_jvm_type)
             }
 
-            krypton_ir::SimpleExpr::Tag { .. } => {
+            SimpleExprKind::Tag { .. } => {
                 panic!("ICE: Tag should never be emitted by lowering");
             }
 
-            krypton_ir::SimpleExpr::MakeTuple { elements } => {
+            SimpleExprKind::MakeTuple { elements } => {
                 let arity = elements.len();
                 let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
@@ -1704,7 +1704,7 @@ impl Compiler {
                 Ok(result_type)
             }
 
-            krypton_ir::SimpleExpr::TupleProject { value, index } => {
+            SimpleExprKind::TupleProject { value, index } => {
                 self.compile_ir_atom(value)?;
                 // Determine arity from var_types
                 let arity = match value {
@@ -1758,7 +1758,7 @@ impl Compiler {
                 Ok(expected)
             }
 
-            krypton_ir::SimpleExpr::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty } => {
                 let pushed_class = self
                     .traits
                     .trait_dispatch
@@ -1769,7 +1769,7 @@ impl Compiler {
                 Ok(JvmType::StructRef(pushed_class))
             }
 
-            krypton_ir::SimpleExpr::MakeDict {
+            SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
@@ -1827,7 +1827,7 @@ impl Compiler {
                 }
             }
 
-            krypton_ir::SimpleExpr::MakeVec {
+            SimpleExprKind::MakeVec {
                 element_type: _,
                 elements,
             } => {
@@ -1947,10 +1947,13 @@ impl Compiler {
                 }
                 // Second pass: compile MakeClosure for each and store
                 for (var_id, ty, fn_id, captures) in bindings {
-                    let make_closure = krypton_ir::SimpleExpr::MakeClosure {
-                        func: *fn_id,
-                        captures: captures.clone(),
-                    };
+                    let make_closure = krypton_ir::SimpleExpr::new(
+                        (0, 0),
+                        SimpleExprKind::MakeClosure {
+                            func: *fn_id,
+                            captures: captures.clone(),
+                        },
+                    );
                     let val_type = self.compile_ir_simple_expr(&make_closure, ty, ir_module)?;
                     let &(slot, jvm_ty) = self.var_locals.get(var_id).unwrap();
                     // Coerce if needed

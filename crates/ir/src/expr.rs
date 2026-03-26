@@ -1,10 +1,18 @@
 use crate::{FnId, TraitName, Type, VarId};
+use krypton_parser::ast::Span;
 
 /// An IR expression. Every expression carries a `Type`.
 #[derive(Debug, Clone)]
 pub struct Expr {
     pub kind: ExprKind,
     pub ty: Type,
+    pub span: Span,
+}
+
+impl Expr {
+    pub fn new(span: Span, ty: Type, kind: ExprKind) -> Self {
+        Self { kind, ty, span }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +74,19 @@ pub struct SwitchBranch {
 
 /// One step of computation. Appears only as the RHS of a `Let` binding.
 #[derive(Debug, Clone)]
-pub enum SimpleExpr {
+pub struct SimpleExpr {
+    pub kind: SimpleExprKind,
+    pub span: Span,
+}
+
+impl SimpleExpr {
+    pub fn new(span: Span, kind: SimpleExprKind) -> Self {
+        Self { kind, span }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SimpleExprKind {
     /// Direct call to a known function.
     Call { func: FnId, args: Vec<Atom> },
 

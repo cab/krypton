@@ -1162,6 +1162,8 @@ fn process_extern_methods(
         };
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),
+            declaring_module_path: module_path_str.to_string(),
+            span: method.span,
             module_path: class_name.to_string(),
             target: target.clone(),
             param_types: concrete_params,

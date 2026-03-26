@@ -6,7 +6,8 @@ pub mod pretty;
 
 use std::collections::{BTreeSet, HashMap};
 
-pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SwitchBranch};
+pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
+use krypton_parser::ast::Span;
 pub use krypton_typechecker::typed_ast::TraitName;
 pub use krypton_typechecker::types::TypeVarId;
 
@@ -328,6 +329,8 @@ pub enum ExternTarget {
 pub struct ExternFnDef {
     pub id: FnId,
     pub name: String,
+    pub declaring_module_path: String,
+    pub span: Span,
     pub target: ExternTarget,
     pub param_types: Vec<Type>,
     pub return_type: Type,
@@ -387,6 +390,14 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    fn expr(ty: Type, kind: ExprKind) -> Expr {
+        Expr::new((0, 0), ty, kind)
+    }
+
+    fn simple(kind: SimpleExprKind) -> SimpleExpr {
+        SimpleExpr::new((0, 0), kind)
+    }
+
     #[test]
     fn var_id_is_copy_eq_hash() {
         let a = VarId(0);
@@ -410,81 +421,75 @@ mod tests {
     #[test]
     fn expr_shape_matches_spec() {
         // Construct an Atom expression
-        let atom_expr = Expr {
-            kind: ExprKind::Atom(Atom::Lit(Literal::Int(42))),
-            ty: Type::Int,
-        };
+        let atom_expr = expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42))));
 
         // Construct a Let expression
-        let let_expr = Expr {
-            kind: ExprKind::Let {
+        let let_expr = expr(
+            Type::Int,
+            ExprKind::Let {
                 bind: VarId(0),
                 ty: Type::Int,
-                value: SimpleExpr::PrimOp {
+                value: simple(SimpleExprKind::PrimOp {
                     op: PrimOp::AddInt,
                     args: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-                },
+                }),
                 body: Box::new(atom_expr),
             },
-            ty: Type::Int,
-        };
+        );
 
         assert!(matches!(let_expr.kind, ExprKind::Let { .. }));
     }
 
     #[test]
     fn simple_expr_variants() {
-        let _call = SimpleExpr::Call {
+        let _call = simple(SimpleExprKind::Call {
             func: FnId(0),
             args: vec![Atom::Var(VarId(0))],
-        };
-        let _call_closure = SimpleExpr::CallClosure {
+        });
+        let _call_closure = simple(SimpleExprKind::CallClosure {
             closure: Atom::Var(VarId(1)),
             args: vec![],
-        };
-        let _make_closure = SimpleExpr::MakeClosure {
+        });
+        let _make_closure = simple(SimpleExprKind::MakeClosure {
             func: FnId(1),
             captures: vec![Atom::Var(VarId(0))],
-        };
-        let _construct = SimpleExpr::Construct {
+        });
+        let _construct = simple(SimpleExprKind::Construct {
             type_name: "Point".into(),
             fields: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
-        };
-        let _variant = SimpleExpr::ConstructVariant {
+        });
+        let _variant = simple(SimpleExprKind::ConstructVariant {
             type_name: "Option".into(),
             variant: "Some".into(),
             tag: 0,
             fields: vec![Atom::Lit(Literal::Int(42))],
-        };
-        let _project = SimpleExpr::Project {
+        });
+        let _project = simple(SimpleExprKind::Project {
             value: Atom::Var(VarId(0)),
             field_index: 0,
-        };
-        let _tag = SimpleExpr::Tag {
+        });
+        let _tag = simple(SimpleExprKind::Tag {
             value: Atom::Var(VarId(0)),
-        };
-        let _tuple = SimpleExpr::MakeTuple {
+        });
+        let _tuple = simple(SimpleExprKind::MakeTuple {
             elements: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Bool(true))],
-        };
-        let _tuple_project = SimpleExpr::TupleProject {
+        });
+        let _tuple_project = simple(SimpleExprKind::TupleProject {
             value: Atom::Var(VarId(0)),
             index: 0,
-        };
-        let _prim = SimpleExpr::PrimOp {
+        });
+        let _prim = simple(SimpleExprKind::PrimOp {
             op: PrimOp::ConcatString,
             args: vec![
                 Atom::Lit(Literal::String("hello".into())),
                 Atom::Lit(Literal::String(" world".into())),
             ],
-        };
+        });
     }
 
     #[test]
     fn switch_and_join_points() {
-        let body = Expr {
-            kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-            ty: Type::Unit,
-        };
+        let body = expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit)));
 
         let _switch = ExprKind::Switch {
             scrutinee: Atom::Var(VarId(0)),
@@ -500,13 +505,13 @@ mod tests {
             name: VarId(10),
             params: vec![(VarId(11), Type::Int)],
             join_body: Box::new(body.clone()),
-            body: Box::new(Expr {
-                kind: ExprKind::Jump {
+            body: Box::new(expr(
+                Type::Unit,
+                ExprKind::Jump {
                     target: VarId(10),
                     args: vec![Atom::Lit(Literal::Int(0))],
                 },
-                ty: Type::Unit,
-            }),
+            )),
             is_recur: false,
         };
 
@@ -552,10 +557,7 @@ mod tests {
                 name: "main".into(),
                 params: vec![],
                 return_type: Type::Unit,
-                body: Expr {
-                    kind: ExprKind::Atom(Atom::Lit(Literal::Unit)),
-                    ty: Type::Unit,
-                },
+                body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
             }],
             extern_fns: vec![],
             extern_types: vec![],

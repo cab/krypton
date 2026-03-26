@@ -827,6 +827,7 @@ dependencies = [
 name = "krypton-codegen-js"
 version = "0.1.0"
 dependencies = [
+ "ariadne",
  "insta",
  "krypton-ir",
  "krypton-modules",
