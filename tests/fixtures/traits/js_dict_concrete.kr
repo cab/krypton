@@ -1,0 +1,18 @@
+# expect: output true
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+extern js "./runtime.mjs" {
+    fun println[a](x: a) -> Unit
+}
+
+type Point = { x: Int, y: Int }
+
+impl Eq[Point] {
+    fun eq(a, b) = if a.x == b.x { a.y == b.y } else { false }
+}
+
+fun check(p1: Point, p2: Point) -> Bool = eq(p1, p2)
+
+fun main() = println(check(Point { x = 1, y = 2 }, Point { x = 1, y = 2 }))

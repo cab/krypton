@@ -7,6 +7,7 @@ mod tests {
     use std::collections::{BTreeSet, HashMap};
 
     use krypton_ir::*;
+    use krypton_typechecker::types::TypeVarGen;
 
     /// Build a minimal IR Module with the given fields.
     fn make_module(name: &str) -> Module {
@@ -30,7 +31,9 @@ mod tests {
     /// Emit JS from a hand-built IR Module directly (bypasses lowering).
     fn emit_module(module: &Module) -> String {
         let variant_lookup = HashMap::new();
-        let mut emitter = crate::emit::JsEmitter::new(module, false, &variant_lookup);
+        let instance_source_modules = HashMap::new();
+        let mut emitter =
+            crate::emit::JsEmitter::new(module, false, &variant_lookup, &instance_source_modules);
         emitter.emit()
     }
 
@@ -38,10 +41,10 @@ mod tests {
     fn empty_module() {
         let module = make_module("empty");
         let js = emit_module(&module);
-        // Should produce valid JS (empty or whitespace only)
+        // Should produce valid JS — intrinsic dicts are emitted unconditionally
         assert!(
-            js.trim().is_empty(),
-            "empty module should produce empty JS, got: {js:?}"
+            !js.contains("export function"),
+            "empty module should have no exported functions, got: {js:?}"
         );
     }
 
@@ -349,7 +352,9 @@ mod tests {
         // so we test the emitter's filename logic directly.
         let module = make_module("hello");
         let variant_lookup = HashMap::new();
-        let mut emitter = crate::emit::JsEmitter::new(&module, false, &variant_lookup);
+        let instance_source_modules = HashMap::new();
+        let mut emitter =
+            crate::emit::JsEmitter::new(&module, false, &variant_lookup, &instance_source_modules);
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"
         let filename = format!("{}.mjs", module.name);
@@ -437,6 +442,232 @@ mod tests {
         assert!(
             js.contains("return undefined;"),
             "Unit should emit as undefined"
+        );
+    }
+
+    // ── Dict emission tests ──────────────────────────────────
+
+    fn make_trait_name(name: &str) -> krypton_ir::TraitName {
+        krypton_ir::TraitName::new(format!("core/{}", name.to_lowercase()), name.to_string())
+    }
+
+    #[test]
+    fn dict_concrete_instance() {
+        use krypton_ir::{FnId, InstanceDef, Type};
+        let mut module = make_module("test");
+        module.structs.push(krypton_ir::StructDef {
+            name: "Point".to_string(),
+            type_params: vec![],
+            fields: vec![
+                ("x".to_string(), Type::Int),
+                ("y".to_string(), Type::Int),
+            ],
+        });
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(1),
+            name: "Eq$$Point$$eq".to_string(),
+            params: vec![],
+            return_type: Type::Bool,
+            body: krypton_ir::Expr {
+                kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(
+                    true,
+                ))),
+                ty: Type::Bool,
+            },
+        });
+        module
+            .fn_names
+            .insert(FnId(1), "Eq$$Point$$eq".to_string());
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Eq"),
+            target_type: Type::Named("Point".to_string(), vec![]),
+            target_type_name: "Point".to_string(),
+            method_fn_ids: vec![("eq".to_string(), FnId(1))],
+            sub_dict_requirements: vec![],
+            is_intrinsic: false,
+            is_imported: false,
+        });
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("export const Eq$$Point = { eq: Eq$$Point$$eq };"),
+            "should emit concrete dict constant, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn dict_intrinsic_instance() {
+        use krypton_ir::{FnId, InstanceDef, Type};
+        let mut module = make_module("test");
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Eq"),
+            target_type: Type::Int,
+            target_type_name: "Int".to_string(),
+            method_fn_ids: vec![("eq".to_string(), FnId(99))],
+            sub_dict_requirements: vec![],
+            is_intrinsic: true,
+            is_imported: false,
+        });
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("const Eq$$Int = { eq: (a, b) => a === b };"),
+            "should emit intrinsic dict inline, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn dict_parameterized_instance() {
+        use krypton_ir::{FnId, InstanceDef, Type};
+        let mut gen = TypeVarGen::new();
+        let tv_a = gen.fresh();
+        let mut module = make_module("test");
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(2),
+            name: "Show$$Option$$show".to_string(),
+            params: vec![],
+            return_type: Type::String,
+            body: krypton_ir::Expr {
+                kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
+                    krypton_ir::Literal::String("x".to_string()),
+                )),
+                ty: Type::String,
+            },
+        });
+        module
+            .fn_names
+            .insert(FnId(2), "Show$$Option$$show".to_string());
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Show"),
+            target_type: Type::Named("Option".to_string(), vec![Type::Var(tv_a)]),
+            target_type_name: "Option".to_string(),
+            method_fn_ids: vec![("show".to_string(), FnId(2))],
+            sub_dict_requirements: vec![(make_trait_name("Show"), tv_a)],
+            is_intrinsic: false,
+            is_imported: false,
+        });
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("export function Show$$Option(dict$$Show$$a)"),
+            "should emit factory function, got: {js:?}"
+        );
+        assert!(
+            js.contains("return { show:"),
+            "should return dict object, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn get_dict_emission() {
+        use krypton_ir::{FnId, InstanceDef, Type, VarId};
+        let mut module = make_module("test");
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Eq"),
+            target_type: Type::Int,
+            target_type_name: "Int".to_string(),
+            method_fn_ids: vec![("eq".to_string(), FnId(99))],
+            sub_dict_requirements: vec![],
+            is_intrinsic: true,
+            is_imported: false,
+        });
+        // fn test() = let d = GetDict(Eq, Int) in d
+        let d = VarId(0);
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![],
+            return_type: Type::Unit,
+            body: krypton_ir::Expr {
+                kind: krypton_ir::ExprKind::Let {
+                    bind: d,
+                    ty: Type::Dict {
+                        trait_name: make_trait_name("Eq"),
+                        target: Box::new(Type::Int),
+                    },
+                    value: krypton_ir::SimpleExpr::GetDict {
+                        trait_name: make_trait_name("Eq"),
+                        ty: Type::Int,
+                    },
+                    body: Box::new(krypton_ir::Expr {
+                        kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(d)),
+                        ty: Type::Unit,
+                    }),
+                },
+                ty: Type::Unit,
+            },
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("const v$0 = Eq$$Int;"),
+            "GetDict should resolve to dict constant name, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn make_dict_emission() {
+        use krypton_ir::{FnId, InstanceDef, Type, VarId};
+        let mut gen = TypeVarGen::new();
+        let tv_a = gen.fresh();
+        let mut module = make_module("test");
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(2),
+            name: "Show$$Option$$show".to_string(),
+            params: vec![],
+            return_type: Type::String,
+            body: krypton_ir::Expr {
+                kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
+                    krypton_ir::Literal::String("x".to_string()),
+                )),
+                ty: Type::String,
+            },
+        });
+        module
+            .fn_names
+            .insert(FnId(2), "Show$$Option$$show".to_string());
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Show"),
+            target_type: Type::Named("Option".to_string(), vec![Type::Var(tv_a)]),
+            target_type_name: "Option".to_string(),
+            method_fn_ids: vec![("show".to_string(), FnId(2))],
+            sub_dict_requirements: vec![(make_trait_name("Show"), tv_a)],
+            is_intrinsic: false,
+            is_imported: false,
+        });
+
+        // fn test(d) = let x = MakeDict(Show, Option, [d]) in x
+        let d_var = VarId(0);
+        let x_var = VarId(1);
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![(d_var, Type::Unit)],
+            return_type: Type::Unit,
+            body: krypton_ir::Expr {
+                kind: krypton_ir::ExprKind::Let {
+                    bind: x_var,
+                    ty: Type::Unit,
+                    value: krypton_ir::SimpleExpr::MakeDict {
+                        trait_name: make_trait_name("Show"),
+                        ty: Type::Named("Option".to_string(), vec![Type::Int]),
+                        sub_dicts: vec![krypton_ir::Atom::Var(d_var)],
+                    },
+                    body: Box::new(krypton_ir::Expr {
+                        kind: krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(x_var)),
+                        ty: Type::Unit,
+                    }),
+                },
+                ty: Type::Unit,
+            },
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("Show$$Option(v$0)"),
+            "MakeDict should emit factory call, got: {js:?}"
         );
     }
 

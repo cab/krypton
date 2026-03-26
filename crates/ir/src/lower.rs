@@ -4450,9 +4450,14 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 11. Build imported_fns from fn_types entries with provenance
+    // 11. Build imported_fns from fn_types entries with provenance.
+    //     Trait methods (origin.is_some()) are dispatched via TraitCall, never
+    //     via Call, so they are not imported as regular functions.
     let mut imported_fns = vec![];
     for entry in &typed.fn_types {
+        if entry.origin.is_some() {
+            continue;
+        }
         if entry.qualified_name.module_path != typed.module_path {
             if let Some(&fn_id) = ctx.fn_ids.get(&entry.name) {
                 let (param_types, return_type) = match &entry.scheme.ty {

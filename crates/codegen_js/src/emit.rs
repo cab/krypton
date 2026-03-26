@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 
 use krypton_ir::{
-    Atom, Expr, ExprKind, FnId, Literal, Module, PrimOp, SimpleExpr, StructDef, SumTypeDef,
-    VarId,
+    head_type_name, Atom, Expr, ExprKind, FnId, Literal, Module, PrimOp, SimpleExpr, StructDef,
+    SumTypeDef, Type, VarId,
 };
 use krypton_typechecker::typed_ast::TypedModule;
 
@@ -63,10 +63,24 @@ pub fn compile_modules_js(
         }
     }
 
+    // Build instance → source module map: (trait_local_name, target_type_name) → module_name
+    let mut instance_source_modules: HashMap<(String, String), String> = HashMap::new();
+    for ir_module in &ir_modules {
+        for inst in &ir_module.instances {
+            if !inst.is_imported && !inst.is_intrinsic {
+                instance_source_modules.insert(
+                    (inst.trait_name.local_name.clone(), inst.target_type_name.clone()),
+                    ir_module.name.clone(),
+                );
+            }
+        }
+    }
+
     let mut results = Vec::new();
     for (i, ir_module) in ir_modules.iter().enumerate() {
         let is_main = i == 0;
-        let mut emitter = JsEmitter::new(ir_module, is_main, &variant_lookup);
+        let mut emitter =
+            JsEmitter::new(ir_module, is_main, &variant_lookup, &instance_source_modules);
         let js_source = emitter.emit();
         let filename = format!("{}.mjs", ir_module.name);
         results.push((filename, js_source));
@@ -103,6 +117,8 @@ pub(crate) struct JsEmitter<'a> {
     variant_lookup: &'a HashMap<(String, u32), String>,
     /// Active recur join points for while(true) + continue emission.
     recur_joins: HashMap<VarId, RecurJoinInfo>,
+    /// Maps (trait_local_name, target_type_name) → source module name for cross-module dict imports.
+    instance_source_modules: &'a HashMap<(String, String), String>,
 }
 
 impl<'a> JsEmitter<'a> {
@@ -110,6 +126,7 @@ impl<'a> JsEmitter<'a> {
         module: &'a Module,
         is_main: bool,
         variant_lookup: &'a HashMap<(String, u32), String>,
+        instance_source_modules: &'a HashMap<(String, String), String>,
     ) -> Self {
         JsEmitter {
             output: String::new(),
@@ -121,6 +138,7 @@ impl<'a> JsEmitter<'a> {
             var_counter: 0,
             variant_lookup,
             recur_joins: HashMap::new(),
+            instance_source_modules,
         }
     }
 
@@ -128,6 +146,7 @@ impl<'a> JsEmitter<'a> {
         self.emit_imports();
         self.emit_structs();
         self.emit_sum_types();
+        self.emit_dict_instances();
         self.emit_functions();
         if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
             self.writeln("main();");
@@ -328,6 +347,43 @@ impl<'a> JsEmitter<'a> {
             emitted_any = true;
         }
 
+        // ── Cross-module dict imports ──
+        {
+            let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
+            for inst in &self.module.instances {
+                if inst.is_imported && !inst.is_intrinsic {
+                    let dict_name = format!(
+                        "{}$${}",
+                        inst.trait_name.local_name, inst.target_type_name
+                    );
+                    let key = (
+                        inst.trait_name.local_name.clone(),
+                        inst.target_type_name.clone(),
+                    );
+                    if let Some(source_module) = self.instance_source_modules.get(&key) {
+                        dict_by_module
+                            .entry(source_module.clone())
+                            .or_default()
+                            .push(dict_name);
+                    }
+                }
+            }
+            let mut modules: Vec<&String> = dict_by_module.keys().collect();
+            modules.sort();
+            for module_path in modules {
+                let mut names = dict_by_module[module_path].clone();
+                names.sort();
+                names.dedup();
+                let rel_path = self.relative_import_path(module_path);
+                self.writeln(&format!(
+                    "import {{ {} }} from '{}';",
+                    names.join(", "),
+                    rel_path
+                ));
+                emitted_any = true;
+            }
+        }
+
         if emitted_any {
             self.write("\n");
         }
@@ -436,6 +492,88 @@ impl<'a> JsEmitter<'a> {
             }
             self.indent -= 1;
             self.writeln("}");
+            self.write("\n");
+        }
+    }
+
+    // ── Dict Instances ───────────────────────────────────────
+
+    fn dict_constant_name(
+        &self,
+        trait_name: &krypton_typechecker::typed_ast::TraitName,
+        ty: &Type,
+    ) -> String {
+        let trait_local = &trait_name.local_name;
+        let type_base = head_type_name(ty);
+        format!("{trait_local}$${type_base}")
+    }
+
+    fn emit_dict_instances(&mut self) {
+        // Emit all intrinsic dicts unconditionally (they're tiny inline constants).
+        // This mirrors the JVM backend which registers all intrinsics in every module.
+        for (trait_name, type_name, entries) in js_intrinsic_dicts() {
+            let dict_name = format!("{trait_name}$${type_name}");
+            let methods: Vec<String> = entries
+                .iter()
+                .map(|(method_name, body)| format!("{method_name}: {body}"))
+                .collect();
+            self.writeln(&format!(
+                "const {dict_name} = {{ {} }};",
+                methods.join(", ")
+            ));
+        }
+        if !JS_INTRINSICS.is_empty() {
+            self.write("\n");
+        }
+
+        // Emit local (non-imported, non-intrinsic) instances
+        for inst in &self.module.instances {
+            if inst.is_imported || inst.is_intrinsic {
+                continue;
+            }
+            let dict_name = format!("{}$${}", inst.trait_name.local_name, inst.target_type_name);
+
+            if inst.sub_dict_requirements.is_empty() {
+                // Concrete instance — dict constant object
+                let methods: Vec<String> = inst
+                    .method_fn_ids
+                    .iter()
+                    .map(|(method_name, fn_id)| {
+                        let fn_name = self.fn_name(*fn_id);
+                        format!("{method_name}: {fn_name}")
+                    })
+                    .collect();
+                self.writeln(&format!(
+                    "export const {dict_name} = {{ {} }};",
+                    methods.join(", ")
+                ));
+            } else {
+                // Parameterized instance — factory function
+                let dict_params: Vec<String> = inst
+                    .sub_dict_requirements
+                    .iter()
+                    .map(|(tn, tv)| format!("dict$${}$${}", tn.local_name, tv.display_name()))
+                    .collect();
+                let methods: Vec<String> = inst
+                    .method_fn_ids
+                    .iter()
+                    .map(|(method_name, fn_id)| {
+                        let fn_name = self.fn_name(*fn_id);
+                        format!(
+                            "{method_name}: (...args) => {fn_name}({}, ...args)",
+                            dict_params.join(", ")
+                        )
+                    })
+                    .collect();
+                self.writeln(&format!(
+                    "export function {dict_name}({}) {{",
+                    dict_params.join(", ")
+                ));
+                self.indent += 1;
+                self.writeln(&format!("return {{ {} }};", methods.join(", ")));
+                self.indent -= 1;
+                self.writeln("}");
+            }
             self.write("\n");
         }
     }
@@ -824,11 +962,18 @@ impl<'a> JsEmitter<'a> {
                     ));
                 }
             }
-            SimpleExpr::GetDict { .. } => {
-                self.write("/* TODO: GetDict */ {}");
+            SimpleExpr::GetDict { trait_name, ty } => {
+                let dict_name = self.dict_constant_name(trait_name, ty);
+                self.write(&dict_name);
             }
-            SimpleExpr::MakeDict { .. } => {
-                self.write("/* TODO: MakeDict */ {}");
+            SimpleExpr::MakeDict {
+                trait_name,
+                ty,
+                sub_dicts,
+            } => {
+                let factory_name = self.dict_constant_name(trait_name, ty);
+                let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
+                self.write(&format!("{factory_name}({})", args.join(", ")));
             }
             SimpleExpr::MakeVec { elements, .. } => {
                 let elems: Vec<String> = elements.iter().map(|a| self.emit_atom(a)).collect();
@@ -950,4 +1095,64 @@ impl<'a> JsEmitter<'a> {
         }
         format!("_{field_index}")
     }
+}
+
+/// Static table of intrinsic JS implementations: (trait, type, method, js_body).
+/// Used by both dict emission (T7) and will be reused by inline TraitCall optimization (T6).
+const JS_INTRINSICS: &[(&str, &str, &str, &str)] = &[
+    // Semigroup
+    ("Semigroup", "Int", "combine", "(a, b) => (a + b)"),
+    ("Semigroup", "Float", "combine", "(a, b) => (a + b)"),
+    ("Semigroup", "String", "combine", "(a, b) => (a + b)"),
+    // Sub
+    ("Sub", "Int", "sub", "(a, b) => (a - b)"),
+    ("Sub", "Float", "sub", "(a, b) => (a - b)"),
+    // Mul
+    ("Mul", "Int", "mul", "(a, b) => (a * b)"),
+    ("Mul", "Float", "mul", "(a, b) => (a * b)"),
+    // Div
+    ("Div", "Int", "div", "(a, b) => Math.trunc(a / b)"),
+    ("Div", "Float", "div", "(a, b) => (a / b)"),
+    // Neg
+    ("Neg", "Int", "neg", "(a) => (-a)"),
+    ("Neg", "Float", "neg", "(a) => (-a)"),
+    // Eq
+    ("Eq", "Int", "eq", "(a, b) => a === b"),
+    ("Eq", "Float", "eq", "(a, b) => a === b"),
+    ("Eq", "String", "eq", "(a, b) => a === b"),
+    ("Eq", "Bool", "eq", "(a, b) => a === b"),
+    // Ord
+    ("Ord", "Int", "lt", "(a, b) => a < b"),
+    ("Ord", "Float", "lt", "(a, b) => a < b"),
+    // Show
+    ("Show", "Int", "show", "(x) => String(x)"),
+    ("Show", "Float", "show", "(x) => { let s = String(x); return s.includes('.') ? s : s + '.0'; }"),
+    ("Show", "String", "show", "(x) => x"),
+    ("Show", "Bool", "show", "(x) => String(x)"),
+    // Hash
+    ("Hash", "Int", "hash", "(x) => x"),
+    ("Hash", "Bool", "hash", "(x) => x ? 1 : 0"),
+    ("Hash", "Float", "hash", "(x) => { const buf = new ArrayBuffer(8); new Float64Array(buf)[0] = x; const view = new Int32Array(buf); return view[0] ^ view[1]; }"),
+    ("Hash", "String", "hash", "(x) => { let h = 0; for (let i = 0; i < x.length; i++) { h = (Math.imul(31, h) + x.charCodeAt(i)) | 0; } return h; }"),
+];
+
+/// Lookup a single intrinsic body. Used by M23-T6 for inline TraitCall optimization.
+pub fn js_intrinsic_body(trait_name: &str, type_name: &str, method_name: &str) -> Option<&'static str> {
+    JS_INTRINSICS
+        .iter()
+        .find(|(t, ty, m, _)| *t == trait_name && *ty == type_name && *m == method_name)
+        .map(|(_, _, _, body)| *body)
+}
+
+/// Group intrinsics by (trait, type) for dict emission. Returns (trait, type, [(method, body)]).
+fn js_intrinsic_dicts() -> Vec<(&'static str, &'static str, Vec<(&'static str, &'static str)>)> {
+    let mut map: Vec<(&str, &str, Vec<(&str, &str)>)> = Vec::new();
+    for &(trait_name, type_name, method_name, body) in JS_INTRINSICS {
+        if let Some(entry) = map.iter_mut().find(|(t, ty, _)| *t == trait_name && *ty == type_name) {
+            entry.2.push((method_name, body));
+        } else {
+            map.push((trait_name, type_name, vec![(method_name, body)]));
+        }
+    }
+    map
 }

@@ -132,16 +132,6 @@ extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
-import core/eq/eq as eq(g, g): Bool
-import core/ord/lt as lt(h, h): Bool
-import core/semigroup/combine as combine(g, g): g
-import core/sub/sub as sub(g, g): g
-import core/mul/mul as mul(g, g): g
-import core/div/div as div(g, g): g
-import core/neg/neg as neg(g): g
-import core/show/show as show(g): String
-import core/hash/hash as hash(g): Int
-import core/resource/close as close(~g): Unit
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[t3]): Option[t3]
 import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
