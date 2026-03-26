@@ -6,15 +6,17 @@ build: build-runtime
 build-runtime:
     ./gradlew :runtime:build
 
-# Run all tests (Rust + Java)
+# Run all tests (Rust + Java + JS runtime)
 test: build-runtime
     cargo nextest run
     ./gradlew :runtime:test
+    node runtime/js/test_runtime.mjs
 
 # Run all tests with cargo test (no nextest)
 test-cargo: build-runtime
     cargo test --workspace
     ./gradlew :runtime:test
+    node runtime/js/test_runtime.mjs
 
 # Run a .kr file
 run file: build-runtime
@@ -27,6 +29,10 @@ check file:
 # Run Java runtime tests only
 test-runtime:
     ./gradlew :runtime:test
+
+# Run JS runtime tests only
+test-js-runtime:
+    node runtime/js/test_runtime.mjs
 
 # Format Rust code
 fmt:
