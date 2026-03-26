@@ -40,6 +40,13 @@ fn run_js_program_with_resolver(
         }
     }
 
+    // Write runtime.mjs for extern JS imports (println, etc.)
+    std::fs::write(
+        dir.path().join("runtime.mjs"),
+        "export function println(x) { console.log(String(x)); }\n",
+    )
+    .unwrap();
+
     let entry = entry_path.expect("no JS files generated");
     let output = Command::new("node")
         .arg(&entry)

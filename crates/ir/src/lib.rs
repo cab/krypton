@@ -58,6 +58,17 @@ impl From<krypton_typechecker::types::Type> for Type {
     }
 }
 
+impl Module {
+    /// How many "free" (non-captured) parameters a closure's underlying function has.
+    pub fn closure_free_params(&self, func: FnId, capture_count: usize) -> usize {
+        self.functions
+            .iter()
+            .find(|f| f.id == func)
+            .map(|f| f.params.len().saturating_sub(capture_count))
+            .unwrap_or(0)
+    }
+}
+
 impl Type {
     /// Strip `Own` wrappers recursively, including inside `Named` type args.
     pub fn strip_own(&self) -> Type {

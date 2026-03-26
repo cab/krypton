@@ -29,7 +29,8 @@ mod tests {
 
     /// Emit JS from a hand-built IR Module directly (bypasses lowering).
     fn emit_module(module: &Module) -> String {
-        let mut emitter = crate::emit::JsEmitter::new(module);
+        let variant_lookup = HashMap::new();
+        let mut emitter = crate::emit::JsEmitter::new(module, false, &variant_lookup);
         emitter.emit()
     }
 
@@ -347,7 +348,8 @@ mod tests {
         // We can't call compile_modules_js with hand-built modules (it takes TypedModule),
         // so we test the emitter's filename logic directly.
         let module = make_module("hello");
-        let mut emitter = crate::emit::JsEmitter::new(&module);
+        let variant_lookup = HashMap::new();
+        let mut emitter = crate::emit::JsEmitter::new(&module, false, &variant_lookup);
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"
         let filename = format!("{}.mjs", module.name);
@@ -372,7 +374,7 @@ mod tests {
         module.fn_names.insert(FnId(0), "answer".to_string());
 
         let js = emit_module(&module);
-        assert!(js.contains("return 42n;"), "Int literals should emit as BigInt (42n)");
+        assert!(js.contains("return 42;"), "Int literals should emit as regular numbers");
     }
 
     #[test]
