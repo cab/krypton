@@ -3,6 +3,10 @@ extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
 }
 
+extern js "./runtime.mjs" {
+    fun println[a](x: a) -> Unit
+}
+
 fun sum(n, acc) = if n == 0 { acc } else { recur(n - 1, acc + n) }
 
 fun main() = println(sum(100, 0))

@@ -3,6 +3,10 @@ extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
 }
 
+extern js "./runtime.mjs" {
+    fun println[a](x: a) -> Unit
+}
+
 fun apply_fn(f, x) = f(x)
 
 fun main() = println(apply_fn(x -> x + 1, 5))

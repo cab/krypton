@@ -1,4 +1,4 @@
-# expect: output 30
+# expect: output 55
 extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
 }
@@ -7,9 +7,6 @@ extern js "./runtime.mjs" {
     fun println[a](x: a) -> Unit
 }
 
-type Point = { x: Int, y: Int }
+fun fibonacci(n) = if n <= 1 { n } else { fibonacci(n - 1) + fibonacci(n - 2) }
 
-fun main() {
-    let p = Point(10, 20);
-    println(p.x + p.y)
-}
+fun main() = println(fibonacci(10))

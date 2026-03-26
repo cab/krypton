@@ -3,6 +3,10 @@ extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
 }
 
+extern js "./runtime.mjs" {
+    fun println[a](x: a) -> Unit
+}
+
 type Wrapper = { value: Int }
 
 fun pick(x: Int) -> Wrapper {

@@ -3,6 +3,10 @@ extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
 }
 
+extern js "./runtime.mjs" {
+    fun println[a](x: a) -> Unit
+}
+
 type Option[a] = Some(a) | None
 
 fun unwrap_or(opt, default) = match opt {
