@@ -3,6 +3,10 @@ extern java "java.lang.System" {
     fun gc() -> Unit
 }
 
+extern js "./runtime.mjs" {
+    fun gc() -> Unit
+}
+
 fun main() {
     gc();
     0

@@ -13,6 +13,14 @@ extern java "krypton.runtime.KryptonArray" as Vec[a] {
     fun staticFreeze(xs: Vec[a]) -> Vec[a]
 }
 
+extern js "../runtime/js/array.mjs" as Vec[a] {
+    fun staticLength(xs: Vec[a]) -> Int
+    fun staticGet(xs: Vec[a], index: Int) -> a
+    fun staticNew(size: Int) -> Vec[a]
+    fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
+    fun staticFreeze(xs: Vec[a]) -> Vec[a]
+}
+
 pub fun len[a](xs: Vec[a]) -> Int = staticLength(xs)
 
 pub fun nth[a](xs: Vec[a], index: Int) -> Option[a] = if index < 0 {

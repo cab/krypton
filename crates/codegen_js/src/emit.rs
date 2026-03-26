@@ -1077,10 +1077,37 @@ impl<'a> JsEmitter<'a> {
                     }
                     self.writeln("}");
                 } else {
-                    panic!(
-                        "ICE: TagSwitch has no type info for scrutinee {:?} in module '{}'",
-                        scrutinee, self.module.name
-                    );
+                    // Fallback: $tag-based switching when the concrete sum type
+                    // name is unavailable (e.g. generic type variables in nested
+                    // pattern matches). Semantically equivalent to instanceof.
+                    for (i, branch) in branches.iter().enumerate() {
+                        if i == 0 {
+                            self.writeln(&format!(
+                                "if ({scrut}.$tag === {}) {{",
+                                branch.tag
+                            ));
+                        } else {
+                            self.writeln(&format!(
+                                "}} else if ({scrut}.$tag === {}) {{",
+                                branch.tag
+                            ));
+                        }
+                        self.indent += 1;
+                        for (j, (var, ty)) in branch.bindings.iter().enumerate() {
+                            self.var_types.insert(*var, ty);
+                            let var_name = self.bind_var(*var);
+                            self.writeln(&format!("const {var_name} = {scrut}._{j};"));
+                        }
+                        self.emit_expr(&branch.body, tail);
+                        self.indent -= 1;
+                    }
+                    if let Some(default_body) = default {
+                        self.writeln("} else {");
+                        self.indent += 1;
+                        self.emit_expr(default_body, tail);
+                        self.indent -= 1;
+                    }
+                    self.writeln("}");
                 }
             }
         }

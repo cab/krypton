@@ -26,6 +26,26 @@ extern java "krypton.runtime.KryptonArray" {
     fun staticGet[a, b](xs: a, index: Int) -> b
 }
 
+extern js "../runtime/js/map.mjs" as pub Map[k, v] {}
+
+extern js "../runtime/js/map.mjs" {
+    fun staticEmpty[k, v]() -> Map[k, v]
+    fun staticPut[k, v, d1, d2](m: Map[k, v], key: k, value: v, eq_dict: d1, hash_dict: d2) -> Map[k, v]
+    fun staticGetUnsafe[k, v](m: Map[k, v], key: k) -> v
+    fun staticContainsKey[k, v](m: Map[k, v], key: k) -> Bool
+    fun staticDelete[k, v](m: Map[k, v], key: k) -> Map[k, v]
+    fun staticKeys[k, v](m: Map[k, v]) -> Vec[k]
+    fun staticValues[k, v](m: Map[k, v]) -> Vec[v]
+    fun staticEntries[k, v, a](m: Map[k, v]) -> a
+    fun staticSize[k, v](m: Map[k, v]) -> Int
+    fun staticMerge[k, v](m1: Map[k, v], m2: Map[k, v]) -> Map[k, v]
+}
+
+extern js "../runtime/js/array.mjs" {
+    fun staticLength[a](xs: a) -> Int
+    fun staticGet[a, b](xs: a, index: Int) -> b
+}
+
 # empty() intentionally has no `where k: Eq + Hash` constraint.
 # Let-polymorphism means `let m = empty()` generalizes the return type,
 # making dict resolution impossible at the call site. Dicts flow through put() instead.

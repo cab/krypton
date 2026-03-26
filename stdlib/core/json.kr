@@ -33,6 +33,30 @@ extern java "krypton.runtime.KryptonArray" {
     fun staticGet[a, b](xs: a, index: Int) -> b
 }
 
+extern js "../runtime/js/json.mjs" {
+    fun staticParse[a](s: String) -> a
+    fun staticSerialize[a](x: a) -> String
+    fun staticRawType[a](x: a) -> Int
+    fun staticRawBool[a](x: a) -> Bool
+    fun staticRawNum[a](x: a) -> Float
+    fun staticRawStr[a](x: a) -> String
+    fun staticRawArr[a, b](x: a) -> b
+    fun staticRawEntries[a, b](x: a) -> b
+    fun staticMkNull[a]() -> a
+    fun staticMkBool[a](v: Bool) -> a
+    fun staticMkNum[a](v: Float) -> a
+    fun staticMkStr[a](v: String) -> a
+    fun staticNewArr[a]() -> a
+    fun staticArrPush[a, b](arr: a, item: b) -> Unit
+    fun staticNewObj[a]() -> a
+    fun staticObjPut[a, b, c](obj: a, key: b, value: c) -> Unit
+}
+
+extern js "../runtime/js/array.mjs" {
+    fun staticLength[a](xs: a) -> Int
+    fun staticGet[a, b](xs: a, index: Int) -> b
+}
+
 # ── Parse direction: JavaJson → Krypton Json ──────────────────────
 
 fun arr_to_list[a](arr: a, i: Int, n: Int) -> List[Json] =
@@ -114,6 +138,11 @@ pub fun json_get(j: Json, key: String) -> Option[Json] =
 # ── Int↔Float conversion ────────────────────────────────────────
 
 extern java "krypton.runtime.KryptonConvert" {
+    fun toFloat(n: Int) -> Float
+    fun toInt(n: Float) -> Int
+}
+
+extern js "../runtime/js/json.mjs" {
     fun toFloat(n: Int) -> Float
     fun toInt(n: Float) -> Int
 }

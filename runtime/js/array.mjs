@@ -1,22 +1,22 @@
 // Krypton JS runtime — Vec-backing array operations
 
-export function newArray(size) {
+export function staticNew(size) {
   return new Array(size).fill(undefined);
 }
 
-export function get(arr, i) {
+export function staticGet(arr, i) {
   return arr[i];
 }
 
-export function set(arr, i, v) {
+export function staticSet(arr, i, v) {
   arr[i] = v;
 }
 
-export function length(arr) {
+export function staticLength(arr) {
   return arr.length;
 }
 
-export function freeze(arr) {
+export function staticFreeze(arr) {
   Object.freeze(arr);
   return arr;
 }

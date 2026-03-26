@@ -20,6 +20,24 @@ extern java "krypton.runtime.KryptonString" {
     fun charAt[a](s: String, index: Int) -> a
 }
 
+extern js "../runtime/js/string.mjs" {
+    pub fun split(s: String, delim: String) -> Vec[String]
+    pub fun concat(a: String, b: String) -> String
+    pub fun trim(s: String) -> String
+    pub fun substring(s: String, start: Int, end: Int) -> String
+    pub fun length(s: String) -> Int
+    fun parseIntSafe[a](s: String) -> a
+    fun parseFloatSafe[a](s: String) -> a
+    fun containsStr(s: String, substr: String) -> Bool
+    fun startsWith(s: String, prefix: String) -> Bool
+    fun endsWith(s: String, suffix: String) -> Bool
+    fun indexOf(s: String, substr: String) -> Int
+    fun toLower(s: String) -> String
+    fun toUpper(s: String) -> String
+    fun replaceStr(s: String, from: String, to: String) -> String
+    fun charAt[a](s: String, index: Int) -> a
+}
+
 pub fun parse_int(s: String) -> Option[Int] = {
     let result = parseIntSafe(s)
     if is_null(result) { None } else { Some(result) }

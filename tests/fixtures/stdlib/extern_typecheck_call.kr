@@ -4,4 +4,9 @@ extern java "java.lang.Math" {
     fun max(a: Int, b: Int) -> Int
 }
 
+extern js "./runtime.mjs" {
+    fun abs(n: Int) -> Int
+    fun max(a: Int, b: Int) -> Int
+}
+
 fun main() = max(abs(5), 3)

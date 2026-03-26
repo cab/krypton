@@ -17,6 +17,21 @@ extern java "krypton.runtime.KryptonActors" {
     fun raw_ask[a, b, c](target: a, wrapper: b, timeout: Int) -> c
 }
 
+extern js "../runtime/js/actor.mjs" as Mailbox[m] {}
+extern js "../runtime/js/actor.mjs" as Ref[m] {}
+
+extern js "../runtime/js/actor.mjs" {
+    fun raw_spawn[m, r](f: (Mailbox[m]) -> Unit) -> r
+    fun raw_send[a, b](target: a, msg: b) -> Unit
+    fun raw_receive[m, r](mb: Mailbox[m]) -> r
+    fun raw_receive_timeout[m, r](mb: Mailbox[m], ms: Int) -> r
+    fun raw_actor_ref[m, r](mb: Mailbox[m]) -> r
+    fun raw_mailbox_size[m](mb: Mailbox[m]) -> Int
+    fun raw_create_mailbox[m]() -> Mailbox[m]
+    fun raw_adapter[a, b, c](target: a, wrapper: b) -> c
+    fun raw_ask[a, b, c](target: a, wrapper: b, timeout: Int) -> c
+}
+
 pub type Timeout = Timeout
 
 pub fun spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m] = raw_spawn(f)

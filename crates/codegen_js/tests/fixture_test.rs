@@ -168,6 +168,78 @@ fn referenced_java_only_extern_fails_js_codegen() {
     );
 }
 
+/// Verify that non-actor stdlib modules compile successfully with JS target.
+#[test]
+fn stdlib_modules_compile_to_js() {
+    // Each source imports a stdlib module and calls a function from it,
+    // ensuring the extern JS targets are present and valid.
+    let cases = vec![
+        (
+            "io",
+            r#"
+                import core/io.{println}
+                fun main() = println("hello")
+            "#,
+        ),
+        (
+            "string",
+            r#"
+                import core/string.{length}
+                fun main() = length("hello")
+            "#,
+        ),
+        (
+            "vec",
+            r#"
+                import core/vec.{len}
+                fun main() = len
+            "#,
+        ),
+        (
+            "map",
+            r#"
+                import core/map.{empty, size}
+                fun main() = size(empty())
+            "#,
+        ),
+        (
+            "json",
+            r#"
+                import core/json.{parse_json}
+                fun main() = parse_json("{}")
+            "#,
+        ),
+    ];
+
+    for (name, source) in cases {
+        let resolver = CompositeResolver::stdlib_only();
+        let result = compile_js_result_with_resolver(source, &resolver, name);
+        assert!(
+            result.is_ok(),
+            "stdlib module {name} should compile to JS, got: {}",
+            result.unwrap_err()
+        );
+    }
+}
+
+/// Verify that actor module compiles to JS (runtime panics, not compile errors).
+#[test]
+fn actor_module_compiles_to_js() {
+    let source = r#"
+        import core/actor.{Mailbox, spawn}
+
+        fun main() = spawn((mb) -> ())
+    "#;
+
+    let resolver = CompositeResolver::stdlib_only();
+    let result = compile_js_result_with_resolver(source, &resolver, "actor_js");
+    assert!(
+        result.is_ok(),
+        "actor module should compile to JS (panics at runtime), got: {}",
+        result.unwrap_err()
+    );
+}
+
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
 
 fn should_skip(path: &PathBuf) -> bool {
@@ -213,8 +285,9 @@ fn js_codegen_fixture(
                         let rendered = render_infer_error(&name, &fixture.source, &e);
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
-                // Accept compile success or any error (JS codegen is incomplete)
-                let _ = compile_modules_js(&typed_modules, "test");
+                compile_modules_js(&typed_modules, "test").unwrap_or_else(|e| {
+                    panic!("fixture {name}: JS codegen failed: {e}");
+                });
             }
             Expectation::Error(_) => {}
         }

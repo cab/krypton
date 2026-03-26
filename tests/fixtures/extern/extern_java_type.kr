@@ -5,5 +5,11 @@ extern java "krypton.runtime.KryptonActors" {
     fun raw_send(r: Ref[Int], msg: Int) -> Unit
 }
 
+extern js "./runtime/js/actor.mjs" as Ref[m] {}
+
+extern js "./runtime/js/actor.mjs" {
+    fun raw_send(r: Ref[Int], msg: Int) -> Unit
+}
+
 fun use_ref(r: Ref[Int]) -> Ref[Int] = r
 fun send_msg(r: Ref[Int], msg: Int) -> Unit = raw_send(r, msg)
