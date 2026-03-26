@@ -427,9 +427,11 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),
             module_path: "krypton.runtime.KryptonIO".to_string(),
+            declaring_module_path: "test".to_string(),
             target: krypton_parser::ast::ExternTarget::Java,
             param_types: vec![Type::Var(println_var)],
             return_type: Type::Unit,
+            span: (0, 0),
         }],
         imported_extern_fns: vec![],
         extern_types: vec![],

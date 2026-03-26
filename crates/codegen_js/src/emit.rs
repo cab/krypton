@@ -469,6 +469,76 @@ impl<'a> JsEmitter<'a> {
         path
     }
 
+    /// Resolve an extern JS import path that is relative to the declaring module
+    /// into a path relative to the current (emitting) module.
+    ///
+    /// For example, `core/io` declares `extern js "../runtime/js/io.mjs"`.
+    /// If the emitting module is `test` (at root), the resolved path is
+    /// `./runtime/js/io.mjs`. If the emitting module is `core/show`, the
+    /// resolved path remains `../runtime/js/io.mjs`.
+    fn resolve_extern_js_path(&self, raw_path: &str, declaring_module: &str) -> String {
+        // 1. Get the declaring module's directory segments
+        let decl_parts: Vec<&str> = declaring_module.split('/').collect();
+        let decl_dir = if decl_parts.len() > 1 {
+            &decl_parts[..decl_parts.len() - 1]
+        } else {
+            &[]
+        };
+
+        // 2. Resolve the raw path (which is relative to decl_dir) into segments
+        //    relative to the output root.
+        let mut resolved: Vec<&str> = decl_dir.to_vec();
+        for segment in raw_path.split('/') {
+            match segment {
+                ".." => { resolved.pop(); }
+                "." | "" => {}
+                s => resolved.push(s),
+            }
+        }
+        // `resolved` is now segments relative to the output root, e.g. ["runtime", "js", "io.mjs"]
+
+        // 3. Compute relative path from the emitting module to the resolved path.
+        let emit_parts: Vec<&str> = self.module.module_path.split('/').collect();
+        let emit_dir = if emit_parts.len() > 1 {
+            &emit_parts[..emit_parts.len() - 1]
+        } else {
+            &[][..]
+        };
+
+        // Find common prefix between emit_dir and resolved directory (all but last segment)
+        let resolved_dir = if resolved.len() > 1 {
+            &resolved[..resolved.len() - 1]
+        } else {
+            &[]
+        };
+        let resolved_file = resolved.last().unwrap_or(&"");
+
+        let common = emit_dir
+            .iter()
+            .zip(resolved_dir.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+
+        let ups = emit_dir.len() - common;
+        let mut path = String::new();
+        if ups == 0 && resolved_dir.len() == common {
+            path.push_str("./");
+        } else {
+            for _ in 0..ups {
+                path.push_str("../");
+            }
+            if ups == 0 {
+                path.push_str("./");
+            }
+        }
+        for &segment in &resolved_dir[common..] {
+            path.push_str(segment);
+            path.push('/');
+        }
+        path.push_str(resolved_file);
+        path
+    }
+
     fn fn_name(&self, id: FnId) -> String {
         self.module
             .fn_names
@@ -557,25 +627,32 @@ impl<'a> JsEmitter<'a> {
         }
 
         // ── Extern JS imports ──
-        let mut extern_by_module: HashMap<&str, Vec<&str>> = HashMap::new();
+        // Group by resolved path (relative to output root), collecting function names.
+        let mut extern_by_resolved: HashMap<String, Vec<&str>> = HashMap::new();
         for ext in &self.module.extern_fns {
             if let krypton_ir::ExternTarget::Js { module } = &ext.target {
-                extern_by_module
-                    .entry(module.as_str())
+                // Resolve the extern path (relative to declaring module) to a path
+                // relative to the output root, then recompute it relative to this module.
+                let resolved = self.resolve_extern_js_path(
+                    module,
+                    &ext.declaring_module_path,
+                );
+                extern_by_resolved
+                    .entry(resolved)
                     .or_default()
                     .push(&ext.name);
             }
         }
-        let mut extern_modules: Vec<&&str> = extern_by_module.keys().collect();
+        let mut extern_modules: Vec<&String> = extern_by_resolved.keys().collect();
         extern_modules.sort();
-        for module_path in extern_modules {
-            let mut names: Vec<&str> = extern_by_module[*module_path].clone();
+        for resolved_path in extern_modules {
+            let mut names: Vec<&str> = extern_by_resolved[resolved_path].clone();
             names.sort();
             names.dedup();
             self.writeln(&format!(
                 "import {{ {} }} from '{}';",
                 names.join(", "),
-                module_path
+                resolved_path
             ));
             emitted_any = true;
         }
