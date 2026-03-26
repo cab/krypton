@@ -87,11 +87,22 @@ pub fn compile_modules_js(
     }
 
     // Build variant lookup from all modules: (type_name, tag) → variant_name
+    // Uses bare names — will collide if two modules define same-named sum types.
+    // Fixed by M23-T19 (qualified identity keys).
     let mut variant_lookup: HashMap<(String, u32), String> = HashMap::new();
     for ir_module in &ir_modules {
         for st in &ir_module.sum_types {
             for v in &st.variants {
-                variant_lookup.insert((st.name.clone(), v.tag), v.name.clone());
+                let key = (st.name.clone(), v.tag);
+                if let Some(existing) = variant_lookup.get(&key) {
+                    if existing != &v.name {
+                        panic!(
+                            "ICE: variant_lookup collision: ({}, tag {}) maps to both '{}' and '{}'",
+                            st.name, v.tag, existing, v.name
+                        );
+                    }
+                }
+                variant_lookup.insert(key, v.name.clone());
             }
         }
     }
@@ -113,8 +124,8 @@ pub fn compile_modules_js(
     validate_js_extern_targets(&ir_modules, &reachable_modules, &module_sources)?;
 
     let mut results = Vec::new();
-    for (i, ir_module) in ir_modules.iter().enumerate() {
-        let is_main = i == 0;
+    for ir_module in &ir_modules {
+        let is_main = ir_module.name == main_module_name;
         let mut emitter =
             JsEmitter::new(ir_module, is_main, &variant_lookup, &instance_source_modules);
         let js_source = emitter.emit();
@@ -1066,36 +1077,10 @@ impl<'a> JsEmitter<'a> {
                     }
                     self.writeln("}");
                 } else {
-                    // Fallback: tag-based switch
-                    self.writeln(&format!("switch ({scrut}.$tag) {{"));
-                    self.indent += 1;
-                    for branch in branches {
-                        self.writeln(&format!("case {}: {{", branch.tag));
-                        self.indent += 1;
-                        for (i, (var, ty)) in branch.bindings.iter().enumerate() {
-                            self.var_types.insert(*var, ty);
-                            let var_name = self.bind_var(*var);
-                            self.writeln(&format!("const {var_name} = {scrut}._{i};"));
-                        }
-                        self.emit_expr(&branch.body, tail);
-                        if !tail {
-                            self.writeln("break;");
-                        }
-                        self.indent -= 1;
-                        self.writeln("}");
-                    }
-                    if let Some(default_body) = default {
-                        self.writeln("default: {");
-                        self.indent += 1;
-                        self.emit_expr(default_body, tail);
-                        if !tail {
-                            self.writeln("break;");
-                        }
-                        self.indent -= 1;
-                        self.writeln("}");
-                    }
-                    self.indent -= 1;
-                    self.writeln("}");
+                    panic!(
+                        "ICE: TagSwitch has no type info for scrutinee {:?} in module '{}'",
+                        scrutinee, self.module.name
+                    );
                 }
             }
         }
@@ -1215,7 +1200,15 @@ impl<'a> JsEmitter<'a> {
 
     fn emit_literal(&self, lit: &Literal) -> String {
         match lit {
-            Literal::Int(n) => format!("{n}"),
+            Literal::Int(n) => {
+                if *n > 9007199254740991 || *n < -9007199254740991 {
+                    panic!(
+                        "integer literal {} exceeds JavaScript safe integer range (±2^53-1)",
+                        n
+                    );
+                }
+                format!("{n}")
+            }
             Literal::Float(f) => {
                 if f.fract() == 0.0 && f.is_finite() {
                     format!("{f:.1}")
@@ -1311,13 +1304,10 @@ impl<'a> JsEmitter<'a> {
                 }
             }
         }
-        // Fallback: search all structs for one with enough fields.
-        for s in &self.module.structs {
-            if field_index < s.fields.len() {
-                return s.fields[field_index].0.clone();
-            }
-        }
-        format!("_{field_index}")
+        panic!(
+            "ICE: resolve_field_name: no type info for {:?} (field index {}) in module '{}'",
+            value, field_index, self.module.name
+        )
     }
 }
 
