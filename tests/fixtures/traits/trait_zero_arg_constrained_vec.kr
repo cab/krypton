@@ -1,7 +1,4 @@
 # expect: output "yo"
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 trait Test[e] {
     fun name() -> String

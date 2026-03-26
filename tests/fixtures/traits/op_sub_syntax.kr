@@ -1,7 +1,4 @@
 # expect: output 2
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 type Vec2 = { x: Int, y: Int }
 

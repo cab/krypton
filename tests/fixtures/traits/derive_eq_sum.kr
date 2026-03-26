@@ -1,7 +1,4 @@
 # expect: output false
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 type Color = Red | Green | Blue deriving (Eq)
 

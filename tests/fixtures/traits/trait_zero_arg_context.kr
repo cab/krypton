@@ -1,7 +1,4 @@
 # expect: output "42\n42"
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 trait Default[a] {
     fun default() -> a

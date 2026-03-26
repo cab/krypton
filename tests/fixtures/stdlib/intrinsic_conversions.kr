@@ -1,7 +1,4 @@
 # expect: output 3
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 extern java "krypton.runtime.KryptonConvert" {
     fun toFloat(n: Int) -> Float

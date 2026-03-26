@@ -1,7 +1,4 @@
 # expect: output "7"
-extern java "krypton.runtime.KryptonIO" {
-  fun println[a](x: a) -> Unit
-}
 
 import core/list.{List, Cons, Nil}
 import core/vec.{to_list}

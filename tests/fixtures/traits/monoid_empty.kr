@@ -1,7 +1,4 @@
 # expect: output "0\n1\n0"
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 trait Monoid[a] {
     fun empty() -> a

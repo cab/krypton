@@ -1,6 +1,3 @@
 # expect: output helloworld
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 fun main() = println("hello" + "world")

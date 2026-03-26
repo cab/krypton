@@ -1,11 +1,4 @@
 # expect: output 3628800
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
-
-extern js "./runtime.mjs" {
-    fun println[a](x: a) -> Unit
-}
 
 fun factorial(n) = if n == 0 { 1 } else { n * factorial(n - 1) }
 

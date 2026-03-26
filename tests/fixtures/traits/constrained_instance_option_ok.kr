@@ -1,7 +1,4 @@
 # expect: output true
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 type Option[a] = Some(a) | None
 

@@ -1,11 +1,4 @@
 # expect: output "true\nfalse\ntrue\nfalse\ntrue\nfalse"
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
-
-extern js "./runtime.mjs" {
-    fun println[a](x: a) -> Unit
-}
 
 fun main() {
     println(10 < 20);

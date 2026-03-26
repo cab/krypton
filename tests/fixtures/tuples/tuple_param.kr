@@ -1,7 +1,4 @@
 # expect: output "5"
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 fun fst(pair: (Int, String)) -> Int = {
   let (a, _) = pair

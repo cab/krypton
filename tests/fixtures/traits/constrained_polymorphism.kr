@@ -1,7 +1,4 @@
 # expect: output true
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 type A = { x: Int } deriving (Eq)
 

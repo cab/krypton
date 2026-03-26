@@ -2,10 +2,6 @@
 import core/string.{split}
 import core/vec.{nth}
 
-extern java "krypton.runtime.KryptonIO" {
-  fun println[a](x: a) -> Unit
-}
-
 fun main() = match nth(split("hello world", " "), 0) {
     Some(s) => println(s),
     None => println("error"),

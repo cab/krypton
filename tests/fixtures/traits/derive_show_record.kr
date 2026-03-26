@@ -1,7 +1,4 @@
 # expect: output Point(1, 2)
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 type Point = { x: Int, y: Int } deriving (Show)
 

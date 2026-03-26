@@ -1,4 +1,3 @@
 # expect: output "3"
 import core/list.{length}
-extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun main() = println(length(Cons(1, Cons(2, Cons(3, Nil)))))

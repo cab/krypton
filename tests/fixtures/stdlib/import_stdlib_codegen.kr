@@ -1,10 +1,6 @@
 # expect: output "hello"
 import core/string.{split}
 
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
-
 fun main() {
     println("hello");
     0

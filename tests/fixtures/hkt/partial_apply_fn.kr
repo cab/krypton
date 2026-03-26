@@ -1,7 +1,4 @@
 # expect: output "22"
-extern java "krypton.runtime.KryptonIO" {
-  fun println[a](x: a) -> Unit
-}
 
 trait Functor[f[_]] {
   fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]

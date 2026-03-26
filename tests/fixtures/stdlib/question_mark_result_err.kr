@@ -1,5 +1,4 @@
 # expect: output "failed"
-extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 fun failing() -> Result[String, Int] = Err("failed")
 fun caller() -> Result[String, Int] = {
   let x = failing()?;

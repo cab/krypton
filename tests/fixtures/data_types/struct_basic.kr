@@ -1,11 +1,4 @@
 # expect: output 30
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
-
-extern js "./runtime.mjs" {
-    fun println[a](x: a) -> Unit
-}
 
 type Point = { x: Int, y: Int }
 

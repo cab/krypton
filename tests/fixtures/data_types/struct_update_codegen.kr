@@ -1,7 +1,4 @@
 # expect: output 99
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 type Point = { x: Int, y: Int }
 

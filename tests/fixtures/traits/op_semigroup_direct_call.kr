@@ -1,7 +1,4 @@
 # expect: output 8
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 fun apply_combine[a](x: a, y: a) -> a where a: Semigroup = combine(x, y)
 

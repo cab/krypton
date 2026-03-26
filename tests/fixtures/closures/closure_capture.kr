@@ -1,11 +1,4 @@
 # expect: output 15
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
-
-extern js "./runtime.mjs" {
-    fun println[a](x: a) -> Unit
-}
 
 fun main() {
     let y = 10;

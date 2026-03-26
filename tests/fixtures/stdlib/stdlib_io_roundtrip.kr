@@ -1,6 +1,5 @@
 # expect: output "hello from file"
 import core/io.{read_file, write_file}
-extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 
 fun handle(r) = match r {
     Ok(content) => println(content),

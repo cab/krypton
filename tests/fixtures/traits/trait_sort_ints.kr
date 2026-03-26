@@ -1,7 +1,4 @@
 # expect: output -1
-extern java "krypton.runtime.KryptonIO" {
-    fun println[a](x: a) -> Unit
-}
 
 trait Cmp[a] {
     fun compare(_0: a, _1: a) -> Int
