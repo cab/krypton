@@ -794,6 +794,7 @@ dependencies = [
  "clap",
  "insta",
  "krypton-codegen",
+ "krypton-codegen-js",
  "krypton-ir",
  "krypton-modules",
  "krypton-parser",
@@ -820,6 +821,20 @@ dependencies = [
  "tempfile",
  "tracing",
  "zip",
+]
+
+[[package]]
+name = "krypton-codegen-js"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "krypton-ir",
+ "krypton-modules",
+ "krypton-parser",
+ "krypton-test-harness",
+ "krypton-typechecker",
+ "rstest",
+ "tempfile",
 ]
 
 [[package]]

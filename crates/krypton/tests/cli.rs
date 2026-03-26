@@ -254,3 +254,32 @@ fn test_run_type_error_exits_1() {
         .expect("failed to run krypton");
     assert!(!output.status.success(), "exit code should be non-zero");
 }
+
+#[test]
+fn test_compile_target_js_produces_mjs() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let fixture = workspace_root().join("tests/fixtures/functions/hello.kr");
+    std::fs::copy(&fixture, dir.path().join("hello.kr")).expect("failed to copy fixture");
+
+    let out_dir = dir.path().join("out");
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["compile", "hello.kr", "--target", "js", "-o", out_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to run krypton");
+    assert!(
+        output.status.success(),
+        "compile --target js should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out_dir.join("hello.mjs").exists(),
+        "hello.mjs should be created in output directory"
+    );
+
+    let content = std::fs::read_to_string(out_dir.join("hello.mjs")).unwrap();
+    assert!(
+        content.contains("export function main("),
+        "generated .mjs should contain main function export: {content}"
+    );
+}

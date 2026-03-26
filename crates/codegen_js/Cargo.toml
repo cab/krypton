@@ -1,0 +1,16 @@
+[package]
+name = "krypton-codegen-js"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+krypton-ir = { path = "../ir" }
+krypton-typechecker = { path = "../typechecker" }
+
+[dev-dependencies]
+krypton-test-harness = { path = "../test-harness" }
+krypton-modules = { path = "../modules" }
+krypton-parser = { path = "../parser" }
+tempfile = { workspace = true }
+rstest.workspace = true
+insta.workspace = true

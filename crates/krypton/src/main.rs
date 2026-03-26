@@ -65,15 +65,23 @@ enum Commands {
     Fmt { file: String },
     /// Type-check a file and print inferred types
     Check { file: String },
-    /// Compile a file to a JVM .jar file
+    /// Compile a file to a JVM .jar file or JS .mjs files
     Compile {
         file: String,
-        /// Output path for the jar file (default: <stem>.jar)
+        /// Output path (default: <stem>.jar for JVM, out/ for JS)
         #[arg(short, long)]
         output: Option<String>,
+        /// Compilation target
+        #[arg(long, default_value = "jvm")]
+        target: Target,
     },
-    /// Compile and run a file on the JVM
-    Run { file: String },
+    /// Compile and run a file
+    Run {
+        file: String,
+        /// Compilation target
+        #[arg(long, default_value = "jvm")]
+        target: Target,
+    },
     /// Pretty-print the ANF intermediate representation
     DumpIr {
         file: String,
@@ -89,6 +97,13 @@ enum Commands {
 enum OutputFormat {
     Debug,
     Surface,
+}
+
+#[derive(Clone, ValueEnum, Default)]
+enum Target {
+    #[default]
+    Jvm,
+    Js,
 }
 
 fn do_parse(
@@ -180,7 +195,7 @@ fn main() {
             }
             println!("{}", krypton_parser::pretty::pretty_print(&module));
         }
-        Commands::Compile { file, output } => {
+        Commands::Compile { file, output, target } => {
             info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
@@ -234,45 +249,99 @@ fn main() {
                 format!("Kr${base}")
             };
 
-            let t = Instant::now();
-            match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
-                Ok(classes) => {
-                    phases.push(("codegen", t.elapsed()));
-                    info!(classes = classes.len(), "codegen complete");
-
+            match target {
+                Target::Jvm => {
                     let t = Instant::now();
-                    let out_path = match &output {
-                        Some(o) => PathBuf::from(o),
-                        None => PathBuf::from(format!("{}.jar", stem)),
-                    };
-                    if let Some(parent) = out_path.parent() {
-                        if !parent.as_os_str().is_empty() {
-                            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                                eprintln!("Error creating directory {}: {}", parent.display(), e);
+                    match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
+                        Ok(classes) => {
+                            phases.push(("codegen", t.elapsed()));
+                            info!(classes = classes.len(), "codegen complete");
+
+                            let t = Instant::now();
+                            let out_path = match &output {
+                                Some(o) => PathBuf::from(o),
+                                None => PathBuf::from(format!("{}.jar", stem)),
+                            };
+                            if let Some(parent) = out_path.parent() {
+                                if !parent.as_os_str().is_empty() {
+                                    std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                                        eprintln!(
+                                            "Error creating directory {}: {}",
+                                            parent.display(),
+                                            e
+                                        );
+                                        process::exit(1);
+                                    });
+                                }
+                            }
+                            let jar_bytes = krypton_codegen::jar::write_jar(
+                                &classes,
+                                &class_name,
+                                find_runtime_jar().as_deref(),
+                            )
+                            .unwrap_or_else(|e| {
+                                eprintln!("Error creating jar: {}", e);
                                 process::exit(1);
                             });
+                            std::fs::write(&out_path, jar_bytes).unwrap_or_else(|e| {
+                                eprintln!("Error writing {}: {}", out_path.display(), e);
+                                process::exit(1);
+                            });
+                            phases.push(("emit", t.elapsed()));
+                        }
+                        Err(e) => {
+                            let diag = krypton_codegen::diagnostics::render_codegen_error(
+                                &file, &source, &e,
+                            );
+                            eprint!("{}", diag);
+                            process::exit(1);
                         }
                     }
-                    let jar_bytes = krypton_codegen::jar::write_jar(
-                        &classes,
-                        &class_name,
-                        find_runtime_jar().as_deref(),
-                    )
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error creating jar: {}", e);
-                        process::exit(1);
-                    });
-                    std::fs::write(&out_path, jar_bytes).unwrap_or_else(|e| {
-                        eprintln!("Error writing {}: {}", out_path.display(), e);
-                        process::exit(1);
-                    });
-                    phases.push(("emit", t.elapsed()));
                 }
-                Err(e) => {
-                    let diag =
-                        krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
-                    eprint!("{}", diag);
-                    process::exit(1);
+                Target::Js => {
+                    let t = Instant::now();
+                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem) {
+                        Ok(files) => {
+                            phases.push(("codegen", t.elapsed()));
+                            info!(files = files.len(), "JS codegen complete");
+
+                            let t = Instant::now();
+                            let out_dir = match &output {
+                                Some(o) => PathBuf::from(o),
+                                None => PathBuf::from("out"),
+                            };
+                            std::fs::create_dir_all(&out_dir).unwrap_or_else(|e| {
+                                eprintln!(
+                                    "Error creating directory {}: {}",
+                                    out_dir.display(),
+                                    e
+                                );
+                                process::exit(1);
+                            });
+                            for (filename, js_source) in &files {
+                                let file_path = out_dir.join(filename);
+                                if let Some(parent) = file_path.parent() {
+                                    std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                                        eprintln!(
+                                            "Error creating directory {}: {}",
+                                            parent.display(),
+                                            e
+                                        );
+                                        process::exit(1);
+                                    });
+                                }
+                                std::fs::write(&file_path, js_source).unwrap_or_else(|e| {
+                                    eprintln!("Error writing {}: {}", file_path.display(), e);
+                                    process::exit(1);
+                                });
+                            }
+                            phases.push(("emit", t.elapsed()));
+                        }
+                        Err(e) => {
+                            eprintln!("JS codegen error: {}", e);
+                            process::exit(1);
+                        }
+                    }
                 }
             }
 
@@ -280,7 +349,7 @@ fn main() {
                 print_timings(&phases);
             }
         }
-        Commands::Run { file } => {
+        Commands::Run { file, target } => {
             info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
@@ -332,53 +401,111 @@ fn main() {
                 format!("Kr${base}")
             };
 
-            let t = Instant::now();
-            match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
-                Ok(classes) => {
-                    phases.push(("codegen", t.elapsed()));
-                    info!(classes = classes.len(), "codegen complete");
-
+            match target {
+                Target::Jvm => {
                     let t = Instant::now();
-                    let dir = tempdir().unwrap_or_else(|e| {
-                        eprintln!("Error creating temp dir: {}", e);
-                        process::exit(1);
-                    });
-                    for (name, bytes) in &classes {
-                        let class_path = dir.path().join(format!("{name}.class"));
-                        if let Some(parent) = class_path.parent() {
-                            std::fs::create_dir_all(parent).unwrap();
+                    match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
+                        Ok(classes) => {
+                            phases.push(("codegen", t.elapsed()));
+                            info!(classes = classes.len(), "codegen complete");
+
+                            let t = Instant::now();
+                            let dir = tempdir().unwrap_or_else(|e| {
+                                eprintln!("Error creating temp dir: {}", e);
+                                process::exit(1);
+                            });
+                            for (name, bytes) in &classes {
+                                let class_path = dir.path().join(format!("{name}.class"));
+                                if let Some(parent) = class_path.parent() {
+                                    std::fs::create_dir_all(parent).unwrap();
+                                }
+                                std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
+                                    eprintln!("Error writing class file: {}", e);
+                                    process::exit(1);
+                                });
+                            }
+                            phases.push(("emit", t.elapsed()));
+
+                            let classpath = build_classpath(dir.path());
+                            info!(class = %class_name, "invoking JVM");
+                            let t = Instant::now();
+                            let status = process::Command::new("java")
+                                .arg("-cp")
+                                .arg(&classpath)
+                                .arg(&class_name)
+                                .status()
+                                .unwrap_or_else(|e| {
+                                    eprintln!("Error running java: {}", e);
+                                    process::exit(1);
+                                });
+                            phases.push(("jvm", t.elapsed()));
+
+                            if timings {
+                                print_timings(&phases);
+                            }
+                            process::exit(status.code().unwrap_or(1));
                         }
-                        std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
-                            eprintln!("Error writing class file: {}", e);
+                        Err(e) => {
+                            let diag = krypton_codegen::diagnostics::render_codegen_error(
+                                &file, &source, &e,
+                            );
+                            eprint!("{}", diag);
                             process::exit(1);
-                        });
+                        }
                     }
-                    phases.push(("emit", t.elapsed()));
-
-                    let classpath = build_classpath(dir.path());
-                    info!(class = %class_name, "invoking JVM");
-                    let t = Instant::now();
-                    let status = process::Command::new("java")
-                        .arg("-cp")
-                        .arg(&classpath)
-                        .arg(&class_name)
-                        .status()
-                        .unwrap_or_else(|e| {
-                            eprintln!("Error running java: {}", e);
-                            process::exit(1);
-                        });
-                    phases.push(("jvm", t.elapsed()));
-
-                    if timings {
-                        print_timings(&phases);
-                    }
-                    process::exit(status.code().unwrap_or(1));
                 }
-                Err(e) => {
-                    let diag =
-                        krypton_codegen::diagnostics::render_codegen_error(&file, &source, &e);
-                    eprint!("{}", diag);
-                    process::exit(1);
+                Target::Js => {
+                    let t = Instant::now();
+                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem) {
+                        Ok(files) => {
+                            phases.push(("codegen", t.elapsed()));
+                            info!(files = files.len(), "JS codegen complete");
+
+                            let t = Instant::now();
+                            let dir = tempdir().unwrap_or_else(|e| {
+                                eprintln!("Error creating temp dir: {}", e);
+                                process::exit(1);
+                            });
+                            let entry_file = files
+                                .first()
+                                .map(|(name, _)| dir.path().join(name))
+                                .unwrap_or_else(|| {
+                                    eprintln!("No JS files generated");
+                                    process::exit(1);
+                                });
+                            for (filename, js_source) in &files {
+                                let file_path = dir.path().join(filename);
+                                if let Some(parent) = file_path.parent() {
+                                    std::fs::create_dir_all(parent).unwrap();
+                                }
+                                std::fs::write(&file_path, js_source).unwrap_or_else(|e| {
+                                    eprintln!("Error writing {}: {}", file_path.display(), e);
+                                    process::exit(1);
+                                });
+                            }
+                            phases.push(("emit", t.elapsed()));
+
+                            info!("invoking node");
+                            let t = Instant::now();
+                            let status = process::Command::new("node")
+                                .arg(&entry_file)
+                                .status()
+                                .unwrap_or_else(|e| {
+                                    eprintln!("Error running node: {}", e);
+                                    process::exit(1);
+                                });
+                            phases.push(("node", t.elapsed()));
+
+                            if timings {
+                                print_timings(&phases);
+                            }
+                            process::exit(status.code().unwrap_or(1));
+                        }
+                        Err(e) => {
+                            eprintln!("JS codegen error: {}", e);
+                            process::exit(1);
+                        }
+                    }
                 }
             }
         }
