@@ -8,6 +8,27 @@ use krypton_ir::{
 use krypton_parser::ast::Span;
 use krypton_typechecker::typed_ast::TypedModule;
 
+/// JS reserved words that cannot be used as identifiers.
+const JS_RESERVED: &[&str] = &[
+    "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
+    "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import",
+    "in", "instanceof", "new", "null", "return", "super", "switch", "this", "throw", "true",
+    "try", "typeof", "var", "void", "while", "with", "yield",
+    // strict mode
+    "implements", "interface", "let", "package", "private", "protected", "public", "static",
+    // other
+    "await", "async",
+];
+
+/// Return a JS-safe version of a Krypton name: prefix with `$` if it's a reserved word.
+fn js_safe_name(name: &str) -> String {
+    if JS_RESERVED.contains(&name) {
+        format!("${name}")
+    } else {
+        name.to_string()
+    }
+}
+
 /// Errors that can occur during JS code generation.
 #[derive(Debug, Clone)]
 pub enum JsCodegenError {
@@ -328,6 +349,12 @@ struct RecurJoinInfo {
     phase: RecurPhase,
 }
 
+/// Tracks a non-recur join that should be inlined (to avoid `continue` inside a nested function).
+struct InlineJoinInfo<'a> {
+    param_names: Vec<String>,
+    join_body: &'a Expr,
+}
+
 #[derive(PartialEq)]
 enum RecurPhase {
     Init,
@@ -350,6 +377,8 @@ pub(crate) struct JsEmitter<'a> {
     variant_lookup: &'a HashMap<(String, u32), String>,
     /// Active recur join points for while(true) + continue emission.
     recur_joins: HashMap<VarId, RecurJoinInfo>,
+    /// Non-recur joins inside a recur context that must be inlined to avoid `continue` in nested functions.
+    inline_joins: HashMap<VarId, InlineJoinInfo<'a>>,
     /// Maps (trait_local_name, target_type_name) → source module name for cross-module dict imports.
     instance_source_modules: &'a HashMap<(String, String), String>,
 }
@@ -371,6 +400,7 @@ impl<'a> JsEmitter<'a> {
             var_counter: 0,
             variant_lookup,
             recur_joins: HashMap::new(),
+            inline_joins: HashMap::new(),
             instance_source_modules,
         }
     }
@@ -543,7 +573,7 @@ impl<'a> JsEmitter<'a> {
         self.module
             .fn_names
             .get(&id)
-            .cloned()
+            .map(|n| js_safe_name(n))
             .unwrap_or_else(|| format!("fn_{}", id.0))
     }
 
@@ -607,10 +637,12 @@ impl<'a> JsEmitter<'a> {
                 if local_names.contains(local) {
                     continue;
                 }
-                if original == local {
-                    specifiers.push(original.to_string());
+                let safe_original = js_safe_name(original);
+                let safe_local = js_safe_name(local);
+                if safe_original == safe_local {
+                    specifiers.push(safe_original);
                 } else {
-                    specifiers.push(format!("{original} as {local}"));
+                    specifiers.push(format!("{safe_original} as {safe_local}"));
                 }
             }
             specifiers.sort();
@@ -929,6 +961,7 @@ impl<'a> JsEmitter<'a> {
         self.var_types.clear();
         self.var_counter = 0;
         self.recur_joins.clear();
+        self.inline_joins.clear();
 
         let param_names: Vec<String> = func
             .params
@@ -941,7 +974,7 @@ impl<'a> JsEmitter<'a> {
 
         self.writeln(&format!(
             "export function {}({}) {{",
-            func.name,
+            js_safe_name(&func.name),
             param_names.join(", ")
         ));
         self.indent += 1;
@@ -1053,6 +1086,28 @@ impl<'a> JsEmitter<'a> {
                     self.writeln("}");
 
                     self.recur_joins.remove(name);
+                } else if !self.recur_joins.is_empty() {
+                    // Non-recur join inside a recur context — inline to avoid
+                    // `continue` landing inside a nested function.
+                    let param_names: Vec<String> = params
+                        .iter()
+                        .map(|(v, ty)| {
+                            self.var_types.insert(*v, ty);
+                            let pname = self.bind_var(*v);
+                            self.writeln(&format!("let {pname};"));
+                            pname
+                        })
+                        .collect();
+
+                    self.inline_joins.insert(
+                        *name,
+                        InlineJoinInfo {
+                            param_names,
+                            join_body,
+                        },
+                    );
+                    self.emit_expr(body, tail);
+                    self.inline_joins.remove(name);
                 } else {
                     // Non-recur join → helper function.
                     let join_name = self.bind_var(*name);
@@ -1097,6 +1152,23 @@ impl<'a> JsEmitter<'a> {
                     if is_loop {
                         self.writeln("continue;");
                     }
+                } else if let Some(info) = self.inline_joins.remove(target) {
+                    // Inline join: assign params and emit body directly.
+                    let arg_strs: Vec<String> =
+                        args.iter().map(|a| self.emit_atom(a)).collect();
+                    for (i, param_name) in info.param_names.iter().enumerate() {
+                        self.writeln(&format!("{param_name} = {};", arg_strs[i]));
+                    }
+                    // Re-insert before emitting body (body may contain further jumps to same join).
+                    let join_body = info.join_body;
+                    self.inline_joins.insert(
+                        *target,
+                        InlineJoinInfo {
+                            param_names: info.param_names,
+                            join_body,
+                        },
+                    );
+                    self.emit_expr(join_body, tail);
                 } else {
                     let target_name = self.var_name(*target);
                     let arg_strs: Vec<String> =

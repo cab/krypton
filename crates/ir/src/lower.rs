@@ -3158,6 +3158,20 @@ impl LowerCtx {
                 ));
             }
 
+            // Check if it's a struct constructor (positional syntax)
+            if self.struct_fields.contains_key(name.as_str()) {
+                return Ok((
+                    bindings,
+                    simple_at(
+                        func.span,
+                        SimpleExprKind::Construct {
+                        type_name: name.clone(),
+                        fields: arg_atoms,
+                        },
+                    ),
+                ));
+            }
+
             // Check if it's a known top-level function
             if let Some(fn_id) = self.lookup_fn(name) {
                 // Resolve dict arguments for constrained functions
@@ -3337,6 +3351,31 @@ impl LowerCtx {
                                 type_name: type_name.clone(),
                                 variant: name,
                                 tag,
+                                fields: arg_atoms,
+                                },
+                            ),
+                            body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
+                        },
+                    ))
+                });
+            }
+
+            // Struct constructor (positional syntax)
+            if self.struct_fields.contains_key(name.as_str()) {
+                let type_name = name.clone();
+                return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                    let var = ctx.fresh_var();
+                    let ty = result_ty.clone();
+                    Ok(expr_at(
+                        func.span,
+                        ty.clone().into(),
+                        ExprKind::Let {
+                            bind: var,
+                            ty: ty.clone().into(),
+                            value: simple_at(
+                                func.span,
+                                SimpleExprKind::Construct {
+                                type_name,
                                 fields: arg_atoms,
                                 },
                             ),
