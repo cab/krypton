@@ -41,8 +41,9 @@ mod tests {
     fn emit_module(module: &Module) -> String {
         let variant_lookup = HashMap::new();
         let instance_source_modules = HashMap::new();
+        let concrete_instance_keys = std::collections::HashSet::new();
         let mut emitter =
-            crate::emit::JsEmitter::new(module, false, &variant_lookup, &instance_source_modules);
+            crate::emit::JsEmitter::new(module, false, &variant_lookup, &instance_source_modules, &concrete_instance_keys);
         emitter.emit()
     }
 
@@ -353,8 +354,9 @@ mod tests {
         let module = make_module("hello");
         let variant_lookup = HashMap::new();
         let instance_source_modules = HashMap::new();
+        let concrete_instance_keys = std::collections::HashSet::new();
         let mut emitter =
-            crate::emit::JsEmitter::new(&module, false, &variant_lookup, &instance_source_modules);
+            crate::emit::JsEmitter::new(&module, false, &variant_lookup, &instance_source_modules, &concrete_instance_keys);
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"
         let filename = format!("{}.mjs", module.name);

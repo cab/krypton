@@ -166,6 +166,64 @@ pub fn head_type_name(ty: &Type) -> std::string::String {
     }
 }
 
+/// Full canonical type name matching `type_to_canonical_name` from the typechecker.
+/// Includes all type arguments, producing unique names for concrete types like
+/// `Vec$Int` (vs `Vec$String`). Type variables become `$Var0`, `$Var1`, etc.
+pub fn canonical_type_name(ty: &Type) -> std::string::String {
+    use std::collections::HashMap;
+    fn inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> std::string::String {
+        match ty {
+            Type::Own(inner_ty) => inner(inner_ty, var_map),
+            Type::Named(name, args) if args.is_empty() => name.clone(),
+            Type::Named(name, args) => {
+                let arg_strs: Vec<_> = args.iter().map(|a| inner(a, var_map)).collect();
+                format!("{}${}", name, arg_strs.join("$"))
+            }
+            Type::Int => "Int".to_string(),
+            Type::Float => "Float".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::String => "String".to_string(),
+            Type::Unit => "Unit".to_string(),
+            Type::Fn(params, ret) => {
+                let mut parts: Vec<_> = params.iter().map(|p| inner(p, var_map)).collect();
+                parts.push(inner(ret, var_map));
+                format!("$Fun{}${}", params.len(), parts.join("$"))
+            }
+            Type::Var(id) => {
+                let next = var_map.len();
+                let idx = *var_map.entry(*id).or_insert(next);
+                format!("$Var{idx}")
+            }
+            Type::Tuple(elems) => {
+                let parts: Vec<_> = elems.iter().map(|e| inner(e, var_map)).collect();
+                format!("$Tuple{}${}", elems.len(), parts.join("$"))
+            }
+            Type::App(ctor, args) => {
+                let ctor_name = inner(ctor, var_map);
+                let arg_strs: Vec<_> = args.iter().map(|a| inner(a, var_map)).collect();
+                format!("{}${}", ctor_name, arg_strs.join("$"))
+            }
+            Type::FnHole => "$FnHole".to_string(),
+            Type::Dict { .. } => "Dict".to_string(),
+        }
+    }
+    let mut var_map = HashMap::new();
+    inner(ty, &mut var_map)
+}
+
+/// Returns true if the type contains any type variables or HKT placeholders.
+pub fn has_type_vars(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) | Type::FnHole => true,
+        Type::Named(_, args) => args.iter().any(has_type_vars),
+        Type::Fn(params, ret) => params.iter().any(has_type_vars) || has_type_vars(ret),
+        Type::Own(inner) => has_type_vars(inner),
+        Type::Tuple(elems) => elems.iter().any(has_type_vars),
+        Type::App(ctor, args) => has_type_vars(ctor) || args.iter().any(has_type_vars),
+        _ => false,
+    }
+}
+
 /// Decompose a concrete `Fn` type into (partial_ctor, remaining_args) for matching
 /// against `App(ctor, args)` in HKT contexts.
 pub fn decompose_fn_for_app(

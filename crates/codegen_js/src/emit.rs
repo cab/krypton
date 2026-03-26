@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use krypton_ir::{
-    head_type_name, Atom, Expr, ExprKind, FnId, Literal, Module, PrimOp, SimpleExpr,
+    canonical_type_name, has_type_vars, head_type_name, Atom, Expr, ExprKind, FnId, Literal,
+    Module, PrimOp, SimpleExpr,
     SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
 };
 use krypton_parser::ast::Span;
@@ -128,17 +129,43 @@ pub fn compile_modules_js(
         }
     }
 
-    // Build instance → source module map: (trait_local_name, target_type_name) → module_name
+    // Build instance → source module map: (trait_local_name, dict_type_key) → module_name
+    // Concrete instances (no type vars) use target_type_name; others use head_type_name.
     let mut instance_source_modules: HashMap<(String, String), String> = HashMap::new();
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
             if !inst.is_imported && !inst.is_intrinsic {
+                let type_key = if has_type_vars(&inst.target_type) {
+                    head_type_name(&inst.target_type)
+                } else {
+                    inst.target_type_name.clone()
+                };
                 instance_source_modules.insert(
-                    (inst.trait_name.local_name.clone(), inst.target_type_name.clone()),
+                    (inst.trait_name.local_name.clone(), type_key),
                     ir_module.name.clone(),
                 );
             }
         }
+    }
+
+    // Build set of concrete instance keys for dict name resolution.
+    // Concrete instances (no type vars in target_type) use target_type_name for uniqueness.
+    // Instances with type vars use head_type_name instead.
+    let mut concrete_instance_keys: HashSet<(String, String)> = HashSet::new();
+    for ir_module in &ir_modules {
+        for inst in &ir_module.instances {
+            if !inst.is_intrinsic && !has_type_vars(&inst.target_type) {
+                concrete_instance_keys.insert((
+                    inst.trait_name.local_name.clone(),
+                    inst.target_type_name.clone(),
+                ));
+            }
+        }
+    }
+    // Include intrinsic instances (simple types like Int, String, etc.)
+    for (trait_name, type_name, _) in js_intrinsic_dicts() {
+        concrete_instance_keys
+            .insert((trait_name.to_string(), type_name.to_string()));
     }
 
     let reachable_modules = collect_reachable_modules(&ir_modules, &instance_source_modules);
@@ -147,8 +174,13 @@ pub fn compile_modules_js(
     let mut results = Vec::new();
     for ir_module in &ir_modules {
         let is_main = ir_module.name == main_module_name;
-        let mut emitter =
-            JsEmitter::new(ir_module, is_main, &variant_lookup, &instance_source_modules);
+        let mut emitter = JsEmitter::new(
+            ir_module,
+            is_main,
+            &variant_lookup,
+            &instance_source_modules,
+            &concrete_instance_keys,
+        );
         let js_source = emitter.emit();
         let filename = format!("{}.mjs", ir_module.name);
         results.push((filename, js_source));
@@ -381,6 +413,9 @@ pub(crate) struct JsEmitter<'a> {
     inline_joins: HashMap<VarId, InlineJoinInfo<'a>>,
     /// Maps (trait_local_name, target_type_name) → source module name for cross-module dict imports.
     instance_source_modules: &'a HashMap<(String, String), String>,
+    /// Set of (trait_local_name, target_type_name) for concrete instances (no type vars).
+    /// Used by dict_constant_name to distinguish concrete vs parameterized dict references.
+    concrete_instance_keys: &'a HashSet<(String, String)>,
 }
 
 impl<'a> JsEmitter<'a> {
@@ -389,6 +424,7 @@ impl<'a> JsEmitter<'a> {
         is_main: bool,
         variant_lookup: &'a HashMap<(String, u32), String>,
         instance_source_modules: &'a HashMap<(String, String), String>,
+        concrete_instance_keys: &'a HashSet<(String, String)>,
     ) -> Self {
         JsEmitter {
             output: String::new(),
@@ -402,6 +438,7 @@ impl<'a> JsEmitter<'a> {
             recur_joins: HashMap::new(),
             inline_joins: HashMap::new(),
             instance_source_modules,
+            concrete_instance_keys,
         }
     }
 
@@ -694,13 +731,18 @@ impl<'a> JsEmitter<'a> {
             let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
             for inst in &self.module.instances {
                 if inst.is_imported && !inst.is_intrinsic {
+                    let type_key = if has_type_vars(&inst.target_type) {
+                        head_type_name(&inst.target_type)
+                    } else {
+                        inst.target_type_name.clone()
+                    };
                     let dict_name = format!(
                         "{}$${}",
-                        inst.trait_name.local_name, inst.target_type_name
+                        inst.trait_name.local_name, type_key
                     );
                     let key = (
                         inst.trait_name.local_name.clone(),
-                        inst.target_type_name.clone(),
+                        type_key,
                     );
                     if let Some(source_module) = self.instance_source_modules.get(&key) {
                         dict_by_module
@@ -873,8 +915,18 @@ impl<'a> JsEmitter<'a> {
         ty: &Type,
     ) -> String {
         let trait_local = &trait_name.local_name;
-        let type_base = head_type_name(ty);
-        format!("{trait_local}$${type_base}")
+        // For concrete instances (no type vars), use canonical_type_name to match
+        // the target_type_name used at emission. For parameterized instances, fall
+        // back to head_type_name which matches the factory function name.
+        let canonical = canonical_type_name(ty);
+        if self
+            .concrete_instance_keys
+            .contains(&(trait_local.clone(), canonical.clone()))
+        {
+            format!("{trait_local}$${canonical}")
+        } else {
+            format!("{trait_local}$${}", head_type_name(ty))
+        }
     }
 
     fn emit_dict_instances(&mut self) {
@@ -900,10 +952,17 @@ impl<'a> JsEmitter<'a> {
             if inst.is_imported || inst.is_intrinsic {
                 continue;
             }
-            let dict_name = format!("{}$${}", inst.trait_name.local_name, inst.target_type_name);
 
             if inst.sub_dict_requirements.is_empty() {
-                // Concrete instance — dict constant object
+                // Concrete instance — dict constant object.
+                // Use target_type_name for fully concrete types (unique, avoids collisions).
+                // Use head_type_name for types with vars (matches GetDict refs).
+                let type_key = if has_type_vars(&inst.target_type) {
+                    head_type_name(&inst.target_type)
+                } else {
+                    inst.target_type_name.clone()
+                };
+                let dict_name = format!("{}$${}", inst.trait_name.local_name, type_key);
                 let methods: Vec<String> = inst
                     .method_fn_ids
                     .iter()
@@ -917,7 +976,8 @@ impl<'a> JsEmitter<'a> {
                     methods.join(", ")
                 ));
             } else {
-                // Parameterized instance — factory function
+                // Parameterized instance — factory function (uses head_type_name to match MakeDict refs)
+                let dict_name = format!("{}$${}", inst.trait_name.local_name, head_type_name(&inst.target_type));
                 let dict_params: Vec<String> = inst
                     .sub_dict_requirements
                     .iter()
@@ -1409,7 +1469,11 @@ impl<'a> JsEmitter<'a> {
                 ty,
                 sub_dicts,
             } => {
-                let factory_name = self.dict_constant_name(trait_name, ty);
+                // MakeDict calls a parameterized factory function whose name uses
+                // head_type_name (stripping type args that become factory params).
+                let trait_local = &trait_name.local_name;
+                let type_base = head_type_name(ty);
+                let factory_name = format!("{trait_local}$${type_base}");
                 let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{factory_name}({})", args.join(", ")));
             }

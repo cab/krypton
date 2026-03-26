@@ -4356,6 +4356,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         param_instances: typed
             .instance_defs
             .iter()
+            .chain(typed.imported_instance_defs.iter())
             .filter(|inst| !inst.constraints.is_empty())
             .map(|inst| ParamInstanceInfo {
                 trait_name: inst.trait_name.clone(),
