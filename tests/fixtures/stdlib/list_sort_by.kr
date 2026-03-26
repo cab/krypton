@@ -1,6 +1,6 @@
 # expect: output "1"
 import core/list.{sort_by}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = match sort_by(Cons(3, Cons(1, Cons(2, Nil))), x -> x) {
     Cons(h, _) => println(h),
     Nil => println(0),

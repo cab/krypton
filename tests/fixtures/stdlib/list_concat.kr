@@ -1,4 +1,4 @@
 # expect: output "6"
 import core/list.{concat, length}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = println(length(concat(Cons(1, Cons(2, Cons(3, Nil))), Cons(4, Cons(5, Cons(6, Nil))))))

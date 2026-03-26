@@ -1,7 +1,7 @@
 # expect: output "42"
 # Codegen: create Option, match to extract, print
 extern java "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
+    fun println[a](a) -> Unit
 }
 
 fun unwrap_or(opt, default) = match opt {

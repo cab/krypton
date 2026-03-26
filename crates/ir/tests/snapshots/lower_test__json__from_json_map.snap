@@ -301,7 +301,7 @@ import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
-import core/map/get as get(Map[r9, e10], r9): Option[e10]
+import core/map/get as get(Map[o9, a10], o9): Option[a10]
 import core/option/Some as Some(g): Option[g]
 import core/option/None as None(): Option[g]
 import core/json/JNum as JNum(Float): Json
@@ -312,10 +312,10 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
-import core/json/from_json as from_json(Json): Result[String, p14]
-import core/map/from_list as from_list(List[(e13, f13)]): Map[e13, f13]
-declare from_list: (List[(e13, f13)]) -> Map[e13, f13]
-declare get: (Map[r9, e10], r9) -> Option[e10]
+import core/json/from_json as from_json(Json): Result[String, n14]
+import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
+declare from_list: (List[(c13, d13)]) -> Map[c13, d13]
+declare get: (Map[o9, a10], o9) -> Option[a10]
 declare println: (m) -> Unit
 
 fn main() -> Unit =

@@ -127,12 +127,12 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/map/empty as empty(): Map[t8, u8]
-import core/map/put as put(Map[y8, z8], y8, z8): Map[y8, z8]
-import core/map/get as get(Map[r9, e10], r9): Option[e10]
+import core/map/put as put(Map[x8, y8], x8, y8): Map[x8, y8]
+import core/map/get as get(Map[o9, a10], o9): Option[a10]
 declare empty: () -> Map[t8, u8]
-declare get: (Map[r9, e10], r9) -> Option[e10]
+declare get: (Map[o9, a10], o9) -> Option[a10]
 declare println: (m) -> Unit
-declare put: (Map[y8, z8], y8, z8) -> Map[y8, z8]
+declare put: (Map[x8, y8], x8, y8) -> Map[x8, y8]
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

@@ -8,7 +8,7 @@ impl MyEq[Int] {
 }
 
 extern java "krypton.runtime.KryptonIO" {
-  fun println(Object) -> Unit
+  fun println[a](a) -> Unit
 }
 
 fun main() = println(my_eq(42, 42))

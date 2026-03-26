@@ -172,7 +172,7 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/actor/Timeout as Timeout(): Timeout
-import core/actor/spawn as spawn((Mailbox[p8]) -> Unit): Ref[p8]
+import core/actor/spawn as spawn((Mailbox[r8]) -> Unit): Ref[r8]
 import core/actor/ask as ask(Ref[n10], (Ref[o10]) -> n10, Int): Result[Timeout, o10]
 import core/actor/Timeout as Timeout(): Timeout
 import core/result/Ok as Ok(h): Result[g, h]
@@ -180,7 +180,7 @@ import core/result/Err as Err(g): Result[g, h]
 declare Get
 declare ask: (Ref[n10], (Ref[o10]) -> n10, Int) -> Result[Timeout, o10]
 declare println: (m) -> Unit
-declare spawn: ((Mailbox[p8]) -> Unit) -> Ref[p8]
+declare spawn: ((Mailbox[r8]) -> Unit) -> Ref[r8]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()

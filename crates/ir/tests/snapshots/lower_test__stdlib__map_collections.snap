@@ -127,16 +127,16 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/map/empty as empty(): Map[t8, u8]
-import core/map/put as put(Map[y8, z8], y8, z8): Map[y8, z8]
-import core/map/from_list as from_list(List[(e13, f13)]): Map[e13, f13]
-import core/map/size as size(Map[l13, m13]): Int
-import core/map/merge as merge(Map[r13, s13], Map[r13, s13]): Map[r13, s13]
+import core/map/put as put(Map[x8, y8], x8, y8): Map[x8, y8]
+import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
+import core/map/size as size(Map[j13, k13]): Int
+import core/map/merge as merge(Map[q13, r13], Map[q13, r13]): Map[q13, r13]
 declare empty: () -> Map[t8, u8]
-declare from_list: (List[(e13, f13)]) -> Map[e13, f13]
-declare merge: (Map[r13, s13], Map[r13, s13]) -> Map[r13, s13]
+declare from_list: (List[(c13, d13)]) -> Map[c13, d13]
+declare merge: (Map[q13, r13], Map[q13, r13]) -> Map[q13, r13]
 declare println: (m) -> Unit
-declare put: (Map[y8, z8], y8, z8) -> Map[y8, z8]
-declare size: (Map[l13, m13]) -> Int
+declare put: (Map[x8, y8], x8, y8) -> Map[x8, y8]
+declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

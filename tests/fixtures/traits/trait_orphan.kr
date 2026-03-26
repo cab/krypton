@@ -1,8 +1,7 @@
 # expect: error E0302
-trait MyTrait[a] {
-    fun check(_0: a) -> Bool
-}
+import core/show.{Show}
+import core/list.{List}
 
-impl MyTrait[Object] {
-    fun check(x) = false
+impl Show[List[Int]] {
+    fun show(x: List[Int]) -> String = "list"
 }

@@ -1,4 +1,4 @@
 # expect: output "6"
 import leak_lib.{exported}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = println(exported(5))

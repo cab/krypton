@@ -1,4 +1,4 @@
 # expect: output "6"
 import core/list.{fold}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = println(fold(Cons(1, Cons(2, Cons(3, Nil))), 0, (acc, x) -> acc + x))

@@ -2,7 +2,7 @@
 import core/string.{split}
 
 extern java "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
+    fun println[a](a) -> Unit
 }
 
 fun main() {

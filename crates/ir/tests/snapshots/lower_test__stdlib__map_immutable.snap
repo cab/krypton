@@ -127,15 +127,15 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/map/empty as empty(): Map[t8, u8]
-import core/map/put as put(Map[y8, z8], y8, z8): Map[y8, z8]
-import core/map/contains as contains(Map[p10, q10], p10): Bool
-declare contains: (Map[p10, q10], p10) -> Bool
+import core/map/put as put(Map[x8, y8], x8, y8): Map[x8, y8]
+import core/map/contains as contains(Map[k10, l10], k10): Bool
+declare contains: (Map[k10, l10], k10) -> Bool
 declare empty: () -> Map[t8, u8]
 declare println: (m) -> Unit
-declare put: (Map[y8, z8], y8, z8) -> Map[y8, z8]
+declare put: (Map[x8, y8], x8, y8) -> Map[x8, y8]
 
 fn main() -> Unit =
-  let v0: Map[d11, e11] = call empty()
+  let v0: Map[y10, z10] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

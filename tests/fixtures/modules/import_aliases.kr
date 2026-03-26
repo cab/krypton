@@ -3,7 +3,7 @@ import helpers_a.{compute as magnitude}
 import core/option.{Option as Maybe}
 
 extern java "krypton.runtime.KryptonIO" {
-  fun println(Object) -> Unit
+  fun println[a](a) -> Unit
 }
 
 fun keep(x: Maybe[Int]) -> Int = 0

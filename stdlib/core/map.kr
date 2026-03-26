@@ -9,21 +9,21 @@ import core/sub.{Sub}
 extern java "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 
 extern java "krypton.runtime.KryptonMap" {
-    fun staticEmpty() -> Object
-    fun staticPut(Object, Object, Object, Object, Object) -> Object
-    fun staticGetUnsafe(Object, Object) -> Object
-    fun staticContainsKey(Object, Object) -> Bool
-    fun staticDelete(Object, Object) -> Object
-    fun staticKeys(Object) -> Object
-    fun staticValues(Object) -> Object
-    fun staticEntries(Object) -> Object
-    fun staticSize(Object) -> Int
-    fun staticMerge(Object, Object) -> Object
+    fun staticEmpty[k, v]() -> Map[k, v]
+    fun staticPut[k, v, d1, d2](Map[k, v], k, v, d1, d2) -> Map[k, v]
+    fun staticGetUnsafe[k, v](Map[k, v], k) -> v
+    fun staticContainsKey[k, v](Map[k, v], k) -> Bool
+    fun staticDelete[k, v](Map[k, v], k) -> Map[k, v]
+    fun staticKeys[k, v](Map[k, v]) -> Vec[k]
+    fun staticValues[k, v](Map[k, v]) -> Vec[v]
+    fun staticEntries[k, v, a](Map[k, v]) -> a
+    fun staticSize[k, v](Map[k, v]) -> Int
+    fun staticMerge[k, v](Map[k, v], Map[k, v]) -> Map[k, v]
 }
 
 extern java "krypton.runtime.KryptonArray" {
-    fun staticLength(Object) -> Int
-    fun staticGet(Object, Int) -> Object
+    fun staticLength[a](a) -> Int
+    fun staticGet[a, b](a, Int) -> b
 }
 
 # empty() intentionally has no `where k: Eq + Hash` constraint.
@@ -47,7 +47,7 @@ pub fun keys[k, v](m: Map[k, v]) -> List[k] = vec_to_list(staticKeys(m))
 
 pub fun values[k, v](m: Map[k, v]) -> List[v] = vec_to_list(staticValues(m))
 
-fun entries_go[k, v](arr: Object, i: Int, acc: List[(k, v)]) -> List[(k, v)] =
+fun entries_go[k, v, a](arr: a, i: Int, acc: List[(k, v)]) -> List[(k, v)] =
     if i < 0 { acc } else { entries_go(arr, i - 2, Cons((staticGet(arr, i - 1), staticGet(arr, i)), acc)) }
 
 pub fun entries[k, v](m: Map[k, v]) -> List[(k, v)] = {

@@ -1,4 +1,4 @@
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 
 type Handle = MkHandle(String)
 

@@ -488,7 +488,7 @@ impl Compiler {
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
-                if name == "Object" || name == "Dict" {
+                if name == "Dict" {
                     return Ok(JvmType::StructRef(self.builder.refs.object_class));
                 }
                 if name == "Vec" {

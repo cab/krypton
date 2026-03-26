@@ -2,7 +2,7 @@
 import math/vec.{sum}
 
 extern java "krypton.runtime.KryptonIO" {
-  fun println(Object) -> Unit
+  fun println[a](a) -> Unit
 }
 
 fun main() = println(sum(3, 5))

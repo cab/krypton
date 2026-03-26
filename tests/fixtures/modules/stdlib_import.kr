@@ -2,7 +2,7 @@
 import core/list.{length}
 
 extern java "krypton.runtime.KryptonIO" {
-  fun println(Object) -> Unit
+  fun println[a](a) -> Unit
 }
 
 fun main() = println(length(Cons(1, Cons(2, Cons(3, Nil)))))

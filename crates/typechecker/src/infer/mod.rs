@@ -893,7 +893,6 @@ fn process_extern_methods(
         (Some(names), Some(map)) => names.iter().filter_map(|n| map.get(n).copied()).collect(),
         _ => vec![],
     };
-    let has_type_params = type_param_map.is_some();
     let mut extern_fns = Vec::new();
     let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for method in methods {
@@ -927,33 +926,18 @@ fn process_extern_methods(
             effective_resolve_arity = resolve_arity;
         }
 
-        let has_any_type_params = has_type_params || !method.type_params.is_empty();
-
         let mut param_types = Vec::new();
         for ty_expr in &method.param_types {
             let resolved =
                 type_registry::resolve_type_expr(ty_expr, effective_resolve_map, effective_resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
-            if !has_any_type_params && matches!(&resolved, Type::Named(n, args) if n == "Object" && args.is_empty()) {
-                let fresh = gen.fresh();
-                scheme_vars.push(fresh);
-                param_types.push(Type::Var(fresh));
-            } else {
-                param_types.push(resolved);
-            }
+            param_types.push(resolved);
         }
 
         let return_type =
             type_registry::resolve_type_expr(&method.return_type, effective_resolve_map, effective_resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
-        let ret = if !has_any_type_params && matches!(&return_type, Type::Named(n, args) if n == "Object" && args.is_empty())
-        {
-            let fresh = gen.fresh();
-            scheme_vars.push(fresh);
-            Type::Var(fresh)
-        } else {
-            return_type.clone()
-        };
+        let ret = return_type.clone();
 
         // Validate @nullable: return type must be Option[T]
         if method.nullable {

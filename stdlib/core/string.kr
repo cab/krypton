@@ -8,8 +8,8 @@ extern java "krypton.runtime.KryptonString" {
     pub fun trim(String) -> String
     pub fun substring(String, Int, Int) -> String
     pub fun length(String) -> Int
-    fun parseIntSafe(String) -> Object
-    fun parseFloatSafe(String) -> Object
+    fun parseIntSafe[a](String) -> a
+    fun parseFloatSafe[a](String) -> a
     fun containsStr(String, String) -> Bool
     fun startsWith(String, String) -> Bool
     fun endsWith(String, String) -> Bool
@@ -17,7 +17,7 @@ extern java "krypton.runtime.KryptonString" {
     fun toLower(String) -> String
     fun toUpper(String) -> String
     fun replaceStr(String, String, String) -> String
-    fun charAt(String, Int) -> Object
+    fun charAt[a](String, Int) -> a
 }
 
 pub fun parse_int(s: String) -> Option[Int] = {

@@ -2,7 +2,7 @@
 # expect: output "6\n3"
 import core/show.{Show, show}
 extern java "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
+    fun println[a](a) -> Unit
 }
 
 trait Multiply[a] {

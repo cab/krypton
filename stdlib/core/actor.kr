@@ -6,15 +6,15 @@ extern java "krypton.runtime.Mailbox" as Mailbox[m] {}
 extern java "krypton.runtime.Ref" as Ref[m] {}
 
 extern java "krypton.runtime.KryptonActors" {
-    fun raw_spawn(Object) -> Object
-    fun raw_send(Object, Object) -> Unit
-    fun raw_receive(Object) -> Object
-    fun raw_receive_timeout(Object, Int) -> Object
-    fun raw_actor_ref(Object) -> Object
-    fun raw_mailbox_size(Object) -> Int
-    fun raw_create_mailbox() -> Object
-    fun raw_adapter(Object, Object) -> Object
-    fun raw_ask(Object, Object, Int) -> Object
+    fun raw_spawn[m, r]((Mailbox[m]) -> Unit) -> r
+    fun raw_send[a, b](a, b) -> Unit
+    fun raw_receive[m, r](Mailbox[m]) -> r
+    fun raw_receive_timeout[m, r](Mailbox[m], Int) -> r
+    fun raw_actor_ref[m, r](Mailbox[m]) -> r
+    fun raw_mailbox_size[m](Mailbox[m]) -> Int
+    fun raw_create_mailbox[m]() -> Mailbox[m]
+    fun raw_adapter[a, b, c](a, b) -> c
+    fun raw_ask[a, b, c](a, b, Int) -> c
 }
 
 pub type Timeout = Timeout

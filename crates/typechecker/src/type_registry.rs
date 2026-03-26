@@ -304,7 +304,6 @@ fn resolve_named(
         "Bool" => Ok(Type::Bool),
         "String" => Ok(Type::String),
         "Unit" => Ok(Type::Unit),
-        "Object" => Ok(Type::Named("Object".to_string(), Vec::new())),
         "Self" => {
             return match self_type {
                 Some(ty) => Ok(ty.clone()),

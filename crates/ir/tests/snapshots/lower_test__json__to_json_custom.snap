@@ -274,8 +274,8 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
-import core/json/to_json as to_json(o14): Json
-import core/map/from_list as from_list(List[(e13, f13)]): Map[e13, f13]
+import core/json/to_json as to_json(m14): Json
+import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
 declare json_object: (List[(String, Json)]) -> Json
 declare json_to_string: (Json) -> String
 declare println: (m) -> Unit

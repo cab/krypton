@@ -1,6 +1,6 @@
 # expect: output "1"
 import core/vec.{nth}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = match nth([1, 2, 3], 0) {
     Some(x) => println(x),
     None => println(0),

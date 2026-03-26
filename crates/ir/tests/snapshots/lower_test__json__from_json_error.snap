@@ -233,7 +233,7 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
-import core/json/from_json as from_json(Json): Result[String, p14]
+import core/json/from_json as from_json(Json): Result[String, n14]
 declare println: (m) -> Unit
 
 fn main() -> Unit =

@@ -170,7 +170,7 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/actor/spawn as spawn((Mailbox[p8]) -> Unit): Ref[p8]
+import core/actor/spawn as spawn((Mailbox[r8]) -> Unit): Ref[r8]
 import core/actor/send as send(Ref[v8], v8): Unit
 import core/actor/receive as receive(Mailbox[g9]): g9
 declare receive: (Mailbox[g9]) -> g9

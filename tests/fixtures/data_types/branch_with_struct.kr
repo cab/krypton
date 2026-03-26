@@ -1,6 +1,6 @@
 # expect: output "100\n42"
 extern java "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
+    fun println[a](a) -> Unit
 }
 
 type Wrapper = { value: Int }

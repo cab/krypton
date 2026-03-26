@@ -1,4 +1,4 @@
 # expect: output "Red"
 import vis_lib.{Color}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = match Red { Red => println("Red"), Blue => println("Blue") }

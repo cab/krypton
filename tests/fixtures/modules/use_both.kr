@@ -3,7 +3,7 @@ import helpers_a.{compute as add10}
 import helpers_b.{compute as mul10}
 
 extern java "krypton.runtime.KryptonIO" {
-  fun println(Object) -> Unit
+  fun println[a](a) -> Unit
 }
 
 fun main() = println(add10(mul10(1)))

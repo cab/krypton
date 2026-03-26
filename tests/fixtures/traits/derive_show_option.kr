@@ -1,6 +1,6 @@
 # expect: output Some(42)
 extern java "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
+    fun println[a](a) -> Unit
 }
 
 type Option[a] = Some(a) | None deriving (Show)

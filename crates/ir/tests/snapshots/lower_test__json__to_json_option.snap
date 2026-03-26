@@ -233,7 +233,7 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
-import core/json/to_json as to_json(o14): Json
+import core/json/to_json as to_json(m14): Json
 declare json_to_string: (Json) -> String
 declare println: (m) -> Unit
 

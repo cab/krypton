@@ -127,18 +127,18 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/map/empty as empty(): Map[t8, u8]
-import core/map/put as put(Map[y8, z8], y8, z8): Map[y8, z8]
-import core/map/get as get(Map[r9, e10], r9): Option[e10]
-import core/map/contains as contains(Map[p10, q10], p10): Bool
-import core/map/from_list as from_list(List[(e13, f13)]): Map[e13, f13]
-import core/map/size as size(Map[l13, m13]): Int
-declare contains: (Map[p10, q10], p10) -> Bool
+import core/map/put as put(Map[x8, y8], x8, y8): Map[x8, y8]
+import core/map/get as get(Map[o9, a10], o9): Option[a10]
+import core/map/contains as contains(Map[k10, l10], k10): Bool
+import core/map/from_list as from_list(List[(c13, d13)]): Map[c13, d13]
+import core/map/size as size(Map[j13, k13]): Int
+declare contains: (Map[k10, l10], k10) -> Bool
 declare empty: () -> Map[t8, u8]
-declare from_list: (List[(e13, f13)]) -> Map[e13, f13]
-declare get: (Map[r9, e10], r9) -> Option[e10]
+declare from_list: (List[(c13, d13)]) -> Map[c13, d13]
+declare get: (Map[o9, a10], o9) -> Option[a10]
 declare println: (m) -> Unit
-declare put: (Map[y8, z8], y8, z8) -> Map[y8, z8]
-declare size: (Map[l13, m13]) -> Int
+declare put: (Map[x8, y8], x8, y8) -> Map[x8, y8]
+declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

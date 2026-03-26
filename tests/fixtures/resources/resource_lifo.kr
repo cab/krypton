@@ -1,6 +1,6 @@
 # expect: output "a\nb\nclose_b\nclose_a"
 extern java "krypton.runtime.KryptonIO" {
-    fun println(Object) -> Unit
+    fun println[a](a) -> Unit
 }
 
 type HandleA = MkHandleA(Int)

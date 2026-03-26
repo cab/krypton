@@ -225,7 +225,7 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/json/json_to_string as json_to_string(Json): String
-import core/json/to_json as to_json(o14): Json
+import core/json/to_json as to_json(m14): Json
 declare json_to_string: (Json) -> String
 declare println: (m) -> Unit
 

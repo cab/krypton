@@ -1,4 +1,4 @@
 # expect: output "Red"
 import reexport_lib.{Color, Red}
-extern java "krypton.runtime.KryptonIO" { fun println(Object) -> Unit }
+extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }
 fun main() = println(Red)
