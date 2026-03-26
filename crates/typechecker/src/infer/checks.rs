@@ -458,6 +458,7 @@ pub(super) fn check_trait_instances(
     subst: &Substitution,
     fn_constraint_requirements: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     fn_schemes: &HashMap<String, TypeScheme>,
+    fn_type_vars: &HashSet<TypeVarId>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -496,8 +497,17 @@ pub(super) fn check_trait_instances(
                                     trait_id.local_name, name
                                 ));
                             let concrete_ty = strip_own(dispatch_ty);
-                            if leading_type_var(&concrete_ty).is_none()
-                                && trait_registry.find_instance(trait_id, &concrete_ty).is_none()
+                            if let Some(v) = leading_type_var(&concrete_ty) {
+                                if !fn_type_vars.contains(&v) {
+                                    return Err(spanned(
+                                        TypeError::AmbiguousType {
+                                            trait_name: trait_id.local_name.clone(),
+                                            method_name: name.to_string(),
+                                        },
+                                        expr.span,
+                                    ));
+                                }
+                            } else if trait_registry.find_instance(trait_id, &concrete_ty).is_none()
                             {
                                 return Err(no_instance_error(
                                     trait_registry,

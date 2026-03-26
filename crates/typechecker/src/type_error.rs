@@ -54,6 +54,7 @@ pub enum TypeErrorCode {
     E0311, // Trait method collision
     E0312, // Missing trait bound
     E0313, // Ambiguous trait name
+    E0314, // Ambiguous type (could not infer trait dispatch type)
     E0601, // Extern signature mismatch across targets
     E0602, // Invalid @nullable return type
 }
@@ -260,6 +261,10 @@ pub enum TypeError {
         name: String,
         actual_return_type: Type,
     },
+    AmbiguousType {
+        trait_name: String,
+        method_name: String,
+    },
 }
 
 impl TypeError {
@@ -323,6 +328,7 @@ impl TypeError {
             TypeError::AmbiguousTraitName { .. } => TypeErrorCode::E0313,
             TypeError::ExternSignatureMismatch { .. } => TypeErrorCode::E0601,
             TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
+            TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
         }
     }
 
@@ -541,6 +547,9 @@ impl TypeError {
             }
             TypeError::InvalidNullableReturn { .. } => {
                 Some("@nullable functions must return Option[T] so the compiler can wrap null values".to_string())
+            }
+            TypeError::AmbiguousType { .. } => {
+                Some("add a type annotation to constrain the type, e.g., `let x: Int = default()`".to_string())
             }
         }
     }
@@ -927,6 +936,13 @@ impl fmt::Display for TypeError {
                     f,
                     "@nullable on extern function `{}` requires return type Option[T], found {}",
                     name, actual
+                )
+            }
+            TypeError::AmbiguousType { trait_name, method_name } => {
+                write!(
+                    f,
+                    "ambiguous type: could not infer the type for trait `{}` in call to `{}`",
+                    trait_name, method_name
                 )
             }
         }

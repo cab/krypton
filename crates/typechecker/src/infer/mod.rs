@@ -3060,8 +3060,12 @@ fn infer_function_bodies<'a>(
         fn_schemes_map.entry(imp.name.clone()).or_insert_with(|| imp.scheme.clone());
     }
     if !trait_method_map.is_empty() || !merged_constraint_reqs.is_empty() {
-        for body in fn_bodies.iter() {
+        for (body, scheme) in fn_bodies.iter().zip(result_schemes.iter()) {
             if let Some(body) = body {
+                let fn_type_vars: HashSet<TypeVarId> = scheme
+                    .as_ref()
+                    .map(|s| s.vars.iter().copied().collect())
+                    .unwrap_or_default();
                 checks::check_trait_instances(
                     body,
                     trait_method_map,
@@ -3069,6 +3073,7 @@ fn infer_function_bodies<'a>(
                     &state.subst,
                     &merged_constraint_reqs,
                     &fn_schemes_map,
+                    &fn_type_vars,
                 )?;
             }
         }
