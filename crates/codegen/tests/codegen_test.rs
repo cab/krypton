@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile;
 
-const PRINTLN_EXTERN: &str = r#"extern java "krypton.runtime.KryptonIO" { fun println[a](a) -> Unit }"#;
+const PRINTLN_EXTERN: &str = r#"extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }"#;
 
 fn find_runtime_jar() -> Option<PathBuf> {
     let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -402,14 +402,14 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         imported_fn_constraint_requirements: HashMap::new(),
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),
-            java_class: "krypton.runtime.KryptonIO".to_string(),
+            module_path: "krypton.runtime.KryptonIO".to_string(),
             target: krypton_parser::ast::ExternTarget::Java,
             param_types: vec![Type::Var(println_var)],
             return_type: Type::Unit,
         }],
         imported_extern_fns: vec![],
-        extern_java_types: vec![],
-        imported_extern_java_types: vec![],
+        extern_types: vec![],
+        imported_extern_types: vec![],
         struct_decls: vec![],
         sum_decls: vec![SumDecl {
             name: "Wrap".to_string(),

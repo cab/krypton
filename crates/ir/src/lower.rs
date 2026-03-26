@@ -4460,10 +4460,10 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
             let ir_target = match &ext.target {
                 krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
-                    class: ext.java_class.clone(),
+                    class: ext.module_path.clone(),
                 },
                 krypton_parser::ast::ExternTarget::Js => ExternTarget::Js {
-                    module: ext.java_class.clone(),
+                    module: ext.module_path.clone(),
                 },
             };
             extern_fns.push(ExternFnDef {
@@ -4476,19 +4476,21 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 10. Build extern_types from typed_module extern type info
+    // 10. Build extern_types from typed_module extern type info (JVM codegen: Java targets only)
     let mut extern_types = vec![];
-    for (krypton_name, java_class) in typed
-        .extern_java_types
+    for info in typed
+        .extern_types
         .iter()
-        .chain(typed.imported_extern_java_types.iter())
+        .chain(typed.imported_extern_types.iter())
     {
-        extern_types.push(ExternTypeDef {
-            name: krypton_name.clone(),
-            target: ExternTarget::Java {
-                class: java_class.clone(),
-            },
-        });
+        if info.target == krypton_parser::ast::ExternTarget::Java {
+            extern_types.push(ExternTypeDef {
+                name: info.krypton_name.clone(),
+                target: ExternTarget::Java {
+                    class: info.host_module.clone(),
+                },
+            });
+        }
     }
 
     // 11. Build imported_fns from fn_types entries with provenance

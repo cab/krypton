@@ -254,8 +254,8 @@ pub enum TypeError {
         name: String,
         target1: String,
         target2: String,
-        type1: Type,
-        type2: Type,
+        sig1: String,
+        sig2: String,
     },
     InvalidNullableReturn {
         name: String,
@@ -922,12 +922,11 @@ impl fmt::Display for TypeError {
                     name, existing_module, new_module
                 )
             }
-            TypeError::ExternSignatureMismatch { name, target1, target2, type1, type2 } => {
-                let renamed = renumber_types_for_display(&[type1, type2]);
+            TypeError::ExternSignatureMismatch { name, target1, target2, sig1, sig2 } => {
                 write!(
                     f,
-                    "extern signature mismatch for `{}`: `extern {}` declares {} but `extern {}` declares {}",
-                    name, target1, renamed[0], target2, renamed[1]
+                    "extern signature mismatch for `{}`: `extern {}` declares `{}` but `extern {}` declares `{}`",
+                    name, target1, sig1, target2, sig2
                 )
             }
             TypeError::InvalidNullableReturn { name, actual_return_type } => {

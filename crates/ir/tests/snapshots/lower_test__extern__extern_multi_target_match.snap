@@ -5,7 +5,6 @@ expression: ir_module.to_string()
 module extern__extern_multi_target_match
 
 extern java "krypton.runtime.KryptonIO" raw_println(String): Unit
-extern js "./runtime/js/io.mjs" raw_println(String): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object

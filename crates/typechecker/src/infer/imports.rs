@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{Decl, ExternTarget, ImportName, Module, Span, TypeDecl, Visibility};
+use krypton_parser::ast::{Decl, ImportName, Module, Span, TypeDecl, Visibility};
 
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::ExportedTypeInfo;
@@ -564,6 +564,7 @@ impl ModuleInferenceState {
         // Process extern declarations from imported module
         for sdecl in &imported_module.decls {
             if let Decl::Extern {
+                target,
                 module_path,
                 alias,
                 type_params,
@@ -587,7 +588,11 @@ impl ModuleInferenceState {
                             kind: crate::type_registry::TypeKind::Record { fields: vec![] },
                             is_prelude: false,
                         });
-                        self.imported_extern_java_types.push((name.clone(), module_path.clone()));
+                        self.imported_extern_types.push(typed_ast::ExternTypeInfo {
+                            krypton_name: name.clone(),
+                            host_module: module_path.clone(),
+                            target: target.clone(),
+                        });
                         vars
                     };
                     // Mark user-visible if explicitly requested or import_all
@@ -607,13 +612,9 @@ impl ModuleInferenceState {
                 }
 
                 let tp_names = type_params.as_slice();
-                let target = match sdecl {
-                    Decl::Extern { target, .. } => target.clone(),
-                    _ => ExternTarget::Java,
-                };
                 let empty_trait_lookup = HashMap::new();
                 let result = process_extern_methods(
-                    module_path, &target, methods, &mut self.env, &mut self.gen, &self.registry,
+                    module_path, target, methods, &mut self.env, &mut self.gen, &self.registry,
                     &empty_trait_lookup, path,
                     *ext_span, None,
                     &aliases, tp_map.as_ref(), tp_arity.as_ref(),
@@ -632,12 +633,12 @@ impl ModuleInferenceState {
             self.imported_extern_fns.push(ext.clone());
         }
 
-        // Copy imported extern java types for codegen
-        for entry in &cached.extern_java_types {
-            self.imported_extern_java_types.push(entry.clone());
+        // Copy imported extern types for codegen
+        for entry in &cached.extern_types {
+            self.imported_extern_types.push(entry.clone());
         }
-        for entry in &cached.imported_extern_java_types {
-            self.imported_extern_java_types.push(entry.clone());
+        for entry in &cached.imported_extern_types {
+            self.imported_extern_types.push(entry.clone());
         }
 
         // Propagate fn_constraint_requirements (TypeVarId-based) for cross-module codegen.

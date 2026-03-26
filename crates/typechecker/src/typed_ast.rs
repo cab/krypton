@@ -316,10 +316,17 @@ pub struct InstanceDefInfo {
 #[derive(Clone)]
 pub struct ExternFnInfo {
     pub name: String,
-    pub java_class: String,
+    pub module_path: String,
     pub target: krypton_parser::ast::ExternTarget,
     pub param_types: Vec<Type>,
     pub return_type: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternTypeInfo {
+    pub krypton_name: String,
+    pub host_module: String,
+    pub target: krypton_parser::ast::ExternTarget,
 }
 
 /// Pre-resolved type registration for an exported type.
@@ -389,9 +396,9 @@ pub struct TypedModule {
     pub imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
-    /// Extern java type bindings: (krypton_name, java_class_dotted).
-    pub extern_java_types: Vec<(String, String)>,
-    pub imported_extern_java_types: Vec<(String, String)>,
+    /// Extern type bindings (krypton name, host module path, target).
+    pub extern_types: Vec<ExternTypeInfo>,
+    pub imported_extern_types: Vec<ExternTypeInfo>,
     pub struct_decls: Vec<StructDecl>,
     pub sum_decls: Vec<SumDecl>,
     /// Maps type_name → visibility for types declared in this module.

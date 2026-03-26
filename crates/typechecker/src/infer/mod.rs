@@ -9,7 +9,7 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, InstanceDefInfo, ResolvedConstraint,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTypeInfo, InstanceDefInfo, ResolvedConstraint,
     StructDecl, SumDecl, TraitName, TraitDefInfo, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId, type_to_canonical_name};
@@ -859,6 +859,68 @@ fn build_type_param_map(
     (map, arity)
 }
 
+/// Format an ExternMethod signature for error messages, e.g. "fun foo(Int, String) -> Bool".
+fn fmt_extern_method_sig(m: &ExternMethod) -> String {
+    fn fmt_te(ty: &TypeExpr) -> String {
+        match ty {
+            TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => name.clone(),
+            TypeExpr::Qualified { module, name, .. } => format!("{}.{}", module, name),
+            TypeExpr::App { name, args, .. } => {
+                let args_str: Vec<_> = args.iter().map(|a| fmt_te(a)).collect();
+                format!("{}[{}]", name, args_str.join(", "))
+            }
+            TypeExpr::Fn { params, ret, .. } => {
+                let ps: Vec<_> = params.iter().map(|p| fmt_te(p)).collect();
+                format!("({}) -> {}", ps.join(", "), fmt_te(ret))
+            }
+            TypeExpr::Own { inner, .. } => format!("~{}", fmt_te(inner)),
+            TypeExpr::Tuple { elements, .. } => {
+                let es: Vec<_> = elements.iter().map(|e| fmt_te(e)).collect();
+                format!("({})", es.join(", "))
+            }
+            TypeExpr::Wildcard { .. } => "_".to_string(),
+        }
+    }
+    let params: Vec<_> = m.params.iter().map(|(name, ty)| format!("{}: {}", name, fmt_te(ty))).collect();
+    format!("fun {}({}) -> {}", m.name, params.join(", "), fmt_te(&m.return_type))
+}
+
+/// Compare two TypeExpr values ignoring span information.
+fn type_expr_eq(a: &TypeExpr, b: &TypeExpr) -> bool {
+    match (a, b) {
+        (TypeExpr::Named { name: n1, .. }, TypeExpr::Named { name: n2, .. }) => n1 == n2,
+        (TypeExpr::Var { name: n1, .. }, TypeExpr::Var { name: n2, .. }) => n1 == n2,
+        (TypeExpr::Qualified { module: m1, name: n1, .. }, TypeExpr::Qualified { module: m2, name: n2, .. }) => m1 == m2 && n1 == n2,
+        (TypeExpr::App { name: n1, args: a1, .. }, TypeExpr::App { name: n2, args: a2, .. }) => {
+            n1 == n2 && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| type_expr_eq(x, y))
+        }
+        (TypeExpr::Fn { params: p1, ret: r1, .. }, TypeExpr::Fn { params: p2, ret: r2, .. }) => {
+            p1.len() == p2.len() && p1.iter().zip(p2).all(|(x, y)| type_expr_eq(x, y)) && type_expr_eq(r1, r2)
+        }
+        (TypeExpr::Own { inner: i1, .. }, TypeExpr::Own { inner: i2, .. }) => type_expr_eq(i1, i2),
+        (TypeExpr::Tuple { elements: e1, .. }, TypeExpr::Tuple { elements: e2, .. }) => {
+            e1.len() == e2.len() && e1.iter().zip(e2).all(|(x, y)| type_expr_eq(x, y))
+        }
+        (TypeExpr::Wildcard { .. }, TypeExpr::Wildcard { .. }) => true,
+        _ => false,
+    }
+}
+
+/// Compare two ExternMethod signatures for cross-target matching.
+/// Compares all semantically relevant fields (nullable, type_params, param_types,
+/// return_type, where_clauses) but ignores span and visibility.
+fn extern_method_sig_eq(a: &ExternMethod, b: &ExternMethod) -> bool {
+    a.nullable == b.nullable
+        && a.type_params == b.type_params
+        && a.params.len() == b.params.len()
+        && a.params.iter().zip(&b.params).all(|((n1, t1), (n2, t2))| n1 == n2 && type_expr_eq(t1, t2))
+        && type_expr_eq(&a.return_type, &b.return_type)
+        && a.where_clauses.len() == b.where_clauses.len()
+        && a.where_clauses.iter().zip(&b.where_clauses).all(|(x, y)| {
+            x.type_var == y.type_var && x.trait_name == y.trait_name
+        })
+}
+
 /// Result of processing extern methods: function info for codegen + dict requirements.
 pub(super) struct ExternMethodsResult {
     pub(super) extern_fns: Vec<ExternFnInfo>,
@@ -927,7 +989,7 @@ fn process_extern_methods(
         }
 
         let mut param_types = Vec::new();
-        for ty_expr in &method.param_types {
+        for (_, ty_expr) in &method.params {
             let resolved =
                 type_registry::resolve_type_expr(ty_expr, effective_resolve_map, effective_resolve_arity, registry, ResolutionContext::UserAnnotation, None)
                 .map_err(|e| spanned(e, span))?;
@@ -988,7 +1050,7 @@ fn process_extern_methods(
         // erased positions stay as Object (JVM erasure). Bare type params like `a`
         // won't resolve and fall back to Object.
         let mut concrete_params = Vec::new();
-        for ty_expr in &method.param_types {
+        for (_, ty_expr) in &method.params {
             let resolved = match type_registry::resolve_type_expr(ty_expr, &empty_map, &empty_arity, registry, ResolutionContext::UserAnnotation, None) {
                 Ok(ty) => ty,
                 Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
@@ -1003,7 +1065,7 @@ fn process_extern_methods(
         };
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),
-            java_class: class_name.to_string(),
+            module_path: class_name.to_string(),
             target: target.clone(),
             param_types: concrete_params,
             return_type: codegen_return,
@@ -1258,7 +1320,7 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imports: ImportContext,
     pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
-    pub(super) imported_extern_java_types: Vec<(String, String)>,
+    pub(super) imported_extern_types: Vec<ExternTypeInfo>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
     pub(super) trait_aliases: Vec<(String, TraitName)>,
@@ -1291,7 +1353,7 @@ impl ModuleInferenceState {
             imports: ImportContext::new(),
             imported_fn_constraint_requirements: HashMap::new(),
             imported_extern_fns: Vec::new(),
-            imported_extern_java_types: Vec::new(),
+            imported_extern_types: Vec::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
             trait_aliases: Vec::new(),
@@ -1304,9 +1366,9 @@ impl ModuleInferenceState {
         }
     }
 
-    fn process_local_externs(&mut self, module: &Module, mod_path: &str) -> Result<(Vec<ExternFnInfo>, Vec<(String, String)>, HashMap<String, Vec<(TraitName, TypeVarId)>>), SpannedTypeError> {
+    fn process_local_externs(&mut self, module: &Module, mod_path: &str) -> Result<(Vec<ExternFnInfo>, Vec<ExternTypeInfo>, HashMap<String, Vec<(TraitName, TypeVarId)>>), SpannedTypeError> {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
-        let mut extern_java_types: Vec<(String, String)> = Vec::new();
+        let mut extern_types: Vec<ExternTypeInfo> = Vec::new();
         let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
 
         // Build trait name lookup from imported trait defs
@@ -1318,9 +1380,9 @@ impl ModuleInferenceState {
             );
         }
 
-        // Track extern function signatures for cross-target validation
-        // Maps fn name -> (target_name, fn_type, span)
-        let mut seen_extern_sigs: HashMap<String, (String, Type, Span)> = HashMap::new();
+        // Track extern method ASTs for cross-target validation
+        // Maps fn name -> (target_name, &ExternMethod)
+        let mut seen_extern_methods: HashMap<String, (&str, &ExternMethod)> = HashMap::new();
 
         for decl in &module.decls {
             if let Decl::Extern {
@@ -1352,7 +1414,11 @@ impl ModuleInferenceState {
                         vars
                     };
                     self.registry.mark_user_visible(name);
-                    extern_java_types.push((name.clone(), module_path.clone()));
+                    extern_types.push(ExternTypeInfo {
+                        krypton_name: name.clone(),
+                        host_module: module_path.clone(),
+                        target: target.clone(),
+                    });
 
                     // Build type_param_map for method resolution
                     if !type_params.is_empty() {
@@ -1367,48 +1433,50 @@ impl ModuleInferenceState {
                     ExternTarget::Js => "js",
                 };
 
-                // Snapshot env before processing to extract fn types for cross-target matching
-                let no_aliases = HashMap::new();
-                let tp_names = type_params.as_slice();
-                let result = process_extern_methods(
-                    module_path, target, methods, &mut self.env, &mut self.gen, &self.registry,
-                    &trait_name_lookup, mod_path,
-                    *span, None, &no_aliases,
-                    tp_map.as_ref(), tp_arity.as_ref(),
-                    if tp_map.is_some() { Some(tp_names) } else { None },
-                )?;
-
-                // Cross-target signature matching
-                for ext_fn in &result.extern_fns {
-                    // Look up the type that was bound in env
-                    if let Some(scheme) = self.env.lookup(&ext_fn.name) {
-                        let fn_ty = scheme.ty.clone();
-                        if let Some((prev_target, prev_ty, _prev_span)) = seen_extern_sigs.get(&ext_fn.name) {
-                            if prev_target != target_name && prev_ty != &fn_ty {
-                                return Err(spanned(
-                                    TypeError::ExternSignatureMismatch {
-                                        name: ext_fn.name.clone(),
-                                        target1: prev_target.clone(),
-                                        target2: target_name.to_string(),
-                                        type1: prev_ty.clone(),
-                                        type2: fn_ty.clone(),
-                                    },
-                                    *span,
-                                ));
-                            }
-                        } else {
-                            seen_extern_sigs.insert(ext_fn.name.clone(), (target_name.to_string(), fn_ty, *span));
+                // Cross-target validation: check methods against previously seen targets.
+                // Build a filter of methods that are new (not already seen from another target).
+                let mut new_method_names: HashSet<&str> = HashSet::new();
+                for method in methods {
+                    if let Some((prev_target, prev_method)) = seen_extern_methods.get(&method.name) {
+                        if *prev_target != target_name && !extern_method_sig_eq(prev_method, method) {
+                            return Err(spanned(
+                                TypeError::ExternSignatureMismatch {
+                                    name: method.name.clone(),
+                                    target1: prev_target.to_string(),
+                                    target2: target_name.to_string(),
+                                    sig1: fmt_extern_method_sig(prev_method),
+                                    sig2: fmt_extern_method_sig(method),
+                                },
+                                method.span,
+                            ));
                         }
+                        // Duplicate — skip processing, first target's ExternFnInfo is sufficient
+                    } else {
+                        seen_extern_methods.insert(method.name.clone(), (target_name, method));
+                        new_method_names.insert(&method.name);
                     }
                 }
 
-                for (name, reqs) in result.fn_constraints {
-                    extern_fn_constraints.insert(name, reqs);
+                // Only process methods not already seen from another target
+                if !new_method_names.is_empty() {
+                    let no_aliases = HashMap::new();
+                    let tp_names = type_params.as_slice();
+                    let result = process_extern_methods(
+                        module_path, target, methods, &mut self.env, &mut self.gen, &self.registry,
+                        &trait_name_lookup, mod_path,
+                        *span, Some(&new_method_names), &no_aliases,
+                        tp_map.as_ref(), tp_arity.as_ref(),
+                        if tp_map.is_some() { Some(tp_names) } else { None },
+                    )?;
+
+                    for (name, reqs) in result.fn_constraints {
+                        extern_fn_constraints.insert(name, reqs);
+                    }
+                    extern_fns.extend(result.extern_fns);
                 }
-                extern_fns.extend(result.extern_fns);
             }
         }
-        Ok((extern_fns, extern_java_types, extern_fn_constraints))
+        Ok((extern_fns, extern_types, extern_fn_constraints))
     }
 
     fn cleanup_prelude_shadows(&mut self, module: &Module) {
@@ -1485,7 +1553,7 @@ impl ModuleInferenceState {
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
-        extern_java_types: Vec<(String, String)>,
+        extern_types: Vec<ExternTypeInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
         parsed_modules: &HashMap<String, &Module>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
@@ -1838,8 +1906,8 @@ impl ModuleInferenceState {
             imported_fn_constraint_requirements: self.imported_fn_constraint_requirements,
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
-            extern_java_types,
-            imported_extern_java_types: self.imported_extern_java_types,
+            extern_types,
+            imported_extern_types: self.imported_extern_types,
             struct_decls,
             sum_decls,
             type_visibility,
@@ -3334,7 +3402,7 @@ pub(crate) fn infer_module_inner(
 
     state.process_imports(module, cache, parsed_modules, synthetic_prelude_import.as_ref())?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let (extern_fns, extern_java_types, extern_fn_constraints) = state.process_local_externs(module, &module_path)?;
+    let (extern_fns, extern_types, extern_fn_constraints) = state.process_local_externs(module, &module_path)?;
     state.cleanup_prelude_shadows(module);
     state.preregister_type_names(module);
     let constructor_schemes = state.process_local_type_decls(module)?;
@@ -3389,7 +3457,7 @@ pub(crate) fn infer_module_inner(
         &trait_registry,
         exported_trait_defs,
         extern_fns,
-        extern_java_types,
+        extern_types,
         constructor_schemes,
         parsed_modules,
         &shared_type_vars,
