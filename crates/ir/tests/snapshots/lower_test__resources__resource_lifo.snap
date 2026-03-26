@@ -122,12 +122,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]

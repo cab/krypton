@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
-trait Contravariant[w7] { contramap(w7[x7], (y7) -> x7): w7[y7] }
+trait Contravariant[x7] { contramap(x7[y7], (z7) -> y7): x7[z7] }
 instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=Contravariant$$Predicate$$Var0$$Var1$$contramap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -120,12 +120,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -137,13 +137,13 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
-fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[f8, f8], v1: (f8) -> f8) -> ~Predicate[f8, f8] =
-  let v8: (f8) -> f8 = make_closure(lambda$52, [v0, v1])
-  let v9: ~Predicate[f8, f8] = construct Predicate(v8)
+fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[g8, g8], v1: (g8) -> g8) -> ~Predicate[g8, g8] =
+  let v8: (g8) -> g8 = make_closure(lambda$52, [v0, v1])
+  let v9: ~Predicate[g8, g8] = construct Predicate(v8)
   v9
 
-fn lambda$52(v2: Predicate[f8, f8], v3: (f8) -> f8, v4: f8) -> f8 =
-  let v5: (f8) -> f8 = project v2.0
-  let v6: f8 = call_closure v3(v4)
-  let v7: f8 = call_closure v5(v6)
+fn lambda$52(v2: Predicate[g8, g8], v3: (g8) -> g8, v4: g8) -> g8 =
+  let v5: (g8) -> g8 = project v2.0
+  let v6: g8 = call_closure v3(v4)
+  let v7: g8 = call_closure v5(v6)
   v7

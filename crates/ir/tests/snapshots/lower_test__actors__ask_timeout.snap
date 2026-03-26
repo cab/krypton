@@ -271,12 +271,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -287,15 +287,15 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/actor/Timeout as Timeout(): Timeout
-import core/actor/spawn as spawn((Mailbox[j9]) -> Unit): Ref[j9]
-import core/actor/ask as ask(Ref[f11], (Ref[g11]) -> f11, Int): Result[Timeout, g11]
+import core/actor/spawn as spawn((Mailbox[k9]) -> Unit): Ref[k9]
+import core/actor/ask as ask(Ref[g11], (Ref[h11]) -> g11, Int): Result[Timeout, h11]
 import core/actor/Timeout as Timeout(): Timeout
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 declare Get
-declare ask: (Ref[f11], (Ref[g11]) -> f11, Int) -> Result[Timeout, g11]
+declare ask: (Ref[g11], (Ref[h11]) -> g11, Int) -> Result[Timeout, h11]
 declare println: (Object) -> Unit
-declare spawn: ((Mailbox[j9]) -> Unit) -> Ref[j9]
+declare spawn: ((Mailbox[k9]) -> Unit) -> Ref[k9]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()

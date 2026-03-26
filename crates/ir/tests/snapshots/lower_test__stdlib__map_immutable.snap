@@ -188,12 +188,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -204,16 +204,16 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/map/empty as empty(): Map[t9, u9]
-import core/map/put as put(Map[x9, y9], x9, y9): Map[x9, y9]
-import core/map/contains as contains(Map[k11, l11], k11): Bool
-declare contains: (Map[k11, l11], k11) -> Bool
-declare empty: () -> Map[t9, u9]
+import core/map/empty as empty(): Map[u9, v9]
+import core/map/put as put(Map[y9, z9], y9, z9): Map[y9, z9]
+import core/map/contains as contains(Map[l11, m11], l11): Bool
+declare contains: (Map[l11, m11], l11) -> Bool
+declare empty: () -> Map[u9, v9]
 declare println: (o) -> Unit
-declare put: (Map[x9, y9], x9, y9) -> Map[x9, y9]
+declare put: (Map[y9, z9], y9, z9) -> Map[y9, z9]
 
 fn main() -> Unit =
-  let v0: Map[y11, z11] = call empty()
+  let v0: Map[z11, a12] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

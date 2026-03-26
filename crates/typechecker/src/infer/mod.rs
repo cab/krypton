@@ -2561,6 +2561,7 @@ fn process_deriving(
                         trait_name,
                         ft,
                         &local_type_params,
+                        &type_decl.name,
                         &mut visited_constraints,
                         &mut derived_constraints,
                     ) {

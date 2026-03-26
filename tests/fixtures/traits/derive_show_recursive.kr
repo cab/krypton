@@ -1,0 +1,5 @@
+# expect: output Cons(1, Cons(2, Cons(3, Nil)))
+
+type List[a] = Cons(a, List[a]) | Nil deriving (Show)
+
+fun main() = println(show(Cons(1, Cons(2, Cons(3, Nil)))))

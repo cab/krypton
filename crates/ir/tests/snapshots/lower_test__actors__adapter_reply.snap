@@ -272,12 +272,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -287,20 +287,20 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/actor/spawn as spawn((Mailbox[j9]) -> Unit): Ref[j9]
-import core/actor/send as send(Ref[n9], n9): Unit
-import core/actor/receive as receive(Mailbox[y9]): y9
-import core/actor/actor_ref as actor_ref(Mailbox[h10]): Ref[h10]
-import core/actor/mailbox as mailbox(): Mailbox[t10]
-import core/actor/adapter as adapter(Ref[w10], (x10) -> w10): Ref[x10]
+import core/actor/spawn as spawn((Mailbox[k9]) -> Unit): Ref[k9]
+import core/actor/send as send(Ref[o9], o9): Unit
+import core/actor/receive as receive(Mailbox[z9]): z9
+import core/actor/actor_ref as actor_ref(Mailbox[i10]): Ref[i10]
+import core/actor/mailbox as mailbox(): Mailbox[u10]
+import core/actor/adapter as adapter(Ref[x10], (y10) -> x10): Ref[y10]
 declare Reply
-declare actor_ref: (Mailbox[h10]) -> Ref[h10]
-declare adapter: (Ref[w10], (x10) -> w10) -> Ref[x10]
-declare mailbox: () -> Mailbox[t10]
+declare actor_ref: (Mailbox[i10]) -> Ref[i10]
+declare adapter: (Ref[x10], (y10) -> x10) -> Ref[y10]
+declare mailbox: () -> Mailbox[u10]
 declare println: (Object) -> Unit
-declare receive: (Mailbox[y9]) -> y9
-declare send: (Ref[n9], n9) -> Unit
-declare spawn: ((Mailbox[j9]) -> Unit) -> Ref[j9]
+declare receive: (Mailbox[z9]) -> z9
+declare send: (Ref[o9], o9) -> Unit
+declare spawn: ((Mailbox[k9]) -> Unit) -> Ref[k9]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

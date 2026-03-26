@@ -16,6 +16,7 @@ pub(super) fn collect_derived_constraints_for_type(
     trait_name: &str,
     field_type: &Type,
     local_type_params: &HashMap<TypeVarId, String>,
+    deriving_type_name: &str,
     visited: &mut HashSet<(String, String)>,
     constraints: &mut Vec<ResolvedConstraint>,
 ) -> bool {
@@ -48,6 +49,28 @@ pub(super) fn collect_derived_constraints_for_type(
             return true;
         }
     }
+
+    // Self-referential: the instance we're currently deriving will satisfy this.
+    // Just ensure the type arguments satisfy the trait.
+    if let Type::Named(name, args) = field_type {
+        if name == deriving_type_name {
+            for arg in args {
+                if !collect_derived_constraints_for_type(
+                    trait_registry,
+                    trait_name,
+                    arg,
+                    local_type_params,
+                    deriving_type_name,
+                    visited,
+                    constraints,
+                ) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     let full_trait_name = trait_info.trait_name();
     let Some(instance) = trait_registry.find_instance(&full_trait_name, field_type) else {
         return false;
@@ -74,6 +97,7 @@ pub(super) fn collect_derived_constraints_for_type(
             &constraint.trait_name.local_name,
             required_type,
             local_type_params,
+            deriving_type_name,
             visited,
             constraints,
         ) {

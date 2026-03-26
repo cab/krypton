@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__hkt_arity2
 
 type Pair[a, b] = Pair#0(a, b)
-trait Bifunctor[w7] { bimap(w7[x7, y7], (x7) -> z7, (y7) -> a8): w7[z7, a8] }
+trait Bifunctor[x7] { bimap(x7[y7, z7], (y7) -> a8, (z7) -> b8): x7[a8, b8] }
 instance traits__hkt_arity2.Bifunctor[Pair] { bimap=Bifunctor$$Pair$$bimap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -120,12 +120,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -137,11 +137,11 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
-fn Bifunctor$$Pair$$bimap(v0: Pair[i8, j8], v1: (i8) -> m8, v2: (j8) -> n8) -> ~Pair[m8, n8] =
+fn Bifunctor$$Pair$$bimap(v0: Pair[j8, k8], v1: (j8) -> n8, v2: (k8) -> o8) -> ~Pair[n8, o8] =
   switch v0 {
-    0 (v3: i8, v4: j8) ->
-      let v5: m8 = call_closure v1(v3)
-      let v6: n8 = call_closure v2(v4)
-      let v7: ~Pair[m8, n8] = construct Pair::Pair#0(v5, v6)
+    0 (v3: j8, v4: k8) ->
+      let v5: n8 = call_closure v1(v3)
+      let v6: o8 = call_closure v2(v4)
+      let v7: ~Pair[n8, o8] = construct Pair::Pair#0(v5, v6)
       v7
   }

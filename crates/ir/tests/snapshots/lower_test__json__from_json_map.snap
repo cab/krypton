@@ -521,12 +521,12 @@ extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -541,7 +541,7 @@ import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
-import core/map/get as get(Map[o10, a11], o10): Option[a11]
+import core/map/get as get(Map[p10, b11], p10): Option[b11]
 import core/option/Some as Some(g): Option[g]
 import core/option/None as None(): Option[g]
 import core/json/JNum as JNum(Float): Json
@@ -552,9 +552,9 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
-import core/map/from_list as from_list(List[(c14, d14)]): Map[c14, d14]
-declare from_list: (List[(c14, d14)]) -> Map[c14, d14]
-declare get: (Map[o10, a11], o10) -> Option[a11]
+import core/map/from_list as from_list(List[(d14, e14)]): Map[d14, e14]
+declare from_list: (List[(d14, e14)]) -> Map[d14, e14]
+declare get: (Map[p10, b11], p10) -> Option[b11]
 declare println: (o) -> Unit
 
 fn main() -> Unit =

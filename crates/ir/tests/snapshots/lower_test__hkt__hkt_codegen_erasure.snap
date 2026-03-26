@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
-trait Functor[v7] { fmap(v7[w7], (w7) -> x7): v7[x7] }
+trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
 instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -141,11 +141,11 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -158,17 +158,17 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 declare println: (o) -> Unit
-declare to_list: (Vec[j7]) -> List[j7]
+declare to_list: (Vec[k7]) -> List[k7]
 
-fn fold_box(v0: List[f8], v1: z7[f8], v2: (z7[f8], f8) -> z7[f8]) -> z7[f8] =
-  let_join [recur] v3(v4: List[f8], v5: z7[f8], v6: (z7[f8], f8) -> z7[f8]) =
+fn fold_box(v0: List[g8], v1: a8[g8], v2: (a8[g8], g8) -> a8[g8]) -> a8[g8] =
+  let_join [recur] v3(v4: List[g8], v5: a8[g8], v6: (a8[g8], g8) -> a8[g8]) =
     switch v4 {
       1 ->
         v5
-      0 (v7: f8, v8: List[f8]) ->
-        let v9: z7[f8] = call_closure v6(v5, v7)
+      0 (v7: g8, v8: List[g8]) ->
+        let v9: a8[g8] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }
   in
@@ -187,11 +187,11 @@ fn main() -> Unit =
       v22
   }
 
-fn Functor$$Box$$fmap(v23: Box[e9], v24: (e9) -> g9) -> ~Box[g9] =
+fn Functor$$Box$$fmap(v23: Box[f9], v24: (f9) -> h9) -> ~Box[h9] =
   switch v23 {
-    0 (v25: e9) ->
-      let v26: g9 = call_closure v24(v25)
-      let v27: ~Box[g9] = construct Box::Box#0(v26)
+    0 (v25: f9) ->
+      let v26: h9 = call_closure v24(v25)
+      let v27: ~Box[h9] = construct Box::Box#0(v26)
       v27
   }
 

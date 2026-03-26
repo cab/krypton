@@ -1,9 +1,10 @@
 import core/option.{Option, Some, None}
 import core/ord.{Ord}
 import core/semigroup.{Semigroup}
+import core/show.{Show}
 
 # core/list — List type (cons-based linked list)
-pub type List[a] = Cons(a, List[a]) | Nil
+pub type List[a] = Cons(a, List[a]) | Nil deriving (Show)
 
 pub fun length[a](xs: List[a]) -> Int = match xs {
     Nil => 0,

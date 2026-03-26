@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__partial_apply_result
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
+trait Functor[x7] { fmap(x7[y7], (y7) -> z7): x7[z7] }
 instance hkt__partial_apply_result.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -120,12 +120,12 @@ extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/peek/peek as peek(h): h
-import core/list/last as last(List[t3]): Option[t3]
-import core/list/sort_by as sort_by(List[y5], (y5) -> n5): List[y5]
-import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
-import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
-import core/list/map as map(List[x], (x) -> z): List[z]
-import core/vec/to_list as to_list(Vec[j7]): List[j7]
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[k7]): List[k7]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -137,13 +137,13 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
-fn Functor$$Result$$Var0$$Var1$$fmap(v0: Result[l8, m8], v1: (m8) -> o8) -> ~Result[l8, o8] =
+fn Functor$$Result$$Var0$$Var1$$fmap(v0: Result[m8, n8], v1: (n8) -> p8) -> ~Result[m8, p8] =
   switch v0 {
-    0 (v2: m8) ->
-      let v3: o8 = call_closure v1(v2)
-      let v4: ~Result[l8, o8] = construct Result::Ok#0(v3)
+    0 (v2: n8) ->
+      let v3: p8 = call_closure v1(v2)
+      let v4: ~Result[m8, p8] = construct Result::Ok#0(v3)
       v4
-    1 (v5: l8) ->
-      let v6: ~Result[l8, o8] = construct Result::Err#1(v5)
+    1 (v5: m8) ->
+      let v6: ~Result[m8, p8] = construct Result::Err#1(v5)
       v6
   }
