@@ -2283,6 +2283,40 @@ fn prelude_fn_shadowable() {
 }
 
 #[test]
+fn prelude_fn_shadow_removes_imported_metadata() {
+    let module = parse_module(
+        r#"extern java "java/io/PrintStream" {
+            fun println[a](x: a) -> Unit
+        }
+        fun greet() = println(42)"#,
+    );
+    let modules = infer::infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .unwrap();
+    let typed = &modules[0];
+
+    assert!(
+        typed.extern_fns.iter().any(|f| f.name == "println"),
+        "local extern println should remain visible in extern_fns"
+    );
+    assert!(
+        !typed.fn_types.iter().any(|f| {
+            f.name == "println" && f.qualified_name.module_path == "core/io"
+        }),
+        "shadowed prelude println should be removed from fn_types"
+    );
+    assert!(
+        !typed
+            .imported_fn_constraint_requirements
+            .contains_key("println"),
+        "shadowed prelude println should not retain imported constraints"
+    );
+}
+
+#[test]
 fn reserved_name_krypton_intrinsic_rejected() {
     let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
     let module = parse_module(src);

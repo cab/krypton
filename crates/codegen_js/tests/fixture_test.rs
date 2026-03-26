@@ -2,18 +2,26 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use krypton_codegen_js::compile_modules_js;
-use krypton_modules::module_resolver::CompositeResolver;
+use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
 use krypton_typechecker::diagnostics::render_infer_error;
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
 
-fn run_js_program_with_resolver(
+struct NoopResolver;
+
+impl ModuleResolver for NoopResolver {
+    fn resolve(&self, _module_path: &str) -> Option<String> {
+        None
+    }
+}
+
+fn compile_js_with_resolver(
     source: &str,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     fixture_name: &str,
-) -> String {
+) -> Vec<(String, String)> {
     let (module, errors) = parse(source);
     assert!(
         errors.is_empty(),
@@ -24,8 +32,34 @@ fn run_js_program_with_resolver(
         let rendered = render_infer_error(fixture_name, source, &e);
         panic!("fixture {fixture_name}: type check failed:\n{rendered}");
     });
-    let files = compile_modules_js(&typed_modules, "test")
-        .unwrap_or_else(|e| panic!("fixture {fixture_name}: JS compile failed: {e}"));
+    compile_modules_js(&typed_modules, "test")
+        .unwrap_or_else(|e| panic!("fixture {fixture_name}: JS compile failed: {e}"))
+}
+
+fn compile_js_result_with_resolver(
+    source: &str,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    fixture_name: &str,
+) -> Result<Vec<(String, String)>, krypton_codegen_js::JsCodegenError> {
+    let (module, errors) = parse(source);
+    assert!(
+        errors.is_empty(),
+        "fixture {fixture_name}: parse errors: {errors:?}"
+    );
+
+    let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|e| {
+        let rendered = render_infer_error(fixture_name, source, &e);
+        panic!("fixture {fixture_name}: type check failed:\n{rendered}");
+    });
+    compile_modules_js(&typed_modules, "test")
+}
+
+fn run_js_program_with_resolver(
+    source: &str,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    fixture_name: &str,
+) -> String {
+    let files = compile_js_with_resolver(source, resolver, fixture_name);
 
     let dir = tempfile::tempdir().unwrap();
     let mut entry_path = None;
@@ -61,6 +95,77 @@ fn run_js_program_with_resolver(
     );
 
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+#[test]
+fn local_extern_println_shadows_prelude_import_in_js_output() {
+    let source = r#"
+        extern java "java/io/PrintStream" {
+            fun println[a](x: a) -> Unit
+        }
+
+        extern js "./runtime.mjs" {
+            fun println[a](x: a) -> Unit
+        }
+
+        fun main() = println(42)
+    "#;
+    let (module, errors) = parse(source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let typed_modules =
+        infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string())
+            .expect("typecheck should succeed");
+    let root = typed_modules
+        .iter()
+        .find(|tm| tm.module_path == "test")
+        .expect("expected root typed module");
+    let lowered = krypton_ir::lower::lower_module(root, "test").expect("lowering should succeed");
+
+    assert!(
+        lowered
+            .extern_fns
+            .iter()
+            .any(|ext| ext.name == "println"
+                && matches!(
+                    ext.target,
+                    krypton_ir::ExternTarget::Js { ref module } if module == "./runtime.mjs"
+                )),
+        "local extern println should lower as JS extern"
+    );
+    assert!(
+        !lowered
+            .imported_fns
+            .iter()
+            .any(|imp| imp.name == "println" && imp.source_module == "core/io"),
+        "shadowed prelude println should not lower as core/io import"
+    );
+}
+
+#[test]
+fn referenced_java_only_extern_fails_js_codegen() {
+    let source = r#"
+        extern java "krypton.runtime.KryptonIO" {
+            fun println[a](x: a) -> Unit
+        }
+
+        fun main() = println(42)
+    "#;
+
+    let err = compile_js_result_with_resolver(source, &NoopResolver, "java_only")
+        .expect_err("expected missing JS target error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("println"),
+        "error should mention function name, got: {msg}"
+    );
+    assert!(
+        msg.contains("module `test`"),
+        "error should mention referencing module, got: {msg}"
+    );
+    assert!(
+        msg.contains("java:krypton.runtime.KryptonIO"),
+        "error should list available targets, got: {msg}"
+    );
 }
 
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];

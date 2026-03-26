@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 74
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -12,7 +13,6 @@ neg: forall a. (a) -> a
 show: forall a. (a) -> String
 hash: forall a. (a) -> Int
 close: forall a. (~a) -> Unit
-peek: forall a. (a) -> a
 last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a]
 filter: forall a. (List[a], (a) -> Bool) -> List[a]

@@ -1423,6 +1423,14 @@ impl ImportContext {
     fn bind_type_info(&mut self, name: String, source: String, vis: Visibility) {
         self.imported_type_info.insert(name, (source, vis));
     }
+
+    fn remove_prelude_fn(&mut self, name: &str) {
+        for f in self.imported_fn_types.iter().filter(|f| f.name == name) {
+            self.shadowed_prelude_fns
+                .push((f.name.clone(), f.qualified_name.module_path.clone()));
+        }
+        self.imported_fn_types.retain(|f| f.name != name);
+    }
 }
 
 /// State accumulated during the bootstrap phases of module inference
@@ -1512,9 +1520,9 @@ impl ModuleInferenceState {
             );
         }
 
-        // Track extern method ASTs for cross-target validation
-        // Maps fn name -> (target_name, &ExternMethod)
-        let mut seen_extern_methods: HashMap<String, (&str, &ExternMethod)> = HashMap::new();
+        // Track extern method ASTs for cross-target validation and per-target deduplication.
+        // Maps fn name -> [(target_name, &ExternMethod)].
+        let mut seen_extern_methods: HashMap<String, Vec<(&str, &ExternMethod)>> = HashMap::new();
 
         for decl in &module.decls {
             if let Decl::Extern {
@@ -1568,12 +1576,15 @@ impl ModuleInferenceState {
                     ExternTarget::Js => "js",
                 };
 
-                // Cross-target validation: check methods against previously seen targets.
-                // Build a filter of methods that are new (not already seen from another target).
+                // Cross-target validation: signatures must match across targets.
+                // Build a filter of methods that are new for this target so codegen retains
+                // one extern entry per target without duplicating same-target declarations.
                 let mut new_method_names: HashSet<&str> = HashSet::new();
                 for method in methods {
-                    if let Some((prev_target, prev_method)) = seen_extern_methods.get(&method.name)
-                    {
+                    let seen_for_name = seen_extern_methods
+                        .entry(method.name.clone())
+                        .or_default();
+                    for (prev_target, prev_method) in seen_for_name.iter() {
                         if *prev_target != target_name && !extern_method_sig_eq(prev_method, method)
                         {
                             return Err(spanned(
@@ -1587,11 +1598,17 @@ impl ModuleInferenceState {
                                 method.span,
                             ));
                         }
-                        // Duplicate — skip processing, first target's ExternFnInfo is sufficient
-                    } else {
-                        seen_extern_methods.insert(method.name.clone(), (target_name, method));
-                        new_method_names.insert(&method.name);
                     }
+
+                    if seen_for_name
+                        .iter()
+                        .any(|(seen_target, _)| *seen_target == target_name)
+                    {
+                        continue;
+                    }
+
+                    seen_for_name.push((target_name, method));
+                    new_method_names.insert(&method.name);
                 }
 
                 // Only process methods not already seen from another target
@@ -1638,12 +1655,14 @@ impl ModuleInferenceState {
                 Decl::Extern { methods, .. } => {
                     for m in methods {
                         if self.prelude_imported_names.contains(&m.name) {
+                            self.imports.remove_prelude_fn(&m.name);
                             self.imported_fn_constraint_requirements.remove(&m.name);
                         }
                     }
                 }
                 Decl::DefFn(f) => {
                     if self.prelude_imported_names.contains(&f.name) {
+                        self.imports.remove_prelude_fn(&f.name);
                         self.imported_fn_constraint_requirements.remove(&f.name);
                     }
                 }
