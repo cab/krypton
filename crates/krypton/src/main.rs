@@ -34,6 +34,34 @@ fn find_runtime_jar() -> Option<PathBuf> {
     None
 }
 
+/// Copy runtime/js/*.mjs files into the output directory so that stdlib
+/// extern JS imports resolve at Node runtime.
+fn copy_js_runtime(dest: &std::path::Path) {
+    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js");
+    if !runtime_src.exists() {
+        return;
+    }
+    let runtime_dest = dest.join("runtime/js");
+    std::fs::create_dir_all(&runtime_dest).unwrap_or_else(|e| {
+        eprintln!("Error creating runtime dir: {}", e);
+        process::exit(1);
+    });
+    if let Ok(entries) = std::fs::read_dir(&runtime_src) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("mjs")
+                && path.file_name().unwrap() != "test_runtime.mjs"
+            {
+                std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap()))
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error copying runtime file: {}", e);
+                        process::exit(1);
+                    });
+            }
+        }
+    }
+}
+
 fn build_classpath(class_dir: &std::path::Path) -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
     match find_runtime_jar() {
@@ -335,6 +363,7 @@ fn main() {
                                     process::exit(1);
                                 });
                             }
+                            copy_js_runtime(&out_dir);
                             phases.push(("emit", t.elapsed()));
                         }
                         Err(e) => {
@@ -486,6 +515,7 @@ fn main() {
                                     process::exit(1);
                                 });
                             }
+                            copy_js_runtime(dir.path());
                             phases.push(("emit", t.elapsed()));
 
                             info!("invoking node");

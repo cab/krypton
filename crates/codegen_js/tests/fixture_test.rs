@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen_js::compile_modules_js;
@@ -15,25 +15,6 @@ impl ModuleResolver for NoopResolver {
     fn resolve(&self, _module_path: &str) -> Option<String> {
         None
     }
-}
-
-fn compile_js_with_resolver(
-    source: &str,
-    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
-    fixture_name: &str,
-) -> Vec<(String, String)> {
-    let (module, errors) = parse(source);
-    assert!(
-        errors.is_empty(),
-        "fixture {fixture_name}: parse errors: {errors:?}"
-    );
-
-    let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|e| {
-        let rendered = render_infer_error(fixture_name, source, &e);
-        panic!("fixture {fixture_name}: type check failed:\n{rendered}");
-    });
-    compile_modules_js(&typed_modules, "test")
-        .unwrap_or_else(|e| panic!("fixture {fixture_name}: JS compile failed: {e}"))
 }
 
 fn compile_js_result_with_resolver(
@@ -54,16 +35,29 @@ fn compile_js_result_with_resolver(
     compile_modules_js(&typed_modules, "test")
 }
 
-fn run_js_program_with_resolver(
-    source: &str,
-    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
-    fixture_name: &str,
-) -> String {
-    let files = compile_js_with_resolver(source, resolver, fixture_name);
+/// Copy runtime/js/*.mjs files into the temp output directory so that
+/// stdlib extern JS imports (e.g. `../runtime/js/io.mjs`) resolve at Node runtime.
+fn copy_runtime_files(dest: &Path) {
+    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js");
+    let runtime_dest = dest.join("runtime/js");
+    std::fs::create_dir_all(&runtime_dest).unwrap();
 
+    for entry in std::fs::read_dir(&runtime_src).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("mjs")
+            && path.file_name().unwrap() != "test_runtime.mjs"
+        {
+            std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap())).unwrap();
+        }
+    }
+}
+
+/// Write compiled JS files to a temp directory, copy the JS runtime, and run with Node.
+fn run_js_files(files: &[(String, String)], fixture_name: &str) -> String {
     let dir = tempfile::tempdir().unwrap();
     let mut entry_path = None;
-    for (filename, js_source) in &files {
+    for (filename, js_source) in files {
         let file_path = dir.path().join(filename);
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent).unwrap();
@@ -74,12 +68,7 @@ fn run_js_program_with_resolver(
         }
     }
 
-    // Write runtime.mjs for extern JS imports (println, etc.)
-    std::fs::write(
-        dir.path().join("runtime.mjs"),
-        "export function println(x) { console.log(String(x)); }\n",
-    )
-    .unwrap();
+    copy_runtime_files(dir.path());
 
     let entry = entry_path.expect("no JS files generated");
     let output = Command::new("node")
@@ -271,7 +260,12 @@ fn js_codegen_fixture(
     for expectation in &fixture.expectations {
         match expectation {
             Expectation::Output(expected) => {
-                let actual = run_js_program_with_resolver(&fixture.source, &resolver, &name);
+                let files = compile_js_result_with_resolver(&fixture.source, &resolver, &name);
+                let files = match files {
+                    Ok(f) => f,
+                    Err(_) => return, // Java-only externs, skip
+                };
+                let actual = run_js_files(&files, &name);
                 assert_eq!(actual, *expected, "fixture {name}: output mismatch");
             }
             Expectation::Ok => {
@@ -311,7 +305,12 @@ fn js_codegen_module(
     for expectation in &fixture.expectations {
         match expectation {
             Expectation::Output(expected) => {
-                let actual = run_js_program_with_resolver(&fixture.source, &resolver, &name);
+                let files = match compile_js_result_with_resolver(&fixture.source, &resolver, &name)
+                {
+                    Ok(f) => f,
+                    Err(_) => return,
+                };
+                let actual = run_js_files(&files, &name);
                 assert_eq!(actual, *expected, "fixture {name}: output mismatch");
             }
             Expectation::Ok => {

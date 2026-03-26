@@ -30,6 +30,10 @@ check file:
 test-runtime:
     ./gradlew :runtime:test
 
+# Run JS target fixture tests only (codegen_js crate)
+test-js:
+    cargo nextest run -p krypton-codegen-js
+
 # Run JS runtime tests only
 test-js-runtime:
     node runtime/js/test_runtime.mjs
