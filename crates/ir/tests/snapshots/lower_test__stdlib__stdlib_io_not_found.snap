@@ -4,17 +4,26 @@ expression: ir_module.to_string()
 ---
 module stdlib__stdlib_io_not_found
 
-extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
 extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
 extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
@@ -27,6 +36,18 @@ extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
 extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern js "../runtime/js/map.mjs" staticEmpty(): Object
+extern js "../runtime/js/map.mjs" staticPut(Object, Object, Object, Object, Object): Object
+extern js "../runtime/js/map.mjs" staticGetUnsafe(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticContainsKey(Object, Object): Bool
+extern js "../runtime/js/map.mjs" staticDelete(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticKeys(Object): Object
+extern js "../runtime/js/map.mjs" staticValues(Object): Object
+extern js "../runtime/js/map.mjs" staticEntries(Object): Object
+extern js "../runtime/js/map.mjs" staticSize(Object): Int
+extern js "../runtime/js/map.mjs" staticMerge(Object, Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
 extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
 extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
@@ -39,36 +60,78 @@ extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
 extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern js "../runtime/js/map.mjs" staticEmpty(): Object
+extern js "../runtime/js/map.mjs" staticPut(Object, Object, Object, Object, Object): Object
+extern js "../runtime/js/map.mjs" staticGetUnsafe(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticContainsKey(Object, Object): Bool
+extern js "../runtime/js/map.mjs" staticDelete(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticKeys(Object): Object
+extern js "../runtime/js/map.mjs" staticValues(Object): Object
+extern js "../runtime/js/map.mjs" staticEntries(Object): Object
+extern js "../runtime/js/map.mjs" staticSize(Object): Int
+extern js "../runtime/js/map.mjs" staticMerge(Object, Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
 extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
 extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern js "../runtime/js/io.mjs" raw_println(Object): Unit
+extern js "../runtime/js/io.mjs" raw_print(Object): Unit
+extern js "../runtime/js/io.mjs" readLine(): String
+extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
+extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
 extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
 extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern js "../runtime/js/io.mjs" raw_println(Object): Unit
+extern js "../runtime/js/io.mjs" raw_print(Object): Unit
+extern js "../runtime/js/io.mjs" readLine(): String
+extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
+extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
 extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
 extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern js "../runtime/js/io.mjs" raw_println(Object): Unit
+extern js "../runtime/js/io.mjs" raw_print(Object): Unit
+extern js "../runtime/js/io.mjs" readLine(): String
+extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
+extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
 extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
 extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern js "../runtime/js/io.mjs" raw_println(Object): Unit
+extern js "../runtime/js/io.mjs" raw_print(Object): Unit
+extern js "../runtime/js/io.mjs" readLine(): String
+extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
+extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
@@ -80,7 +143,7 @@ import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
 import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
 import core/list/map as map(List[x], (x) -> z): List[z]
 import core/vec/to_list as to_list(Vec[j7]): List[j7]
-import core/io/println as println(m): Unit
+import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -90,20 +153,22 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare println: (m) -> Unit
+declare println: (o) -> Unit
 declare read_file: (String) -> Result[String, String]
 
-fn handle(v0: Result[c8, d8]) -> Unit =
+fn handle(v0: Result[b8, c8]) -> Unit =
   switch v0 {
     0 (v1: d) ->
-      let v2: Unit = call println("unexpected")
-      v2
-    1 (v3: c) ->
-      let v4: Unit = call println("got error")
-      v4
+      let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v3: Unit = call println(v2, "unexpected")
+      v3
+    1 (v4: c) ->
+      let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v6: Unit = call println(v5, "got error")
+      v6
   }
 
 fn main() -> Unit =
-  let v5: Result[String, String] = call read_file("nonexistent_file_xyz.txt")
-  let v6: Unit = call handle(v5)
-  v6
+  let v7: Result[String, String] = call read_file("nonexistent_file_xyz.txt")
+  let v8: Unit = call handle(v7)
+  v8

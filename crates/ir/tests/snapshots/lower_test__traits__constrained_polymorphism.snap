@@ -8,17 +8,26 @@ struct A { x: Int }
 struct B { y: Int }
 instance core/eq.Eq[A] { eq=Eq$$A$$eq }
 instance core/eq.Eq[B] { eq=Eq$$B$$eq }
-extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
 extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
 extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
@@ -31,6 +40,18 @@ extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
 extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern js "../runtime/js/map.mjs" staticEmpty(): Object
+extern js "../runtime/js/map.mjs" staticPut(Object, Object, Object, Object, Object): Object
+extern js "../runtime/js/map.mjs" staticGetUnsafe(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticContainsKey(Object, Object): Bool
+extern js "../runtime/js/map.mjs" staticDelete(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticKeys(Object): Object
+extern js "../runtime/js/map.mjs" staticValues(Object): Object
+extern js "../runtime/js/map.mjs" staticEntries(Object): Object
+extern js "../runtime/js/map.mjs" staticSize(Object): Int
+extern js "../runtime/js/map.mjs" staticMerge(Object, Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonMap" staticEmpty(): Object
 extern java "krypton.runtime.KryptonMap" staticPut(Object, Object, Object, Object, Object): Object
 extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Object, Object): Object
@@ -43,26 +64,58 @@ extern java "krypton.runtime.KryptonMap" staticSize(Object): Int
 extern java "krypton.runtime.KryptonMap" staticMerge(Object, Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
+extern js "../runtime/js/map.mjs" staticEmpty(): Object
+extern js "../runtime/js/map.mjs" staticPut(Object, Object, Object, Object, Object): Object
+extern js "../runtime/js/map.mjs" staticGetUnsafe(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticContainsKey(Object, Object): Bool
+extern js "../runtime/js/map.mjs" staticDelete(Object, Object): Object
+extern js "../runtime/js/map.mjs" staticKeys(Object): Object
+extern js "../runtime/js/map.mjs" staticValues(Object): Object
+extern js "../runtime/js/map.mjs" staticEntries(Object): Object
+extern js "../runtime/js/map.mjs" staticSize(Object): Int
+extern js "../runtime/js/map.mjs" staticMerge(Object, Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
 extern java "krypton.runtime.KryptonArray" staticNew(Int): Object
 extern java "krypton.runtime.KryptonArray" staticSet(Object, Int, Object): Unit
 extern java "krypton.runtime.KryptonArray" staticFreeze(Object): Object
+extern js "../runtime/js/array.mjs" staticLength(Object): Int
+extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
+extern js "../runtime/js/array.mjs" staticNew(Int): Object
+extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
+extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
 extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
 extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern js "../runtime/js/io.mjs" raw_println(Object): Unit
+extern js "../runtime/js/io.mjs" raw_print(Object): Unit
+extern js "../runtime/js/io.mjs" readLine(): String
+extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
+extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 extern java "krypton.runtime.KryptonIO" raw_println(Object): Unit
 extern java "krypton.runtime.KryptonIO" raw_print(Object): Unit
 extern java "krypton.runtime.KryptonIO" readLine(): String
 extern java "krypton.runtime.KryptonIO" read_file(String): Result[String, String]
 extern java "krypton.runtime.KryptonIO" write_file(String, String): Result[String, Unit]
+extern js "../runtime/js/io.mjs" raw_println(Object): Unit
+extern js "../runtime/js/io.mjs" raw_print(Object): Unit
+extern js "../runtime/js/io.mjs" readLine(): String
+extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
+extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMap" Map
@@ -74,7 +127,7 @@ import core/list/filter as filter(List[i1], (i1) -> Bool): List[i1]
 import core/list/fold as fold(List[v1], x1, (x1, v1) -> x1): x1
 import core/list/map as map(List[x], (x) -> z): List[z]
 import core/vec/to_list as to_list(Vec[j7]): List[j7]
-import core/io/println as println(m): Unit
+import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -84,57 +137,56 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare A
-declare B
-declare println: (m) -> Unit
+declare println: (o) -> Unit
 
-fn same(v0: Dict[core/eq.Eq, w7], v1: w7, v2: w7) -> Bool =
+fn same(v0: Dict[core/eq.Eq, v7], v1: v7, v2: v7) -> Bool =
   let v3: Bool = trait_call core/eq.Eq.eq(v0, v1, v2)
   v3
 
 fn main() -> Unit =
-  let_join v14(v12: Bool) =
-    let v13: Unit = call println(v12)
-    v13
+  let_join v15(v13: Bool) =
+    let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+    let v14: Unit = call println(v4, v13)
+    v14
   in
-  let v4: ~A = call A(1)
-  let v5: ~A = call A(1)
-  let v6: Dict[core/eq.Eq, A] = get_dict core/eq.Eq[A]
-  let v7: Bool = call same(v6, v4, v5)
-  if v7 {
-    let v9: ~B = call B(2)
-    let v10: ~B = call B(2)
-    let v8: Dict[core/eq.Eq, B] = get_dict core/eq.Eq[B]
-    let v11: Bool = call same(v8, v9, v10)
-    jump v14(v11)
+  let v5: ~A = construct A(1)
+  let v6: ~A = construct A(1)
+  let v7: Dict[core/eq.Eq, A] = get_dict core/eq.Eq[A]
+  let v8: Bool = call same(v7, v5, v6)
+  if v8 {
+    let v10: ~B = construct B(2)
+    let v11: ~B = construct B(2)
+    let v9: Dict[core/eq.Eq, B] = get_dict core/eq.Eq[B]
+    let v12: Bool = call same(v9, v10, v11)
+    jump v15(v12)
   } else {
-    jump v14(false)
+    jump v15(false)
   }
 
-fn Eq$$A$$eq(v15: A, v16: A) -> Bool =
-  let_join v22(v21: Bool) =
-    if v21 {
+fn Eq$$A$$eq(v16: A, v17: A) -> Bool =
+  let_join v23(v22: Bool) =
+    if v22 {
       true
     } else {
       false
     }
   in
-  let v17: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v18: Int = project v15.0
+  let v18: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v19: Int = project v16.0
-  let v20: Bool = trait_call core/eq.Eq.eq(v17, v18, v19)
-  jump v22(v20)
+  let v20: Int = project v17.0
+  let v21: Bool = trait_call core/eq.Eq.eq(v18, v19, v20)
+  jump v23(v21)
 
-fn Eq$$B$$eq(v23: B, v24: B) -> Bool =
-  let_join v30(v29: Bool) =
-    if v29 {
+fn Eq$$B$$eq(v24: B, v25: B) -> Bool =
+  let_join v31(v30: Bool) =
+    if v30 {
       true
     } else {
       false
     }
   in
-  let v25: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-  let v26: Int = project v23.0
+  let v26: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
   let v27: Int = project v24.0
-  let v28: Bool = trait_call core/eq.Eq.eq(v25, v26, v27)
-  jump v30(v28)
+  let v28: Int = project v25.0
+  let v29: Bool = trait_call core/eq.Eq.eq(v26, v27, v28)
+  jump v31(v29)
