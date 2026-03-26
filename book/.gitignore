@@ -1,0 +1,4 @@
+dist/
+node_modules/
+static/tour.bundle.js
+static/tour.bundle.js.map

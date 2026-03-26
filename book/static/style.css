@@ -1,0 +1,401 @@
+@font-face {
+  font-family: "Ioskeley Mono";
+  src: url("fonts/IoskeleyMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Ioskeley Mono";
+  src: url("fonts/IoskeleyMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Ioskeley Mono";
+  src: url("fonts/IoskeleyMono-Italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Ioskeley Mono";
+  src: url("fonts/IoskeleyMono-BoldItalic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #f2eee9;
+  --fg: #1a1a1a;
+  --muted: #666;
+  --border: #e0e0e0;
+  --accent: #4a6cf7;
+  --accent-hover: #3a5ce5;
+  --code-bg: #f6f8fa;
+  --output-bg: #1e1e1e;
+  --output-fg: #d4d4d4;
+  --nav-bg: #f5f5f5;
+  --mono:
+    "Ioskeley Mono", "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas,
+    monospace;
+}
+
+body {
+  font-family: "Ioskeley Mono", monospace;
+  color: var(--fg);
+  background: var(--bg);
+  min-height: 100vh;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* Nav */
+.top-nav {
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 2rem;
+  position: relative;
+}
+
+.top-nav::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 2rem;
+  right: 0;
+  height: 1px;
+  background: var(--fg);
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-logo {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--fg);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.nav-shader {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  overflow: hidden;
+  margin-left: 0.5rem;
+}
+
+.nav-shader canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.nav-links a {
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.nav-links a:hover {
+  text-decoration: underline;
+}
+
+/* Home */
+.home {
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+.home-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 2rem;
+  min-height: calc(100vh - 48px);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.home-copy {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3em;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: auto;
+}
+
+.home-shader {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 400px;
+  max-height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.shader-ui {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+  font-family: monospace;
+}
+
+@media (max-width: 900px) {
+  .home-layout {
+    flex-direction: column;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .home-copy {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .home-shader {
+    min-height: 50vh;
+    max-height: 70vh;
+  }
+}
+
+.home-header {
+  margin-bottom: 3rem;
+}
+
+.home-header h1 {
+  font-size: 2.2rem;
+  margin-bottom: 0.75rem;
+}
+
+.home-header p {
+  color: var(--muted);
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.start-btn {
+  display: inline-block;
+  background: var(--accent);
+  color: white;
+  padding: 0.6rem 1.4rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.start-btn:hover {
+  background: var(--accent-hover);
+}
+
+.toc-chapter {
+  margin-bottom: 2rem;
+}
+
+.toc-chapter h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.toc-chapter ol {
+  padding-left: 1.5rem;
+}
+
+.toc-chapter li {
+  margin-bottom: 0.3rem;
+}
+
+.toc-chapter a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.toc-chapter a:hover {
+  text-decoration: underline;
+}
+
+/* Lesson */
+.lesson {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.lesson h1 {
+  font-size: 1.8rem;
+  margin-bottom: 1.25rem;
+}
+
+.lesson p {
+  line-height: 1.75;
+  margin-bottom: 1rem;
+}
+
+.lesson code {
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+.lesson pre {
+  background: var(--code-bg);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.lesson pre code {
+  background: none;
+  padding: 0;
+}
+
+.lesson h2 {
+  font-size: 1.3rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.lesson ul,
+.lesson ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.lesson li {
+  line-height: 1.7;
+  margin-bottom: 0.25rem;
+}
+
+/* Code block (editable + runnable) */
+.code-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+
+.code-block .CodeMirror {
+  height: auto;
+  font-size: 14px;
+  font-family: var(--mono);
+  padding: 0.25rem 0;
+}
+
+.code-block .cm-editor {
+  min-height: 0;
+}
+
+.code-block .cm-scroller {
+  overflow: auto;
+}
+
+.code-block .cm-focused {
+  outline: none;
+}
+
+.code-controls {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.4rem 0.6rem;
+  background: var(--code-bg);
+  border-top: 1px solid var(--border);
+}
+
+.run-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 0.35rem 1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.run-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* Output */
+.output {
+  background: var(--output-bg);
+  color: var(--output-fg);
+  display: none;
+}
+
+.output.visible {
+  display: block;
+}
+
+.output pre {
+  padding: 0.75rem 1rem;
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin: 0;
+  background: none;
+  border-radius: 0;
+}
+
+/* Lesson nav */
+.lesson-nav {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.lesson-nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.lesson-nav a:hover {
+  text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .lesson {
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .lesson h1 {
+    font-size: 1.5rem;
+  }
+}

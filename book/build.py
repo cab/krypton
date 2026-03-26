@@ -1,0 +1,179 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["markdown", "jinja2", "watchdog"]
+# ///
+
+"""Static site generator for the Krypton language tour."""
+
+import argparse
+import functools
+import http.server
+import shutil
+import subprocess
+import threading
+import time
+from pathlib import Path
+
+import markdown
+from jinja2 import Environment, FileSystemLoader
+
+ROOT = Path(__file__).parent
+CONTENT = ROOT / "content"
+TEMPLATES = ROOT / "templates"
+STATIC = ROOT / "static"
+DIST = ROOT / "dist"
+
+
+def build_frontend():
+    """Bundle the frontend editor code."""
+    try:
+        subprocess.run(["npm", "run", "build:frontend"], cwd=ROOT, check=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("npm is required to build the book frontend.") from exc
+
+
+def slug_from_dir(name: str) -> str:
+    """Strip numeric prefix and convert underscores to hyphens."""
+    # Remove chNN_ or NN_ prefix
+    parts = name.split("_", 1) if not name.startswith("ch") else name.split("_", 1)
+    rest = parts[1] if len(parts) > 1 else parts[0]
+    return rest.replace("_", "-")
+
+
+def title_from_dir(name: str) -> str:
+    """Strip numeric prefix and convert to title case."""
+    parts = name.split("_", 1) if not name.startswith("ch") else name.split("_", 1)
+    rest = parts[1] if len(parts) > 1 else parts[0]
+    return rest.replace("_", " ").title()
+
+
+def discover_content():
+    """Walk content/ and return structured chapter/lesson data."""
+    chapters = []
+    for ch_dir in sorted(CONTENT.iterdir()):
+        if not ch_dir.is_dir() or not ch_dir.name.startswith("ch"):
+            continue
+        chapter = {
+            "dir_name": ch_dir.name,
+            "title": title_from_dir(ch_dir.name),
+            "slug": slug_from_dir(ch_dir.name),
+            "lessons": [],
+        }
+        for lesson_dir in sorted(ch_dir.iterdir()):
+            if not lesson_dir.is_dir():
+                continue
+            lesson_md = lesson_dir / "lesson.md"
+            code_kr = lesson_dir / "code.kr"
+            if not lesson_md.exists():
+                continue
+            lesson = {
+                "dir_name": lesson_dir.name,
+                "title": title_from_dir(lesson_dir.name),
+                "slug": slug_from_dir(lesson_dir.name),
+                "prose": markdown.markdown(lesson_md.read_text()),
+                "code": code_kr.read_text() if code_kr.exists() else "",
+                "chapter": chapter,
+            }
+            lesson["url"] = f"/{chapter['slug']}/{lesson['slug']}/"
+            chapter["lessons"].append(lesson)
+        if chapter["lessons"]:
+            chapters.append(chapter)
+    return chapters
+
+
+def build():
+    env = Environment(loader=FileSystemLoader(TEMPLATES))
+    chapters = discover_content()
+    build_frontend()
+
+    # Flatten lessons for prev/next
+    all_lessons = [l for ch in chapters for l in ch["lessons"]]
+    for i, lesson in enumerate(all_lessons):
+        lesson["prev"] = all_lessons[i - 1] if i > 0 else None
+        lesson["next"] = all_lessons[i + 1] if i < len(all_lessons) - 1 else None
+
+    # Clean dist
+    if DIST.exists():
+        shutil.rmtree(DIST)
+    DIST.mkdir()
+
+    # Copy static files
+    shutil.copytree(STATIC, DIST / "static")
+
+    # Render home page
+    home_tmpl = env.get_template("home.html")
+    (DIST / "index.html").write_text(home_tmpl.render(
+        title="Home",
+        chapters=chapters,
+    ))
+
+    # Render lesson pages
+    lesson_tmpl = env.get_template("lesson.html")
+    for lesson in all_lessons:
+        ch_slug = lesson["chapter"]["slug"]
+        l_slug = lesson["slug"]
+        out_dir = DIST / ch_slug / l_slug
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "index.html").write_text(lesson_tmpl.render(
+            title=lesson["title"],
+            lesson=lesson,
+            chapters=chapters,
+        ))
+
+    print(f"Built {len(all_lessons)} lessons in {len(chapters)} chapters → dist/")
+
+
+def serve(port: int = 8000):
+    """Serve dist/ and watch for changes, rebuilding automatically."""
+    from watchdog.events import FileSystemEventHandler
+    from watchdog.observers import Observer
+
+    build()
+
+    class RebuildHandler(FileSystemEventHandler):
+        def __init__(self):
+            self._debounce_timer = None
+
+        def _rebuild(self):
+            try:
+                build()
+            except Exception as e:
+                print(f"Build error: {e}")
+
+        def on_any_event(self, event):
+            # Ignore changes in dist/
+            if DIST.as_posix() in event.src_path:
+                return
+            if self._debounce_timer:
+                self._debounce_timer.cancel()
+            self._debounce_timer = threading.Timer(0.3, self._rebuild)
+            self._debounce_timer.start()
+
+    observer = Observer()
+    for watch_dir in [CONTENT, TEMPLATES, STATIC]:
+        if watch_dir.exists():
+            observer.schedule(RebuildHandler(), str(watch_dir), recursive=True)
+    observer.start()
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(DIST))
+    server = http.server.HTTPServer(("localhost", port), handler)
+    print(f"Serving at http://localhost:{port} (watching for changes)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping.")
+        observer.stop()
+    observer.join()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Krypton tour SSG")
+    parser.add_argument("command", nargs="?", default="build", choices=["build", "serve"])
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+
+    if args.command == "serve":
+        serve(args.port)
+    else:
+        build()

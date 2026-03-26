@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} — krypton</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="top-nav">
+    <div class="nav-left">
+      <a href="/" class="nav-logo">krypton</a>
+      <div class="nav-shader">
+        <canvas id="shader-bg"></canvas>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a href="/">tour</a>
+      <a href="https://github.com/conner/krypton">github</a>
+    </div>
+  </nav>
+  {% block content %}{% endblock %}
+  <script type="module" src="/static/tour.bundle.js"></script>
+  <script type="module">
+    import { initGalaxy } from "/static/shader2.js";
+    initGalaxy(document.getElementById("shader-bg"), {
+      desktop: {
+        asciiCell: {
+          width: 2,
+          height: 1
+        }
+      },
+      mobile: {
+        asciiCell: {
+          width: 2,
+          height: 1
+        }
+      },
+      rotationSpeed: 4
+    });
+  </script>
+</body>
+</html>
