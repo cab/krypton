@@ -340,7 +340,7 @@ mod tests {
 
         let js = emit_module(&module);
         assert!(
-            !js.contains("import"),
+            !js.contains("import { combine }"),
             "shadowed import should be skipped entirely, got: {js:?}"
         );
     }
@@ -436,11 +436,243 @@ mod tests {
         );
     }
 
-    // ── Dict emission tests ──────────────────────────────────
+    // ── TraitCall inlining tests ────────────────────────────
 
     fn make_trait_name(name: &str) -> krypton_ir::TraitName {
         krypton_ir::TraitName::new(format!("core/{}", name.to_lowercase()), name.to_string())
     }
+
+    #[test]
+    fn trait_call_intrinsic_inline() {
+        use krypton_ir::{FnId, InstanceDef, Type, VarId};
+        let mut module = make_module("test");
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Eq"),
+            target_type: Type::Int,
+            target_type_name: "Int".to_string(),
+            method_fn_ids: vec![("eq".to_string(), FnId(99))],
+            sub_dict_requirements: vec![],
+            is_intrinsic: true,
+            is_imported: false,
+        });
+        // fn test(x: Int, y: Int) = let d = GetDict(Eq, Int); let r = TraitCall(Eq, "eq", [d, x, y]); r
+        let x = VarId(0);
+        let y = VarId(1);
+        let d = VarId(2);
+        let r = VarId(3);
+        module.functions.push(FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![(x, Type::Int), (y, Type::Int)],
+            return_type: Type::Bool,
+            body: expr(
+                Type::Bool,
+                ExprKind::Let {
+                    bind: d,
+                    ty: Type::Dict {
+                        trait_name: make_trait_name("Eq"),
+                        target: Box::new(Type::Int),
+                    },
+                    value: simple(SimpleExprKind::GetDict {
+                        trait_name: make_trait_name("Eq"),
+                        ty: Type::Int,
+                    }),
+                    body: Box::new(expr(
+                        Type::Bool,
+                        ExprKind::Let {
+                            bind: r,
+                            ty: Type::Bool,
+                            value: simple(SimpleExprKind::TraitCall {
+                                trait_name: make_trait_name("Eq"),
+                                method_name: "eq".to_string(),
+                                args: vec![Atom::Var(d), Atom::Var(x), Atom::Var(y)],
+                            }),
+                            body: Box::new(expr(Type::Bool, ExprKind::Atom(Atom::Var(r)))),
+                        },
+                    )),
+                },
+            ),
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("((a, b) => a === b)(v$0, v$1)"),
+            "intrinsic TraitCall should be inlined, got: {js:?}"
+        );
+        assert!(
+            !js.contains("v$2.eq("),
+            "should NOT use dict dispatch for intrinsic, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn trait_call_non_intrinsic_passthrough() {
+        use krypton_ir::{FnId, InstanceDef, Type, VarId};
+        let mut module = make_module("test");
+        module.structs.push(krypton_ir::StructDef {
+            name: "Point".to_string(),
+            type_params: vec![],
+            fields: vec![
+                ("x".to_string(), Type::Int),
+                ("y".to_string(), Type::Int),
+            ],
+        });
+        module.functions.push(FnDef {
+            id: FnId(1),
+            name: "Eq$$Point$$eq".to_string(),
+            params: vec![],
+            return_type: Type::Bool,
+            body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
+        });
+        module
+            .fn_names
+            .insert(FnId(1), "Eq$$Point$$eq".to_string());
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Eq"),
+            target_type: Type::Named("Point".to_string(), vec![]),
+            target_type_name: "Point".to_string(),
+            method_fn_ids: vec![("eq".to_string(), FnId(1))],
+            sub_dict_requirements: vec![],
+            is_intrinsic: false,
+            is_imported: false,
+        });
+        // fn test(x: Point, y: Point) = let d = GetDict(Eq, Point); let r = TraitCall(Eq, "eq", [d, x, y]); r
+        let x = VarId(0);
+        let y = VarId(1);
+        let d = VarId(2);
+        let r = VarId(3);
+        module.functions.push(FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![
+                (x, Type::Named("Point".to_string(), vec![])),
+                (y, Type::Named("Point".to_string(), vec![])),
+            ],
+            return_type: Type::Bool,
+            body: expr(
+                Type::Bool,
+                ExprKind::Let {
+                    bind: d,
+                    ty: Type::Dict {
+                        trait_name: make_trait_name("Eq"),
+                        target: Box::new(Type::Named("Point".to_string(), vec![])),
+                    },
+                    value: simple(SimpleExprKind::GetDict {
+                        trait_name: make_trait_name("Eq"),
+                        ty: Type::Named("Point".to_string(), vec![]),
+                    }),
+                    body: Box::new(expr(
+                        Type::Bool,
+                        ExprKind::Let {
+                            bind: r,
+                            ty: Type::Bool,
+                            value: simple(SimpleExprKind::TraitCall {
+                                trait_name: make_trait_name("Eq"),
+                                method_name: "eq".to_string(),
+                                args: vec![Atom::Var(d), Atom::Var(x), Atom::Var(y)],
+                            }),
+                            body: Box::new(expr(Type::Bool, ExprKind::Atom(Atom::Var(r)))),
+                        },
+                    )),
+                },
+            ),
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("v$2.eq(v$0, v$1)"),
+            "non-intrinsic TraitCall should use dict dispatch, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn trait_call_opaque_dict_passthrough() {
+        use krypton_ir::{FnId, Type, VarId};
+        use krypton_typechecker::types::TypeVarGen;
+        let mut module = make_module("test");
+        let mut gen = TypeVarGen::new();
+        let tv_a = gen.fresh();
+        // fn test(dict: Dict[Eq, a], x: a, y: a) = TraitCall(Eq, "eq", [dict, x, y])
+        let dict = VarId(0);
+        let x = VarId(1);
+        let y = VarId(2);
+        let r = VarId(3);
+        module.functions.push(FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![
+                (
+                    dict,
+                    Type::Dict {
+                        trait_name: make_trait_name("Eq"),
+                        target: Box::new(Type::Var(tv_a)),
+                    },
+                ),
+                (x, Type::Var(tv_a)),
+                (y, Type::Var(tv_a)),
+            ],
+            return_type: Type::Bool,
+            body: expr(
+                Type::Bool,
+                ExprKind::Let {
+                    bind: r,
+                    ty: Type::Bool,
+                    value: simple(SimpleExprKind::TraitCall {
+                        trait_name: make_trait_name("Eq"),
+                        method_name: "eq".to_string(),
+                        args: vec![Atom::Var(dict), Atom::Var(x), Atom::Var(y)],
+                    }),
+                    body: Box::new(expr(Type::Bool, ExprKind::Atom(Atom::Var(r)))),
+                },
+            ),
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("v$0.eq(v$1, v$2)"),
+            "opaque dict (Type::Var) should fall back to dict dispatch, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn panic_intrinsic_emission() {
+        use krypton_ir::{FnId, Type, VarId};
+        let mut module = make_module("test");
+        let panic_fn = FnId(99);
+        module.fn_names.insert(panic_fn, "panic".to_string());
+        let msg = VarId(0);
+        let r = VarId(1);
+        module.functions.push(FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![(msg, Type::String)],
+            return_type: Type::Unit,
+            body: expr(
+                Type::Unit,
+                ExprKind::Let {
+                    bind: r,
+                    ty: Type::Unit,
+                    value: simple(SimpleExprKind::Call {
+                        func: panic_fn,
+                        args: vec![Atom::Var(msg)],
+                    }),
+                    body: Box::new(expr(Type::Unit, ExprKind::Atom(Atom::Var(r)))),
+                },
+            ),
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let js = emit_module(&module);
+        assert!(
+            js.contains("throw new KryptonPanic("),
+            "panic intrinsic should emit throw KryptonPanic, got: {js:?}"
+        );
+    }
+
+    // ── Dict emission tests ──────────────────────────────────
 
     #[test]
     fn dict_concrete_instance() {

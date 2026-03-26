@@ -694,9 +694,36 @@ impl<'a> JsEmitter<'a> {
             }
         }
 
+        // ── KryptonPanic import ──
+        {
+            let runtime_path = self.runtime_import_path("panic.mjs");
+            self.writeln(&format!(
+                "import {{ KryptonPanic }} from '{}';",
+                runtime_path
+            ));
+            emitted_any = true;
+        }
+
         if emitted_any {
             self.write("\n");
         }
+    }
+
+    /// Compute the relative path from this module to a runtime JS file.
+    fn runtime_import_path(&self, filename: &str) -> String {
+        let parts: Vec<&str> = self.module.module_path.split('/').collect();
+        let depth = if parts.len() > 1 { parts.len() - 1 } else { 0 };
+        let mut path = String::new();
+        if depth == 0 {
+            path.push_str("./");
+        } else {
+            for _ in 0..depth {
+                path.push_str("../");
+            }
+        }
+        path.push_str("runtime/js/");
+        path.push_str(filename);
+        path
     }
 
     // ── Structs ──────────────────────────────────────────────
@@ -1201,7 +1228,14 @@ impl<'a> JsEmitter<'a> {
             SimpleExprKind::Call { func, args } => {
                 let fn_name = self.fn_name(*func);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
-                self.write(&format!("{fn_name}({})", arg_strs.join(", ")));
+                if fn_name == "panic" {
+                    self.write(&format!(
+                        "(() => {{ throw new KryptonPanic({}); }})()",
+                        arg_strs.join(", ")
+                    ));
+                } else {
+                    self.write(&format!("{fn_name}({})", arg_strs.join(", ")));
+                }
             }
             SimpleExprKind::CallClosure { closure, args } => {
                 let closure_str = self.emit_atom(closure);
@@ -1261,18 +1295,37 @@ impl<'a> JsEmitter<'a> {
                 self.write(&format!("{val}[{index}]"));
             }
             SimpleExprKind::TraitCall {
-                method_name, args, ..
+                trait_name,
+                method_name,
+                args,
             } => {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                 if arg_strs.is_empty() {
                     self.write(&format!("/* trait call {method_name} */ undefined"));
                 } else {
-                    let dict = &arg_strs[0];
-                    let user_args = &arg_strs[1..];
-                    self.write(&format!(
-                        "{dict}.{method_name}({})",
-                        user_args.join(", ")
-                    ));
+                    // Try intrinsic inline: look up concrete type from dict var
+                    let inlined = if let Some(Atom::Var(dict_var)) = args.first() {
+                        if let Some(Type::Dict { target, .. }) = self.var_types.get(dict_var) {
+                            let type_name = head_type_name(target);
+                            js_intrinsic_body(&trait_name.local_name, &type_name, method_name)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(body) = inlined {
+                        let user_args = &arg_strs[1..];
+                        self.write(&format!("({body})({})", user_args.join(", ")));
+                    } else {
+                        let dict = &arg_strs[0];
+                        let user_args = &arg_strs[1..];
+                        self.write(&format!(
+                            "{dict}.{method_name}({})",
+                            user_args.join(", ")
+                        ));
+                    }
                 }
             }
             SimpleExprKind::GetDict { trait_name, ty } => {
