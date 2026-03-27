@@ -595,6 +595,18 @@ fn impl_fn_type_missing_method_diagnostic() {
 }
 
 #[test]
+fn e0301_span_points_to_call_not_block() {
+    let output = render_fixture_error("../../tests/fixtures/traits/no_show_in_block.kr");
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    // The span should point to the println call, not the enclosing block
+    assert!(
+        output.contains("println(Opaque)"),
+        "expected span to underline `println(Opaque)`, not the enclosing block, in:\n{output}"
+    );
+}
+
+#[test]
 fn impl_return_type_mismatch_diagnostic() {
     let src = "trait Convert[a] { fun convert(x: a) -> String }\nimpl Convert[Int] { fun convert(x: Int) -> Int = x }";
     let output = parse_and_infer_module_error(src);

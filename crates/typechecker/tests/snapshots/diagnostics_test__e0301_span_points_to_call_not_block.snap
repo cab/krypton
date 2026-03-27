@@ -1,0 +1,11 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: output
+---
+[E0301] Error: the trait `Show` is not implemented for `Opaque`
+   ╭─[ ../../tests/fixtures/traits/no_show_in_block.kr:4:3 ]
+   │
+ 4 │   println(Opaque)
+   │   ───────┬───────  
+   │          ╰───────── E0301: the trait `Show` is not implemented for `Opaque`
+───╯

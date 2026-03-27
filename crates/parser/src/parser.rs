@@ -380,11 +380,7 @@ where
                                 exprs: vec![single],
                                 span: to_span(e.span()),
                             },
-                            _ => {
-                                // Update span to cover the block
-                                set_span(&mut single, to_span(e.span()));
-                                single
-                            }
+                            _ => single
                         }
                     } else {
                         Expr::Do {

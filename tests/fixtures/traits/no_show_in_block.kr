@@ -1,0 +1,5 @@
+# expect: error E0301
+type Opaque = Opaque
+fun main() = {
+  println(Opaque)
+}
