@@ -1012,6 +1012,7 @@ mod tests {
                 body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
             }],
             fn_dict_requirements: std::collections::HashMap::new(),
+            fn_exit_closes: std::collections::HashMap::new(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

@@ -324,6 +324,10 @@ pub(super) struct Compiler {
     pub(super) vec_info: Option<VecInfo>,
     // IR compilation state
     pub(super) var_locals: HashMap<krypton_ir::VarId, (u16, JvmType)>,
+    /// Slots pre-allocated for resource variables (null-initialized at function entry
+    /// so the JVM verifier sees valid types at every PC in the exception table range).
+    /// Consumed by Let binding compilation — checked before allocating a new slot.
+    pre_allocated_slots: HashMap<krypton_ir::VarId, u16>,
     pub(super) var_types: HashMap<krypton_ir::VarId, Type>,
     pub(super) join_points: HashMap<krypton_ir::VarId, JoinPointInfo>,
     pub(super) fn_names: HashMap<krypton_ir::FnId, String>,
@@ -396,6 +400,14 @@ impl Compiler {
             cp.add_method_ref(double_box_class, "toString", "(D)Ljava/lang/String;")?;
         let bool_to_string =
             cp.add_method_ref(bool_box_class, "toString", "(Z)Ljava/lang/String;")?;
+        // Finally handler support (resource auto-close on panic)
+        let throwable_class = cp.add_class("java/lang/Throwable")?;
+        let system_class = cp.add_class("java/lang/System")?;
+        let printstream_class = cp.add_class("java/io/PrintStream")?;
+        let system_err_field =
+            cp.add_field_ref(system_class, "err", "Ljava/io/PrintStream;")?;
+        let printstream_println =
+            cp.add_method_ref(printstream_class, "println", "(Ljava/lang/String;)V")?;
         let refs = CpoolRefs {
             code_utf8,
             object_init,
@@ -421,6 +433,9 @@ impl Compiler {
             long_to_string,
             double_to_string,
             bool_to_string,
+            throwable_class,
+            system_err_field,
+            printstream_println,
         };
         let mut builder = BytecodeBuilder::new(refs);
         builder.next_local = 1; // slot 0 = String[] args for main
@@ -463,6 +478,7 @@ impl Compiler {
             },
             vec_info: None,
             var_locals: HashMap::new(),
+            pre_allocated_slots: HashMap::new(),
             var_types: HashMap::new(),
             join_points: HashMap::new(),
             fn_names: HashMap::new(),
@@ -614,6 +630,7 @@ impl Compiler {
         self.builder.reset();
         self.traits.dict_locals.clear();
         self.var_locals.clear();
+        self.pre_allocated_slots.clear();
         self.var_types.clear();
         self.join_points.clear();
     }
@@ -1836,8 +1853,16 @@ impl Compiler {
                 // Coerce if needed (actual=val_type → target=jvm_ty)
                 self.emit_type_coercion(val_type, jvm_ty);
 
-                let slot = self.builder.alloc_anonymous_local(jvm_ty);
-                self.builder.emit_store(slot, jvm_ty);
+                // Use pre-allocated slot if one exists (resource vars null-initialized
+                // at function entry for JVM verifier compatibility in finally handlers).
+                let slot = if let Some(existing_slot) = self.pre_allocated_slots.remove(bind) {
+                    self.builder.emit_store(existing_slot, jvm_ty);
+                    existing_slot
+                } else {
+                    let slot = self.builder.alloc_anonymous_local(jvm_ty);
+                    self.builder.emit_store(slot, jvm_ty);
+                    slot
+                };
                 self.var_locals.insert(*bind, (slot, jvm_ty));
                 self.var_types.insert(*bind, ty.clone());
 
@@ -2659,9 +2684,33 @@ impl Compiler {
         self.builder.fn_params = fn_params;
         self.builder.fn_return_type = Some(return_type);
 
+        // Pre-allocate and null-initialize resource locals for finally handler.
+        // This ensures the JVM verifier sees valid Object types in these slots
+        // at every PC in the exception table's protected range. Same pattern as
+        // javac's try-with-resources: `Resource r = null; try { r = ...; } finally { ... }`
+        if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
+            for fc in finally_closes {
+                let slot = self.builder.alloc_anonymous_local(JvmType::StructRef(
+                    self.builder.refs.object_class,
+                ));
+                self.builder.emit(Instruction::Aconst_null);
+                self.builder
+                    .frame
+                    .push_type(VerificationType::Null);
+                self.builder
+                    .emit(Instruction::Astore(slot as u8));
+                self.builder.frame.pop_type();
+                self.pre_allocated_slots.insert(fc.resource_var, slot);
+            }
+        }
+
         self.builder.emit(Instruction::Nop);
-        self.builder.recur_target = self.builder.code.len() as u16;
+        let body_start = self.builder.current_offset();
+        self.builder.recur_target = body_start;
         self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
+
+        // Save handler-safe locals (only params + null-initialized resource slots)
+        let handler_locals = self.builder.frame.local_types.clone();
 
         let body_type = self.compile_ir_expr(&fn_def.body, ir_module)?;
 
@@ -2675,6 +2724,13 @@ impl Compiler {
             JvmType::StructRef(_) => Instruction::Areturn,
         };
         self.builder.emit(ret_instr);
+
+        // Emit finally handler for resource auto-close on panic
+        if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
+            if !finally_closes.is_empty() {
+                self.emit_finally_handler(finally_closes, body_start, &handler_locals)?;
+            }
+        }
 
         let descriptor = self.types.build_descriptor(&param_types, return_type);
         let jvm_name = if fn_def.name == "main" {
@@ -2691,6 +2747,175 @@ impl Compiler {
             descriptor_index: desc_idx,
             attributes: vec![self.builder.finish_method()],
         })
+    }
+
+    /// Emit a finally handler that calls close() on resources when an exception occurs.
+    /// Follows the Java try-with-resources pattern: close each resource in LIFO order,
+    /// suppress any exception thrown by close() itself, then re-throw the original.
+    fn emit_finally_handler(
+        &mut self,
+        finally_closes: &[krypton_ir::FinallyClose],
+        body_start: u16,
+        handler_locals: &[VerificationType],
+    ) -> Result<(), CodegenError> {
+        let handler_start = self.builder.current_offset();
+
+        // Set up StackMapTable frame at handler entry: stack = [Throwable],
+        // locals = only params + pre-initialized resource slots (valid at all PCs in protected range)
+        self.builder.frame.stack_types.clear();
+        self.builder
+            .frame
+            .push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.throwable_class,
+            });
+        self.builder.frame.local_types = handler_locals.to_vec();
+        self.builder.record_frame();
+
+        // Store the caught exception in a local
+        let exc_slot = self.builder.next_local;
+        self.builder.next_local += 1;
+        self.builder.max_locals_hwm = self.builder.max_locals_hwm.max(self.builder.next_local);
+        self.builder.emit(Instruction::Astore(exc_slot as u8));
+        self.builder.frame.pop_type();
+        // Extend handler locals to include exc_slot
+        let mut active_locals = handler_locals.to_vec();
+        // Pad with Top up to exc_slot
+        while active_locals.len() < exc_slot as usize {
+            active_locals.push(VerificationType::Top);
+        }
+        active_locals.push(VerificationType::Object {
+            cpool_index: self.builder.refs.throwable_class,
+        });
+        self.builder.frame.local_types = active_locals.clone();
+
+        let resource_trait = krypton_ir::TraitName::core_resource();
+        let dispatch = self
+            .traits
+            .trait_dispatch
+            .get(&resource_trait)
+            .ok_or_else(|| {
+                CodegenError::UnsupportedExpr(
+                    "no dispatch info for Resource trait in finally handler".to_string(),
+                    None,
+                )
+            })?;
+        let close_method_ref = dispatch.method_refs["close"];
+        let iface_class = dispatch.interface_class;
+
+        // Close each resource in LIFO order (reverse of declaration order)
+        for fc in finally_closes.iter().rev() {
+            let (resource_slot, _resource_jvm_type) =
+                self.var_locals.get(&fc.resource_var).copied().ok_or_else(|| {
+                    CodegenError::UndefinedVariable(
+                        format!(
+                            "finally handler: resource var {:?} not found",
+                            fc.resource_var
+                        ),
+                        None,
+                    )
+                })?;
+
+            // Skip close if resource is null (exception before initialization)
+            self.builder.emit(Instruction::Aload(resource_slot as u8));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.object_class,
+            });
+            let null_check_placeholder =
+                self.builder.emit_placeholder(Instruction::Ifnull(0));
+            self.builder.frame.pop_type();
+
+            // Inner try: protect close() call so double-panic is suppressed
+            let inner_try_start = self.builder.current_offset();
+
+            // Load dict for Resource[type_name]
+            let resource_type =
+                krypton_ir::Type::Named(fc.type_name.clone(), vec![]);
+            self.emit_dict_argument_for_type(&resource_trait, &resource_type, iface_class)?;
+
+            // Load and box the resource value
+            self.builder.emit(Instruction::Aload(resource_slot as u8));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.object_class,
+            });
+
+            // invokeinterface close(dict, resource) — 2 args
+            self.builder
+                .emit(Instruction::Invokeinterface(close_method_ref, 2));
+            self.builder.frame.pop_type(); // resource
+            self.builder.frame.pop_type(); // dict
+            // close returns Object (boxed Unit) — pop it
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.object_class,
+            });
+            self.builder.emit(Instruction::Pop);
+            self.builder.frame.pop_type();
+
+            let inner_try_end = self.builder.current_offset();
+
+            // goto after_inner (skip the inner catch handler)
+            let goto_placeholder =
+                self.builder.emit_placeholder(Instruction::Goto(0));
+
+            // Inner catch handler: suppress exception from close(), log warning
+            let inner_handler = self.builder.current_offset();
+            // Frame: stack = [Throwable], locals = active_locals
+            self.builder.frame.stack_types.clear();
+            self.builder
+                .frame
+                .push_type(VerificationType::Object {
+                    cpool_index: self.builder.refs.throwable_class,
+                });
+            self.builder.frame.local_types = active_locals.clone();
+            self.builder.record_frame();
+
+            // Pop the suppressed exception
+            self.builder.emit(Instruction::Pop);
+            self.builder.frame.pop_type();
+
+            // Log warning: System.err.println("warning: resource close failed during panic")
+            self.builder
+                .emit(Instruction::Getstatic(self.builder.refs.system_err_field));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.object_class,
+            });
+            let warning_msg = self.cp.add_string("warning: resource close failed during panic")?;
+            self.builder.emit(Instruction::Ldc_w(warning_msg));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.string_class,
+            });
+            self.builder
+                .emit(Instruction::Invokevirtual(self.builder.refs.printstream_println));
+            self.builder.frame.pop_type(); // string arg
+            self.builder.frame.pop_type(); // printstream receiver
+
+            // after_inner: patch the goto and null check
+            let after_inner = self.builder.current_offset();
+            self.builder.patch(goto_placeholder, Instruction::Goto(after_inner as u16));
+            self.builder
+                .patch(null_check_placeholder, Instruction::Ifnull(after_inner as u16));
+
+            // Record frame at after_inner (merge point of goto, null check, and inner catch)
+            self.builder.frame.stack_types.clear();
+            self.builder.frame.local_types = active_locals.clone();
+            self.builder.record_frame();
+
+            // Inner exception table entry: suppress close() failure
+            self.builder
+                .add_exception_entry(inner_try_start..inner_try_end, inner_handler, 0);
+        }
+
+        // Re-throw the original exception
+        self.builder.emit(Instruction::Aload(exc_slot as u8));
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: self.builder.refs.throwable_class,
+        });
+        self.builder.emit(Instruction::Athrow);
+
+        // Outer exception table entry: covers body through return
+        self.builder
+            .add_exception_entry(body_start..handler_start, handler_start, 0);
+
+        Ok(())
     }
 
     pub(super) fn build_class(

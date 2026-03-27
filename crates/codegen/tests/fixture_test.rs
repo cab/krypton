@@ -22,11 +22,12 @@ fn build_classpath(class_dir: &Path) -> String {
     }
 }
 
-fn run_program_with_resolver(
+/// Compile and run a fixture, returning the raw process output.
+fn run_program_raw(
     source: &str,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     fixture_name: &str,
-) -> String {
+) -> std::process::Output {
     let (module, errors) = parse(source);
     assert!(
         errors.is_empty(),
@@ -52,20 +53,26 @@ fn run_program_with_resolver(
     }
 
     let classpath = build_classpath(dir.path());
-    let output = Command::new("java")
+    Command::new("java")
         .arg("-cp")
         .arg(&classpath)
         .arg("Kr$Test")
         .output()
-        .expect("java command should run");
+        .expect("java command should run")
+}
 
+fn run_program_with_resolver(
+    source: &str,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    fixture_name: &str,
+) -> String {
+    let output = run_program_raw(source, resolver, fixture_name);
     assert!(
         output.status.success(),
         "fixture {fixture_name}: java exited with {}\nstderr: {}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
-
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
@@ -97,34 +104,64 @@ fn codegen_fixture(
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
     let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
-    for expectation in &fixture.expectations {
-        match expectation {
-            Expectation::Output(expected) => {
-                let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
-                assert_eq!(actual, *expected, "fixture {name}: output mismatch");
-            }
-            Expectation::Ok => {
-                let (module, errors) = parse(&fixture.source);
-                assert!(
-                    errors.is_empty(),
-                    "fixture {name}: expected ok but parse errors: {errors:?}"
-                );
-                let typed_modules = infer_module(&module, &resolver, "test".to_string())
-                    .unwrap_or_else(|errors| {
-                        let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
-                        panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
-                    });
-                match compile_modules(&typed_modules, "Kr$Test") {
-                    Ok(_)
-                    | Err(krypton_codegen::emit::CodegenError {
-                        kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
-                        ..
-                    }) => {}
-                    Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
+    let has_panic = fixture.expectations.iter().any(|e| matches!(e, Expectation::Panic(_)));
+
+    if has_panic {
+        // Run once, check panic + output expectations against the raw result
+        let output = run_program_raw(&fixture.source, &resolver, &name);
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        assert!(
+            !output.status.success(),
+            "fixture {name}: expected panic but program exited successfully"
+        );
+
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Panic(Some(msg)) => {
+                    assert!(
+                        stderr.contains(msg.as_str()),
+                        "fixture {name}: expected panic message {msg:?} in stderr, got:\n{stderr}"
+                    );
                 }
+                Expectation::Panic(None) => {} // already checked non-zero exit
+                Expectation::Output(expected) => {
+                    assert_eq!(stdout, *expected, "fixture {name}: output mismatch (panic fixture)");
+                }
+                _ => {}
             }
-            Expectation::Error(_) => {}
+        }
+    } else {
+        for expectation in &fixture.expectations {
+            match expectation {
+                Expectation::Output(expected) => {
+                    let actual = run_program_with_resolver(&fixture.source, &resolver, &name);
+                    assert_eq!(actual, *expected, "fixture {name}: output mismatch");
+                }
+                Expectation::Ok => {
+                    let (module, errors) = parse(&fixture.source);
+                    assert!(
+                        errors.is_empty(),
+                        "fixture {name}: expected ok but parse errors: {errors:?}"
+                    );
+                    let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                        .unwrap_or_else(|errors| {
+                            let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
+                            let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+                            panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                        });
+                    match compile_modules(&typed_modules, "Kr$Test") {
+                        Ok(_)
+                        | Err(krypton_codegen::emit::CodegenError {
+                            kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
+                            ..
+                        }) => {}
+                        Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
+                    }
+                }
+                Expectation::Error(_) | Expectation::Panic(_) => {}
+            }
         }
     }
 }
@@ -170,7 +207,7 @@ fn codegen_module(
                     Err(e) => panic!("fixture {name}: expected ok but compile failed: {e}"),
                 }
             }
-            Expectation::Error(_) => {}
+            Expectation::Error(_) | Expectation::Panic(_) => {}
         }
     }
 }

@@ -9,9 +9,9 @@ use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, Ty
 
 use crate::Type as IrType;
 use crate::{
-    Atom, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FnDef, FnId, ImportedFnDef,
-    InstanceDef, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef,
-    SwitchBranch, TraitDef, TraitMethodDef, VarId, VariantDef,
+    Atom, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose, FnDef, FnId,
+    ImportedFnDef, InstanceDef, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef,
+    SumTypeDef, SwitchBranch, TraitDef, TraitMethodDef, VarId, VariantDef,
 };
 
 // ---------------------------------------------------------------------------
@@ -541,6 +541,8 @@ struct LowerCtx {
     fn_exit_track: HashSet<String>,
     /// Most recent VarId for tracked fn_exit names (survives pop_var)
     fn_exit_vars: HashMap<String, VarId>,
+    /// Accumulated fn_exit_closes for the module (fn_name → resources to close on unwind)
+    fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
 }
 
 impl LowerCtx {
@@ -4420,6 +4422,19 @@ impl LowerCtx {
         if let Some(close_bindings) = self.auto_close.fn_exits.get(&decl.name).cloned() {
             let resolved = self.resolve_close_bindings(&close_bindings)?;
             body = self.wrap_tail_with_closes(body, &resolved)?;
+
+            // Record fn_exit_closes for codegen (exception table finally handlers).
+            // close_bindings and resolved are in the same order (1:1 correspondence).
+            let finally_closes: Vec<FinallyClose> = close_bindings
+                .iter()
+                .zip(resolved.iter())
+                .map(|(binding, rc)| FinallyClose {
+                    resource_var: rc.binding_var,
+                    type_name: binding.type_name.clone(),
+                })
+                .collect();
+            self.fn_exit_closes
+                .insert(decl.name.clone(), finally_closes);
         }
 
         // Restore tracking state
@@ -4617,6 +4632,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         auto_close: typed.auto_close.clone(),
         fn_exit_track: HashSet::new(),
         fn_exit_vars: HashMap::new(),
+        fn_exit_closes: HashMap::new(),
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -5016,6 +5032,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         tuple_arities,
         module_path: typed.module_path.clone(),
         fn_dict_requirements: ctx.fn_constraints.clone(),
+        fn_exit_closes: ctx.fn_exit_closes,
     })
 }
 

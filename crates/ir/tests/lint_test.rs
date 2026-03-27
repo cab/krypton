@@ -23,6 +23,7 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
         tuple_arities: std::collections::BTreeSet::new(),
         module_path: "test".to_string(),
         fn_dict_requirements: std::collections::HashMap::new(),
+        fn_exit_closes: std::collections::HashMap::new(),
     }
 }
 

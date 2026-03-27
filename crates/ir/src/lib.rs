@@ -378,6 +378,13 @@ pub struct FnId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VarId(pub u32);
 
+/// A resource binding that requires cleanup at function exit.
+#[derive(Debug, Clone)]
+pub struct FinallyClose {
+    pub resource_var: VarId,
+    pub type_name: String,
+}
+
 /// Variable with debug info.
 #[derive(Debug, Clone)]
 pub struct VarInfo {
@@ -413,6 +420,13 @@ pub struct Module {
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    /// Function name → resources that must be cleaned up at function exit.
+    /// Target-neutral metadata: each backend decides enforcement mechanism
+    /// (JVM: exception table finally handlers, JS: try/finally, etc.).
+    ///
+    /// Future: consider promoting to explicit IR unwind semantics (invoke/landingpad)
+    /// rather than side metadata. See BL-T5 for related variable identity work.
+    pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -700,6 +714,7 @@ mod tests {
             tuple_arities: BTreeSet::new(),
             module_path: "test".to_string(),
             fn_dict_requirements: HashMap::new(),
+            fn_exit_closes: HashMap::new(),
         };
     }
 }

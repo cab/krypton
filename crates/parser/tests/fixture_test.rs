@@ -41,7 +41,7 @@ fn parser_fixture(
                     "fixture {name}: expected error {code} but got {codes:?}"
                 );
             }
-            Expectation::Output(_) => {}
+            Expectation::Output(_) | Expectation::Panic(_) => {}
         }
     }
 }
@@ -62,7 +62,7 @@ fn parser_stdlib_fixture(
 
     for expectation in &fixture.expectations {
         match expectation {
-            Expectation::Ok | Expectation::Output(_) => {
+            Expectation::Ok | Expectation::Output(_) | Expectation::Panic(_) => {
                 assert!(
                     errors.is_empty(),
                     "fixture {name}: expected ok but got parse errors: {errors:?}"

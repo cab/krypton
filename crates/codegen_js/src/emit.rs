@@ -1911,6 +1911,7 @@ mod tests {
             tuple_arities: BTreeSet::new(),
             module_path: name.to_string(),
             fn_dict_requirements: HashMap::new(),
+            fn_exit_closes: HashMap::new(),
         }
     }
 

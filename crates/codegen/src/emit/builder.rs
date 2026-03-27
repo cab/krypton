@@ -2,7 +2,9 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use ristretto_classfile::attributes::{Attribute, Instruction, StackFrame, VerificationType};
+use ristretto_classfile::attributes::{
+    Attribute, ExceptionTableEntry, Instruction, StackFrame, VerificationType,
+};
 
 use super::compiler::JvmType;
 
@@ -35,6 +37,10 @@ pub(super) struct CpoolRefs {
     pub(super) long_to_string: u16,
     pub(super) double_to_string: u16,
     pub(super) bool_to_string: u16,
+    // Finally handler support (resource auto-close on panic)
+    pub(super) throwable_class: u16,
+    pub(super) system_err_field: u16,
+    pub(super) printstream_println: u16,
 }
 
 /// StackMapTable / verification type tracking.
@@ -200,6 +206,7 @@ pub(super) struct BytecodeBuilder {
     pub(super) recur_target: u16,
     pub(super) recur_frame_locals: Vec<VerificationType>,
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
+    pub(super) exception_table: Vec<ExceptionTableEntry>,
 }
 
 impl BytecodeBuilder {
@@ -216,11 +223,26 @@ impl BytecodeBuilder {
             recur_target: 1,
             recur_frame_locals: Vec::new(),
             local_fn_info: HashMap::new(),
+            exception_table: Vec::new(),
         }
     }
 
     pub(super) fn emit(&mut self, instr: Instruction) {
         self.code.push(instr);
+    }
+
+    /// Add an exception table entry (instruction indices, not byte offsets).
+    pub(super) fn add_exception_entry(
+        &mut self,
+        range: std::ops::Range<u16>,
+        handler_pc: u16,
+        catch_type: u16,
+    ) {
+        self.exception_table.push(ExceptionTableEntry {
+            range_pc: range,
+            handler_pc,
+            catch_type,
+        });
     }
 
     pub(super) fn push_jvm_type(&mut self, ty: JvmType) {
@@ -421,7 +443,7 @@ impl BytecodeBuilder {
             max_stack: self.frame.max_stack(),
             max_locals: self.max_locals_hwm.max(self.next_local),
             code: std::mem::take(&mut self.code),
-            exception_table: vec![],
+            exception_table: std::mem::take(&mut self.exception_table),
             attributes: code_attributes,
         }
     }
@@ -438,5 +460,6 @@ impl BytecodeBuilder {
         self.recur_target = 1;
         self.recur_frame_locals.clear();
         self.local_fn_info.clear();
+        self.exception_table.clear();
     }
 }

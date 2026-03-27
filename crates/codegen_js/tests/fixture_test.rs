@@ -320,7 +320,7 @@ fn js_codegen_fixture(
                     panic!("fixture {name}: JS codegen failed: {e}");
                 });
             }
-            Expectation::Error(_) => {}
+            Expectation::Error(_) | Expectation::Panic(_) => {}
         }
     }
 }
@@ -368,7 +368,7 @@ fn js_codegen_module(
                     });
                 let _ = compile_modules_js(&typed_modules, "test", true);
             }
-            Expectation::Error(_) => {}
+            Expectation::Error(_) | Expectation::Panic(_) => {}
         }
     }
 }

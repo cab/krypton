@@ -9,6 +9,8 @@ pub enum Expectation {
     Error(String),
     /// The program should produce specific output on stdout.
     Output(String),
+    /// The program should panic (exit non-zero). Optional message to match in stderr.
+    Panic(Option<String>),
 }
 
 /// A loaded fixture file with its parsed expectations.
@@ -17,6 +19,8 @@ pub struct Fixture {
     pub path: PathBuf,
     pub source: String,
     pub expectations: Vec<Expectation>,
+    /// Targets to skip: `(target, reason)` from `# skip: target(reason)` directives.
+    pub skip_targets: Vec<(String, String)>,
 }
 
 /// Parse `# expect:` header comments from source text.
@@ -44,6 +48,20 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
             if !code.is_empty() {
                 expectations.push(Expectation::Error(code.to_string()));
             }
+        } else if let Some(text) = rest.strip_prefix("panic") {
+            let text = text.trim();
+            if text.is_empty() {
+                expectations.push(Expectation::Panic(None));
+            } else if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
+                let msg = text[1..text.len() - 1]
+                    .replace("\\\\", "\x00")
+                    .replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+                    .replace('\x00', "\\");
+                expectations.push(Expectation::Panic(Some(msg)));
+            } else {
+                expectations.push(Expectation::Panic(Some(text.to_string())));
+            }
         } else if let Some(text) = rest.strip_prefix("output") {
             let text = text.trim();
             // Strip surrounding quotes if present, then unescape \n
@@ -63,6 +81,29 @@ pub fn parse_expectations(source: &str) -> Vec<Expectation> {
         }
     }
     expectations
+}
+
+/// Parse `# skip: target(reason)` directives from source text.
+pub fn parse_skip_targets(source: &str) -> Vec<(String, String)> {
+    let mut skips = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("# skip:") else {
+            continue;
+        };
+        let rest = rest.trim();
+        // Expected format: target(reason)
+        if let Some(paren_pos) = rest.find('(') {
+            if rest.ends_with(')') {
+                let target = rest[..paren_pos].trim().to_string();
+                let reason = rest[paren_pos + 1..rest.len() - 1].to_string();
+                if !target.is_empty() && !reason.is_empty() {
+                    skips.push((target, reason));
+                }
+            }
+        }
+    }
+    skips
 }
 
 /// Discover `.kr` fixture files directly in `dir` (non-recursive).
@@ -91,9 +132,11 @@ pub fn load_fixture(path: &Path) -> Fixture {
     let source = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()));
     let expectations = parse_expectations(&source);
+    let skip_targets = parse_skip_targets(&source);
     Fixture {
         path: path.to_path_buf(),
         source,
         expectations,
+        skip_targets,
     }
 }
