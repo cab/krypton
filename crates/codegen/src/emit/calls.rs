@@ -48,21 +48,6 @@ impl Compiler {
         }
     }
 
-    pub(super) fn resolve_function_ref_requirement_type(
-        requirement: &DictRequirement,
-        declared_param_types: &[Type],
-        actual_param_types: &[Type],
-    ) -> Option<Type> {
-        let type_var = &requirement.type_var;
-        let mut bindings = HashMap::new();
-        for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
-            if !bind_type_vars(declared, actual, &mut bindings) {
-                return None;
-            }
-        }
-        bindings.get(type_var).cloned()
-    }
-
     pub(super) fn emit_dict_argument_for_type(
         &mut self,
         trait_name: &TraitName,

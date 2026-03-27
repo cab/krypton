@@ -76,12 +76,6 @@ impl IntrinsicEntry {
         )
     }
 
-    pub fn is_hash(&self) -> bool {
-        matches!(
-            self.op,
-            IntrinsicOp::HashVia { .. } | IntrinsicOp::HashString
-        )
-    }
 }
 
 /// Registry of all intrinsic (trait, type) → operation mappings.

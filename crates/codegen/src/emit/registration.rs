@@ -229,23 +229,11 @@ impl Compiler {
             .variant_to_sum
             .insert(variant.name.clone(), sum_def.name.clone());
 
-        let singleton_field_ref = if fields.is_empty() {
-            let vdesc = format!("L{qualified_variant};");
-            Some(
-                self.cp
-                    .add_field_ref(variant_class_index, "INSTANCE", &vdesc)?,
-            )
-        } else {
-            None
-        };
-
         let vi = VariantInfo {
             class_index: variant_class_index,
-            class_name: qualified_variant.clone(),
             fields,
             constructor_ref,
             field_refs,
-            singleton_field_ref,
         };
         Ok((variant.name.clone(), qualified_variant, vi))
     }
@@ -464,25 +452,12 @@ impl Compiler {
                 method_refs.insert(method.name.clone(), mref);
             }
 
-            let method_tc_types: HashMap<String, (Vec<Type>, Type)> = trait_def
-                .methods
-                .iter()
-                .map(|m| {
-                    (
-                        m.name.clone(),
-                        (m.param_types.clone(), m.return_type.clone()),
-                    )
-                })
-                .collect();
-
             let trait_key = trait_def.trait_name.clone();
             self.traits.trait_dispatch.insert(
                 trait_key,
                 TraitDispatchInfo {
                     interface_class: iface_class,
                     method_refs,
-                    type_var_id: trait_def.type_var,
-                    method_tc_types,
                 },
             );
         }
@@ -856,7 +831,6 @@ impl Compiler {
                     param_types: all_param_types,
                     return_type,
                     is_void: false,
-                    tc_param_types: tc_param_types.clone(),
                 });
             self.types
                 .fn_tc_types
@@ -956,7 +930,6 @@ impl Compiler {
                     param_types: param_jvm_types,
                     return_type,
                     is_void,
-                    tc_param_types: ext.param_types.clone(),
                 }],
             );
         }
@@ -1008,7 +981,6 @@ impl Compiler {
                     param_types: all_param_types,
                     return_type,
                     is_void: false,
-                    tc_param_types: imp.param_types.clone(),
                 });
             self.types.fn_tc_types.insert(
                 imp.name.clone(),

@@ -148,7 +148,6 @@ pub(super) struct FunctionInfo {
     pub(super) param_types: Vec<JvmType>,
     pub(super) return_type: JvmType,
     pub(super) is_void: bool,
-    pub(super) tc_param_types: Vec<Type>,
 }
 
 /// Info about a struct type for codegen.
@@ -172,11 +171,9 @@ pub(super) struct VariantField {
 /// Info about a single variant of a sum type.
 pub(super) struct VariantInfo {
     pub(super) class_index: u16,
-    pub(super) class_name: String,
     pub(super) fields: Vec<VariantField>,
     pub(super) constructor_ref: u16,
     pub(super) field_refs: Vec<u16>, // field ref indices in main cpool
-    pub(super) singleton_field_ref: Option<u16>, // Some(field_ref) for nullary variants
 }
 
 /// Info about a sum type (sealed interface).
@@ -213,19 +210,6 @@ impl CodegenTypeInfo {
         self.functions.get(name).and_then(|v| v.first())
     }
 
-    /// Get a function info by matching TC param types (for overload disambiguation).
-    pub(super) fn get_function_by_params(
-        &self,
-        name: &str,
-        param_types: &[Type],
-    ) -> Option<&FunctionInfo> {
-        let entries = self.functions.get(name)?;
-        if entries.len() == 1 {
-            return entries.first();
-        }
-        entries.iter().find(|fi| fi.tc_param_types == *param_types)
-    }
-
     pub(super) fn jvm_type_descriptor(&self, ty: JvmType) -> String {
         match ty {
             JvmType::StructRef(idx) => self.class_descriptors[&idx].clone(),
@@ -248,8 +232,6 @@ impl CodegenTypeInfo {
 pub(super) struct TraitDispatchInfo {
     pub(super) interface_class: u16, // class index of the trait interface in main cpool
     pub(super) method_refs: HashMap<String, u16>, // method_name → interface method_ref
-    pub(super) type_var_id: TypeVarId,
-    pub(super) method_tc_types: HashMap<String, (Vec<Type>, Type)>,
 }
 
 /// Info about a trait instance singleton.
@@ -290,10 +272,6 @@ impl TraitState {
             .map(|(_, &slot)| slot)
     }
 
-    /// Check if any dict local exists for the given trait name.
-    pub(super) fn has_dict_for_trait(&self, trait_name: &TraitName) -> bool {
-        self.dict_locals.keys().any(|(tn, _)| tn == trait_name)
-    }
 }
 
 #[derive(Clone)]
@@ -557,15 +535,6 @@ impl Compiler {
             }
             other => type_to_jvm_basic(other),
         }
-    }
-
-    /// Map a typechecker Type to a JvmType by converting to IR Type first.
-    pub(super) fn tc_type_to_jvm(
-        &self,
-        ty: &krypton_typechecker::types::Type,
-    ) -> Result<JvmType, CodegenError> {
-        let ir_ty: Type = ty.clone().into();
-        self.type_to_jvm(&ir_ty)
     }
 
     /// Look up variant metadata: class_index, constructor_ref, interface_class_index, fields.
