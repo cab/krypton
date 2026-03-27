@@ -505,7 +505,7 @@ pub fn check_ownership(
     lambda_own_captures: &HashMap<Span, String>,
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
-) -> Result<OwnershipResult, SpannedTypeError> {
+) -> (OwnershipResult, Vec<SpannedTypeError>) {
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
     for decl in &module.decls {
@@ -552,9 +552,10 @@ pub fn check_ownership(
     }
 
     let mut all_moves: HashMap<Span, String> = HashMap::new();
+    let mut errors: Vec<SpannedTypeError> = Vec::new();
 
     for typed_fn in typed_fns {
-        let fn_moves = check_fn(
+        match check_fn(
             typed_fn,
             &fn_param_info,
             &fn_qualifiers,
@@ -562,13 +563,18 @@ pub fn check_ownership(
             lambda_own_captures,
             registry,
             &fn_scheme_params,
-        )?;
-        all_moves.extend(fn_moves);
+        ) {
+            Ok(fn_moves) => all_moves.extend(fn_moves),
+            Err(e) => errors.push(e),
+        }
     }
-    Ok(OwnershipResult {
-        fn_qualifiers,
-        moves: all_moves,
-    })
+    (
+        OwnershipResult {
+            fn_qualifiers,
+            moves: all_moves,
+        },
+        errors,
+    )
 }
 
 /// Walks a typed function body tracking affine (single-use) bindings.

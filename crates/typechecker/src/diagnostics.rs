@@ -1,10 +1,12 @@
-use krypton_diagnostics::{Diagnostic, DiagnosticLabel, Severity, SourceEntry};
+use std::collections::HashSet;
+
+use krypton_diagnostics::{sort_diagnostics, Diagnostic, DiagnosticLabel, Severity, SourceEntry};
 
 use crate::infer::InferError;
 use crate::unify::SpannedTypeError;
 use krypton_modules::stdlib_loader::StdlibLoader;
 
-/// Lower an `InferError` into the shared diagnostic model.
+/// Lower a single `InferError` into the shared diagnostic model.
 pub fn lower_infer_error(
     filename: &str,
     source: &str,
@@ -21,6 +23,30 @@ pub fn lower_infer_error(
             errors,
         } => krypton_parser::diagnostics::lower_parse_errors(path, mod_source, errors),
     }
+}
+
+/// Lower multiple `InferError`s into the shared diagnostic model with deterministic ordering.
+pub fn lower_infer_errors(
+    filename: &str,
+    source: &str,
+    errors: &[InferError],
+) -> (Vec<Diagnostic>, Vec<SourceEntry>) {
+    let mut all_diags = Vec::new();
+    let mut all_sources = Vec::new();
+    let mut seen_sources: HashSet<String> = HashSet::new();
+
+    for err in errors {
+        let (diags, sources) = lower_infer_error(filename, source, err);
+        all_diags.extend(diags);
+        for src in sources {
+            if seen_sources.insert(src.filename.clone()) {
+                all_sources.push(src);
+            }
+        }
+    }
+
+    sort_diagnostics(&mut all_diags);
+    (all_diags, all_sources)
 }
 
 fn lower_type_error(

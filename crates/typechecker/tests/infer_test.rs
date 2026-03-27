@@ -29,9 +29,9 @@ fn infer_module_fn(src: &str, fn_name: &str) -> String {
             .find(|e| e.name == fn_name)
             .map(|e| format!("{}", e.scheme))
             .unwrap_or_else(|| panic!("function {fn_name} not found in module")),
-        Err(e) => match e.type_error() {
+        Err(errors) => match errors[0].type_error() {
             Some(te) => format!("TypeError: {}", te.error),
-            None => format!("InferError: {e:?}"),
+            None => format!("InferError: {:?}", errors[0]),
         },
     }
 }
@@ -148,9 +148,9 @@ fn infer_module_types(src: &str) -> String {
             .map(|e| format!("{}: {}", e.name, e.scheme))
             .collect::<Vec<_>>()
             .join("\n"),
-        Err(e) => match e.type_error() {
+        Err(errors) => match errors[0].type_error() {
             Some(te) => format!("TypeError: {}", te.error),
-            None => format!("InferError: {e:?}"),
+            None => format!("InferError: {:?}", errors[0]),
         },
     }
 }
@@ -1203,7 +1203,7 @@ fn explicit_hkt_type_param_wrong_arity_is_error() {
         "test".to_string(),
     );
     assert!(result.is_err(), "expected kind mismatch");
-    let err = result.err().unwrap();
+    let err = result.err().unwrap().remove(0);
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
         "E0507"
@@ -1261,7 +1261,7 @@ fn explicit_type_args_call_site_mismatch_is_error() {
         "test".to_string(),
     );
     assert!(result.is_err(), "expected mismatch error");
-    let err = result.err().unwrap();
+    let err = result.err().unwrap().remove(0);
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
         "E0001"
@@ -1281,7 +1281,7 @@ fn explicit_type_args_wrong_count_is_error() {
         "test".to_string(),
     );
     assert!(result.is_err(), "expected wrong arity error");
-    let err = result.err().unwrap();
+    let err = result.err().unwrap().remove(0);
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
         "E0005"
@@ -1323,7 +1323,7 @@ fn constrained_polymorphic_function_reference_is_rejected() {
         result.is_err(),
         "expected constrained polymorphic ref to fail"
     );
-    let err = result.err().unwrap();
+    let err = result.err().unwrap().remove(0);
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
         "E0001"
@@ -1542,7 +1542,7 @@ fn infer_module_circular_import_detected() {
     let result = infer::infer_module(&module, &CircularResolver, "test".to_string());
     assert!(result.is_err(), "should detect circular import");
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected circular import error"),
     };
     assert_eq!(
@@ -1624,7 +1624,7 @@ fn infer_module_private_by_default() {
     let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "importing private fn should fail");
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected error"),
     };
     assert_eq!(
@@ -1697,7 +1697,7 @@ fn infer_module_import_alias_binds_only_alias() {
         "original import name should stay out of scope"
     );
     let err = match result {
-        Err(err) => err,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected alias-only import to reject original name"),
     };
     assert_eq!(
@@ -1727,7 +1727,7 @@ fn infer_module_missing_qualified_export_errors_clearly() {
     let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "missing qualified export should fail");
     let err = match result {
-        Err(err) => err,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected missing qualified export to fail"),
     };
     assert_eq!(
@@ -1757,7 +1757,7 @@ fn infer_module_qualifier_used_as_value_errors_clearly() {
     let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "module qualifier as value should fail");
     let err = match result {
-        Err(err) => err,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected module qualifier value use to fail"),
     };
     assert_eq!(
@@ -1854,7 +1854,7 @@ fn infer_module_constructor_alias_resolves() {
         "constructor alias should resolve: {:?}",
         result
             .err()
-            .map(|e| e.type_error().map(|te| te.error.error_code().to_string()))
+            .map(|errors| errors.into_iter().map(|e| e.type_error().map(|te| te.error.error_code().to_string())).collect::<Vec<_>>())
     );
 }
 
@@ -1923,7 +1923,7 @@ fn infer_module_pub_import_reexport_private_error() {
         "pub import of non-existent name should fail"
     );
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected error"),
     };
     assert_eq!(
@@ -2013,7 +2013,7 @@ fn cross_module_derived_constrained_instance_reports_e0301_when_inner_instance_m
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let err = match infer::infer_module(&module, &Resolver, "test".to_string()) {
         Ok(_) => panic!("expected E0301"),
-        Err(err) => err,
+        Err(mut errors) => errors.remove(0),
     };
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
@@ -2093,7 +2093,7 @@ fn empty_impl_is_rejected() {
         "test".to_string(),
     ) {
         Ok(_) => panic!("expected E0306"),
-        Err(err) => err,
+        Err(mut errors) => errors.remove(0),
     };
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
@@ -2147,7 +2147,7 @@ fn infer_module_private_trait() {
     let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
     assert!(result.is_err(), "importing private trait should fail");
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected error"),
     };
     assert_eq!(
@@ -2260,7 +2260,7 @@ fn infer_module_trait_private_by_default() {
         "importing private trait should fail"
     );
     let err = match result2 {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected error"),
     };
     assert_eq!(
@@ -2293,7 +2293,7 @@ fn infer_module_parse_error_produces_e0506() {
         "import of module with parse errors should fail"
     );
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected error"),
     };
     assert!(
@@ -2426,7 +2426,7 @@ fn reserved_name_krypton_intrinsic_rejected() {
     );
     assert!(result.is_err(), "should reject __krypton_intrinsic");
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => unreachable!(),
     };
     assert_eq!(
@@ -2446,7 +2446,7 @@ fn reserved_name_krypton_prefix_rejected() {
     );
     assert!(result.is_err(), "should reject __krypton_ prefix");
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => unreachable!(),
     };
     assert_eq!(
@@ -2553,7 +2553,7 @@ fn shadowed_prelude_fn_note_on_ufcs_mismatch() {
         "test".to_string(),
     );
     let err = match result {
-        Err(e) => e,
+        Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("should fail with type mismatch"),
     };
     let te = err.type_error().expect("should be a type error");

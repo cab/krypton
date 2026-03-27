@@ -1,0 +1,13 @@
+# expect: error E0101
+# expect: error E0101
+fun consume(buf: ~String) -> String = buf
+
+fun bad1(x: ~String) -> String {
+    consume(x);
+    consume(x)
+}
+
+fun bad2(y: ~String) -> String {
+    consume(y);
+    consume(y)
+}

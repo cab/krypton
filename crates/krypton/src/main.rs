@@ -201,8 +201,11 @@ fn main() {
             });
             let (module, errors) = do_parse(&source);
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
             match format {
@@ -219,8 +222,11 @@ fn main() {
             });
             let (module, errors) = do_parse(&source);
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
             println!("{}", krypton_parser::pretty::pretty_print(&module));
@@ -241,8 +247,11 @@ fn main() {
             let (module, errors) = do_parse(&source);
             phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
             debug!("parsing complete");
@@ -258,9 +267,13 @@ fn main() {
                 root_module_path(&file),
             ) {
                 Ok(modules) => modules,
-                Err(e) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(&file, &source, &e);
-                    for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                Err(errors) => {
+                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                        &file, &source, &errors,
+                    );
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
                     process::exit(1);
                 }
             };
@@ -323,8 +336,12 @@ fn main() {
                             phases.push(("emit", t.elapsed()));
                         }
                         Err(e) => {
-                            let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(&file, &source, &e);
-                            for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                            let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(
+                                &file, &source, &e,
+                            );
+                            for d in &diags {
+                                eprint!("{}", AriadneRenderer.render(d, &srcs));
+                            }
                             process::exit(1);
                         }
                     }
@@ -367,8 +384,13 @@ fn main() {
                             phases.push(("emit", t.elapsed()));
                         }
                         Err(e) => {
-                            let (diags, srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(&file, &source, &e);
-                            for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                            let (diags, srcs) =
+                                krypton_codegen_js::diagnostics::lower_js_codegen_error(
+                                    &file, &source, &e,
+                                );
+                            for d in &diags {
+                                eprint!("{}", AriadneRenderer.render(d, &srcs));
+                            }
                             process::exit(1);
                         }
                     }
@@ -391,8 +413,11 @@ fn main() {
             let (module, errors) = do_parse(&source);
             phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
             debug!("parsing complete");
@@ -408,9 +433,13 @@ fn main() {
                 root_module_path(&file),
             ) {
                 Ok(modules) => modules,
-                Err(e) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(&file, &source, &e);
-                    for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                Err(errors) => {
+                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                        &file, &source, &errors,
+                    );
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
                     process::exit(1);
                 }
             };
@@ -475,8 +504,12 @@ fn main() {
                             process::exit(status.code().unwrap_or(1));
                         }
                         Err(e) => {
-                            let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(&file, &source, &e);
-                            for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                            let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(
+                                &file, &source, &e,
+                            );
+                            for d in &diags {
+                                eprint!("{}", AriadneRenderer.render(d, &srcs));
+                            }
                             process::exit(1);
                         }
                     }
@@ -513,8 +546,14 @@ fn main() {
                             }
                             copy_js_runtime(dir.path());
                             if debug_js {
-                                eprintln!("KRYPTON_DEBUG_JS: generated JS dir: {}", dir.path().display());
-                                eprintln!("KRYPTON_DEBUG_JS: entry module: {}", entry_file.display());
+                                eprintln!(
+                                    "KRYPTON_DEBUG_JS: generated JS dir: {}",
+                                    dir.path().display()
+                                );
+                                eprintln!(
+                                    "KRYPTON_DEBUG_JS: entry module: {}",
+                                    entry_file.display()
+                                );
                             }
                             phases.push(("emit", t.elapsed()));
 
@@ -543,8 +582,13 @@ fn main() {
                             process::exit(status.code().unwrap_or(1));
                         }
                         Err(e) => {
-                            let (diags, srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(&file, &source, &e);
-                            for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                            let (diags, srcs) =
+                                krypton_codegen_js::diagnostics::lower_js_codegen_error(
+                                    &file, &source, &e,
+                                );
+                            for d in &diags {
+                                eprint!("{}", AriadneRenderer.render(d, &srcs));
+                            }
                             process::exit(1);
                         }
                     }
@@ -562,8 +606,11 @@ fn main() {
             let (module, errors) = do_parse(&source);
             phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
 
@@ -584,9 +631,13 @@ fn main() {
                         println!("{} : {}", entry.name, entry.scheme);
                     }
                 }
-                Err(e) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(&file, &source, &e);
-                    for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                Err(errors) => {
+                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                        &file, &source, &errors,
+                    );
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
                     process::exit(1);
                 }
             }
@@ -606,8 +657,11 @@ fn main() {
             let (module, errors) = do_parse(&source);
             phases.push(("parse", t.elapsed()));
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
 
@@ -622,9 +676,13 @@ fn main() {
                 root_module_path(&file),
             ) {
                 Ok(modules) => modules,
-                Err(e) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(&file, &source, &e);
-                    for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                Err(errors) => {
+                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                        &file, &source, &errors,
+                    );
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
                     process::exit(1);
                 }
             };
@@ -682,8 +740,11 @@ fn main() {
 
             let (module, errors) = do_parse(&source);
             if !errors.is_empty() {
-                let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                let (diags, srcs) =
+                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+                for d in &diags {
+                    eprint!("{}", AriadneRenderer.render(d, &srcs));
+                }
                 process::exit(1);
             }
 
@@ -707,7 +768,7 @@ fn main() {
                     );
                     print!("{}", output);
                 }
-                Err(e) => {
+                Err(errors) => {
                     // AC6: on error, print source with line numbers and show the error
                     let lines: Vec<&str> = source.lines().collect();
                     let width = lines.len().to_string().len().max(4);
@@ -715,8 +776,12 @@ fn main() {
                         println!("{:>width$} | {}", i + 1, line, width = width);
                     }
                     println!();
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(&file, &source, &e);
-                    for d in &diags { eprint!("{}", AriadneRenderer.render(d, &srcs)); }
+                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                        &file, &source, &errors,
+                    );
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
                     process::exit(1);
                 }
             }

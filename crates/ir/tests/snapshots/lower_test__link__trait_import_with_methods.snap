@@ -321,6 +321,9 @@ instance core/show.Show[Int] {  } [intrinsic]
 instance core/show.Show[Float] {  } [intrinsic]
 instance core/show.Show[Bool] {  } [intrinsic]
 instance core/show.Show[String] {  } [intrinsic]
+instance core/show.Show[Unit] { show=Show$$Unit$$show }
+fn Show$$Unit$$show(v0: Unit) -> ~String =
+  "()"
 module core/hash
 
 trait Hash[g] { hash(g): Int }

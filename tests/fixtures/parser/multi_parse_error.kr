@@ -1,0 +1,5 @@
+# expect: error P0001
+# expect: error P0001
+fun bad1() = +
+
+fun bad2() = *

@@ -133,6 +133,16 @@ fn render_ariadne(diagnostic: &Diagnostic, src_entries: &[SourceEntry], color: b
     String::from_utf8(output).unwrap()
 }
 
+/// Sort diagnostics by file, then span position, then error code for deterministic output.
+pub fn sort_diagnostics(diags: &mut [Diagnostic]) {
+    diags.sort_by(|a, b| {
+        a.primary_file
+            .cmp(&b.primary_file)
+            .then(a.primary_span.cmp(&b.primary_span))
+            .then(a.code.cmp(&b.code))
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

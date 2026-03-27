@@ -1191,25 +1191,27 @@ pub fn infer_module(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     root_module_path: String,
-) -> Result<Vec<TypedModule>, InferError> {
+) -> Result<Vec<TypedModule>, Vec<InferError>> {
     use krypton_modules::module_graph;
     use krypton_modules::stdlib_loader::StdlibLoader;
 
     // Build the module graph (resolves, parses, toposorts all imports + prelude)
-    let graph = module_graph::build_module_graph(module, resolver).map_err(|e| match e {
-        module_graph::ModuleGraphError::ParseError {
-            path,
-            source,
-            errors,
-        } => InferError::ModuleParseError {
-            path,
-            source,
-            errors,
-        },
-        other => InferError::TypeError {
-            error: map_graph_error(other),
-            error_source: None,
-        },
+    let graph = module_graph::build_module_graph(module, resolver).map_err(|e| {
+        vec![match e {
+            module_graph::ModuleGraphError::ParseError {
+                path,
+                source,
+                errors,
+            } => InferError::ModuleParseError {
+                path,
+                source,
+                errors,
+            },
+            other => InferError::TypeError {
+                error: map_graph_error(other),
+                error_source: None,
+            },
+        }]
     })?;
 
     // Build parsed module lookup for import binding (borrows from graph)
@@ -1227,19 +1229,24 @@ pub fn infer_module(
                 resolved.path.clone(),
                 &graph.prelude_tree_paths,
             )
-            .map_err(|mut e| {
-                if e.source_file.is_none() {
-                    e.source_file = Some(resolved.path.clone());
-                }
+            .map_err(|errors| {
                 // Re-resolve source for the failing module (error path only)
                 let source_text = StdlibLoader::get_source(&resolved.path)
                     .map(|s| s.to_string())
                     .or_else(|| resolver.resolve(&resolved.path));
                 let error_source = source_text.map(|s| (resolved.path.clone(), s));
-                InferError::TypeError {
-                    error: e,
-                    error_source,
-                }
+                errors
+                    .into_iter()
+                    .map(|mut e| {
+                        if e.source_file.is_none() {
+                            e.source_file = Some(resolved.path.clone());
+                        }
+                        InferError::TypeError {
+                            error: e,
+                            error_source: error_source.clone(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
             })?;
             let mut typed = typed;
             // Attach source text for diagnostic rendering of downstream codegen errors
@@ -1258,9 +1265,14 @@ pub fn infer_module(
         root_module_path,
         &graph.prelude_tree_paths,
     )
-    .map_err(|e| InferError::TypeError {
-        error: e,
-        error_source: None,
+    .map_err(|errors| {
+        errors
+            .into_iter()
+            .map(|e| InferError::TypeError {
+                error: e,
+                error_source: None,
+            })
+            .collect::<Vec<_>>()
     })?;
 
     let mut result = vec![main];
@@ -1297,7 +1309,7 @@ fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> Spanne
 pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
-) -> Result<TypedModule, InferError> {
+) -> Result<TypedModule, Vec<InferError>> {
     let mut modules = infer_module(module, resolver, "main".to_string())?;
     Ok(modules.remove(0))
 }
@@ -1583,9 +1595,7 @@ impl ModuleInferenceState {
                 // one extern entry per target without duplicating same-target declarations.
                 let mut new_method_names: HashSet<&str> = HashSet::new();
                 for method in methods {
-                    let seen_for_name = seen_extern_methods
-                        .entry(method.name.clone())
-                        .or_default();
+                    let seen_for_name = seen_extern_methods.entry(method.name.clone()).or_default();
                     for (prev_target, prev_method) in seen_for_name.iter() {
                         if *prev_target != target_name && !extern_method_sig_eq(prev_method, method)
                         {
@@ -1732,7 +1742,7 @@ impl ModuleInferenceState {
         constructor_schemes: Vec<(String, TypeScheme)>,
         parsed_modules: &HashMap<String, &Module>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
-    ) -> Result<TypedModule, SpannedTypeError> {
+    ) -> Result<TypedModule, Vec<SpannedTypeError>> {
         let mut instance_defs = instance_defs;
         instance_defs.extend(derived_instance_defs);
 
@@ -1872,18 +1882,21 @@ impl ModuleInferenceState {
             .iter()
             .map(|e| (e.name.clone(), e.scheme.clone()))
             .collect();
+        let mut validation_errors: Vec<SpannedTypeError> = Vec::new();
         for func in &functions {
             let current_requirements = fn_constraint_requirements
                 .get(&func.name)
                 .cloned()
                 .unwrap_or_default();
-            checks::check_constrained_function_refs(
+            if let Err(e) = checks::check_constrained_function_refs(
                 &func.body,
                 &current_requirements,
                 &fn_schemes,
                 fn_constraint_requirements,
                 trait_registry,
-            )?;
+            ) {
+                validation_errors.push(e);
+            }
         }
 
         // Build merged fn constraints for detecting constrained function calls
@@ -1980,7 +1993,7 @@ impl ModuleInferenceState {
             .map(|e| (e.name.clone(), e.scheme.clone(), e.origin.clone()))
             .collect();
 
-        let ownership_result = crate::ownership::check_ownership(
+        let (ownership_result, ownership_errors) = crate::ownership::check_ownership(
             module,
             &functions,
             &results_tuples,
@@ -1989,7 +2002,9 @@ impl ModuleInferenceState {
             &self.lambda_own_captures,
             &shared_type_vars,
             &self.imports.imported_fn_qualifiers,
-        )?;
+        );
+        let has_ownership_errors = !ownership_errors.is_empty();
+        validation_errors.extend(ownership_errors);
 
         // Filter to exported functions only for cross-module propagation
         let exported_names: HashSet<&str> = exported_fn_types
@@ -2002,12 +2017,25 @@ impl ModuleInferenceState {
             .filter(|(name, _)| exported_names.contains(name.as_str()))
             .collect();
 
-        let auto_close = crate::auto_close::compute_auto_close(
-            &functions,
-            &results_tuples,
-            trait_registry,
-            &ownership_result.moves,
-        )?;
+        // Only run auto_close if ownership checking passed — auto_close depends on
+        // complete ownership results and may encounter unexpected types otherwise.
+        let auto_close = if !has_ownership_errors {
+            let (auto_close, auto_close_errors) = crate::auto_close::compute_auto_close(
+                &functions,
+                &results_tuples,
+                trait_registry,
+                &ownership_result.moves,
+            );
+            validation_errors.extend(auto_close_errors);
+            auto_close
+        } else {
+            crate::typed_ast::AutoCloseInfo::default()
+        };
+
+        if !validation_errors.is_empty() {
+            validation_errors.sort_by_key(|e| e.span);
+            return Err(validation_errors);
+        }
 
         let struct_decls: Vec<_> = module
             .decls
@@ -2851,6 +2879,7 @@ fn register_impl_instances(
                 Type::Float => "Float".to_string(),
                 Type::Bool => "Bool".to_string(),
                 Type::String => "String".to_string(),
+                Type::Unit => "Unit".to_string(),
                 Type::Fn(_params, _) => {
                     if !local_trait_names.contains(trait_name) {
                         return Err(spanned(
@@ -3774,7 +3803,7 @@ pub(crate) fn infer_module_inner(
     parsed_modules: &HashMap<String, &Module>,
     module_path: String,
     prelude_tree_paths: &HashSet<String>,
-) -> Result<TypedModule, SpannedTypeError> {
+) -> Result<TypedModule, Vec<SpannedTypeError>> {
     let is_core_module = module_path.starts_with("core/");
     let is_prelude_tree = prelude_tree_paths.contains(&module_path);
 
@@ -3783,18 +3812,23 @@ pub(crate) fn infer_module_inner(
     let synthetic_prelude_import =
         state.build_synthetic_prelude_import(is_prelude_tree, cache, parsed_modules);
 
-    state.process_imports(
-        module,
-        cache,
-        parsed_modules,
-        synthetic_prelude_import.as_ref(),
-    )?;
+    state
+        .process_imports(
+            module,
+            cache,
+            parsed_modules,
+            synthetic_prelude_import.as_ref(),
+        )
+        .map_err(|e| vec![e])?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let (extern_fns, extern_types, extern_fn_constraints) =
-        state.process_local_externs(module, &module_path)?;
+    let (extern_fns, extern_types, extern_fn_constraints) = state
+        .process_local_externs(module, &module_path)
+        .map_err(|e| vec![e])?;
     state.cleanup_prelude_shadows(module);
     state.preregister_type_names(module);
-    let constructor_schemes = state.process_local_type_decls(module)?;
+    let constructor_schemes = state
+        .process_local_type_decls(module)
+        .map_err(|e| vec![e])?;
 
     // Phase: trait registration, deriving, impl registration
     let (
@@ -3803,7 +3837,8 @@ pub(crate) fn infer_module_inner(
         derived_instance_defs,
         imported_instance_defs,
         trait_method_map,
-    ) = process_traits_and_deriving(&mut state, module, cache, &module_path, is_core_module)?;
+    ) = process_traits_and_deriving(&mut state, module, cache, &module_path, is_core_module)
+        .map_err(|e| vec![e])?;
 
     // Phase: SCC-based function inference
     let (fn_decls, result_schemes, fn_bodies, mut fn_constraint_requirements, shared_type_vars) =
@@ -3814,7 +3849,8 @@ pub(crate) fn infer_module_inner(
             &trait_registry,
             &trait_method_map,
             &module_path,
-        )?;
+        )
+        .map_err(|e| vec![e])?;
 
     // Merge extern function where-clause dict requirements
     for (name, reqs) in extern_fn_constraints {
@@ -3829,7 +3865,8 @@ pub(crate) fn infer_module_inner(
         &trait_registry,
         &trait_method_map,
         &extern_fns,
-    )?;
+    )
+    .map_err(|e| vec![e])?;
 
     state.assemble_typed_module(
         module,

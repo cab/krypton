@@ -1,17 +1,17 @@
 use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
-use krypton_typechecker::diagnostics::lower_infer_error;
+use krypton_typechecker::diagnostics::{lower_infer_error, lower_infer_errors};
 use krypton_typechecker::infer::{self, InferError};
 
 fn parse_and_infer_module_error(src: &str) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let err = match infer::infer_module_single(&module, &CompositeResolver::stdlib_only()) {
+    let errors = match infer::infer_module_single(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
-        Err(e) => e,
+        Err(errors) => errors,
     };
-    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    let (diags, srcs) = lower_infer_errors("test.kr", src, &errors);
     diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
 }
 
@@ -49,11 +49,11 @@ fn render_fixture_error(fixture: &str) -> String {
     let src = std::fs::read_to_string(fixture).unwrap();
     let (module, errors) = parse(&src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module_single(&module, &CompositeResolver::stdlib_only()) {
+    let errors = match infer::infer_module_single(&module, &CompositeResolver::stdlib_only()) {
         Ok(_) => panic!("expected a type error"),
-        Err(e) => e,
+        Err(errors) => errors,
     };
-    let (diags, srcs) = lower_infer_error(fixture, &src, &err);
+    let (diags, srcs) = lower_infer_errors(fixture, &src, &errors);
     diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
 }
 
@@ -63,11 +63,11 @@ fn render_module_error_with_resolver(
 ) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, resolver, "test".to_string()) {
+    let errors = match infer::infer_module(&module, resolver, "test".to_string()) {
         Ok(_) => panic!("expected a type error"),
-        Err(e) => e,
+        Err(errors) => errors,
     };
-    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    let (diags, srcs) = lower_infer_errors("test.kr", src, &errors);
     diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
 }
 
@@ -436,19 +436,20 @@ fn parse_error_in_imported_module() {
     let src = "import bad.{f}\nfun main() -> Int = f()";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, &BadParseResolver, "test".to_string()) {
+    let errors = match infer::infer_module(&module, &BadParseResolver, "test".to_string()) {
         Ok(_) => panic!("expected a parse error from bad module"),
-        Err(e) => e,
+        Err(errors) => errors,
     };
     // Should be a ModuleParseError variant pointing at "bad"
-    match &err {
+    assert_eq!(errors.len(), 1, "expected exactly one error");
+    match &errors[0] {
         InferError::ModuleParseError { path, .. } => {
             assert_eq!(path, "bad", "expected path 'bad', got '{path}'");
         }
         other => panic!("expected ModuleParseError, got: {other:?}"),
     }
     // Render and verify it references the module file with correct source
-    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    let (diags, srcs) = lower_infer_error("test.kr", src, &errors[0]);
     let output: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
     insta::assert_snapshot!(output);
     assert!(
@@ -474,12 +475,13 @@ fn type_error_in_imported_module() {
     let src = "import badmod.{f}\nfun main() -> Int = f()";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let err = match infer::infer_module(&module, &BadTypeResolver, "test".to_string()) {
+    let errors = match infer::infer_module(&module, &BadTypeResolver, "test".to_string()) {
         Ok(_) => panic!("expected a type error from badmod"),
-        Err(e) => e,
+        Err(errors) => errors,
     };
     // Should be a TypeError with error_source pointing at badmod
-    match &err {
+    assert_eq!(errors.len(), 1, "expected exactly one error");
+    match &errors[0] {
         InferError::TypeError {
             error,
             error_source,
@@ -498,7 +500,7 @@ fn type_error_in_imported_module() {
         other => panic!("expected TypeError, got: {other:?}"),
     }
     // Render and verify it references the module file
-    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    let (diags, srcs) = lower_infer_error("test.kr", src, &errors[0]);
     let output: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
     insta::assert_snapshot!(output);
     assert!(

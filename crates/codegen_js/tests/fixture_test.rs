@@ -6,7 +6,7 @@ use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
 use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
-use krypton_typechecker::diagnostics::lower_infer_error;
+use krypton_typechecker::diagnostics::{lower_infer_error, lower_infer_errors};
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
 
@@ -29,8 +29,8 @@ fn compile_js_result_with_resolver(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|e| {
-        let (diags, srcs) = lower_infer_error(fixture_name, source, &e);
+    let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
+        let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
         let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
         panic!("fixture {fixture_name}: type check failed:\n{rendered}");
     });
@@ -311,8 +311,8 @@ fn js_codegen_fixture(
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
-                    .unwrap_or_else(|e| {
-                        let (diags, srcs) = lower_infer_error(&name, &fixture.source, &e);
+                    .unwrap_or_else(|errors| {
+                        let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
@@ -361,8 +361,8 @@ fn js_codegen_module(
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
-                    .unwrap_or_else(|e| {
-                        let (diags, srcs) = lower_infer_error(&name, &fixture.source, &e);
+                    .unwrap_or_else(|errors| {
+                        let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });

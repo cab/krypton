@@ -454,10 +454,10 @@ pub fn compute_auto_close(
     )],
     registry: &TraitRegistry,
     ownership_moves: &HashMap<Span, String>,
-) -> Result<AutoCloseInfo, SpannedTypeError> {
+) -> (AutoCloseInfo, Vec<SpannedTypeError>) {
     let resource_tn = crate::typed_ast::TraitName::core_resource();
     if registry.lookup_trait(&resource_tn).is_none() {
-        return Ok(AutoCloseInfo::default());
+        return (AutoCloseInfo::default(), Vec::new());
     }
 
     let mut analyzer = AutoCloseAnalyzer::new(registry, ownership_moves);
@@ -477,10 +477,5 @@ pub fn compute_auto_close(
         analyzer.analyze_function(decl, &param_types, decl.close_self_type.as_deref());
     }
 
-    // Return first error if any
-    if let Some(err) = analyzer.errors.into_iter().next() {
-        return Err(err);
-    }
-
-    Ok(analyzer.info)
+    (analyzer.info, analyzer.errors)
 }

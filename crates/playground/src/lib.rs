@@ -92,8 +92,8 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     };
     let typed_modules = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
         Ok(typed_modules) => typed_modules,
-        Err(err) => {
-            let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_error(ROOT_FILENAME, source, &err);
+        Err(errors) => {
+            let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_errors(ROOT_FILENAME, source, &errors);
             return CompileToJsResult::failure(diags);
         }
     };
