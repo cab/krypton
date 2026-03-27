@@ -1,0 +1,7 @@
+# expect: ok
+fun main() -> Int = {
+    let id = x -> x;
+    let a = id(42);
+    let b = id(true);
+    if b { a } else { 0 }
+}

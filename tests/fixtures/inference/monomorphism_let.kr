@@ -1,0 +1,5 @@
+# expect: ok
+fun main() -> Int = {
+    let square = n -> n * n;
+    square(5)
+}

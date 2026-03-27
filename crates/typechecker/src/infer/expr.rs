@@ -1028,9 +1028,28 @@ impl<'a> InferenceContext<'a> {
                 los.insert(span);
             }
         }
+        // Monomorphism restriction: don't generalize let bindings whose
+        // generalized type variables are constrained by traits (e.g. Mul, Add).
+        // Without this, IR lowering receives unresolved dict references.
+        let scheme = {
+            let tentative = super::generalize(&binding_ty, self.env, self.subst);
+            if tentative.vars.is_empty() {
+                tentative
+            } else {
+                let gen_vars: HashSet<TypeVarId> =
+                    tentative.vars.iter().copied().collect();
+                let has_trait_constraints =
+                    collect_trait_constraints_on_vars(&val_typed, self.subst, &gen_vars);
+                if has_trait_constraints {
+                    TypeScheme::mono(self.subst.apply(&binding_ty))
+                } else {
+                    tentative
+                }
+            }
+        };
+
         match body {
             Some(body) => {
-                let scheme = super::generalize(&binding_ty, self.env, self.subst);
                 self.env.push_scope();
                 self.env.bind(name.to_string(), scheme);
                 let body_typed = self.infer_expr_inner(body, None)?;
@@ -1048,7 +1067,6 @@ impl<'a> InferenceContext<'a> {
                 })
             }
             None => {
-                let scheme = super::generalize(&binding_ty, self.env, self.subst);
                 self.env.bind(name.to_string(), scheme);
                 Ok(TypedExpr {
                     kind: TypedExprKind::Let {
@@ -1874,4 +1892,93 @@ impl<'a> InferenceContext<'a> {
             Expr::QuestionMark { expr, span } => self.infer_question_mark(expr, *span),
         }
     }
+}
+
+/// Check whether any of the given generalized type variables are constrained
+/// by trait-dispatched operations (binary ops like +, *, ==, or trait method calls).
+/// Used by the monomorphism restriction to prevent generalizing such bindings.
+fn collect_trait_constraints_on_vars(
+    expr: &TypedExpr,
+    subst: &Substitution,
+    generalized_vars: &HashSet<TypeVarId>,
+) -> bool {
+    let mut stack: Vec<&TypedExpr> = vec![expr];
+    while let Some(e) = stack.pop() {
+        match &e.kind {
+            TypedExprKind::BinaryOp { op, lhs, rhs } => {
+                let is_trait_op = !matches!(op, BinOp::And | BinOp::Or);
+                if is_trait_op {
+                    let lhs_ty = subst.apply(&lhs.ty);
+                    if let Type::Var(v) = super::strip_own(&lhs_ty) {
+                        if generalized_vars.contains(&v) {
+                            return true;
+                        }
+                    }
+                }
+                stack.push(lhs);
+                stack.push(rhs);
+            }
+            TypedExprKind::App { func, args } if func.origin.is_some() => {
+                for arg in args {
+                    let arg_ty = subst.apply(&arg.ty);
+                    if let Type::Var(v) = super::strip_own(&arg_ty) {
+                        if generalized_vars.contains(&v) {
+                            return true;
+                        }
+                    }
+                }
+                stack.push(func);
+                stack.extend(args.iter());
+            }
+            TypedExprKind::App { func, args } => {
+                stack.push(func);
+                stack.extend(args.iter());
+            }
+            TypedExprKind::Lambda { body, .. } => stack.push(body),
+            TypedExprKind::Let { value, body, .. } => {
+                stack.push(value);
+                if let Some(b) = body {
+                    stack.push(b);
+                }
+            }
+            TypedExprKind::If { cond, then_, else_ } => {
+                stack.push(cond);
+                stack.push(then_);
+                stack.push(else_);
+            }
+            TypedExprKind::Do(exprs) => stack.extend(exprs.iter()),
+            TypedExprKind::Match { scrutinee, arms } => {
+                stack.push(scrutinee);
+                for arm in arms {
+                    stack.push(&arm.body);
+                }
+            }
+            TypedExprKind::Tuple(es)
+            | TypedExprKind::VecLit(es)
+            | TypedExprKind::Recur(es) => stack.extend(es.iter()),
+            TypedExprKind::FieldAccess { expr, .. }
+            | TypedExprKind::TypeApp { expr, .. }
+            | TypedExprKind::UnaryOp { operand: expr, .. }
+            | TypedExprKind::QuestionMark { expr, .. } => stack.push(expr),
+            TypedExprKind::StructLit { fields, .. } => {
+                for (_, e) in fields {
+                    stack.push(e);
+                }
+            }
+            TypedExprKind::StructUpdate { base, fields } => {
+                stack.push(base);
+                for (_, e) in fields {
+                    stack.push(e);
+                }
+            }
+            TypedExprKind::LetPattern { value, body, .. } => {
+                stack.push(value);
+                if let Some(b) = body {
+                    stack.push(b);
+                }
+            }
+            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+        }
+    }
+    false
 }
