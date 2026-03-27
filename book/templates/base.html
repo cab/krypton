@@ -20,7 +20,7 @@
     </div>
   </nav>
   {% block content %}{% endblock %}
-  <script type="module" src="/static/tour.bundle.js"></script>
+  <script type="module" src="/static/tour.js"></script>
   <script type="module">
     import { initGalaxy } from "/static/shader2.js";
     initGalaxy(document.getElementById("shader-bg"), {
@@ -36,7 +36,7 @@
           height: 1
         }
       },
-      rotationSpeed: 4
+      rotationSpeed: 0 // no movement
     });
   </script>
 </body>

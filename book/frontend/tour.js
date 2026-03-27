@@ -5,19 +5,21 @@ import { indentUnit } from "@codemirror/language";
 
 import kryptonTmLanguage from "../../vscode-grammar/krypton.tmLanguage.json";
 import { createKryptonLanguage } from "./krypton-language.js";
+import { runSnippet } from "./playground-client.js";
 
 const kryptonLanguage = createKryptonLanguage(kryptonTmLanguage);
 
 const kryptonTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--code-bg)",
-    color: "var(--fg)",
+    color: "var(--code-fg)",
     fontFamily: "var(--mono)",
     fontSize: "14px",
+    borderRadius: "0",
   },
   ".cm-content": {
-    padding: "0.5rem 0",
-    caretColor: "var(--fg)",
+    padding: "0.6rem 0",
+    caretColor: "var(--code-fg)",
   },
   ".cm-scroller": {
     fontFamily: "var(--mono)",
@@ -27,21 +29,54 @@ const kryptonTheme = EditorView.theme({
     padding: "0 0.75rem",
   },
   ".cm-gutters": {
-    backgroundColor: "var(--code-bg)",
-    color: "var(--muted)",
-    borderRight: "1px solid var(--border)",
+    backgroundColor: "var(--code-gutter-bg)",
+    color: "var(--code-gutter-fg)",
+    borderRight: "1px solid var(--code-gutter-border)",
+    minWidth: "2.75rem",
+  },
+  ".cm-lineNumbers .cm-gutterElement": {
+    padding: "0 0.65rem 0 0.85rem",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "rgba(74, 108, 247, 0.08)",
+    backgroundColor: "var(--code-active-line)",
+    color: "var(--code-fg)",
   },
   ".cm-activeLine": {
-    backgroundColor: "rgba(74, 108, 247, 0.05)",
+    backgroundColor: "var(--code-active-line)",
   },
   "&.cm-focused": {
     outline: "none",
   },
   "&.cm-focused .cm-selectionBackground, ::selection": {
-    backgroundColor: "rgba(74, 108, 247, 0.22)",
+    backgroundColor: "var(--code-selection)",
+  },
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeftColor: "var(--accent)",
+  },
+  ".cm-keyword": {
+    color: "var(--code-keyword)",
+  },
+  ".cm-operator": {
+    color: "var(--code-operator)",
+  },
+  ".cm-number, .cm-bool": {
+    color: "var(--code-number)",
+  },
+  ".cm-string": {
+    color: "var(--code-string)",
+  },
+  ".cm-comment": {
+    color: "var(--code-comment)",
+    fontStyle: "italic",
+  },
+  ".cm-typeName": {
+    color: "var(--code-type)",
+  },
+  ".cm-function, .cm-function-definition": {
+    color: "var(--code-function)",
+  },
+  ".cm-variableName-special": {
+    color: "var(--code-special)",
   },
 });
 
@@ -60,9 +95,26 @@ document.querySelectorAll(".code-block").forEach((block) => {
   textarea.replaceWith(host);
 
   let view;
-  const run = () => {
+  const run = async () => {
     outputEl?.classList.add("visible");
-    outputText.textContent = "WASM compiler not yet loaded";
+    if (!outputText) {
+      return;
+    }
+    outputText.textContent = "Running...";
+    if (runBtn instanceof HTMLButtonElement) {
+      runBtn.disabled = true;
+    }
+    try {
+      const result = await runSnippet(view.state.doc.toString());
+      outputText.textContent = result.output || "(no output)";
+    } catch (error) {
+      outputText.textContent =
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    } finally {
+      if (runBtn instanceof HTMLButtonElement) {
+        runBtn.disabled = false;
+      }
+    }
   };
 
   view = new EditorView({

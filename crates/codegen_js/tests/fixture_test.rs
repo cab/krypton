@@ -71,8 +71,17 @@ fn run_js_files(files: &[(String, String)], fixture_name: &str) -> String {
     copy_runtime_files(dir.path());
 
     let entry = entry_path.expect("no JS files generated");
+    let bootstrap = dir.path().join("run_test.mjs");
+    std::fs::write(
+        &bootstrap,
+        format!(
+            "import * as module from './{}';\nmodule.main?.();\n",
+            entry.file_name().unwrap().to_string_lossy()
+        ),
+    )
+    .unwrap();
     let output = Command::new("node")
-        .arg(&entry)
+        .arg(&bootstrap)
         .output()
         .expect("node command should run");
 
@@ -84,6 +93,27 @@ fn run_js_files(files: &[(String, String)], fixture_name: &str) -> String {
     );
 
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+#[test]
+fn root_module_does_not_auto_run_main() {
+    let files = compile_js_result_with_resolver(
+        r#"
+        fun main() = println("hello")
+        "#,
+        &CompositeResolver::stdlib_only(),
+        "no_auto_main",
+    )
+    .expect("JS compilation should succeed");
+
+    let root = files
+        .iter()
+        .find(|(name, _)| name == "test.mjs")
+        .expect("root module should be present");
+    assert!(
+        !root.1.contains("main();"),
+        "root module should export main without auto-running it"
+    );
 }
 
 #[test]
@@ -254,6 +284,10 @@ fn js_codegen_fixture(
         return;
     }
 
+    if fixture.skip_targets.iter().any(|(t, _)| t == "js") {
+        return;
+    }
+
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
     let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
@@ -296,6 +330,10 @@ fn js_codegen_module(
 ) {
     let fixture = load_fixture(&path);
     if fixture.expectations.is_empty() {
+        return;
+    }
+
+    if fixture.skip_targets.iter().any(|(t, _)| t == "js") {
         return;
     }
 

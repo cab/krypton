@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/parser", "crates/modules", "crates/typechecker", "crates/ir", "crates/krypton", "crates/test-harness", "crates/codegen", "crates/codegen_js"]
+members = ["crates/parser", "crates/modules", "crates/typechecker", "crates/ir", "crates/krypton", "crates/test-harness", "crates/codegen", "crates/codegen_js", "crates/playground"]
 resolver = "2"
 
 [workspace.package]
@@ -19,4 +19,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 stacker = "0.1"
 rstest = "0.25"
-

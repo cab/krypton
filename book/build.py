@@ -22,15 +22,27 @@ ROOT = Path(__file__).parent
 CONTENT = ROOT / "content"
 TEMPLATES = ROOT / "templates"
 STATIC = ROOT / "static"
+FRONTEND = ROOT / "frontend"
+GENERATED = ROOT / "generated"
 DIST = ROOT / "dist"
 
 
 def build_frontend():
     """Bundle the frontend editor code."""
+    GENERATED.mkdir(exist_ok=True)
     try:
         subprocess.run(["npm", "run", "build:frontend"], cwd=ROOT, check=True)
     except FileNotFoundError as exc:
         raise RuntimeError("npm is required to build the book frontend.") from exc
+
+
+def build_playground_wasm():
+    """Build the wasm playground package into generated/compiler/."""
+    GENERATED.mkdir(exist_ok=True)
+    try:
+        subprocess.run(["npm", "run", "build:playground-wasm"], cwd=ROOT, check=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("wasm-pack is required to build the playground compiler.") from exc
 
 
 def slug_from_dir(name: str) -> str:
@@ -86,6 +98,7 @@ def build():
     env = Environment(loader=FileSystemLoader(TEMPLATES))
     chapters = discover_content()
     build_frontend()
+    build_playground_wasm()
 
     # Flatten lessons for prev/next
     all_lessons = [l for ch in chapters for l in ch["lessons"]]
@@ -100,6 +113,12 @@ def build():
 
     # Copy static files
     shutil.copytree(STATIC, DIST / "static")
+    for generated_file in GENERATED.iterdir():
+        target = DIST / "static" / generated_file.name
+        if generated_file.is_file():
+            shutil.copy2(generated_file, target)
+        elif generated_file.is_dir():
+            shutil.copytree(generated_file, target)
 
     # Render home page
     home_tmpl = env.get_template("home.html")
@@ -151,7 +170,7 @@ def serve(port: int = 8000):
             self._debounce_timer.start()
 
     observer = Observer()
-    for watch_dir in [CONTENT, TEMPLATES, STATIC]:
+    for watch_dir in [CONTENT, TEMPLATES, STATIC, FRONTEND]:
         if watch_dir.exists():
             observer.schedule(RebuildHandler(), str(watch_dir), recursive=True)
     observer.start()

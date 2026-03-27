@@ -680,9 +680,6 @@ impl<'a> JsEmitter<'a> {
         self.emit_sum_types();
         self.emit_dict_instances();
         self.emit_functions();
-        if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
-            self.writeln("main();");
-        }
         self.output.clone()
     }
 
