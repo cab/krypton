@@ -2338,7 +2338,6 @@ fn import_cached_instances(
                             target_type_name: inst.target_type_name.clone(),
                             type_var_ids: inst.type_var_ids.clone(),
                             constraints: inst.constraints.clone(),
-                            methods: inst.methods.iter().map(|m| m.name.clone()).collect(),
                             span: (0, 0),
                             is_builtin: false,
                         };
@@ -2690,7 +2689,6 @@ fn process_deriving(
                     target_type_name: target_type_name.clone(),
                     type_var_ids: derived_type_var_ids.clone(),
                     constraints: derived_constraints.clone(),
-                    methods: vec![method_name.to_string()],
                     span: type_decl.span,
                     is_builtin: false,
                 };
@@ -2744,9 +2742,7 @@ fn process_deriving(
                         scheme,
                         constraint_pairs: vec![],
                     }],
-                    subdict_traits: vec![],
                     is_intrinsic: false,
-                    is_derived: true,
                 });
             }
         }
@@ -2997,8 +2993,6 @@ fn register_impl_instances(
                 }
             }
 
-            let method_names: Vec<String> = methods.iter().map(|m| m.name.clone()).collect();
-
             let target_type_name = type_to_canonical_name(&resolved_target);
             let impl_full_trait_name = trait_registry
                 .lookup_trait_by_name(trait_name)
@@ -3012,7 +3006,6 @@ fn register_impl_instances(
                 target_type_name,
                 type_var_ids: type_param_map.clone(),
                 constraints: resolved_constraints,
-                methods: method_names,
                 span: *span,
                 is_builtin: false,
             };
@@ -3765,9 +3758,7 @@ fn typecheck_impl_methods(
                 type_var_ids: instance.type_var_ids.clone(),
                 constraints: instance.constraints.clone(),
                 methods: instance_methods,
-                subdict_traits: vec![],
                 is_intrinsic: all_intrinsic,
-                is_derived: false,
             });
         }
     }

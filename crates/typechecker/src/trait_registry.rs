@@ -43,7 +43,6 @@ pub struct InstanceInfo {
     pub target_type_name: String,
     pub type_var_ids: HashMap<String, TypeVarId>,
     pub constraints: Vec<ResolvedConstraint>,
-    pub methods: Vec<String>,
     pub span: Span,
     pub is_builtin: bool,
 }
@@ -722,7 +721,7 @@ mod tests {
             target_type_name: target_type_name.to_string(),
             type_var_ids: HashMap::from([(String::from("a"), var_a)]),
             constraints,
-            methods: vec![],
+
             span: (0, 0),
             is_builtin: false,
         }
@@ -785,7 +784,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-                methods: vec![],
+    
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -815,7 +814,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-                methods: vec![],
+    
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -827,7 +826,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-                methods: vec![],
+    
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -839,7 +838,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
                 constraints: vec![rc("Functor", "f"), rc("Foldable", "f")],
-                methods: vec![],
+    
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -870,7 +869,7 @@ mod tests {
                 target_type_name: "Result".to_string(),
                 type_var_ids: HashMap::from([(String::from("e"), var_e)]),
                 constraints: vec![rc("Show", "e")],
-                methods: vec![],
+    
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -972,7 +971,7 @@ mod tests {
                     (String::from("v"), var_v),
                 ]),
                 constraints: vec![rc("Show", "k"), rc("Show", "v")],
-                methods: vec![],
+    
                 span: (0, 0),
                 is_builtin: false,
             })
