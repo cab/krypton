@@ -80,9 +80,11 @@ fn package_runtime_files(files: &mut Vec<CompiledJsFile>) {
 }
 
 pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
+    let strip = |s: String| strip_ansi_escapes::strip_str(&s).to_string();
+
     let (module, parse_errors) = parse(source);
     if !parse_errors.is_empty() {
-        return CompileToJsResult::failure(render_errors(ROOT_FILENAME, source, &parse_errors));
+        return CompileToJsResult::failure(strip(render_errors(ROOT_FILENAME, source, &parse_errors)));
     }
 
     let resolver = PlaygroundResolver {
@@ -91,14 +93,14 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let typed_modules = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
         Ok(typed_modules) => typed_modules,
         Err(err) => {
-            return CompileToJsResult::failure(render_infer_error(ROOT_FILENAME, source, &err));
+            return CompileToJsResult::failure(strip(render_infer_error(ROOT_FILENAME, source, &err)));
         }
     };
 
     let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false) {
         Ok(files) => files,
         Err(err) => {
-            return CompileToJsResult::failure(render_js_codegen_error(ROOT_FILENAME, source, &err));
+            return CompileToJsResult::failure(strip(render_js_codegen_error(ROOT_FILENAME, source, &err)));
         }
     };
 
