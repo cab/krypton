@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 74
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -31,4 +32,4 @@ EQ: Ordering
 GT: Ordering
 Box: forall a. (a) -> Box[a]
 main: () -> Int
-Functor$$Box$$fmap: (Box[m8], (m8) -> o8) -> ~Box[o8]
+Functor$$Box$$fmap: (Box[n8], (n8) -> p8) -> ~Box[p8]

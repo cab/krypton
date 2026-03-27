@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
+assertion_line: 74
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -30,4 +31,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Pair: forall a b. (a, b) -> Pair[a, b]
-Bifunctor$$Pair$$bimap: (Pair[i8, j8], (i8) -> m8, (j8) -> n8) -> ~Pair[m8, n8]
+Bifunctor$$Pair$$bimap: (Pair[j8, k8], (j8) -> n8, (k8) -> o8) -> ~Pair[n8, o8]

@@ -305,7 +305,7 @@ fn infer_do_block_scoping() {
 fn infer_module_basic() {
     insta::assert_snapshot!(
         infer_module_types("fun add(a, b) = a + b"),
-        @"TypeError: function `add` uses trait method from `Semigroup` on type variable `?204` without a corresponding bound"
+        @"TypeError: function `add` uses trait method from `Semigroup` on type variable `?205` without a corresponding bound"
     );
 }
 

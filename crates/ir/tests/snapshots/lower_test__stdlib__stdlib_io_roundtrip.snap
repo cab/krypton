@@ -1,5 +1,6 @@
 ---
 source: crates/ir/tests/lower_test.rs
+assertion_line: 69
 expression: ir_module.to_string()
 ---
 module stdlib__stdlib_io_roundtrip
@@ -157,20 +158,20 @@ declare println: (o) -> Unit
 declare read_file: (String) -> Result[String, String]
 declare write_file: (String, String) -> Result[String, Unit]
 
-fn handle(v0: Result[c8, d8]) -> Unit =
-  switch v0 {
-    0 (v1: d8) ->
-      let v2: Dict[core/show.Show, d8] = get_dict core/show.Show[d8]
-      let v3: Unit = call println(v2, v1)
-      v3
-    1 (v4: c8) ->
-      let v5: Dict[core/show.Show, c8] = get_dict core/show.Show[c8]
-      let v6: Unit = call println(v5, v4)
+fn handle(v0: Dict[core/show.Show, c8], v1: Dict[core/show.Show, d8], v2: Result[c8, d8]) -> Unit =
+  switch v2 {
+    0 (v3: d8) ->
+      let v4: Unit = call println(v1, v3)
+      v4
+    1 (v5: c8) ->
+      let v6: Unit = call println(v0, v5)
       v6
   }
 
 fn main() -> Unit =
   let v7: Result[String, Unit] = call write_file("_test_tmp.txt", "hello from file")
-  let v8: Result[String, String] = call read_file("_test_tmp.txt")
-  let v9: Unit = call handle(v8)
-  v9
+  let v10: Result[String, String] = call read_file("_test_tmp.txt")
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v9: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v11: Unit = call handle(v8, v9, v10)
+  v11
