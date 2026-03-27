@@ -290,6 +290,78 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
     inner(ty, &mut var_map)
 }
 
+/// Structurally match a type pattern (may contain type vars) against a concrete type,
+/// collecting variable bindings. Returns true if the pattern matches.
+pub fn bind_type_vars(
+    pattern: &Type,
+    actual: &Type,
+    bindings: &mut HashMap<TypeVarId, Type>,
+) -> bool {
+    match (pattern, actual) {
+        (Type::Var(id), _) => {
+            bindings.entry(*id).or_insert_with(|| actual.clone());
+            true
+        }
+        (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
+            p_name == a_name
+                && p_args.len() == a_args.len()
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
+            p_params.len() == a_params.len()
+                && p_params
+                    .iter()
+                    .zip(a_params.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+                && bind_type_vars(p_ret, a_ret, bindings)
+        }
+        (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
+            p_elems.len() == a_elems.len()
+                && p_elems
+                    .iter()
+                    .zip(a_elems.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        (Type::Own(p), Type::Own(a)) => bind_type_vars(p, a, bindings),
+        (Type::Own(p), a) => bind_type_vars(p, a, bindings),
+        (a, Type::Own(p)) => bind_type_vars(a, p, bindings),
+        (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
+            bind_type_vars(p_ctor, a_ctor, bindings)
+                && p_args.len() == a_args.len()
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
+        (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
+            p_args.len() == a_args.len()
+                && bind_type_vars(p_ctor, &Type::Named(a_name.clone(), Vec::new()), bindings)
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        // HKT cross-arm: App(Var(f), [a]) vs Fn([Int], Int)
+        (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
+            if decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
+        {
+            let (ctor_fn, remaining) =
+                decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+            bind_type_vars(p_ctor, &ctor_fn, bindings)
+                && remaining.len() == p_args.len()
+                && p_args
+                    .iter()
+                    .zip(remaining.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        _ => pattern == actual,
+    }
+}
+
 /// Function names that are compiler intrinsics — they produce inline bytecode
 /// rather than static method calls. Both the IR lowerer and JVM codegen reference
 /// this list to ensure consistency.

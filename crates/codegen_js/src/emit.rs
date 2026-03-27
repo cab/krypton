@@ -2,44 +2,156 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use krypton_ir::{
-    canonical_type_name, has_type_vars, head_type_name, Atom, Expr, ExprKind, FnId, Literal,
-    Module, PrimOp, SimpleExpr,
-    SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
+    bind_type_vars, canonical_type_name, has_type_vars, head_type_name, Atom, Expr, ExprKind,
+    FnId, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, Type,
+    VarId,
 };
 use krypton_parser::ast::Span;
-use krypton_typechecker::typed_ast::TypedModule;
+use krypton_typechecker::typed_ast::{TraitName, TypedModule};
 
-/// Check if a parametric type pattern matches a concrete type (type vars match anything).
-fn types_match(pattern: &Type, concrete: &Type) -> bool {
-    match (pattern, concrete) {
-        (Type::Var(_), _) => true,
-        (Type::Int, Type::Int)
-        | (Type::Float, Type::Float)
-        | (Type::Bool, Type::Bool)
-        | (Type::String, Type::String)
-        | (Type::Unit, Type::Unit) => true,
-        (Type::Fn(p_params, p_ret), Type::Fn(c_params, c_ret)) => {
-            p_params.len() == c_params.len()
-                && p_params.iter().zip(c_params.iter()).all(|(p, c)| types_match(p, c))
-                && types_match(p_ret, c_ret)
+/// Concrete singleton dict: exact type lookup.
+struct SingletonInstance {
+    js_name: String,
+    source_module: Option<String>,
+}
+
+/// Parametric dict: needs structural type matching.
+struct ParametricInstance {
+    js_name: String,
+    target_type: Type,
+    source_module: Option<String>,
+}
+
+/// Registry of all trait instances for dispatch resolution.
+pub(crate) struct InstanceRegistry {
+    /// Exact (TraitName, Type) lookup for fully concrete instances.
+    singletons: HashMap<(TraitName, Type), SingletonInstance>,
+    /// Structural matching for instances with type vars, grouped by trait.
+    parametric: HashMap<TraitName, Vec<ParametricInstance>>,
+    /// Intrinsic dicts keyed by (trait_local_name, type_name).
+    intrinsic_dict_names: HashMap<(String, String), String>,
+}
+
+impl InstanceRegistry {
+    /// Resolve a dict JS name for GetDict/MakeDict.
+    fn resolve_js_name(&self, trait_name: &TraitName, ty: &Type) -> Option<&str> {
+        // 1. Exact singleton lookup
+        if let Some(info) = self.singletons.get(&(trait_name.clone(), ty.clone())) {
+            return Some(&info.js_name);
         }
-        (Type::Named(p_name, p_args), Type::Named(c_name, c_args)) => {
-            p_name == c_name
-                && p_args.len() == c_args.len()
-                && p_args.iter().zip(c_args.iter()).all(|(p, c)| types_match(p, c))
+        // Also try with Own stripped
+        let stripped = ty.strip_own();
+        if &stripped != ty {
+            if let Some(info) = self.singletons.get(&(trait_name.clone(), stripped.clone())) {
+                return Some(&info.js_name);
+            }
         }
-        (Type::App(p_ctor, p_args), Type::App(c_ctor, c_args)) => {
-            types_match(p_ctor, c_ctor)
-                && p_args.len() == c_args.len()
-                && p_args.iter().zip(c_args.iter()).all(|(p, c)| types_match(p, c))
+        // 2. Parametric structural match
+        if let Some(instances) = self.parametric.get(trait_name) {
+            for inst in instances {
+                let mut bindings = HashMap::new();
+                if bind_type_vars(&inst.target_type, ty, &mut bindings) {
+                    return Some(&inst.js_name);
+                }
+            }
         }
-        (Type::Own(p), Type::Own(c)) => types_match(p, c),
-        (Type::Tuple(p_elems), Type::Tuple(c_elems)) => {
-            p_elems.len() == c_elems.len()
-                && p_elems.iter().zip(c_elems.iter()).all(|(p, c)| types_match(p, c))
+        // 3. Intrinsic fallback
+        let type_name = head_type_name(ty);
+        let key = (trait_name.local_name.clone(), type_name);
+        if let Some(name) = self.intrinsic_dict_names.get(&key) {
+            return Some(name);
         }
-        _ => false,
+        None
     }
+
+    /// Find source module for a given trait+type (for imports and reachability).
+    fn find_source_module(&self, trait_name: &TraitName, ty: &Type) -> Option<&str> {
+        if let Some(info) = self.singletons.get(&(trait_name.clone(), ty.clone())) {
+            return info.source_module.as_deref();
+        }
+        let stripped = ty.strip_own();
+        if &stripped != ty {
+            if let Some(info) = self.singletons.get(&(trait_name.clone(), stripped.clone())) {
+                return info.source_module.as_deref();
+            }
+        }
+        if let Some(instances) = self.parametric.get(trait_name) {
+            for inst in instances {
+                let mut bindings = HashMap::new();
+                if bind_type_vars(&inst.target_type, ty, &mut bindings) {
+                    return inst.source_module.as_deref();
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Compute the JS name for a dict instance.
+fn compute_dict_js_name(inst: &krypton_ir::InstanceDef) -> String {
+    let type_key = if has_type_vars(&inst.target_type) {
+        canonical_type_name(&inst.target_type)
+    } else {
+        inst.target_type_name.clone()
+    };
+    format!("{}$${}", inst.trait_name.local_name, type_key)
+}
+
+/// Strip Own wrappers from a type for registry key normalization.
+fn strip_own_type(ty: &Type) -> Type {
+    ty.strip_own()
+}
+
+/// Build an InstanceRegistry from a set of IR modules (for unit tests).
+pub(crate) fn build_registry_for_modules(modules: &[&Module]) -> InstanceRegistry {
+    let mut registry = InstanceRegistry {
+        singletons: HashMap::new(),
+        parametric: HashMap::new(),
+        intrinsic_dict_names: HashMap::new(),
+    };
+
+    for (trait_name, type_name, _) in js_intrinsic_dicts() {
+        let js_name = format!("{trait_name}$${type_name}");
+        registry
+            .intrinsic_dict_names
+            .insert((trait_name.to_string(), type_name.to_string()), js_name);
+    }
+
+    for module in modules {
+        for inst in &module.instances {
+            if inst.is_intrinsic {
+                continue;
+            }
+            let js_name = compute_dict_js_name(inst);
+            let source_module = if inst.is_imported {
+                None
+            } else {
+                Some(module.name.clone())
+            };
+
+            if has_type_vars(&inst.target_type) {
+                registry
+                    .parametric
+                    .entry(inst.trait_name.clone())
+                    .or_default()
+                    .push(ParametricInstance {
+                        js_name,
+                        target_type: inst.target_type.clone(),
+                        source_module,
+                    });
+            } else {
+                registry.singletons.insert(
+                    (inst.trait_name.clone(), strip_own_type(&inst.target_type)),
+                    SingletonInstance {
+                        js_name,
+                        source_module,
+                    },
+                );
+            }
+        }
+    }
+
+    registry
 }
 
 /// JS reserved words that cannot be used as identifiers.
@@ -159,58 +271,77 @@ pub fn compile_modules_js(
         }
     }
 
-    // Build instance → source module map: (trait_local_name, dict_type_key) → module_name
-    // Concrete instances (no type vars) use target_type_name; others use canonical_type_name.
-    let mut instance_source_modules: HashMap<(String, String), String> = HashMap::new();
+    // Build instance registry for dict dispatch resolution.
+    let mut registry = InstanceRegistry {
+        singletons: HashMap::new(),
+        parametric: HashMap::new(),
+        intrinsic_dict_names: HashMap::new(),
+    };
+
+    // Register intrinsic dicts
+    for (trait_name, type_name, _) in js_intrinsic_dicts() {
+        let js_name = format!("{trait_name}$${type_name}");
+        registry
+            .intrinsic_dict_names
+            .insert((trait_name.to_string(), type_name.to_string()), js_name);
+    }
+
+    // First pass: collect defining modules for each instance
+    let mut defining_modules: HashMap<(TraitName, String), String> = HashMap::new();
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
             if !inst.is_imported && !inst.is_intrinsic {
-                let type_key = if has_type_vars(&inst.target_type) {
-                    canonical_type_name(&inst.target_type)
-                } else {
-                    inst.target_type_name.clone()
-                };
-                instance_source_modules.insert(
-                    (inst.trait_name.local_name.clone(), type_key),
+                defining_modules.insert(
+                    (inst.trait_name.clone(), compute_dict_js_name(inst)),
                     ir_module.name.clone(),
                 );
             }
         }
     }
 
-    // Build set of concrete instance keys for dict name resolution.
-    // Concrete instances (no type vars in target_type) use target_type_name for uniqueness.
-    // Instances with type vars use canonical_type_name instead.
-    let mut concrete_instance_keys: HashSet<(String, String)> = HashSet::new();
+    // Second pass: register all instances with source_module resolved
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
-            if !inst.is_intrinsic && !has_type_vars(&inst.target_type) {
-                concrete_instance_keys.insert((
-                    inst.trait_name.local_name.clone(),
-                    inst.target_type_name.clone(),
-                ));
+            if inst.is_intrinsic {
+                continue;
+            }
+            let js_name = compute_dict_js_name(inst);
+            let source_module = if inst.is_imported {
+                let key = (inst.trait_name.clone(), js_name.clone());
+                defining_modules.get(&key).cloned()
+            } else {
+                Some(ir_module.name.clone())
+            };
+
+            if has_type_vars(&inst.target_type) {
+                registry
+                    .parametric
+                    .entry(inst.trait_name.clone())
+                    .or_default()
+                    .push(ParametricInstance {
+                        js_name,
+                        target_type: inst.target_type.clone(),
+                        source_module,
+                    });
+            } else {
+                registry.singletons.insert(
+                    (inst.trait_name.clone(), strip_own_type(&inst.target_type)),
+                    SingletonInstance {
+                        js_name,
+                        source_module,
+                    },
+                );
             }
         }
     }
-    // Include intrinsic instances (simple types like Int, String, etc.)
-    for (trait_name, type_name, _) in js_intrinsic_dicts() {
-        concrete_instance_keys
-            .insert((trait_name.to_string(), type_name.to_string()));
-    }
 
-    let reachable_modules = collect_reachable_modules(&ir_modules, &instance_source_modules);
+    let reachable_modules = collect_reachable_modules(&ir_modules, &registry);
     validate_js_extern_targets(&ir_modules, &reachable_modules, &module_sources)?;
 
     let mut results = Vec::new();
     for ir_module in &ir_modules {
         let is_main = ir_module.name == main_module_name;
-        let mut emitter = JsEmitter::new(
-            ir_module,
-            is_main,
-            &variant_lookup,
-            &instance_source_modules,
-            &concrete_instance_keys,
-        );
+        let mut emitter = JsEmitter::new(ir_module, is_main, &variant_lookup, &registry);
         let js_source = emitter.emit();
         let filename = format!("{}.mjs", ir_module.name);
         results.push((filename, js_source));
@@ -298,7 +429,7 @@ fn validate_js_extern_targets(
 
 fn collect_reachable_modules(
     ir_modules: &[Module],
-    instance_source_modules: &HashMap<(String, String), String>,
+    registry: &InstanceRegistry,
 ) -> HashSet<String> {
     let mut by_name: HashMap<&str, &Module> = HashMap::new();
     for module in ir_modules {
@@ -325,13 +456,11 @@ fn collect_reachable_modules(
         }
         for inst in &module.instances {
             if inst.is_imported && !inst.is_intrinsic {
-                let key = (
-                    inst.trait_name.local_name.clone(),
-                    inst.target_type_name.clone(),
-                );
-                if let Some(source_module) = instance_source_modules.get(&key) {
-                    if !reachable.contains(source_module) {
-                        stack.push(source_module.clone());
+                if let Some(source) =
+                    registry.find_source_module(&inst.trait_name, &inst.target_type)
+                {
+                    if !reachable.contains(source) {
+                        stack.push(source.to_string());
                     }
                 }
             }
@@ -441,11 +570,8 @@ pub(crate) struct JsEmitter<'a> {
     recur_joins: HashMap<VarId, RecurJoinInfo>,
     /// Non-recur joins inside a recur context that must be inlined to avoid `continue` in nested functions.
     inline_joins: HashMap<VarId, InlineJoinInfo<'a>>,
-    /// Maps (trait_local_name, target_type_name) → source module name for cross-module dict imports.
-    instance_source_modules: &'a HashMap<(String, String), String>,
-    /// Set of (trait_local_name, target_type_name) for concrete instances (no type vars).
-    /// Used by dict_constant_name to distinguish concrete vs parameterized dict references.
-    concrete_instance_keys: &'a HashSet<(String, String)>,
+    /// Instance registry for dict dispatch resolution.
+    registry: &'a InstanceRegistry,
 }
 
 impl<'a> JsEmitter<'a> {
@@ -453,8 +579,7 @@ impl<'a> JsEmitter<'a> {
         module: &'a Module,
         is_main: bool,
         variant_lookup: &'a HashMap<(String, u32), String>,
-        instance_source_modules: &'a HashMap<(String, String), String>,
-        concrete_instance_keys: &'a HashSet<(String, String)>,
+        registry: &'a InstanceRegistry,
     ) -> Self {
         JsEmitter {
             output: String::new(),
@@ -467,8 +592,7 @@ impl<'a> JsEmitter<'a> {
             variant_lookup,
             recur_joins: HashMap::new(),
             inline_joins: HashMap::new(),
-            instance_source_modules,
-            concrete_instance_keys,
+            registry,
         }
     }
 
@@ -769,24 +893,15 @@ impl<'a> JsEmitter<'a> {
             let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
             for inst in &self.module.instances {
                 if inst.is_imported && !inst.is_intrinsic {
-                    let type_key = if has_type_vars(&inst.target_type) {
-                        canonical_type_name(&inst.target_type)
-                    } else {
-                        inst.target_type_name.clone()
-                    };
-                    let dict_name = format!(
-                        "{}$${}",
-                        inst.trait_name.local_name, type_key
-                    );
-                    let key = (
-                        inst.trait_name.local_name.clone(),
-                        type_key,
-                    );
-                    if let Some(source_module) = self.instance_source_modules.get(&key) {
+                    let js_name = self.resolve_dict_js_name(&inst.trait_name, &inst.target_type);
+                    if let Some(source) =
+                        self.registry
+                            .find_source_module(&inst.trait_name, &inst.target_type)
+                    {
                         dict_by_module
-                            .entry(source_module.clone())
+                            .entry(source.to_string())
                             .or_default()
-                            .push(dict_name);
+                            .push(js_name);
                     }
                 }
             }
@@ -947,36 +1062,17 @@ impl<'a> JsEmitter<'a> {
 
     // ── Dict Instances ───────────────────────────────────────
 
-    fn dict_constant_name(
+    fn resolve_dict_js_name(
         &self,
-        trait_name: &krypton_typechecker::typed_ast::TraitName,
+        trait_name: &TraitName,
         ty: &Type,
     ) -> String {
-        let trait_local = &trait_name.local_name;
-        // For concrete instances (no type vars), use canonical_type_name to match
-        // the target_type_name used at emission.
-        let canonical = canonical_type_name(ty);
-        if self
-            .concrete_instance_keys
-            .contains(&(trait_local.clone(), canonical.clone()))
-        {
-            return format!("{trait_local}$${canonical}");
+        // 1. Registry lookup (singletons + parametric + intrinsic)
+        if let Some(name) = self.registry.resolve_js_name(trait_name, ty) {
+            return name.to_string();
         }
-        // Fallback: search for a parametric constant instance (type vars but no sub-dict
-        // requirements) whose target_type structurally matches the concrete type.
-        for inst in &self.module.instances {
-            if inst.trait_name.local_name == *trait_local
-                && has_type_vars(&inst.target_type)
-                && inst.sub_dict_requirements.is_empty()
-                && types_match(&inst.target_type, ty)
-            {
-                return format!(
-                    "{trait_local}$${}",
-                    canonical_type_name(&inst.target_type)
-                );
-            }
-        }
-        format!("{trait_local}$${canonical}")
+        // 2. Last resort (shouldn't happen in well-formed programs)
+        format!("{}$${}", trait_name.local_name, canonical_type_name(ty))
     }
 
     fn emit_dict_instances(&mut self) {
@@ -1003,16 +1099,10 @@ impl<'a> JsEmitter<'a> {
                 continue;
             }
 
+            let dict_name = self.resolve_dict_js_name(&inst.trait_name, &inst.target_type);
+
             if inst.sub_dict_requirements.is_empty() {
-                // Concrete instance — dict constant object.
-                // Use target_type_name for fully concrete types (unique, avoids collisions).
-                // Use canonical_type_name for types with vars (matches GetDict refs).
-                let type_key = if has_type_vars(&inst.target_type) {
-                    canonical_type_name(&inst.target_type)
-                } else {
-                    inst.target_type_name.clone()
-                };
-                let dict_name = format!("{}$${}", inst.trait_name.local_name, type_key);
+                // Constant dict object (singleton or parametric without sub-dicts).
                 let methods: Vec<String> = inst
                     .method_fn_ids
                     .iter()
@@ -1026,8 +1116,7 @@ impl<'a> JsEmitter<'a> {
                     methods.join(", ")
                 ));
             } else {
-                // Parameterized instance — factory function (uses canonical_type_name to match MakeDict refs)
-                let dict_name = format!("{}$${}", inst.trait_name.local_name, canonical_type_name(&inst.target_type));
+                // Parameterized instance — factory function
                 let dict_params: Vec<String> = inst
                     .sub_dict_requirements
                     .iter()
@@ -1513,7 +1602,7 @@ impl<'a> JsEmitter<'a> {
                 }
             }
             SimpleExprKind::GetDict { trait_name, ty } => {
-                let dict_name = self.dict_constant_name(trait_name, ty);
+                let dict_name = self.resolve_dict_js_name(trait_name, ty);
                 self.write(&dict_name);
             }
             SimpleExprKind::MakeDict {
@@ -1521,11 +1610,7 @@ impl<'a> JsEmitter<'a> {
                 ty,
                 sub_dicts,
             } => {
-                // MakeDict calls a parameterized factory function whose name uses
-                // canonical_type_name (for unique naming across parameterized instances).
-                let trait_local = &trait_name.local_name;
-                let type_base = canonical_type_name(ty);
-                let factory_name = format!("{trait_local}$${type_base}");
+                let factory_name = self.resolve_dict_js_name(trait_name, ty);
                 let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{factory_name}({})", args.join(", ")));
             }

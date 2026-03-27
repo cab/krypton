@@ -40,10 +40,9 @@ mod tests {
     /// Emit JS from a hand-built IR Module directly (bypasses lowering).
     fn emit_module(module: &Module) -> String {
         let variant_lookup = HashMap::new();
-        let instance_source_modules = HashMap::new();
-        let concrete_instance_keys = std::collections::HashSet::new();
+        let registry = crate::emit::build_registry_for_modules(&[module]);
         let mut emitter =
-            crate::emit::JsEmitter::new(module, false, &variant_lookup, &instance_source_modules, &concrete_instance_keys);
+            crate::emit::JsEmitter::new(module, false, &variant_lookup, &registry);
         emitter.emit()
     }
 
@@ -353,10 +352,9 @@ mod tests {
         // so we test the emitter's filename logic directly.
         let module = make_module("hello");
         let variant_lookup = HashMap::new();
-        let instance_source_modules = HashMap::new();
-        let concrete_instance_keys = std::collections::HashSet::new();
+        let registry = crate::emit::build_registry_for_modules(&[&module]);
         let mut emitter =
-            crate::emit::JsEmitter::new(&module, false, &variant_lookup, &instance_source_modules, &concrete_instance_keys);
+            crate::emit::JsEmitter::new(&module, false, &variant_lookup, &registry);
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"
         let filename = format!("{}.mjs", module.name);
@@ -774,7 +772,7 @@ mod tests {
 
         let js = emit_module(&module);
         assert!(
-            js.contains("export function Show$$Option(dict$$Show$$a)"),
+            js.contains("export function Show$$Option$$Var0(dict$$Show$$a)"),
             "should emit factory function, got: {js:?}"
         );
         assert!(
@@ -891,7 +889,7 @@ mod tests {
 
         let js = emit_module(&module);
         assert!(
-            js.contains("Show$$Option(v$0)"),
+            js.contains("Show$$Option$$Var0(v$0)"),
             "MakeDict should emit factory call, got: {js:?}"
         );
     }
