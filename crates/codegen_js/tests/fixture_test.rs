@@ -32,7 +32,7 @@ fn compile_js_result_with_resolver(
         let rendered = render_infer_error(fixture_name, source, &e);
         panic!("fixture {fixture_name}: type check failed:\n{rendered}");
     });
-    compile_modules_js(&typed_modules, "test")
+    compile_modules_js(&typed_modules, "test", true)
 }
 
 /// Copy runtime/js/*.mjs files into the temp output directory so that
@@ -313,7 +313,7 @@ fn js_codegen_fixture(
                         let rendered = render_infer_error(&name, &fixture.source, &e);
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
-                compile_modules_js(&typed_modules, "test").unwrap_or_else(|e| {
+                compile_modules_js(&typed_modules, "test", true).unwrap_or_else(|e| {
                     panic!("fixture {name}: JS codegen failed: {e}");
                 });
             }
@@ -362,7 +362,7 @@ fn js_codegen_module(
                         let rendered = render_infer_error(&name, &fixture.source, &e);
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
-                let _ = compile_modules_js(&typed_modules, "test");
+                let _ = compile_modules_js(&typed_modules, "test", true);
             }
             Expectation::Error(_) => {}
         }

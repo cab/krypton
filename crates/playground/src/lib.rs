@@ -95,7 +95,7 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
         }
     };
 
-    let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME) {
+    let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false) {
         Ok(files) => files,
         Err(err) => {
             return CompileToJsResult::failure(render_js_codegen_error(ROOT_FILENAME, source, &err));

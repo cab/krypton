@@ -273,6 +273,7 @@ impl std::error::Error for JsCodegenError {}
 pub fn compile_modules_js(
     typed_modules: &[TypedModule],
     main_module_name: &str,
+    emit_main_call: bool,
 ) -> Result<Vec<(String, String)>, JsCodegenError> {
     let root_module_path = typed_modules
         .first()
@@ -408,7 +409,7 @@ pub fn compile_modules_js(
         let is_main = ir_module.name == main_module_name;
         let mut emitter = JsEmitter::new(
             ir_module,
-            is_main,
+            is_main && emit_main_call,
             &variant_lookup,
             &qualified_sum_type_names,
             &bare_sum_type_names,
@@ -680,6 +681,9 @@ impl<'a> JsEmitter<'a> {
         self.emit_sum_types();
         self.emit_dict_instances();
         self.emit_functions();
+        if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
+            self.writeln("main();");
+        }
         self.output.clone()
     }
 

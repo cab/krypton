@@ -52,11 +52,12 @@ fn copy_js_runtime(dest: &std::path::Path) {
             if path.extension().and_then(|e| e.to_str()) == Some("mjs")
                 && path.file_name().unwrap() != "test_runtime.mjs"
             {
-                std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap()))
-                    .unwrap_or_else(|e| {
+                std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap())).unwrap_or_else(
+                    |e| {
                         eprintln!("Error copying runtime file: {}", e);
                         process::exit(1);
-                    });
+                    },
+                );
             }
         }
     }
@@ -223,7 +224,11 @@ fn main() {
             }
             println!("{}", krypton_parser::pretty::pretty_print(&module));
         }
-        Commands::Compile { file, output, target } => {
+        Commands::Compile {
+            file,
+            output,
+            target,
+        } => {
             info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
@@ -328,7 +333,7 @@ fn main() {
                 }
                 Target::Js => {
                     let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem) {
+                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem, true) {
                         Ok(files) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(files = files.len(), "JS codegen complete");
@@ -336,14 +341,10 @@ fn main() {
                             let t = Instant::now();
                             let out_dir = match &output {
                                 Some(o) => PathBuf::from(o),
-                                None => PathBuf::from("out"),
+                                None => PathBuf::from("./out"),
                             };
                             std::fs::create_dir_all(&out_dir).unwrap_or_else(|e| {
-                                eprintln!(
-                                    "Error creating directory {}: {}",
-                                    out_dir.display(),
-                                    e
-                                );
+                                eprintln!("Error creating directory {}: {}", out_dir.display(), e);
                                 process::exit(1);
                             });
                             for (filename, js_source) in &files {
@@ -364,6 +365,7 @@ fn main() {
                                 });
                             }
                             copy_js_runtime(&out_dir);
+                            println!("compiled to {}", &out_dir.display());
                             phases.push(("emit", t.elapsed()));
                         }
                         Err(e) => {
@@ -488,8 +490,9 @@ fn main() {
                 }
                 Target::Js => {
                     let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem) {
+                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem, true) {
                         Ok(files) => {
+                            let debug_js = std::env::var_os("KRYPTON_DEBUG_JS").is_some();
                             phases.push(("codegen", t.elapsed()));
                             info!(files = files.len(), "JS codegen complete");
 
@@ -516,6 +519,10 @@ fn main() {
                                 });
                             }
                             copy_js_runtime(dir.path());
+                            if debug_js {
+                                eprintln!("KRYPTON_DEBUG_JS: generated JS dir: {}", dir.path().display());
+                                eprintln!("KRYPTON_DEBUG_JS: entry module: {}", entry_file.display());
+                            }
                             phases.push(("emit", t.elapsed()));
 
                             info!("invoking node");
@@ -528,6 +535,14 @@ fn main() {
                                     process::exit(1);
                                 });
                             phases.push(("node", t.elapsed()));
+
+                            if !status.success() && debug_js {
+                                let kept_dir = dir.into_path();
+                                eprintln!(
+                                    "KRYPTON_DEBUG_JS: preserved generated JS in {}",
+                                    kept_dir.display()
+                                );
+                            }
 
                             if timings {
                                 print_timings(&phases);
