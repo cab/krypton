@@ -1886,6 +1886,15 @@ impl ModuleInferenceState {
             )?;
         }
 
+        // Build merged fn constraints for detecting constrained function calls
+        let mut all_fn_constraints = fn_constraint_requirements.clone();
+        for (name, reqs) in &self.imported_fn_constraint_requirements {
+            all_fn_constraints
+                .entry(name.clone())
+                .or_insert_with(|| reqs.clone());
+        }
+        // fn_schemes already includes imported function schemes (built from results)
+
         // Detect implicit trait constraints from body and merge into fn_constraint_requirements
         for func in &functions {
             let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
@@ -1908,6 +1917,8 @@ impl ModuleInferenceState {
                 trait_registry,
                 &self.subst,
                 &fn_type_param_vars,
+                &all_fn_constraints,
+                &fn_schemes,
                 &mut constraints,
             );
             if !constraints.is_empty() {

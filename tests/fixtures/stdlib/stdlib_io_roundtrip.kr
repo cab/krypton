@@ -1,4 +1,5 @@
 # expect: output "hello from file"
+# skip: js(io)
 import core/io.{read_file, write_file}
 
 fun handle(r) = match r {
