@@ -1,6 +1,7 @@
+use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
-use krypton_typechecker::diagnostics::{render_infer_error, render_type_errors};
+use krypton_typechecker::diagnostics::lower_infer_error;
 use krypton_typechecker::infer::{self, InferError};
 
 fn parse_and_infer_module_error(src: &str) -> String {
@@ -10,32 +11,13 @@ fn parse_and_infer_module_error(src: &str) -> String {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
-    let rendered = render_infer_error("test.kr", src, &err);
-    strip_ansi_escapes(rendered)
+    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
 }
 
 fn render_error(src: &str) -> String {
     let wrapped = format!("fun _test() = {src}");
     parse_and_infer_module_error(&wrapped)
-}
-
-fn strip_ansi_escapes(s: String) -> String {
-    let mut result = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            // Skip until we hit a letter (end of ANSI sequence)
-            while let Some(&next) = chars.peek() {
-                chars.next();
-                if next.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
 }
 
 #[test]
@@ -71,8 +53,8 @@ fn render_fixture_error(fixture: &str) -> String {
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
-    let rendered = render_infer_error(fixture, &src, &err);
-    strip_ansi_escapes(rendered)
+    let (diags, srcs) = lower_infer_error(fixture, &src, &err);
+    diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
 }
 
 fn render_module_error_with_resolver(
@@ -85,8 +67,8 @@ fn render_module_error_with_resolver(
         Ok(_) => panic!("expected a type error"),
         Err(e) => e,
     };
-    let rendered = render_infer_error("test.kr", src, &err);
-    strip_ansi_escapes(rendered)
+    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
 }
 
 fn render_module_error(src: &str) -> String {
@@ -466,7 +448,8 @@ fn parse_error_in_imported_module() {
         other => panic!("expected ModuleParseError, got: {other:?}"),
     }
     // Render and verify it references the module file with correct source
-    let output = strip_ansi_escapes(render_infer_error("test.kr", src, &err));
+    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    let output: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
     insta::assert_snapshot!(output);
     assert!(
         output.contains("bad"),
@@ -515,7 +498,8 @@ fn type_error_in_imported_module() {
         other => panic!("expected TypeError, got: {other:?}"),
     }
     // Render and verify it references the module file
-    let output = strip_ansi_escapes(render_infer_error("test.kr", src, &err));
+    let (diags, srcs) = lower_infer_error("test.kr", src, &err);
+    let output: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
     insta::assert_snapshot!(output);
     assert!(
         output.contains("badmod"),

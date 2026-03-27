@@ -8,7 +8,7 @@ ristretto_classfile.workspace = true
 krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }
 krypton-ir = { path = "../ir" }
-ariadne.workspace = true
+krypton-diagnostics = { path = "../diagnostics" }
 tracing.workspace = true
 zip = "2"
 

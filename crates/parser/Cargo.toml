@@ -5,14 +5,13 @@ edition.workspace = true
 
 [dependencies]
 chumsky.workspace = true
-ariadne.workspace = true
 serde.workspace = true
+krypton-diagnostics = { path = "../diagnostics" }
 tracing.workspace = true
 stacker.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
-strip-ansi-escapes = "0.2"
 krypton-test-harness = { path = "../test-harness" }
 criterion.workspace = true
 rstest.workspace = true

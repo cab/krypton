@@ -1,0 +1,11 @@
+[package]
+name = "krypton-diagnostics"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ariadne.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

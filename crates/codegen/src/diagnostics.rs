@@ -1,11 +1,13 @@
-use ariadne::{sources, Color, Config, IndexType, Label, Report, ReportKind};
+use krypton_diagnostics::{Diagnostic, Severity, SourceEntry};
 
 use crate::emit::CodegenError;
 
-/// Render a codegen error as an ariadne diagnostic string.
-pub fn render_codegen_error(filename: &str, source: &str, error: &CodegenError) -> String {
-    // Use the error's own source info if present (for errors from imported modules),
-    // otherwise fall back to the caller-provided filename/source.
+/// Lower a codegen error into the shared diagnostic model.
+pub fn lower_codegen_error(
+    filename: &str,
+    source: &str,
+    error: &CodegenError,
+) -> (Vec<Diagnostic>, Vec<SourceEntry>) {
     let (fname, src) = if let Some((ref f, ref s)) = error.error_source {
         (f.as_str(), s.as_str())
     } else {
@@ -15,37 +17,41 @@ pub fn render_codegen_error(filename: &str, source: &str, error: &CodegenError) 
     let code = error.error_code();
     let message = error.to_string();
 
-    if let Some((start, end)) = error.span() {
-        let mut output = Vec::new();
-        let report = Report::build(ReportKind::Error, (fname.to_string(), start..end))
-            .with_config(Config::new().with_index_type(IndexType::Byte))
-            .with_code(code)
-            .with_message(&message)
-            .with_label(
-                Label::new((fname.to_string(), start..end))
-                    .with_message(format!("{code}: {message}"))
-                    .with_color(Color::Red),
-            )
-            .finish();
-        report
-            .write(sources([(fname.to_string(), src.to_string())]), &mut output)
-            .unwrap();
-        String::from_utf8(output).unwrap()
-    } else {
-        // No span: emit a plain error line instead of a misleading 0..0 report
-        format!("error[{code}]: {message}\n")
-    }
+    let sources = vec![SourceEntry {
+        filename: fname.to_string(),
+        source: src.to_string(),
+    }];
+
+    let diag = Diagnostic {
+        severity: Severity::Error,
+        code: code.to_string(),
+        message: message.clone(),
+        primary_file: fname.to_string(),
+        primary_span: error.span(),
+        primary_label: error.span().map(|_| format!("{code}: {message}")),
+        secondary_labels: vec![],
+        help: None,
+        note: None,
+    };
+
+    (vec![diag], sources)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
+
+    fn render(error: &CodegenError, filename: &str, source: &str) -> String {
+        let (diags, srcs) = lower_codegen_error(filename, source, error);
+        diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
+    }
 
     #[test]
     fn render_error_with_span() {
         let source = "fun main() = recur(1)";
         let error = CodegenError::RecurNotInTailPosition(Some((14, 21)));
-        let output = render_codegen_error("test.kr", source, &error);
+        let output = render(&error, "test.kr", source);
         assert!(
             output.contains("C0006"),
             "should contain error code: {output}"
@@ -63,7 +69,7 @@ mod tests {
     #[test]
     fn render_error_without_span() {
         let error = CodegenError::NoMainFunction();
-        let output = render_codegen_error("test.kr", "fun foo() = 1", &error);
+        let output = render(&error, "test.kr", "fun foo() = 1");
         assert!(
             output.contains("C0002"),
             "should contain error code: {output}"
@@ -83,7 +89,7 @@ mod tests {
     fn render_unsupported_expr_with_span() {
         let source = "fun main() = something_weird";
         let error = CodegenError::UnsupportedExpr("test expr".to_string(), Some((14, 28)));
-        let output = render_codegen_error("test.kr", source, &error);
+        let output = render(&error, "test.kr", source);
         assert!(
             output.contains("C0003"),
             "should contain error code: {output}"
@@ -98,7 +104,7 @@ mod tests {
     fn render_undefined_variable() {
         let source = "fun main() = x\n";
         let error = CodegenError::UndefinedVariable("x".to_string(), Some((14, 15)));
-        let output = render_codegen_error("test.kr", source, &error);
+        let output = render(&error, "test.kr", source);
         assert!(
             output.contains("C0004"),
             "should contain error code: {output}"
@@ -112,7 +118,7 @@ mod tests {
     #[test]
     fn render_type_error_no_span() {
         let error = CodegenError::TypeError("unknown named type: Foo".to_string(), None);
-        let output = render_codegen_error("test.kr", "fun main() = 1", &error);
+        let output = render(&error, "test.kr", "fun main() = 1");
         assert!(
             output.contains("C0005"),
             "should contain error code: {output}"

@@ -1,11 +1,12 @@
 use include_dir::{include_dir, Dir};
-use krypton_codegen_js::{compile_modules_js, diagnostics::render_js_codegen_error};
+use krypton_codegen_js::compile_modules_js;
+use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_modules::{
     module_resolver::ModuleResolver,
     stdlib_loader::StdlibLoader,
 };
-use krypton_parser::{diagnostics::render_errors, parser::parse};
-use krypton_typechecker::{diagnostics::render_infer_error, infer::infer_module};
+use krypton_parser::parser::parse;
+use krypton_typechecker::infer::infer_module;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -80,11 +81,14 @@ fn package_runtime_files(files: &mut Vec<CompiledJsFile>) {
 }
 
 pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
-    let strip = |s: String| strip_ansi_escapes::strip_str(&s).to_string();
+    let render_diags = |diags: &[krypton_diagnostics::Diagnostic], srcs: &[krypton_diagnostics::SourceEntry]| -> String {
+        diags.iter().map(|d| PlainTextRenderer.render(d, srcs)).collect()
+    };
 
     let (module, parse_errors) = parse(source);
     if !parse_errors.is_empty() {
-        return CompileToJsResult::failure(strip(render_errors(ROOT_FILENAME, source, &parse_errors)));
+        let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(ROOT_FILENAME, source, &parse_errors);
+        return CompileToJsResult::failure(render_diags(&diags, &srcs));
     }
 
     let resolver = PlaygroundResolver {
@@ -93,14 +97,16 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let typed_modules = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
         Ok(typed_modules) => typed_modules,
         Err(err) => {
-            return CompileToJsResult::failure(strip(render_infer_error(ROOT_FILENAME, source, &err)));
+            let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(ROOT_FILENAME, source, &err);
+            return CompileToJsResult::failure(render_diags(&diags, &srcs));
         }
     };
 
     let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false) {
         Ok(files) => files,
         Err(err) => {
-            return CompileToJsResult::failure(strip(render_js_codegen_error(ROOT_FILENAME, source, &err)));
+            let (diags, srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(ROOT_FILENAME, source, &err);
+            return CompileToJsResult::failure(render_diags(&diags, &srcs));
         }
     };
 

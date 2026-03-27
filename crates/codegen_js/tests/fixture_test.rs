@@ -5,7 +5,8 @@ use krypton_codegen_js::compile_modules_js;
 use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
-use krypton_typechecker::diagnostics::render_infer_error;
+use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
+use krypton_typechecker::diagnostics::lower_infer_error;
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
 
@@ -29,10 +30,11 @@ fn compile_js_result_with_resolver(
     );
 
     let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|e| {
-        let rendered = render_infer_error(fixture_name, source, &e);
+        let (diags, srcs) = lower_infer_error(fixture_name, source, &e);
+        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
         panic!("fixture {fixture_name}: type check failed:\n{rendered}");
     });
-    compile_modules_js(&typed_modules, "test", true)
+    compile_modules_js(&typed_modules, "test", false)
 }
 
 /// Copy runtime/js/*.mjs files into the temp output directory so that
@@ -131,9 +133,12 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
     "#;
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let typed_modules =
-        infer_module(&module, &CompositeResolver::stdlib_only(), "test".to_string())
-            .expect("typecheck should succeed");
+    let typed_modules = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+    )
+    .expect("typecheck should succeed");
     let root = typed_modules
         .iter()
         .find(|tm| tm.module_path == "test")
@@ -141,14 +146,11 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
     let lowered = krypton_ir::lower::lower_module(root, "test").expect("lowering should succeed");
 
     assert!(
-        lowered
-            .extern_fns
-            .iter()
-            .any(|ext| ext.name == "println"
-                && matches!(
-                    ext.target,
-                    krypton_ir::ExternTarget::Js { ref module } if module == "./runtime.mjs"
-                )),
+        lowered.extern_fns.iter().any(|ext| ext.name == "println"
+            && matches!(
+                ext.target,
+                krypton_ir::ExternTarget::Js { ref module } if module == "./runtime.mjs"
+            )),
         "local extern println should lower as JS extern"
     );
     assert!(
@@ -310,7 +312,8 @@ fn js_codegen_fixture(
                 );
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|e| {
-                        let rendered = render_infer_error(&name, &fixture.source, &e);
+                        let (diags, srcs) = lower_infer_error(&name, &fixture.source, &e);
+                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 compile_modules_js(&typed_modules, "test", true).unwrap_or_else(|e| {
@@ -359,7 +362,8 @@ fn js_codegen_module(
                 );
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|e| {
-                        let rendered = render_infer_error(&name, &fixture.source, &e);
+                        let (diags, srcs) = lower_infer_error(&name, &fixture.source, &e);
+                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 let _ = compile_modules_js(&typed_modules, "test", true);

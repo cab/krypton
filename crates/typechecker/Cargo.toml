@@ -6,8 +6,8 @@ edition.workspace = true
 [dependencies]
 krypton-parser = { path = "../parser" }
 krypton-modules = { path = "../modules" }
-ariadne.workspace = true
 serde.workspace = true
+krypton-diagnostics = { path = "../diagnostics" }
 tracing.workspace = true
 
 [dev-dependencies]

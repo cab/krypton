@@ -9,6 +9,7 @@ krypton-modules = { path = "../modules" }
 krypton-typechecker = { path = "../typechecker" }
 krypton-codegen = { path = "../codegen" }
 krypton-codegen-js = { path = "../codegen_js" }
+krypton-diagnostics = { path = "../diagnostics" }
 krypton-ir = { path = "../ir" }
 clap = { workspace = true }
 tempfile = { workspace = true }

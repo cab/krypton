@@ -6,7 +6,8 @@ use krypton_codegen::emit::compile_modules;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
-use krypton_typechecker::diagnostics::render_infer_error;
+use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
+use krypton_typechecker::diagnostics::lower_infer_error;
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
 
@@ -33,7 +34,8 @@ fn run_program_with_resolver(
     );
 
     let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|e| {
-        let rendered = render_infer_error(fixture_name, source, &e);
+        let (diags, srcs) = lower_infer_error(fixture_name, source, &e);
+        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
         panic!("fixture {fixture_name}: type check failed:\n{rendered}");
     });
     let classes = compile_modules(&typed_modules, "Kr$Test")
@@ -109,7 +111,8 @@ fn codegen_fixture(
                 );
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|e| {
-                        let rendered = render_infer_error(&name, &fixture.source, &e);
+                        let (diags, srcs) = lower_infer_error(&name, &fixture.source, &e);
+                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 match compile_modules(&typed_modules, "Kr$Test") {
@@ -154,7 +157,8 @@ fn codegen_module(
                 );
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|e| {
-                        let rendered = render_infer_error(&name, &fixture.source, &e);
+                        let (diags, srcs) = lower_infer_error(&name, &fixture.source, &e);
+                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 match compile_modules(&typed_modules, "Kr$Test") {

@@ -9,10 +9,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 include_dir = "0.7"
 krypton-codegen-js = { path = "../codegen_js" }
+krypton-diagnostics = { path = "../diagnostics" }
 krypton-modules = { path = "../modules" }
 krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }
 serde.workspace = true
-strip-ansi-escapes = "0.2"
 serde-wasm-bindgen = "0.6"
 wasm-bindgen = "0.2"
