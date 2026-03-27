@@ -2,6 +2,7 @@ import { basicSetup, EditorView } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
+import { setDiagnostics, lintGutter } from "@codemirror/lint";
 
 import kryptonTmLanguage from "../../vscode-grammar/krypton.tmLanguage.json";
 import { createKryptonLanguage } from "./krypton-language.js";
@@ -80,6 +81,75 @@ const kryptonTheme = EditorView.theme({
   },
 });
 
+function renderDiagnosticsDom(diagnostics, container) {
+  container.innerHTML = "";
+  for (const diag of diagnostics) {
+    const severity = diag.severity === "Error" ? "error" : "warning";
+    const el = document.createElement("div");
+    el.className = `diagnostic diagnostic-${severity}`;
+
+    const header = document.createElement("div");
+    header.className = "diag-header";
+
+    const sevSpan = document.createElement("span");
+    sevSpan.className = "diag-severity";
+    sevSpan.textContent = severity;
+    header.appendChild(sevSpan);
+
+    if (diag.code) {
+      const codeSpan = document.createElement("span");
+      codeSpan.className = "diag-code";
+      codeSpan.textContent = `[${diag.code}]`;
+      header.appendChild(codeSpan);
+    }
+
+    header.appendChild(document.createTextNode(`: ${diag.message}`));
+    el.appendChild(header);
+
+    if (diag.primary_label) {
+      const label = document.createElement("div");
+      label.className = "diag-label";
+      label.textContent = `  --> ${diag.primary_file}: ${diag.primary_label}`;
+      el.appendChild(label);
+    }
+
+    for (const sec of diag.secondary_labels ?? []) {
+      const label = document.createElement("div");
+      label.className = "diag-label";
+      label.textContent = `  --> ${sec.filename}: ${sec.message}`;
+      el.appendChild(label);
+    }
+
+    if (diag.help) {
+      const helpEl = document.createElement("div");
+      helpEl.className = "diag-help";
+      helpEl.textContent = `  help: ${diag.help}`;
+      el.appendChild(helpEl);
+    }
+
+    if (diag.note) {
+      const noteEl = document.createElement("div");
+      noteEl.className = "diag-note";
+      noteEl.textContent = `  note: ${diag.note}`;
+      el.appendChild(noteEl);
+    }
+
+    container.appendChild(el);
+  }
+}
+
+function toCmDiagnostics(diagnostics) {
+  return diagnostics
+    .filter((d) => d.primary_span)
+    .map((d) => ({
+      from: d.primary_span[0],
+      to: d.primary_span[1],
+      severity: d.severity === "Error" ? "error" : "warning",
+      message: d.message,
+      source: d.code,
+    }));
+}
+
 document.querySelectorAll(".code-block").forEach((block) => {
   const textarea = block.querySelector(".editor");
   const outputEl = block.querySelector(".output");
@@ -106,10 +176,18 @@ document.querySelectorAll(".code-block").forEach((block) => {
     }
     try {
       const result = await runSnippet(view.state.doc.toString());
-      outputText.textContent = result.output || "(no output)";
+      const diagnostics = result.diagnostics ?? [];
+      if (diagnostics.length > 0) {
+        renderDiagnosticsDom(diagnostics, outputText);
+        view.dispatch(setDiagnostics(view.state, toCmDiagnostics(diagnostics)));
+      } else {
+        outputText.textContent = result.output || "(no output)";
+        view.dispatch(setDiagnostics(view.state, []));
+      }
     } catch (error) {
       outputText.textContent =
         error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      view.dispatch(setDiagnostics(view.state, []));
     } finally {
       if (runBtn instanceof HTMLButtonElement) {
         runBtn.disabled = false;
@@ -127,6 +205,7 @@ document.querySelectorAll(".code-block").forEach((block) => {
         indentUnit.of("  "),
         kryptonLanguage,
         kryptonTheme,
+        lintGutter(),
         keymap.of([
           {
             key: "Mod-Enter",

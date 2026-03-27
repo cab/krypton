@@ -9,20 +9,20 @@ pub struct SourceEntry {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum Severity {
     Error,
     Warning,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DiagnosticLabel {
     pub span: Span,
     pub message: String,
     pub filename: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub code: String,
@@ -42,6 +42,7 @@ pub trait DiagnosticRenderer {
 
 pub struct AriadneRenderer;
 pub struct PlainTextRenderer;
+pub struct JsonRenderer;
 
 impl DiagnosticRenderer for AriadneRenderer {
     type Output = String;
@@ -56,6 +57,14 @@ impl DiagnosticRenderer for PlainTextRenderer {
 
     fn render(&self, diagnostic: &Diagnostic, src_entries: &[SourceEntry]) -> String {
         render_ariadne(diagnostic, src_entries, false)
+    }
+}
+
+impl DiagnosticRenderer for JsonRenderer {
+    type Output = String;
+
+    fn render(&self, diagnostic: &Diagnostic, _sources: &[SourceEntry]) -> String {
+        serde_json::to_string(diagnostic).expect("Diagnostic serialization cannot fail")
     }
 }
 
@@ -222,6 +231,76 @@ mod tests {
             output.contains("first use here"),
             "should contain secondary label: {output}"
         );
+    }
+
+    #[test]
+    fn json_renderer_round_trips_diagnostic() {
+        let diag = Diagnostic {
+            severity: Severity::Error,
+            code: "E0001".to_string(),
+            message: "type mismatch".to_string(),
+            primary_file: "test.kr".to_string(),
+            primary_span: Some((10, 15)),
+            primary_label: Some("expected Int".to_string()),
+            secondary_labels: vec![DiagnosticLabel {
+                span: (0, 5),
+                message: "first defined here".to_string(),
+                filename: "other.kr".to_string(),
+            }],
+            help: Some("try converting the type".to_string()),
+            note: Some("expected Int, found String".to_string()),
+        };
+        let sources = sample_sources();
+        let output = JsonRenderer.render(&diag, &sources);
+        let json: serde_json::Value = serde_json::from_str(&output).expect("valid JSON");
+        assert_eq!(json["severity"], "Error");
+        assert_eq!(json["code"], "E0001");
+        assert_eq!(json["message"], "type mismatch");
+        assert_eq!(json["primary_file"], "test.kr");
+        assert_eq!(json["primary_span"], serde_json::json!([10, 15]));
+        assert_eq!(json["primary_label"], "expected Int");
+        assert_eq!(json["secondary_labels"][0]["span"], serde_json::json!([0, 5]));
+        assert_eq!(json["secondary_labels"][0]["message"], "first defined here");
+        assert_eq!(json["secondary_labels"][0]["filename"], "other.kr");
+        assert_eq!(json["help"], "try converting the type");
+        assert_eq!(json["note"], "expected Int, found String");
+    }
+
+    #[test]
+    fn json_renderer_spanless_diagnostic() {
+        let diag = Diagnostic {
+            severity: Severity::Warning,
+            code: "W0001".to_string(),
+            message: "unused variable".to_string(),
+            primary_file: "test.kr".to_string(),
+            primary_span: None,
+            primary_label: None,
+            secondary_labels: vec![],
+            help: None,
+            note: None,
+        };
+        let sources = sample_sources();
+        let output = JsonRenderer.render(&diag, &sources);
+        let json: serde_json::Value = serde_json::from_str(&output).expect("valid JSON");
+        assert_eq!(json["severity"], "Warning");
+        assert!(json["primary_span"].is_null());
+        assert!(json["primary_label"].is_null());
+        assert_eq!(json["secondary_labels"], serde_json::json!([]));
+        assert!(json["help"].is_null());
+        assert!(json["note"].is_null());
+    }
+
+    #[test]
+    fn json_renderer_ignores_sources() {
+        let diag = sample_diagnostic();
+        let sources1 = sample_sources();
+        let sources2 = vec![SourceEntry {
+            filename: "different.kr".to_string(),
+            source: "completely different content\n".to_string(),
+        }];
+        let output1 = JsonRenderer.render(&diag, &sources1);
+        let output2 = JsonRenderer.render(&diag, &sources2);
+        assert_eq!(output1, output2);
     }
 
     #[test]

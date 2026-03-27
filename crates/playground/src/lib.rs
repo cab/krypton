@@ -1,6 +1,6 @@
 use include_dir::{include_dir, Dir};
 use krypton_codegen_js::compile_modules_js;
-use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
+use krypton_diagnostics::Diagnostic;
 use krypton_modules::{
     module_resolver::ModuleResolver,
     stdlib_loader::StdlibLoader,
@@ -38,17 +38,17 @@ pub struct CompileToJsResult {
     pub entry_module: String,
     pub files: Vec<CompiledJsFile>,
     pub warnings: Vec<String>,
-    pub diagnostics: Vec<String>,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl CompileToJsResult {
-    fn failure(diagnostic: String) -> Self {
+    fn failure(diagnostics: Vec<Diagnostic>) -> Self {
         Self {
             success: false,
             entry_module: String::new(),
             files: Vec::new(),
             warnings: Vec::new(),
-            diagnostics: vec![diagnostic],
+            diagnostics,
         }
     }
 }
@@ -81,14 +81,10 @@ fn package_runtime_files(files: &mut Vec<CompiledJsFile>) {
 }
 
 pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
-    let render_diags = |diags: &[krypton_diagnostics::Diagnostic], srcs: &[krypton_diagnostics::SourceEntry]| -> String {
-        diags.iter().map(|d| PlainTextRenderer.render(d, srcs)).collect()
-    };
-
     let (module, parse_errors) = parse(source);
     if !parse_errors.is_empty() {
-        let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(ROOT_FILENAME, source, &parse_errors);
-        return CompileToJsResult::failure(render_diags(&diags, &srcs));
+        let (diags, _srcs) = krypton_parser::diagnostics::lower_parse_errors(ROOT_FILENAME, source, &parse_errors);
+        return CompileToJsResult::failure(diags);
     }
 
     let resolver = PlaygroundResolver {
@@ -97,16 +93,16 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let typed_modules = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
         Ok(typed_modules) => typed_modules,
         Err(err) => {
-            let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_error(ROOT_FILENAME, source, &err);
-            return CompileToJsResult::failure(render_diags(&diags, &srcs));
+            let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_error(ROOT_FILENAME, source, &err);
+            return CompileToJsResult::failure(diags);
         }
     };
 
     let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false) {
         Ok(files) => files,
         Err(err) => {
-            let (diags, srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(ROOT_FILENAME, source, &err);
-            return CompileToJsResult::failure(render_diags(&diags, &srcs));
+            let (diags, _srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(ROOT_FILENAME, source, &err);
+            return CompileToJsResult::failure(diags);
         }
     };
 
@@ -160,6 +156,21 @@ mod tests {
         let result = compile_to_js_result("fun main( = 1");
         assert!(!result.success, "expected failure: {result:?}");
         assert!(!result.diagnostics.is_empty(), "expected diagnostics");
+        let diag = &result.diagnostics[0];
+        assert_eq!(diag.severity, krypton_diagnostics::Severity::Error);
+        assert!(!diag.code.is_empty(), "diagnostic should have a code");
+        assert!(!diag.message.is_empty(), "diagnostic should have a message");
         assert!(result.files.is_empty(), "failed compile should not return files");
+    }
+
+    #[test]
+    fn compile_to_js_diagnostics_have_structured_fields() {
+        // Type error: applying Int to a non-function
+        let result = compile_to_js_result("fun main() = (1)(2)");
+        assert!(!result.success, "expected failure: {result:?}");
+        assert!(!result.diagnostics.is_empty(), "expected diagnostics");
+        let diag = &result.diagnostics[0];
+        assert_eq!(diag.primary_file, "main.kr");
+        assert!(diag.primary_span.is_some(), "diagnostic should have a span");
     }
 }

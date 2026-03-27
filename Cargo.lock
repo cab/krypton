@@ -846,6 +846,7 @@ dependencies = [
  "ariadne",
  "insta",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

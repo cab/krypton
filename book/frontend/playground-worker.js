@@ -127,7 +127,9 @@ self.onmessage = async (event) => {
     response.diagnostics = compiled.diagnostics ?? [];
 
     if (!compiled.success) {
-      response.error = response.diagnostics.join("\n\n");
+      response.error = response.diagnostics
+        .map((d) => `${d.severity === "Error" ? "error" : "warning"}[${d.code}]: ${d.message}`)
+        .join("\n");
       response.output = formatResultSections({
         warnings: response.warnings,
         error: response.error,

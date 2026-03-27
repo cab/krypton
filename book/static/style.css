@@ -40,10 +40,26 @@
   --bg: #f2eee9;
   --fg: #1a1a1a;
   --muted: #666;
-  --border: #e0e0e0;
+  --border: #d7d0c7;
   --accent: #4a6cf7;
   --accent-hover: #3a5ce5;
-  --code-bg: #f6f8fa;
+  --button-bg: #9b78de;
+  --button-hover: #8b67d1;
+  --code-bg: #f8f4ee;
+  --code-fg: #2b2620;
+  --code-gutter-bg: #f3ede4;
+  --code-gutter-fg: #8c8478;
+  --code-gutter-border: #ddd4c9;
+  --code-active-line: rgba(74, 108, 247, 0.08);
+  --code-selection: rgba(74, 108, 247, 0.18);
+  --code-keyword: #7a4db4;
+  --code-operator: #5d5750;
+  --code-number: #c2602f;
+  --code-string: #b44e37;
+  --code-comment: #9b9488;
+  --code-type: #246b8f;
+  --code-function: #2f5fb8;
+  --code-special: #9a5a1a;
   --output-bg: #1e1e1e;
   --output-fg: #d4d4d4;
   --nav-bg: #f5f5f5;
@@ -206,7 +222,7 @@ body {
 
 .start-btn {
   display: inline-block;
-  background: var(--accent);
+  background: var(--button-bg);
   color: white;
   padding: 0.6rem 1.4rem;
   border-radius: 6px;
@@ -215,7 +231,7 @@ body {
 }
 
 .start-btn:hover {
-  background: var(--accent-hover);
+  background: var(--button-hover);
 }
 
 .toc-chapter {
@@ -305,6 +321,8 @@ body {
   border-radius: 8px;
   overflow: hidden;
   margin: 1.5rem 0;
+  background: var(--code-bg);
+  box-shadow: 0 1px 0 rgba(26, 26, 26, 0.04);
 }
 
 .code-block .CodeMirror {
@@ -316,6 +334,8 @@ body {
 
 .code-block .cm-editor {
   min-height: 0;
+  background: var(--code-bg);
+  color: var(--code-fg);
 }
 
 .code-block .cm-scroller {
@@ -330,12 +350,12 @@ body {
   display: flex;
   justify-content: flex-end;
   padding: 0.4rem 0.6rem;
-  background: var(--code-bg);
+  background: var(--code-gutter-bg);
   border-top: 1px solid var(--border);
 }
 
 .run-btn {
-  background: var(--accent);
+  background: var(--button-bg);
   color: white;
   border: none;
   padding: 0.35rem 1rem;
@@ -346,7 +366,7 @@ body {
 }
 
 .run-btn:hover {
-  background: var(--accent-hover);
+  background: var(--button-hover);
 }
 
 /* Output */
@@ -368,6 +388,48 @@ body {
   margin: 0;
   background: none;
   border-radius: 0;
+}
+
+.diagnostic {
+  padding: 0.4rem 1rem;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.diagnostic + .diagnostic {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.diag-header {
+  white-space: pre-wrap;
+}
+
+.diagnostic-error .diag-severity {
+  color: #e45649;
+  font-weight: 700;
+}
+
+.diagnostic-warning .diag-severity {
+  color: #c18401;
+  font-weight: 700;
+}
+
+.diag-code {
+  opacity: 0.7;
+}
+
+.diag-label {
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+.diag-help,
+.diag-note {
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 0.15rem;
 }
 
 /* Lesson nav */
