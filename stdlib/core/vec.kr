@@ -1,8 +1,10 @@
 import core/list.{Cons, Nil, List, length as list_length, filter as list_filter, sort_by as list_sort_by, map as list_map, fold as list_fold}
 import core/option.{Option, Some, None}
-import core/semigroup.{Semigroup}
+import core/semigroup.{Semigroup, combine}
 import core/sub.{sub}
 import core/ord.{Ord, lt}
+import core/show.{Show, show}
+import core/semigroup.{combine}
 
 # core/vec — Vec type (backed by KryptonArray)
 extern java "krypton.runtime.KryptonArray" as Vec[a] {
@@ -11,6 +13,18 @@ extern java "krypton.runtime.KryptonArray" as Vec[a] {
     fun staticNew(size: Int) -> Vec[a]
     fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
     fun staticFreeze(xs: Vec[a]) -> Vec[a]
+}
+
+fun join_elems[a](v: Vec[a], i: Int, acc: String) -> String where a: Show =
+    if i < staticLength(v) {
+        let sep = if i < 1 { "" } else { ", " };
+        recur(v, i + 1, combine(combine(acc, sep), show(staticGet(v, i))))
+    } else {
+        acc
+    }
+
+impl Show[Vec[a]] where a: Show {
+    fun show(v) = combine(combine("[", join_elems(v, 0, "")), "]")
 }
 
 extern js "../runtime/js/array.mjs" as Vec[a] {

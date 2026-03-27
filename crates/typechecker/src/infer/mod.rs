@@ -2287,6 +2287,9 @@ fn import_cached_instances(
         for td in imported_trait_defs {
             source_modules.insert(td.module_path.as_str());
         }
+        // Vec is a language-level builtin (array literal syntax []),
+        // so always include its defining module for instance resolution.
+        source_modules.insert("core/vec");
 
         let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
         for mod_path in &source_modules {
