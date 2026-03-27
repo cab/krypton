@@ -109,6 +109,8 @@ impl TypeRegistry {
             return Err(TypeError::UnknownType {
                 name: target.to_string(),
                 suggestion: None,
+                variant_of: None,
+                is_value: false,
             });
         }
         self.aliases.insert(alias.to_string(), target.to_string());
@@ -134,6 +136,18 @@ impl TypeRegistry {
     pub fn is_user_visible(&self, name: &str) -> bool {
         let canonical = self.canonical_name(name);
         self.user_visible.contains(canonical)
+    }
+
+    /// If `name` is a variant constructor of some sum type, return that type's name.
+    pub fn find_variant_parent(&self, name: &str) -> Option<&str> {
+        for info in self.types.values() {
+            if let TypeKind::Sum { variants } = &info.kind {
+                if variants.iter().any(|v| v.name == name) {
+                    return Some(&info.name);
+                }
+            }
+        }
+        None
     }
 
     pub fn lookup_type(&self, name: &str) -> Option<&TypeInfo> {
@@ -391,9 +405,12 @@ fn resolve_named(
                 } else {
                     None
                 };
+                let variant_of = registry.find_variant_parent(name).map(|s| s.to_string());
                 Err(TypeError::UnknownType {
                     name: name.to_string(),
                     suggestion,
+                    variant_of,
+                    is_value: false,
                 })
             }
         }

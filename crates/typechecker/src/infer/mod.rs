@@ -2448,6 +2448,7 @@ fn register_local_traits(
                                 ResolutionContext::UserAnnotation,
                                 None,
                             )
+                            .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                             .map_err(|e| spanned(e, method.span))?,
                         );
                     } else {
@@ -2463,6 +2464,7 @@ fn register_local_traits(
                         ResolutionContext::UserAnnotation,
                         None,
                     )
+                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, method.span))?
                 } else {
                     Type::Var(state.gen.fresh())
@@ -2804,6 +2806,7 @@ fn register_impl_instances(
                     ResolutionContext::UserAnnotation,
                     None,
                 )
+                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                 .map_err(|e| spanned(e, *span))?
             };
 
@@ -3241,6 +3244,7 @@ fn infer_function_bodies<'a>(
                         ResolutionContext::UserAnnotation,
                         None,
                     )
+                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, decl.span))?;
                     unify(&ptv, &annotated_ty, &mut state.subst)
                         .map_err(|e| spanned(e, decl.span))?;
@@ -3258,6 +3262,7 @@ fn infer_function_bodies<'a>(
                     ResolutionContext::UserAnnotation,
                     None,
                 )
+                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                 .map_err(|e| spanned(e, decl.span))?;
                 state.env.fn_return_type = Some(resolved_ret);
             } else {
@@ -3313,6 +3318,7 @@ fn infer_function_bodies<'a>(
                     ResolutionContext::UserAnnotation,
                     None,
                 )
+                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                 .map_err(|e| spanned(e, decl.span))?;
                 coerce_unify(&body_ty, &annotated_ret, &mut state.subst)
                     .map_err(|e| spanned(e, decl.span))?;
@@ -3586,6 +3592,7 @@ fn typecheck_impl_methods(
                                 ResolutionContext::UserAnnotation,
                                 Some(&resolved_target),
                             )
+                            .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                             .map_err(|e| spanned(e, p.span))?;
                             unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
                                 .map_err(|e| spanned_with_names(e, p.span, &impl_method_tpm))?;
@@ -3603,6 +3610,7 @@ fn typecheck_impl_methods(
                         ResolutionContext::UserAnnotation,
                         Some(&resolved_target),
                     )
+                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, method.span))?;
                     unify(&concrete_ret, &annotated_ret, &mut state.subst).map_err(|e| {
                         let error = match e {

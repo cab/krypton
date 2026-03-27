@@ -98,6 +98,7 @@ impl<'a> InferenceContext<'a> {
             ResolutionContext::UserAnnotation,
             self.self_type.as_ref(),
         )
+        .map_err(|e| e.enrich_unknown_type_with_env(self.env))
         .map_err(|e| super::spanned(e, span))
     }
 

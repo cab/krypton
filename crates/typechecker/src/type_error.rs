@@ -156,6 +156,8 @@ pub enum TypeError {
     UnknownType {
         name: String,
         suggestion: Option<String>,
+        variant_of: Option<String>,
+        is_value: bool,
     },
     QuestionMarkBadReturn {
         actual: Type,
@@ -448,8 +450,12 @@ impl TypeError {
                 }
                 Some(parts.join("; "))
             }
-            TypeError::UnknownType { name, suggestion } => {
-                if let Some(s) = suggestion {
+            TypeError::UnknownType { name, suggestion, variant_of, is_value } => {
+                if let Some(parent) = variant_of {
+                    Some(format!("`{name}` is a variant of type `{parent}`, not a type. Did you mean `{parent}`?"))
+                } else if *is_value {
+                    Some(format!("`{name}` is a value, not a type"))
+                } else if let Some(s) = suggestion {
                     Some(format!("did you mean `{s}`?"))
                 } else {
                     Some(format!("type `{}` is not defined", name))
@@ -639,6 +645,21 @@ impl TypeError {
             )),
             // All other variants: delegate to help()
             other => other.help(),
+        }
+    }
+
+    /// If this is an `UnknownType` error and the name exists as a value binding
+    /// in the given environment, set `is_value = true`.
+    pub fn enrich_unknown_type_with_env(self, env: &crate::types::TypeEnv) -> Self {
+        match self {
+            TypeError::UnknownType { ref name, is_value: false, .. } if env.lookup(name).is_some() => {
+                if let TypeError::UnknownType { name, suggestion, variant_of, .. } = self {
+                    TypeError::UnknownType { name, suggestion, variant_of, is_value: true }
+                } else {
+                    unreachable!()
+                }
+            }
+            other => other,
         }
     }
 }
