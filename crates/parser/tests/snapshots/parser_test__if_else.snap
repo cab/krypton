@@ -50,8 +50,8 @@ decls:
             Var:
               name: x
               span:
-                - 32
-                - 37
+                - 34
+                - 35
           else_:
             UnaryOp:
               op: Neg
@@ -62,8 +62,8 @@ decls:
                     - 46
                     - 47
               span:
-                - 43
-                - 49
+                - 45
+                - 47
           span:
             - 23
             - 49

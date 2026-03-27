@@ -51,8 +51,8 @@ decls:
               value:
                 Int: 1
               span:
-                - 33
-                - 38
+                - 35
+                - 36
           else_:
             BinaryOp:
               op: Mul
@@ -87,8 +87,8 @@ decls:
                     - 50
                     - 62
               span:
-                - 44
-                - 64
+                - 46
+                - 62
           span:
             - 23
             - 64
