@@ -117,18 +117,18 @@ decls:
               value:
                 Int: 1
               span:
-                - 208
-                - 225
+                - 218
+                - 219
           else_:
             Lit:
               value:
                 Int: 0
               span:
-                - 231
-                - 248
+                - 241
+                - 242
           span:
-            - 193
-            - 250
+            - 199
+            - 248
       span:
         - 161
         - 250

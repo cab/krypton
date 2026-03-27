@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
 use krypton_typechecker::typed_ast::{
-    AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry, TraitName, TypedExpr,
-    TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry, TraitName,
+    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -4548,9 +4548,10 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             if all_constraints.is_empty() {
                 continue;
             }
-            let mangled = format!(
-                "{}$${}$${}",
-                inst.trait_name.local_name, inst.target_type_name, m.name
+            let mangled = typed_ast::mangled_method_name(
+                &inst.trait_name.local_name,
+                &inst.target_type_name,
+                &m.name,
             );
             fn_constraints
                 .entry(mangled)
@@ -4942,12 +4943,13 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             inst.methods
                 .iter()
                 .filter_map(|m| {
-                    let mangled = format!(
-                        "{}$${}$${}",
-                        inst.trait_name.local_name, inst.target_type_name, m.name
+                    let mangled = typed_ast::mangled_method_name(
+                        &inst.trait_name.local_name,
+                        &inst.target_type_name,
+                        &m.name,
                     );
                     ctx.fn_ids
-                        .get(&mangled)
+                        .get(&mangled as &str)
                         .map(|&fn_id| (m.name.clone(), fn_id))
                 })
                 .collect()
@@ -4955,13 +4957,14 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             inst.methods
                 .iter()
                 .map(|m| {
-                    let mangled = format!(
-                        "{}$${}$${}",
-                        inst.trait_name.local_name, inst.target_type_name, m.name
+                    let mangled = typed_ast::mangled_method_name(
+                        &inst.trait_name.local_name,
+                        &inst.target_type_name,
+                        &m.name,
                     );
                     let fn_id = ctx
                         .fn_ids
-                        .get(&mangled)
+                        .get(&mangled as &str)
                         .unwrap_or_else(|| panic!("ICE: no FnId for instance method {mangled}"));
                     (m.name.clone(), *fn_id)
                 })

@@ -41,15 +41,15 @@ decls:
               value:
                 Int: 1
               span:
-                - 41
-                - 46
+                - 43
+                - 44
           else_:
             Lit:
               value:
                 Int: 0
               span:
-                - 52
-                - 57
+                - 54
+                - 55
           span:
             - 32
             - 57
@@ -94,8 +94,8 @@ decls:
               value:
                 String: big
               span:
-                - 88
-                - 97
+                - 90
+                - 95
           else_:
             If:
               cond:
@@ -122,18 +122,18 @@ decls:
                   value:
                     String: small
                   span:
-                    - 114
-                    - 125
+                    - 116
+                    - 123
               else_:
                 Lit:
                   value:
                     String: non-positive
                   span:
-                    - 131
-                    - 149
+                    - 133
+                    - 147
               span:
-                - 103
-                - 151
+                - 105
+                - 149
           span:
             - 78
             - 151

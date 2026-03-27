@@ -240,15 +240,15 @@ decls:
               value:
                 String: positive
               span:
-                - 269
-                - 283
+                - 271
+                - 281
           else_:
             Lit:
               value:
                 String: non-positive
               span:
-                - 289
-                - 307
+                - 291
+                - 305
           span:
             - 260
             - 307
@@ -318,8 +318,8 @@ decls:
             Var:
               name: None
               span:
-                - 365
-                - 377
+                - 371
+                - 375
           else_:
             App:
               func:
@@ -348,8 +348,8 @@ decls:
                       - 399
               is_ufcs: false
               span:
-                - 383
-                - 402
+                - 389
+                - 400
           span:
             - 355
             - 402
