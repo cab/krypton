@@ -44,28 +44,44 @@ fn typed_callee_var_name(expr: &TypedExpr) -> Option<&str> {
     }
 }
 
-/// Simple type var binding: walk pattern and actual types, recording Var → concrete mappings.
-fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) {
+/// Collect type variable bindings while enforcing consistency for repeated vars.
+/// Fixed non-variable structure that does not bind anything is ignored.
+fn collect_type_var_bindings_strict(
+    pattern: &Type,
+    actual: &Type,
+    bindings: &mut HashMap<TypeVarId, Type>,
+) -> bool {
     match (pattern, actual) {
-        (Type::Var(id), _) => {
-            bindings.entry(*id).or_insert_with(|| actual.clone());
-        }
-        (Type::Own(p), _) => bind_type_vars_simple(p, actual, bindings),
-        (_, Type::Own(a)) => bind_type_vars_simple(pattern, a, bindings),
-        (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
-            bind_type_vars_simple(p_ctor, a_ctor, bindings);
-            for (p, a) in p_args.iter().zip(a_args.iter()) {
-                bind_type_vars_simple(p, a, bindings);
+        // Unresolved actuals are still informative enough to establish a first binding,
+        // but they should not contradict an existing concrete binding during this pass.
+        (Type::Var(id), _) => match bindings.get(id) {
+            Some(existing) if !free_vars(existing).is_empty() || !free_vars(actual).is_empty() => {
+                true
             }
+            Some(existing) => existing == actual,
+            None => {
+                bindings.insert(*id, actual.clone());
+                true
+            }
+        },
+        (Type::Own(p), _) => collect_type_var_bindings_strict(p, actual, bindings),
+        (_, Type::Own(a)) => collect_type_var_bindings_strict(pattern, a, bindings),
+        (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
+            collect_type_var_bindings_strict(p_ctor, a_ctor, bindings)
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
         }
         // Cross-arm for HKT: pattern App(Var(f), [a]) vs actual Named("Box", [Int])
         (Type::App(p_ctor, p_args), Type::Named(a_name, a_args))
             if p_args.len() == a_args.len() =>
         {
-            bind_type_vars_simple(p_ctor, &Type::Named(a_name.clone(), vec![]), bindings);
-            for (p, a) in p_args.iter().zip(a_args.iter()) {
-                bind_type_vars_simple(p, a, bindings);
-            }
+            collect_type_var_bindings_strict(p_ctor, &Type::Named(a_name.clone(), vec![]), bindings)
+                && p_args
+                    .iter()
+                    .zip(a_args.iter())
+                    .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
         }
         // Cross-arm for HKT: pattern App(Var(f), [a]) vs actual Fn([Int], Int)
         (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
@@ -73,28 +89,32 @@ fn bind_type_vars_simple(pattern: &Type, actual: &Type, bindings: &mut HashMap<T
         {
             let (ctor_fn, remaining) =
                 types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
-            bind_type_vars_simple(p_ctor, &ctor_fn, bindings);
-            for (p, a) in p_args.iter().zip(remaining.iter()) {
-                bind_type_vars_simple(p, a, bindings);
-            }
+            collect_type_var_bindings_strict(p_ctor, &ctor_fn, bindings)
+                && p_args
+                    .iter()
+                    .zip(remaining.iter())
+                    .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
         }
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) if p_name == a_name => {
-            for (p, a) in p_args.iter().zip(a_args.iter()) {
-                bind_type_vars_simple(p, a, bindings);
-            }
+            p_args
+                .iter()
+                .zip(a_args.iter())
+                .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
         }
         (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
-            for (p, a) in p_params.iter().zip(a_params.iter()) {
-                bind_type_vars_simple(p, a, bindings);
-            }
-            bind_type_vars_simple(p_ret, a_ret, bindings);
+            p_params
+                .iter()
+                .zip(a_params.iter())
+                .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
+                && collect_type_var_bindings_strict(p_ret, a_ret, bindings)
         }
         (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
-            for (p, a) in p_elems.iter().zip(a_elems.iter()) {
-                bind_type_vars_simple(p, a, bindings);
-            }
+            p_elems
+                .iter()
+                .zip(a_elems.iter())
+                .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
         }
-        _ => {}
+        _ => true,
     }
 }
 
@@ -541,7 +561,7 @@ pub(super) fn check_trait_instances(
                             let mut bindings = HashMap::new();
                             // Bind from params
                             for (pattern, arg) in method.param_types.iter().zip(args.iter()) {
-                                bind_type_vars_simple(
+                                collect_type_var_bindings_strict(
                                     pattern,
                                     &subst.apply(&arg.ty),
                                     &mut bindings,
@@ -553,7 +573,11 @@ pub(super) fn check_trait_instances(
                                 Type::Fn(_, ret) => ret.as_ref().clone(),
                                 other => other.clone(),
                             };
-                            bind_type_vars_simple(&method.return_type, &actual_ret, &mut bindings);
+                            collect_type_var_bindings_strict(
+                                &method.return_type,
+                                &actual_ret,
+                                &mut bindings,
+                            );
                             // Bind from explicit type application
                             if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
                                 if !type_args.is_empty() {
@@ -564,12 +588,10 @@ pub(super) fn check_trait_instances(
                             }
                             // Check dispatch type var — must always be bindable from the
                             // method signature (params, return type, or explicit type args)
-                            let dispatch_ty = bindings.get(&info.type_var_id)
-                                .unwrap_or_else(|| panic!(
-                                    "ICE: trait type var for `{}::{}` not bound from method signature",
-                                    trait_id.local_name, name
-                                ));
-                            let concrete_ty = strip_own(dispatch_ty);
+                            let dispatch_ty = bindings.get(&info.type_var_id).cloned().or_else(|| {
+                                args.first().map(|arg| subst.apply(&arg.ty))
+                            }).unwrap_or(actual_ret);
+                            let concrete_ty = strip_own(&dispatch_ty);
                             if let Some(v) = leading_type_var(&concrete_ty) {
                                 if !fn_type_vars.contains(&v) {
                                     return Err(spanned(
@@ -602,21 +624,25 @@ pub(super) fn check_trait_instances(
                                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                                     let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
                                     for (pattern, arg) in param_types.iter().zip(args.iter()) {
-                                        bind_type_vars_simple(
+                                        if !collect_type_var_bindings_strict(
                                             pattern,
                                             &subst.apply(&arg.ty),
                                             &mut bindings,
-                                        );
+                                        ) {
+                                            return None;
+                                        }
                                     }
                                     if bindings.get(type_var).is_none() {
                                         // Also try return type
                                         let ret_actual = subst.apply(&func.ty);
                                         if let Type::Fn(_, actual_ret) = &ret_actual {
-                                            bind_type_vars_simple(
+                                            if !collect_type_var_bindings_strict(
                                                 ret_ty,
                                                 actual_ret,
                                                 &mut bindings,
-                                            );
+                                            ) {
+                                                return None;
+                                            }
                                         }
                                     }
                                     bindings.get(type_var).cloned()
@@ -753,4 +779,21 @@ pub(super) fn check_trait_instances(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_type_var_bindings_strict;
+    use crate::types::{Type, TypeVarGen};
+    use std::collections::HashMap;
+
+    #[test]
+    fn strict_binding_rejects_inconsistent_repeated_vars() {
+        let mut gen = TypeVarGen::new();
+        let tv = gen.fresh();
+        let pattern = Type::Tuple(vec![Type::Var(tv), Type::Var(tv)]);
+        let actual = Type::Tuple(vec![Type::Int, Type::String]);
+        let mut bindings = HashMap::new();
+        assert!(!collect_type_var_bindings_strict(&pattern, &actual, &mut bindings));
+    }
 }

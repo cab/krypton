@@ -1,15 +1,10 @@
 // Krypton JS runtime — JSON operations
 
-// HACK: Workaround for JSON.parse("null") returning JS null, which collides
-// with the error sentinel. Replace with @throws error handling when available.
-const JSON_NULL = { __krypton_json_null: true };
-
 export function staticParse(s) {
   try {
-    const parsed = JSON.parse(s);
-    return [parsed === null ? JSON_NULL : parsed, null];
+    return [true, JSON.parse(s)];
   } catch (e) {
-    return [null, e.message];
+    return [false, e.message];
   }
 }
 
@@ -19,7 +14,6 @@ export function staticSerialize(x) {
 
 export function staticRawType(x) {
   if (x === null || x === undefined) return 0;
-  if (x.__krypton_json_null) return 0;
   if (typeof x === 'boolean') return 1;
   if (typeof x === 'number') return 2;
   if (typeof x === 'string') return 3;

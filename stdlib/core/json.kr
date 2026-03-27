@@ -117,11 +117,12 @@ fun to_java[a](j: Json) -> a = match j {
 
 pub fun parse_json(s: String) -> Result[String, Json] = {
     let pair = staticParse(s)
-    let raw = staticGet(pair, 0)
-    if is_null(raw) {
-        Err(staticGet(pair, 1))
+    let ok: Bool = staticGet(pair, 0)
+    let payload = staticGet(pair, 1)
+    if ok {
+        Ok(from_java(payload))
     } else {
-        Ok(from_java(raw))
+        Err(payload)
     }
 }
 

@@ -384,13 +384,18 @@ declare println: (o) -> Unit
 declare render_it: (w7) -> String
 
 fn main() -> Unit =
-  let v0: (Int) -> String = make_closure(render_it, [])
-  let_join v7(v5: Bool) =
-    let v1: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
-    let v6: Unit = call println(v1, v5)
-    v6
+  let v1: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v0: (Int) -> String = make_closure(fn_ref$53, [v1])
+  let_join v11(v9: Bool) =
+    let v5: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+    let v10: Unit = call println(v5, v9)
+    v10
   in
-  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v3: String = call apply_to_int(v0, 42)
-  let v4: Bool = trait_call core/eq.Eq.eq(v2, v3, "42")
-  jump v7(v4)
+  let v6: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v7: String = call apply_to_int(v0, 42)
+  let v8: Bool = trait_call core/eq.Eq.eq(v6, v7, "42")
+  jump v11(v8)
+
+fn fn_ref$53(v2: Dict[core/show.Show, Int], v3: Int) -> String =
+  let v4: String = call render_it(v2, v3)
+  v4

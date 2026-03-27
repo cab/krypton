@@ -40,9 +40,17 @@ mod tests {
     /// Emit JS from a hand-built IR Module directly (bypasses lowering).
     fn emit_module(module: &Module) -> String {
         let variant_lookup = HashMap::new();
+        let qualified_sum_type_names = std::collections::HashSet::new();
+        let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[module]);
-        let mut emitter =
-            crate::emit::JsEmitter::new(module, false, &variant_lookup, &registry);
+        let mut emitter = crate::emit::JsEmitter::new(
+            module,
+            false,
+            &variant_lookup,
+            &qualified_sum_type_names,
+            &bare_sum_type_names,
+            &registry,
+        );
         emitter.emit()
     }
 
@@ -352,9 +360,17 @@ mod tests {
         // so we test the emitter's filename logic directly.
         let module = make_module("hello");
         let variant_lookup = HashMap::new();
+        let qualified_sum_type_names = std::collections::HashSet::new();
+        let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[&module]);
-        let mut emitter =
-            crate::emit::JsEmitter::new(&module, false, &variant_lookup, &registry);
+        let mut emitter = crate::emit::JsEmitter::new(
+            &module,
+            false,
+            &variant_lookup,
+            &qualified_sum_type_names,
+            &bare_sum_type_names,
+            &registry,
+        );
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"
         let filename = format!("{}.mjs", module.name);
@@ -826,6 +842,70 @@ mod tests {
         assert!(
             js.contains("const v$0 = Eq$$Int;"),
             "GetDict should resolve to dict constant name, got: {js:?}"
+        );
+    }
+
+    #[test]
+    fn get_dict_ice_on_repeated_type_var_mismatch() {
+        use krypton_ir::{FnId, InstanceDef, Type, VarId};
+
+        let mut gen = TypeVarGen::new();
+        let tv = gen.fresh();
+        let mut module = make_module("test");
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(2),
+            name: "Eq$$Pair$$eq".to_string(),
+            params: vec![],
+            return_type: Type::Bool,
+            body: expr(Type::Bool, krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true)))),
+        });
+        module.fn_names.insert(FnId(2), "Eq$$Pair$$eq".to_string());
+        module.instances.push(InstanceDef {
+            trait_name: make_trait_name("Eq"),
+            target_type: Type::Tuple(vec![Type::Var(tv), Type::Var(tv)]),
+            target_type_name: "$Tuple2".to_string(),
+            method_fn_ids: vec![("eq".to_string(), FnId(2))],
+            sub_dict_requirements: vec![],
+            is_intrinsic: false,
+            is_imported: false,
+        });
+
+        let d = VarId(0);
+        module.functions.push(krypton_ir::FnDef {
+            id: FnId(0),
+            name: "test_fn".to_string(),
+            params: vec![],
+            return_type: Type::Unit,
+            body: expr(
+                Type::Unit,
+                krypton_ir::ExprKind::Let {
+                    bind: d,
+                    ty: Type::Dict {
+                        trait_name: make_trait_name("Eq"),
+                        target: Box::new(Type::Tuple(vec![Type::Int, Type::String])),
+                    },
+                    value: simple(krypton_ir::SimpleExprKind::GetDict {
+                        trait_name: make_trait_name("Eq"),
+                        ty: Type::Tuple(vec![Type::Int, Type::String]),
+                    }),
+                    body: Box::new(expr(Type::Unit, krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(d)))),
+                },
+            ),
+        });
+        module.fn_names.insert(FnId(0), "test_fn".to_string());
+
+        let panic = std::panic::catch_unwind(|| emit_module(&module))
+            .expect_err("mismatched repeated type vars should ICE");
+        let msg = if let Some(msg) = panic.downcast_ref::<String>() {
+            msg.clone()
+        } else if let Some(msg) = panic.downcast_ref::<&str>() {
+            msg.to_string()
+        } else {
+            String::new()
+        };
+        assert!(
+            msg.contains("ICE: unresolved JS dict lookup"),
+            "expected unresolved dict ICE, got: {msg:?}"
         );
     }
 

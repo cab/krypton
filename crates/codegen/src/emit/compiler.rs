@@ -1380,21 +1380,9 @@ impl Compiler {
                 )?;
                 let fun_class_idx = self.lambda.fun_classes[&arity];
 
-                let dict_requirements = self
-                    .traits
-                    .impl_dict_requirements
-                    .get(&func_name)
-                    .cloned()
-                    .unwrap_or_default();
-
-                // When captures is empty but there are dict requirements, the dicts
-                // become implicit captures passed via the invokedynamic call site.
-                let dict_capture_count = if captures.is_empty() && !dict_requirements.is_empty() {
-                    dict_requirements.len()
-                } else {
-                    0
-                };
-                let capture_count = captures.len() + dict_capture_count;
+                // Dict captures are now handled in the IR (lower_constrained_fn_as_value),
+                // so captures already includes any needed dict atoms.
+                let capture_count = captures.len();
 
                 // Build bridge method
                 let bridge_name = format!("lambda${}", self.lambda.lambda_counter);
@@ -1546,31 +1534,6 @@ impl Compiler {
                     self.builder.box_if_needed(cap_type);
                 }
 
-                // Handle dict requirements for fn refs with captures
-                if captures.is_empty() && !dict_requirements.is_empty() {
-                    let declared_param_types = self
-                        .types
-                        .fn_tc_types
-                        .get(&func_name)
-                        .map(|(params, _)| params.clone())
-                        .unwrap_or_else(|| param_types_tc.clone());
-                    for requirement in &dict_requirements {
-                        let requirement_ty = Self::resolve_function_ref_requirement_type(
-                            requirement,
-                            &declared_param_types,
-                            &param_types_tc,
-                        )
-                        .ok_or_else(|| CodegenError::UndefinedVariable(format!(
-                            "could not resolve function reference dictionary requirement {} for {func_name}",
-                            requirement.trait_name()
-                        ), None))?;
-                        self.emit_dict_argument_for_type(
-                            requirement.trait_name(),
-                            &requirement_ty,
-                            self.builder.refs.object_class,
-                        )?;
-                    }
-                }
 
                 self.emit_fun_reference_indy(
                     arity,

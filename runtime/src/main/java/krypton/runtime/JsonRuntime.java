@@ -120,18 +120,18 @@ public final class JsonRuntime {
 
     // ── Static methods exposed to Krypton ─────────────────────────────
 
-    // Parse: returns 2-element KryptonArray [result_or_null, error_or_null]
+    // Parse: returns 2-element KryptonArray [ok, value_or_error]
     public static Object staticParse(String s) {
         try {
             JsonNode node = MAPPER.readTree(s);
             KryptonArray result = new KryptonArray(2);
-            result.set(0, fromNode(node));
-            result.set(1, null);
+            result.set(0, true);
+            result.set(1, fromNode(node));
             result.freeze();
             return result;
         } catch (Exception e) {
             KryptonArray result = new KryptonArray(2);
-            result.set(0, null);
+            result.set(0, false);
             result.set(1, e.getMessage());
             result.freeze();
             return result;

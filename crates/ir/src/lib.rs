@@ -298,10 +298,13 @@ pub fn bind_type_vars(
     bindings: &mut HashMap<TypeVarId, Type>,
 ) -> bool {
     match (pattern, actual) {
-        (Type::Var(id), _) => {
-            bindings.entry(*id).or_insert_with(|| actual.clone());
-            true
-        }
+        (Type::Var(id), _) => match bindings.get(id) {
+            Some(existing) => existing == actual,
+            None => {
+                bindings.insert(*id, actual.clone());
+                true
+            }
+        },
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
             p_name == a_name
                 && p_args.len() == a_args.len()

@@ -160,13 +160,18 @@ fn show_it(v0: Dict[core/show.Show, w7], v1: w7) -> String =
   v2
 
 fn main() -> Unit =
-  let v3: (Int) -> String = make_closure(show_it, [])
-  let_join v10(v8: Bool) =
-    let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
-    let v9: Unit = call println(v4, v8)
-    v9
+  let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v3: (Int) -> String = make_closure(fn_ref$52, [v4])
+  let_join v14(v12: Bool) =
+    let v8: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+    let v13: Unit = call println(v8, v12)
+    v13
   in
-  let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v6: String = call_closure v3(42)
-  let v7: Bool = trait_call core/eq.Eq.eq(v5, v6, "42")
-  jump v10(v7)
+  let v9: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v10: String = call_closure v3(42)
+  let v11: Bool = trait_call core/eq.Eq.eq(v9, v10, "42")
+  jump v14(v11)
+
+fn fn_ref$52(v5: Dict[core/show.Show, Int], v6: Int) -> String =
+  let v7: String = call show_it(v5, v6)
+  v7

@@ -19,7 +19,13 @@ struct SingletonInstance {
 struct ParametricInstance {
     js_name: String,
     target_type: Type,
+    head_key: Option<String>,
     source_module: Option<String>,
+}
+
+struct ParametricBucket {
+    wildcard: Vec<ParametricInstance>,
+    by_head: HashMap<String, Vec<ParametricInstance>>,
 }
 
 /// Registry of all trait instances for dispatch resolution.
@@ -27,12 +33,32 @@ pub(crate) struct InstanceRegistry {
     /// Exact (TraitName, Type) lookup for fully concrete instances.
     singletons: HashMap<(TraitName, Type), SingletonInstance>,
     /// Structural matching for instances with type vars, grouped by trait.
-    parametric: HashMap<TraitName, Vec<ParametricInstance>>,
+    parametric: HashMap<TraitName, ParametricBucket>,
     /// Intrinsic dicts keyed by (trait_local_name, type_name).
     intrinsic_dict_names: HashMap<(String, String), String>,
 }
 
 impl InstanceRegistry {
+    fn parametric_candidates<'a>(
+        &'a self,
+        trait_name: &TraitName,
+        ty: &Type,
+    ) -> impl Iterator<Item = &'a ParametricInstance> {
+        let stripped = ty.strip_own();
+        let head_key = head_type_name(&stripped);
+        self.parametric
+            .get(trait_name)
+            .into_iter()
+            .flat_map(move |bucket| {
+                bucket
+                    .by_head
+                    .get(&head_key)
+                    .into_iter()
+                    .flat_map(|items| items.iter())
+                    .chain(bucket.wildcard.iter())
+            })
+    }
+
     /// Resolve a dict JS name for GetDict/MakeDict.
     fn resolve_js_name(&self, trait_name: &TraitName, ty: &Type) -> Option<&str> {
         // 1. Exact singleton lookup
@@ -47,12 +73,10 @@ impl InstanceRegistry {
             }
         }
         // 2. Parametric structural match
-        if let Some(instances) = self.parametric.get(trait_name) {
-            for inst in instances {
-                let mut bindings = HashMap::new();
-                if bind_type_vars(&inst.target_type, ty, &mut bindings) {
-                    return Some(&inst.js_name);
-                }
+        for inst in self.parametric_candidates(trait_name, ty) {
+            let mut bindings = HashMap::new();
+            if bind_type_vars(&inst.target_type, ty, &mut bindings) {
+                return Some(&inst.js_name);
             }
         }
         // 3. Intrinsic fallback
@@ -75,15 +99,21 @@ impl InstanceRegistry {
                 return info.source_module.as_deref();
             }
         }
-        if let Some(instances) = self.parametric.get(trait_name) {
-            for inst in instances {
-                let mut bindings = HashMap::new();
-                if bind_type_vars(&inst.target_type, ty, &mut bindings) {
-                    return inst.source_module.as_deref();
-                }
+        for inst in self.parametric_candidates(trait_name, ty) {
+            let mut bindings = HashMap::new();
+            if bind_type_vars(&inst.target_type, ty, &mut bindings) {
+                return inst.source_module.as_deref();
             }
         }
         None
+    }
+}
+
+fn parametric_head_key(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Var(_) => None,
+        Type::App(ctor, _) if matches!(ctor.as_ref(), Type::Var(_)) => None,
+        _ => Some(head_type_name(ty)),
     }
 }
 
@@ -130,15 +160,28 @@ pub(crate) fn build_registry_for_modules(modules: &[&Module]) -> InstanceRegistr
             };
 
             if has_type_vars(&inst.target_type) {
-                registry
+                let param_inst = ParametricInstance {
+                    js_name,
+                    target_type: inst.target_type.clone(),
+                    head_key: parametric_head_key(&inst.target_type),
+                    source_module,
+                };
+                let bucket = registry
                     .parametric
                     .entry(inst.trait_name.clone())
-                    .or_default()
-                    .push(ParametricInstance {
-                        js_name,
-                        target_type: inst.target_type.clone(),
-                        source_module,
+                    .or_insert_with(|| ParametricBucket {
+                        wildcard: Vec::new(),
+                        by_head: HashMap::new(),
                     });
+                if let Some(head_key) = &param_inst.head_key {
+                    bucket
+                        .by_head
+                        .entry(head_key.clone())
+                        .or_default()
+                        .push(param_inst);
+                } else {
+                    bucket.wildcard.push(param_inst);
+                }
             } else {
                 registry.singletons.insert(
                     (inst.trait_name.clone(), strip_own_type(&inst.target_type)),
@@ -256,9 +299,12 @@ pub fn compile_modules_js(
     // Build variant lookup from all modules: (module/type_name, tag) → variant_name
     // Uses module-qualified names to avoid collisions when types shadow across modules.
     let mut variant_lookup: HashMap<(String, u32), String> = HashMap::new();
+    let mut qualified_sum_type_names: HashSet<String> = HashSet::new();
+    let mut bare_sum_type_names: HashSet<String> = HashSet::new();
     for ir_module in &ir_modules {
         for st in &ir_module.sum_types {
             let qualified = format!("{}/{}", ir_module.name, st.name);
+            qualified_sum_type_names.insert(qualified.clone());
             for v in &st.variants {
                 // Insert both qualified and bare keys. Qualified keys take priority
                 // and prevent collisions; bare keys are fallback for local types.
@@ -266,7 +312,13 @@ pub fn compile_modules_js(
                 variant_lookup.insert(qkey, v.name.clone());
                 let bare_key = (st.name.clone(), v.tag);
                 // Only insert bare key if no collision
-                variant_lookup.entry(bare_key).or_insert_with(|| v.name.clone());
+                if variant_lookup
+                    .entry(bare_key)
+                    .or_insert_with(|| v.name.clone())
+                    == &v.name
+                {
+                    bare_sum_type_names.insert(st.name.clone());
+                }
             }
         }
     }
@@ -314,15 +366,28 @@ pub fn compile_modules_js(
             };
 
             if has_type_vars(&inst.target_type) {
-                registry
+                let param_inst = ParametricInstance {
+                    js_name,
+                    target_type: inst.target_type.clone(),
+                    head_key: parametric_head_key(&inst.target_type),
+                    source_module,
+                };
+                let bucket = registry
                     .parametric
                     .entry(inst.trait_name.clone())
-                    .or_default()
-                    .push(ParametricInstance {
-                        js_name,
-                        target_type: inst.target_type.clone(),
-                        source_module,
+                    .or_insert_with(|| ParametricBucket {
+                        wildcard: Vec::new(),
+                        by_head: HashMap::new(),
                     });
+                if let Some(head_key) = &param_inst.head_key {
+                    bucket
+                        .by_head
+                        .entry(head_key.clone())
+                        .or_default()
+                        .push(param_inst);
+                } else {
+                    bucket.wildcard.push(param_inst);
+                }
             } else {
                 registry.singletons.insert(
                     (inst.trait_name.clone(), strip_own_type(&inst.target_type)),
@@ -341,7 +406,14 @@ pub fn compile_modules_js(
     let mut results = Vec::new();
     for ir_module in &ir_modules {
         let is_main = ir_module.name == main_module_name;
-        let mut emitter = JsEmitter::new(ir_module, is_main, &variant_lookup, &registry);
+        let mut emitter = JsEmitter::new(
+            ir_module,
+            is_main,
+            &variant_lookup,
+            &qualified_sum_type_names,
+            &bare_sum_type_names,
+            &registry,
+        );
         let js_source = emitter.emit();
         let filename = format!("{}.mjs", ir_module.name);
         results.push((filename, js_source));
@@ -566,6 +638,8 @@ pub(crate) struct JsEmitter<'a> {
     var_counter: usize,
     /// Maps (sum_type_name, tag) → variant_class_name for instanceof emission.
     variant_lookup: &'a HashMap<(String, u32), String>,
+    qualified_sum_type_names: &'a HashSet<String>,
+    bare_sum_type_names: &'a HashSet<String>,
     /// Active recur join points for while(true) + continue emission.
     recur_joins: HashMap<VarId, RecurJoinInfo>,
     /// Non-recur joins inside a recur context that must be inlined to avoid `continue` in nested functions.
@@ -579,6 +653,8 @@ impl<'a> JsEmitter<'a> {
         module: &'a Module,
         is_main: bool,
         variant_lookup: &'a HashMap<(String, u32), String>,
+        qualified_sum_type_names: &'a HashSet<String>,
+        bare_sum_type_names: &'a HashSet<String>,
         registry: &'a InstanceRegistry,
     ) -> Self {
         JsEmitter {
@@ -590,6 +666,8 @@ impl<'a> JsEmitter<'a> {
             var_types: HashMap::new(),
             var_counter: 0,
             variant_lookup,
+            qualified_sum_type_names,
+            bare_sum_type_names,
             recur_joins: HashMap::new(),
             inline_joins: HashMap::new(),
             registry,
@@ -775,12 +853,12 @@ impl<'a> JsEmitter<'a> {
         match ty {
             krypton_ir::Type::Named(name, _) => {
                 // Try full qualified name first (e.g. "core/option/Option")
-                if self.variant_lookup.keys().any(|(tn, _)| tn == name) {
+                if self.qualified_sum_type_names.contains(name) {
                     Some(name.clone())
                 } else {
                     // Fallback to bare name
                     let bare = name.rsplit('/').next().unwrap_or(name);
-                    if self.variant_lookup.keys().any(|(tn, _)| tn == bare) {
+                    if self.bare_sum_type_names.contains(bare) {
                         Some(bare.to_string())
                     } else {
                         None
@@ -1071,8 +1149,10 @@ impl<'a> JsEmitter<'a> {
         if let Some(name) = self.registry.resolve_js_name(trait_name, ty) {
             return name.to_string();
         }
-        // 2. Last resort (shouldn't happen in well-formed programs)
-        format!("{}$${}", trait_name.local_name, canonical_type_name(ty))
+        panic!(
+            "ICE: unresolved JS dict lookup for trait `{}` and type `{}` in module `{}`",
+            trait_name, ty, self.module.name
+        )
     }
 
     fn emit_dict_instances(&mut self) {
