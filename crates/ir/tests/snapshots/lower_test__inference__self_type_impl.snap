@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
-trait MyEq[v7] { my_eq(v7, v7): Bool }
+trait MyEq[n8] { my_eq(n8, n8): Bool }
 instance inference__self_type_impl.MyEq[Point] { my_eq=MyEq$$Point$$my_eq }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -125,7 +125,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]

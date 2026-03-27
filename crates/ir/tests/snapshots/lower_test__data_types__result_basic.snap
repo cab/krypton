@@ -123,7 +123,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -135,16 +135,16 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
-fn extract(v0: Result[c8, Int]) -> Int =
+fn extract(v0: Result[u8, Int]) -> Int =
   switch v0 {
     0 (v1: Int) ->
       v1
-    1 (v2: c8) ->
+    1 (v2: u8) ->
       let v3: Int = sub_int(0, 1)
       v3
   }
 
 fn test() -> Int =
-  let v4: ~Result[h8, Int] = construct Result::Ok#0(42)
+  let v4: ~Result[z8, Int] = construct Result::Ok#0(42)
   let v5: Int = call extract(v4)
   v5

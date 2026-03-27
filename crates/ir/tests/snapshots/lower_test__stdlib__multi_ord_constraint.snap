@@ -142,7 +142,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -155,7 +155,7 @@ import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 declare println: (o) -> Unit
 
-fn both_less(v0: Dict[core/ord.Ord, w7], v1: Dict[core/ord.Ord, x7], v2: w7, v3: w7, v4: x7, v5: x7) -> Bool =
+fn both_less(v0: Dict[core/ord.Ord, o8], v1: Dict[core/ord.Ord, p8], v2: o8, v3: o8, v4: p8, v5: p8) -> Bool =
   let_join v13(v6: Bool) =
     let_join v12(v8: Bool) =
       let_join v11(v10: Bool) =

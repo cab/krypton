@@ -1,6 +1,5 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
-assertion_line: 74
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -31,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Predicate: forall a b. ((a) -> b) -> Predicate[a, b]
-Contravariant$$Predicate$$Var0$$Var1$$contramap: (Predicate[g8, g8], (g8) -> g8) -> ~Predicate[g8, g8]
+Contravariant$$Predicate$$Var0$$Var1$$contramap: (Predicate[y8, y8], (y8) -> y8) -> ~Predicate[y8, y8]

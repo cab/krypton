@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__type_qualify_trait
 
-trait MyEq[w7] { my_eq(w7, w7): Bool }
+trait MyEq[o8] { my_eq(o8, o8): Bool }
 instance modules__type_qualify_trait.MyEq[Int] { my_eq=MyEq$$Int$$my_eq }
 extern java "krypton.runtime.KryptonIO" println(Object): Unit
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
@@ -125,7 +125,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]

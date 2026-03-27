@@ -1118,6 +1118,7 @@ where
                 .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
         )
         .then(symbol(Token::Arrow).ignore_then(ty.clone()).or_not())
+        .then(where_clause_parser())
         .then(
             symbol(Token::Assign)
                 .ignore_then(expr.clone())
@@ -1125,12 +1126,12 @@ where
                 .or_not(),
         )
         .map_with(
-            |((((name, type_params), params), return_type), body), e| FnDecl {
+            |(((((name, type_params), params), return_type), constraints), body), e| FnDecl {
                 name,
                 visibility: Visibility::Private,
                 type_params,
                 params,
-                constraints: vec![],
+                constraints,
                 return_type,
                 body: Box::new(body.unwrap_or(Expr::Lit {
                     value: Lit::Unit,
@@ -1190,18 +1191,19 @@ where
                 .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
         )
         .then(symbol(Token::Arrow).ignore_then(ty.clone()).or_not())
+        .then(where_clause_parser())
         .then(
             symbol(Token::Assign)
                 .ignore_then(expr.clone())
                 .or(expr.clone()),
         )
         .map_with(
-            |((((name, type_params), params), return_type), body), e| FnDecl {
+            |(((((name, type_params), params), return_type), constraints), body), e| FnDecl {
                 name,
                 visibility: Visibility::Private,
                 type_params,
                 params,
-                constraints: vec![],
+                constraints,
                 return_type,
                 body: Box::new(body),
                 span: to_span(e.span()),

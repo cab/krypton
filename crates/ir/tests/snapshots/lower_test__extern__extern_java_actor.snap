@@ -274,7 +274,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -285,13 +285,13 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/actor/spawn as spawn((Mailbox[k9]) -> Unit): Ref[k9]
-import core/actor/send as send(Ref[o9], o9): Unit
-import core/actor/receive as receive(Mailbox[z9]): z9
-import core/actor/actor_ref as actor_ref(Mailbox[i10]): Ref[i10]
-declare actor_ref: (Mailbox[i10]) -> Ref[i10]
-declare receive: (Mailbox[z9]) -> z9
-declare send: (Ref[o9], o9) -> Unit
+import core/actor/spawn as spawn((Mailbox[c10]) -> Unit): Ref[c10]
+import core/actor/send as send(Ref[g10], g10): Unit
+import core/actor/receive as receive(Mailbox[r10]): r10
+import core/actor/actor_ref as actor_ref(Mailbox[a11]): Ref[a11]
+declare actor_ref: (Mailbox[a11]) -> Ref[a11]
+declare receive: (Mailbox[r10]) -> r10
+declare send: (Ref[g10], g10) -> Unit
 
 fn echo(v0: Mailbox[Int]) -> Unit =
   let v1: Int = call receive(v0)

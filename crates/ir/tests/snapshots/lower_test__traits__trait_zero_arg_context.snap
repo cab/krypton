@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_context
 
-trait Default[v7] { default(): v7 }
+trait Default[n8] { default(): n8 }
 instance traits__trait_zero_arg_context.Default[Int] { default=Default$$Int$$default }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -124,7 +124,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -142,8 +142,8 @@ fn int_default() -> Int =
   let v1: Int = trait_call traits__trait_zero_arg_context.Default.default(v0)
   v1
 
-fn default2(v2: Dict[traits__trait_zero_arg_context.Default, c8]) -> c8 =
-  let v3: c8 = trait_call traits__trait_zero_arg_context.Default.default(v2)
+fn default2(v2: Dict[traits__trait_zero_arg_context.Default, u8]) -> u8 =
+  let v3: u8 = trait_call traits__trait_zero_arg_context.Default.default(v2)
   v3
 
 fn main() -> Unit =

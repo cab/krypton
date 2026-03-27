@@ -193,7 +193,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -204,16 +204,16 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/map/empty as empty(): Map[u9, v9]
-import core/map/put as put(Map[y9, z9], y9, z9): Map[y9, z9]
-import core/map/contains as contains(Map[l11, m11], l11): Bool
-declare contains: (Map[l11, m11], l11) -> Bool
-declare empty: () -> Map[u9, v9]
+import core/map/empty as empty(): Map[m10, n10]
+import core/map/put as put(Map[q10, r10], q10, r10): Map[q10, r10]
+import core/map/contains as contains(Map[d12, e12], d12): Bool
+declare contains: (Map[d12, e12], d12) -> Bool
+declare empty: () -> Map[m10, n10]
 declare println: (o) -> Unit
-declare put: (Map[y9, z9], y9, z9) -> Map[y9, z9]
+declare put: (Map[q10, r10], q10, r10) -> Map[q10, r10]
 
 fn main() -> Unit =
-  let v0: Map[z11, a12] = call empty()
+  let v0: Map[r12, s12] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

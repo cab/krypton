@@ -523,6 +523,8 @@ struct LowerCtx {
     param_instances: Vec<ParamInstanceInfo>,
     /// trait_name → (type_var_id, method_name → (param_types, return_type))
     trait_method_types: HashMap<TraitName, (TypeVarId, HashMap<String, (Vec<Type>, Type)>)>,
+    /// trait_name → (method_name → Vec<(TraitName, TypeVarId)>) for method-level where constraints
+    trait_method_constraints: HashMap<TraitName, HashMap<String, Vec<(TraitName, TypeVarId)>>>,
     /// Recursion depth counter for dict resolution (cycle detection)
     dict_depth: u32,
     /// Lifted lambda definitions accumulated during lowering
@@ -3137,12 +3139,32 @@ impl LowerCtx {
         // Handle trait method dispatch (origin-tagged calls)
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let dict_ty = self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
+                let (dict_ty, type_bindings) = self.resolve_dispatch_type_with_bindings(
+                    trait_id, name, &func.ty, &type_args,
+                )?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
                 bindings.extend(dict_bindings);
 
-                // Dict is prepended as first argument
+                // Resolve method-level constraint dicts (e.g., `where b: Default`)
+                let method_constraints = self
+                    .trait_method_constraints
+                    .get(trait_id)
+                    .and_then(|mc| mc.get(name.as_str()))
+                    .cloned()
+                    .unwrap_or_default();
+                let mut method_dict_atoms = Vec::new();
+                for (constraint_trait, constraint_tv) in &method_constraints {
+                    if let Some(concrete_ty) = type_bindings.get(constraint_tv) {
+                        let (extra_bindings, extra_atom) =
+                            self.resolve_dict(constraint_trait, concrete_ty)?;
+                        bindings.extend(extra_bindings);
+                        method_dict_atoms.push(extra_atom);
+                    }
+                }
+
+                // Dict is prepended as first argument, then method dicts, then user args
                 let mut all_args = vec![dict_atom];
+                all_args.extend(method_dict_atoms);
                 all_args.extend(arg_atoms);
                 return Ok((
                     bindings,
@@ -3317,13 +3339,39 @@ impl LowerCtx {
         // Handle trait method dispatch
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let dict_ty = self.resolve_dispatch_type(trait_id, name, &func.ty, &type_args)?;
-                let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
+                let (dict_ty, type_bindings) = self.resolve_dispatch_type_with_bindings(
+                    trait_id, name, &func.ty, &type_args,
+                )?;
+                let (mut dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
+
+                // Resolve method-level constraint dicts (e.g., `where b: Default`)
+                let mut method_dict_atoms = Vec::new();
+                let method_constraints = self
+                    .trait_method_constraints
+                    .get(trait_id)
+                    .and_then(|mc| mc.get(name.as_str()))
+                    .cloned()
+                    .unwrap_or_default();
+                {
+                    for (constraint_trait, constraint_tv) in &method_constraints {
+                        let concrete_ty = type_bindings.get(constraint_tv).ok_or_else(|| {
+                            LowerError::InternalError(format!(
+                                "ICE: could not resolve method constraint type var for {}.{}",
+                                trait_id.local_name, name
+                            ))
+                        })?;
+                        let (extra_bindings, extra_atom) =
+                            self.resolve_dict(constraint_trait, concrete_ty)?;
+                        dict_bindings.extend(extra_bindings);
+                        method_dict_atoms.push(extra_atom);
+                    }
+                }
 
                 let trait_id = trait_id.clone();
                 let name = name.clone();
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let mut all_args = vec![dict_atom];
+                    all_args.extend(method_dict_atoms);
                     all_args.extend(arg_atoms);
                     let var = ctx.fresh_var();
                     let ty = result_ty;
@@ -3801,7 +3849,8 @@ impl LowerCtx {
     /// Resolve the dispatch type for a trait method from its concrete (fully-specialized) type.
     /// Matches the method's type patterns (params + return) against `concrete_method_ty`
     /// to bind the trait's type variable.
-    /// Resolve the dispatch type for a trait method.
+    /// Resolve the dispatch type for a trait method, returning the trait's dispatch type
+    /// and full type var bindings (including method-level type vars).
     /// Matches the method's type patterns against the concrete expression type,
     /// with explicit type args as fallback for phantom type vars (trait type var
     /// not appearing in the method signature, e.g. `name() -> String` on `Test[e]`).
@@ -3812,6 +3861,18 @@ impl LowerCtx {
         concrete_method_ty: &Type,
         type_args: &[Type],
     ) -> Result<Type, LowerError> {
+        let (dispatch_ty, _bindings) =
+            self.resolve_dispatch_type_with_bindings(trait_name, method_name, concrete_method_ty, type_args)?;
+        Ok(dispatch_ty)
+    }
+
+    fn resolve_dispatch_type_with_bindings(
+        &self,
+        trait_name: &TraitName,
+        method_name: &str,
+        concrete_method_ty: &Type,
+        type_args: &[Type],
+    ) -> Result<(Type, HashMap<TypeVarId, Type>), LowerError> {
         let (type_var_id, method_types) =
             self.trait_method_types.get(trait_name).ok_or_else(|| {
                 LowerError::InternalError(format!(
@@ -3847,12 +3908,14 @@ impl LowerCtx {
             bind_type_vars(ret_pattern, concrete, &mut bindings);
         }
 
-        bindings.get(&type_var_id).cloned().ok_or_else(|| {
+        let dispatch_ty = bindings.get(&type_var_id).cloned().ok_or_else(|| {
             LowerError::InternalError(format!(
                 "ICE: could not resolve dispatch type var for {}.{}",
                 trait_name.local_name, method_name
             ))
-        })
+        })?;
+
+        Ok((dispatch_ty, bindings))
     }
 
     /// Lower a constrained function reference used as a value (not directly called).
@@ -4467,12 +4530,10 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
             .or_insert_with(|| reqs.clone());
     }
 
-    // Add instance method constraints so lower_fn prepends dict params
+    // Add instance method constraints so lower_fn prepends dict params.
+    // Combines impl-head constraints + method-level constraints per method.
     for inst in &typed.instance_defs {
-        if inst.constraints.is_empty() {
-            continue;
-        }
-        let constraint_pairs: Vec<(TraitName, TypeVarId)> = inst
+        let impl_constraint_pairs: Vec<(TraitName, TypeVarId)> = inst
             .constraints
             .iter()
             .filter_map(|c| {
@@ -4481,17 +4542,19 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                     .map(|&tv| (c.trait_name.clone(), tv))
             })
             .collect();
-        if constraint_pairs.is_empty() {
-            continue;
-        }
         for m in &inst.methods {
+            let mut all_constraints = impl_constraint_pairs.clone();
+            all_constraints.extend(m.constraint_pairs.iter().cloned());
+            if all_constraints.is_empty() {
+                continue;
+            }
             let mangled = format!(
                 "{}$${}$${}",
                 inst.trait_name.local_name, inst.target_type_name, m.name
             );
             fn_constraints
                 .entry(mangled)
-                .or_insert_with(|| constraint_pairs.clone());
+                .or_insert_with(|| all_constraints);
         }
     }
 
@@ -4538,6 +4601,12 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                     (t.type_var_id, t.method_tc_types.clone()),
                 )
             })
+            .collect(),
+        trait_method_constraints: typed
+            .trait_defs
+            .iter()
+            .filter(|t| !t.method_constraints.is_empty())
+            .map(|t| (t.trait_id.clone(), t.method_constraints.clone()))
             .collect(),
         dict_depth: 0,
         lifted_fns: vec![],
@@ -4838,9 +4907,14 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
                     .get(method_name)
                     .cloned()
                     .unwrap_or_else(|| (vec![], Type::Unit));
+                let method_constraint_count = trait_def
+                    .method_constraints
+                    .get(method_name)
+                    .map(|c| c.len())
+                    .unwrap_or(0);
                 TraitMethodDef {
                     name: method_name.clone(),
-                    param_count: *param_count,
+                    param_count: *param_count + method_constraint_count,
                     param_types: param_types.into_iter().map(Into::into).collect(),
                     return_type: return_type.into(),
                 }

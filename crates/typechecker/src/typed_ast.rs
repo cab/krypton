@@ -283,6 +283,8 @@ pub struct TraitDefInfo {
     pub is_imported: bool,
     pub type_var_id: TypeVarId,
     pub method_tc_types: HashMap<String, (Vec<Type>, Type)>, // name -> (param_types, return_type)
+    /// Method-level constraints: method_name -> Vec<(TraitName, TypeVarId)>
+    pub method_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
 }
 
 #[derive(Clone)]
@@ -303,6 +305,10 @@ pub struct ExportedTraitMethod {
     pub name: String,
     pub param_types: Vec<Type>,
     pub return_type: Type,
+    /// Method-level constraints on method's own type parameters.
+    /// TypeVarIds here are the method's own vars (not the trait's type param), so they don't
+    /// need remapping during import (only the trait's type var is remapped).
+    pub constraints: Vec<(TraitName, TypeVarId)>,
 }
 
 #[derive(Clone)]
@@ -311,6 +317,8 @@ pub struct InstanceMethod {
     pub params: Vec<String>, // parameter names
     pub body: TypedExpr,     // typed method body
     pub scheme: TypeScheme,  // type scheme for the method
+    /// Method-level constraints as resolved (TraitName, TypeVarId) pairs for IR lowering.
+    pub constraint_pairs: Vec<(TraitName, TypeVarId)>,
 }
 
 /// A type constraint with its trait name already resolved to a full TraitName.

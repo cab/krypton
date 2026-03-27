@@ -276,7 +276,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -287,19 +287,19 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/actor/Timeout as Timeout(): Timeout
-import core/actor/spawn as spawn((Mailbox[k9]) -> Unit): Ref[k9]
-import core/actor/send as send(Ref[o9], o9): Unit
-import core/actor/receive as receive(Mailbox[z9]): z9
-import core/actor/ask as ask(Ref[g11], (Ref[h11]) -> g11, Int): Result[Timeout, h11]
+import core/actor/spawn as spawn((Mailbox[c10]) -> Unit): Ref[c10]
+import core/actor/send as send(Ref[g10], g10): Unit
+import core/actor/receive as receive(Mailbox[r10]): r10
+import core/actor/ask as ask(Ref[y11], (Ref[z11]) -> y11, Int): Result[Timeout, z11]
 import core/actor/Timeout as Timeout(): Timeout
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 declare Get
-declare ask: (Ref[g11], (Ref[h11]) -> g11, Int) -> Result[Timeout, h11]
+declare ask: (Ref[y11], (Ref[z11]) -> y11, Int) -> Result[Timeout, z11]
 declare println: (Object) -> Unit
-declare receive: (Mailbox[z9]) -> z9
-declare send: (Ref[o9], o9) -> Unit
-declare spawn: ((Mailbox[k9]) -> Unit) -> Ref[k9]
+declare receive: (Mailbox[r10]) -> r10
+declare send: (Ref[g10], g10) -> Unit
+declare spawn: ((Mailbox[c10]) -> Unit) -> Ref[c10]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

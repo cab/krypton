@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
+trait Functor[o8] { fmap(o8[p8], (p8) -> q8): o8[q8] }
 instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -125,7 +125,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -147,11 +147,11 @@ fn main() -> Int =
       v6
   }
 
-fn Functor$$Box$$fmap(v7: Box[n8], v8: (n8) -> p8) -> ~Box[p8] =
+fn Functor$$Box$$fmap(v7: Box[f9], v8: (f9) -> h9) -> ~Box[h9] =
   switch v7 {
-    0 (v9: n8) ->
-      let v10: p8 = call_closure v8(v9)
-      let v11: ~Box[p8] = construct Box::Box#0(v10)
+    0 (v9: f9) ->
+      let v10: h9 = call_closure v8(v9)
+      let v11: ~Box[h9] = construct Box::Box#0(v10)
       v11
   }
 

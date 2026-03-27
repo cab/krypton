@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__op_same_method_name
 
-trait Joinable[v7] { join(v7, v7): v7 }
+trait Joinable[n8] { join(n8, n8): n8 }
 instance traits__op_same_method_name.Joinable[String] { join=Joinable$$String$$join }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -144,7 +144,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -157,12 +157,12 @@ import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 declare println: (o) -> Unit
 
-fn apply_combine(v0: Dict[core/semigroup.Semigroup, b8], v1: b8, v2: b8) -> b8 =
-  let v3: b8 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
+fn apply_combine(v0: Dict[core/semigroup.Semigroup, t8], v1: t8, v2: t8) -> t8 =
+  let v3: t8 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
   v3
 
-fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, h8], v5: h8, v6: h8) -> h8 =
-  let v7: h8 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
+fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, z8], v5: z8, v6: z8) -> z8 =
+  let v7: z8 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
   v7
 
 fn main() -> Unit =

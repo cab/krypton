@@ -316,12 +316,14 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         params: vec!["x".to_string()],
         body: string_lit("x"),
         scheme: render_int_scheme,
+        constraint_pairs: vec![],
     };
     let render_wrap_method = InstanceMethod {
         name: "render".to_string(),
         params: vec!["value".to_string()],
         body: wrap_render_body,
         scheme: render_wrap_scheme,
+        constraint_pairs: vec![],
     };
 
     let mut functions = vec![];
@@ -392,6 +394,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 );
                 m
             },
+            method_constraints: std::collections::HashMap::new(),
         }],
         instance_defs: vec![
             InstanceDefInfo {

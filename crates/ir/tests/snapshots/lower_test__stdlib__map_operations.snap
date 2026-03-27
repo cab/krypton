@@ -193,7 +193,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
@@ -204,17 +204,17 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/map/empty as empty(): Map[u9, v9]
-import core/map/put as put(Map[y9, z9], y9, z9): Map[y9, z9]
-import core/map/delete as delete(Map[d11, e11], d11): Map[d11, e11]
-import core/map/contains as contains(Map[l11, m11], l11): Bool
-import core/map/size as size(Map[k14, l14]): Int
-declare contains: (Map[l11, m11], l11) -> Bool
-declare delete: (Map[d11, e11], d11) -> Map[d11, e11]
-declare empty: () -> Map[u9, v9]
+import core/map/empty as empty(): Map[m10, n10]
+import core/map/put as put(Map[q10, r10], q10, r10): Map[q10, r10]
+import core/map/delete as delete(Map[v11, w11], v11): Map[v11, w11]
+import core/map/contains as contains(Map[d12, e12], d12): Bool
+import core/map/size as size(Map[c15, d15]): Int
+declare contains: (Map[d12, e12], d12) -> Bool
+declare delete: (Map[v11, w11], v11) -> Map[v11, w11]
+declare empty: () -> Map[m10, n10]
 declare println: (o) -> Unit
-declare put: (Map[y9, z9], y9, z9) -> Map[y9, z9]
-declare size: (Map[k14, l14]) -> Int
+declare put: (Map[q10, r10], q10, r10) -> Map[q10, r10]
+declare size: (Map[c15, d15]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

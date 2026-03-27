@@ -32,6 +32,9 @@ pub struct TraitMethod {
     pub name: String,
     pub param_types: Vec<Type>,
     pub return_type: Type,
+    /// Constraints on the method's own type parameters (not the trait's type param).
+    /// e.g., `fun traverse[b](x: f[a]) -> f[b] where b: Default` stores `[(Default, TypeVarId_for_b)]`
+    pub constraints: Vec<(TraitName, TypeVarId)>,
 }
 
 pub struct InstanceInfo {

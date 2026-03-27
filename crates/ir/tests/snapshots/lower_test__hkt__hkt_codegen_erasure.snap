@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
-trait Functor[w7] { fmap(w7[x7], (x7) -> y7): w7[y7] }
+trait Functor[o8] { fmap(o8[p8], (p8) -> q8): o8[q8] }
 instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 extern java "krypton.runtime.KryptonArray" staticLength(Object): Int
 extern java "krypton.runtime.KryptonArray" staticGet(Object, Int): Object
@@ -158,17 +158,17 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
-import core/vec/to_list as to_list(Vec[k7]): List[k7]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
 declare println: (o) -> Unit
-declare to_list: (Vec[k7]) -> List[k7]
+declare to_list: (Vec[c8]) -> List[c8]
 
-fn fold_box(v0: List[g8], v1: a8[g8], v2: (a8[g8], g8) -> a8[g8]) -> a8[g8] =
-  let_join [recur] v3(v4: List[g8], v5: a8[g8], v6: (a8[g8], g8) -> a8[g8]) =
+fn fold_box(v0: List[y8], v1: s8[y8], v2: (s8[y8], y8) -> s8[y8]) -> s8[y8] =
+  let_join [recur] v3(v4: List[y8], v5: s8[y8], v6: (s8[y8], y8) -> s8[y8]) =
     switch v4 {
       1 ->
         v5
-      0 (v7: g8, v8: List[g8]) ->
-        let v9: a8[g8] = call_closure v6(v5, v7)
+      0 (v7: y8, v8: List[y8]) ->
+        let v9: s8[y8] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }
   in
@@ -187,11 +187,11 @@ fn main() -> Unit =
       v22
   }
 
-fn Functor$$Box$$fmap(v23: Box[f9], v24: (f9) -> h9) -> ~Box[h9] =
+fn Functor$$Box$$fmap(v23: Box[x9], v24: (x9) -> z9) -> ~Box[z9] =
   switch v23 {
-    0 (v25: f9) ->
-      let v26: h9 = call_closure v24(v25)
-      let v27: ~Box[h9] = construct Box::Box#0(v26)
+    0 (v25: x9) ->
+      let v26: z9 = call_closure v24(v25)
+      let v27: ~Box[z9] = construct Box::Box#0(v26)
       v27
   }
 

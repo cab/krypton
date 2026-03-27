@@ -1957,6 +1957,12 @@ impl ModuleInferenceState {
                     )
                 })
                 .collect();
+            let method_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = info
+                .methods
+                .iter()
+                .filter(|m| !m.constraints.is_empty())
+                .map(|m| (m.name.clone(), m.constraints.clone()))
+                .collect();
             trait_defs.push(TraitDefInfo {
                 name: info.name.clone(),
                 trait_id: TraitName::new(info.module_path.clone(), info.name.clone()),
@@ -1964,6 +1970,7 @@ impl ModuleInferenceState {
                 is_imported,
                 type_var_id: info.type_var_id,
                 method_tc_types,
+                method_constraints,
             });
         }
 
@@ -2351,10 +2358,13 @@ fn register_imported_trait_defs(
                 .collect();
             let return_type = remap_type_var(&method.return_type, old_tv_id, new_tv_id);
 
+            // Method constraints use the method's own type vars (not the trait's),
+            // so they don't need remapping.
             trait_methods.push(TraitMethod {
                 name: method.name.clone(),
                 param_types,
                 return_type,
+                constraints: method.constraints.clone(),
             });
         }
 
@@ -2468,16 +2478,38 @@ fn register_local_traits(
                 };
                 state.env.bind(method.name.clone(), scheme);
 
+                // Resolve method-level where constraints
+                let mut method_constraints: Vec<(TraitName, TypeVarId)> = Vec::new();
+                for constraint in &method.constraints {
+                    if constraint.trait_name == "shared" {
+                        continue;
+                    }
+                    if let Some(&tv) = method_type_param_map.get(&constraint.type_var) {
+                        let tn = trait_registry
+                            .lookup_trait_by_name(&constraint.trait_name)
+                            .map(|ti| ti.trait_name())
+                            .unwrap_or_else(|| {
+                                TraitName::new(
+                                    module_path.to_string(),
+                                    constraint.trait_name.clone(),
+                                )
+                            });
+                        method_constraints.push((tn, tv));
+                    }
+                }
+
                 exported_methods.push(ExportedTraitMethod {
                     name: method.name.clone(),
                     param_types: param_types.clone(),
                     return_type: return_type.clone(),
+                    constraints: method_constraints.clone(),
                 });
 
                 trait_methods.push(TraitMethod {
                     name: method.name.clone(),
                     param_types,
                     return_type,
+                    constraints: method_constraints,
                 });
             }
 
@@ -2667,6 +2699,7 @@ fn process_deriving(
                         params,
                         body,
                         scheme,
+                        constraint_pairs: vec![],
                     }],
                     subdict_traits: vec![],
                     is_intrinsic: false,
@@ -3499,6 +3532,39 @@ fn typecheck_impl_methods(
                     }
                 }
 
+                // Resolve method-level where constraints
+                let mut method_constraint_pairs: Vec<(TraitName, TypeVarId)> = Vec::new();
+                for constraint in &method.constraints {
+                    if constraint.trait_name == "shared" {
+                        continue;
+                    }
+                    if let Some(&tv) = impl_method_tpm.get(&constraint.type_var) {
+                        let tn = trait_registry
+                            .lookup_trait_by_name(&constraint.trait_name)
+                            .map(|ti| ti.trait_name())
+                            .unwrap_or_else(|| {
+                                TraitName::new(
+                                    module_path.to_string(),
+                                    constraint.trait_name.clone(),
+                                )
+                            });
+                        method_constraint_pairs.push((tn, tv));
+                    }
+                }
+
+                // Build combined constraints: impl-head + method-level
+                let mut combined_constraints: Vec<(TraitName, TypeVarId)> = instance
+                    .constraints
+                    .iter()
+                    .filter_map(|c| {
+                        instance
+                            .type_var_ids
+                            .get(&c.type_var)
+                            .map(|&tv| (c.trait_name.clone(), tv))
+                    })
+                    .collect();
+                combined_constraints.extend(method_constraint_pairs.iter().cloned());
+
                 if method.params.len() != concrete_param_types.len() {
                     return Err(spanned(
                         TypeError::WrongArity {
@@ -3585,7 +3651,7 @@ fn typecheck_impl_methods(
                         qualified_modules: &state.qualified_modules,
                         imported_fn_types: &state.imports.imported_fn_types,
                         extern_fn_names: &empty_efn,
-                        enclosing_fn_constraints: &[],
+                        enclosing_fn_constraints: &combined_constraints,
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                         trait_method_map,
                         self_type: Some(resolved_target.clone()),
@@ -3634,6 +3700,7 @@ fn typecheck_impl_methods(
                     params: method.params.iter().map(|p| p.name.clone()).collect(),
                     body: body_typed,
                     scheme,
+                    constraint_pairs: method_constraint_pairs,
                 });
             }
 

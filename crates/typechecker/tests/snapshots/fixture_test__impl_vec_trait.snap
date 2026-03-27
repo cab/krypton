@@ -1,6 +1,5 @@
 ---
 source: crates/typechecker/tests/fixture_test.rs
-assertion_line: 74
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -30,4 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-MyTrait$$Vec$$Var0$$check: (Vec[w7]) -> ~String
+MyTrait$$Vec$$Var0$$check: (Vec[o8]) -> ~String

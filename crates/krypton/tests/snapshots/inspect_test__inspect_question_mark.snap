@@ -3,7 +3,7 @@ source: crates/krypton/tests/inspect_test.rs
 expression: output
 ---
 extern java "krypton.runtime.KryptonIO" {
-    fun println[a](a) -> Unit
+    fun println[a](x: a) -> Unit
 }
 
 type Handle = MkHandle(String)
