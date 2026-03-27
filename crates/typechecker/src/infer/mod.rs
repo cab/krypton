@@ -1683,6 +1683,43 @@ impl ModuleInferenceState {
         }
     }
 
+    fn check_explicit_import_shadows(&self, module: &Module) -> Result<(), SpannedTypeError> {
+        for decl in &module.decls {
+            match decl {
+                Decl::DefFn(f) => {
+                    if !self.prelude_imported_names.contains(&f.name) {
+                        if let Some(imp) = self.imports.imported_fn_types.iter().find(|i| i.name == f.name) {
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: f.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                f.span,
+                            ));
+                        }
+                    }
+                }
+                Decl::Extern { methods, .. } => {
+                    for m in methods {
+                        if !self.prelude_imported_names.contains(&m.name) {
+                            if let Some(imp) = self.imports.imported_fn_types.iter().find(|i| i.name == m.name) {
+                                return Err(spanned(
+                                    TypeError::DefinitionConflictsWithImport {
+                                        def_name: m.name.clone(),
+                                        source_module: imp.qualified_name.module_path.clone(),
+                                    },
+                                    m.span,
+                                ));
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn preregister_type_names(&mut self, module: &Module) {
         for decl in &module.decls {
             if let Decl::DefType(type_decl) = decl {
@@ -3816,6 +3853,7 @@ pub(crate) fn infer_module_inner(
         .process_local_externs(module, &module_path)
         .map_err(|e| vec![e])?;
     state.cleanup_prelude_shadows(module);
+    state.check_explicit_import_shadows(module).map_err(|e| vec![e])?;
     state.preregister_type_names(module);
     let constructor_schemes = state
         .process_local_type_decls(module)

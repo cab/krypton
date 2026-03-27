@@ -58,6 +58,7 @@ pub enum TypeErrorCode {
     E0315, // Missing return type annotation on trait method
     E0601, // Extern signature mismatch across targets
     E0602, // Invalid @nullable return type
+    E0513, // Definition conflicts with explicit import
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -272,6 +273,10 @@ pub enum TypeError {
         trait_name: String,
         method_name: String,
     },
+    DefinitionConflictsWithImport {
+        def_name: String,
+        source_module: String,
+    },
 }
 
 impl TypeError {
@@ -337,6 +342,7 @@ impl TypeError {
             TypeError::ExternSignatureMismatch { .. } => TypeErrorCode::E0601,
             TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
+            TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
         }
     }
 
@@ -565,6 +571,9 @@ impl TypeError {
             }
             TypeError::AmbiguousType { .. } => {
                 Some("add a type annotation to constrain the type, e.g., `let x: Int = default()`".to_string())
+            }
+            TypeError::DefinitionConflictsWithImport { def_name, source_module } => {
+                Some(format!("use `import {source_module}.{{{def_name} as alias}}` to import under a different name"))
             }
         }
     }
@@ -1013,6 +1022,16 @@ impl fmt::Display for TypeError {
                     f,
                     "ambiguous type: could not infer the type for trait `{}` in call to `{}`",
                     trait_name, method_name
+                )
+            }
+            TypeError::DefinitionConflictsWithImport {
+                def_name,
+                source_module,
+            } => {
+                write!(
+                    f,
+                    "definition `{}` conflicts with imported function from `{}`",
+                    def_name, source_module
                 )
             }
         }

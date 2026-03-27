@@ -1,0 +1,6 @@
+# expect: error E0513
+import shadow_import_lib.{f}
+
+fun f(x: Int) -> Int = x * 2
+
+fun main() = f(1)
