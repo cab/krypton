@@ -7,6 +7,7 @@ pub enum ErrorCode {
     P0001, // Unexpected token
     P0002, // Unclosed delimiter
     P0003, // Invalid literal / lex error
+    P0004, // Unnecessary syntax
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -15,6 +16,7 @@ impl std::fmt::Display for ErrorCode {
             ErrorCode::P0001 => write!(f, "P0001"),
             ErrorCode::P0002 => write!(f, "P0002"),
             ErrorCode::P0003 => write!(f, "P0003"),
+            ErrorCode::P0004 => write!(f, "P0004"),
         }
     }
 }

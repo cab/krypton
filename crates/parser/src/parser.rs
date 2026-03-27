@@ -923,6 +923,23 @@ where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
     symbol(Token::Pub)
+        .or_not()
+        .map(|pub_tok| {
+            if pub_tok.is_some() {
+                Visibility::Pub
+            } else {
+                Visibility::Private
+            }
+        })
+}
+
+/// Visibility parser that also accepts `pub opaque` (for type declarations only).
+fn type_visibility_parser<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, Visibility, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    symbol(Token::Pub)
         .ignore_then(symbol(Token::Opaque).or_not())
         .map(|opaque| {
             if opaque.is_some() {
@@ -937,7 +954,7 @@ where
 
 #[allow(clippy::type_complexity)]
 fn decl_parser<'tokens, 'src: 'tokens, I>(
-) -> impl Parser<'tokens, I, Decl, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+) -> impl Parser<'tokens, I, (Decl, Vec<ParseError>), extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
@@ -1072,8 +1089,9 @@ where
         .or_not()
         .map(|d| d.unwrap_or_default());
 
-    let type_decl = vis
-        .clone()
+    let type_vis = type_visibility_parser();
+
+    let type_decl = type_vis
         .then_ignore(symbol(Token::Type))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(type_decl_params.clone())
@@ -1108,8 +1126,12 @@ where
         span: to_span(e.span()),
     });
 
-    let trait_method = symbol(Token::Fun)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+    let trait_method = symbol(Token::Pub)
+        .map_with(|_, e| Some(to_span(e.span())))
+        .or_not()
+        .map(|opt| opt.flatten())
+        .then_ignore(symbol(Token::Fun))
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(fn_type_params.clone())
         .then(
             trait_method_param
@@ -1126,18 +1148,25 @@ where
                 .or_not(),
         )
         .map_with(
-            |(((((name, type_params), params), return_type), constraints), body), e| FnDecl {
-                name,
-                visibility: Visibility::Private,
-                type_params,
-                params,
-                constraints,
-                return_type,
-                body: Box::new(body.unwrap_or(Expr::Lit {
-                    value: Lit::Unit,
+            |((((((pub_span, name), type_params), params), return_type), constraints), body), e| {
+                let warning = pub_span.map(|span| ParseError {
+                    code: ErrorCode::P0004,
+                    message: "pub is not needed on trait methods — they share the trait's visibility".to_string(),
+                    span,
+                });
+                (FnDecl {
+                    name,
+                    visibility: Visibility::Private,
+                    type_params,
+                    params,
+                    constraints,
+                    return_type,
+                    body: Box::new(body.unwrap_or(Expr::Lit {
+                        value: Lit::Unit,
+                        span: to_span(e.span()),
+                    })),
                     span: to_span(e.span()),
-                })),
-                span: to_span(e.span()),
+                }, warning)
             },
         );
 
@@ -1169,13 +1198,23 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |((((visibility, name), type_param), superclasses), methods), e| Decl::DefTrait {
-                visibility,
-                name,
-                type_param,
-                superclasses,
-                methods,
-                span: to_span(e.span()),
+            |((((visibility, name), type_param), superclasses), method_pairs), e| {
+                let mut methods = Vec::with_capacity(method_pairs.len());
+                let mut warnings = Vec::new();
+                for (method, warning) in method_pairs {
+                    methods.push(method);
+                    if let Some(w) = warning {
+                        warnings.push(w);
+                    }
+                }
+                (Decl::DefTrait {
+                    visibility,
+                    name,
+                    type_param,
+                    superclasses,
+                    methods,
+                    span: to_span(e.span()),
+                }, warnings)
             },
         );
 
@@ -1407,18 +1446,18 @@ where
     // --- Combined ---
     // pub_import_decl must come before fun_decl since both start with `pub`
     choice((
-        pub_import_decl,
-        fun_decl,
-        type_decl,
+        pub_import_decl.map(|d| (d, vec![])),
+        fun_decl.map(|d| (d, vec![])),
+        type_decl.map(|d| (d, vec![])),
         trait_decl,
-        impl_decl,
-        import_decl,
-        extern_decl,
+        impl_decl.map(|d| (d, vec![])),
+        import_decl.map(|d| (d, vec![])),
+        extern_decl.map(|d| (d, vec![])),
     ))
 }
 
 fn module_parser<'tokens, 'src: 'tokens, I>(
-) -> impl Parser<'tokens, I, Module, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+) -> impl Parser<'tokens, I, (Module, Vec<ParseError>), extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
@@ -1428,7 +1467,15 @@ where
                 .separated_by(stmt_sep().or_not())
                 .allow_trailing()
                 .collect::<Vec<_>>()
-                .map(|decls| Module { decls }),
+                .map(|pairs: Vec<(Decl, Vec<ParseError>)>| {
+                    let mut decls = Vec::with_capacity(pairs.len());
+                    let mut extra_errors = Vec::new();
+                    for (decl, warnings) in pairs {
+                        decls.push(decl);
+                        extra_errors.extend(warnings);
+                    }
+                    (Module { decls }, extra_errors)
+                }),
         )
         .then_ignore(ignored_newlines())
 }
@@ -1485,7 +1532,7 @@ fn parse_inner(source: &str) -> (Module, Vec<ParseError>) {
         .unwrap_or((0..0).into());
     let input = tokens.map(eoi, |(t, s)| (t, s));
 
-    let (module, parse_errors) = module_parser().parse(input).into_output_errors();
+    let (module_with_extras, parse_errors) = module_parser().parse(input).into_output_errors();
 
     errors.extend(parse_errors.into_iter().map(|e| {
         let span = e.span();
@@ -1497,7 +1544,8 @@ fn parse_inner(source: &str) -> (Module, Vec<ParseError>) {
         }
     }));
 
-    let module = module.unwrap_or(Module { decls: vec![] });
+    let (module, extra_errors) = module_with_extras.unwrap_or((Module { decls: vec![] }, vec![]));
+    errors.extend(extra_errors);
     tracing::debug!(
         decls = module.decls.len(),
         errors = errors.len(),

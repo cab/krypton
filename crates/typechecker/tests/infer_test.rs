@@ -305,7 +305,7 @@ fn infer_do_block_scoping() {
 fn infer_module_basic() {
     insta::assert_snapshot!(
         infer_module_types("fun add(a, b) = a + b"),
-        @"TypeError: function `add` uses trait method from `Semigroup` on type variable `?205` without a corresponding bound"
+        @"TypeError: function `add` uses trait method from `Semigroup` on type variable `?223` without a corresponding bound"
     );
 }
 
@@ -2167,6 +2167,105 @@ fn infer_module_private_trait() {
         result2.is_ok(),
         "wildcard import should skip private traits: {:?}",
         result2.err()
+    );
+}
+
+#[test]
+fn infer_module_pub_trait_methods_accessible() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "showlib" {
+                Some(
+                    r#"
+                    pub type Foo = MkFoo(Int)
+                    pub trait Displayable[a] {
+                        fun display(x: a) -> String
+                    }
+                    impl Displayable[Foo] {
+                        fun display(x: Foo) -> String = "foo"
+                    }
+                "#
+                    .to_string(),
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    let src = r#"
+        import showlib.{Foo, MkFoo, Displayable, display}
+        fun main() -> String = display(MkFoo(1))
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
+    assert!(
+        result.is_ok(),
+        "pub trait methods should be accessible: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn infer_module_trait_private_by_default() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some(
+                    r#"
+                    pub type Foo = MkFoo(Int)
+                    trait Hidden[a] {
+                        fun hidden(x: a) -> Int
+                    }
+                    impl Hidden[Foo] {
+                        fun hidden(x: Foo) -> Int = 1
+                    }
+                    pub fun visible() -> Int = 42
+                "#
+                    .to_string(),
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    // Can use public function but not the private trait's method
+    let src = r#"
+        import mylib.{visible}
+        fun main() -> Int = visible()
+    "#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let result = infer::infer_module(&module, &FakeResolver, "test".to_string());
+    assert!(
+        result.is_ok(),
+        "importing only public items should work: {:?}",
+        result.err()
+    );
+
+    // Trying to import the private trait by name should fail
+    let src2 = r#"
+        import mylib.{Hidden}
+        fun main() -> Int = 1
+    "#;
+    let (module2, errors2) = parse(src2);
+    assert!(errors2.is_empty());
+    let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string());
+    assert!(
+        result2.is_err(),
+        "importing private trait should fail"
+    );
+    let err = match result2 {
+        Err(e) => e,
+        Ok(_) => panic!("expected error"),
+    };
+    assert_eq!(
+        err.type_error().unwrap().error.error_code().to_string(),
+        "E0503"
     );
 }
 

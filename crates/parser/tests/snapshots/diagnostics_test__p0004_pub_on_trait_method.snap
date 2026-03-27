@@ -1,0 +1,11 @@
+---
+source: crates/parser/tests/diagnostics_test.rs
+expression: plain
+---
+[P0004] Error: pub is not needed on trait methods — they share the trait's visibility
+   ╭─[ test.kr:1:20 ]
+   │
+ 1 │ pub trait Foo[a] { pub fun bar(x: a) -> a }
+   │                    ─┬─  
+   │                     ╰─── P0004: pub is not needed on trait methods — they share the trait's visibility
+───╯
