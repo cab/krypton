@@ -1,0 +1,21 @@
+# expect: error E0301
+
+trait Default[a] {
+    fun default() -> a
+}
+
+impl Default[Int] {
+    fun default() = 0
+}
+
+trait R[f[_]] {
+    fun lol[b](a: f[b]) -> f[b] where b: Default
+}
+
+impl R[List] {
+    fun lol[b](a: List[b]) -> List[b] where b: Default = Cons(default(), a)
+}
+
+type Nope = Nope deriving (Show)
+
+fun main() = println(Nil[Nope].lol())

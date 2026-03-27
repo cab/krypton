@@ -410,6 +410,42 @@ fn walk_trait_method_calls(
                                 callback(trait_id.clone(), v);
                             }
                         }
+                        // Check method-level where constraints for polymorphic propagation
+                        let info = trait_registry
+                            .lookup_trait(trait_id)
+                            .expect("trait in trait_method_map must be in registry");
+                        if let Some(method) = info.methods.iter().find(|m| m.name == name) {
+                            if !method.constraints.is_empty() {
+                                let mut bindings = HashMap::new();
+                                for (pattern, arg) in method.param_types.iter().zip(args.iter()) {
+                                    collect_type_var_bindings_strict(
+                                        pattern,
+                                        &subst.apply(&arg.ty),
+                                        &mut bindings,
+                                    );
+                                }
+                                let ret_ty = subst.apply(&func.ty);
+                                let actual_ret = match &ret_ty {
+                                    Type::Fn(_, ret) => ret.as_ref().clone(),
+                                    other => other.clone(),
+                                };
+                                collect_type_var_bindings_strict(
+                                    &method.return_type,
+                                    &actual_ret,
+                                    &mut bindings,
+                                );
+                                for (req_trait, req_var) in &method.constraints {
+                                    if let Some(resolved) = bindings.get(req_var) {
+                                        let concrete = strip_own(resolved);
+                                        if let Some(v) = leading_type_var(&concrete) {
+                                            if fn_type_param_vars.contains(&v) {
+                                                callback(req_trait.clone(), v);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     // Also detect calls to constrained regular functions (e.g., println where a: Show)
                     if let Some(requirements) = all_fn_constraints.get(name) {
@@ -612,6 +648,26 @@ pub(super) fn check_trait_instances(
                                     &concrete_ty,
                                     expr.span,
                                 ));
+                            }
+                            // Check method-level where constraints
+                            for (req_trait, req_var) in &method.constraints {
+                                if let Some(resolved) = bindings.get(req_var) {
+                                    let concrete = strip_own(resolved);
+                                    if leading_type_var(&concrete).is_none() {
+                                        if trait_registry.lookup_trait(req_trait).is_some()
+                                            && trait_registry
+                                                .find_instance(req_trait, &concrete)
+                                                .is_none()
+                                        {
+                                            return Err(no_instance_error(
+                                                trait_registry,
+                                                req_trait,
+                                                &concrete,
+                                                expr.span,
+                                            ));
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

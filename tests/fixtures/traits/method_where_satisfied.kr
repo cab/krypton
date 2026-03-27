@@ -1,0 +1,19 @@
+# expect: output Cons(0, Cons(1, Nil))
+
+trait Default[a] {
+    fun default() -> a
+}
+
+impl Default[Int] {
+    fun default() = 0
+}
+
+trait R[f[_]] {
+    fun lol[b](a: f[b]) -> f[b] where b: Default
+}
+
+impl R[List] {
+    fun lol[b](a: List[b]) -> List[b] where b: Default = Cons(default(), a)
+}
+
+fun main() = println(Cons(1, Nil[Int]).lol())
