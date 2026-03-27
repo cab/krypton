@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{TraitName, Type, TypeVarId};
+use krypton_ir::{bind_type_vars, TraitName, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{
@@ -34,89 +34,6 @@ impl Compiler {
 
     // --- Dict / trait resolution helpers ---
 
-    pub(super) fn bind_type_vars(
-        pattern: &Type,
-        actual: &Type,
-        bindings: &mut HashMap<TypeVarId, Type>,
-    ) -> bool {
-        match (pattern, actual) {
-            (Type::Var(id), ty) => {
-                bindings.insert(*id, ty.clone());
-                true
-            }
-            (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
-                p_name == a_name
-                    && p_args.len() == a_args.len()
-                    && p_args
-                        .iter()
-                        .zip(a_args.iter())
-                        .all(|(pattern_arg, actual_arg)| {
-                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
-                        })
-            }
-            (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
-                Self::bind_type_vars(p_ctor, a_ctor, bindings)
-                    && p_args.len() == a_args.len()
-                    && p_args
-                        .iter()
-                        .zip(a_args.iter())
-                        .all(|(pattern_arg, actual_arg)| {
-                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
-                        })
-            }
-            (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
-                p_args.len() == a_args.len()
-                    && Self::bind_type_vars(
-                        p_ctor,
-                        &Type::Named(a_name.clone(), Vec::new()),
-                        bindings,
-                    )
-                    && p_args
-                        .iter()
-                        .zip(a_args.iter())
-                        .all(|(pattern_arg, actual_arg)| {
-                            Self::bind_type_vars(pattern_arg, actual_arg, bindings)
-                        })
-            }
-            // Cross-arm for HKT: App(Var(f), [a]) vs Fn([Int], Int)
-            (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
-                if krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
-            {
-                let (ctor_fn, remaining) =
-                    krypton_ir::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
-                if !Self::bind_type_vars(p_ctor, &ctor_fn, bindings) {
-                    return false;
-                }
-                remaining.len() == p_args.len()
-                    && p_args
-                        .iter()
-                        .zip(remaining.iter())
-                        .all(|(p, a)| Self::bind_type_vars(p, a, bindings))
-            }
-            (Type::Dict { .. }, _) => true,
-            (Type::Own(pattern_inner), ty) => Self::bind_type_vars(pattern_inner, ty, bindings),
-            (ty, Type::Own(actual_inner)) => Self::bind_type_vars(ty, actual_inner, bindings),
-            (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
-                p_elems.len() == a_elems.len()
-                    && p_elems
-                        .iter()
-                        .zip(a_elems.iter())
-                        .all(|(pattern_elem, actual_elem)| {
-                            Self::bind_type_vars(pattern_elem, actual_elem, bindings)
-                        })
-            }
-            (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
-                p_params.len() == a_params.len()
-                    && p_params
-                        .iter()
-                        .zip(a_params.iter())
-                        .all(|(p, a)| Self::bind_type_vars(p, a, bindings))
-                    && Self::bind_type_vars(p_ret, a_ret, bindings)
-            }
-            _ => pattern == actual,
-        }
-    }
-
     pub(super) fn resolve_dict_requirement_type(
         requirement: &DictRequirement,
         instance_info: &ParameterizedInstanceInfo,
@@ -124,7 +41,7 @@ impl Compiler {
     ) -> Option<Type> {
         let type_var = &requirement.type_var;
         let mut bindings = HashMap::new();
-        if Self::bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
+        if bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
             bindings.get(type_var).cloned()
         } else {
             None
@@ -139,7 +56,7 @@ impl Compiler {
         let type_var = &requirement.type_var;
         let mut bindings = HashMap::new();
         for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
-            if !Self::bind_type_vars(declared, actual, &mut bindings) {
+            if !bind_type_vars(declared, actual, &mut bindings) {
                 return None;
             }
         }
@@ -207,7 +124,7 @@ impl Compiler {
             .and_then(|instances| {
                 instances.iter().find(|inst| {
                     let mut bindings = HashMap::new();
-                    Self::bind_type_vars(&inst.target_type, ty, &mut bindings)
+                    bind_type_vars(&inst.target_type, ty, &mut bindings)
                 })
             })
             .cloned()
