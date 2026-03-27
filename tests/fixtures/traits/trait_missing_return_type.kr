@@ -1,0 +1,7 @@
+# expect: error E0315
+
+trait Foo[a] {
+  fun foo(x: a)
+}
+
+fun main() = 0

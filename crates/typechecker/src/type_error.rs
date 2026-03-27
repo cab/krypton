@@ -55,6 +55,7 @@ pub enum TypeErrorCode {
     E0312, // Missing trait bound
     E0313, // Ambiguous trait name
     E0314, // Ambiguous type (could not infer trait dispatch type)
+    E0315, // Missing return type annotation on trait method
     E0601, // Extern signature mismatch across targets
     E0602, // Invalid @nullable return type
 }
@@ -237,6 +238,10 @@ pub enum TypeError {
         fn_name: String,
         missing: Vec<String>,
     },
+    MissingTraitMethodAnnotation {
+        trait_name: String,
+        method_name: String,
+    },
     TraitMethodCollision {
         method_name: String,
         trait1: String,
@@ -325,6 +330,7 @@ impl TypeError {
             TypeError::UnknownTrait { .. } => TypeErrorCode::E0307,
             TypeError::SelfOutsideImpl => TypeErrorCode::E0308,
             TypeError::MissingPubAnnotation { .. } => TypeErrorCode::E0310,
+            TypeError::MissingTraitMethodAnnotation { .. } => TypeErrorCode::E0315,
             TypeError::TraitMethodCollision { .. } => TypeErrorCode::E0311,
             TypeError::MissingTraitBound { .. } => TypeErrorCode::E0312,
             TypeError::AmbiguousTraitName { .. } => TypeErrorCode::E0313,
@@ -538,6 +544,9 @@ impl TypeError {
             TypeError::SelfOutsideImpl => None,
             TypeError::MissingPubAnnotation { .. } => {
                 Some("public functions must have explicit type annotations on all parameters and the return type".to_string())
+            }
+            TypeError::MissingTraitMethodAnnotation { .. } => {
+                Some("trait methods must have explicit return type annotations".to_string())
             }
             TypeError::TraitMethodCollision { trait1, trait2, method_name } => {
                 Some(format!("traits `{}` and `{}` both define method `{}`; use qualified imports or rename to disambiguate", trait1, trait2, method_name))
@@ -930,6 +939,13 @@ impl fmt::Display for TypeError {
                     "public function `{}` is missing type annotations for: {}",
                     fn_name,
                     missing.join(", ")
+                )
+            }
+            TypeError::MissingTraitMethodAnnotation { trait_name, method_name } => {
+                write!(
+                    f,
+                    "trait method `{}` in trait `{}` is missing a return type annotation",
+                    method_name, trait_name
                 )
             }
             TypeError::TraitMethodCollision {

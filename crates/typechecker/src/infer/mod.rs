@@ -2421,6 +2421,19 @@ fn register_local_traits(
             type_param_map.insert(type_param.name.clone(), tv_id);
             type_param_arity.insert(type_param.name.clone(), type_param.arity);
 
+            // Check that all trait methods have explicit return type annotations
+            for method in methods {
+                if method.return_type.is_none() {
+                    return Err(spanned(
+                        TypeError::MissingTraitMethodAnnotation {
+                            trait_name: name.clone(),
+                            method_name: method.name.clone(),
+                        },
+                        method.span,
+                    ));
+                }
+            }
+
             let mut trait_methods = Vec::new();
             let mut exported_methods = Vec::new();
             for method in methods {
