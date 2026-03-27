@@ -9,6 +9,39 @@ use krypton_ir::{
 use krypton_parser::ast::Span;
 use krypton_typechecker::typed_ast::TypedModule;
 
+/// Check if a parametric type pattern matches a concrete type (type vars match anything).
+fn types_match(pattern: &Type, concrete: &Type) -> bool {
+    match (pattern, concrete) {
+        (Type::Var(_), _) => true,
+        (Type::Int, Type::Int)
+        | (Type::Float, Type::Float)
+        | (Type::Bool, Type::Bool)
+        | (Type::String, Type::String)
+        | (Type::Unit, Type::Unit) => true,
+        (Type::Fn(p_params, p_ret), Type::Fn(c_params, c_ret)) => {
+            p_params.len() == c_params.len()
+                && p_params.iter().zip(c_params.iter()).all(|(p, c)| types_match(p, c))
+                && types_match(p_ret, c_ret)
+        }
+        (Type::Named(p_name, p_args), Type::Named(c_name, c_args)) => {
+            p_name == c_name
+                && p_args.len() == c_args.len()
+                && p_args.iter().zip(c_args.iter()).all(|(p, c)| types_match(p, c))
+        }
+        (Type::App(p_ctor, p_args), Type::App(c_ctor, c_args)) => {
+            types_match(p_ctor, c_ctor)
+                && p_args.len() == c_args.len()
+                && p_args.iter().zip(c_args.iter()).all(|(p, c)| types_match(p, c))
+        }
+        (Type::Own(p), Type::Own(c)) => types_match(p, c),
+        (Type::Tuple(p_elems), Type::Tuple(c_elems)) => {
+            p_elems.len() == c_elems.len()
+                && p_elems.iter().zip(c_elems.iter()).all(|(p, c)| types_match(p, c))
+        }
+        _ => false,
+    }
+}
+
 /// JS reserved words that cannot be used as identifiers.
 const JS_RESERVED: &[&str] = &[
     "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
@@ -108,35 +141,32 @@ pub fn compile_modules_js(
         module_sources.insert(tm.module_path.clone(), tm.module_source.clone());
     }
 
-    // Build variant lookup from all modules: (type_name, tag) → variant_name
-    // Uses bare names — will collide if two modules define same-named sum types.
-    // Fixed by M23-T19 (qualified identity keys).
+    // Build variant lookup from all modules: (module/type_name, tag) → variant_name
+    // Uses module-qualified names to avoid collisions when types shadow across modules.
     let mut variant_lookup: HashMap<(String, u32), String> = HashMap::new();
     for ir_module in &ir_modules {
         for st in &ir_module.sum_types {
+            let qualified = format!("{}/{}", ir_module.name, st.name);
             for v in &st.variants {
-                let key = (st.name.clone(), v.tag);
-                if let Some(existing) = variant_lookup.get(&key) {
-                    if existing != &v.name {
-                        panic!(
-                            "ICE: variant_lookup collision: ({}, tag {}) maps to both '{}' and '{}'",
-                            st.name, v.tag, existing, v.name
-                        );
-                    }
-                }
-                variant_lookup.insert(key, v.name.clone());
+                // Insert both qualified and bare keys. Qualified keys take priority
+                // and prevent collisions; bare keys are fallback for local types.
+                let qkey = (qualified.clone(), v.tag);
+                variant_lookup.insert(qkey, v.name.clone());
+                let bare_key = (st.name.clone(), v.tag);
+                // Only insert bare key if no collision
+                variant_lookup.entry(bare_key).or_insert_with(|| v.name.clone());
             }
         }
     }
 
     // Build instance → source module map: (trait_local_name, dict_type_key) → module_name
-    // Concrete instances (no type vars) use target_type_name; others use head_type_name.
+    // Concrete instances (no type vars) use target_type_name; others use canonical_type_name.
     let mut instance_source_modules: HashMap<(String, String), String> = HashMap::new();
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
             if !inst.is_imported && !inst.is_intrinsic {
                 let type_key = if has_type_vars(&inst.target_type) {
-                    head_type_name(&inst.target_type)
+                    canonical_type_name(&inst.target_type)
                 } else {
                     inst.target_type_name.clone()
                 };
@@ -150,7 +180,7 @@ pub fn compile_modules_js(
 
     // Build set of concrete instance keys for dict name resolution.
     // Concrete instances (no type vars in target_type) use target_type_name for uniqueness.
-    // Instances with type vars use head_type_name instead.
+    // Instances with type vars use canonical_type_name instead.
     let mut concrete_instance_keys: HashSet<(String, String)> = HashSet::new();
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
@@ -615,14 +645,22 @@ impl<'a> JsEmitter<'a> {
     }
 
     /// Extract the sum type name from an IR type, if it names a known sum type.
+    /// Returns the key used in variant_lookup: prefers the full qualified name,
+    /// falls back to bare name for backward compat.
     fn sum_type_name_from_type(&self, ty: &krypton_ir::Type) -> Option<String> {
         match ty {
             krypton_ir::Type::Named(name, _) => {
-                let bare = name.rsplit('/').next().unwrap_or(name);
-                if self.variant_lookup.keys().any(|(tn, _)| tn == bare) {
-                    Some(bare.to_string())
+                // Try full qualified name first (e.g. "core/option/Option")
+                if self.variant_lookup.keys().any(|(tn, _)| tn == name) {
+                    Some(name.clone())
                 } else {
-                    None
+                    // Fallback to bare name
+                    let bare = name.rsplit('/').next().unwrap_or(name);
+                    if self.variant_lookup.keys().any(|(tn, _)| tn == bare) {
+                        Some(bare.to_string())
+                    } else {
+                        None
+                    }
                 }
             }
             krypton_ir::Type::Own(inner) => self.sum_type_name_from_type(inner),
@@ -732,7 +770,7 @@ impl<'a> JsEmitter<'a> {
             for inst in &self.module.instances {
                 if inst.is_imported && !inst.is_intrinsic {
                     let type_key = if has_type_vars(&inst.target_type) {
-                        head_type_name(&inst.target_type)
+                        canonical_type_name(&inst.target_type)
                     } else {
                         inst.target_type_name.clone()
                     };
@@ -916,17 +954,29 @@ impl<'a> JsEmitter<'a> {
     ) -> String {
         let trait_local = &trait_name.local_name;
         // For concrete instances (no type vars), use canonical_type_name to match
-        // the target_type_name used at emission. For parameterized instances, fall
-        // back to head_type_name which matches the factory function name.
+        // the target_type_name used at emission.
         let canonical = canonical_type_name(ty);
         if self
             .concrete_instance_keys
             .contains(&(trait_local.clone(), canonical.clone()))
         {
-            format!("{trait_local}$${canonical}")
-        } else {
-            format!("{trait_local}$${}", head_type_name(ty))
+            return format!("{trait_local}$${canonical}");
         }
+        // Fallback: search for a parametric constant instance (type vars but no sub-dict
+        // requirements) whose target_type structurally matches the concrete type.
+        for inst in &self.module.instances {
+            if inst.trait_name.local_name == *trait_local
+                && has_type_vars(&inst.target_type)
+                && inst.sub_dict_requirements.is_empty()
+                && types_match(&inst.target_type, ty)
+            {
+                return format!(
+                    "{trait_local}$${}",
+                    canonical_type_name(&inst.target_type)
+                );
+            }
+        }
+        format!("{trait_local}$${canonical}")
     }
 
     fn emit_dict_instances(&mut self) {
@@ -956,9 +1006,9 @@ impl<'a> JsEmitter<'a> {
             if inst.sub_dict_requirements.is_empty() {
                 // Concrete instance — dict constant object.
                 // Use target_type_name for fully concrete types (unique, avoids collisions).
-                // Use head_type_name for types with vars (matches GetDict refs).
+                // Use canonical_type_name for types with vars (matches GetDict refs).
                 let type_key = if has_type_vars(&inst.target_type) {
-                    head_type_name(&inst.target_type)
+                    canonical_type_name(&inst.target_type)
                 } else {
                     inst.target_type_name.clone()
                 };
@@ -976,8 +1026,8 @@ impl<'a> JsEmitter<'a> {
                     methods.join(", ")
                 ));
             } else {
-                // Parameterized instance — factory function (uses head_type_name to match MakeDict refs)
-                let dict_name = format!("{}$${}", inst.trait_name.local_name, head_type_name(&inst.target_type));
+                // Parameterized instance — factory function (uses canonical_type_name to match MakeDict refs)
+                let dict_name = format!("{}$${}", inst.trait_name.local_name, canonical_type_name(&inst.target_type));
                 let dict_params: Vec<String> = inst
                     .sub_dict_requirements
                     .iter()
@@ -1365,6 +1415,8 @@ impl<'a> JsEmitter<'a> {
                         "(() => {{ throw new KryptonPanic({}); }})()",
                         arg_strs.join(", ")
                     ));
+                } else if fn_name == "is_null" {
+                    self.write(&format!("({} == null)", arg_strs[0]));
                 } else {
                     self.write(&format!("{fn_name}({})", arg_strs.join(", ")));
                 }
@@ -1470,9 +1522,9 @@ impl<'a> JsEmitter<'a> {
                 sub_dicts,
             } => {
                 // MakeDict calls a parameterized factory function whose name uses
-                // head_type_name (stripping type args that become factory params).
+                // canonical_type_name (for unique naming across parameterized instances).
                 let trait_local = &trait_name.local_name;
-                let type_base = head_type_name(ty);
+                let type_base = canonical_type_name(ty);
                 let factory_name = format!("{trait_local}$${type_base}");
                 let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{factory_name}({})", args.join(", ")));
