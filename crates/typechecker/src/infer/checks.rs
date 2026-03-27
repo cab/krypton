@@ -708,7 +708,20 @@ pub(super) fn check_trait_instances(
                             });
                             if let Some(ty) = resolved_ty {
                                 let concrete_ty = strip_own(&ty);
-                                if leading_type_var(&concrete_ty).is_none() {
+                                if let Some(v) = leading_type_var(&concrete_ty) {
+                                    // Type var from enclosing fn's polymorphism —
+                                    // constraint will be checked at that fn's call site.
+                                    // Unresolved inference vars are NOT in fn_type_vars
+                                    // and must be rejected.
+                                    if !fn_type_vars.contains(&v) {
+                                        return Err(no_instance_error(
+                                            trait_registry,
+                                            req_trait_name,
+                                            &concrete_ty,
+                                            expr.span,
+                                        ));
+                                    }
+                                } else {
                                     let missing =
                                         if trait_registry.lookup_trait(req_trait_name).is_some() {
                                             trait_registry
