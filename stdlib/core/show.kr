@@ -8,3 +8,4 @@ impl Show[Int] { fun show(x: Int) -> String = __krypton_intrinsic() }
 impl Show[Float] { fun show(x: Float) -> String = __krypton_intrinsic() }
 impl Show[Bool] { fun show(x: Bool) -> String = __krypton_intrinsic() }
 impl Show[String] { fun show(x: String) -> String = __krypton_intrinsic() }
+impl Show[Unit] { fun show(x: Unit) -> String = "()" }

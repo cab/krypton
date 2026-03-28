@@ -143,7 +143,20 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
         .iter()
         .find(|tm| tm.module_path == "test")
         .expect("expected root typed module");
-    let lowered = krypton_ir::lower::lower_module(root, "test").expect("lowering should succeed");
+    let all_instance_defs: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+        .collect();
+    let all_extern_fns: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.extern_fns.iter().cloned())
+        .collect();
+    let all_extern_types: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.extern_types.iter().cloned())
+        .collect();
+    let lowered = krypton_ir::lower::lower_module(root, "test", &all_instance_defs, &all_extern_fns, &all_extern_types)
+        .expect("lowering should succeed");
 
     assert!(
         lowered.extern_fns.iter().any(|ext| ext.name == "println"

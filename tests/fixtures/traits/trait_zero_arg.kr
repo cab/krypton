@@ -1,4 +1,4 @@
-# expect: output "42\nMyStruct"
+# expect: output "42\nMyStruct(10)"
 
 type MyStruct = MyStruct(Int) deriving (Show)
 

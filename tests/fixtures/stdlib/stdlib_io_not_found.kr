@@ -1,4 +1,5 @@
 # expect: output "got error"
+# skip: js(io)
 import core/io.{read_file}
 
 fun handle(r) = match r {

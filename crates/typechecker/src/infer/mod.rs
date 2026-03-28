@@ -1508,10 +1508,6 @@ pub(crate) struct ModuleInferenceState {
     pub(super) lambda_own_captures: HashMap<Span, String>,
     // Import accumulation
     pub(super) imports: ImportContext,
-    pub(super) imported_extern_fns: Vec<ExternFnInfo>,
-    pub(super) imported_extern_fn_keys: HashSet<(String, String)>,
-    pub(super) imported_extern_types: Vec<ExternTypeInfo>,
-    pub(super) imported_extern_type_keys: HashSet<(String, String)>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
     pub(super) trait_aliases: Vec<(String, TraitName)>,
@@ -1542,10 +1538,6 @@ impl ModuleInferenceState {
             let_own_spans: HashSet::new(),
             lambda_own_captures: HashMap::new(),
             imports: ImportContext::new(),
-            imported_extern_fns: Vec::new(),
-            imported_extern_fn_keys: HashSet::new(),
-            imported_extern_types: Vec::new(),
-            imported_extern_type_keys: HashSet::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
             trait_aliases: Vec::new(),
@@ -1817,7 +1809,7 @@ impl ModuleInferenceState {
         fn_bodies: Vec<Option<TypedExpr>>,
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
-        imported_instance_defs: Vec<InstanceDefInfo>,
+        _imported_instance_defs: Vec<InstanceDefInfo>,
         fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, TypeVarId)>>,
         trait_method_map: &HashMap<String, TraitName>,
         trait_registry: &TraitRegistry,
@@ -2285,11 +2277,8 @@ impl ModuleInferenceState {
             functions,
             trait_defs,
             instance_defs,
-            imported_instance_defs,
             extern_fns,
-            imported_extern_fns: self.imported_extern_fns,
             extern_types,
-            imported_extern_types: self.imported_extern_types,
             struct_decls,
             sum_decls,
             type_visibility,
@@ -2411,45 +2400,42 @@ fn import_cached_instances(
     // Structural instance lookup: for each type/trait in scope, look up instances
     // in the defining module. The orphan rule guarantees instances live in the
     // module defining the type or the trait.
-    {
-        let mut source_modules: HashSet<&str> = HashSet::new();
-        for (_, (source_path, _)) in imported_type_info {
-            source_modules.insert(source_path.as_str());
-        }
-        // Include modules that define imported traits (covers core modules
-        // providing instances for builtin types like Int, Bool, etc.)
-        for td in imported_trait_defs {
-            source_modules.insert(td.module_path.as_str());
-        }
-        // Vec is a language-level builtin (array literal syntax []),
-        // so always include its defining module for instance resolution.
-        source_modules.insert("core/vec");
+    let mut source_modules: HashSet<&str> = HashSet::new();
+    for (_, (source_path, _)) in imported_type_info {
+        source_modules.insert(source_path.as_str());
+    }
+    // Include modules that define imported traits (covers core modules
+    // providing instances for builtin types like Int, Bool, etc.)
+    for td in imported_trait_defs {
+        source_modules.insert(td.module_path.as_str());
+    }
+    // Vec is a language-level builtin (array literal syntax []),
+    // so always include its defining module for instance resolution.
+    source_modules.insert("core/vec");
 
-        let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
-        for mod_path in &source_modules {
-            if let Some(cached_module) = cache.get(*mod_path) {
-                for inst in &cached_module.instance_defs {
-                    let key = (inst.trait_name.clone(), inst.target_type.clone());
-                    if seen_instances.insert(key) {
-                        let instance = InstanceInfo {
-                            trait_name: inst.trait_name.clone(),
-                            target_type: inst.target_type.clone(),
-                            target_type_name: inst.target_type_name.clone(),
-                            type_var_ids: inst.type_var_ids.clone(),
-                            constraints: inst.constraints.clone(),
-                            span: (0, 0),
-                            is_builtin: false,
-                        };
-                        match trait_registry.register_instance(instance) {
-                            Ok(()) => {}
-                            Err((TypeError::DuplicateInstance { .. }, _)) => {
-                                // Expected: same instance imported via multiple transitive paths
-                            }
-                            Err(_) => {}
+    let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
+    for mod_path in &source_modules {
+        if let Some(cached_module) = cache.get(*mod_path) {
+            for inst in &cached_module.instance_defs {
+                let key = (inst.trait_name.clone(), inst.target_type.clone());
+                if seen_instances.insert(key) {
+                    let instance = InstanceInfo {
+                        trait_name: inst.trait_name.clone(),
+                        target_type: inst.target_type.clone(),
+                        target_type_name: inst.target_type_name.clone(),
+                        type_var_ids: inst.type_var_ids.clone(),
+                        constraints: inst.constraints.clone(),
+                        span: (0, 0),
+                        is_builtin: false,
+                    };
+                    match trait_registry.register_instance(instance) {
+                        Ok(()) => {}
+                        Err((TypeError::DuplicateInstance { .. }, _)) => {
+                            // Expected: same instance imported via multiple transitive paths
                         }
-                        // NOTE: deep-clones each imported instance; consider indices/Arc if this becomes hot
-                        imported_instance_defs.push(inst.clone());
+                        Err(_) => {}
                     }
+                    imported_instance_defs.push(inst.clone());
                 }
             }
         }
@@ -3268,11 +3254,10 @@ fn infer_function_bodies<'a>(
     let adj = scc::build_dependency_graph(&fn_decls);
     let sccs = scc::tarjan_scc(&adj);
 
-    let extern_fn_names: HashSet<String> = extern_fns
-        .iter()
-        .map(|ef| ef.name.clone())
-        .chain(state.imported_extern_fns.iter().map(|ef| ef.name.clone()))
-        .collect();
+    // TODO(BL-T6 follow-up): include imported extern fn names once extern fns
+    // are unified with regular fn_types in the typechecker.
+    let extern_fn_names: HashSet<String> =
+        extern_fns.iter().map(|ef| ef.name.clone()).collect();
 
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];

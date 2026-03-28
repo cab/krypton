@@ -420,13 +420,9 @@ pub struct TypedModule {
     pub functions: Vec<TypedFnDecl>,
     pub trait_defs: Vec<TraitDefInfo>,
     pub instance_defs: Vec<InstanceDefInfo>,
-    /// Instance definitions imported from dependency modules.
-    pub imported_instance_defs: Vec<InstanceDefInfo>,
     pub extern_fns: Vec<ExternFnInfo>,
-    pub imported_extern_fns: Vec<ExternFnInfo>,
     /// Extern type bindings (krypton name, host module path, target).
     pub extern_types: Vec<ExternTypeInfo>,
-    pub imported_extern_types: Vec<ExternTypeInfo>,
     pub struct_decls: Vec<StructDecl>,
     pub sum_decls: Vec<SumDecl>,
     /// Maps type_name → visibility for types declared in this module.

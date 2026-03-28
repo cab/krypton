@@ -5,7 +5,7 @@ pub use emit::{compile_modules_js, JsCodegenError};
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::{BTreeSet, HashMap, HashSet};
 
     use krypton_ir::*;
     use krypton_typechecker::types::TypeVarGen;
@@ -33,8 +33,14 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: name.to_string(),
+            imported_dict_refs: vec![],
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
+            imported_structs: vec![],
+            imported_sum_types: vec![],
+            imported_extern_types: vec![],
+            imported_extern_fns: vec![],
+            imported_instances: vec![],
         }
     }
 

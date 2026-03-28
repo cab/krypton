@@ -48,7 +48,7 @@
     },
     "keyword-declaration": {
       "name": "keyword.other.krypton",
-      "match": "\\b(?:fun|def|fn|let|type|trait|impl|import|use|pub|opaque|where|own|deriving|extern|as|shared|self|tuple)\\b"
+      "match": "\\b(?:fun|def|let|type|trait|impl|import|use|pub|opaque|where|own|deriving|extern|as|shared|self|tuple)\\b"
     },
     "operator-ownership": {
       "name": "keyword.operator.ownership.krypton",

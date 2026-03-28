@@ -695,6 +695,18 @@ fn main() {
 
             let mut lower_dur = Duration::ZERO;
             let mut lint_dur = Duration::ZERO;
+            let all_instance_defs: Vec<_> = typed_modules
+                .iter()
+                .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+                .collect();
+            let all_extern_fns: Vec<_> = typed_modules
+                .iter()
+                .flat_map(|tm| tm.extern_fns.iter().cloned())
+                .collect();
+            let all_extern_types: Vec<_> = typed_modules
+                .iter()
+                .flat_map(|tm| tm.extern_types.iter().cloned())
+                .collect();
             for (i, typed) in typed_modules.iter().enumerate() {
                 if !all && i > 0 {
                     continue;
@@ -705,7 +717,7 @@ fn main() {
                     typed.module_path.clone()
                 };
                 let t = Instant::now();
-                match krypton_ir::lower::lower_module(typed, &mod_name) {
+                match krypton_ir::lower::lower_module(typed, &mod_name, &all_instance_defs, &all_extern_fns, &all_extern_types) {
                     Ok(ir_module) => {
                         lower_dur += t.elapsed();
                         let t = Instant::now();

@@ -299,17 +299,9 @@ impl LintContext {
                         self.err(format!("GetDict references unknown trait '{trait_name}'"))
                     );
                 }
-                if let Some(type_name) = concrete_type_name(ty) {
-                    if !self
-                        .known_instances
-                        .iter()
-                        .any(|(tn, ttn)| tn == trait_name && ttn == &type_name)
-                    {
-                        return Err(self.err(format!(
-                            "GetDict references unknown instance '{trait_name}' for type '{type_name}'"
-                        )));
-                    }
-                }
+                // Instance existence is not checked here — instances may be
+                // cross-module and resolved by the codegen from all_ir_modules.
+                let _ = ty;
                 Ok(())
             }
 

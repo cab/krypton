@@ -19,12 +19,36 @@ import markdown
 from jinja2 import Environment, FileSystemLoader
 
 ROOT = Path(__file__).parent
+WORKSPACE_ROOT = ROOT.parent
 CONTENT = ROOT / "content"
 TEMPLATES = ROOT / "templates"
 STATIC = ROOT / "static"
 FRONTEND = ROOT / "frontend"
 GENERATED = ROOT / "generated"
 DIST = ROOT / "dist"
+RUNTIME_JS = WORKSPACE_ROOT / "runtime" / "js"
+STDLIB = WORKSPACE_ROOT / "stdlib"
+WASM_INPUT_DIRS = [
+    WORKSPACE_ROOT / "crates" / "playground",
+    WORKSPACE_ROOT / "crates" / "codegen_js",
+    WORKSPACE_ROOT / "crates" / "modules",
+    WORKSPACE_ROOT / "crates" / "parser",
+    WORKSPACE_ROOT / "crates" / "typechecker",
+    WORKSPACE_ROOT / "crates" / "ir",
+    RUNTIME_JS,
+    STDLIB,
+]
+ROOT_WATCH_FILES = {
+    (WORKSPACE_ROOT / "Cargo.toml").resolve(),
+    (WORKSPACE_ROOT / "Cargo.lock").resolve(),
+}
+
+
+def resolved_path(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except FileNotFoundError:
+        return path
 
 
 def build_frontend():
@@ -42,7 +66,9 @@ def build_playground_wasm():
     try:
         subprocess.run(["npm", "run", "build:playground-wasm"], cwd=ROOT, check=True)
     except FileNotFoundError as exc:
-        raise RuntimeError("wasm-pack is required to build the playground compiler.") from exc
+        raise RuntimeError(
+            "wasm-pack is required to build the playground compiler."
+        ) from exc
 
 
 def slug_from_dir(name: str) -> str:
@@ -94,11 +120,9 @@ def discover_content():
     return chapters
 
 
-def build():
+def render_site():
     env = Environment(loader=FileSystemLoader(TEMPLATES))
     chapters = discover_content()
-    build_frontend()
-    build_playground_wasm()
 
     # Flatten lessons for prev/next
     all_lessons = [l for ch in chapters for l in ch["lessons"]]
@@ -122,10 +146,12 @@ def build():
 
     # Render home page
     home_tmpl = env.get_template("home.html")
-    (DIST / "index.html").write_text(home_tmpl.render(
-        title="Home",
-        chapters=chapters,
-    ))
+    (DIST / "index.html").write_text(
+        home_tmpl.render(
+            title="Home",
+            chapters=chapters,
+        )
+    )
 
     # Render lesson pages
     lesson_tmpl = env.get_template("lesson.html")
@@ -134,13 +160,39 @@ def build():
         l_slug = lesson["slug"]
         out_dir = DIST / ch_slug / l_slug
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "index.html").write_text(lesson_tmpl.render(
-            title=lesson["title"],
-            lesson=lesson,
-            chapters=chapters,
-        ))
+        (out_dir / "index.html").write_text(
+            lesson_tmpl.render(
+                title=lesson["title"],
+                lesson=lesson,
+                chapters=chapters,
+            )
+        )
 
     print(f"Built {len(all_lessons)} lessons in {len(chapters)} chapters → dist/")
+
+
+def build(*, include_frontend: bool = True, include_wasm: bool = True):
+    if include_frontend:
+        build_frontend()
+    if include_wasm:
+        build_playground_wasm()
+    render_site()
+
+
+def should_ignore_path(path: Path) -> bool:
+    resolved = resolved_path(path)
+    return DIST.resolve() in resolved.parents or resolved == DIST.resolve()
+
+
+def needs_wasm_rebuild(path: Path) -> bool:
+    resolved = resolved_path(path)
+
+    if resolved in ROOT_WATCH_FILES:
+        return True
+    return any(
+        watch_dir.resolve() in resolved.parents or resolved == watch_dir.resolve()
+        for watch_dir in WASM_INPUT_DIRS
+    )
 
 
 def serve(port: int = 8000):
@@ -153,29 +205,57 @@ def serve(port: int = 8000):
     class RebuildHandler(FileSystemEventHandler):
         def __init__(self):
             self._debounce_timer = None
+            self._needs_frontend = False
+            self._needs_wasm = False
 
         def _rebuild(self):
             try:
-                build()
+                build(
+                    include_frontend=self._needs_frontend,
+                    include_wasm=self._needs_wasm,
+                )
             except Exception as e:
                 print(f"Build error: {e}")
+            finally:
+                self._needs_frontend = False
+                self._needs_wasm = False
 
         def on_any_event(self, event):
-            # Ignore changes in dist/
-            if DIST.as_posix() in event.src_path:
+            if getattr(event, "is_directory", False):
                 return
+
+            event_path = resolved_path(Path(event.src_path))
+            # Ignore changes in dist/
+            if should_ignore_path(event_path):
+                return
+
+            if needs_wasm_rebuild(event_path):
+                self._needs_wasm = True
+            if FRONTEND.resolve() in event_path.parents:
+                self._needs_frontend = True
+
             if self._debounce_timer:
                 self._debounce_timer.cancel()
             self._debounce_timer = threading.Timer(0.3, self._rebuild)
             self._debounce_timer.start()
 
     observer = Observer()
-    for watch_dir in [CONTENT, TEMPLATES, STATIC, FRONTEND]:
+    for watch_dir in [
+        CONTENT,
+        TEMPLATES,
+        STATIC,
+        FRONTEND,
+        *WASM_INPUT_DIRS,
+        WORKSPACE_ROOT,
+    ]:
         if watch_dir.exists():
-            observer.schedule(RebuildHandler(), str(watch_dir), recursive=True)
+            recursive = watch_dir != WORKSPACE_ROOT
+            observer.schedule(RebuildHandler(), str(watch_dir), recursive=recursive)
     observer.start()
 
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(DIST))
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=str(DIST)
+    )
     server = http.server.HTTPServer(("localhost", port), handler)
     print(f"Serving at http://localhost:{port} (watching for changes)")
     try:
@@ -188,7 +268,9 @@ def serve(port: int = 8000):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Krypton tour SSG")
-    parser.add_argument("command", nargs="?", default="build", choices=["build", "serve"])
+    parser.add_argument(
+        "command", nargs="?", default="build", choices=["build", "serve"]
+    )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 

@@ -186,7 +186,9 @@ document.querySelectorAll(".code-block").forEach((block) => {
       }
     } catch (error) {
       outputText.textContent =
-        error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
       view.dispatch(setDiagnostics(view.state, []));
     } finally {
       if (runBtn instanceof HTMLButtonElement) {

@@ -417,6 +417,10 @@ pub struct Module {
     pub tuple_arities: BTreeSet<usize>,
     /// Module path for qualified type names (empty for root module).
     pub module_path: String,
+    /// Cross-module instance references: (trait_name, target_type) pairs that
+    /// this module's functions need but are not locally defined. The codegen
+    /// uses these to import dicts from defining modules.
+    pub imported_dict_refs: Vec<(TraitName, Type)>,
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
@@ -427,6 +431,21 @@ pub struct Module {
     /// Future: consider promoting to explicit IR unwind semantics (invoke/landingpad)
     /// rather than side metadata. See BL-T5 for related variable identity work.
     pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
+
+    // --- Cross-module metadata (self-contained compilation unit) ---
+    // Each module embeds the metadata it needs from dependencies so codegen
+    // can compile it without access to other modules' IR.
+
+    /// Struct definitions from dependency modules (field accessor + class registration).
+    pub imported_structs: Vec<ImportedStructDef>,
+    /// Sum type definitions from dependency modules (pattern match dispatch).
+    pub imported_sum_types: Vec<ImportedSumTypeDef>,
+    /// Extern type bindings from dependency modules (JVM class descriptors).
+    pub imported_extern_types: Vec<ExternTypeDef>,
+    /// Extern FFI function bindings from dependency modules (method references).
+    pub imported_extern_fns: Vec<ExternFnDef>,
+    /// Instance metadata from dependency modules (cross-module dict dispatch).
+    pub imported_instances: Vec<ImportedInstanceRef>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -530,6 +549,35 @@ pub struct InstanceDef {
     pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
     pub is_intrinsic: bool,
     pub is_imported: bool,
+}
+
+/// Struct definition from another module, needed for field access codegen.
+#[derive(Debug, Clone)]
+pub struct ImportedStructDef {
+    pub name: String,
+    pub module_path: String,
+    pub type_params: Vec<TypeVarId>,
+    pub fields: Vec<(String, Type)>,
+}
+
+/// Sum type definition from another module, needed for pattern match codegen.
+#[derive(Debug, Clone)]
+pub struct ImportedSumTypeDef {
+    pub name: String,
+    pub module_path: String,
+    pub type_params: Vec<TypeVarId>,
+    pub variants: Vec<VariantDef>,
+}
+
+/// Instance from another module, needed for cross-module dict dispatch.
+#[derive(Debug, Clone)]
+pub struct ImportedInstanceRef {
+    pub source_module_path: String,
+    pub trait_name: TraitName,
+    pub target_type_name: String,
+    pub target_type: Type,
+    pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
+    pub is_intrinsic: bool,
 }
 
 #[cfg(test)]
@@ -713,8 +761,14 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: "test".to_string(),
+            imported_dict_refs: vec![],
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
+            imported_structs: vec![],
+            imported_sum_types: vec![],
+            imported_extern_types: vec![],
+            imported_extern_fns: vec![],
+            imported_instances: vec![],
         };
     }
 }

@@ -10,8 +10,9 @@ use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, Ty
 use crate::Type as IrType;
 use crate::{
     Atom, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose, FnDef, FnId,
-    ImportedFnDef, InstanceDef, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef,
-    SumTypeDef, SwitchBranch, TraitDef, TraitMethodDef, VarId, VariantDef,
+    ImportedFnDef, ImportedInstanceRef, ImportedStructDef, ImportedSumTypeDef, InstanceDef,
+    Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, SwitchBranch,
+    TraitDef, TraitMethodDef, VarId, VariantDef,
 };
 
 // ---------------------------------------------------------------------------
@@ -543,6 +544,12 @@ struct LowerCtx {
     fn_exit_vars: HashMap<String, VarId>,
     /// Accumulated fn_exit_closes for the module (fn_name → resources to close on unwind)
     fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
+    /// Module path of the module being lowered (for filtering local dict refs).
+    module_path: String,
+    /// Cross-module instance references: (trait_name, target_type) pairs resolved
+    /// via GetDict/MakeDict that are not locally defined. The codegen uses these
+    /// to determine which dicts need to be imported from other modules.
+    imported_dict_refs: Vec<(TraitName, IrType)>,
 }
 
 impl LowerCtx {
@@ -3690,6 +3697,14 @@ impl LowerCtx {
             return Ok((vec![], Atom::Var(var_id)));
         }
 
+        // Record cross-module dict references (the codegen uses these
+        // to determine which instance dicts to import from other modules).
+        // Skip dicts whose trait is defined in the current module — those are local.
+        if trait_name.module_path != self.module_path {
+            self.imported_dict_refs
+                .push((trait_name.clone(), ty.clone().into()));
+        }
+
         // Strategy 2: Check for parameterized instance with where-constraints
         if let Some(result) = self.try_resolve_parameterized_dict(trait_name, ty)? {
             return Ok(result);
@@ -4533,7 +4548,24 @@ enum LoweredValue {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, LowerError> {
+/// Lower a `TypedModule` to an IR `Module`.
+///
+/// Each IR module is a self-contained compilation unit: local definitions plus
+/// cross-module metadata (imported_structs, imported_sum_types, imported_extern_fns,
+/// imported_extern_types, imported_instances). The codegen compiles each module
+/// independently without access to other modules' IR.
+///
+/// `imported_instances` provides instance defs from other modules needed for
+/// cross-module dict-passing resolution during lowering.
+/// `imported_extern_fns` provides extern fn declarations from other modules
+/// needed for FnId allocation (so calls to imported externs can be resolved).
+pub fn lower_module(
+    typed: &TypedModule,
+    module_name: &str,
+    imported_instances: &[(String, typed_ast::InstanceDefInfo)],
+    imported_extern_fns: &[typed_ast::ExternFnInfo],
+    imported_extern_types: &[typed_ast::ExternTypeInfo],
+) -> Result<Module, LowerError> {
     // Build fn_constraints from TypeScheme constraints (embedded during inference)
     let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for entry in &typed.fn_types {
@@ -4589,10 +4621,11 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_constraints,
         dict_params: HashMap::new(),
         fn_schemes,
+        module_path: typed.module_path.clone(),
         param_instances: typed
             .instance_defs
             .iter()
-            .chain(typed.imported_instance_defs.iter())
+            .chain(imported_instances.iter().map(|(_, inst)| inst))
             .filter(|inst| !inst.constraints.is_empty())
             .map(|inst| ParamInstanceInfo {
                 trait_name: inst.trait_name.clone(),
@@ -4630,6 +4663,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_exit_track: HashSet::new(),
         fn_exit_vars: HashMap::new(),
         fn_exit_closes: HashMap::new(),
+        imported_dict_refs: vec![],
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -4710,14 +4744,16 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         let fn_id = ctx.fresh_fn();
         ctx.fn_ids.insert(decl.name.clone(), fn_id);
     }
-    // Extern functions (local + direct imports)
+    // Extern functions (local)
     for ext in &typed.extern_fns {
         if !ctx.fn_ids.contains_key(&ext.name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(ext.name.clone(), fn_id);
         }
     }
-    for ext in &typed.imported_extern_fns {
+    // Imported extern fns need FnIds for call resolution during lowering,
+    // even though they are not emitted into the IR module's extern_fns list.
+    for ext in imported_extern_fns {
         if !ctx.fn_ids.contains_key(&ext.name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(ext.name.clone(), fn_id);
@@ -4838,13 +4874,10 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_names.insert(id, name.clone());
     }
 
-    // 8. Build enriched extern_fns from local + direct imports
+    // 8. Build extern_fns from local definitions only.
+    //    Cross-module extern fns are in module.imported_extern_fns.
     let mut extern_fns = vec![];
-    for ext in typed
-        .extern_fns
-        .iter()
-        .chain(typed.imported_extern_fns.iter())
-    {
+    for ext in &typed.extern_fns {
         if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
             let ir_target = match &ext.target {
                 krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
@@ -4866,13 +4899,10 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 10. Build extern_types from local + direct imports (JVM targets only)
+    // 10. Build extern_types from local definitions only (JVM targets only).
+    //     Cross-module extern types are in module.imported_extern_types.
     let mut extern_types = vec![];
-    for info in typed
-        .extern_types
-        .iter()
-        .chain(typed.imported_extern_types.iter())
-    {
+    for info in &typed.extern_types {
         if info.target == krypton_parser::ast::ExternTarget::Java {
             extern_types.push(ExternTypeDef {
                 name: info.krypton_name.clone(),
@@ -5005,9 +5035,144 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
     for inst in &typed.instance_defs {
         instances.push(lower_instance(inst, false, &ctx));
     }
-    for inst in &typed.imported_instance_defs {
-        instances.push(lower_instance(inst, true, &ctx));
-    }
+    // --- Cross-module metadata for self-contained compilation ---
+
+    // Imported structs: struct definitions from dependency modules.
+    let ir_imported_structs: Vec<ImportedStructDef> = typed
+        .struct_decls
+        .iter()
+        .filter(|decl| decl.qualified_name.module_path != typed.module_path)
+        .map(|decl| {
+            let type_params = typed
+                .exported_type_infos
+                .get(&decl.name)
+                .map(|info| info.type_param_vars.clone())
+                .or_else(|| ctx.private_type_params.get(&decl.name).cloned())
+                .unwrap_or_default();
+            let fields = ctx
+                .struct_fields
+                .get(&decl.name)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(n, t)| (n, t.into()))
+                .collect();
+            ImportedStructDef {
+                name: decl.name.clone(),
+                module_path: decl.qualified_name.module_path.clone(),
+                type_params,
+                fields,
+            }
+        })
+        .collect();
+
+    // Imported sum types: sum type definitions from dependency modules.
+    let ir_imported_sum_types: Vec<ImportedSumTypeDef> = typed
+        .sum_decls
+        .iter()
+        .filter(|decl| decl.qualified_name.module_path != typed.module_path)
+        .map(|decl| {
+            let type_params = typed
+                .exported_type_infos
+                .get(&decl.name)
+                .map(|info| info.type_param_vars.clone())
+                .or_else(|| ctx.private_type_params.get(&decl.name).cloned())
+                .unwrap_or_default();
+            let variants = decl
+                .variants
+                .iter()
+                .enumerate()
+                .map(|(tag, v)| {
+                    let fields = ctx
+                        .sum_variants
+                        .get(&v.name)
+                        .map(|(_, _, f)| f.iter().cloned().map(Into::into).collect())
+                        .unwrap_or_default();
+                    VariantDef {
+                        name: v.name.clone(),
+                        tag: tag as u32,
+                        fields,
+                    }
+                })
+                .collect();
+            ImportedSumTypeDef {
+                name: decl.name.clone(),
+                module_path: decl.qualified_name.module_path.clone(),
+                type_params,
+                variants,
+            }
+        })
+        .collect();
+
+    // Imported extern types: extern type bindings from dependency modules.
+    let ir_imported_extern_types: Vec<ExternTypeDef> = imported_extern_types
+        .iter()
+        .filter(|info| info.host_module != typed.module_path)
+        .filter_map(|info| {
+            let ir_target = match &info.target {
+                krypton_parser::ast::ExternTarget::Java => Some(ExternTarget::Java {
+                    class: info.host_module.clone(),
+                }),
+                krypton_parser::ast::ExternTarget::Js => None,
+            };
+            ir_target.map(|target| ExternTypeDef {
+                name: info.krypton_name.clone(),
+                target,
+            })
+        })
+        .collect();
+
+    // Imported extern fns: extern FFI function bindings from dependency modules.
+    let ir_imported_extern_fns: Vec<ExternFnDef> = imported_extern_fns
+        .iter()
+        .map(|ext| {
+            let ir_target = match &ext.target {
+                krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
+                    class: ext.module_path.clone(),
+                },
+                krypton_parser::ast::ExternTarget::Js => ExternTarget::Js {
+                    module: ext.module_path.clone(),
+                },
+            };
+            ExternFnDef {
+                id: ctx
+                    .fn_ids
+                    .get(&ext.name)
+                    .copied()
+                    .unwrap_or_else(|| FnId(u32::MAX)),
+                name: ext.name.clone(),
+                declaring_module_path: ext.declaring_module_path.clone(),
+                span: ext.span,
+                target: ir_target,
+                param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
+                return_type: ext.return_type.clone().into(),
+            }
+        })
+        .collect();
+
+    // Imported instances: instance metadata from dependency modules.
+    let ir_imported_instances: Vec<ImportedInstanceRef> = imported_instances
+        .iter()
+        .map(|(source_module_path, inst)| {
+            let sub_dict_requirements = inst
+                .constraints
+                .iter()
+                .filter_map(|c| {
+                    inst.type_var_ids
+                        .get(&c.type_var)
+                        .map(|&tv| (c.trait_name.clone(), tv))
+                })
+                .collect();
+            ImportedInstanceRef {
+                source_module_path: source_module_path.clone(),
+                trait_name: inst.trait_name.clone(),
+                target_type_name: inst.target_type_name.clone(),
+                target_type: inst.target_type.clone().into(),
+                sub_dict_requirements,
+                is_intrinsic: inst.is_intrinsic,
+            }
+        })
+        .collect();
 
     // Collect tuple arities from all FnDefs
     let mut tuple_arities = std::collections::BTreeSet::new();
@@ -5028,8 +5193,14 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         instances,
         tuple_arities,
         module_path: typed.module_path.clone(),
+        imported_dict_refs: ctx.imported_dict_refs,
         fn_dict_requirements: ctx.fn_constraints.clone(),
         fn_exit_closes: ctx.fn_exit_closes,
+        imported_structs: ir_imported_structs,
+        imported_sum_types: ir_imported_sum_types,
+        imported_extern_types: ir_imported_extern_types,
+        imported_extern_fns: ir_imported_extern_fns,
+        imported_instances: ir_imported_instances,
     })
 }
 

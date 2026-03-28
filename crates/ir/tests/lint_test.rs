@@ -22,8 +22,14 @@ fn make_simple_module(functions: Vec<FnDef>, fn_names: HashMap<FnId, String>) ->
         instances: vec![],
         tuple_arities: std::collections::BTreeSet::new(),
         module_path: "test".to_string(),
+        imported_dict_refs: vec![],
         fn_dict_requirements: std::collections::HashMap::new(),
         fn_exit_closes: std::collections::HashMap::new(),
+        imported_structs: vec![],
+        imported_sum_types: vec![],
+        imported_extern_types: vec![],
+        imported_extern_fns: vec![],
+        imported_instances: vec![],
     }
 }
 

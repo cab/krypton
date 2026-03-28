@@ -68,3 +68,11 @@ bench-compare name:
     cargo bench -p krypton-parser --bench parse_bench -- --baseline {{name}}
     cargo bench -p krypton-typechecker --bench typecheck_bench -- --baseline {{name}}
     cargo bench -p krypton-codegen --bench codegen_bench -- --baseline {{name}}
+
+# Generate a large Krypton project for compile-time benchmarking
+bench-gen *ARGS:
+    python3 bench/gen_bench.py {{ARGS}}
+
+# Time compilation of the generated benchmark (run bench-gen first)
+bench-compile *ARGS:
+    cargo run --release -- check bench/generated/main.kr --timings {{ARGS}}

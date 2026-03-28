@@ -251,6 +251,16 @@ impl Compiler {
             .class_descriptors
             .insert(interface_class_index, interface_desc);
 
+        // Pre-register so recursive type references (e.g., List[a] = Cons(a, List[a]))
+        // can resolve the type during variant field processing.
+        self.types.sum_type_info.insert(
+            sum_def.name.clone(),
+            SumTypeInfo {
+                interface_class_index,
+                variants: HashMap::new(),
+            },
+        );
+
         let mut variant_infos = HashMap::new();
         let mut variant_pairs = Vec::new();
 
@@ -261,6 +271,7 @@ impl Compiler {
             variant_infos.insert(name, info);
         }
 
+        // Update with full variant info.
         self.types.sum_type_info.insert(
             sum_def.name.clone(),
             SumTypeInfo {
@@ -303,32 +314,117 @@ impl Compiler {
         Ok(result_classes)
     }
 
-    /// Register struct types from another module (class indices only, no bytecode).
-    pub(super) fn register_imported_structs_ir(
+    /// Register extern types from module's imported_extern_types metadata.
+    pub(super) fn register_imported_extern_types(
         &mut self,
-        other_module: &krypton_ir::Module,
+        ir_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
-        for struct_def in &other_module.structs {
-            if self.types.struct_info.contains_key(&struct_def.name) {
+        for ext in &ir_module.imported_extern_types {
+            let jvm_class = match &ext.target {
+                krypton_ir::ExternTarget::Java { class } => class.replace('.', "/"),
+                krypton_ir::ExternTarget::Js { .. } => continue,
+            };
+            if self.types.struct_info.contains_key(&ext.name) {
                 continue;
             }
-            let qualified = qualify_ir(&other_module.module_path, &struct_def.name);
-            self.register_struct_metadata(struct_def, &qualified)?;
+            let class_index = self.cp.add_class(&jvm_class)?;
+            self.types
+                .class_descriptors
+                .insert(class_index, format!("L{jvm_class};"));
+            self.types.struct_info.insert(
+                ext.name.clone(),
+                StructInfo {
+                    class_index,
+                    class_name: jvm_class,
+                    fields: vec![],
+                    constructor_ref: 0,
+                    accessor_refs: HashMap::new(),
+                },
+            );
         }
         Ok(())
     }
 
-    /// Register sum types from another module (class indices + variant mappings, no bytecode).
-    pub(super) fn register_imported_sum_types_ir(
+    /// Register struct types from module's imported_structs metadata.
+    pub(super) fn register_imported_structs_from_metadata(
         &mut self,
-        other_module: &krypton_ir::Module,
+        ir_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
-        for sum_def in &other_module.sum_types {
-            if self.types.sum_type_info.contains_key(&sum_def.name) {
+        // Two-pass: pre-register class indices, then process fields.
+        let mut to_process: Vec<(krypton_ir::StructDef, String)> = Vec::new();
+        for imp in &ir_module.imported_structs {
+            if self.types.struct_info.contains_key(&imp.name) {
                 continue;
             }
-            let qualified_sum = qualify_ir(&other_module.module_path, &sum_def.name);
-            self.register_sum_type_metadata(sum_def, &qualified_sum)?;
+            let qualified = qualify_ir(&imp.module_path, &imp.name);
+            let class_index = self.cp.add_class(&qualified)?;
+            let class_desc = format!("L{qualified};");
+            self.types
+                .class_descriptors
+                .insert(class_index, class_desc);
+            self.types.struct_info.insert(
+                imp.name.clone(),
+                StructInfo {
+                    class_index,
+                    class_name: qualified.clone(),
+                    fields: vec![],
+                    constructor_ref: 0,
+                    accessor_refs: HashMap::new(),
+                },
+            );
+            to_process.push((
+                krypton_ir::StructDef {
+                    name: imp.name.clone(),
+                    type_params: imp.type_params.clone(),
+                    fields: imp.fields.clone(),
+                },
+                qualified,
+            ));
+        }
+        for (struct_def, qualified) in &to_process {
+            self.register_struct_metadata(struct_def, qualified)?;
+        }
+        Ok(())
+    }
+
+    /// Register sum types from module's imported_sum_types metadata.
+    pub(super) fn register_imported_sum_types_from_metadata(
+        &mut self,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<(), CodegenError> {
+        // Two-pass registration: first pre-register all sum type interfaces so that
+        // cross-references between types (e.g., Json's JArr(List[Json]) referencing
+        // List) can be resolved during variant field processing.
+        let mut to_process: Vec<(krypton_ir::SumTypeDef, String)> = Vec::new();
+        for imp in &ir_module.imported_sum_types {
+            if self.types.sum_type_info.contains_key(&imp.name) {
+                continue;
+            }
+            let qualified_sum = qualify_ir(&imp.module_path, &imp.name);
+            let interface_class_index = self.cp.add_class(&qualified_sum)?;
+            let interface_desc = format!("L{qualified_sum};");
+            self.types
+                .class_descriptors
+                .insert(interface_class_index, interface_desc);
+            self.types.sum_type_info.insert(
+                imp.name.clone(),
+                SumTypeInfo {
+                    interface_class_index,
+                    variants: HashMap::new(),
+                },
+            );
+            to_process.push((
+                krypton_ir::SumTypeDef {
+                    name: imp.name.clone(),
+                    type_params: imp.type_params.clone(),
+                    variants: imp.variants.clone(),
+                },
+                qualified_sum,
+            ));
+        }
+        // Second pass: register variant metadata (calls type_to_jvm for field types).
+        for (sum_def, qualified_sum) in &to_process {
+            self.register_sum_type_metadata(sum_def, qualified_sum)?;
         }
         Ok(())
     }
@@ -837,8 +933,13 @@ impl Compiler {
                 .insert(name.clone(), (tc_param_types, fn_def.return_type.clone()));
         }
 
-        // Extern functions
-        for ext in &ir_module.extern_fns {
+        // Extern functions (local + imported from cross-module metadata).
+        let all_extern_fns: Vec<&krypton_ir::ExternFnDef> = ir_module
+            .extern_fns
+            .iter()
+            .chain(ir_module.imported_extern_fns.iter())
+            .collect();
+        for ext in all_extern_fns {
             let (_, extern_class) = match &ext.target {
                 krypton_ir::ExternTarget::Java { class } => {
                     let jvm = class.replace('.', "/");
@@ -923,15 +1024,19 @@ impl Compiler {
                 .cp
                 .add_method_ref(extern_class, &ext.name, &descriptor)?;
 
-            self.types.functions.insert(
-                ext.name.clone(),
-                vec![FunctionInfo {
-                    method_ref,
-                    param_types: param_jvm_types,
-                    return_type,
-                    is_void,
-                }],
-            );
+            // Use entry to avoid overwriting local functions that may share a name
+            // with an imported extern fn (e.g. a wrapper function like `println`).
+            self.types
+                .functions
+                .entry(ext.name.clone())
+                .or_insert_with(|| {
+                    vec![FunctionInfo {
+                        method_ref,
+                        param_types: param_jvm_types,
+                        return_type,
+                        is_void,
+                    }]
+                });
         }
 
         // Imported functions
@@ -998,31 +1103,20 @@ impl Compiler {
     pub(super) fn compile_function_bodies_ir(
         &mut self,
         ir_module: &krypton_ir::Module,
-        all_ir_modules: &[krypton_ir::Module],
-        dep_paths: &std::collections::HashSet<&str>,
     ) -> Result<Vec<Method>, CodegenError> {
         self.fn_names = ir_module.fn_names.clone();
 
-        // Build variant_tags, sum_type_params, and variant_field_types from dependency modules
-        // Iterate all_ir_modules (topo order) filtered to deps
-        for module in all_ir_modules {
-            if module.module_path == ir_module.module_path {
-                continue;
+        // Build variant_tags, sum_type_params, and variant_field_types from imported sum types
+        for sum_def in &ir_module.imported_sum_types {
+            let mut tag_map = std::collections::HashMap::new();
+            for variant in &sum_def.variants {
+                tag_map.insert(variant.tag, variant.name.clone());
+                self.variant_field_types
+                    .insert(variant.name.clone(), variant.fields.clone());
             }
-            if !dep_paths.contains(module.module_path.as_str()) {
-                continue;
-            }
-            for sum_def in &module.sum_types {
-                let mut tag_map = std::collections::HashMap::new();
-                for variant in &sum_def.variants {
-                    tag_map.insert(variant.tag, variant.name.clone());
-                    self.variant_field_types
-                        .insert(variant.name.clone(), variant.fields.clone());
-                }
-                self.variant_tags.insert(sum_def.name.clone(), tag_map);
-                self.sum_type_params
-                    .insert(sum_def.name.clone(), sum_def.type_params.clone());
-            }
+            self.variant_tags.insert(sum_def.name.clone(), tag_map);
+            self.sum_type_params
+                .insert(sum_def.name.clone(), sum_def.type_params.clone());
         }
 
         // Ensure current module's sum type tags take priority over imports

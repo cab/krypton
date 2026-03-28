@@ -692,9 +692,9 @@ impl ModuleInferenceState {
                             host_module: module_path.clone(),
                             target: target.clone(),
                         };
-                        if self.imported_extern_type_keys.insert((name.clone(), module_path.clone())) {
-                            self.imported_extern_types.push(ext_type_info);
-                        }
+                        // ext_type_info no longer accumulated — the codegen resolves
+                        // extern types from dependency modules' IR directly.
+                        let _ = ext_type_info;
                         vars
                     };
                     // Mark user-visible if explicitly requested or import_all
@@ -741,29 +741,15 @@ impl ModuleInferenceState {
                         None
                     },
                 )?;
-                for ext in result.extern_fns {
-                    if self.imported_extern_fn_keys.insert((ext.name.clone(), ext.module_path.clone())) {
-                        self.imported_extern_fns.push(ext);
-                    }
-                }
-                // Extern fn constraints from imported modules flow through TypeScheme.constraints
+                // Extern fn type bindings are registered in the env by process_extern_methods.
+                // The extern fn declarations themselves are no longer accumulated here —
+                // the IR lowering resolves them from all modules' local extern_fns.
             }
         }
 
-        // Copy extern fns from imported module (transitive — needed by IR lowering).
-        // Dedup by name to avoid exponential growth from diamond imports.
-        for ext in cached.extern_fns.iter().chain(cached.imported_extern_fns.iter()) {
-            if self.imported_extern_fn_keys.insert((ext.name.clone(), ext.module_path.clone())) {
-                self.imported_extern_fns.push(ext.clone());
-            }
-        }
-
-        // Copy extern types from imported module (transitive — needed by IR lowering).
-        for entry in cached.extern_types.iter().chain(cached.imported_extern_types.iter()) {
-            if self.imported_extern_type_keys.insert((entry.krypton_name.clone(), entry.host_module.clone())) {
-                self.imported_extern_types.push(entry.clone());
-            }
-        }
+        // Transitive propagation of extern fns/types is no longer needed here.
+        // The IR lowering and codegen resolve cross-module externs from all_ir_modules,
+        // eliminating the O(N²) transitive copy that previously lived here.
 
         // Constraint requirements now flow through TypeScheme.constraints in exported_fn_types,
         // so no separate transitive propagation is needed.

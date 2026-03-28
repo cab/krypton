@@ -424,7 +424,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 is_intrinsic: false,
             },
         ],
-        imported_instance_defs: vec![],
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),
             module_path: "krypton.runtime.KryptonIO".to_string(),
@@ -434,9 +433,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             return_type: Type::Unit,
             span: (0, 0),
         }],
-        imported_extern_fns: vec![],
         extern_types: vec![],
-        imported_extern_types: vec![],
         struct_decls: vec![],
         sum_decls: vec![SumDecl {
             name: "Wrap".to_string(),

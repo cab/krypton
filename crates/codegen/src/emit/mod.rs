@@ -9,7 +9,7 @@ mod lambda;
 mod registration;
 mod trait_class_gen;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use krypton_ir::{TraitName, Type, TypeVarId};
 use krypton_typechecker::typed_ast::TypedModule;
@@ -131,6 +131,20 @@ pub fn compile_modules(
         .first()
         .map(|tm| tm.module_path.as_str())
         .unwrap_or("");
+    // Collect all modules' local instance defs once for cross-module dict resolution.
+    // Passed to each lower_module call; duplicates from the current module are harmless.
+    let all_instance_defs: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+        .collect();
+    let all_extern_fns: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.extern_fns.iter().cloned())
+        .collect();
+    let all_extern_types: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.extern_types.iter().cloned())
+        .collect();
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
         // JVM class name: main_class_name for the entry module, module_path for libraries.
@@ -139,7 +153,7 @@ pub fn compile_modules(
         } else {
             &tm.module_path
         };
-        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name).map_err(|e| {
+        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name, &all_instance_defs, &all_extern_fns, &all_extern_types).map_err(|e| {
             CodegenError::TypeError(
                 format!("IR lowering error in module {jvm_class_name}: {e}"),
                 None,
@@ -150,44 +164,8 @@ pub fn compile_modules(
         typed_with_ir.push((tm, idx));
     }
 
-    // Build instance class name map from ALL modules' non-imported instances
-    let mut instance_class_map: HashMap<(TraitName, String), ImportedInstanceInfo> = HashMap::new();
-    let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
-    for ir_module in &ir_modules {
-        for inst in &ir_module.instances {
-            if inst.is_imported {
-                continue;
-            }
-            if intrinsic_registry
-                .get(&inst.trait_name.local_name, &inst.target_type_name)
-                .is_some()
-            {
-                continue;
-            }
-            let class_name = format!(
-                "{}/{}$${}",
-                ir_module.module_path, inst.trait_name.local_name, inst.target_type_name
-            );
-            let requirements: Vec<DictRequirement> = inst
-                .sub_dict_requirements
-                .iter()
-                .map(|(trait_name, type_var)| DictRequirement {
-                    trait_name: trait_name.clone(),
-                    type_var: *type_var,
-                })
-                .collect();
-            instance_class_map.insert(
-                (inst.trait_name.clone(), inst.target_type_name.clone()),
-                ImportedInstanceInfo {
-                    class_name,
-                    target_type: inst.target_type.clone(),
-                    requirements,
-                },
-            );
-        }
-    }
-
-    // Compile all modules in one pass — every module gets the full instance map
+    // Compile each module independently — each module builds its own instance map
+    // from its local instances + imported_instances metadata.
     for &(typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
         let is_entry = ir_module.module_path == root_module_path;
@@ -198,10 +176,8 @@ pub fn compile_modules(
         };
         let classes = compile_module_inner(
             ir_module,
-            &ir_modules,
             class_name,
             is_entry,
-            &instance_class_map,
         )
         .map_err(|e| {
             if let Some(s) = &typed_module.module_source {
@@ -217,10 +193,8 @@ pub fn compile_modules(
 
 fn compile_module_inner(
     ir_module: &krypton_ir::Module,
-    all_ir_modules: &[krypton_ir::Module],
     class_name: &str,
     is_main: bool,
-    imported_instances: &HashMap<(TraitName, String), ImportedInstanceInfo>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     if is_main && !ir_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction());
@@ -232,37 +206,11 @@ fn compile_module_inner(
         "Ljava/lang/Object;".to_string(),
     );
 
-    // Compute dependency set from imports, traits, and instances
-    let mut dep_paths: HashSet<&str> = HashSet::new();
-    for imp in &ir_module.imported_fns {
-        dep_paths.insert(&imp.source_module);
-    }
-    for t in &ir_module.traits {
-        if t.is_imported {
-            dep_paths.insert(&t.trait_name.module_path);
-        }
-    }
-    for inst in &ir_module.instances {
-        if inst.is_imported {
-            dep_paths.insert(&inst.trait_name.module_path);
-        }
-    }
-
-    // Phase 1: Register types
+    // Phase 1: Register types — local first, then imported metadata from the module.
     compiler.register_extern_types_ir(ir_module)?;
-
-    // Register imported types from dependencies first (in topo order) so that
-    // field type descriptors resolve correctly during own-type registration.
-    for dep_module in all_ir_modules {
-        if dep_module.module_path == ir_module.module_path {
-            continue;
-        }
-        if !dep_paths.contains(dep_module.module_path.as_str()) {
-            continue;
-        }
-        compiler.register_imported_structs_ir(dep_module)?;
-        compiler.register_imported_sum_types_ir(dep_module)?;
-    }
+    compiler.register_imported_extern_types(ir_module)?;
+    compiler.register_imported_structs_from_metadata(ir_module)?;
+    compiler.register_imported_sum_types_from_metadata(ir_module)?;
 
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     result_classes.extend(compiler.register_structs_ir(ir_module)?);
@@ -270,11 +218,13 @@ fn compile_module_inner(
 
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
     compiler.register_fun_interfaces_ir(ir_module)?;
-    // Vec's class descriptor must exist before instances referencing Vec[T] are registered.
     compiler.register_vec()?;
     result_classes.extend(compiler.register_traits_ir(ir_module)?);
     result_classes.extend(compiler.register_builtin_instances_ir(ir_module)?);
-    compiler.register_imported_instances(imported_instances)?;
+
+    // Build instance map from local + imported instances
+    let instance_class_map = build_instance_class_map(ir_module);
+    compiler.register_imported_instances(&instance_class_map)?;
     result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name)?);
 
     // Phase 3: Register tuples and functions
@@ -282,8 +232,7 @@ fn compile_module_inner(
     compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies from IR
-    let extra_methods =
-        compiler.compile_function_bodies_ir(ir_module, all_ir_modules, &dep_paths)?;
+    let extra_methods = compiler.compile_function_bodies_ir(ir_module)?;
     if is_main {
         compiler.emit_main_wrapper()?;
     }
@@ -293,6 +242,83 @@ fn compile_module_inner(
 
     Ok(result_classes)
 }
+
+/// Build instance class map from a module's local + imported instances.
+fn build_instance_class_map(
+    ir_module: &krypton_ir::Module,
+) -> HashMap<(TraitName, String), ImportedInstanceInfo> {
+    let mut map: HashMap<(TraitName, String), ImportedInstanceInfo> = HashMap::new();
+    let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
+
+    // Local non-imported instances
+    for inst in &ir_module.instances {
+        if inst.is_imported {
+            continue;
+        }
+        if intrinsic_registry
+            .get(&inst.trait_name.local_name, &inst.target_type_name)
+            .is_some()
+        {
+            continue;
+        }
+        let class_name = format!(
+            "{}/{}$${}",
+            ir_module.module_path, inst.trait_name.local_name, inst.target_type_name
+        );
+        let requirements: Vec<DictRequirement> = inst
+            .sub_dict_requirements
+            .iter()
+            .map(|(trait_name, type_var)| DictRequirement {
+                trait_name: trait_name.clone(),
+                type_var: *type_var,
+            })
+            .collect();
+        map.insert(
+            (inst.trait_name.clone(), inst.target_type_name.clone()),
+            ImportedInstanceInfo {
+                class_name,
+                target_type: inst.target_type.clone(),
+                requirements,
+            },
+        );
+    }
+
+    // Imported instances from cross-module metadata
+    for imp in &ir_module.imported_instances {
+        if imp.is_intrinsic {
+            continue;
+        }
+        if intrinsic_registry
+            .get(&imp.trait_name.local_name, &imp.target_type_name)
+            .is_some()
+        {
+            continue;
+        }
+        let class_name = format!(
+            "{}/{}$${}",
+            imp.source_module_path, imp.trait_name.local_name, imp.target_type_name
+        );
+        let requirements: Vec<DictRequirement> = imp
+            .sub_dict_requirements
+            .iter()
+            .map(|(trait_name, type_var)| DictRequirement {
+                trait_name: trait_name.clone(),
+                type_var: *type_var,
+            })
+            .collect();
+        map.insert(
+            (imp.trait_name.clone(), imp.target_type_name.clone()),
+            ImportedInstanceInfo {
+                class_name,
+                target_type: imp.target_type.clone(),
+                requirements,
+            },
+        );
+    }
+
+    map
+}
+
 
 /// Generate a minimal valid `.class` file containing a no-op
 /// `public static void main(String[])` method.

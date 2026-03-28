@@ -1011,8 +1011,14 @@ mod tests {
                 return_type: Type::Unit,
                 body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
             }],
+            imported_dict_refs: vec![],
             fn_dict_requirements: std::collections::HashMap::new(),
             fn_exit_closes: std::collections::HashMap::new(),
+            imported_structs: vec![],
+            imported_sum_types: vec![],
+            imported_extern_types: vec![],
+            imported_extern_fns: vec![],
+            imported_instances: vec![],
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

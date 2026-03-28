@@ -153,11 +153,7 @@ pub(crate) fn build_registry_for_modules(modules: &[&Module]) -> InstanceRegistr
                 continue;
             }
             let js_name = compute_dict_js_name(inst);
-            let source_module = if inst.is_imported {
-                None
-            } else {
-                Some(module.name.clone())
-            };
+            let source_module = Some(module.name.clone());
 
             if has_type_vars(&inst.target_type) {
                 let param_inst = ParametricInstance {
@@ -282,6 +278,18 @@ pub fn compile_modules_js(
 
     let mut ir_modules: Vec<Module> = Vec::new();
     let mut module_sources: HashMap<String, Option<String>> = HashMap::new();
+    let all_instance_defs: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+        .collect();
+    let all_extern_fns: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.extern_fns.iter().cloned())
+        .collect();
+    let all_extern_types: Vec<_> = typed_modules
+        .iter()
+        .flat_map(|tm| tm.extern_types.iter().cloned())
+        .collect();
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
         let mod_name = if is_root {
@@ -289,7 +297,7 @@ pub fn compile_modules_js(
         } else {
             &tm.module_path
         };
-        let ir = krypton_ir::lower::lower_module(tm, mod_name).map_err(|e| {
+        let ir = krypton_ir::lower::lower_module(tm, mod_name, &all_instance_defs, &all_extern_fns, &all_extern_types).map_err(|e| {
             JsCodegenError::LowerError(format!("module {mod_name}: {e}"))
         })?;
         ir_modules.push(ir);
@@ -339,32 +347,16 @@ pub fn compile_modules_js(
             .insert((trait_name.to_string(), type_name.to_string()), js_name);
     }
 
-    // First pass: collect defining modules for each instance
-    let mut defining_modules: HashMap<(TraitName, String), String> = HashMap::new();
-    for ir_module in &ir_modules {
-        for inst in &ir_module.instances {
-            if !inst.is_imported && !inst.is_intrinsic {
-                defining_modules.insert(
-                    (inst.trait_name.clone(), compute_dict_js_name(inst)),
-                    ir_module.name.clone(),
-                );
-            }
-        }
-    }
-
-    // Second pass: register all instances with source_module resolved
+    // Register all instances with their defining module.
+    // Each IR module now contains only local instances (no is_imported entries),
+    // so the defining module is always the current ir_module.
     for ir_module in &ir_modules {
         for inst in &ir_module.instances {
             if inst.is_intrinsic {
                 continue;
             }
             let js_name = compute_dict_js_name(inst);
-            let source_module = if inst.is_imported {
-                let key = (inst.trait_name.clone(), js_name.clone());
-                defining_modules.get(&key).cloned()
-            } else {
-                Some(ir_module.name.clone())
-            };
+            let source_module = Some(ir_module.name.clone());
 
             if has_type_vars(&inst.target_type) {
                 let param_inst = ParametricInstance {
@@ -527,14 +519,10 @@ fn collect_reachable_modules(
                 stack.push(imported.source_module.clone());
             }
         }
-        for inst in &module.instances {
-            if inst.is_imported && !inst.is_intrinsic {
-                if let Some(source) =
-                    registry.find_source_module(&inst.trait_name, &inst.target_type)
-                {
-                    if !reachable.contains(source) {
-                        stack.push(source.to_string());
-                    }
+        for (trait_name, ty) in &module.imported_dict_refs {
+            if let Some(source) = registry.find_source_module(trait_name, ty) {
+                if !reachable.contains(source) {
+                    stack.push(source.to_string());
                 }
             }
         }
@@ -938,11 +926,18 @@ impl<'a> JsEmitter<'a> {
 
         // ── Extern JS imports ──
         // Group by resolved path (relative to output root), collecting function names.
+        // Include local extern fns and imported extern fns, but skip imported extern fns
+        // whose name collides with a local function (they are accessed via cross-module
+        // imports instead).
+        let local_fn_names: HashSet<&str> = self.module.functions.iter()
+            .map(|f| f.name.as_str())
+            .collect();
         let mut extern_by_resolved: HashMap<String, Vec<&str>> = HashMap::new();
-        for ext in &self.module.extern_fns {
+        for ext in self.module.extern_fns.iter().chain(
+            self.module.imported_extern_fns.iter()
+                .filter(|e| !local_fn_names.contains(e.name.as_str()))
+        ) {
             if let krypton_ir::ExternTarget::Js { module } = &ext.target {
-                // Resolve the extern path (relative to declaring module) to a path
-                // relative to the output root, then recompute it relative to this module.
                 let resolved = self.resolve_extern_js_path(
                     module,
                     &ext.declaring_module_path,
@@ -968,20 +963,33 @@ impl<'a> JsEmitter<'a> {
         }
 
         // ── Cross-module dict imports ──
+        // Uses imported_dict_refs metadata recorded during IR lowering.
         {
             let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
-            for inst in &self.module.instances {
-                if inst.is_imported && !inst.is_intrinsic {
-                    let js_name = self.resolve_dict_js_name(&inst.trait_name, &inst.target_type);
-                    if let Some(source) =
-                        self.registry
-                            .find_source_module(&inst.trait_name, &inst.target_type)
+            for (trait_name, ty) in &self.module.imported_dict_refs {
+                let js_name = self.resolve_dict_js_name(trait_name, ty);
+                if let Some(source) =
+                    self.registry.find_source_module(trait_name, ty)
+                {
+                    // Skip instances that are locally defined — they're emitted, not imported.
+                    if source == &self.module.name
+                        || source == &self.module.module_path
                     {
-                        dict_by_module
-                            .entry(source.to_string())
-                            .or_default()
-                            .push(js_name);
+                        continue;
                     }
+                    // Also skip if the dict is locally emitted (another module may
+                    // shadow the same instance name in the registry).
+                    let is_local = self.module.instances.iter().any(|inst| {
+                        self.resolve_dict_js_name(&inst.trait_name, &inst.target_type)
+                            == js_name
+                    });
+                    if is_local {
+                        continue;
+                    }
+                    dict_by_module
+                        .entry(source.to_string())
+                        .or_default()
+                        .push(js_name);
                 }
             }
             let mut modules: Vec<&String> = dict_by_module.keys().collect();
@@ -1910,8 +1918,14 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: name.to_string(),
+            imported_dict_refs: vec![],
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
+            imported_structs: vec![],
+            imported_sum_types: vec![],
+            imported_extern_types: vec![],
+            imported_extern_fns: vec![],
+            imported_instances: vec![],
         }
     }
 
