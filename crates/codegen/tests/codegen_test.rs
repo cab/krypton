@@ -300,6 +300,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
     let render_int_scheme = TypeScheme::mono(Type::Fn(vec![Type::Int], Box::new(Type::String)));
     let render_wrap_scheme = TypeScheme {
         vars: vec![var_a],
+        constraints: Vec::new(),
         ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
         var_names: HashMap::new(),
     };
@@ -328,12 +329,15 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
 
     let mut functions = vec![];
 
-    let mut fn_constraint_requirements = HashMap::new();
     if use_polymorphic_wrapper {
         fn_types.push(FnTypeEntry {
             name: "render_wrap".to_string(),
             scheme: TypeScheme {
                 vars: vec![var_a],
+                constraints: vec![(
+                    TraitName::new("test".to_string(), "Render".to_string()),
+                    var_a,
+                )],
                 ty: Type::Fn(vec![wrap_a_ty.clone()], Box::new(Type::String)),
                 var_names: HashMap::new(),
             },
@@ -353,13 +357,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             ),
             close_self_type: None,
         });
-        fn_constraint_requirements.insert(
-            "render_wrap".to_string(),
-            vec![(
-                TraitName::new("test".to_string(), "Render".to_string()),
-                var_a,
-            )],
-        );
     }
 
     functions.push(TypedFnDecl {
@@ -428,8 +425,6 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             },
         ],
         imported_instance_defs: vec![],
-        fn_constraint_requirements,
-        imported_fn_constraint_requirements: HashMap::new(),
         extern_fns: vec![ExternFnInfo {
             name: "println".to_string(),
             module_path: "krypton.runtime.KryptonIO".to_string(),

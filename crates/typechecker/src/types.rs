@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use crate::typed_ast::TraitName;
+
 /// Type variable identifier (newtype wrapper for type safety).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVarId(pub(crate) u32);
@@ -264,6 +266,7 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
+    pub constraints: Vec<(TraitName, TypeVarId)>,
     pub ty: Type,
     /// User-written type parameter names (e.g., from `fun foo[elem](...)`).
     /// Display uses these instead of auto-generated letters when available.
@@ -275,6 +278,7 @@ impl TypeScheme {
     pub fn mono(ty: Type) -> Self {
         TypeScheme {
             vars: Vec::new(),
+            constraints: Vec::new(),
             ty,
             var_names: HashMap::new(),
         }
@@ -321,9 +325,22 @@ impl TypeScheme {
                     .map(|(_, new)| (*new, name.clone()))
             })
             .collect();
+        let new_constraints = self
+            .constraints
+            .iter()
+            .map(|(trait_name, old_var)| {
+                let new_var = mapping
+                    .iter()
+                    .find(|(o, _)| o == old_var)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(*old_var);
+                (trait_name.clone(), new_var)
+            })
+            .collect();
         (
             TypeScheme {
                 vars: new_vars,
+                constraints: new_constraints,
                 ty: new_ty,
                 var_names: new_var_names,
             },
@@ -463,7 +480,26 @@ impl fmt::Display for TypeScheme {
             for name in &names {
                 write!(f, " {}", name)?;
             }
-            write!(f, ". {}", format_type_with_var_names(&renamed_ty, &names))
+            write!(f, ". {}", format_type_with_var_names(&renamed_ty, &names))?;
+            if !self.constraints.is_empty() {
+                // Build id → sequential index mapping (same as display_var_names)
+                let id_mapping: HashMap<TypeVarId, usize> = self
+                    .vars
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| (v, i))
+                    .collect();
+                let mut where_parts: Vec<String> = Vec::new();
+                for (trait_name, var) in &self.constraints {
+                    let var_name = id_mapping
+                        .get(var)
+                        .map(|&i| names[i].clone())
+                        .unwrap_or_else(|| format!("?{}", var.0));
+                    where_parts.push(format!("{}: {}", var_name, trait_name.local_name));
+                }
+                write!(f, " where {}", where_parts.join(", "))?;
+            }
+            Ok(())
         }
     }
 }
@@ -560,6 +596,7 @@ impl Substitution {
         }
         TypeScheme {
             vars: scheme.vars.clone(),
+            constraints: scheme.constraints.clone(),
             ty: restricted.apply(&scheme.ty),
             var_names: scheme.var_names.clone(),
         }

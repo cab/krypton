@@ -461,6 +461,7 @@ pub fn process_type_decl(
                 decl.name.clone(),
                 TypeScheme {
                     vars: quantified_vars.clone(),
+                    constraints: Vec::new(),
                     ty: ctor_ty,
                     var_names: HashMap::new(),
                 },
@@ -498,6 +499,7 @@ pub fn process_type_decl(
                     variant.name.clone(),
                     TypeScheme {
                         vars: quantified_vars.clone(),
+                        constraints: Vec::new(),
                         ty: ctor_ty,
                         var_names: HashMap::new(),
                     },
@@ -568,6 +570,7 @@ pub fn register_type_from_export(
                 info.name.clone(),
                 TypeScheme {
                     vars: fresh_vars.clone(),
+                    constraints: Vec::new(),
                     ty: ctor_ty,
                     var_names: HashMap::new(),
                 },
@@ -596,6 +599,7 @@ pub fn register_type_from_export(
                     v.name.clone(),
                     TypeScheme {
                         vars: fresh_vars.clone(),
+                        constraints: Vec::new(),
                         ty: ctor_ty,
                         var_names: HashMap::new(),
                     },

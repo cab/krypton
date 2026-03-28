@@ -224,6 +224,7 @@ fn type_scheme_poly_display() {
     let b = gen.fresh();
     let scheme = TypeScheme {
         vars: vec![a, b],
+        constraints: Vec::new(),
         ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
         var_names: HashMap::new(),
     };
@@ -237,6 +238,7 @@ fn type_scheme_instantiate() {
     let b = gen.fresh();
     let scheme = TypeScheme {
         vars: vec![a, b],
+        constraints: Vec::new(),
         ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
         var_names: HashMap::new(),
     };
@@ -287,6 +289,7 @@ fn apply_scheme_respects_quantified_vars() {
     let b = gen.fresh();
     let scheme = TypeScheme {
         vars: vec![a],
+        constraints: Vec::new(),
         ty: Type::Fn(vec![Type::Var(a), Type::Var(b)], Box::new(Type::Var(a))),
         var_names: HashMap::new(),
     };

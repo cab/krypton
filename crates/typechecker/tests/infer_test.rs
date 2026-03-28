@@ -275,12 +275,12 @@ fn infer_forward_reference() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -326,12 +326,12 @@ fn infer_module_forward_ref() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -366,12 +366,12 @@ fn infer_mutual_recursion() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -420,12 +420,12 @@ fn infer_record_constructor() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -460,12 +460,12 @@ fn infer_sum_constructor() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -501,12 +501,12 @@ fn infer_bare_variant() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -552,12 +552,12 @@ fn infer_scc_generalization_order() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -593,12 +593,12 @@ fn infer_field_access() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -633,12 +633,12 @@ fn infer_struct_update() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -703,12 +703,12 @@ fn infer_match_option() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -744,12 +744,12 @@ fn infer_match_literal() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -783,12 +783,12 @@ fn infer_match_variable() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -822,12 +822,12 @@ fn infer_match_nested_constructor() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -873,12 +873,12 @@ fn infer_tuple_in_match() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -917,12 +917,12 @@ fn infer_tuple_polymorphic() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -966,12 +966,12 @@ fn test_exhaustive_complete() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -1017,12 +1017,12 @@ fn test_exhaustive_wildcard_covers_all() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -1068,12 +1068,12 @@ fn infer_call_site_coercion_borrow() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -1108,12 +1108,12 @@ fn infer_call_site_coercion_no_collection() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]
@@ -1190,7 +1190,7 @@ fn explicit_hkt_type_param_generalized() {
 
         fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x -> x)
     "#;
-    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall f a. (f[a]) -> f[a]");
+    insta::assert_snapshot!(infer_module_fn(src, "apply"), @"forall f a. (f[a]) -> f[a] where f: Functor");
 }
 
 #[test]
@@ -2407,12 +2407,6 @@ fn prelude_fn_shadow_removes_imported_metadata() {
         }),
         "shadowed prelude println should be removed from fn_types"
     );
-    assert!(
-        !typed
-            .imported_fn_constraint_requirements
-            .contains_key("println"),
-        "shadowed prelude println should not retain imported constraints"
-    );
 }
 
 #[test]
@@ -2512,12 +2506,12 @@ fn lambda_params_inferred_from_higher_order_fn() {
     close: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a]
+    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     fold: forall a b. (List[a], b, (b, a) -> b) -> b
     map: forall a b. (List[a], (a) -> b) -> List[b]
     to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit
+    println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     Ok: forall a b. (b) -> Result[a, b]

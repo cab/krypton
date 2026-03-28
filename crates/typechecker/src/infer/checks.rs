@@ -122,7 +122,6 @@ pub(super) fn check_constrained_function_refs(
     expr: &TypedExpr,
     current_requirements: &[(TraitName, TypeVarId)],
     fn_schemes: &HashMap<String, TypeScheme>,
-    fn_constraint_requirements: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     trait_registry: &TraitRegistry,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = vec![expr];
@@ -133,9 +132,9 @@ pub(super) fn check_constrained_function_refs(
                 other => other,
             };
             if let Type::Fn(actual_param_types, _) = fn_type {
-                let requirements = fn_constraint_requirements
+                let requirements = fn_schemes
                     .get(name)
-                    .cloned()
+                    .map(|s| s.constraints.clone())
                     .unwrap_or_default();
 
                 if !requirements.is_empty() {
@@ -298,7 +297,6 @@ pub(super) fn detect_trait_constraints(
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
-    all_fn_constraints: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     fn_schemes: &HashMap<String, TypeScheme>,
     constraints: &mut Vec<(TraitName, TypeVarId)>,
 ) {
@@ -308,7 +306,6 @@ pub(super) fn detect_trait_constraints(
         trait_registry,
         subst,
         fn_type_param_vars,
-        all_fn_constraints,
         fn_schemes,
         &mut |trait_name, var| {
             constraints.push((trait_name, var));
@@ -327,11 +324,10 @@ pub(super) fn validate_trait_constraints(
     fn_name: &str,
     type_var_names: &HashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
-    // Validate uses an empty fn constraints map — constrained function call detection is
+    // Validate uses an empty fn schemes map — constrained function call detection is
     // only done in the detect pass (for auto-inference). The validate pass only checks
     // direct trait method calls and operator uses, which can precisely identify the
     // constrained type variable.
-    let empty_fn_constraints = HashMap::new();
     let empty_fn_schemes = HashMap::new();
     let mut first_error: Option<SpannedTypeError> = None;
     walk_trait_method_calls(
@@ -340,7 +336,6 @@ pub(super) fn validate_trait_constraints(
         trait_registry,
         subst,
         fn_type_param_vars,
-        &empty_fn_constraints,
         &empty_fn_schemes,
         &mut |trait_name, var| {
             if first_error.is_some() {
@@ -378,7 +373,6 @@ fn walk_trait_method_calls(
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
-    all_fn_constraints: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     fn_schemes: &HashMap<String, TypeScheme>,
     callback: &mut dyn FnMut(TraitName, TypeVarId),
 ) {
@@ -448,26 +442,24 @@ fn walk_trait_method_calls(
                         }
                     }
                     // Also detect calls to constrained regular functions (e.g., println where a: Show)
-                    if let Some(requirements) = all_fn_constraints.get(name) {
-                        if let Some(scheme) = fn_schemes.get(name) {
-                            let declared_param_types = match &scheme.ty {
-                                Type::Fn(params, _) => params.as_slice(),
-                                _ => &[],
-                            };
-                            let actual_param_types: Vec<Type> =
-                                args.iter().map(|a| subst.apply(&a.ty)).collect();
-                            for (req_trait, req_var) in requirements {
-                                if let Some(resolved) = resolve_function_ref_requirement_type(
-                                    &req_trait.local_name,
-                                    *req_var,
-                                    declared_param_types,
-                                    &actual_param_types,
-                                ) {
-                                    let concrete = strip_own(&resolved);
-                                    if let Some(v) = leading_type_var(&concrete) {
-                                        if fn_type_param_vars.contains(&v) {
-                                            callback(req_trait.clone(), v);
-                                        }
+                    if let Some(scheme) = fn_schemes.get(name).filter(|s| !s.constraints.is_empty()) {
+                        let declared_param_types = match &scheme.ty {
+                            Type::Fn(params, _) => params.as_slice(),
+                            _ => &[],
+                        };
+                        let actual_param_types: Vec<Type> =
+                            args.iter().map(|a| subst.apply(&a.ty)).collect();
+                        for (req_trait, req_var) in &scheme.constraints {
+                            if let Some(resolved) = resolve_function_ref_requirement_type(
+                                &req_trait.local_name,
+                                *req_var,
+                                declared_param_types,
+                                &actual_param_types,
+                            ) {
+                                let concrete = strip_own(&resolved);
+                                if let Some(v) = leading_type_var(&concrete) {
+                                    if fn_type_param_vars.contains(&v) {
+                                        callback(req_trait.clone(), v);
                                     }
                                 }
                             }
@@ -572,13 +564,12 @@ fn walk_trait_method_calls(
 
 /// Walk a typed AST looking for calls to trait methods. For each call,
 /// resolve the argument type and verify that a matching instance exists.
-/// Also checks calls to imported constrained functions (via `fn_constraint_requirements`).
+/// Also checks calls to imported constrained functions (via `TypeScheme.constraints`).
 pub(super) fn check_trait_instances(
     expr: &TypedExpr,
     trait_method_map: &HashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_constraint_requirements: &HashMap<String, Vec<(TraitName, TypeVarId)>>,
     fn_schemes: &HashMap<String, TypeScheme>,
     fn_type_vars: &HashSet<TypeVarId>,
 ) -> Result<(), SpannedTypeError> {
@@ -672,7 +663,8 @@ pub(super) fn check_trait_instances(
                         }
                     }
                     // Check calls to constrained functions (e.g., imported `println` requires Show)
-                    if let Some(requirements) = fn_constraint_requirements.get(name) {
+                    let fn_reqs = fn_schemes.get(name).map(|s| &s.constraints);
+                    if let Some(requirements) = fn_reqs.filter(|r| !r.is_empty()) {
                         // Resolve each constraint's type via bind_type_vars approach
                         let fn_scheme = fn_schemes.get(name);
                         for (req_trait_name, type_var) in requirements {

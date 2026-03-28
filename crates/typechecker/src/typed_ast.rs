@@ -422,9 +422,6 @@ pub struct TypedModule {
     pub instance_defs: Vec<InstanceDefInfo>,
     /// Instance definitions imported from dependency modules.
     pub imported_instance_defs: Vec<InstanceDefInfo>,
-    pub fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
-    /// TypeVarId-based constraint requirements inherited from imported modules.
-    pub imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub extern_fns: Vec<ExternFnInfo>,
     pub imported_extern_fns: Vec<ExternFnInfo>,
     /// Extern type bindings (krypton name, host module path, target).

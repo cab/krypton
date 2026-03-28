@@ -504,6 +504,7 @@ pub(super) fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> Type
     vars.sort();
     TypeScheme {
         vars,
+        constraints: Vec::new(),
         ty,
         var_names: HashMap::new(),
     }
@@ -1100,6 +1101,7 @@ fn process_extern_methods(
         } else {
             TypeScheme {
                 vars: scheme_vars,
+                constraints: Vec::new(),
                 ty: fn_ty,
                 var_names: HashMap::new(),
             }
@@ -1393,7 +1395,6 @@ impl ImportContext {
         prelude_imported_names: &HashSet<String>,
         gen: &mut TypeVarGen,
         span: Span,
-        imported_fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, TypeVarId)>>,
     ) -> Result<(), SpannedTypeError> {
         // Explicit import shadows any prelude entry for the same name
         if prelude_imported_names.contains(&name) {
@@ -1404,7 +1405,6 @@ impl ImportContext {
                 .collect();
             self.shadowed_prelude_fns.extend(shadowed);
             self.retain_removing_name(&name);
-            imported_fn_constraint_requirements.remove(&name);
         }
 
         // Check for same-name + same-first-param from non-prelude imports
@@ -1508,7 +1508,6 @@ pub(crate) struct ModuleInferenceState {
     pub(super) lambda_own_captures: HashMap<Span, String>,
     // Import accumulation
     pub(super) imports: ImportContext,
-    pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
     pub(super) imported_extern_fn_keys: HashSet<(String, String)>,
     pub(super) imported_extern_types: Vec<ExternTypeInfo>,
@@ -1543,7 +1542,6 @@ impl ModuleInferenceState {
             let_own_spans: HashSet::new(),
             lambda_own_captures: HashMap::new(),
             imports: ImportContext::new(),
-            imported_fn_constraint_requirements: HashMap::new(),
             imported_extern_fns: Vec::new(),
             imported_extern_fn_keys: HashSet::new(),
             imported_extern_types: Vec::new(),
@@ -1720,14 +1718,12 @@ impl ModuleInferenceState {
                     for m in methods {
                         if self.prelude_imported_names.contains(&m.name) {
                             self.imports.remove_prelude_fn(&m.name);
-                            self.imported_fn_constraint_requirements.remove(&m.name);
                         }
                     }
                 }
                 Decl::DefFn(f) => {
                     if self.prelude_imported_names.contains(&f.name) {
                         self.imports.remove_prelude_fn(&f.name);
-                        self.imported_fn_constraint_requirements.remove(&f.name);
                     }
                 }
                 _ => {}
@@ -1973,29 +1969,21 @@ impl ModuleInferenceState {
             .collect();
         let mut validation_errors: Vec<SpannedTypeError> = Vec::new();
         for func in &functions {
-            let current_requirements = fn_constraint_requirements
+            let current_requirements = fn_schemes
                 .get(&func.name)
-                .cloned()
-                .unwrap_or_default();
+                .map(|s| s.constraints.as_slice())
+                .unwrap_or(&[]);
             if let Err(e) = checks::check_constrained_function_refs(
                 &func.body,
-                &current_requirements,
+                current_requirements,
                 &fn_schemes,
-                fn_constraint_requirements,
                 trait_registry,
             ) {
                 validation_errors.push(e);
             }
         }
 
-        // Build merged fn constraints for detecting constrained function calls
-        let mut all_fn_constraints = fn_constraint_requirements.clone();
-        for (name, reqs) in &self.imported_fn_constraint_requirements {
-            all_fn_constraints
-                .entry(name.clone())
-                .or_insert_with(|| reqs.clone());
-        }
-        // fn_schemes already includes imported function schemes (built from results)
+        // fn_schemes already includes imported function schemes with constraints embedded
 
         // Detect implicit trait constraints from body and merge into fn_constraint_requirements
         for func in &functions {
@@ -2019,7 +2007,6 @@ impl ModuleInferenceState {
                 trait_registry,
                 &self.subst,
                 &fn_type_param_vars,
-                &all_fn_constraints,
                 &fn_schemes,
                 &mut constraints,
             );
@@ -2037,6 +2024,24 @@ impl ModuleInferenceState {
                     {
                         existing.push((trait_name, type_var));
                     }
+                }
+            }
+        }
+
+        // Fold final constraints into TypeSchemes in fn_types (results) so they
+        // propagate to importers via exported_fn_types without a side-channel map.
+        for entry in &mut results {
+            if let Some(reqs) = fn_constraint_requirements.get(&entry.name) {
+                if entry.scheme.constraints.is_empty() && !reqs.is_empty() {
+                    entry.scheme.constraints = reqs.clone();
+                }
+            }
+        }
+        // Also update exported_fn_types (built earlier from result_schemes)
+        for ef in &mut exported_fn_types {
+            if let Some(reqs) = fn_constraint_requirements.get(&ef.name) {
+                if ef.scheme.constraints.is_empty() && !reqs.is_empty() {
+                    ef.scheme.constraints = reqs.clone();
                 }
             }
         }
@@ -2281,8 +2286,6 @@ impl ModuleInferenceState {
             trait_defs,
             instance_defs,
             imported_instance_defs,
-            fn_constraint_requirements: fn_constraint_requirements.clone(),
-            imported_fn_constraint_requirements: self.imported_fn_constraint_requirements,
             extern_fns,
             imported_extern_fns: self.imported_extern_fns,
             extern_types,
@@ -2611,6 +2614,7 @@ fn register_local_traits(
                 all_vars.extend_from_slice(&method_tv_ids);
                 let scheme = TypeScheme {
                     vars: all_vars,
+                    constraints: Vec::new(),
                     ty: fn_ty,
                     var_names: HashMap::new(),
                 };
@@ -2821,6 +2825,7 @@ fn process_deriving(
 
                 let scheme = TypeScheme {
                     vars: vec![],
+                    constraints: Vec::new(),
                     ty: fn_ty,
                     var_names: HashMap::new(),
                 };
@@ -3509,6 +3514,15 @@ fn infer_function_bodies<'a>(
         }
     }
 
+    // Fold constraints into TypeSchemes so they propagate via normal import mechanisms
+    for (idx, decl) in fn_decls.iter().enumerate() {
+        if let Some(scheme) = &mut result_schemes[idx] {
+            if let Some(reqs) = fn_constraint_requirements.get(&decl.name) {
+                scheme.constraints = reqs.clone();
+            }
+        }
+    }
+
     // Validate explicit trait bounds: fn_decl bodies must not use trait methods on type vars
     // unless the corresponding bound is declared in a `where` clause.
     for (idx, decl) in fn_decls.iter().enumerate() {
@@ -3552,14 +3566,7 @@ fn infer_function_bodies<'a>(
     }
 
     // Post-inference instance resolution
-    // Build merged constraint requirements including imported ones
-    let mut merged_constraint_reqs = fn_constraint_requirements.clone();
-    for (name, reqs) in &state.imported_fn_constraint_requirements {
-        merged_constraint_reqs
-            .entry(name.clone())
-            .or_insert_with(|| reqs.clone());
-    }
-    // Build fn_schemes map for bind_type_vars resolution
+    // Build fn_schemes map for bind_type_vars resolution (constraints are in TypeSchemes)
     let mut fn_schemes_map: HashMap<String, TypeScheme> = HashMap::new();
     for (decl, scheme) in fn_decls.iter().zip(result_schemes.iter()) {
         if let Some(scheme) = scheme {
@@ -3571,7 +3578,8 @@ fn infer_function_bodies<'a>(
             .entry(imp.name.clone())
             .or_insert_with(|| imp.scheme.clone());
     }
-    if !trait_method_map.is_empty() || !merged_constraint_reqs.is_empty() {
+    let has_constraints = fn_schemes_map.values().any(|s| !s.constraints.is_empty());
+    if !trait_method_map.is_empty() || has_constraints {
         for (body, scheme) in fn_bodies.iter().zip(result_schemes.iter()) {
             if let Some(body) = body {
                 let fn_type_vars: HashSet<TypeVarId> = scheme
@@ -3583,7 +3591,6 @@ fn infer_function_bodies<'a>(
                     trait_method_map,
                     trait_registry,
                     &state.subst,
-                    &merged_constraint_reqs,
                     &fn_schemes_map,
                     &fn_type_vars,
                 )?;
@@ -3832,6 +3839,7 @@ fn typecheck_impl_methods(
                 let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));
                 let scheme = TypeScheme {
                     vars: vec![],
+                    constraints: Vec::new(),
                     ty: fn_ty,
                     var_names: HashMap::new(),
                 };

@@ -4534,16 +4534,12 @@ enum LoweredValue {
 // ---------------------------------------------------------------------------
 
 pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, LowerError> {
-    // Build fn_constraints from local and imported requirements
-    // (imported_fn_constraint_requirements is already transitively propagated during inference)
+    // Build fn_constraints from TypeScheme constraints (embedded during inference)
     let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
-    for (name, reqs) in &typed.fn_constraint_requirements {
-        fn_constraints.insert(name.clone(), reqs.clone());
-    }
-    for (name, reqs) in &typed.imported_fn_constraint_requirements {
-        fn_constraints
-            .entry(name.clone())
-            .or_insert_with(|| reqs.clone());
+    for entry in &typed.fn_types {
+        if !entry.scheme.constraints.is_empty() {
+            fn_constraints.insert(entry.name.clone(), entry.scheme.constraints.clone());
+        }
     }
 
     // Add instance method constraints so lower_fn prepends dict params.

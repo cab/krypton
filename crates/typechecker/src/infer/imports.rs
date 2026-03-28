@@ -97,7 +97,7 @@ impl ModuleInferenceState {
         }
 
         // Track which names came from the prelude so we can remove shadowed
-        // entries from imported_fn_constraint_requirements later.
+        // entries from the import context later.
         for n in &names {
             self.prelude_imported_names.insert(n.name.clone());
         }
@@ -301,7 +301,6 @@ impl ModuleInferenceState {
                     &self.prelude_imported_names,
                     &mut self.gen,
                     span,
-                    &mut self.imported_fn_constraint_requirements,
                 )?;
                 // Store definition span for imported function
                 if let Some(ds) = ef.def_span {
@@ -467,7 +466,6 @@ impl ModuleInferenceState {
                                     &self.prelude_imported_names,
                                     &mut self.gen,
                                     span,
-                                    &mut self.imported_fn_constraint_requirements,
                                 )?;
                             }
                         }
@@ -506,7 +504,6 @@ impl ModuleInferenceState {
                                             &self.prelude_imported_names,
                                             &mut self.gen,
                                             span,
-                                            &mut self.imported_fn_constraint_requirements,
                                         )?;
                                     }
                                 }
@@ -576,7 +573,6 @@ impl ModuleInferenceState {
                                     &self.prelude_imported_names,
                                     &mut self.gen,
                                     span,
-                                    &mut self.imported_fn_constraint_requirements,
                                 )?;
                             }
                         }
@@ -750,7 +746,7 @@ impl ModuleInferenceState {
                         self.imported_extern_fns.push(ext);
                     }
                 }
-                // Extern fn constraints from imported modules come through cached.fn_constraint_requirements
+                // Extern fn constraints from imported modules flow through TypeScheme.constraints
             }
         }
 
@@ -769,24 +765,8 @@ impl ModuleInferenceState {
             }
         }
 
-        // Propagate fn_constraint_requirements (must be transitive — needed for
-        // correct dictionary passing when calling functions through re-exports).
-        for (name, requirements) in &cached.fn_constraint_requirements {
-            let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-            if requested.contains(name.as_str()) || import_all {
-                self.imported_fn_constraint_requirements
-                    .entry(effective_name)
-                    .or_insert_with(|| requirements.clone());
-            }
-        }
-        for (name, requirements) in &cached.imported_fn_constraint_requirements {
-            let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
-            if requested.contains(name.as_str()) || import_all {
-                self.imported_fn_constraint_requirements
-                    .entry(effective_name)
-                    .or_insert_with(|| requirements.clone());
-            }
-        }
+        // Constraint requirements now flow through TypeScheme.constraints in exported_fn_types,
+        // so no separate transitive propagation is needed.
 
         // Propagate trait definitions from the imported module
         for trait_def in &cached.exported_trait_defs {
@@ -838,6 +818,7 @@ impl ModuleInferenceState {
                         );
                         let scheme = TypeScheme {
                             vars: vec![trait_def.type_var_id],
+                            constraints: Vec::new(),
                             ty: fn_ty,
                             var_names: HashMap::new(),
                         };
@@ -851,7 +832,6 @@ impl ModuleInferenceState {
                             &self.prelude_imported_names,
                             &mut self.gen,
                             span,
-                            &mut self.imported_fn_constraint_requirements,
                         )?;
                     }
                 }
