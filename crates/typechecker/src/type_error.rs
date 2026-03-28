@@ -59,6 +59,7 @@ pub enum TypeErrorCode {
     E0601, // Extern signature mismatch across targets
     E0602, // Invalid @nullable return type
     E0513, // Definition conflicts with explicit import
+    E0514, // Duplicate function definition
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -277,6 +278,9 @@ pub enum TypeError {
         def_name: String,
         source_module: String,
     },
+    DuplicateFunction {
+        name: String,
+    },
 }
 
 impl TypeError {
@@ -343,6 +347,7 @@ impl TypeError {
             TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
+            TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
         }
     }
 
@@ -574,6 +579,9 @@ impl TypeError {
             }
             TypeError::DefinitionConflictsWithImport { def_name, source_module } => {
                 Some(format!("use `import {source_module}.{{{def_name} as alias}}` to import under a different name"))
+            }
+            TypeError::DuplicateFunction { name } => {
+                Some(format!("function `{name}` is already defined in this module; use a trait for type-based dispatch"))
             }
         }
     }
@@ -1033,6 +1041,9 @@ impl fmt::Display for TypeError {
                     "definition `{}` conflicts with imported function from `{}`",
                     def_name, source_module
                 )
+            }
+            TypeError::DuplicateFunction { name } => {
+                write!(f, "duplicate function definition: {}", name)
             }
         }
     }

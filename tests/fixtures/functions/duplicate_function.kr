@@ -1,0 +1,4 @@
+# expect: error E0514
+fun call(f) = f()
+
+fun call(f) = Some(f)

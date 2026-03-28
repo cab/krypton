@@ -1724,6 +1724,33 @@ impl ModuleInferenceState {
         }
     }
 
+    fn check_duplicate_function_names(&self, module: &Module) -> Result<(), SpannedTypeError> {
+        let mut seen: HashSet<&str> = HashSet::new();
+        // First pass: collect all extern method names (same name across targets is fine)
+        let mut extern_names: HashSet<&str> = HashSet::new();
+        for decl in &module.decls {
+            if let Decl::Extern { methods, .. } = decl {
+                for m in methods {
+                    extern_names.insert(&m.name);
+                }
+            }
+        }
+        // Second pass: check DefFn duplicates and DefFn-vs-extern conflicts
+        for decl in &module.decls {
+            if let Decl::DefFn(f) = decl {
+                if extern_names.contains(f.name.as_str()) || !seen.insert(&f.name) {
+                    return Err(spanned(
+                        TypeError::DuplicateFunction {
+                            name: f.name.clone(),
+                        },
+                        f.span,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn check_explicit_import_shadows(&self, module: &Module) -> Result<(), SpannedTypeError> {
         for decl in &module.decls {
             match decl {
@@ -3921,6 +3948,7 @@ pub(crate) fn infer_module_inner(
         .map_err(|e| vec![e])?;
     state.cleanup_prelude_shadows(module);
     state.check_explicit_import_shadows(module).map_err(|e| vec![e])?;
+    state.check_duplicate_function_names(module).map_err(|e| vec![e])?;
     state.preregister_type_names(module);
     let constructor_schemes = state
         .process_local_type_decls(module)
