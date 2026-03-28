@@ -341,9 +341,9 @@ impl ModuleInferenceState {
             if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
                 let original_prov = cached
-                    .fn_types
-                    .iter()
-                    .find(|e| e.name == ef.name)
+                    .fn_types_by_name
+                    .get(&ef.name)
+                    .map(|&i| &cached.fn_types[i])
                     .map(|e| {
                         (
                             e.qualified_name.module_path.clone(),
@@ -375,9 +375,9 @@ impl ModuleInferenceState {
                     .cloned()
                     .unwrap_or_else(|| ef.name.clone());
                 let original_prov = cached
-                    .fn_types
-                    .iter()
-                    .find(|e| e.name == ef.name)
+                    .fn_types_by_name
+                    .get(&ef.name)
+                    .map(|&i| &cached.fn_types[i])
                     .map(|e| {
                         (
                             e.qualified_name.module_path.clone(),
@@ -398,7 +398,7 @@ impl ModuleInferenceState {
                         },
                     );
                 }
-                self.imports.imported_fn_types.push(typed_ast::ImportedFn {
+                self.imports.push_fn(typed_ast::ImportedFn {
                     name: effective_name.clone(),
                     scheme: ef.scheme.clone(),
                     origin: ef.origin.clone(),
@@ -691,11 +691,14 @@ impl ModuleInferenceState {
                             kind: crate::type_registry::TypeKind::Record { fields: vec![] },
                             is_prelude: false,
                         });
-                        self.imported_extern_types.push(typed_ast::ExternTypeInfo {
+                        let ext_type_info = typed_ast::ExternTypeInfo {
                             krypton_name: name.clone(),
                             host_module: module_path.clone(),
                             target: target.clone(),
-                        });
+                        };
+                        if self.imported_extern_type_keys.insert((name.clone(), module_path.clone())) {
+                            self.imported_extern_types.push(ext_type_info);
+                        }
                         vars
                     };
                     // Mark user-visible if explicitly requested or import_all
@@ -742,28 +745,32 @@ impl ModuleInferenceState {
                         None
                     },
                 )?;
-                self.imported_extern_fns.extend(result.extern_fns);
+                for ext in result.extern_fns {
+                    if self.imported_extern_fn_keys.insert((ext.name.clone(), ext.module_path.clone())) {
+                        self.imported_extern_fns.push(ext);
+                    }
+                }
                 // Extern fn constraints from imported modules come through cached.fn_constraint_requirements
             }
         }
 
-        // Copy imported extern fns for codegen
-        for ext in &cached.extern_fns {
-            self.imported_extern_fns.push(ext.clone());
-        }
-        for ext in &cached.imported_extern_fns {
-            self.imported_extern_fns.push(ext.clone());
-        }
-
-        // Copy imported extern types for codegen
-        for entry in &cached.extern_types {
-            self.imported_extern_types.push(entry.clone());
-        }
-        for entry in &cached.imported_extern_types {
-            self.imported_extern_types.push(entry.clone());
+        // Copy extern fns from imported module (transitive — needed by IR lowering).
+        // Dedup by name to avoid exponential growth from diamond imports.
+        for ext in cached.extern_fns.iter().chain(cached.imported_extern_fns.iter()) {
+            if self.imported_extern_fn_keys.insert((ext.name.clone(), ext.module_path.clone())) {
+                self.imported_extern_fns.push(ext.clone());
+            }
         }
 
-        // Propagate fn_constraint_requirements (TypeVarId-based) for cross-module codegen.
+        // Copy extern types from imported module (transitive — needed by IR lowering).
+        for entry in cached.extern_types.iter().chain(cached.imported_extern_types.iter()) {
+            if self.imported_extern_type_keys.insert((entry.krypton_name.clone(), entry.host_module.clone())) {
+                self.imported_extern_types.push(entry.clone());
+            }
+        }
+
+        // Propagate fn_constraint_requirements (must be transitive — needed for
+        // correct dictionary passing when calling functions through re-exports).
         for (name, requirements) in &cached.fn_constraint_requirements {
             let effective_name = aliases.get(name).cloned().unwrap_or_else(|| name.clone());
             if requested.contains(name.as_str()) || import_all {
@@ -823,11 +830,7 @@ impl ModuleInferenceState {
                 // Bind visible trait methods as imported functions (skip if already imported via fn_types)
                 for method in &trait_def.methods {
                     let is_visible = import_all || requested.contains(method.name.as_str());
-                    let already_imported = self
-                        .imports
-                        .imported_fn_types
-                        .iter()
-                        .any(|f| f.name == method.name);
+                    let already_imported = self.imports.contains_name(&method.name);
                     if is_visible && !already_imported {
                         let fn_ty = Type::Fn(
                             method.param_types.clone(),
@@ -863,11 +866,7 @@ impl ModuleInferenceState {
                     .as_ref()
                     .unwrap_or(&import_name.name)
                     .clone();
-                let found_fn = self
-                    .imports
-                    .imported_fn_types
-                    .iter()
-                    .any(|f| f.name == effective_name);
+                let found_fn = self.imports.contains_name(&effective_name);
                 let found_type = self
                     .imports
                     .imported_type_info
@@ -883,12 +882,7 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    if let Some(f) = self
-                        .imports
-                        .imported_fn_types
-                        .iter()
-                        .find(|f| f.name == effective_name)
-                    {
+                    if let Some(f) = self.imports.get_by_name(&effective_name).next() {
                         // Try to propagate def_span from the source module's exports
                         let reexport_def_span =
                             self.env.get_def_span(&effective_name).map(|d| d.span);

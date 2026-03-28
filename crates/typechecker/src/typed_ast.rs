@@ -412,6 +412,8 @@ pub struct SumDecl {
 pub struct TypedModule {
     pub module_path: String,
     pub fn_types: Vec<FnTypeEntry>,
+    /// Index: function name → index into `fn_types`, for O(1) provenance lookups.
+    pub fn_types_by_name: HashMap<String, usize>,
     /// Public API: only locally-defined pub functions, pub (transparent) constructors,
     /// and trait instance methods. Used by downstream importers.
     pub exported_fn_types: Vec<ExportedFn>,

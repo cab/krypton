@@ -4534,7 +4534,8 @@ enum LoweredValue {
 // ---------------------------------------------------------------------------
 
 pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, LowerError> {
-    // Build fn_constraints from both local and imported requirements
+    // Build fn_constraints from local and imported requirements
+    // (imported_fn_constraint_requirements is already transitively propagated during inference)
     let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for (name, reqs) in &typed.fn_constraint_requirements {
         fn_constraints.insert(name.clone(), reqs.clone());
@@ -4713,7 +4714,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         let fn_id = ctx.fresh_fn();
         ctx.fn_ids.insert(decl.name.clone(), fn_id);
     }
-    // Extern functions
+    // Extern functions (local + direct imports)
     for ext in &typed.extern_fns {
         if !ctx.fn_ids.contains_key(&ext.name) {
             let fn_id = ctx.fresh_fn();
@@ -4841,7 +4842,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         fn_names.insert(id, name.clone());
     }
 
-    // 8. Build enriched extern_fns from typed_module extern function info
+    // 8. Build enriched extern_fns from local + direct imports
     let mut extern_fns = vec![];
     for ext in typed
         .extern_fns
@@ -4869,7 +4870,7 @@ pub fn lower_module(typed: &TypedModule, module_name: &str) -> Result<Module, Lo
         }
     }
 
-    // 10. Build extern_types from typed_module extern type info (JVM codegen: Java targets only)
+    // 10. Build extern_types from local + direct imports (JVM targets only)
     let mut extern_types = vec![];
     for info in typed
         .extern_types

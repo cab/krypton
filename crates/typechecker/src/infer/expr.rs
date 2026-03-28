@@ -27,6 +27,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) type_param_arity: &'a HashMap<String, usize>,
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
     pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
+    pub(super) imported_fn_index: &'a HashMap<String, Vec<usize>>,
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(TraitName, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
@@ -108,10 +109,11 @@ impl<'a> InferenceContext<'a> {
     /// Prelude entries are excluded: if the user explicitly imports a name that the prelude
     /// also provides, that's a shadow, not an overload.
     fn find_overloaded_candidates(&self, name: &str) -> Vec<OverloadOption> {
-        let all: Vec<_> = self
-            .imported_fn_types
+        let empty = Vec::new();
+        let indices = self.imported_fn_index.get(name).unwrap_or(&empty);
+        let all: Vec<_> = indices
             .iter()
-            .filter(|f| f.name == name)
+            .map(|&i| &self.imported_fn_types[i])
             .map(|f| OverloadOption {
                 scheme: f.scheme.clone(),
                 origin: f.origin.clone(),
@@ -1627,9 +1629,10 @@ impl<'a> InferenceContext<'a> {
                     // Check if this var is a trait method
                     // trait_method_map first (handles local-shadows-prelude), then imports
                     let origin = self.trait_method_map.get(name).cloned().or_else(|| {
-                        self.imported_fn_types
-                            .iter()
-                            .find(|f| f.name == *name)
+                        self.imported_fn_index
+                            .get(name.as_str())
+                            .and_then(|idxs| idxs.first())
+                            .map(|&i| &self.imported_fn_types[i])
                             .and_then(|f| f.origin.clone())
                     });
                     Ok(TypedExpr {

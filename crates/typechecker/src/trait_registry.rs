@@ -49,7 +49,11 @@ pub struct InstanceInfo {
 
 pub struct TraitRegistry {
     traits: HashMap<TraitName, TraitInfo>,
+    /// Secondary index: bare trait name → TraitName, for O(1) lookup_trait_by_name.
+    bare_name_index: HashMap<String, TraitName>,
     instances: Vec<InstanceInfo>,
+    /// Index: trait_name → indices into `instances`, for fast overlap/lookup.
+    instances_by_trait: HashMap<TraitName, Vec<usize>>,
     trait_aliases: HashMap<String, TraitName>,
 }
 
@@ -63,7 +67,9 @@ impl TraitRegistry {
     pub fn new() -> Self {
         TraitRegistry {
             traits: HashMap::new(),
+            bare_name_index: HashMap::new(),
             instances: Vec::new(),
+            instances_by_trait: HashMap::new(),
             trait_aliases: HashMap::new(),
         }
     }
@@ -77,8 +83,9 @@ impl TraitRegistry {
             });
         }
         // Check bare-name collision with a trait from a different module
-        if let Some(existing) = self.traits.values().find(|t| t.name == info.name) {
-            if existing.trait_name() != key {
+        if let Some(existing_key) = self.bare_name_index.get(&info.name) {
+            if *existing_key != key {
+                let existing = &self.traits[existing_key];
                 return Err(TypeError::AmbiguousTraitName {
                     name: info.name.clone(),
                     existing_module: existing.module_path.clone(),
@@ -86,16 +93,22 @@ impl TraitRegistry {
                 });
             }
         }
+        self.bare_name_index
+            .insert(info.name.clone(), key.clone());
         self.traits.insert(key, info);
         Ok(())
     }
 
     pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), (TypeError, Span)> {
-        // Check for overlapping (trait, type) pairs via unification
-        for existing in &self.instances {
-            if existing.trait_name == info.trait_name
-                && types_overlap(&existing.target_type, &info.target_type)
-            {
+        // Check for overlapping (trait, type) pairs via unification (only same-trait instances)
+        let trait_indices = self
+            .instances_by_trait
+            .get(&info.trait_name)
+            .cloned()
+            .unwrap_or_default();
+        for &idx in &trait_indices {
+            let existing = &self.instances[idx];
+            if types_overlap(&existing.target_type, &info.target_type) {
                 let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info
                     .type_var_ids
                     .iter()
@@ -120,6 +133,11 @@ impl TraitRegistry {
                 ));
             }
         }
+        let idx = self.instances.len();
+        self.instances_by_trait
+            .entry(info.trait_name.clone())
+            .or_default()
+            .push(idx);
         self.instances.push(info);
         Ok(())
     }
@@ -128,12 +146,11 @@ impl TraitRegistry {
         self.traits.get(name)
     }
 
-    /// Look up a trait by bare name (linear scan). Use only when module_path is unknown.
-    /// Also checks trait aliases as a fallback.
+    /// Look up a trait by bare name. Also checks trait aliases as a fallback.
     pub fn lookup_trait_by_name(&self, name: &str) -> Option<&TraitInfo> {
-        self.traits
-            .values()
-            .find(|info| info.name == name)
+        self.bare_name_index
+            .get(name)
+            .and_then(|tn| self.traits.get(tn))
             .or_else(|| {
                 self.trait_aliases
                     .get(name)
@@ -162,47 +179,53 @@ impl TraitRegistry {
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
                 resolution_stack.push(key);
-                let matched = self.instances.iter().find(|inst| {
-                    if inst.trait_name != *trait_name {
-                        return false;
-                    }
-
-                    let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty) else {
-                        return false;
-                    };
-                    let Some((inst_ctor, inst_bound_args)) =
-                        split_instance_type_constructor(&inst.target_type)
-                    else {
-                        return false;
-                    };
-
-                    let actual_len = actual_bound_args.len();
-                    let inst_len = inst_bound_args.len();
-                    if actual_ctor != inst_ctor
-                        || (actual_len != inst_len && actual_len != inst_len + info.type_var_arity)
-                    {
-                        return false;
-                    }
-
-                    let mut bindings = HashMap::new();
-                    if !inst_bound_args.iter().zip(actual_bound_args.iter()).all(
-                        |(pattern_arg, actual_arg)| {
-                            types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
-                        },
-                    ) {
-                        return false;
-                    }
-
-                    let bound = &actual_bound_args[..inst_len];
-                    let ctor_binding = reconstruct_ctor_type(&actual_ctor, bound);
-
-                    inst.constraints.iter().all(|constraint| {
-                        let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                let indices = self.instances_by_trait.get(trait_name);
+                let matched = indices.and_then(|idxs| {
+                    idxs.iter().map(|&i| &self.instances[i]).find(|inst| {
+                        let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty)
+                        else {
                             return false;
                         };
-                        let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
-                        self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
+                        let Some((inst_ctor, inst_bound_args)) =
+                            split_instance_type_constructor(&inst.target_type)
+                        else {
+                            return false;
+                        };
+
+                        let actual_len = actual_bound_args.len();
+                        let inst_len = inst_bound_args.len();
+                        if actual_ctor != inst_ctor
+                            || (actual_len != inst_len
+                                && actual_len != inst_len + info.type_var_arity)
+                        {
+                            return false;
+                        }
+
+                        let mut bindings = HashMap::new();
+                        if !inst_bound_args.iter().zip(actual_bound_args.iter()).all(
+                            |(pattern_arg, actual_arg)| {
+                                types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
+                            },
+                        ) {
+                            return false;
+                        }
+
+                        let bound = &actual_bound_args[..inst_len];
+                        let ctor_binding = reconstruct_ctor_type(&actual_ctor, bound);
+
+                        inst.constraints.iter().all(|constraint| {
+                            let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var)
+                            else {
+                                return false;
+                            };
+                            let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
+                            self.find_instance_inner(
+                                &constraint.trait_name,
+                                bound_ty,
+                                resolution_stack,
+                            )
                             .is_some()
+                        })
                     })
                 });
                 resolution_stack.pop();
@@ -211,25 +234,24 @@ impl TraitRegistry {
         }
 
         resolution_stack.push(key);
-        let matched = self.instances.iter().find(|inst| {
-            if inst.trait_name != *trait_name {
-                return false;
-            }
-
-            let mut bindings = HashMap::new();
-            if !types_match_with_bindings(&inst.target_type, ty, &mut bindings) {
-                return false;
-            }
-
-            inst.constraints.iter().all(|constraint| {
-                let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+        let indices = self.instances_by_trait.get(trait_name);
+        let matched = indices.and_then(|idxs| {
+            idxs.iter().map(|&i| &self.instances[i]).find(|inst| {
+                let mut bindings = HashMap::new();
+                if !types_match_with_bindings(&inst.target_type, ty, &mut bindings) {
                     return false;
-                };
-                let Some(bound_ty) = bindings.get(type_var_id) else {
-                    return false;
-                };
-                self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
-                    .is_some()
+                }
+
+                inst.constraints.iter().all(|constraint| {
+                    let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                        return false;
+                    };
+                    let Some(bound_ty) = bindings.get(type_var_id) else {
+                        return false;
+                    };
+                    self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
+                        .is_some()
+                })
             })
         });
         resolution_stack.pop();
@@ -261,9 +283,13 @@ impl TraitRegistry {
         trait_name: &TraitName,
         span: Span,
     ) -> Option<&InstanceInfo> {
-        self.instances
-            .iter()
-            .find(|inst| inst.trait_name == *trait_name && inst.span == span)
+        self.instances_by_trait
+            .get(trait_name)
+            .and_then(|idxs| {
+                idxs.iter()
+                    .map(|&i| &self.instances[i])
+                    .find(|inst| inst.span == span)
+            })
     }
 
     pub fn trait_method_names(&self) -> Vec<(String, TraitName, bool)> {
@@ -298,11 +324,18 @@ impl TraitRegistry {
     ) -> Option<InstanceDiagnostic> {
         let trait_info = self.lookup_trait(trait_name);
 
+        let empty_indices = Vec::new();
+        let trait_indices = self
+            .instances_by_trait
+            .get(trait_name)
+            .unwrap_or(&empty_indices);
+
         // HK trait path (arity > 0)
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
-                for inst in &self.instances {
-                    if inst.trait_name != *trait_name || inst.constraints.is_empty() {
+                for &idx in trait_indices {
+                    let inst = &self.instances[idx];
+                    if inst.constraints.is_empty() {
                         continue;
                     }
 
@@ -370,8 +403,9 @@ impl TraitRegistry {
         }
 
         // Regular (non-HK) path
-        for inst in &self.instances {
-            if inst.trait_name != *trait_name || inst.constraints.is_empty() {
+        for &idx in trait_indices {
+            let inst = &self.instances[idx];
+            if inst.constraints.is_empty() {
                 continue;
             }
 

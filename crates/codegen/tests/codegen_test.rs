@@ -375,9 +375,16 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         close_self_type: None,
     });
 
+    let fn_types_by_name: std::collections::HashMap<String, usize> = fn_types
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.name.clone(), i))
+        .collect();
+
     TypedModule {
         module_path: "test".to_string(),
         fn_types,
+        fn_types_by_name,
         exported_fn_types: vec![],
         functions,
         trait_defs: vec![TraitDefInfo {

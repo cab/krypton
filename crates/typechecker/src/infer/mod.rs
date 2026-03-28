@@ -667,6 +667,7 @@ pub fn infer_expr(
     let empty_tpm = HashMap::new();
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
+    let empty_fn_idx = HashMap::new();
     let empty_efn = HashSet::new();
     let empty_tmm = HashMap::new();
     let mut ctx = InferenceContext {
@@ -681,6 +682,7 @@ pub fn infer_expr(
         type_param_arity: &empty_tpa,
         qualified_modules: &empty_qm,
         imported_fn_types: &[],
+        imported_fn_index: &empty_fn_idx,
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
         shadowed_prelude_fns: &[],
@@ -1317,6 +1319,8 @@ pub fn infer_module_single(
 /// Grouped import state: the maps that must stay in sync when binding/shadowing imports.
 pub(crate) struct ImportContext {
     pub(super) imported_fn_types: Vec<typed_ast::ImportedFn>,
+    /// Index: function name → indices into `imported_fn_types` for O(1) name lookups.
+    imported_fn_index: HashMap<String, Vec<usize>>,
     pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
     pub(super) imported_fn_qualifiers: HashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
     /// Prelude functions that were shadowed by explicit imports: (name, source_module)
@@ -1327,10 +1331,52 @@ impl ImportContext {
     fn new() -> Self {
         ImportContext {
             imported_fn_types: Vec::new(),
+            imported_fn_index: HashMap::new(),
             imported_type_info: HashMap::new(),
             imported_fn_qualifiers: HashMap::new(),
             shadowed_prelude_fns: Vec::new(),
         }
+    }
+
+    /// Push into imported_fn_types and update the index.
+    fn push_fn(&mut self, entry: typed_ast::ImportedFn) {
+        let idx = self.imported_fn_types.len();
+        self.imported_fn_index
+            .entry(entry.name.clone())
+            .or_default()
+            .push(idx);
+        self.imported_fn_types.push(entry);
+    }
+
+    /// Remove all entries with the given name and rebuild affected index entries.
+    fn retain_removing_name(&mut self, name: &str) {
+        self.imported_fn_types.retain(|f| f.name != name);
+        self.rebuild_index();
+    }
+
+    /// Rebuild the entire index (called after retain, which is rare).
+    fn rebuild_index(&mut self) {
+        self.imported_fn_index.clear();
+        for (i, f) in self.imported_fn_types.iter().enumerate() {
+            self.imported_fn_index
+                .entry(f.name.clone())
+                .or_default()
+                .push(i);
+        }
+    }
+
+    /// Get all imported functions with the given name.
+    fn get_by_name(&self, name: &str) -> impl Iterator<Item = &typed_ast::ImportedFn> {
+        let indices = self.imported_fn_index.get(name);
+        indices
+            .into_iter()
+            .flat_map(|idxs| idxs.iter())
+            .map(|&i| &self.imported_fn_types[i])
+    }
+
+    /// Check if any imported function has the given name.
+    fn contains_name(&self, name: &str) -> bool {
+        self.imported_fn_index.contains_key(name)
     }
 
     /// Atomically bind an imported function: env + fn_types + provenance.
@@ -1352,20 +1398,21 @@ impl ImportContext {
         // Explicit import shadows any prelude entry for the same name
         if prelude_imported_names.contains(&name) {
             // Record shadowed prelude functions before removing
-            for f in self.imported_fn_types.iter().filter(|f| f.name == name) {
-                self.shadowed_prelude_fns
-                    .push((f.name.clone(), f.qualified_name.module_path.clone()));
-            }
-            self.imported_fn_types.retain(|f| f.name != name);
+            let shadowed: Vec<_> = self
+                .get_by_name(&name)
+                .map(|f| (f.name.clone(), f.qualified_name.module_path.clone()))
+                .collect();
+            self.shadowed_prelude_fns.extend(shadowed);
+            self.retain_removing_name(&name);
             imported_fn_constraint_requirements.remove(&name);
         }
 
         // Check for same-name + same-first-param from non-prelude imports
         if !prelude_imported_names.contains(&name) {
             let new_first_param = Self::extract_first_param(&scheme);
-            for existing in &self.imported_fn_types {
-                if existing.name == name
-                    && existing.qualified_name.module_path != source_module
+            let same_name: Vec<_> = self.get_by_name(&name).collect();
+            for existing in same_name {
+                if existing.qualified_name.module_path != source_module
                     && !prelude_imported_names.contains(&existing.name)
                 {
                     let existing_first = Self::extract_first_param(&existing.scheme);
@@ -1400,7 +1447,7 @@ impl ImportContext {
             }
         }
         env.bind(name.clone(), scheme.clone());
-        self.imported_fn_types.push(typed_ast::ImportedFn {
+        self.push_fn(typed_ast::ImportedFn {
             name: name.clone(),
             scheme,
             origin,
@@ -1425,7 +1472,7 @@ impl ImportContext {
         origin: Option<TraitName>,
         provenance: (String, String),
     ) {
-        self.imported_fn_types.push(typed_ast::ImportedFn {
+        self.push_fn(typed_ast::ImportedFn {
             name,
             scheme,
             origin,
@@ -1439,11 +1486,12 @@ impl ImportContext {
     }
 
     fn remove_prelude_fn(&mut self, name: &str) {
-        for f in self.imported_fn_types.iter().filter(|f| f.name == name) {
-            self.shadowed_prelude_fns
-                .push((f.name.clone(), f.qualified_name.module_path.clone()));
-        }
-        self.imported_fn_types.retain(|f| f.name != name);
+        let shadowed: Vec<_> = self
+            .get_by_name(name)
+            .map(|f| (f.name.clone(), f.qualified_name.module_path.clone()))
+            .collect();
+        self.shadowed_prelude_fns.extend(shadowed);
+        self.retain_removing_name(name);
     }
 }
 
@@ -1462,7 +1510,9 @@ pub(crate) struct ModuleInferenceState {
     pub(super) imports: ImportContext,
     pub(super) imported_fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
     pub(super) imported_extern_fns: Vec<ExternFnInfo>,
+    pub(super) imported_extern_fn_keys: HashSet<(String, String)>,
     pub(super) imported_extern_types: Vec<ExternTypeInfo>,
+    pub(super) imported_extern_type_keys: HashSet<(String, String)>,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
     pub(super) imported_trait_names: HashSet<String>,
     pub(super) trait_aliases: Vec<(String, TraitName)>,
@@ -1495,7 +1545,9 @@ impl ModuleInferenceState {
             imports: ImportContext::new(),
             imported_fn_constraint_requirements: HashMap::new(),
             imported_extern_fns: Vec::new(),
+            imported_extern_fn_keys: HashSet::new(),
             imported_extern_types: Vec::new(),
+            imported_extern_type_keys: HashSet::new(),
             imported_trait_defs: Vec::new(),
             imported_trait_names: HashSet::new(),
             trait_aliases: Vec::new(),
@@ -1688,7 +1740,7 @@ impl ModuleInferenceState {
             match decl {
                 Decl::DefFn(f) => {
                     if !self.prelude_imported_names.contains(&f.name) {
-                        if let Some(imp) = self.imports.imported_fn_types.iter().find(|i| i.name == f.name) {
+                        if let Some(imp) = self.imports.get_by_name(&f.name).next() {
                             return Err(spanned(
                                 TypeError::DefinitionConflictsWithImport {
                                     def_name: f.name.clone(),
@@ -1702,7 +1754,7 @@ impl ModuleInferenceState {
                 Decl::Extern { methods, .. } => {
                     for m in methods {
                         if !self.prelude_imported_names.contains(&m.name) {
-                            if let Some(imp) = self.imports.imported_fn_types.iter().find(|i| i.name == m.name) {
+                            if let Some(imp) = self.imports.get_by_name(&m.name).next() {
                                 return Err(spanned(
                                     TypeError::DefinitionConflictsWithImport {
                                         def_name: m.name.clone(),
@@ -1948,8 +2000,8 @@ impl ModuleInferenceState {
         // Detect implicit trait constraints from body and merge into fn_constraint_requirements
         for func in &functions {
             let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
-            if let Some(entry) = results.iter().find(|e| e.name == func.name) {
-                if let Type::Fn(param_types, ret_ty) = &entry.scheme.ty {
+            if let Some(scheme) = fn_schemes.get(&func.name) {
+                if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                     for pty in param_types.iter() {
                         for v in free_vars(pty) {
                             fn_type_param_vars.insert(v);
@@ -2214,9 +2266,16 @@ impl ModuleInferenceState {
             }
         }
 
+        let fn_types_by_name: HashMap<String, usize> = results
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (e.name.clone(), i))
+            .collect();
+
         Ok(TypedModule {
             module_path,
             fn_types: results,
+            fn_types_by_name,
             exported_fn_types,
             functions,
             trait_defs,
@@ -3358,6 +3417,7 @@ fn infer_function_bodies<'a>(
                     type_param_arity: &type_param_arity,
                     qualified_modules: &state.qualified_modules,
                     imported_fn_types: &state.imports.imported_fn_types,
+                    imported_fn_index: &state.imports.imported_fn_index,
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
@@ -3730,6 +3790,7 @@ fn typecheck_impl_methods(
                         type_param_arity: &impl_method_tpa,
                         qualified_modules: &state.qualified_modules,
                         imported_fn_types: &state.imports.imported_fn_types,
+                        imported_fn_index: &state.imports.imported_fn_index,
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &combined_constraints,
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
