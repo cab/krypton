@@ -1,0 +1,34 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module modules__same_name_import_alias_ok
+
+extern java "krypton.runtime.KryptonIO" println(Object): Unit
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/option/Some as Some(e): Option[e]
+import core/option/None as None(): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/ordering/LT as LT(): Ordering
+import core/ordering/EQ as EQ(): Ordering
+import core/ordering/GT as GT(): Ordering
+import helpers_a/compute as compute(Int): Int
+import helpers_b/compute as times10(Int): Int
+declare compute: (Int) -> Int
+declare println: (Object) -> Unit
+declare times10: (Int) -> Int
+
+fn main() -> Unit =
+  let v0: Int = call times10(1)
+  let v1: Int = call compute(v0)
+  let v2: Unit = call println(v1)
+  v2

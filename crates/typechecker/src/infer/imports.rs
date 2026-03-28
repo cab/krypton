@@ -299,7 +299,6 @@ impl ModuleInferenceState {
                     path.to_string(),
                     ef.name.clone(),
                     &self.prelude_imported_names,
-                    &mut self.gen,
                     span,
                 )?;
                 // Store definition span for imported function
@@ -464,7 +463,6 @@ impl ModuleInferenceState {
                                     orig_path.clone(),
                                     cname.clone(),
                                     &self.prelude_imported_names,
-                                    &mut self.gen,
                                     span,
                                 )?;
                             }
@@ -502,7 +500,6 @@ impl ModuleInferenceState {
                                             orig_path.clone(),
                                             cname.clone(),
                                             &self.prelude_imported_names,
-                                            &mut self.gen,
                                             span,
                                         )?;
                                     }
@@ -571,7 +568,6 @@ impl ModuleInferenceState {
                                     path.to_string(),
                                     cname,
                                     &self.prelude_imported_names,
-                                    &mut self.gen,
                                     span,
                                 )?;
                             }
@@ -816,7 +812,6 @@ impl ModuleInferenceState {
                             path.to_string(),
                             method.name.clone(),
                             &self.prelude_imported_names,
-                            &mut self.gen,
                             span,
                         )?;
                     }

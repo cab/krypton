@@ -9,12 +9,6 @@ use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeE
 
 use super::QualifiedModuleBinding;
 
-struct OverloadOption {
-    scheme: TypeScheme,
-    origin: Option<TraitName>,
-    module: String,
-}
-
 pub(crate) struct InferenceContext<'a> {
     pub(super) env: &'a mut TypeEnv,
     pub(super) subst: &'a mut Substitution,
@@ -101,38 +95,6 @@ impl<'a> InferenceContext<'a> {
         )
         .map_err(|e| e.enrich_unknown_type_with_env(self.env))
         .map_err(|e| super::spanned(e, span))
-    }
-
-    /// Find overloaded candidates for a function name.
-    /// Returns owned entries (scheme, origin, module) for entries from distinct non-prelude modules.
-    /// Returns empty if fewer than 2 distinct modules provide the name (no overload).
-    /// Prelude entries are excluded: if the user explicitly imports a name that the prelude
-    /// also provides, that's a shadow, not an overload.
-    fn find_overloaded_candidates(&self, name: &str) -> Vec<OverloadOption> {
-        let empty = Vec::new();
-        let indices = self.imported_fn_index.get(name).unwrap_or(&empty);
-        let all: Vec<_> = indices
-            .iter()
-            .map(|&i| &self.imported_fn_types[i])
-            .map(|f| OverloadOption {
-                scheme: f.scheme.clone(),
-                origin: f.origin.clone(),
-                module: f.qualified_name.module_path.clone(),
-            })
-            .collect();
-        // Deduplicate by module — only flag overload if distinct modules
-        let mut seen_modules = HashSet::new();
-        let mut candidates = Vec::new();
-        for opt in all {
-            if seen_modules.insert(opt.module.clone()) {
-                candidates.push(opt);
-            }
-        }
-        if candidates.len() > 1 {
-            candidates
-        } else {
-            Vec::new()
-        }
     }
 
     pub fn unwrap_own_fn(&self, ty: &Type) -> Type {
@@ -546,106 +508,7 @@ impl<'a> InferenceContext<'a> {
         Some(self.infer_call_args_and_unify(func_typed, &func_ty, args, is_constructor, span))
     }
 
-    /// Path 4: UFCS overload resolution — when multiple same-named imports exist,
-    /// resolve by unifying the receiver type against each candidate's first parameter.
-    fn infer_ufcs_call(
-        &mut self,
-        func: &Expr,
-        args: &[Expr],
-        is_ufcs: bool,
-        span: Span,
-    ) -> Option<Result<TypedExpr, SpannedTypeError>> {
-        let Expr::Var { name, .. } = func else {
-            return None;
-        };
-        let candidates = self.find_overloaded_candidates(name);
-        if candidates.len() <= 1 {
-            return None;
-        }
-        // All candidates are trait methods → let typeclass dispatch handle it
-        let all_trait_methods = candidates.iter().all(|c| c.origin.is_some());
-        if all_trait_methods {
-            return None;
-        }
-        if !is_ufcs {
-            // Prefix call with ambiguous name → error
-            let modules: Vec<String> = candidates.into_iter().map(|c| c.module).collect();
-            return Some(Err(super::spanned(
-                TypeError::AmbiguousCall {
-                    name: name.clone(),
-                    modules,
-                },
-                span,
-            )));
-        }
-        // UFCS dot-call: resolve by receiver type
-        let recv_typed = match self.infer_expr_inner(&args[0], None) {
-            Ok(t) => t,
-            Err(e) => return Some(Err(e)),
-        };
-        let recv_ty = self.subst.apply(&recv_typed.ty);
-
-        struct OverloadCandidate {
-            subst: Substitution,
-            func_type: Type,
-            origin: Option<TraitName>,
-            module: String,
-        }
-
-        let mut matches_found: Vec<OverloadCandidate> = Vec::new();
-        for candidate in candidates.iter() {
-            let mut trial_subst = self.subst.clone();
-            let trial_ty = candidate.scheme.instantiate(&mut || self.gen.fresh());
-            if let Type::Fn(params, _) = &trial_ty {
-                if let Some(first_param) = params.first() {
-                    if unify(first_param, &recv_ty, &mut trial_subst).is_ok() {
-                        matches_found.push(OverloadCandidate {
-                            subst: trial_subst,
-                            func_type: trial_ty,
-                            origin: candidate.origin.clone(),
-                            module: candidate.module.clone(),
-                        });
-                    }
-                }
-            }
-        }
-
-        if matches_found.len() == 1 {
-            let winner = matches_found.remove(0);
-            if winner.origin.is_some() {
-                // Single match is a trait method → fall through to general path
-                return None;
-            }
-            // Single free function match: use this candidate
-            *self.subst = winner.subst;
-            let func_typed = TypedExpr {
-                kind: TypedExprKind::Var(name.clone()),
-                ty: winner.func_type.clone(),
-                span,
-                origin: None,
-            };
-            return Some(self.infer_call_args_and_unify(
-                func_typed,
-                &winner.func_type,
-                args,
-                false,
-                span,
-            ));
-        } else if matches_found.len() > 1 {
-            let modules: Vec<String> = matches_found.into_iter().map(|c| c.module).collect();
-            return Some(Err(super::spanned(
-                TypeError::AmbiguousCall {
-                    name: name.clone(),
-                    modules,
-                },
-                span,
-            )));
-        }
-        // 0 matches: fall through to general path (will error naturally)
-        None
-    }
-
-    /// Path 5: General HM function application — infer func, infer args with
+    /// Path 4: General HM function application — infer func, infer args with
     /// bidirectional lambda propagation, per-arg coerce_unify, return type unify.
     fn infer_general_call(
         &mut self,
@@ -1604,19 +1467,6 @@ impl<'a> InferenceContext<'a> {
 
             Expr::Var { name, span, .. } => match self.env.lookup(name) {
                 Some(scheme) => {
-                    // Check for ambiguous overloaded name (bare reference)
-                    let candidates = self.find_overloaded_candidates(name);
-                    if candidates.len() > 1 {
-                        let modules: Vec<String> =
-                            candidates.iter().map(|c| c.module.clone()).collect();
-                        return Err(super::spanned(
-                            TypeError::AmbiguousCall {
-                                name: name.clone(),
-                                modules,
-                            },
-                            *span,
-                        ));
-                    }
                     let scheme = scheme.clone();
                     let ty = scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if !matches!(&ty, Type::Fn(_, _))
@@ -1680,9 +1530,6 @@ impl<'a> InferenceContext<'a> {
                     return result;
                 }
                 if let Some(result) = self.infer_qualified_field_call(func, args, *span) {
-                    return result;
-                }
-                if let Some(result) = self.infer_ufcs_call(func, args, *is_ufcs, *span) {
                     return result;
                 }
                 self.infer_general_call(func, args, *is_ufcs, *span)

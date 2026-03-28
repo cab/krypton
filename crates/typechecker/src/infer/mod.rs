@@ -1383,8 +1383,8 @@ impl ImportContext {
     }
 
     /// Atomically bind an imported function: env + fn_types + provenance.
-    /// Returns an error if a same-name, same-first-param import already exists
-    /// from a different (non-prelude) module.
+    /// Returns an error if the same name is already imported from a different
+    /// (non-prelude) module. The user must alias one import to resolve the conflict.
     fn bind_import(
         &mut self,
         env: &mut TypeEnv,
@@ -1394,7 +1394,6 @@ impl ImportContext {
         source_module: String,
         original_name: String,
         prelude_imported_names: &HashSet<String>,
-        gen: &mut TypeVarGen,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
         // Explicit import shadows any prelude entry for the same name
@@ -1408,42 +1407,23 @@ impl ImportContext {
             self.retain_removing_name(&name);
         }
 
-        // Check for same-name + same-first-param from non-prelude imports
+        // Reject same-name import from a different non-prelude module
         if !prelude_imported_names.contains(&name) {
-            let new_first_param = Self::extract_first_param(&scheme);
             let same_name: Vec<_> = self.get_by_name(&name).collect();
             for existing in same_name {
                 if existing.qualified_name.module_path != source_module
                     && !prelude_imported_names.contains(&existing.name)
                 {
-                    let existing_first = Self::extract_first_param(&existing.scheme);
-                    if let (Some(_), Some(_)) = (&new_first_param, &existing_first) {
-                        let mut trial_subst = Substitution::new();
-                        let new_inst = scheme.instantiate(&mut || gen.fresh());
-                        let old_inst = existing.scheme.instantiate(&mut || gen.fresh());
-                        let new_fp = match &new_inst {
-                            Type::Fn(params, _) => params.first().cloned(),
-                            _ => None,
-                        };
-                        let old_fp = match &old_inst {
-                            Type::Fn(params, _) => params.first().cloned(),
-                            _ => None,
-                        };
-                        if let (Some(nfp), Some(ofp)) = (new_fp, old_fp) {
-                            if unify(&nfp, &ofp, &mut trial_subst).is_ok() {
-                                return Err(spanned(
-                                    TypeError::AmbiguousCall {
-                                        name: name.clone(),
-                                        modules: vec![
-                                            existing.qualified_name.module_path.clone(),
-                                            source_module.clone(),
-                                        ],
-                                    },
-                                    span,
-                                ));
-                            }
-                        }
-                    }
+                    return Err(spanned(
+                        TypeError::DuplicateImport {
+                            name: name.clone(),
+                            modules: vec![
+                                existing.qualified_name.module_path.clone(),
+                                source_module.clone(),
+                            ],
+                        },
+                        span,
+                    ));
                 }
             }
         }
@@ -1455,14 +1435,6 @@ impl ImportContext {
             qualified_name: typed_ast::QualifiedName::new(source_module, original_name),
         });
         Ok(())
-    }
-
-    /// Extract the first parameter type from a type scheme (if it's a function type).
-    fn extract_first_param(scheme: &TypeScheme) -> Option<Type> {
-        match &scheme.ty {
-            Type::Fn(params, _) => params.first().cloned(),
-            _ => None,
-        }
     }
 
     /// Bind a hidden (qualified) function: fn_types + provenance, no env bind.

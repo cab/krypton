@@ -42,7 +42,7 @@ pub enum TypeErrorCode {
     E0105, // Resource branch leak (consumed in some branches but not all)
     E0106, // Qualifier bound violation (shared + ~T)
     E0012, // Reserved name
-    E0509, // Ambiguous call (multiple same-named imports)
+    E0509, // Duplicate import name (same name from different modules)
     E0510, // Unknown export (name does not exist in module)
     E0013, // Redundant match arm
     E0511, // Wildcard not allowed in this position
@@ -217,7 +217,7 @@ pub enum TypeError {
         type_var: String,
         param_name: String,
     },
-    AmbiguousCall {
+    DuplicateImport {
         name: String,
         modules: Vec<String>,
     },
@@ -331,7 +331,7 @@ impl TypeError {
             TypeError::ResourceBranchLeak { .. } => TypeErrorCode::E0105,
             TypeError::QualifierBoundViolation { .. } => TypeErrorCode::E0106,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
-            TypeError::AmbiguousCall { .. } => TypeErrorCode::E0509,
+            TypeError::DuplicateImport { .. } => TypeErrorCode::E0509,
             TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
             TypeError::RedundantPattern => TypeErrorCode::E0013,
             TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
@@ -538,7 +538,9 @@ impl TypeError {
             TypeError::QualifierBoundViolation { .. } => {
                 Some("remove the `~` from the parameter type, or remove the `shared` bound".to_string())
             }
-            TypeError::AmbiguousCall { .. } => None,
+            TypeError::DuplicateImport { name, modules } => {
+                Some(format!("rename one import with an alias: `import {}.{{{} as alias}}`", modules[1], name))
+            }
             TypeError::UnknownExport { name, module_path } => {
                 Some(format!("module `{}` has no export named `{}`", module_path, name))
             }
@@ -925,11 +927,11 @@ impl fmt::Display for TypeError {
                     type_var, param_name, type_var
                 )
             }
-            TypeError::AmbiguousCall { name, modules } => {
+            TypeError::DuplicateImport { name, modules } => {
                 write!(
                     f,
-                    "ambiguous call to `{}`: multiple functions named `{}` are in scope (from modules: {}); use a qualified call or import alias to disambiguate",
-                    name, name, modules.join(", ")
+                    "duplicate import: `{}` is already imported from `{}`; use `import {}.{{{} as alias}}` to disambiguate",
+                    name, modules[0], modules[1], name
                 )
             }
             TypeError::UnknownExport { name, module_path } => {
