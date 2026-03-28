@@ -108,6 +108,7 @@ pub struct ImportedFn {
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
     pub qualified_name: QualifiedName,
+    pub is_prelude: bool,
 }
 
 /// Entry in fn_types — local or imported function visible in a module.

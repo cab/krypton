@@ -901,8 +901,7 @@ impl<'a> InferenceContext<'a> {
             if tentative.vars.is_empty() {
                 tentative
             } else {
-                let gen_vars: HashSet<TypeVarId> =
-                    tentative.vars.iter().copied().collect();
+                let gen_vars: HashSet<TypeVarId> = tentative.vars.iter().copied().collect();
                 let has_trait_constraints =
                     collect_trait_constraints_on_vars(&val_typed, self.subst, &gen_vars);
                 if has_trait_constraints {
@@ -1476,15 +1475,24 @@ impl<'a> InferenceContext<'a> {
                     } else {
                         ty
                     };
-                    // Check if this var is a trait method
-                    // trait_method_map first (handles local-shadows-prelude), then imports
-                    let origin = self.trait_method_map.get(name).cloned().or_else(|| {
-                        self.imported_fn_index
-                            .get(name.as_str())
-                            .and_then(|idxs| idxs.first())
-                            .map(|&i| &self.imported_fn_types[i])
-                            .and_then(|f| f.origin.clone())
-                    });
+                    // Check if this var is a trait method.
+                    // Imports take priority: if the name is in imported_fn_types,
+                    // use that entry's origin (which is None for non-trait imports,
+                    // e.g. `import m.{compute as mul}` overrides prelude Mul.mul).
+                    // Fall back to trait_method_map for locally-defined trait methods.
+                    let import_origin = self
+                        .imported_fn_index
+                        .get(name.as_str())
+                        .and_then(|idxs| idxs.first())
+                        .map(|&i| &self.imported_fn_types[i]);
+                    let trait_map_origin = self.trait_method_map.get(name).cloned();
+                    let origin = match import_origin {
+                        Some(imported) if imported.is_prelude => {
+                            trait_map_origin.or_else(|| imported.origin.clone())
+                        }
+                        Some(imported) => imported.origin.clone(),
+                        None => trait_map_origin,
+                    };
                     Ok(TypedExpr {
                         kind: TypedExprKind::Var(name.clone()),
                         ty,
@@ -1803,9 +1811,9 @@ fn collect_trait_constraints_on_vars(
                     stack.push(&arm.body);
                 }
             }
-            TypedExprKind::Tuple(es)
-            | TypedExprKind::VecLit(es)
-            | TypedExprKind::Recur(es) => stack.extend(es.iter()),
+            TypedExprKind::Tuple(es) | TypedExprKind::VecLit(es) | TypedExprKind::Recur(es) => {
+                stack.extend(es.iter())
+            }
             TypedExprKind::FieldAccess { expr, .. }
             | TypedExprKind::TypeApp { expr, .. }
             | TypedExprKind::UnaryOp { operand: expr, .. }

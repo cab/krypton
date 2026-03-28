@@ -44,6 +44,16 @@ fn typed_callee_var_name(expr: &TypedExpr) -> Option<&str> {
     }
 }
 
+fn typed_callee_trait_origin(expr: &TypedExpr) -> Option<&TraitName> {
+    match &expr.kind {
+        TypedExprKind::Var(_) => expr.origin.as_ref(),
+        TypedExprKind::TypeApp { expr: inner, .. } => {
+            typed_callee_trait_origin(inner).or(expr.origin.as_ref())
+        }
+        _ => None,
+    }
+}
+
 /// Collect type variable bindings while enforcing consistency for repeated vars.
 /// Fixed non-variable structure that does not bind anything is ignored.
 fn collect_type_var_bindings_strict(
@@ -95,12 +105,10 @@ fn collect_type_var_bindings_strict(
                     .zip(remaining.iter())
                     .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
         }
-        (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) if p_name == a_name => {
-            p_args
-                .iter()
-                .zip(a_args.iter())
-                .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
-        }
+        (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) if p_name == a_name => p_args
+            .iter()
+            .zip(a_args.iter())
+            .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings)),
         (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
             p_params
                 .iter()
@@ -108,12 +116,10 @@ fn collect_type_var_bindings_strict(
                 .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
                 && collect_type_var_bindings_strict(p_ret, a_ret, bindings)
         }
-        (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
-            p_elems
-                .iter()
-                .zip(a_elems.iter())
-                .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
-        }
+        (Type::Tuple(p_elems), Type::Tuple(a_elems)) => p_elems
+            .iter()
+            .zip(a_elems.iter())
+            .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings)),
         _ => true,
     }
 }
@@ -371,7 +377,7 @@ pub(super) fn validate_trait_constraints(
 /// Shared walker: finds trait method calls on type variables and invokes the callback for each.
 fn walk_trait_method_calls(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, TraitName>,
+    _trait_method_map: &HashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
@@ -384,7 +390,7 @@ fn walk_trait_method_calls(
         match &expr.kind {
             TypedExprKind::App { func, args } => {
                 if let Some(name) = typed_callee_var_name(func) {
-                    if let Some(trait_id) = trait_method_map.get(name) {
+                    if let Some(trait_id) = typed_callee_trait_origin(func) {
                         // Try first arg, then fall back to return type
                         let candidate_var = if let Some(first_arg) = args.first() {
                             let arg_ty = subst.apply(&first_arg.ty);
@@ -444,7 +450,8 @@ fn walk_trait_method_calls(
                         }
                     }
                     // Also detect calls to constrained regular functions (e.g., println where a: Show)
-                    if let Some(scheme) = fn_schemes.get(name).filter(|s| !s.constraints.is_empty()) {
+                    if let Some(scheme) = fn_schemes.get(name).filter(|s| !s.constraints.is_empty())
+                    {
                         let declared_param_types = match &scheme.ty {
                             Type::Fn(params, _) => params.as_slice(),
                             _ => &[],
@@ -569,7 +576,7 @@ fn walk_trait_method_calls(
 /// Also checks calls to imported constrained functions (via `TypeScheme.constraints`).
 pub(super) fn check_trait_instances(
     expr: &TypedExpr,
-    trait_method_map: &HashMap<String, TraitName>,
+    _trait_method_map: &HashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_schemes: &HashMap<String, TypeScheme>,
@@ -582,7 +589,7 @@ pub(super) fn check_trait_instances(
         match &expr.kind {
             TypedExprKind::App { func, args } => {
                 if let Some(name) = typed_callee_var_name(func) {
-                    if let Some(trait_id) = trait_method_map.get(name) {
+                    if let Some(trait_id) = typed_callee_trait_origin(func) {
                         // trait_method_map is derived from trait_registry, so lookup cannot fail
                         let info = trait_registry
                             .lookup_trait(trait_id)
@@ -618,9 +625,11 @@ pub(super) fn check_trait_instances(
                             }
                             // Check dispatch type var — must always be bindable from the
                             // method signature (params, return type, or explicit type args)
-                            let dispatch_ty = bindings.get(&info.type_var_id).cloned().or_else(|| {
-                                args.first().map(|arg| subst.apply(&arg.ty))
-                            }).unwrap_or(actual_ret);
+                            let dispatch_ty = bindings
+                                .get(&info.type_var_id)
+                                .cloned()
+                                .or_else(|| args.first().map(|arg| subst.apply(&arg.ty)))
+                                .unwrap_or(actual_ret);
                             let concrete_ty = strip_own(&dispatch_ty);
                             if let Some(v) = leading_type_var(&concrete_ty) {
                                 if !fn_type_vars.contains(&v) {
@@ -864,6 +873,10 @@ mod tests {
         let pattern = Type::Tuple(vec![Type::Var(tv), Type::Var(tv)]);
         let actual = Type::Tuple(vec![Type::Int, Type::String]);
         let mut bindings = HashMap::new();
-        assert!(!collect_type_var_bindings_strict(&pattern, &actual, &mut bindings));
+        assert!(!collect_type_var_bindings_strict(
+            &pattern,
+            &actual,
+            &mut bindings
+        ));
     }
 }

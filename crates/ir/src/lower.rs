@@ -620,9 +620,9 @@ impl LowerCtx {
                 value: simple_at(
                     body.span,
                     SimpleExprKind::TraitCall {
-                    trait_name,
-                    method_name: "close".to_string(),
-                    args: vec![dict_atom, Atom::Var(old_var)],
+                        trait_name,
+                        method_name: "close".to_string(),
+                        args: vec![dict_atom, Atom::Var(old_var)],
                     },
                 ),
                 body: Box::new(body),
@@ -680,9 +680,9 @@ impl LowerCtx {
                     value: simple_at(
                         result.span,
                         SimpleExprKind::TraitCall {
-                        trait_name: rc.trait_name.clone(),
-                        method_name: "close".to_string(),
-                        args: vec![rc.dict_atom.clone(), Atom::Var(rc.binding_var)],
+                            trait_name: rc.trait_name.clone(),
+                            method_name: "close".to_string(),
+                            args: vec![rc.dict_atom.clone(), Atom::Var(rc.binding_var)],
                         },
                     ),
                     body: Box::new(result),
@@ -792,10 +792,10 @@ impl LowerCtx {
                     None => None,
                 };
                 let ty = new_branches
-                        .first()
-                        .map(|b| b.body.ty.clone())
-                        .or_else(|| new_default.as_ref().map(|d| d.ty.clone()))
-                        .unwrap_or(Type::Unit.into());
+                    .first()
+                    .map(|b| b.body.ty.clone())
+                    .or_else(|| new_default.as_ref().map(|d| d.ty.clone()))
+                    .unwrap_or(Type::Unit.into());
                 let span = new_branches
                     .first()
                     .map(|b| b.body.span)
@@ -842,10 +842,10 @@ impl LowerCtx {
                 lb.value.span,
                 body.ty.clone(),
                 ExprKind::Let {
-                bind: lb.bind,
-                ty: lb.ty,
-                value: lb.value,
-                body: Box::new(body),
+                    bind: lb.bind,
+                    ty: lb.ty,
+                    value: lb.value,
+                    body: Box::new(body),
                 },
             )
         })
@@ -1049,10 +1049,10 @@ impl LowerCtx {
                             simple_at(
                                 expr.span,
                                 SimpleExprKind::ConstructVariant {
-                                type_name,
-                                variant: name.clone(),
-                                tag,
-                                fields: vec![],
+                                    type_name,
+                                    variant: name.clone(),
+                                    tag,
+                                    fields: vec![],
                                 },
                             ),
                         ));
@@ -1064,7 +1064,11 @@ impl LowerCtx {
                     let constraints = self.fn_constraints.get(name).cloned().unwrap_or_default();
                     if !constraints.is_empty() {
                         return self.lower_constrained_fn_as_value(
-                            name, fn_id, &constraints, &[], &expr.ty,
+                            name,
+                            fn_id,
+                            &constraints,
+                            &[],
+                            &expr.ty,
                         );
                     }
                     return Ok((
@@ -1072,8 +1076,8 @@ impl LowerCtx {
                         simple_at(
                             expr.span,
                             SimpleExprKind::MakeClosure {
-                            func: fn_id,
-                            captures: vec![],
+                                func: fn_id,
+                                captures: vec![],
                             },
                         ),
                     ));
@@ -1102,7 +1106,11 @@ impl LowerCtx {
                             self.fn_constraints.get(name).cloned().unwrap_or_default();
                         if !constraints.is_empty() {
                             return self.lower_constrained_fn_as_value(
-                                name, fn_id, &constraints, type_args, &expr.ty,
+                                name,
+                                fn_id,
+                                &constraints,
+                                type_args,
+                                &expr.ty,
                             );
                         }
                     }
@@ -1134,8 +1142,8 @@ impl LowerCtx {
                         simple_at(
                             expr.span,
                             SimpleExprKind::PrimOp {
-                            op: prim_op,
-                            args: vec![lhs_atom, rhs_atom],
+                                op: prim_op,
+                                args: vec![lhs_atom, rhs_atom],
                             },
                         ),
                     ))
@@ -1153,8 +1161,8 @@ impl LowerCtx {
                         simple_at(
                             expr.span,
                             SimpleExprKind::PrimOp {
-                            op: prim_op,
-                            args: vec![atom],
+                                op: prim_op,
+                                args: vec![atom],
                             },
                         ),
                     ))
@@ -1192,8 +1200,8 @@ impl LowerCtx {
                     simple_at(
                         expr.span,
                         SimpleExprKind::Project {
-                        value: base_atom,
-                        field_index: idx,
+                            value: base_atom,
+                            field_index: idx,
                         },
                     ),
                 ))
@@ -1258,8 +1266,8 @@ impl LowerCtx {
                     simple_at(
                         expr.span,
                         SimpleExprKind::MakeVec {
-                        element_type: element_type.into(),
-                        elements: atoms,
+                            element_type: element_type.into(),
+                            elements: atoms,
                         },
                     ),
                 ))
@@ -1295,10 +1303,10 @@ impl LowerCtx {
                                 value: simple_at(
                                     expr.span,
                                     SimpleExprKind::ConstructVariant {
-                                    type_name,
-                                    variant: name.clone(),
-                                    tag,
-                                    fields: vec![],
+                                        type_name,
+                                        variant: name.clone(),
+                                        tag,
+                                        fields: vec![],
                                     },
                                 ),
                                 body: Box::new(atom_expr_at(
@@ -1311,7 +1319,11 @@ impl LowerCtx {
                     }
                 }
                 if let Some(id) = self.lookup_var(name) {
-                    Ok(atom_expr_at(expr.span, expr.ty.clone().into(), Atom::Var(id)))
+                    Ok(atom_expr_at(
+                        expr.span,
+                        expr.ty.clone().into(),
+                        Atom::Var(id),
+                    ))
                 } else if let Some(fn_id) = self.lookup_fn(name) {
                     // Top-level function used as value
                     let var = self.fresh_var();
@@ -1324,8 +1336,8 @@ impl LowerCtx {
                             value: simple_at(
                                 expr.span,
                                 SimpleExprKind::MakeClosure {
-                                func: fn_id,
-                                captures: vec![],
+                                    func: fn_id,
+                                    captures: vec![],
                                 },
                             ),
                             body: Box::new(atom_expr_at(
@@ -1525,11 +1537,15 @@ impl LowerCtx {
                                     value: simple_at(
                                         expr.span,
                                         SimpleExprKind::PrimOp {
-                                        op: prim_op,
-                                        args: vec![l, r],
+                                            op: prim_op,
+                                            args: vec![l, r],
                                         },
                                     ),
-                                    body: Box::new(atom_expr_at(expr.span, ty.into(), Atom::Var(var))),
+                                    body: Box::new(atom_expr_at(
+                                        expr.span,
+                                        ty.into(),
+                                        Atom::Var(var),
+                                    )),
                                 },
                             ))
                         })
@@ -1557,8 +1573,8 @@ impl LowerCtx {
                                 value: simple_at(
                                     expr.span,
                                     SimpleExprKind::PrimOp {
-                                    op: prim_op,
-                                    args: vec![atom],
+                                        op: prim_op,
+                                        args: vec![atom],
                                     },
                                 ),
                                 body: Box::new(atom_expr_at(expr.span, ty.into(), Atom::Var(var))),
@@ -1582,7 +1598,10 @@ impl LowerCtx {
                         ExprKind::Let {
                             bind: var,
                             ty: ty.clone().into(),
-                            value: simple_at(expr.span, SimpleExprKind::MakeTuple { elements: atoms }),
+                            value: simple_at(
+                                expr.span,
+                                SimpleExprKind::MakeTuple { elements: atoms },
+                            ),
                             body: Box::new(atom_expr_at(expr.span, ty.into(), Atom::Var(var))),
                         },
                     ))
@@ -1616,8 +1635,8 @@ impl LowerCtx {
                             value: simple_at(
                                 expr.span,
                                 SimpleExprKind::Project {
-                                value: base_atom,
-                                field_index: idx,
+                                    value: base_atom,
+                                    field_index: idx,
                                 },
                             ),
                             body: Box::new(atom_expr_at(expr.span, ty.into(), Atom::Var(var))),
@@ -1715,7 +1734,11 @@ impl LowerCtx {
                                     SwitchBranch {
                                         tag: 0,
                                         bindings: vec![(success_var, t.clone().into())],
-                                        body: atom_expr_at(expr.span, t.into(), Atom::Var(success_var)),
+                                        body: atom_expr_at(
+                                            expr.span,
+                                            t.into(),
+                                            Atom::Var(success_var),
+                                        ),
                                     },
                                     SwitchBranch {
                                         tag: 1,
@@ -1729,10 +1752,10 @@ impl LowerCtx {
                                                 value: simple_at(
                                                     expr.span,
                                                     SimpleExprKind::ConstructVariant {
-                                                    type_name: "Option".to_string(),
-                                                    variant: "None".to_string(),
-                                                    tag: 1,
-                                                    fields: vec![],
+                                                        type_name: "Option".to_string(),
+                                                        variant: "None".to_string(),
+                                                        tag: 1,
+                                                        fields: vec![],
                                                     },
                                                 ),
                                                 body: Box::new(none_jump),
@@ -1773,7 +1796,11 @@ impl LowerCtx {
                                     SwitchBranch {
                                         tag: 0,
                                         bindings: vec![(success_var, ok_ty.clone().into())],
-                                        body: atom_expr_at(expr.span, ok_ty.into(), Atom::Var(success_var)),
+                                        body: atom_expr_at(
+                                            expr.span,
+                                            ok_ty.into(),
+                                            Atom::Var(success_var),
+                                        ),
                                     },
                                     SwitchBranch {
                                         tag: 1,
@@ -1787,10 +1814,10 @@ impl LowerCtx {
                                                 value: simple_at(
                                                     expr.span,
                                                     SimpleExprKind::ConstructVariant {
-                                                    type_name: "Result".to_string(),
-                                                    variant: "Err".to_string(),
-                                                    tag: 1,
-                                                    fields: vec![Atom::Var(err_var)],
+                                                        type_name: "Result".to_string(),
+                                                        variant: "Err".to_string(),
+                                                        tag: 1,
+                                                        fields: vec![Atom::Var(err_var)],
                                                     },
                                                 ),
                                                 body: Box::new(err_jump),
@@ -1840,8 +1867,8 @@ impl LowerCtx {
                             value: simple_at(
                                 expr.span,
                                 SimpleExprKind::MakeVec {
-                                element_type: element_type.into(),
-                                elements: atoms,
+                                    element_type: element_type.into(),
+                                    elements: atoms,
                                 },
                             ),
                             body: Box::new(atom_expr_at(expr.span, ty.into(), Atom::Var(var))),
@@ -2318,8 +2345,8 @@ impl LowerCtx {
                     value: simple_at(
                         then_body.span,
                         SimpleExprKind::PrimOp {
-                        op: eq_op,
-                        args: vec![scrut.clone(), lit_atom],
+                            op: eq_op,
+                            args: vec![scrut.clone(), lit_atom],
                         },
                     ),
                     body: Box::new(expr_at(
@@ -2372,8 +2399,8 @@ impl LowerCtx {
                 value: simple_at(
                     clauses[0].body.span,
                     SimpleExprKind::TupleProject {
-                    value: scrut.clone(),
-                    index: i,
+                        value: scrut.clone(),
+                        index: i,
                     },
                 ),
             });
@@ -2429,8 +2456,8 @@ impl LowerCtx {
                 value: simple_at(
                     clauses[0].body.span,
                     SimpleExprKind::Project {
-                    value: scrut.clone(),
-                    field_index: i,
+                        value: scrut.clone(),
+                        field_index: i,
                     },
                 ),
             });
@@ -2773,7 +2800,11 @@ impl LowerCtx {
     /// Processes left-to-right so Let bindings are in scope for subsequent exprs.
     fn lower_do(&mut self, exprs: &[TypedExpr], _result_ty: &Type) -> Result<Expr, LowerError> {
         if exprs.is_empty() {
-            return Ok(atom_expr_at((0, 0), Type::Unit.into(), Atom::Lit(Literal::Unit)));
+            return Ok(atom_expr_at(
+                (0, 0),
+                Type::Unit.into(),
+                Atom::Lit(Literal::Unit),
+            ));
         }
         self.lower_do_slice(exprs)
     }
@@ -2781,7 +2812,11 @@ impl LowerCtx {
     /// Recursively lower a slice of Do-block expressions.
     fn lower_do_slice(&mut self, exprs: &[TypedExpr]) -> Result<Expr, LowerError> {
         if exprs.is_empty() {
-            return Ok(atom_expr_at((0, 0), Type::Unit.into(), Atom::Lit(Literal::Unit)));
+            return Ok(atom_expr_at(
+                (0, 0),
+                Type::Unit.into(),
+                Atom::Lit(Literal::Unit),
+            ));
         }
         if exprs.len() == 1 {
             // If the single expression is a Let/LetPattern with no body, it's a trailing
@@ -2979,11 +3014,15 @@ impl LowerCtx {
                             value: simple_at(
                                 lhs.span,
                                 SimpleExprKind::PrimOp {
-                                op: PrimOp::Not,
-                                args: vec![Atom::Var(var)],
+                                    op: PrimOp::Not,
+                                    args: vec![Atom::Var(var)],
                                 },
                             ),
-                            body: Box::new(atom_expr_at(lhs.span, Type::Bool.into(), Atom::Var(neg_var))),
+                            body: Box::new(atom_expr_at(
+                                lhs.span,
+                                Type::Bool.into(),
+                                Atom::Var(neg_var),
+                            )),
                         },
                     )
                 } else {
@@ -2998,9 +3037,9 @@ impl LowerCtx {
                         value: simple_at(
                             lhs.span,
                             SimpleExprKind::TraitCall {
-                            trait_name: trait_name.clone(),
-                            method_name: method_name.clone(),
-                            args: vec![dict_atom.clone(), l, r],
+                                trait_name: trait_name.clone(),
+                                method_name: method_name.clone(),
+                                args: vec![dict_atom.clone(), l, r],
                             },
                         ),
                         body: Box::new(call_body),
@@ -3046,9 +3085,9 @@ impl LowerCtx {
                         value: simple_at(
                             lhs.span,
                             SimpleExprKind::TraitCall {
-                            trait_name: trait_name.clone(),
-                            method_name: method_name.clone(),
-                            args: vec![dict_atom.clone(), l, r],
+                                trait_name: trait_name.clone(),
+                                method_name: method_name.clone(),
+                                args: vec![dict_atom.clone(), l, r],
                             },
                         ),
                         body: Box::new(atom_expr_at(lhs.span, ty.into(), Atom::Var(var))),
@@ -3089,9 +3128,9 @@ impl LowerCtx {
                     value: simple_at(
                         operand.span,
                         SimpleExprKind::TraitCall {
-                        trait_name: trait_name.clone(),
-                        method_name: method_name.clone(),
-                        args: vec![dict_atom.clone(), a],
+                            trait_name: trait_name.clone(),
+                            method_name: method_name.clone(),
+                            args: vec![dict_atom.clone(), a],
                         },
                     ),
                     body: Box::new(atom_expr_at(operand.span, ty.into(), Atom::Var(var))),
@@ -3148,9 +3187,8 @@ impl LowerCtx {
         // Handle trait method dispatch (origin-tagged calls)
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let (dict_ty, type_bindings) = self.resolve_dispatch_type_with_bindings(
-                    trait_id, name, &func.ty, &type_args,
-                )?;
+                let (dict_ty, type_bindings) =
+                    self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
                 bindings.extend(dict_bindings);
 
@@ -3180,9 +3218,9 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::TraitCall {
-                        trait_name: trait_id.clone(),
-                        method_name: name.clone(),
-                        args: all_args,
+                            trait_name: trait_id.clone(),
+                            method_name: name.clone(),
+                            args: all_args,
                         },
                     ),
                 ));
@@ -3197,10 +3235,10 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::ConstructVariant {
-                        type_name,
-                        variant: name.clone(),
-                        tag,
-                        fields: arg_atoms,
+                            type_name,
+                            variant: name.clone(),
+                            tag,
+                            fields: arg_atoms,
                         },
                     ),
                 ));
@@ -3213,8 +3251,8 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::Construct {
-                        type_name: name.clone(),
-                        fields: arg_atoms,
+                            type_name: name.clone(),
+                            fields: arg_atoms,
                         },
                     ),
                 ));
@@ -3234,8 +3272,8 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::Call {
-                        func: fn_id,
-                        args: all_args,
+                            func: fn_id,
+                            args: all_args,
                         },
                     ),
                 ));
@@ -3248,8 +3286,8 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::CallClosure {
-                        closure: Atom::Var(var_id),
-                        args: arg_atoms,
+                            closure: Atom::Var(var_id),
+                            args: arg_atoms,
                         },
                     ),
                 ));
@@ -3266,8 +3304,8 @@ impl LowerCtx {
             simple_at(
                 func.span,
                 SimpleExprKind::CallClosure {
-                closure: func_atom,
-                args: arg_atoms,
+                    closure: func_atom,
+                    args: arg_atoms,
                 },
             ),
         ))
@@ -3308,8 +3346,8 @@ impl LowerCtx {
             simple_at(
                 fields.first().map(|(_, e)| e.span).unwrap_or((0, 0)),
                 SimpleExprKind::Construct {
-                type_name: name.to_string(),
-                fields: ordered_atoms,
+                    type_name: name.to_string(),
+                    fields: ordered_atoms,
                 },
             ),
         ))
@@ -3348,9 +3386,8 @@ impl LowerCtx {
         // Handle trait method dispatch
         if let Some(ref trait_id) = origin {
             if let Some(ref name) = func_name {
-                let (dict_ty, type_bindings) = self.resolve_dispatch_type_with_bindings(
-                    trait_id, name, &func.ty, &type_args,
-                )?;
+                let (dict_ty, type_bindings) =
+                    self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
                 let (mut dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
 
                 // Resolve method-level constraint dicts (e.g., `where b: Default`)
@@ -3393,9 +3430,9 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::TraitCall {
-                                trait_name: trait_id,
-                                method_name: name,
-                                args: all_args,
+                                    trait_name: trait_id,
+                                    method_name: name,
+                                    args: all_args,
                                 },
                             ),
                             body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
@@ -3422,10 +3459,10 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::ConstructVariant {
-                                type_name: type_name.clone(),
-                                variant: name,
-                                tag,
-                                fields: arg_atoms,
+                                    type_name: type_name.clone(),
+                                    variant: name,
+                                    tag,
+                                    fields: arg_atoms,
                                 },
                             ),
                             body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
@@ -3449,8 +3486,8 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::Construct {
-                                type_name,
-                                fields: arg_atoms,
+                                    type_name,
+                                    fields: arg_atoms,
                                 },
                             ),
                             body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
@@ -3478,8 +3515,8 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::Call {
-                                func: fn_id,
-                                args: all_args,
+                                    func: fn_id,
+                                    args: all_args,
                                 },
                             ),
                             body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
@@ -3503,8 +3540,8 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::CallClosure {
-                                closure: Atom::Var(var_id),
-                                args: arg_atoms,
+                                    closure: Atom::Var(var_id),
+                                    args: arg_atoms,
                                 },
                             ),
                             body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
@@ -3530,8 +3567,8 @@ impl LowerCtx {
                         value: simple_at(
                             func.span,
                             SimpleExprKind::CallClosure {
-                            closure: func_atom.clone(),
-                            args: arg_atoms,
+                                closure: func_atom.clone(),
+                                args: arg_atoms,
                             },
                         ),
                         body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
@@ -3579,8 +3616,8 @@ impl LowerCtx {
                     value: simple_at(
                         ordered_exprs.first().map(|e| e.span).unwrap_or((0, 0)),
                         SimpleExprKind::Construct {
-                        type_name,
-                        fields: atoms,
+                            type_name,
+                            fields: atoms,
                         },
                     ),
                     body: Box::new(atom_expr_at(
@@ -3633,8 +3670,8 @@ impl LowerCtx {
                             value: simple_at(
                                 base.span,
                                 SimpleExprKind::Project {
-                                value: base_atom.clone(),
-                                field_index: i,
+                                    value: base_atom.clone(),
+                                    field_index: i,
                                 },
                             ),
                         });
@@ -3649,8 +3686,8 @@ impl LowerCtx {
                     value: simple_at(
                         base.span,
                         SimpleExprKind::Construct {
-                        type_name: type_name.clone(),
-                        fields: field_atoms,
+                            type_name: type_name.clone(),
+                            fields: field_atoms,
                         },
                     ),
                 });
@@ -3722,8 +3759,8 @@ impl LowerCtx {
                 value: simple_at(
                     (0, 0),
                     SimpleExprKind::GetDict {
-                    trait_name: trait_name.clone(),
-                    ty: ty.clone().into(),
+                        trait_name: trait_name.clone(),
+                        ty: ty.clone().into(),
                     },
                 ),
             }],
@@ -3805,9 +3842,9 @@ impl LowerCtx {
             value: simple_at(
                 (0, 0),
                 SimpleExprKind::MakeDict {
-                trait_name: trait_name.clone(),
-                ty: ty.clone().into(),
-                sub_dicts: sub_dict_atoms,
+                    trait_name: trait_name.clone(),
+                    ty: ty.clone().into(),
+                    sub_dicts: sub_dict_atoms,
                 },
             ),
         });
@@ -3878,8 +3915,12 @@ impl LowerCtx {
         concrete_method_ty: &Type,
         type_args: &[Type],
     ) -> Result<Type, LowerError> {
-        let (dispatch_ty, _bindings) =
-            self.resolve_dispatch_type_with_bindings(trait_name, method_name, concrete_method_ty, type_args)?;
+        let (dispatch_ty, _bindings) = self.resolve_dispatch_type_with_bindings(
+            trait_name,
+            method_name,
+            concrete_method_ty,
+            type_args,
+        )?;
         Ok(dispatch_ty)
     }
 
@@ -4119,9 +4160,9 @@ impl LowerCtx {
                 value: simple_at(
                     (0, 0),
                     SimpleExprKind::TraitCall {
-                    trait_name: trait_name.clone(),
-                    method_name: method_name.to_string(),
-                    args: call_args,
+                        trait_name: trait_name.clone(),
+                        method_name: method_name.to_string(),
+                        args: call_args,
                     },
                 ),
                 body: Box::new(atom_expr_at(
@@ -4148,8 +4189,8 @@ impl LowerCtx {
             simple_at(
                 (0, 0),
                 SimpleExprKind::MakeClosure {
-                func: wrapper_fn_id,
-                captures: vec![dict_atom],
+                    func: wrapper_fn_id,
+                    captures: vec![dict_atom],
                 },
             ),
         ))
@@ -4328,8 +4369,8 @@ impl LowerCtx {
             simple_at(
                 lowered_body_span,
                 SimpleExprKind::MakeClosure {
-                func: fn_id,
-                captures: all_captures,
+                    func: fn_id,
+                    captures: all_captures,
                 },
             ),
         ))

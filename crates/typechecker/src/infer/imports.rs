@@ -158,6 +158,7 @@ impl ModuleInferenceState {
 
         let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
         let import_all = names.is_empty();
+        let is_synthetic_prelude_import = path == "prelude" && span == (0, 0);
 
         // Build alias map from ImportName
         let aliases: HashMap<String, String> = names
@@ -298,6 +299,7 @@ impl ModuleInferenceState {
                     ef.origin.clone(),
                     path.to_string(),
                     ef.name.clone(),
+                    is_synthetic_prelude_import,
                     &self.prelude_imported_names,
                     span,
                 )?;
@@ -331,6 +333,7 @@ impl ModuleInferenceState {
                     ef.scheme.clone(),
                     ef.origin.clone(),
                     (path.to_string(), ef.name.clone()),
+                    is_synthetic_prelude_import,
                 );
             }
         }
@@ -361,6 +364,7 @@ impl ModuleInferenceState {
                     ef.scheme.clone(),
                     ef.origin.clone(),
                     original_prov,
+                    is_synthetic_prelude_import,
                 );
             }
         }
@@ -401,6 +405,7 @@ impl ModuleInferenceState {
                     scheme: ef.scheme.clone(),
                     origin: ef.origin.clone(),
                     qualified_name: typed_ast::QualifiedName::new(original_prov.0, original_prov.1),
+                    is_prelude: is_synthetic_prelude_import,
                 });
                 if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
                     self.imports
@@ -462,6 +467,7 @@ impl ModuleInferenceState {
                                     None,
                                     orig_path.clone(),
                                     cname.clone(),
+                                    is_synthetic_prelude_import,
                                     &self.prelude_imported_names,
                                     span,
                                 )?;
@@ -499,6 +505,7 @@ impl ModuleInferenceState {
                                             None,
                                             orig_path.clone(),
                                             cname.clone(),
+                                            is_synthetic_prelude_import,
                                             &self.prelude_imported_names,
                                             span,
                                         )?;
@@ -567,6 +574,7 @@ impl ModuleInferenceState {
                                     None,
                                     path.to_string(),
                                     cname,
+                                    is_synthetic_prelude_import,
                                     &self.prelude_imported_names,
                                     span,
                                 )?;
@@ -617,6 +625,7 @@ impl ModuleInferenceState {
                                     scheme.clone(),
                                     None,
                                     (path.to_string(), cname.clone()),
+                                    is_synthetic_prelude_import,
                                 );
                                 self.env.bind(cname, scheme);
                             }
@@ -811,6 +820,7 @@ impl ModuleInferenceState {
                             origin.clone(),
                             path.to_string(),
                             method.name.clone(),
+                            is_synthetic_prelude_import,
                             &self.prelude_imported_names,
                             span,
                         )?;

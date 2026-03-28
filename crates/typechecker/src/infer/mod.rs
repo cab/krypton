@@ -1393,6 +1393,7 @@ impl ImportContext {
         origin: Option<TraitName>,
         source_module: String,
         original_name: String,
+        is_prelude: bool,
         prelude_imported_names: &HashSet<String>,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
@@ -1433,6 +1434,7 @@ impl ImportContext {
             scheme,
             origin,
             qualified_name: typed_ast::QualifiedName::new(source_module, original_name),
+            is_prelude,
         });
         Ok(())
     }
@@ -1444,12 +1446,14 @@ impl ImportContext {
         scheme: TypeScheme,
         origin: Option<TraitName>,
         provenance: (String, String),
+        is_prelude: bool,
     ) {
         self.push_fn(typed_ast::ImportedFn {
             name,
             scheme,
             origin,
             qualified_name: typed_ast::QualifiedName::new(provenance.0, provenance.1),
+            is_prelude,
         });
     }
 
@@ -3262,8 +3266,7 @@ fn infer_function_bodies<'a>(
 
     // TODO(BL-T6 follow-up): include imported extern fn names once extern fns
     // are unified with regular fn_types in the typechecker.
-    let extern_fn_names: HashSet<String> =
-        extern_fns.iter().map(|ef| ef.name.clone()).collect();
+    let extern_fn_names: HashSet<String> = extern_fns.iter().map(|ef| ef.name.clone()).collect();
 
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
@@ -3919,8 +3922,12 @@ pub(crate) fn infer_module_inner(
         .process_local_externs(module, &module_path)
         .map_err(|e| vec![e])?;
     state.cleanup_prelude_shadows(module);
-    state.check_explicit_import_shadows(module).map_err(|e| vec![e])?;
-    state.check_duplicate_function_names(module).map_err(|e| vec![e])?;
+    state
+        .check_explicit_import_shadows(module)
+        .map_err(|e| vec![e])?;
+    state
+        .check_duplicate_function_names(module)
+        .map_err(|e| vec![e])?;
     state.preregister_type_names(module);
     let constructor_schemes = state
         .process_local_type_decls(module)

@@ -1,5 +1,6 @@
 ---
 source: crates/ir/tests/lower_test.rs
+assertion_line: 81
 expression: ir_module.to_string()
 ---
 module modules__same_name_import_alias_ok
@@ -22,13 +23,13 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import helpers_a/compute as compute(Int): Int
-import helpers_b/compute as times10(Int): Int
+import helpers_b/compute as mul(Int): Int
 declare compute: (Int) -> Int
+declare mul: (Int) -> Int
 declare println: (Object) -> Unit
-declare times10: (Int) -> Int
 
 fn main() -> Unit =
-  let v0: Int = call times10(1)
+  let v0: Int = call mul(1)
   let v1: Int = call compute(v0)
   let v2: Unit = call println(v1)
   v2
