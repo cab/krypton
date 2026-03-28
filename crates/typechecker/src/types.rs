@@ -470,6 +470,81 @@ pub fn format_type_with_var_map(ty: &Type, names: &HashMap<TypeVarId, &str>) -> 
     format_type_impl(ty, names)
 }
 
+/// Collect free type variables in left-to-right encounter order, deduplicated.
+fn free_vars_ordered(ty: &Type) -> Vec<TypeVarId> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    free_vars_ordered_into(ty, &mut out, &mut seen);
+    out
+}
+
+fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
+    match ty {
+        Type::Var(id) => {
+            if seen.insert(*id) {
+                out.push(*id);
+            }
+        }
+        Type::Fn(params, ret) => {
+            for p in params {
+                free_vars_ordered_into(p, out, seen);
+            }
+            free_vars_ordered_into(ret, out, seen);
+        }
+        Type::Named(_, args) | Type::App(_, args) => {
+            for a in args {
+                free_vars_ordered_into(a, out, seen);
+            }
+        }
+        Type::Tuple(elems) => {
+            for e in elems {
+                free_vars_ordered_into(e, out, seen);
+            }
+        }
+        Type::Own(inner) => free_vars_ordered_into(inner, out, seen),
+        _ => {}
+    }
+}
+
+/// Format a type for error messages, renumbering type variables to nice names.
+/// Uses declared names from `var_names` where available, sequential letters otherwise.
+pub fn format_type_for_error(ty: &Type, var_names: &HashMap<TypeVarId, String>) -> String {
+    let vars = free_vars_ordered(ty);
+    if vars.is_empty() {
+        return format!("{ty}");
+    }
+
+    // Renumber vars to sequential 0, 1, 2, ...
+    let mut id_mapping = HashMap::new();
+    for (i, &v) in vars.iter().enumerate() {
+        id_mapping.insert(v, TypeVarId(i as u32));
+    }
+    let renamed_ty = ty.remap_vars(&id_mapping);
+
+    // Build display names (same logic as TypeScheme::display_var_names)
+    let mut used: HashSet<String> = HashSet::new();
+    let mut names = Vec::new();
+    let mut letter_idx = 0u32;
+    for &v in &vars {
+        if let Some(user_name) = var_names.get(&v) {
+            names.push(user_name.clone());
+            used.insert(user_name.clone());
+        } else {
+            loop {
+                let candidate = TypeVarId(letter_idx).display_name();
+                letter_idx += 1;
+                if !used.contains(&candidate) {
+                    used.insert(candidate.clone());
+                    names.push(candidate);
+                    break;
+                }
+            }
+        }
+    }
+
+    format_type_with_var_names(&renamed_ty, &names)
+}
+
 impl fmt::Display for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.vars.is_empty() {

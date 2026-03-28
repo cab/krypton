@@ -568,12 +568,13 @@ pub(super) fn no_instance_error(
     trait_name: &TraitName,
     ty: &Type,
     span: Span,
+    var_names: &HashMap<TypeVarId, String>,
 ) -> SpannedTypeError {
     let display_ty = ty.strip_own();
     let mut err = spanned(
         TypeError::NoInstance {
             trait_name: trait_name.local_name.clone(),
-            ty: format!("{display_ty}"),
+            ty: crate::types::format_type_for_error(&display_ty, var_names),
             required_by: None,
         },
         span,
@@ -1965,11 +1966,17 @@ impl ModuleInferenceState {
                 .get(&func.name)
                 .map(|s| s.constraints.as_slice())
                 .unwrap_or(&[]);
+            let func_var_names = fn_schemes
+                .get(&func.name)
+                .map(|s| &s.var_names)
+                .cloned()
+                .unwrap_or_default();
             if let Err(e) = checks::check_constrained_function_refs(
                 &func.body,
                 current_requirements,
                 &fn_schemes,
                 trait_registry,
+                &func_var_names,
             ) {
                 validation_errors.push(e);
             }
@@ -3571,6 +3578,11 @@ fn infer_function_bodies<'a>(
                     .as_ref()
                     .map(|s| s.vars.iter().copied().collect())
                     .unwrap_or_default();
+                let scheme_var_names = scheme
+                    .as_ref()
+                    .map(|s| &s.var_names)
+                    .cloned()
+                    .unwrap_or_default();
                 checks::check_trait_instances(
                     body,
                     trait_method_map,
@@ -3578,6 +3590,7 @@ fn infer_function_bodies<'a>(
                     &state.subst,
                     &fn_schemes_map,
                     &fn_type_vars,
+                    &scheme_var_names,
                 )?;
             }
         }

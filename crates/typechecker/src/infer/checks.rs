@@ -123,6 +123,7 @@ pub(super) fn check_constrained_function_refs(
     current_requirements: &[(TraitName, TypeVarId)],
     fn_schemes: &HashMap<String, TypeScheme>,
     trait_registry: &TraitRegistry,
+    var_names: &HashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = vec![expr];
     while let Some(expr) = work.pop() {
@@ -195,6 +196,7 @@ pub(super) fn check_constrained_function_refs(
                                     req_trait_name,
                                     &requirement_ty,
                                     expr.span,
+                                    var_names,
                                 ));
                             }
                             continue;
@@ -572,6 +574,7 @@ pub(super) fn check_trait_instances(
     subst: &Substitution,
     fn_schemes: &HashMap<String, TypeScheme>,
     fn_type_vars: &HashSet<TypeVarId>,
+    var_names: &HashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -638,6 +641,7 @@ pub(super) fn check_trait_instances(
                                     trait_id,
                                     &concrete_ty,
                                     expr.span,
+                                    var_names,
                                 ));
                             }
                             // Check method-level where constraints
@@ -655,6 +659,7 @@ pub(super) fn check_trait_instances(
                                                 req_trait,
                                                 &concrete,
                                                 expr.span,
+                                                var_names,
                                             ));
                                         }
                                     }
@@ -711,6 +716,7 @@ pub(super) fn check_trait_instances(
                                             req_trait_name,
                                             &concrete_ty,
                                             expr.span,
+                                            var_names,
                                         ));
                                     }
                                 } else {
@@ -728,6 +734,7 @@ pub(super) fn check_trait_instances(
                                             req_trait_name,
                                             &concrete_ty,
                                             expr.span,
+                                            var_names,
                                         ));
                                     }
                                 }
@@ -764,6 +771,7 @@ pub(super) fn check_trait_instances(
                                 trait_name,
                                 &operand_ty,
                                 expr.span,
+                                var_names,
                             ));
                         }
                     }
@@ -786,6 +794,7 @@ pub(super) fn check_trait_instances(
                                 &neg_trait,
                                 &operand_ty,
                                 expr.span,
+                                var_names,
                             ));
                         }
                     }
