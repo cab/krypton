@@ -38,8 +38,7 @@ impl fmt::Display for ModulePath {
 // Stable local symbol keys
 // ---------------------------------------------------------------------------
 
-/// Stable local identity for a symbol within a module.
-/// Path-based, not declaration-order integers (refactor.md decision 21).
+/// Stable path-based local identity for a symbol within a module.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LocalSymbolKey {
     /// Top-level function: `fn/<name>`
@@ -51,7 +50,10 @@ pub enum LocalSymbolKey {
     /// Constructor/variant: `type/<parent_type>/ctor/<name>`
     Constructor { parent_type: String, name: String },
     /// Instance: `instance/<trait_name>/<target_type>`
-    Instance { trait_name: String, target_type: String },
+    Instance {
+        trait_name: String,
+        target_type: String,
+    },
 }
 
 impl fmt::Display for LocalSymbolKey {
@@ -250,10 +252,7 @@ pub fn collect_direct_deps(module: &krypton_parser::ast::Module) -> Vec<ModulePa
 pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> ModuleInterface {
     let module_path = ModulePath::new(&typed.module_path);
 
-    let direct_deps = direct_dep_paths
-        .iter()
-        .map(ModulePath::new)
-        .collect();
+    let direct_deps = direct_dep_paths.iter().map(ModulePath::new).collect();
 
     // Build sets of constructor names for classifying exported fns
     let mut constructor_names: HashMap<String, String> = HashMap::new(); // ctor_name -> parent_type
@@ -531,7 +530,10 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
         let mut fns: Vec<_> = iface.reexported_fns.iter().collect();
         fns.sort_by_key(|f| &f.local_name);
         for f in fns {
-            out.push_str(&format!("  {} -> {} : {}\n", f.local_name, f.canonical_ref, f.scheme));
+            out.push_str(&format!(
+                "  {} -> {} : {}\n",
+                f.local_name, f.canonical_ref, f.scheme
+            ));
         }
     }
 
@@ -594,7 +596,10 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
                 Visibility::Opaque => "pub(opaque)",
                 Visibility::Private => "private",
             };
-            out.push_str(&format!("  {} -> {} ({vis})\n", t.local_name, t.canonical_ref));
+            out.push_str(&format!(
+                "  {} -> {} ({vis})\n",
+                t.local_name, t.canonical_ref
+            ));
         }
     }
 
@@ -603,7 +608,10 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
         let mut traits: Vec<_> = iface.exported_traits.iter().collect();
         traits.sort_by_key(|t| &t.name);
         for t in traits {
-            out.push_str(&format!("  {} [{} : {}]\n", t.key, t.type_var, t.type_var_id));
+            out.push_str(&format!(
+                "  {} [{} : {}]\n",
+                t.key, t.type_var, t.type_var_id
+            ));
             for m in &t.methods {
                 let params = m
                     .param_types
@@ -611,7 +619,10 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
                     .map(|p| format!("{p}"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                out.push_str(&format!("    {}: ({params}) -> {}\n", m.name, m.return_type));
+                out.push_str(&format!(
+                    "    {}: ({params}) -> {}\n",
+                    m.name, m.return_type
+                ));
             }
         }
     }

@@ -51,7 +51,7 @@ pub struct ImportName {
     pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum Visibility {
     Private,
     Pub,
