@@ -111,6 +111,25 @@ pub struct ImportedFn {
     pub is_prelude: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedCallableRef {
+    LocalFunction { qualified_name: QualifiedName },
+    ImportedFunction { qualified_name: QualifiedName },
+    Intrinsic { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedTraitMethodRef {
+    pub trait_name: TraitName,
+    pub method_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedBindingRef {
+    Callable(ResolvedCallableRef),
+    TraitMethod(ResolvedTraitMethodRef),
+}
+
 /// Entry in fn_types — local or imported function visible in a module.
 #[derive(Debug, Clone)]
 pub struct FnTypeEntry {
@@ -181,8 +200,9 @@ pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Type,
     pub span: Span,
-    /// Set for trait method references; used by codegen to dispatch to the correct trait.
-    pub origin: Option<TraitName>,
+    /// Set for resolved callable/trait bindings that survived lookup.
+    /// Local/body-local variables leave this as None.
+    pub resolved_ref: Option<ResolvedBindingRef>,
 }
 
 #[derive(Debug, Clone)]

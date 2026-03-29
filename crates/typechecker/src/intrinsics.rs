@@ -4,7 +4,7 @@ use std::collections::HashMap;
 pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_module: bool) {
     // panic: forall a. fn(String) -> a
     let a = gen.fresh();
-    env.bind(
+    env.bind_intrinsic_function(
         "panic".to_string(),
         TypeScheme {
             vars: vec![a],
@@ -18,7 +18,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
     {
         let a = gen.fresh();
         let b = gen.fresh();
-        env.bind(
+        env.bind_intrinsic_function(
             "trait_dict".to_string(),
             TypeScheme {
                 vars: vec![a, b],
@@ -32,7 +32,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
     // __krypton_intrinsic: forall b. fn() -> b  (only available in core/ modules)
     if is_core_module {
         let b = gen.fresh();
-        env.bind(
+        env.bind_intrinsic_function(
             "__krypton_intrinsic".to_string(),
             TypeScheme {
                 vars: vec![b],
@@ -44,7 +44,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
 
         // is_null: forall a. fn(a) -> Bool  (only available in core/ modules)
         let a = gen.fresh();
-        env.bind(
+        env.bind_intrinsic_function(
             "is_null".to_string(),
             TypeScheme {
                 vars: vec![a],

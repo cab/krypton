@@ -29,7 +29,6 @@ import core/actor/receive as receive(Mailbox[r10]): r10
 import core/actor/actor_ref as actor_ref(Mailbox[a11]): Ref[a11]
 import core/actor/mailbox as mailbox(): Mailbox[m11]
 import core/actor/adapter as adapter(Ref[p11], (q11) -> p11): Ref[q11]
-declare Reply
 declare actor_ref: (Mailbox[a11]) -> Ref[a11]
 declare adapter: (Ref[p11], (q11) -> p11) -> Ref[q11]
 declare mailbox: () -> Mailbox[m11]
@@ -51,13 +50,17 @@ fn main() -> Unit =
   let v4: Ref[Msg] = call spawn(v5)
   let v6: Mailbox[MainMsg] = call mailbox()
   let v8: Ref[MainMsg] = call actor_ref(v6)
-  let v9: (Int) -> MainMsg = make_closure(Reply, [])
-  let v7: Ref[Int] = call adapter(v8, v9)
-  let v10: ~Msg = construct Msg::Get#0(v7)
-  let v11: Unit = call send(v4, v10)
-  let v12: MainMsg = call receive(v6)
-  switch v12 {
-    0 (v13: Int) ->
-      let v14: Unit = call println(v13)
-      v14
+  let v11: (Int) -> MainMsg = make_closure(ctor$Reply$69, [])
+  let v7: Ref[Int] = call adapter(v8, v11)
+  let v12: ~Msg = construct Msg::Get#0(v7)
+  let v13: Unit = call send(v4, v12)
+  let v14: MainMsg = call receive(v6)
+  switch v14 {
+    0 (v15: Int) ->
+      let v16: Unit = call println(v15)
+      v16
   }
+
+fn ctor$Reply$69(v9: Int) -> MainMsg =
+  let v10: MainMsg = construct MainMsg::Reply#0(v9)
+  v10

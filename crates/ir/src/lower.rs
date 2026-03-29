@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
 use krypton_typechecker::typed_ast::{
-    self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry, TraitName,
-    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry,
+    ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TraitName, TypedExpr,
+    TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -859,25 +860,21 @@ impl LowerCtx {
         match &expr.kind {
             TypedExprKind::Lit(lit) => Ok((vec![], Atom::Lit(convert_lit(lit)))),
             TypedExprKind::Var(name) => {
-                // Check if it's a nullary variant constructor
-                if let Some((_, _, ref fields)) = self.sum_variants.get(name.as_str()) {
-                    if fields.is_empty() {
-                        // Nullary constructor — need to bind to a let
-                        let (bindings, simple) = self.lower_to_simple(expr)?;
-                        let var = self.fresh_var();
-                        let ty = expr.ty.clone();
-                        let mut all_bindings = bindings;
-                        all_bindings.push(LetBinding {
-                            bind: var,
-                            ty: ty.into(),
-                            value: simple,
-                        });
-                        return Ok((all_bindings, Atom::Var(var)));
-                    }
+                if self.sum_variants.contains_key(name.as_str()) {
+                    let (bindings, simple) = self.lower_to_simple(expr)?;
+                    let var = self.fresh_var();
+                    let ty = expr.ty.clone();
+                    let mut all_bindings = bindings;
+                    all_bindings.push(LetBinding {
+                        bind: var,
+                        ty: ty.into(),
+                        value: simple,
+                    });
+                    return Ok((all_bindings, Atom::Var(var)));
                 }
                 if let Some(id) = self.lookup_var(name) {
                     Ok((vec![], Atom::Var(id)))
-                } else if self.lookup_fn(name).is_some() {
+                } else if resolved_callable_ref(expr).is_some() {
                     // Top-level function reference as a value — bind it
                     let (bindings, simple) = self.lower_to_simple(expr)?;
                     let var = self.fresh_var();
@@ -889,7 +886,7 @@ impl LowerCtx {
                         value: simple,
                     });
                     Ok((all_bindings, Atom::Var(var)))
-                } else if expr.origin.is_some() {
+                } else if resolved_trait_method_ref(expr).is_some() {
                     // Trait method as value — delegate to lower_to_simple
                     let (bindings, simple) = self.lower_to_simple(expr)?;
                     let var = self.fresh_var();
@@ -910,10 +907,13 @@ impl LowerCtx {
                 type_args,
             } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
-                if let TypedExprKind::Var(name) = &inner.kind {
-                    if let Some(ref origin) = inner.origin {
-                        let (bindings, simple) =
-                            self.lower_trait_method_as_value(origin, name, &expr.ty, type_args)?;
+                if let Some(trait_ref) = resolved_trait_method_ref(expr) {
+                    let (bindings, simple) = self.lower_trait_method_as_value(
+                        &trait_ref.trait_name,
+                        &trait_ref.method_name,
+                        &expr.ty,
+                        type_args,
+                    )?;
                         let var = self.fresh_var();
                         let ty = expr.ty.clone();
                         let mut all_bindings = bindings;
@@ -923,7 +923,6 @@ impl LowerCtx {
                             value: simple,
                         });
                         return Ok((all_bindings, Atom::Var(var)));
-                    }
                 }
                 self.lower_to_atom(inner)
             }
@@ -954,12 +953,8 @@ impl LowerCtx {
         match &expr.kind {
             TypedExprKind::Lit(lit) => return cont(self, Atom::Lit(convert_lit(lit))),
             TypedExprKind::Var(name) => {
-                // Nullary variants are constructors — fall through to general path.
-                let is_nullary_variant = matches!(
-                    self.sum_variants.get(name.as_str()),
-                    Some((_, _, fields)) if fields.is_empty()
-                );
-                if !is_nullary_variant {
+                // Variant constructors are lowered through the general value path.
+                if !self.sum_variants.contains_key(name.as_str()) {
                     if let Some(id) = self.lookup_var(name) {
                         return cont(self, Atom::Var(id));
                     }
@@ -969,7 +964,7 @@ impl LowerCtx {
                 // For trait method values, fall through to general path
                 // which preserves the outer concrete type
                 if let TypedExprKind::Var(name) = &inner.kind {
-                    if inner.origin.is_some() && self.lookup_var(name).is_none() {
+                    if resolved_trait_method_ref(expr).is_some() && self.lookup_var(name).is_none() {
                         // Fall through to try_lower_as_simple
                     } else {
                         return self.lower_to_atom_then(inner, cont);
@@ -1025,6 +1020,77 @@ impl LowerCtx {
         })
     }
 
+    fn lower_variant_constructor_as_value(
+        &mut self,
+        name: &str,
+        expr: &TypedExpr,
+        type_name: String,
+        tag: u32,
+    ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
+        let (param_types, return_type) = match &expr.ty {
+            Type::Fn(param_types, return_type) => (param_types.clone(), return_type.as_ref().clone()),
+            other => {
+                return Err(LowerError::InternalError(format!(
+                    "constructor value `{name}` has non-function type: {other:?}"
+                )))
+            }
+        };
+
+        let fn_id = self.fresh_fn();
+        let lifted_name = format!("ctor${}${}", name, fn_id.0);
+        let mut params = Vec::with_capacity(param_types.len());
+        let mut field_atoms = Vec::with_capacity(param_types.len());
+        for param_ty in param_types {
+            let var = self.fresh_var();
+            params.push((var, param_ty.clone().into()));
+            field_atoms.push(Atom::Var(var));
+        }
+
+        let result_var = self.fresh_var();
+        let body = expr_at(
+            expr.span,
+            return_type.clone().into(),
+            ExprKind::Let {
+                bind: result_var,
+                ty: return_type.clone().into(),
+                value: simple_at(
+                    expr.span,
+                    SimpleExprKind::ConstructVariant {
+                        type_name,
+                        variant: name.to_string(),
+                        tag,
+                        fields: field_atoms,
+                    },
+                ),
+                body: Box::new(atom_expr_at(
+                    expr.span,
+                    return_type.clone().into(),
+                    Atom::Var(result_var),
+                )),
+            },
+        );
+
+        self.lifted_fns.push(FnDef {
+            id: fn_id,
+            name: lifted_name.clone(),
+            params,
+            return_type: return_type.into(),
+            body,
+        });
+        self.fn_ids.insert(lifted_name, fn_id);
+
+        Ok((
+            vec![],
+            simple_at(
+                expr.span,
+                SimpleExprKind::MakeClosure {
+                    func: fn_id,
+                    captures: vec![],
+                },
+            ),
+        ))
+    }
+
     /// Lower an expression to a SimpleExpr (one step of computation).
     /// Returns prefix let-bindings and the SimpleExpr.
     fn lower_to_simple(
@@ -1057,14 +1123,22 @@ impl LowerCtx {
                             ),
                         ));
                     }
+                    return self.lower_variant_constructor_as_value(name, expr, type_name, tag);
                 }
                 // Function reference as value — wrap in MakeClosure
-                if let Some(fn_id) = self.lookup_fn(name) {
+                if let Some((binding_name, _callable_ref)) = resolved_callable_ref(expr) {
+                    let Some(fn_id) = self.lookup_fn(binding_name) else {
+                        return Err(LowerError::UnresolvedVar(binding_name.to_string()));
+                    };
                     // Check if this function has trait constraints that need dict captures
-                    let constraints = self.fn_constraints.get(name).cloned().unwrap_or_default();
+                    let constraints = self
+                        .fn_constraints
+                        .get(binding_name)
+                        .cloned()
+                        .unwrap_or_default();
                     if !constraints.is_empty() {
                         return self.lower_constrained_fn_as_value(
-                            name,
+                            binding_name,
                             fn_id,
                             &constraints,
                             &[],
@@ -1083,8 +1157,13 @@ impl LowerCtx {
                     ));
                 }
                 // Trait method used as value
-                if let Some(ref origin) = expr.origin {
-                    return self.lower_trait_method_as_value(origin, name, &expr.ty, &[]);
+                if let Some(trait_ref) = resolved_trait_method_ref(expr) {
+                    return self.lower_trait_method_as_value(
+                        &trait_ref.trait_name,
+                        &trait_ref.method_name,
+                        &expr.ty,
+                        &[],
+                    );
                 }
                 // Should not reach here for a plain var (those are atoms)
                 Err(LowerError::InternalError(format!(
@@ -1096,17 +1175,22 @@ impl LowerCtx {
                 type_args,
             } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
-                if let TypedExprKind::Var(name) = &inner.kind {
-                    if let Some(ref origin) = inner.origin {
-                        return self.lower_trait_method_as_value(origin, name, &expr.ty, type_args);
-                    }
+                if let Some(trait_ref) = resolved_trait_method_ref(expr) {
+                    return self.lower_trait_method_as_value(
+                        &trait_ref.trait_name,
+                        &trait_ref.method_name,
+                        &expr.ty,
+                        type_args,
+                    );
+                }
+                if let Some((binding_name, _callable_ref)) = resolved_callable_ref(expr) {
                     // Constrained function reference with explicit type args
-                    if let Some(fn_id) = self.lookup_fn(name) {
+                    if let Some(fn_id) = self.lookup_fn(binding_name) {
                         let constraints =
-                            self.fn_constraints.get(name).cloned().unwrap_or_default();
+                            self.fn_constraints.get(binding_name).cloned().unwrap_or_default();
                         if !constraints.is_empty() {
                             return self.lower_constrained_fn_as_value(
-                                name,
+                                binding_name,
                                 fn_id,
                                 &constraints,
                                 type_args,
@@ -1288,7 +1372,6 @@ impl LowerCtx {
             )),
 
             TypedExprKind::Var(name) => {
-                // Nullary variant constructor
                 if let Some((type_name, tag, fields)) =
                     self.sum_variants.get(name.as_str()).cloned()
                 {
@@ -1317,6 +1400,36 @@ impl LowerCtx {
                             },
                         ));
                     }
+                    let (bindings, simple) =
+                        self.lower_variant_constructor_as_value(name, expr, type_name, tag)?;
+                    let var = self.fresh_var();
+                    let mut result = expr_at(
+                        expr.span,
+                        expr.ty.clone().into(),
+                        ExprKind::Let {
+                            bind: var,
+                            ty: expr.ty.clone().into(),
+                            value: simple,
+                            body: Box::new(atom_expr_at(
+                                expr.span,
+                                expr.ty.clone().into(),
+                                Atom::Var(var),
+                            )),
+                        },
+                    );
+                    for b in bindings.into_iter().rev() {
+                        result = expr_at(
+                            b.value.span,
+                            result.ty.clone(),
+                            ExprKind::Let {
+                                bind: b.bind,
+                                ty: b.ty,
+                                value: b.value,
+                                body: Box::new(result),
+                            },
+                        );
+                    }
+                    return Ok(result);
                 }
                 if let Some(id) = self.lookup_var(name) {
                     Ok(atom_expr_at(
@@ -1324,7 +1437,10 @@ impl LowerCtx {
                         expr.ty.clone().into(),
                         Atom::Var(id),
                     ))
-                } else if let Some(fn_id) = self.lookup_fn(name) {
+                } else if let Some((binding_name, _callable_ref)) = resolved_callable_ref(expr) {
+                    let Some(fn_id) = self.lookup_fn(binding_name) else {
+                        return Err(LowerError::UnresolvedVar(binding_name.to_string()));
+                    };
                     // Top-level function used as value
                     let var = self.fresh_var();
                     Ok(expr_at(
@@ -1347,10 +1463,14 @@ impl LowerCtx {
                             )),
                         },
                     ))
-                } else if let Some(ref origin) = expr.origin {
+                } else if let Some(trait_ref) = resolved_trait_method_ref(expr) {
                     // Trait method used as value
-                    let (bindings, simple) =
-                        self.lower_trait_method_as_value(origin, name, &expr.ty, &[])?;
+                    let (bindings, simple) = self.lower_trait_method_as_value(
+                        &trait_ref.trait_name,
+                        &trait_ref.method_name,
+                        &expr.ty,
+                        &[],
+                    )?;
                     let var = self.fresh_var();
                     let mut result = expr_at(
                         expr.span,
@@ -1390,10 +1510,13 @@ impl LowerCtx {
                 type_args,
             } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
-                if let TypedExprKind::Var(name) = &inner.kind {
-                    if let Some(ref origin) = inner.origin {
-                        let (bindings, simple) =
-                            self.lower_trait_method_as_value(origin, name, &expr.ty, type_args)?;
+                if let Some(trait_ref) = resolved_trait_method_ref(expr) {
+                        let (bindings, simple) = self.lower_trait_method_as_value(
+                            &trait_ref.trait_name,
+                            &trait_ref.method_name,
+                            &expr.ty,
+                            type_args,
+                        )?;
                         let var = self.fresh_var();
                         let mut result = expr_at(
                             expr.span,
@@ -1422,7 +1545,6 @@ impl LowerCtx {
                             );
                         }
                         return Ok(result);
-                    }
                 }
                 self.lower_expr(inner)
             }
@@ -2001,7 +2123,7 @@ impl LowerCtx {
                 kind: TypedExprKind::Lit(Lit::Unit),
                 ty: Type::Unit,
                 span: (0, 0),
-                origin: None,
+                resolved_ref: None,
             }
         };
 
@@ -2899,7 +3021,7 @@ impl LowerCtx {
                     kind: TypedExprKind::Do(rest.to_vec()),
                     ty: rest_ty.clone(),
                     span: rest[0].span,
-                    origin: None,
+                    resolved_ref: None,
                 }
             };
             return self.lower_let_pattern(pattern, value, Some(&rest_body), &rest_ty);
@@ -3158,8 +3280,8 @@ impl LowerCtx {
         func: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
-        // Peel TypeApp to get the function name, origin, and type args
-        let (func_name, origin, type_args) = extract_call_info(func);
+        // Peel TypeApp to get the function name, resolved binding ref, and type args
+        let (func_name, resolved_ref, type_args) = extract_call_info(func);
 
         // Intercept trait_dict(TraitName) intrinsic: resolve to the dict param
         // for the named trait from the enclosing function's where-constraints.
@@ -3184,9 +3306,10 @@ impl LowerCtx {
             arg_atoms.push(atom);
         }
 
-        // Handle trait method dispatch (origin-tagged calls)
-        if let Some(ref trait_id) = origin {
-            if let Some(ref name) = func_name {
+        // Handle trait method dispatch from resolved trait refs.
+        if let Some(ResolvedBindingRef::TraitMethod(trait_ref)) = resolved_ref.as_ref() {
+            let trait_id = &trait_ref.trait_name;
+            let name = &trait_ref.method_name;
                 let (dict_ty, type_bindings) =
                     self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
                 let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
@@ -3224,7 +3347,6 @@ impl LowerCtx {
                         },
                     ),
                 ));
-            }
         }
 
         if let Some(name) = &func_name {
@@ -3258,8 +3380,11 @@ impl LowerCtx {
                 ));
             }
 
-            // Check if it's a known top-level function
-            if let Some(fn_id) = self.lookup_fn(name) {
+            // Check if it's a resolved top-level/imported function.
+            if matches!(resolved_ref, Some(ResolvedBindingRef::Callable(_))) {
+                let Some(fn_id) = self.lookup_fn(name) else {
+                    return Err(LowerError::UnresolvedVar(name.clone()));
+                };
                 // Resolve dict arguments for constrained functions
                 let (dict_bindings, dict_atoms) =
                     self.resolve_call_dicts(name, args, &type_args)?;
@@ -3364,8 +3489,8 @@ impl LowerCtx {
         args: &[TypedExpr],
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
-        // Peel TypeApp to get function name, origin, type args
-        let (func_name, origin, type_args) = extract_call_info(func);
+        // Peel TypeApp to get function name, resolved binding ref, and type args
+        let (func_name, resolved_ref, type_args) = extract_call_info(func);
 
         // Intercept trait_dict(TraitName) intrinsic
         if func_name.as_deref() == Some("trait_dict") {
@@ -3384,8 +3509,9 @@ impl LowerCtx {
         let result_ty = result_ty.clone();
 
         // Handle trait method dispatch
-        if let Some(ref trait_id) = origin {
-            if let Some(ref name) = func_name {
+        if let Some(ResolvedBindingRef::TraitMethod(trait_ref)) = resolved_ref.as_ref() {
+            let trait_id = &trait_ref.trait_name;
+            let name = &trait_ref.method_name;
                 let (dict_ty, type_bindings) =
                     self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
                 let (mut dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
@@ -3440,7 +3566,6 @@ impl LowerCtx {
                     );
                     Ok(Self::wrap_bindings(dict_bindings, call_expr))
                 });
-            }
         }
 
         if let Some(name) = &func_name {
@@ -3496,8 +3621,11 @@ impl LowerCtx {
                 });
             }
 
-            // Known top-level function
-            if let Some(fn_id) = self.lookup_fn(name) {
+            // Known top-level/imported function
+            if matches!(resolved_ref, Some(ResolvedBindingRef::Callable(_))) {
+                let Some(fn_id) = self.lookup_fn(name) else {
+                    return Err(LowerError::UnresolvedVar(name.clone()));
+                };
                 let (dict_bindings, dict_atoms) =
                     self.resolve_call_dicts(name, args, &type_args)?;
 
@@ -5343,21 +5471,48 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
     }
 }
 
-/// Extract function name, origin, and type_args from a call expression,
-/// peeling through TypeApp wrappers. Collects the outermost type_args.
-fn extract_call_info(expr: &TypedExpr) -> (Option<String>, Option<TraitName>, Vec<Type>) {
+fn resolved_ref(expr: &TypedExpr) -> Option<&ResolvedBindingRef> {
     match &expr.kind {
-        TypedExprKind::Var(name) => (Some(name.clone()), expr.origin.clone(), vec![]),
+        TypedExprKind::Var(_) => expr.resolved_ref.as_ref(),
+        TypedExprKind::TypeApp { expr: inner, .. } => {
+            expr.resolved_ref.as_ref().or_else(|| resolved_ref(inner))
+        }
+        _ => expr.resolved_ref.as_ref(),
+    }
+}
+
+fn resolved_callable_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedCallableRef)> {
+    match &expr.kind {
+        TypedExprKind::Var(name) => match resolved_ref(expr) {
+            Some(ResolvedBindingRef::Callable(callable_ref)) => Some((name.as_str(), callable_ref)),
+            _ => None,
+        },
+        TypedExprKind::TypeApp { expr: inner, .. } => resolved_callable_ref(inner),
+        _ => None,
+    }
+}
+
+fn resolved_trait_method_ref(expr: &TypedExpr) -> Option<&ResolvedTraitMethodRef> {
+    match resolved_ref(expr) {
+        Some(ResolvedBindingRef::TraitMethod(trait_ref)) => Some(trait_ref),
+        _ => None,
+    }
+}
+
+/// Extract function name, resolved binding ref, and type_args from a call expression,
+/// peeling through TypeApp wrappers. Collects the outermost type_args.
+fn extract_call_info(expr: &TypedExpr) -> (Option<String>, Option<ResolvedBindingRef>, Vec<Type>) {
+    match &expr.kind {
+        TypedExprKind::Var(name) => (Some(name.clone()), expr.resolved_ref.clone(), vec![]),
         TypedExprKind::TypeApp {
             expr: inner,
             type_args,
         } => {
-            let (name, origin, _) = extract_call_info(inner);
-            // Use origin from inner if present, else from this node
-            let origin = origin.or_else(|| expr.origin.clone());
-            (name, origin, type_args.clone())
+            let (name, resolved_ref, _) = extract_call_info(inner);
+            let resolved_ref = resolved_ref.or_else(|| expr.resolved_ref.clone());
+            (name, resolved_ref, type_args.clone())
         }
-        _ => (None, expr.origin.clone(), vec![]),
+        _ => (None, expr.resolved_ref.clone(), vec![]),
     }
 }
 

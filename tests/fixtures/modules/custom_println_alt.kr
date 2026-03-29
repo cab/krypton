@@ -1,0 +1,1 @@
+pub fun println(x: Int) -> Int = x + 1

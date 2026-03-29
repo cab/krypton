@@ -1,0 +1,5 @@
+# expect: error E0509
+import custom_println.{println}
+import custom_println_alt.{println}
+
+fun main() = println(42)

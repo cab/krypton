@@ -1,0 +1,4 @@
+# expect: output "20"
+import helpers_b.{compute as mul}
+
+fun main() = println(mul(2))

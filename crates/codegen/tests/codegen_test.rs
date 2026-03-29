@@ -4,8 +4,8 @@ use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
     AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, QualifiedName,
-    ResolvedConstraint, SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedExprKind, TypedFnDecl,
-    TypedMatchArm, TypedModule, TypedPattern,
+    ResolvedBindingRef, ResolvedConstraint, ResolvedTraitMethodRef, SumDecl, TraitDefInfo,
+    TraitName, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
 
@@ -127,7 +127,7 @@ fn string_lit(value: &str) -> TypedExpr {
         kind: TypedExprKind::Lit(Lit::String(value.to_string())),
         ty: Type::String,
         span: (0, 0),
-        origin: None,
+        resolved_ref: None,
     }
 }
 
@@ -136,7 +136,7 @@ fn int_lit(value: i64) -> TypedExpr {
         kind: TypedExprKind::Lit(Lit::Int(value)),
         ty: Type::Int,
         span: (0, 0),
-        origin: None,
+        resolved_ref: None,
     }
 }
 
@@ -145,7 +145,7 @@ fn var_expr(name: &str, ty: Type) -> TypedExpr {
         kind: TypedExprKind::Var(name.to_string()),
         ty,
         span: (0, 0),
-        origin: None,
+        resolved_ref: None,
     }
 }
 
@@ -157,7 +157,7 @@ fn app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type) -> Ty
         },
         ty: ret_ty,
         span: (0, 0),
-        origin: None,
+        resolved_ref: None,
     }
 }
 
@@ -174,13 +174,19 @@ fn trait_app_expr(
                 kind: TypedExprKind::Var(name.to_string()),
                 ty: func_ty,
                 span: (0, 0),
-                origin: Some(trait_id.clone()),
+                resolved_ref: Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
+                    trait_name: trait_id.clone(),
+                    method_name: name.to_string(),
+                })),
             }),
             args,
         },
         ty: ret_ty,
         span: (0, 0),
-        origin: Some(trait_id),
+        resolved_ref: Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
+            trait_name: trait_id,
+            method_name: name.to_string(),
+        })),
     }
 }
 
@@ -193,7 +199,7 @@ fn concat_expr(lhs: TypedExpr, rhs: TypedExpr) -> TypedExpr {
         },
         ty: Type::String,
         span: (0, 0),
-        origin: None,
+        resolved_ref: None,
     }
 }
 
@@ -272,7 +278,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         },
         ty: Type::String,
         span: (0, 0),
-        origin: None,
+        resolved_ref: None,
     };
 
     let wrapped_main_value = if nested {

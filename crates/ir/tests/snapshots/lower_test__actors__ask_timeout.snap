@@ -15,8 +15,6 @@ import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
-import core/result/Ok as Ok(g): Result[f, g]
-import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
@@ -28,7 +26,6 @@ import core/actor/ask as ask(Ref[y11], (Ref[z11]) -> y11, Int): Result[Timeout, 
 import core/actor/Timeout as Timeout(): Timeout
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
-declare Get
 declare ask: (Ref[y11], (Ref[z11]) -> y11, Int) -> Result[Timeout, z11]
 declare println: (Object) -> Unit
 declare spawn: ((Mailbox[c10]) -> Unit) -> Ref[c10]
@@ -39,16 +36,20 @@ fn dead_actor(v0: Mailbox[Msg]) -> Unit =
 fn main() -> Unit =
   let v2: (Mailbox[Msg]) -> Unit = make_closure(dead_actor, [])
   let v1: Ref[Msg] = call spawn(v2)
-  let v3: (Ref[Int]) -> Msg = make_closure(Get, [])
-  let v4: Result[Timeout, Int] = call ask(v1, v3, 100)
-  switch v4 {
-    0 (v5: Int) ->
-      let v6: Unit = call println(v5)
-      v6
-    1 (v7: c) ->
-      switch v7 {
+  let v5: (Ref[Int]) -> Msg = make_closure(ctor$Get$65, [])
+  let v6: Result[Timeout, Int] = call ask(v1, v5, 100)
+  switch v6 {
+    0 (v7: Int) ->
+      let v8: Unit = call println(v7)
+      v8
+    1 (v9: c) ->
+      switch v9 {
         0 ->
-          let v8: Unit = call println("timeout")
-          v8
+          let v10: Unit = call println("timeout")
+          v10
       }
   }
+
+fn ctor$Get$65(v3: Ref[Int]) -> Msg =
+  let v4: Msg = construct Msg::Get#0(v3)
+  v4

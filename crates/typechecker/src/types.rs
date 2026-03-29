@@ -710,10 +710,43 @@ pub struct DefSpan {
     pub source_module: Option<String>, // None = same file
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingQualifiedName {
+    pub module_path: String,
+    pub local_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BindingSource {
+    LocalValue,
+    TopLevelLocalFunction {
+        qualified_name: BindingQualifiedName,
+    },
+    ImportedFunction {
+        qualified_name: BindingQualifiedName,
+        is_prelude: bool,
+    },
+    TraitMethod {
+        trait_module_path: String,
+        trait_name: String,
+        method_name: String,
+        is_prelude: bool,
+    },
+    IntrinsicFunction {
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct EnvEntry {
+    pub scheme: TypeScheme,
+    pub source: BindingSource,
+}
+
 /// Scoped type environment for variable lookups.
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
-    scopes: Vec<HashMap<std::string::String, TypeScheme>>,
+    scopes: Vec<HashMap<std::string::String, EnvEntry>>,
     pub fn_return_type: Option<Type>,
     def_spans: HashMap<std::string::String, DefSpan>,
 }
@@ -740,18 +773,102 @@ impl TypeEnv {
         }
     }
 
+    /// Bind a name in the current (top) scope with explicit source metadata.
+    pub fn bind_with_source(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        source: BindingSource,
+    ) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, EnvEntry { scheme, source });
+        }
+    }
+
     /// Bind a name in the current (top) scope.
     pub fn bind(&mut self, name: std::string::String, scheme: TypeScheme) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, scheme);
-        }
+        self.bind_with_source(name, scheme, BindingSource::LocalValue);
+    }
+
+    pub fn bind_top_level_function(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        module_path: String,
+        original_name: String,
+    ) {
+        self.bind_with_source(
+            name,
+            scheme,
+            BindingSource::TopLevelLocalFunction {
+                qualified_name: BindingQualifiedName {
+                    module_path,
+                    local_name: original_name,
+                },
+            },
+        );
+    }
+
+    pub fn bind_imported_function(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        module_path: String,
+        original_name: String,
+        is_prelude: bool,
+    ) {
+        self.bind_with_source(
+            name,
+            scheme,
+            BindingSource::ImportedFunction {
+                qualified_name: BindingQualifiedName {
+                    module_path,
+                    local_name: original_name,
+                },
+                is_prelude,
+            },
+        );
+    }
+
+    pub fn bind_trait_method(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        trait_module_path: String,
+        trait_name: String,
+        method_name: String,
+        is_prelude: bool,
+    ) {
+        self.bind_with_source(
+            name,
+            scheme,
+            BindingSource::TraitMethod {
+                trait_module_path,
+                trait_name,
+                method_name,
+                is_prelude,
+            },
+        );
+    }
+
+    pub fn bind_intrinsic_function(&mut self, name: std::string::String, scheme: TypeScheme) {
+        self.bind_with_source(
+            name.clone(),
+            scheme,
+            BindingSource::IntrinsicFunction { name },
+        );
     }
 
     /// Look up a name, searching from the top scope down.
     pub fn lookup(&self, name: &str) -> Option<&TypeScheme> {
+        self.lookup_entry(name).map(|entry| &entry.scheme)
+    }
+
+    /// Look up a name with source metadata, searching from the top scope down.
+    pub fn lookup_entry(&self, name: &str) -> Option<&EnvEntry> {
         for scope in self.scopes.iter().rev() {
-            if let Some(scheme) = scope.get(name) {
-                return Some(scheme);
+            if let Some(entry) = scope.get(name) {
+                return Some(entry);
             }
         }
         None
@@ -771,7 +888,11 @@ impl TypeEnv {
         scheme: TypeScheme,
         def_span: DefSpan,
     ) {
-        self.bind(name.clone(), scheme);
+        let source = self
+            .lookup_entry(&name)
+            .map(|entry| entry.source.clone())
+            .unwrap_or(BindingSource::LocalValue);
+        self.bind_with_source(name.clone(), scheme, source);
         self.def_spans.insert(name, def_span);
     }
 
@@ -783,8 +904,8 @@ impl TypeEnv {
     /// Iterate over all type schemes in the environment.
     pub fn for_each_scheme(&self, mut f: impl FnMut(&TypeScheme)) {
         for scope in &self.scopes {
-            for scheme in scope.values() {
-                f(scheme);
+            for entry in scope.values() {
+                f(&entry.scheme);
             }
         }
     }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
     Decl, Expr, ExternMethod, ExternTarget, Module, Span, TypeConstraint, TypeDecl, TypeDeclKind,
-    TypeExpr, TypeParam, Variant, Visibility,
+    TypeExpr, TypeParam, Visibility,
 };
 
 use crate::scc;
@@ -10,11 +10,12 @@ use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry}
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
     self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTypeInfo, InstanceDefInfo,
-    ResolvedConstraint, StructDecl, SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedFnDecl,
-    TypedModule,
+    ResolvedBindingRef, ResolvedCallableRef, ResolvedConstraint, ResolvedTraitMethodRef,
+    StructDecl, SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{
-    type_to_canonical_name, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId,
+    type_to_canonical_name, BindingSource, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen,
+    TypeVarId,
 };
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
 
@@ -71,12 +72,74 @@ mod pattern;
 pub(super) struct QualifiedExport {
     pub(super) local_name: String,
     pub(super) scheme: TypeScheme,
+    pub(super) resolved_ref: Option<ResolvedBindingRef>,
 }
 
 #[derive(Clone)]
 pub(super) struct QualifiedModuleBinding {
     pub(super) module_path: String,
     pub(super) exports: HashMap<String, QualifiedExport>,
+}
+
+pub(super) fn imported_binding_ref(
+    module_path: impl Into<String>,
+    local_name: impl Into<String>,
+) -> ResolvedBindingRef {
+    ResolvedBindingRef::Callable(ResolvedCallableRef::ImportedFunction {
+        qualified_name: typed_ast::QualifiedName::new(module_path.into(), local_name.into()),
+    })
+}
+
+pub(super) fn trait_method_binding_ref(
+    trait_name: TraitName,
+    method_name: impl Into<String>,
+) -> ResolvedBindingRef {
+    ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
+        trait_name,
+        method_name: method_name.into(),
+    })
+}
+
+pub(super) fn resolved_ref_from_binding_source(
+    source: &BindingSource,
+) -> Option<ResolvedBindingRef> {
+    match source {
+        BindingSource::LocalValue => None,
+        BindingSource::TopLevelLocalFunction { qualified_name } => {
+            Some(ResolvedBindingRef::Callable(
+                ResolvedCallableRef::LocalFunction {
+                    qualified_name: typed_ast::QualifiedName::new(
+                        qualified_name.module_path.clone(),
+                        qualified_name.local_name.clone(),
+                    ),
+                },
+            ))
+        }
+        BindingSource::ImportedFunction { qualified_name, .. } => {
+            Some(ResolvedBindingRef::Callable(
+                ResolvedCallableRef::ImportedFunction {
+                    qualified_name: typed_ast::QualifiedName::new(
+                        qualified_name.module_path.clone(),
+                        qualified_name.local_name.clone(),
+                    ),
+                },
+            ))
+        }
+        BindingSource::TraitMethod {
+            trait_module_path,
+            trait_name,
+            method_name,
+            ..
+        } => Some(trait_method_binding_ref(
+            TraitName::new(trait_module_path.clone(), trait_name.clone()),
+            method_name.clone(),
+        )),
+        BindingSource::IntrinsicFunction { name } => {
+            Some(ResolvedBindingRef::Callable(
+                ResolvedCallableRef::Intrinsic { name: name.clone() },
+            ))
+        }
+    }
 }
 
 fn is_callable_scheme(scheme: &TypeScheme) -> bool {
@@ -669,9 +732,7 @@ pub fn infer_expr(
     let empty_tpm = HashMap::new();
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
-    let empty_fn_idx = HashMap::new();
     let empty_efn = HashSet::new();
-    let empty_tmm = HashMap::new();
     let mut ctx = InferenceContext {
         env,
         subst,
@@ -683,13 +744,10 @@ pub fn infer_expr(
         type_param_map: &empty_tpm,
         type_param_arity: &empty_tpa,
         qualified_modules: &empty_qm,
-        imported_fn_types: &[],
-        imported_fn_index: &empty_fn_idx,
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
         shadowed_prelude_fns: &[],
         self_type: None,
-        trait_method_map: &empty_tmm,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -1351,9 +1409,18 @@ impl ImportContext {
         self.imported_fn_types.push(entry);
     }
 
-    /// Remove all entries with the given name and rebuild affected index entries.
-    fn retain_removing_name(&mut self, name: &str) {
-        self.imported_fn_types.retain(|f| f.name != name);
+    fn remove_prelude_entries(&mut self, name: &str) {
+        let shadowed: Vec<_> = self
+            .get_by_name(name)
+            .filter(|f| f.is_prelude)
+            .map(|f| (f.name.clone(), f.qualified_name.module_path.clone()))
+            .collect();
+        if shadowed.is_empty() {
+            return;
+        }
+        self.shadowed_prelude_fns.extend(shadowed);
+        self.imported_fn_types
+            .retain(|f| f.name != name || !f.is_prelude);
         self.rebuild_index();
     }
 
@@ -1394,47 +1461,65 @@ impl ImportContext {
         source_module: String,
         original_name: String,
         is_prelude: bool,
-        prelude_imported_names: &HashSet<String>,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
-        // Explicit import shadows any prelude entry for the same name
-        if prelude_imported_names.contains(&name) {
-            // Record shadowed prelude functions before removing
-            let shadowed: Vec<_> = self
-                .get_by_name(&name)
-                .map(|f| (f.name.clone(), f.qualified_name.module_path.clone()))
-                .collect();
-            self.shadowed_prelude_fns.extend(shadowed);
-            self.retain_removing_name(&name);
+        let same_symbol_as_prelude = !is_prelude
+            && self.get_by_name(&name).any(|existing| {
+                existing.is_prelude
+                    && existing.qualified_name.module_path == source_module
+                    && existing.qualified_name.local_name == original_name
+            });
+
+        // Explicit import shadows only actual prelude entries for the same name.
+        if !is_prelude {
+            self.remove_prelude_entries(&name);
         }
 
-        // Reject same-name import from a different non-prelude module
-        if !prelude_imported_names.contains(&name) {
-            let same_name: Vec<_> = self.get_by_name(&name).collect();
-            for existing in same_name {
-                if existing.qualified_name.module_path != source_module
-                    && !prelude_imported_names.contains(&existing.name)
-                {
-                    return Err(spanned(
-                        TypeError::DuplicateImport {
-                            name: name.clone(),
-                            modules: vec![
-                                existing.qualified_name.module_path.clone(),
-                                source_module.clone(),
-                            ],
-                        },
-                        span,
-                    ));
-                }
+        // Importing the original prelude export directly should keep behaving like
+        // prelude-origin shadowing for later local-definition checks.
+        let effective_is_prelude = is_prelude || same_symbol_as_prelude;
+
+        // Reject same-name import from a different surviving import source.
+        let same_name: Vec<_> = self.get_by_name(&name).collect();
+        for existing in same_name {
+            if existing.qualified_name.module_path != source_module {
+                return Err(spanned(
+                    TypeError::DuplicateImport {
+                        name: name.clone(),
+                        modules: vec![
+                            existing.qualified_name.module_path.clone(),
+                            source_module.clone(),
+                        ],
+                    },
+                    span,
+                ));
             }
         }
-        env.bind(name.clone(), scheme.clone());
+
+        if let Some(trait_name) = &origin {
+            env.bind_trait_method(
+                name.clone(),
+                scheme.clone(),
+                trait_name.module_path.clone(),
+                trait_name.local_name.clone(),
+                original_name.clone(),
+                effective_is_prelude,
+            );
+        } else {
+            env.bind_imported_function(
+                name.clone(),
+                scheme.clone(),
+                source_module.clone(),
+                original_name.clone(),
+                effective_is_prelude,
+            );
+        }
         self.push_fn(typed_ast::ImportedFn {
             name: name.clone(),
             scheme,
             origin,
             qualified_name: typed_ast::QualifiedName::new(source_module, original_name),
-            is_prelude,
+            is_prelude: effective_is_prelude,
         });
         Ok(())
     }
@@ -1465,10 +1550,16 @@ impl ImportContext {
     fn remove_prelude_fn(&mut self, name: &str) {
         let shadowed: Vec<_> = self
             .get_by_name(name)
+            .filter(|f| f.is_prelude)
             .map(|f| (f.name.clone(), f.qualified_name.module_path.clone()))
             .collect();
+        if shadowed.is_empty() {
+            return;
+        }
         self.shadowed_prelude_fns.extend(shadowed);
-        self.retain_removing_name(name);
+        self.imported_fn_types
+            .retain(|f| f.name != name || !f.is_prelude);
+        self.rebuild_index();
     }
 }
 
@@ -1667,6 +1758,17 @@ impl ModuleInferenceState {
                         },
                     )?;
 
+                    for info in &result.extern_fns {
+                        if let Some(scheme) = self.env.lookup(&info.name).cloned() {
+                            self.env.bind_top_level_function(
+                                info.name.clone(),
+                                scheme,
+                                mod_path.to_string(),
+                                info.name.clone(),
+                            );
+                        }
+                    }
+
                     for (name, reqs) in result.fn_constraints {
                         extern_fn_constraints.insert(name, reqs);
                     }
@@ -1678,22 +1780,15 @@ impl ModuleInferenceState {
     }
 
     fn cleanup_prelude_shadows(&mut self, module: &Module) {
-        if self.prelude_imported_names.is_empty() {
-            return;
-        }
         for decl in &module.decls {
             match decl {
                 Decl::Extern { methods, .. } => {
                     for m in methods {
-                        if self.prelude_imported_names.contains(&m.name) {
-                            self.imports.remove_prelude_fn(&m.name);
-                        }
+                        self.imports.remove_prelude_fn(&m.name);
                     }
                 }
                 Decl::DefFn(f) => {
-                    if self.prelude_imported_names.contains(&f.name) {
-                        self.imports.remove_prelude_fn(&f.name);
-                    }
+                    self.imports.remove_prelude_fn(&f.name);
                 }
                 _ => {}
             }
@@ -1731,30 +1826,29 @@ impl ModuleInferenceState {
         for decl in &module.decls {
             match decl {
                 Decl::DefFn(f) => {
-                    if !self.prelude_imported_names.contains(&f.name) {
-                        if let Some(imp) = self.imports.get_by_name(&f.name).next() {
-                            return Err(spanned(
-                                TypeError::DefinitionConflictsWithImport {
-                                    def_name: f.name.clone(),
-                                    source_module: imp.qualified_name.module_path.clone(),
-                                },
-                                f.span,
-                            ));
-                        }
+                    if let Some(imp) = self.imports.get_by_name(&f.name).find(|imp| !imp.is_prelude)
+                    {
+                        return Err(spanned(
+                            TypeError::DefinitionConflictsWithImport {
+                                def_name: f.name.clone(),
+                                source_module: imp.qualified_name.module_path.clone(),
+                            },
+                            f.span,
+                        ));
                     }
                 }
                 Decl::Extern { methods, .. } => {
                     for m in methods {
-                        if !self.prelude_imported_names.contains(&m.name) {
-                            if let Some(imp) = self.imports.get_by_name(&m.name).next() {
-                                return Err(spanned(
-                                    TypeError::DefinitionConflictsWithImport {
-                                        def_name: m.name.clone(),
-                                        source_module: imp.qualified_name.module_path.clone(),
-                                    },
-                                    m.span,
-                                ));
-                            }
+                        if let Some(imp) =
+                            self.imports.get_by_name(&m.name).find(|imp| !imp.is_prelude)
+                        {
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: m.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                m.span,
+                            ));
                         }
                     }
                 }
@@ -1805,7 +1899,7 @@ impl ModuleInferenceState {
 
     /// Assemble the final TypedModule from accumulated state and inference-phase outputs.
     fn assemble_typed_module(
-        mut self,
+        self,
         module: &Module,
         module_path: String,
         fn_decls: &[&krypton_parser::ast::FnDecl],
@@ -1815,7 +1909,7 @@ impl ModuleInferenceState {
         derived_instance_defs: Vec<InstanceDefInfo>,
         _imported_instance_defs: Vec<InstanceDefInfo>,
         fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, TypeVarId)>>,
-        trait_method_map: &HashMap<String, TraitName>,
+        _trait_method_map: &HashMap<String, TraitName>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
@@ -2005,7 +2099,6 @@ impl ModuleInferenceState {
             let mut constraints = Vec::new();
             checks::detect_trait_constraints(
                 &func.body,
-                trait_method_map,
                 trait_registry,
                 &self.subst,
                 &fn_type_param_vars,
@@ -2201,7 +2294,7 @@ impl ModuleInferenceState {
             }
         }
 
-        let local_type_names: HashSet<String> = module
+        let _local_type_names: HashSet<String> = module
             .decls
             .iter()
             .filter_map(|d| {
@@ -2614,7 +2707,14 @@ fn register_local_traits(
                     ty: fn_ty,
                     var_names: HashMap::new(),
                 };
-                state.env.bind(method.name.clone(), scheme);
+                state.env.bind_trait_method(
+                    method.name.clone(),
+                    scheme,
+                    module_path.to_string(),
+                    name.clone(),
+                    method.name.clone(),
+                    false,
+                );
 
                 // Resolve method-level where constraints
                 let mut method_constraints: Vec<(TraitName, TypeVarId)> = Vec::new();
@@ -3279,9 +3379,12 @@ fn infer_function_bodies<'a>(
         let mut pre_bound: Vec<(usize, Type)> = Vec::new();
         for &idx in component {
             let tv = Type::Var(state.gen.fresh());
-            state
-                .env
-                .bind(fn_decls[idx].name.clone(), TypeScheme::mono(tv.clone()));
+            state.env.bind_top_level_function(
+                fn_decls[idx].name.clone(),
+                TypeScheme::mono(tv.clone()),
+                mod_path.to_string(),
+                fn_decls[idx].name.clone(),
+            );
             pre_bound.push((idx, tv));
         }
 
@@ -3415,12 +3518,9 @@ fn infer_function_bodies<'a>(
                     type_param_map: &type_param_map,
                     type_param_arity: &type_param_arity,
                     qualified_modules: &state.qualified_modules,
-                    imported_fn_types: &state.imports.imported_fn_types,
-                    imported_fn_index: &state.imports.imported_fn_index,
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
-                    trait_method_map,
                     self_type: None,
                 };
                 ctx.infer_expr_inner(&decl.body, None)?
@@ -3548,7 +3648,6 @@ fn infer_function_bodies<'a>(
                 .unwrap_or_default();
             checks::validate_trait_constraints(
                 body,
-                trait_method_map,
                 trait_registry,
                 &state.subst,
                 &fn_type_param_vars,
@@ -3587,7 +3686,6 @@ fn infer_function_bodies<'a>(
                     .unwrap_or_default();
                 checks::check_trait_instances(
                     body,
-                    trait_method_map,
                     trait_registry,
                     &state.subst,
                     &fn_schemes_map,
@@ -3615,8 +3713,8 @@ fn typecheck_impl_methods(
     module: &Module,
     module_path: &str,
     trait_registry: &TraitRegistry,
-    trait_method_map: &HashMap<String, TraitName>,
-    extern_fns: &[ExternFnInfo],
+    _trait_method_map: &HashMap<String, TraitName>,
+    _extern_fns: &[ExternFnInfo],
 ) -> Result<Vec<InstanceDefInfo>, SpannedTypeError> {
     let mut instance_defs: Vec<InstanceDefInfo> = Vec::new();
 
@@ -3796,12 +3894,9 @@ fn typecheck_impl_methods(
                         type_param_map: &impl_method_tpm,
                         type_param_arity: &impl_method_tpa,
                         qualified_modules: &state.qualified_modules,
-                        imported_fn_types: &state.imports.imported_fn_types,
-                        imported_fn_index: &state.imports.imported_fn_index,
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &combined_constraints,
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
-                        trait_method_map,
                         self_type: Some(resolved_target.clone()),
                     };
                     ctx.infer_expr_inner(&method.body, None)?

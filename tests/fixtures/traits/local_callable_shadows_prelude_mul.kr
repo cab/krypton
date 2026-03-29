@@ -1,0 +1,7 @@
+# expect: ok
+# expect: output "12"
+fun inc(x: Int) -> Int = x + 10
+
+fun apply(mul: (Int) -> Int) -> Int = mul(2)
+
+fun main() = println(apply(inc))

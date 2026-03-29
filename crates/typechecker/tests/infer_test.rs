@@ -3,6 +3,10 @@ use krypton_parser::ast::Module;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer;
 use krypton_typechecker::scc;
+use krypton_typechecker::typed_ast::{
+    ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TypedExpr, TypedExprKind,
+    TypedModule,
+};
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 
 fn parse_expr_via_module(src: &str) -> krypton_parser::ast::Expr {
@@ -152,6 +156,41 @@ fn infer_module_types(src: &str) -> String {
             Some(te) => format!("TypeError: {}", te.error),
             None => format!("InferError: {:?}", errors[0]),
         },
+    }
+}
+
+fn infer_typed_module_with_resolver(
+    src: &str,
+    resolver: &impl ModuleResolver,
+    module_name: &str,
+) -> TypedModule {
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let mut modules = infer::infer_module(&module, resolver, module_name.to_string())
+        .unwrap_or_else(|errors| panic!("typecheck failed: {errors:?}"));
+    modules.remove(0)
+}
+
+fn function_body<'a>(typed: &'a TypedModule, name: &str) -> &'a TypedExpr {
+    &typed
+        .functions
+        .iter()
+        .find(|func| func.name == name)
+        .unwrap_or_else(|| panic!("function {name} not found"))
+        .body
+}
+
+fn app_callee(expr: &TypedExpr) -> &TypedExpr {
+    match &expr.kind {
+        TypedExprKind::App { func, .. } => peel_type_apps(func),
+        other => panic!("expected App, got {other:?}"),
+    }
+}
+
+fn peel_type_apps(expr: &TypedExpr) -> &TypedExpr {
+    match &expr.kind {
+        TypedExprKind::TypeApp { expr, .. } => peel_type_apps(expr),
+        _ => expr,
     }
 }
 
@@ -1703,6 +1742,89 @@ fn infer_module_import_alias_binds_only_alias() {
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
         "E0003"
+    );
+}
+
+#[test]
+fn local_callable_parameter_stays_local_only() {
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        fun apply(mul: (Int) -> Int) -> Int = mul(2)
+        "#,
+        &CompositeResolver::stdlib_only(),
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "apply"));
+    assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "mul"));
+    assert_eq!(callee.resolved_ref, None);
+}
+
+#[test]
+fn imported_callable_alias_preserves_imported_provenance() {
+    struct HelpersResolver;
+    impl ModuleResolver for HelpersResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "helpers_b" => Some("pub fun compute(x: Int) -> Int = x * 10".to_string()),
+                other => CompositeResolver::stdlib_only().resolve(other),
+            }
+        }
+    }
+
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        import helpers_b.{compute as mul}
+        fun main() -> Int = mul(2)
+        "#,
+        &HelpersResolver,
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "mul"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::Callable(
+            ResolvedCallableRef::ImportedFunction {
+                qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                    "helpers_b".to_string(),
+                    "compute".to_string(),
+                ),
+            }
+        ))
+    );
+}
+
+#[test]
+fn local_trait_method_call_preserves_resolved_trait_identity() {
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        trait Multiply[a] {
+            fun times(x: a, y: a) -> a
+        }
+
+        impl Multiply[Int] {
+            fun times(x: Int, y: Int) -> Int = x * y
+        }
+
+        fun main() -> Int = times(2, 3)
+        "#,
+        &CompositeResolver::stdlib_only(),
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "times"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
+            trait_name: krypton_typechecker::typed_ast::TraitName::new(
+                "test".to_string(),
+                "Multiply".to_string(),
+            ),
+            method_name: "times".to_string(),
+        }))
     );
 }
 

@@ -1,8 +1,9 @@
 ---
 source: crates/ir/tests/lower_test.rs
+assertion_line: 81
 expression: ir_module.to_string()
 ---
-module json__to_json_list
+module traits__local_callable_shadows_prelude_mul
 
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -16,24 +17,24 @@ import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/json/json_to_string as json_to_string(Json): String
-declare json_to_string: (Json) -> String
 declare println: (o) -> Unit
 
+fn inc(v0: Int) -> Int =
+  let v1: Int = add_int(v0, 10)
+  v1
+
+fn apply(v2: (Int) -> Int) -> Int =
+  let v3: Int = call_closure v2(2)
+  v3
+
 fn main() -> Unit =
-  let v1: ~List[Int] = construct List::Nil#1()
-  let v2: ~List[Int] = construct List::Cons#0(3, v1)
-  let v3: ~List[Int] = construct List::Cons#0(2, v2)
-  let v4: ~List[Int] = construct List::Cons#0(1, v3)
-  let v5: Dict[core/json.ToJson, Int] = get_dict core/json.ToJson[Int]
-  let v6: Dict[core/json.ToJson, List[Int]] = make_dict core/json.ToJson[List[Int]](v5)
-  let v7: Json = trait_call core/json.ToJson.to_json(v6, v4)
-  let v8: String = call json_to_string(v7)
-  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-  let v9: Unit = call println(v0, v8)
-  v9
+  let v5: (Int) -> Int = make_closure(inc, [])
+  let v6: Int = call apply(v5)
+  let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v7: Unit = call println(v4, v6)
+  v7

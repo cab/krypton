@@ -9,8 +9,9 @@ use crate::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
-    build_type_param_map, constructor_names, find_type_decl, process_extern_methods, spanned,
-    ModuleInferenceState, QualifiedExport, QualifiedModuleBinding,
+    build_type_param_map, constructor_names, find_type_decl, imported_binding_ref,
+    process_extern_methods, spanned, ModuleInferenceState, QualifiedExport,
+    QualifiedModuleBinding,
 };
 
 /// Register a type using pre-resolved export info if available,
@@ -300,7 +301,6 @@ impl ModuleInferenceState {
                     path.to_string(),
                     ef.name.clone(),
                     is_synthetic_prelude_import,
-                    &self.prelude_imported_names,
                     span,
                 )?;
                 // Store definition span for imported function
@@ -326,6 +326,10 @@ impl ModuleInferenceState {
                     QualifiedExport {
                         local_name: hidden_name.clone(),
                         scheme: ef.scheme.clone(),
+                        resolved_ref: Some(imported_binding_ref(
+                            path.to_string(),
+                            ef.name.clone(),
+                        )),
                     },
                 );
                 self.imports.bind_hidden_fn(
@@ -357,6 +361,10 @@ impl ModuleInferenceState {
                     QualifiedExport {
                         local_name: hidden_name.clone(),
                         scheme: ef.scheme.clone(),
+                        resolved_ref: Some(imported_binding_ref(
+                            original_prov.0.clone(),
+                            original_prov.1.clone(),
+                        )),
                     },
                 );
                 self.imports.bind_hidden_fn(
@@ -387,26 +395,26 @@ impl ModuleInferenceState {
                         )
                     })
                     .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
-                self.env.bind(effective_name.clone(), ef.scheme.clone());
-                // Store definition span for re-exported function
+                self.imports.bind_import(
+                    &mut self.env,
+                    effective_name.clone(),
+                    ef.scheme.clone(),
+                    ef.origin.clone(),
+                    original_prov.0.clone(),
+                    original_prov.1.clone(),
+                    is_synthetic_prelude_import,
+                    span,
+                )?;
                 if let Some(ds) = ef.def_span {
-                    let source_module = original_prov.0.clone();
                     self.env.bind_with_def_span(
                         effective_name.clone(),
                         ef.scheme.clone(),
                         crate::types::DefSpan {
                             span: ds,
-                            source_module: Some(source_module),
+                            source_module: Some(original_prov.0.clone()),
                         },
                     );
                 }
-                self.imports.push_fn(typed_ast::ImportedFn {
-                    name: effective_name.clone(),
-                    scheme: ef.scheme.clone(),
-                    origin: ef.origin.clone(),
-                    qualified_name: typed_ast::QualifiedName::new(original_prov.0, original_prov.1),
-                    is_prelude: is_synthetic_prelude_import,
-                });
                 if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
                     self.imports
                         .imported_fn_qualifiers
@@ -468,7 +476,6 @@ impl ModuleInferenceState {
                                     orig_path.clone(),
                                     cname.clone(),
                                     is_synthetic_prelude_import,
-                                    &self.prelude_imported_names,
                                     span,
                                 )?;
                             }
@@ -506,7 +513,6 @@ impl ModuleInferenceState {
                                             orig_path.clone(),
                                             cname.clone(),
                                             is_synthetic_prelude_import,
-                                            &self.prelude_imported_names,
                                             span,
                                         )?;
                                     }
@@ -575,7 +581,6 @@ impl ModuleInferenceState {
                                     path.to_string(),
                                     cname,
                                     is_synthetic_prelude_import,
-                                    &self.prelude_imported_names,
                                     span,
                                 )?;
                             }
@@ -618,6 +623,7 @@ impl ModuleInferenceState {
                                     QualifiedExport {
                                         local_name: hidden_name.clone(),
                                         scheme: scheme.clone(),
+                                        resolved_ref: None,
                                     },
                                 );
                                 self.imports.bind_hidden_fn(
@@ -746,6 +752,17 @@ impl ModuleInferenceState {
                         None
                     },
                 )?;
+                for info in &result.extern_fns {
+                    if let Some(scheme) = self.env.lookup(&info.name).cloned() {
+                        self.env.bind_imported_function(
+                            info.name.clone(),
+                            scheme,
+                            path.to_string(),
+                            info.name.clone(),
+                            is_synthetic_prelude_import,
+                        );
+                    }
+                }
                 // Extern fn type bindings are registered in the env by process_extern_methods.
                 // The extern fn declarations themselves are no longer accumulated here —
                 // the IR lowering resolves them from all modules' local extern_fns.
@@ -821,7 +838,6 @@ impl ModuleInferenceState {
                             path.to_string(),
                             method.name.clone(),
                             is_synthetic_prelude_import,
-                            &self.prelude_imported_names,
                             span,
                         )?;
                     }

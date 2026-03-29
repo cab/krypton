@@ -20,12 +20,9 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
     pub(super) type_param_arity: &'a HashMap<String, usize>,
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
-    pub(super) imported_fn_types: &'a [crate::typed_ast::ImportedFn],
-    pub(super) imported_fn_index: &'a HashMap<String, Vec<usize>>,
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(TraitName, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
-    pub(super) trait_method_map: &'a HashMap<String, TraitName>,
     pub(super) self_type: Option<Type>,
 }
 
@@ -243,7 +240,7 @@ impl<'a> InferenceContext<'a> {
                 ty
             },
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -321,13 +318,13 @@ impl<'a> InferenceContext<'a> {
             kind: TypedExprKind::Var("trait_dict".to_string()),
             ty: Type::Fn(vec![ret_var.clone()], Box::new(Type::Var(self.fresh()))),
             span,
-            origin: None,
+            resolved_ref: None,
         };
         let arg_typed = TypedExpr {
             kind: TypedExprKind::Var(trait_name),
             ty: ret_var,
             span,
-            origin: None,
+            resolved_ref: None,
         };
         let result_ty = Type::Var(self.fresh());
         Ok(TypedExpr {
@@ -337,7 +334,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty: result_ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -446,7 +443,7 @@ impl<'a> InferenceContext<'a> {
             kind: TypedExprKind::Var(resolved_name),
             ty: func_ty.clone(),
             span,
-            origin: None,
+            resolved_ref: export.resolved_ref.clone(),
         };
         let actual_args = &args[1..];
         self.infer_call_args_and_unify(func_typed, &func_ty, actual_args, is_constructor, span)
@@ -502,7 +499,7 @@ impl<'a> InferenceContext<'a> {
                 func_ty.clone()
             },
             span,
-            origin: None,
+            resolved_ref: export.resolved_ref.clone(),
         };
 
         Some(self.infer_call_args_and_unify(func_typed, &func_ty, args, is_constructor, span))
@@ -725,7 +722,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -794,7 +791,7 @@ impl<'a> InferenceContext<'a> {
             kind,
             ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -851,7 +848,7 @@ impl<'a> InferenceContext<'a> {
             }
         };
 
-        let origin = expr_typed.origin.clone();
+        let resolved_ref = expr_typed.resolved_ref.clone();
         Ok(TypedExpr {
             kind: TypedExprKind::TypeApp {
                 expr: Box::new(expr_typed),
@@ -859,7 +856,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty: specialized_ty,
             span,
-            origin,
+            resolved_ref,
         })
     }
 
@@ -927,7 +924,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
             None => {
@@ -940,7 +937,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: Type::Unit,
                     span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
         }
@@ -978,7 +975,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -1020,7 +1017,7 @@ impl<'a> InferenceContext<'a> {
                         kind: TypedExprKind::Var(resolved_name),
                         ty,
                         span,
-                        origin: None,
+                        resolved_ref: export.resolved_ref.clone(),
                     });
                 }
             }
@@ -1064,7 +1061,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -1121,7 +1118,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -1174,7 +1171,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
             None => {
@@ -1188,7 +1185,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: Type::Unit,
                     span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
         }
@@ -1273,7 +1270,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: Type::Own(Box::new(struct_ty)),
                     span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
             _ => Err(super::spanned(
@@ -1438,7 +1435,7 @@ impl<'a> InferenceContext<'a> {
             },
             ty: result_ty,
             span,
-            origin: None,
+            resolved_ref: None,
         })
     }
 
@@ -1460,13 +1457,13 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Lit(value.clone()),
                     ty: Type::Own(Box::new(ty)),
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
-            Expr::Var { name, span, .. } => match self.env.lookup(name) {
-                Some(scheme) => {
-                    let scheme = scheme.clone();
+            Expr::Var { name, span, .. } => match self.env.lookup_entry(name) {
+                Some(entry) => {
+                    let scheme = entry.scheme.clone();
                     let ty = scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if !matches!(&ty, Type::Fn(_, _))
                         && self.registry.is_some_and(|r| r.is_constructor(name))
@@ -1475,29 +1472,12 @@ impl<'a> InferenceContext<'a> {
                     } else {
                         ty
                     };
-                    // Check if this var is a trait method.
-                    // Imports take priority: if the name is in imported_fn_types,
-                    // use that entry's origin (which is None for non-trait imports,
-                    // e.g. `import m.{compute as mul}` overrides prelude Mul.mul).
-                    // Fall back to trait_method_map for locally-defined trait methods.
-                    let import_origin = self
-                        .imported_fn_index
-                        .get(name.as_str())
-                        .and_then(|idxs| idxs.first())
-                        .map(|&i| &self.imported_fn_types[i]);
-                    let trait_map_origin = self.trait_method_map.get(name).cloned();
-                    let origin = match import_origin {
-                        Some(imported) if imported.is_prelude => {
-                            trait_map_origin.or_else(|| imported.origin.clone())
-                        }
-                        Some(imported) => imported.origin.clone(),
-                        None => trait_map_origin,
-                    };
+                    let resolved_ref = super::resolved_ref_from_binding_source(&entry.source);
                     Ok(TypedExpr {
                         kind: TypedExprKind::Var(name.clone()),
                         ty,
                         span: *span,
-                        origin,
+                        resolved_ref,
                     })
                 }
                 None => {
@@ -1579,7 +1559,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
@@ -1591,7 +1571,7 @@ impl<'a> InferenceContext<'a> {
                         kind: TypedExprKind::Do(Vec::new()),
                         ty: Type::Unit,
                         span: *span,
-                        origin: None,
+                        resolved_ref: None,
                     });
                 }
                 let mut typed_exprs = Vec::new();
@@ -1604,7 +1584,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Do(typed_exprs),
                     ty,
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
@@ -1630,7 +1610,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty,
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
@@ -1666,7 +1646,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Recur(typed_args),
                     ty,
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
@@ -1692,7 +1672,7 @@ impl<'a> InferenceContext<'a> {
                     },
                     ty: resolved,
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
@@ -1712,7 +1692,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::Tuple(typed_elems),
                     ty,
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
 
@@ -1744,7 +1724,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::VecLit(typed_elems),
                     ty: Type::Named("Vec".to_string(), vec![resolved_elem]),
                     span: *span,
-                    origin: None,
+                    resolved_ref: None,
                 })
             }
             Expr::QuestionMark { expr, span } => self.infer_question_mark(expr, *span),
@@ -1776,7 +1756,12 @@ fn collect_trait_constraints_on_vars(
                 stack.push(lhs);
                 stack.push(rhs);
             }
-            TypedExprKind::App { func, args } if func.origin.is_some() => {
+            TypedExprKind::App { func, args }
+                if matches!(
+                    func.resolved_ref,
+                    Some(crate::typed_ast::ResolvedBindingRef::TraitMethod(_))
+                ) =>
+            {
                 for arg in args {
                     let arg_ty = subst.apply(&arg.ty);
                     if let Type::Var(v) = super::strip_own(&arg_ty) {
