@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
 use krypton_parser::ast::Visibility;
+use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{ResolvedTypeRef, TraitName, TypedExpr, TypedExprKind, TypedMatchArm};

@@ -119,12 +119,12 @@ impl<'a> InferenceContext<'a> {
                                     span: *pat_span,
                                     resolved_variant_ref: self.registry.and_then(|registry| {
                                         registry.find_variant_parent(name).and_then(|parent| {
-                                            self.resolved_type_ref_for_name(parent).map(|type_ref| {
-                                                crate::typed_ast::ResolvedVariantRef {
+                                            self.resolved_type_ref_for_name(parent).map(
+                                                |type_ref| crate::typed_ast::ResolvedVariantRef {
                                                     type_ref,
                                                     variant_name: name.clone(),
-                                                }
-                                            })
+                                                },
+                                            )
                                         })
                                     }),
                                 })
@@ -148,12 +148,12 @@ impl<'a> InferenceContext<'a> {
                                     span: *pat_span,
                                     resolved_variant_ref: self.registry.and_then(|registry| {
                                         registry.find_variant_parent(name).and_then(|parent| {
-                                            self.resolved_type_ref_for_name(parent).map(|type_ref| {
-                                                crate::typed_ast::ResolvedVariantRef {
+                                            self.resolved_type_ref_for_name(parent).map(
+                                                |type_ref| crate::typed_ast::ResolvedVariantRef {
                                                     type_ref,
                                                     variant_name: name.clone(),
-                                                }
-                                            })
+                                                },
+                                            )
                                         })
                                     }),
                                 })

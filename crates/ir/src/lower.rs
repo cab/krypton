@@ -846,15 +846,12 @@ impl LowerCtx {
         &self,
         variant_ref: &ResolvedVariantRef,
     ) -> Result<(u32, Vec<Type>), LowerError> {
-        self.sum_variants
-            .get(variant_ref)
-            .cloned()
-            .ok_or_else(|| {
-                LowerError::InternalError(format!(
-                    "unknown variant ref in lowering: {}.{}",
-                    variant_ref.type_ref.qualified_name, variant_ref.variant_name
-                ))
-            })
+        self.sum_variants.get(variant_ref).cloned().ok_or_else(|| {
+            LowerError::InternalError(format!(
+                "unknown variant ref in lowering: {}.{}",
+                variant_ref.type_ref.qualified_name, variant_ref.variant_name
+            ))
+        })
     }
 
     fn fallback_type_ref(&self, type_name: &str) -> Option<ResolvedTypeRef> {
@@ -1010,7 +1007,9 @@ impl LowerCtx {
             TypedExprKind::Lit(lit) => return cont(self, Atom::Lit(convert_lit(lit))),
             TypedExprKind::Var(name) => {
                 // Variant constructors are lowered through the general value path.
-                if resolved_constructor_ref(expr).is_none() && self.fallback_variant_ref(name).is_none() {
+                if resolved_constructor_ref(expr).is_none()
+                    && self.fallback_variant_ref(name).is_none()
+                {
                     if let Some(id) = self.lookup_var(name) {
                         return cont(self, Atom::Var(id));
                     }
@@ -1239,8 +1238,8 @@ impl LowerCtx {
                 if let Some((_binding_name, constructor_ref)) = resolved_constructor_ref(expr) {
                     match constructor_ref.kind {
                         typed_ast::ConstructorKind::Variant => {
-                            let variant_ref =
-                                variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                            let variant_ref = variant_ref_from_constructor(constructor_ref)
+                                .ok_or_else(|| {
                                     LowerError::InternalError(format!(
                                         "missing variant ref for constructor `{}`",
                                         constructor_ref.constructor_name
@@ -1312,11 +1311,7 @@ impl LowerCtx {
                         return Err(LowerError::UnresolvedVar(name.to_string()));
                     };
                     // Check if this function has trait constraints that need dict captures
-                    let constraints = self
-                        .fn_constraints
-                        .get(&qn)
-                        .cloned()
-                        .unwrap_or_default();
+                    let constraints = self.fn_constraints.get(&qn).cloned().unwrap_or_default();
                     if !constraints.is_empty() {
                         return self.lower_constrained_fn_as_value(
                             &qn,
@@ -1368,11 +1363,7 @@ impl LowerCtx {
                     // Constrained function reference with explicit type args
                     let qn = callable_qualified_name(callable_ref, &self.module_path);
                     if let Some(fn_id) = self.lookup_callable(&qn) {
-                        let constraints = self
-                            .fn_constraints
-                            .get(&qn)
-                            .cloned()
-                            .unwrap_or_default();
+                        let constraints = self.fn_constraints.get(&qn).cloned().unwrap_or_default();
                         if !constraints.is_empty() {
                             return self.lower_constrained_fn_as_value(
                                 &qn,
@@ -1571,8 +1562,8 @@ impl LowerCtx {
                 if let Some((_binding_name, constructor_ref)) = resolved_constructor_ref(expr) {
                     match constructor_ref.kind {
                         typed_ast::ConstructorKind::Variant => {
-                            let variant_ref =
-                                variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                            let variant_ref = variant_ref_from_constructor(constructor_ref)
+                                .ok_or_else(|| {
                                     LowerError::InternalError(format!(
                                         "missing variant ref for constructor `{}`",
                                         constructor_ref.constructor_name
@@ -2076,9 +2067,7 @@ impl LowerCtx {
                 name,
                 fields,
                 resolved_type_ref,
-            } => {
-                self.lower_struct_lit_expr(name, fields, resolved_type_ref.as_ref(), &expr.ty)
-            }
+            } => self.lower_struct_lit_expr(name, fields, resolved_type_ref.as_ref(), &expr.ty),
 
             TypedExprKind::FieldAccess {
                 expr: base,
@@ -3720,8 +3709,8 @@ impl LowerCtx {
             if let Some(ResolvedBindingRef::Constructor(constructor_ref)) = resolved_ref.as_ref() {
                 match constructor_ref.kind {
                     typed_ast::ConstructorKind::Variant => {
-                        let variant_ref =
-                            variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                        let variant_ref = variant_ref_from_constructor(constructor_ref)
+                            .ok_or_else(|| {
                                 LowerError::InternalError(format!(
                                     "missing variant ref for constructor `{}`",
                                     constructor_ref.constructor_name
@@ -3798,8 +3787,7 @@ impl LowerCtx {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
                 // Resolve dict arguments for constrained functions
-                let (dict_bindings, dict_atoms) =
-                    self.resolve_call_dicts(&qn, args, &type_args)?;
+                let (dict_bindings, dict_atoms) = self.resolve_call_dicts(&qn, args, &type_args)?;
                 bindings.extend(dict_bindings);
 
                 let mut all_args = dict_atoms;
@@ -3877,14 +3865,9 @@ impl LowerCtx {
         // Reorder to canonical field order
         let mut ordered_atoms = vec![];
         for (fname, _) in &canonical_fields {
-            let atom = field_map
-                .remove(fname)
-                .ok_or_else(|| {
-                    LowerError::UnresolvedField(
-                        type_ref.qualified_name.to_string(),
-                        fname.clone(),
-                    )
-                })?;
+            let atom = field_map.remove(fname).ok_or_else(|| {
+                LowerError::UnresolvedField(type_ref.qualified_name.to_string(), fname.clone())
+            })?;
             ordered_atoms.push(atom);
         }
 
@@ -3994,8 +3977,8 @@ impl LowerCtx {
             if let Some(ResolvedBindingRef::Constructor(constructor_ref)) = resolved_ref.as_ref() {
                 match constructor_ref.kind {
                     typed_ast::ConstructorKind::Variant => {
-                        let variant_ref =
-                            variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                        let variant_ref = variant_ref_from_constructor(constructor_ref)
+                            .ok_or_else(|| {
                                 LowerError::InternalError(format!(
                                     "missing variant ref for constructor `{}`",
                                     constructor_ref.constructor_name
@@ -4003,8 +3986,7 @@ impl LowerCtx {
                             })?;
                         let (tag, _fields) = self.variant_info(&variant_ref)?;
                         let variant_name = constructor_ref.constructor_name.clone();
-                        let type_name =
-                            constructor_ref.type_ref.qualified_name.local_name.clone();
+                        let type_name = constructor_ref.type_ref.qualified_name.local_name.clone();
                         return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                             let var = ctx.fresh_var();
                             let ty = result_ty.clone();
@@ -4023,14 +4005,17 @@ impl LowerCtx {
                                             fields: arg_atoms,
                                         },
                                     ),
-                                    body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
+                                    body: Box::new(atom_expr_at(
+                                        func.span,
+                                        ty.into(),
+                                        Atom::Var(var),
+                                    )),
                                 },
                             ))
                         });
                     }
                     typed_ast::ConstructorKind::Record => {
-                        let type_name =
-                            constructor_ref.type_ref.qualified_name.local_name.clone();
+                        let type_name = constructor_ref.type_ref.qualified_name.local_name.clone();
                         return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                             let var = ctx.fresh_var();
                             let ty = result_ty.clone();
@@ -4047,7 +4032,11 @@ impl LowerCtx {
                                             fields: arg_atoms,
                                         },
                                     ),
-                                    body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
+                                    body: Box::new(atom_expr_at(
+                                        func.span,
+                                        ty.into(),
+                                        Atom::Var(var),
+                                    )),
                                 },
                             ))
                         });
@@ -4111,8 +4100,7 @@ impl LowerCtx {
                 let Some(fn_id) = self.lookup_callable(&qn) else {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
-                let (dict_bindings, dict_atoms) =
-                    self.resolve_call_dicts(&qn, args, &type_args)?;
+                let (dict_bindings, dict_atoms) = self.resolve_call_dicts(&qn, args, &type_args)?;
 
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let mut all_args = dict_atoms;
@@ -4214,14 +4202,9 @@ impl LowerCtx {
             fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
         let mut ordered_exprs = vec![];
         for (fname, _) in &canonical_fields {
-            let fexpr = field_map
-                .get(fname.as_str())
-                .ok_or_else(|| {
-                    LowerError::UnresolvedField(
-                        type_ref.qualified_name.to_string(),
-                        fname.clone(),
-                    )
-                })?;
+            let fexpr = field_map.get(fname.as_str()).ok_or_else(|| {
+                LowerError::UnresolvedField(type_ref.qualified_name.to_string(), fname.clone())
+            })?;
             ordered_exprs.push((*fexpr).clone());
         }
 
@@ -5235,7 +5218,10 @@ pub fn lower_module(
     let mut fn_constraints: HashMap<QualifiedName, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for entry in &typed.fn_types {
         if !entry.scheme.constraints.is_empty() {
-            fn_constraints.insert(entry.qualified_name.clone(), entry.scheme.constraints.clone());
+            fn_constraints.insert(
+                entry.qualified_name.clone(),
+                entry.scheme.constraints.clone(),
+            );
         }
     }
 
@@ -5389,17 +5375,15 @@ pub fn lower_module(
     }
     // Fallback: private sum types
     for decl in &typed.sum_decls {
-        let already = decl
-            .variants
-            .iter()
-            .any(|v| {
-                ctx.sum_variants.contains_key(&typed_ast::ResolvedVariantRef {
+        let already = decl.variants.iter().any(|v| {
+            ctx.sum_variants
+                .contains_key(&typed_ast::ResolvedVariantRef {
                     type_ref: typed_ast::ResolvedTypeRef {
                         qualified_name: decl.qualified_name.clone(),
                     },
                     variant_name: v.name.clone(),
                 })
-            });
+        });
         if !already {
             let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
             let ordered_params: Vec<TypeVarId> = decl
@@ -5779,7 +5763,10 @@ pub fn lower_module(
         .filter_map(|info| match &info.kind {
             ExportedTypeKind::Record { .. } => {
                 let type_ref = typed_ast::ResolvedTypeRef {
-                    qualified_name: QualifiedName::new(info.source_module.clone(), info.name.clone()),
+                    qualified_name: QualifiedName::new(
+                        info.source_module.clone(),
+                        info.name.clone(),
+                    ),
                 };
                 let fields = ctx
                     .struct_fields
@@ -5809,7 +5796,10 @@ pub fn lower_module(
         .filter_map(|info| {
             if let ExportedTypeKind::Sum { variants } = &info.kind {
                 let type_ref = typed_ast::ResolvedTypeRef {
-                    qualified_name: QualifiedName::new(info.source_module.clone(), info.name.clone()),
+                    qualified_name: QualifiedName::new(
+                        info.source_module.clone(),
+                        info.name.clone(),
+                    ),
                 };
                 let variants = variants
                     .iter()
@@ -5873,15 +5863,13 @@ pub fn lower_module(
                 },
             };
             ExternFnDef {
-                id: ctx
-                    .fn_ids
-                    .get(&ext.name)
-                    .copied()
-                    .unwrap_or_else(|| panic!(
+                id: ctx.fn_ids.get(&ext.name).copied().unwrap_or_else(|| {
+                    panic!(
                         "ICE: imported extern fn '{}' has no FnId — \
                          pre-allocation in lower_module step 3 should have assigned one",
                         ext.name
-                    )),
+                    )
+                }),
                 name: ext.name.clone(),
                 declaring_module_path: ext.declaring_module_path.clone(),
                 span: ext.span,
@@ -6148,7 +6136,9 @@ fn type_name_of(ty: &Type) -> Option<String> {
     }
 }
 
-fn variant_ref_from_constructor(constructor_ref: &ResolvedConstructorRef) -> Option<ResolvedVariantRef> {
+fn variant_ref_from_constructor(
+    constructor_ref: &ResolvedConstructorRef,
+) -> Option<ResolvedVariantRef> {
     (constructor_ref.kind == typed_ast::ConstructorKind::Variant).then(|| ResolvedVariantRef {
         type_ref: constructor_ref.type_ref.clone(),
         variant_name: constructor_ref.constructor_name.clone(),
