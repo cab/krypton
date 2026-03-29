@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen::emit::compile_modules;
+use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
-use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_typechecker::diagnostics::{lower_infer_error, lower_infer_errors};
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
@@ -34,11 +34,15 @@ fn run_program_raw(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
-        let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
-        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
-        panic!("fixture {fixture_name}: type check failed:\n{rendered}");
-    });
+    let typed_modules =
+        infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
+            let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
+            let rendered: String = diags
+                .iter()
+                .map(|d| PlainTextRenderer.render(d, &srcs))
+                .collect();
+            panic!("fixture {fixture_name}: type check failed:\n{rendered}");
+        });
     let classes = compile_modules(&typed_modules, "Kr$Test")
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
@@ -104,7 +108,10 @@ fn codegen_fixture(
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
     let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
 
-    let has_panic = fixture.expectations.iter().any(|e| matches!(e, Expectation::Panic(_)));
+    let has_panic = fixture
+        .expectations
+        .iter()
+        .any(|e| matches!(e, Expectation::Panic(_)));
 
     if has_panic {
         // Run once, check panic + output expectations against the raw result
@@ -127,7 +134,10 @@ fn codegen_fixture(
                 }
                 Expectation::Panic(None) => {} // already checked non-zero exit
                 Expectation::Output(expected) => {
-                    assert_eq!(stdout, *expected, "fixture {name}: output mismatch (panic fixture)");
+                    assert_eq!(
+                        stdout, *expected,
+                        "fixture {name}: output mismatch (panic fixture)"
+                    );
                 }
                 _ => {}
             }
@@ -148,7 +158,10 @@ fn codegen_fixture(
                     let typed_modules = infer_module(&module, &resolver, "test".to_string())
                         .unwrap_or_else(|errors| {
                             let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                            let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+                            let rendered: String = diags
+                                .iter()
+                                .map(|d| PlainTextRenderer.render(d, &srcs))
+                                .collect();
                             panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                         });
                     match compile_modules(&typed_modules, "Kr$Test") {
@@ -195,7 +208,10 @@ fn codegen_module(
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+                        let rendered: String = diags
+                            .iter()
+                            .map(|d| PlainTextRenderer.render(d, &srcs))
+                            .collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 match compile_modules(&typed_modules, "Kr$Test") {

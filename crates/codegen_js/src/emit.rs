@@ -2,9 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use krypton_ir::{
-    bind_type_vars, canonical_type_name, has_type_vars, head_type_name, Atom, Expr, ExprKind,
-    FnId, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, Type,
-    VarId,
+    bind_type_vars, canonical_type_name, has_type_vars, head_type_name, Atom, Expr, ExprKind, FnId,
+    Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
 };
 use krypton_parser::ast::Span;
 use krypton_typechecker::typed_ast::{TraitName, TypedModule};
@@ -195,14 +194,55 @@ pub(crate) fn build_registry_for_modules(modules: &[&Module]) -> InstanceRegistr
 
 /// JS reserved words that cannot be used as identifiers.
 const JS_RESERVED: &[&str] = &[
-    "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
-    "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import",
-    "in", "instanceof", "new", "null", "return", "super", "switch", "this", "throw", "true",
-    "try", "typeof", "var", "void", "while", "with", "yield",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "new",
+    "null",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
     // strict mode
-    "implements", "interface", "let", "package", "private", "protected", "public", "static",
+    "implements",
+    "interface",
+    "let",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "static",
     // other
-    "await", "async",
+    "await",
+    "async",
 ];
 
 /// Return a JS-safe version of a Krypton name: prefix with `$` if it's a reserved word.
@@ -280,7 +320,11 @@ pub fn compile_modules_js(
     let mut module_sources: HashMap<String, Option<String>> = HashMap::new();
     let all_instance_defs: Vec<_> = typed_modules
         .iter()
-        .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+        .flat_map(|tm| {
+            tm.instance_defs
+                .iter()
+                .map(|inst| (tm.module_path.clone(), inst.clone()))
+        })
         .collect();
     let all_extern_fns: Vec<_> = typed_modules
         .iter()
@@ -297,9 +341,14 @@ pub fn compile_modules_js(
         } else {
             &tm.module_path
         };
-        let ir = krypton_ir::lower::lower_module(tm, mod_name, &all_instance_defs, &all_extern_fns, &all_extern_types).map_err(|e| {
-            JsCodegenError::LowerError(format!("module {mod_name}: {e}"))
-        })?;
+        let ir = krypton_ir::lower::lower_module(
+            tm,
+            mod_name,
+            &all_instance_defs,
+            &all_extern_fns,
+            &all_extern_types,
+        )
+        .map_err(|e| JsCodegenError::LowerError(format!("module {mod_name}: {e}")))?;
         ir_modules.push(ir);
         module_sources.insert(mod_name.to_string(), tm.module_source.clone());
         module_sources.insert(tm.module_path.clone(), tm.module_source.clone());
@@ -451,8 +500,10 @@ fn validate_js_extern_targets(
                     .map(|ext| ext.name.clone())
                     .unwrap_or_else(|| format!("fn_{}", fn_id.0))
             });
-            let mut available_targets: Vec<String> =
-                entries.iter().map(|ext| format_extern_target(&ext.target)).collect();
+            let mut available_targets: Vec<String> = entries
+                .iter()
+                .map(|ext| format_extern_target(&ext.target))
+                .collect();
             available_targets.sort();
             available_targets.dedup();
             let declaration = entries
@@ -778,7 +829,9 @@ impl<'a> JsEmitter<'a> {
         let mut resolved: Vec<&str> = decl_dir.to_vec();
         for segment in raw_path.split('/') {
             match segment {
-                ".." => { resolved.pop(); }
+                ".." => {
+                    resolved.pop();
+                }
                 "." | "" => {}
                 s => resolved.push(s),
             }
@@ -882,8 +935,20 @@ impl<'a> JsEmitter<'a> {
         let mut emitted_any = false;
 
         // ── Krypton-to-Krypton imports ──
+        // Skip names that will be imported via extern JS imports — the source
+        // module's JS output doesn't re-export its extern methods.
+        let imported_extern_js_names: HashSet<&str> = self
+            .module
+            .imported_extern_fns
+            .iter()
+            .filter(|e| matches!(e.target, krypton_ir::ExternTarget::Js { .. }))
+            .map(|e| e.name.as_str())
+            .collect();
         let mut by_module: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
         for imp in &self.module.imported_fns {
+            if imported_extern_js_names.contains(imp.name.as_str()) {
+                continue;
+            }
             by_module
                 .entry(&imp.source_module)
                 .or_default()
@@ -929,19 +994,21 @@ impl<'a> JsEmitter<'a> {
         // Include local extern fns and imported extern fns, but skip imported extern fns
         // whose name collides with a local function (they are accessed via cross-module
         // imports instead).
-        let local_fn_names: HashSet<&str> = self.module.functions.iter()
+        let local_fn_names: HashSet<&str> = self
+            .module
+            .functions
+            .iter()
             .map(|f| f.name.as_str())
             .collect();
         let mut extern_by_resolved: HashMap<String, Vec<&str>> = HashMap::new();
         for ext in self.module.extern_fns.iter().chain(
-            self.module.imported_extern_fns.iter()
-                .filter(|e| !local_fn_names.contains(e.name.as_str()))
+            self.module
+                .imported_extern_fns
+                .iter()
+                .filter(|e| !local_fn_names.contains(e.name.as_str())),
         ) {
             if let krypton_ir::ExternTarget::Js { module } = &ext.target {
-                let resolved = self.resolve_extern_js_path(
-                    module,
-                    &ext.declaring_module_path,
-                );
+                let resolved = self.resolve_extern_js_path(module, &ext.declaring_module_path);
                 extern_by_resolved
                     .entry(resolved)
                     .or_default()
@@ -968,20 +1035,15 @@ impl<'a> JsEmitter<'a> {
             let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
             for (trait_name, ty) in &self.module.imported_dict_refs {
                 let js_name = self.resolve_dict_js_name(trait_name, ty);
-                if let Some(source) =
-                    self.registry.find_source_module(trait_name, ty)
-                {
+                if let Some(source) = self.registry.find_source_module(trait_name, ty) {
                     // Skip instances that are locally defined — they're emitted, not imported.
-                    if source == &self.module.name
-                        || source == &self.module.module_path
-                    {
+                    if source == &self.module.name || source == &self.module.module_path {
                         continue;
                     }
                     // Also skip if the dict is locally emitted (another module may
                     // shadow the same instance name in the registry).
                     let is_local = self.module.instances.iter().any(|inst| {
-                        self.resolve_dict_js_name(&inst.trait_name, &inst.target_type)
-                            == js_name
+                        self.resolve_dict_js_name(&inst.trait_name, &inst.target_type) == js_name
                     });
                     if is_local {
                         continue;
@@ -1086,10 +1148,7 @@ impl<'a> JsEmitter<'a> {
             self.indent += 1;
             self.writeln(&format!("get $tag() {{ return {}; }}", variant.tag));
             if variant.fields.is_empty() {
-                self.writeln(&format!(
-                    "static INSTANCE = new {}();",
-                    variant.name
-                ));
+                self.writeln(&format!("static INSTANCE = new {}();", variant.name));
             } else {
                 let params: Vec<String> =
                     (0..variant.fields.len()).map(|i| format!("_{i}")).collect();
@@ -1125,10 +1184,7 @@ impl<'a> JsEmitter<'a> {
             self.indent += 1;
             self.writeln(&format!("get $tag() {{ return {}; }}", variant.tag));
             if variant.fields.is_empty() {
-                self.writeln(&format!(
-                    "static INSTANCE = new {}();",
-                    variant.name
-                ));
+                self.writeln(&format!("static INSTANCE = new {}();", variant.name));
             } else {
                 let params: Vec<String> =
                     (0..variant.fields.len()).map(|i| format!("_{i}")).collect();
@@ -1149,11 +1205,7 @@ impl<'a> JsEmitter<'a> {
 
     // ── Dict Instances ───────────────────────────────────────
 
-    fn resolve_dict_js_name(
-        &self,
-        trait_name: &TraitName,
-        ty: &Type,
-    ) -> String {
+    fn resolve_dict_js_name(&self, trait_name: &TraitName, ty: &Type) -> String {
         // 1. Registry lookup (singletons + parametric + intrinsic)
         if let Some(name) = self.registry.resolve_js_name(trait_name, ty) {
             return name.to_string();
@@ -1299,9 +1351,7 @@ impl<'a> JsEmitter<'a> {
                 self.write(";\n");
                 self.emit_expr(body, tail);
             }
-            ExprKind::LetRec {
-                bindings, body, ..
-            } => {
+            ExprKind::LetRec { bindings, body, .. } => {
                 // Declare all variables first with `let` (enables mutual recursion).
                 let mut binding_info: Vec<(String, FnId, Vec<Atom>)> = Vec::new();
                 for (var, ty, fn_id, captures) in bindings {
@@ -1318,8 +1368,7 @@ impl<'a> JsEmitter<'a> {
                     } else {
                         let caps: Vec<String> =
                             captures.iter().map(|a| self.emit_atom(a)).collect();
-                        let free_count =
-                            self.module.closure_free_params(*fn_id, captures.len());
+                        let free_count = self.module.closure_free_params(*fn_id, captures.len());
                         let free_params: Vec<String> =
                             (0..free_count).map(|i| format!("a${i}")).collect();
                         self.writeln(&format!(
@@ -1424,8 +1473,7 @@ impl<'a> JsEmitter<'a> {
                     let param_names = info.param_names.clone();
 
                     // Use temp vars to avoid order-dependent overwrites.
-                    let arg_strs: Vec<String> =
-                        args.iter().map(|a| self.emit_atom(a)).collect();
+                    let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                     let tmp_names: Vec<String> = arg_strs
                         .iter()
                         .map(|arg_str| {
@@ -1442,8 +1490,7 @@ impl<'a> JsEmitter<'a> {
                     }
                 } else if let Some(info) = self.inline_joins.remove(target) {
                     // Inline join: assign params and emit body directly.
-                    let arg_strs: Vec<String> =
-                        args.iter().map(|a| self.emit_atom(a)).collect();
+                    let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                     for (i, param_name) in info.param_names.iter().enumerate() {
                         self.writeln(&format!("{param_name} = {};", arg_strs[i]));
                     }
@@ -1459,18 +1506,11 @@ impl<'a> JsEmitter<'a> {
                     self.emit_expr(join_body, tail);
                 } else {
                     let target_name = self.var_name(*target);
-                    let arg_strs: Vec<String> =
-                        args.iter().map(|a| self.emit_atom(a)).collect();
+                    let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
                     if tail {
-                        self.writeln(&format!(
-                            "return {target_name}({});",
-                            arg_strs.join(", ")
-                        ));
+                        self.writeln(&format!("return {target_name}({});", arg_strs.join(", ")));
                     } else {
-                        self.writeln(&format!(
-                            "{target_name}({});",
-                            arg_strs.join(", ")
-                        ));
+                        self.writeln(&format!("{target_name}({});", arg_strs.join(", ")));
                     }
                 }
             }
@@ -1516,9 +1556,7 @@ impl<'a> JsEmitter<'a> {
                             .unwrap_or_else(|| format!("Tag{}", branch.tag));
 
                         if i == 0 {
-                            self.writeln(&format!(
-                                "if ({scrut} instanceof {variant_name}) {{"
-                            ));
+                            self.writeln(&format!("if ({scrut} instanceof {variant_name}) {{"));
                         } else {
                             self.writeln(&format!(
                                 "}} else if ({scrut} instanceof {variant_name}) {{"
@@ -1546,10 +1584,7 @@ impl<'a> JsEmitter<'a> {
                     // pattern matches). Semantically equivalent to instanceof.
                     for (i, branch) in branches.iter().enumerate() {
                         if i == 0 {
-                            self.writeln(&format!(
-                                "if ({scrut}.$tag === {}) {{",
-                                branch.tag
-                            ));
+                            self.writeln(&format!("if ({scrut}.$tag === {}) {{", branch.tag));
                         } else {
                             self.writeln(&format!(
                                 "}} else if ({scrut}.$tag === {}) {{",
@@ -1627,15 +1662,12 @@ impl<'a> JsEmitter<'a> {
                 self.write(&format!("new {bare_name}({})", arg_strs.join(", ")));
             }
             SimpleExprKind::ConstructVariant {
-                variant,
-                fields,
-                ..
+                variant, fields, ..
             } => {
                 if fields.is_empty() {
                     self.write(&format!("{variant}.INSTANCE"));
                 } else {
-                    let arg_strs: Vec<String> =
-                        fields.iter().map(|a| self.emit_atom(a)).collect();
+                    let arg_strs: Vec<String> = fields.iter().map(|a| self.emit_atom(a)).collect();
                     self.write(&format!("new {variant}({})", arg_strs.join(", ")));
                 }
             }
@@ -1683,10 +1715,7 @@ impl<'a> JsEmitter<'a> {
                     } else {
                         let dict = &arg_strs[0];
                         let user_args = &arg_strs[1..];
-                        self.write(&format!(
-                            "{dict}.{method_name}({})",
-                            user_args.join(", ")
-                        ));
+                        self.write(&format!("{dict}.{method_name}({})", user_args.join(", ")));
                     }
                 }
             }
@@ -1870,7 +1899,11 @@ const JS_INTRINSICS: &[(&str, &str, &str, &str)] = &[
 ];
 
 /// Lookup a single intrinsic body. Used by M23-T6 for inline TraitCall optimization.
-pub fn js_intrinsic_body(trait_name: &str, type_name: &str, method_name: &str) -> Option<&'static str> {
+pub fn js_intrinsic_body(
+    trait_name: &str,
+    type_name: &str,
+    method_name: &str,
+) -> Option<&'static str> {
     JS_INTRINSICS
         .iter()
         .find(|(t, ty, m, _)| *t == trait_name && *ty == type_name && *m == method_name)
@@ -1878,10 +1911,17 @@ pub fn js_intrinsic_body(trait_name: &str, type_name: &str, method_name: &str) -
 }
 
 /// Group intrinsics by (trait, type) for dict emission. Returns (trait, type, [(method, body)]).
-fn js_intrinsic_dicts() -> Vec<(&'static str, &'static str, Vec<(&'static str, &'static str)>)> {
+fn js_intrinsic_dicts() -> Vec<(
+    &'static str,
+    &'static str,
+    Vec<(&'static str, &'static str)>,
+)> {
     let mut map: Vec<(&str, &str, Vec<(&str, &str)>)> = Vec::new();
     for &(trait_name, type_name, method_name, body) in JS_INTRINSICS {
-        if let Some(entry) = map.iter_mut().find(|(t, ty, _)| *t == trait_name && *ty == type_name) {
+        if let Some(entry) = map
+            .iter_mut()
+            .find(|(t, ty, _)| *t == trait_name && *ty == type_name)
+        {
             entry.2.push((method_name, body));
         } else {
             map.push((trait_name, type_name, vec![(method_name, body)]));

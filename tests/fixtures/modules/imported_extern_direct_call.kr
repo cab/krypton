@@ -1,0 +1,4 @@
+# expect: ok
+import extern_provenance_lib.{abs as magnitude}
+
+fun main() = magnitude(5)

@@ -28,4 +28,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+println: forall a. (a) -> Unit
 main: () -> Unit

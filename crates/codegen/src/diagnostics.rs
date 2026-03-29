@@ -44,7 +44,10 @@ mod tests {
 
     fn render(error: &CodegenError, filename: &str, source: &str) -> String {
         let (diags, srcs) = lower_codegen_error(filename, source, error);
-        diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
+        diags
+            .iter()
+            .map(|d| PlainTextRenderer.render(d, &srcs))
+            .collect()
     }
 
     #[test]

@@ -24,7 +24,6 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 import user_trait_lib/MkPoint as MkPoint(Int, Int): Point
-import user_trait_lib/MkPoint as MkPoint(Int, Int): Point
 declare println: (o) -> Unit
 
 fn main() -> Unit =

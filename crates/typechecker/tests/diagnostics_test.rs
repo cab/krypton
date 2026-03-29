@@ -12,7 +12,10 @@ fn parse_and_infer_module_error(src: &str) -> String {
         Err(errors) => errors,
     };
     let (diags, srcs) = lower_infer_errors("test.kr", src, &errors);
-    diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
+    diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect()
 }
 
 fn render_error(src: &str) -> String {
@@ -54,7 +57,10 @@ fn render_fixture_error(fixture: &str) -> String {
         Err(errors) => errors,
     };
     let (diags, srcs) = lower_infer_errors(fixture, &src, &errors);
-    diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
+    diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect()
 }
 
 fn render_module_error_with_resolver(
@@ -68,7 +74,10 @@ fn render_module_error_with_resolver(
         Err(errors) => errors,
     };
     let (diags, srcs) = lower_infer_errors("test.kr", src, &errors);
-    diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
+    diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect()
 }
 
 fn render_module_error(src: &str) -> String {
@@ -450,7 +459,10 @@ fn parse_error_in_imported_module() {
     }
     // Render and verify it references the module file with correct source
     let (diags, srcs) = lower_infer_error("test.kr", src, &errors[0]);
-    let output: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+    let output: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
     insta::assert_snapshot!(output);
     assert!(
         output.contains("bad"),
@@ -501,7 +513,10 @@ fn type_error_in_imported_module() {
     }
     // Render and verify it references the module file
     let (diags, srcs) = lower_infer_error("test.kr", src, &errors[0]);
-    let output: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+    let output: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
     insta::assert_snapshot!(output);
     assert!(
         output.contains("badmod"),

@@ -29,3 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+raw_println: (String) -> Unit

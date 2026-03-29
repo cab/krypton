@@ -24,7 +24,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 vars: vec![a, b],
                 ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
                 constraints: Vec::new(),
-            var_names: HashMap::new(),
+                var_names: HashMap::new(),
             },
         );
     }
@@ -38,7 +38,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 vars: vec![b],
                 ty: Type::Fn(vec![], Box::new(Type::Var(b))),
                 constraints: Vec::new(),
-            var_names: HashMap::new(),
+                var_names: HashMap::new(),
             },
         );
 
@@ -50,7 +50,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 vars: vec![a],
                 ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Bool)),
                 constraints: Vec::new(),
-            var_names: HashMap::new(),
+                var_names: HashMap::new(),
             },
         );
     }

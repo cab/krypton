@@ -21,7 +21,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import trait_origin_lib/MkMsg as MkMsg(String): Msg
-import trait_origin_lib/MkMsg as MkMsg(String): Msg
 import core/io/println as println(o): Unit
 declare println: (o) -> Unit
 

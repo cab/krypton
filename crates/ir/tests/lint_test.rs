@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use krypton_ir::expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
+use krypton_ir::expr::{
+    Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch,
+};
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
 use krypton_ir::{
@@ -147,10 +149,7 @@ fn join_point_used_as_value_is_error() {
                 name: VarId(0),
                 params: vec![],
                 join_body: Box::new(unit_atom()),
-                body: Box::new(expr(
-                    Type::Unit,
-                    ExprKind::Atom(Atom::Var(VarId(0))),
-                )),
+                body: Box::new(expr(Type::Unit, ExprKind::Atom(Atom::Var(VarId(0))))),
                 is_recur: false,
             },
         ),

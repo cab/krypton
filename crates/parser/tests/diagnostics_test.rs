@@ -12,7 +12,10 @@ fn test_p0001_unexpected_token() {
         "expected P0001 error, got: {errors:?}"
     );
     let (diags, srcs) = diagnostics::lower_parse_errors("test.kr", source, &errors);
-    let plain: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+    let plain: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
     insta::assert_snapshot!(plain);
 }
 
@@ -26,7 +29,10 @@ fn test_p0002_unclosed_paren() {
         "expected P0002 error, got: {errors:?}"
     );
     let (diags, srcs) = diagnostics::lower_parse_errors("test.kr", source, &errors);
-    let plain: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+    let plain: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
     insta::assert_snapshot!(plain);
 }
 
@@ -40,7 +46,10 @@ fn test_p0003_invalid_literal() {
         "expected P0003 error, got: {errors:?}"
     );
     let (diags, srcs) = diagnostics::lower_parse_errors("test.kr", source, &errors);
-    let plain: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+    let plain: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
     insta::assert_snapshot!(plain);
 }
 
@@ -61,7 +70,10 @@ fn test_p0004_pub_on_trait_method() {
         errors[0].message
     );
     let (diags, srcs) = diagnostics::lower_parse_errors("test.kr", source, &errors);
-    let plain: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+    let plain: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
     insta::assert_snapshot!(plain);
 }
 

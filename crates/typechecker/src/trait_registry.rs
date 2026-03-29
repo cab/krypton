@@ -93,8 +93,7 @@ impl TraitRegistry {
                 });
             }
         }
-        self.bare_name_index
-            .insert(info.name.clone(), key.clone());
+        self.bare_name_index.insert(info.name.clone(), key.clone());
         self.traits.insert(key, info);
         Ok(())
     }
@@ -283,13 +282,11 @@ impl TraitRegistry {
         trait_name: &TraitName,
         span: Span,
     ) -> Option<&InstanceInfo> {
-        self.instances_by_trait
-            .get(trait_name)
-            .and_then(|idxs| {
-                idxs.iter()
-                    .map(|&i| &self.instances[i])
-                    .find(|inst| inst.span == span)
-            })
+        self.instances_by_trait.get(trait_name).and_then(|idxs| {
+            idxs.iter()
+                .map(|&i| &self.instances[i])
+                .find(|inst| inst.span == span)
+        })
     }
 
     pub fn trait_method_names(&self) -> Vec<(String, TraitName, bool)> {
@@ -818,7 +815,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-    
+
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -848,7 +845,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-    
+
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -860,7 +857,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
-    
+
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -872,7 +869,7 @@ mod tests {
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
                 constraints: vec![rc("Functor", "f"), rc("Foldable", "f")],
-    
+
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -903,7 +900,7 @@ mod tests {
                 target_type_name: "Result".to_string(),
                 type_var_ids: HashMap::from([(String::from("e"), var_e)]),
                 constraints: vec![rc("Show", "e")],
-    
+
                 span: (0, 0),
                 is_builtin: false,
             })
@@ -1005,7 +1002,7 @@ mod tests {
                     (String::from("v"), var_v),
                 ]),
                 constraints: vec![rc("Show", "k"), rc("Show", "v")],
-    
+
                 span: (0, 0),
                 is_builtin: false,
             })

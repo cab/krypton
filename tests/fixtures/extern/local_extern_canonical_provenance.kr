@@ -1,0 +1,10 @@
+# expect: ok
+extern java "java.lang.Math" {
+    fun abs(n: Int) -> Int
+}
+
+extern js "./runtime.mjs" {
+    fun abs(n: Int) -> Int
+}
+
+fun main() = abs(5)

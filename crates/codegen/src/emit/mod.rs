@@ -135,7 +135,11 @@ pub fn compile_modules(
     // Passed to each lower_module call; duplicates from the current module are harmless.
     let all_instance_defs: Vec<_> = typed_modules
         .iter()
-        .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+        .flat_map(|tm| {
+            tm.instance_defs
+                .iter()
+                .map(|inst| (tm.module_path.clone(), inst.clone()))
+        })
         .collect();
     let all_extern_fns: Vec<_> = typed_modules
         .iter()
@@ -153,7 +157,14 @@ pub fn compile_modules(
         } else {
             &tm.module_path
         };
-        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name, &all_instance_defs, &all_extern_fns, &all_extern_types).map_err(|e| {
+        let ir = krypton_ir::lower::lower_module(
+            tm,
+            jvm_class_name,
+            &all_instance_defs,
+            &all_extern_fns,
+            &all_extern_types,
+        )
+        .map_err(|e| {
             CodegenError::TypeError(
                 format!("IR lowering error in module {jvm_class_name}: {e}"),
                 None,
@@ -174,12 +185,7 @@ pub fn compile_modules(
         } else {
             &ir_module.module_path
         };
-        let classes = compile_module_inner(
-            ir_module,
-            class_name,
-            is_entry,
-        )
-        .map_err(|e| {
+        let classes = compile_module_inner(ir_module, class_name, is_entry).map_err(|e| {
             if let Some(s) = &typed_module.module_source {
                 return e.with_source(typed_module.module_path.clone(), s.clone());
             }
@@ -318,7 +324,6 @@ fn build_instance_class_map(
 
     map
 }
-
 
 /// Generate a minimal valid `.class` file containing a no-op
 /// `public static void main(String[])` method.

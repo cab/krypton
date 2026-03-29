@@ -1797,6 +1797,127 @@ fn imported_callable_alias_preserves_imported_provenance() {
 }
 
 #[test]
+fn local_extern_callable_preserves_local_provenance() {
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        extern java "java.lang.Math" {
+            fun abs(n: Int) -> Int
+        }
+
+        fun main() -> Int = abs(5)
+        "#,
+        &CompositeResolver::stdlib_only(),
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "abs"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::Callable(
+            ResolvedCallableRef::LocalFunction {
+                qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                    "test".to_string(),
+                    "abs".to_string(),
+                ),
+            }
+        ))
+    );
+}
+
+#[test]
+fn imported_extern_callable_alias_preserves_imported_provenance() {
+    struct ExternResolver;
+    impl ModuleResolver for ExternResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "extern_provenance_lib" => Some(
+                    r#"
+                    extern java "java.lang.Math" {
+                        pub fun abs(n: Int) -> Int
+                    }
+                    "#
+                    .to_string(),
+                ),
+                other => CompositeResolver::stdlib_only().resolve(other),
+            }
+        }
+    }
+
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        import extern_provenance_lib.{abs as magnitude}
+        fun main() -> Int = magnitude(5)
+        "#,
+        &ExternResolver,
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "magnitude"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::Callable(
+            ResolvedCallableRef::ImportedFunction {
+                qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                    "extern_provenance_lib".to_string(),
+                    "abs".to_string(),
+                ),
+            }
+        ))
+    );
+}
+
+#[test]
+fn reexported_extern_callable_preserves_imported_provenance() {
+    struct ExternResolver;
+    impl ModuleResolver for ExternResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            match module_path {
+                "extern_provenance_lib" => Some(
+                    r#"
+                    extern java "java.lang.Math" {
+                        pub fun abs(n: Int) -> Int
+                    }
+                    "#
+                    .to_string(),
+                ),
+                "extern_provenance_reexport" => Some(
+                    r#"
+                    pub import extern_provenance_lib.{abs as magnitude}
+                    "#
+                    .to_string(),
+                ),
+                other => CompositeResolver::stdlib_only().resolve(other),
+            }
+        }
+    }
+
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        import extern_provenance_reexport.{magnitude}
+        fun main() -> Int = magnitude(5)
+        "#,
+        &ExternResolver,
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "magnitude"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::Callable(
+            ResolvedCallableRef::ImportedFunction {
+                qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                    "extern_provenance_lib".to_string(),
+                    "abs".to_string(),
+                ),
+            }
+        ))
+    );
+}
+
+#[test]
 fn local_trait_method_call_preserves_resolved_trait_identity() {
     let typed = infer_typed_module_with_resolver(
         r#"
@@ -1974,9 +2095,10 @@ fn infer_module_constructor_alias_resolves() {
     assert!(
         result.is_ok(),
         "constructor alias should resolve: {:?}",
-        result
-            .err()
-            .map(|errors| errors.into_iter().map(|e| e.type_error().map(|te| te.error.error_code().to_string())).collect::<Vec<_>>())
+        result.err().map(|errors| errors
+            .into_iter()
+            .map(|e| e.type_error().map(|te| te.error.error_code().to_string()))
+            .collect::<Vec<_>>())
     );
 }
 
@@ -2377,10 +2499,7 @@ fn infer_module_trait_private_by_default() {
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
     let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string());
-    assert!(
-        result2.is_err(),
-        "importing private trait should fail"
-    );
+    assert!(result2.is_err(), "importing private trait should fail");
     let err = match result2 {
         Err(mut errors) => errors.remove(0),
         Ok(_) => panic!("expected error"),
@@ -2524,9 +2643,10 @@ fn prelude_fn_shadow_removes_imported_metadata() {
         "local extern println should remain visible in extern_fns"
     );
     assert!(
-        !typed.fn_types.iter().any(|f| {
-            f.name == "println" && f.qualified_name.module_path == "core/io"
-        }),
+        !typed
+            .fn_types
+            .iter()
+            .any(|f| { f.name == "println" && f.qualified_name.module_path == "core/io" }),
         "shadowed prelude println should be removed from fn_types"
     );
 }

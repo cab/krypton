@@ -29,3 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+push: forall a. (JsArray[a], a) -> Unit

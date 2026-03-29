@@ -112,15 +112,18 @@ mod tests {
         module.structs.push(StructDef {
             name: "Point".to_string(),
             type_params: vec![],
-            fields: vec![
-                ("x".to_string(), Type::Int),
-                ("y".to_string(), Type::Int),
-            ],
+            fields: vec![("x".to_string(), Type::Int), ("y".to_string(), Type::Int)],
         });
 
         let js = emit_module(&module);
-        assert!(js.contains("export class Point {"), "should export Point class");
-        assert!(js.contains("constructor(x, y)"), "should have constructor with field names");
+        assert!(
+            js.contains("export class Point {"),
+            "should export Point class"
+        );
+        assert!(
+            js.contains("constructor(x, y)"),
+            "should have constructor with field names"
+        );
         assert!(js.contains("this.x = x;"), "should assign this.x");
         assert!(js.contains("this.y = y;"), "should assign this.y");
     }
@@ -147,7 +150,10 @@ mod tests {
 
         let js = emit_module(&module);
         // Base class
-        assert!(js.contains("export class Option {"), "should export base class");
+        assert!(
+            js.contains("export class Option {"),
+            "should export base class"
+        );
         // Some extends Option
         assert!(
             js.contains("export class Some extends Option {"),
@@ -204,7 +210,10 @@ mod tests {
 
         let js = emit_module(&module);
         // Both variants extend Option, enabling instanceof
-        assert!(js.contains("extends Option"), "variants should extend base class");
+        assert!(
+            js.contains("extends Option"),
+            "variants should extend base class"
+        );
     }
 
     #[test]
@@ -382,7 +391,10 @@ mod tests {
         // The compile_modules_js function produces "{name}.mjs"
         let filename = format!("{}.mjs", module.name);
         assert_eq!(filename, "hello.mjs");
-        assert!(filename.ends_with(".mjs"), "output should use .mjs extension");
+        assert!(
+            filename.ends_with(".mjs"),
+            "output should use .mjs extension"
+        );
     }
 
     #[test]
@@ -399,7 +411,10 @@ mod tests {
         module.fn_names.insert(FnId(0), "answer".to_string());
 
         let js = emit_module(&module);
-        assert!(js.contains("return 42;"), "Int literals should emit as regular numbers");
+        assert!(
+            js.contains("return 42;"),
+            "Int literals should emit as regular numbers"
+        );
     }
 
     #[test]
@@ -437,7 +452,10 @@ mod tests {
         module.fn_names.insert(FnId(0), "yes".to_string());
 
         let js = emit_module(&module);
-        assert!(js.contains("return true;"), "Bool literals should emit as JS booleans");
+        assert!(
+            js.contains("return true;"),
+            "Bool literals should emit as JS booleans"
+        );
     }
 
     #[test]
@@ -536,10 +554,7 @@ mod tests {
         module.structs.push(krypton_ir::StructDef {
             name: "Point".to_string(),
             type_params: vec![],
-            fields: vec![
-                ("x".to_string(), Type::Int),
-                ("y".to_string(), Type::Int),
-            ],
+            fields: vec![("x".to_string(), Type::Int), ("y".to_string(), Type::Int)],
         });
         module.functions.push(FnDef {
             id: FnId(1),
@@ -548,9 +563,7 @@ mod tests {
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
         });
-        module
-            .fn_names
-            .insert(FnId(1), "Eq$$Point$$eq".to_string());
+        module.fn_names.insert(FnId(1), "Eq$$Point$$eq".to_string());
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_type: Type::Named("Point".to_string(), vec![]),
@@ -704,10 +717,7 @@ mod tests {
         module.structs.push(krypton_ir::StructDef {
             name: "Point".to_string(),
             type_params: vec![],
-            fields: vec![
-                ("x".to_string(), Type::Int),
-                ("y".to_string(), Type::Int),
-            ],
+            fields: vec![("x".to_string(), Type::Int), ("y".to_string(), Type::Int)],
         });
         module.functions.push(krypton_ir::FnDef {
             id: FnId(1),
@@ -716,14 +726,10 @@ mod tests {
             return_type: Type::Bool,
             body: expr(
                 Type::Bool,
-                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(
-                    true,
-                ))),
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true))),
             ),
         });
-        module
-            .fn_names
-            .insert(FnId(1), "Eq$$Point$$eq".to_string());
+        module.fn_names.insert(FnId(1), "Eq$$Point$$eq".to_string());
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_type: Type::Named("Point".to_string(), vec![]),
@@ -775,9 +781,9 @@ mod tests {
             return_type: Type::String,
             body: expr(
                 Type::String,
-                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
-                    krypton_ir::Literal::String("x".to_string()),
-                )),
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::String(
+                    "x".to_string(),
+                ))),
             ),
         });
         module
@@ -864,7 +870,10 @@ mod tests {
             name: "Eq$$Pair$$eq".to_string(),
             params: vec![],
             return_type: Type::Bool,
-            body: expr(Type::Bool, krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true)))),
+            body: expr(
+                Type::Bool,
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true))),
+            ),
         });
         module.fn_names.insert(FnId(2), "Eq$$Pair$$eq".to_string());
         module.instances.push(InstanceDef {
@@ -895,7 +904,10 @@ mod tests {
                         trait_name: make_trait_name("Eq"),
                         ty: Type::Tuple(vec![Type::Int, Type::String]),
                     }),
-                    body: Box::new(expr(Type::Unit, krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(d)))),
+                    body: Box::new(expr(
+                        Type::Unit,
+                        krypton_ir::ExprKind::Atom(krypton_ir::Atom::Var(d)),
+                    )),
                 },
             ),
         });
@@ -929,9 +941,9 @@ mod tests {
             return_type: Type::String,
             body: expr(
                 Type::String,
-                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(
-                    krypton_ir::Literal::String("x".to_string()),
-                )),
+                krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::String(
+                    "x".to_string(),
+                ))),
             ),
         });
         module
@@ -1007,8 +1019,17 @@ mod tests {
         });
 
         let js = emit_module(&module);
-        assert!(js.contains("get $tag() { return 0; }"), "Red should have tag 0");
-        assert!(js.contains("get $tag() { return 1; }"), "Green should have tag 1");
-        assert!(js.contains("get $tag() { return 2; }"), "Blue should have tag 2");
+        assert!(
+            js.contains("get $tag() { return 0; }"),
+            "Red should have tag 0"
+        );
+        assert!(
+            js.contains("get $tag() { return 1; }"),
+            "Green should have tag 1"
+        );
+        assert!(
+            js.contains("get $tag() { return 2; }"),
+            "Blue should have tag 2"
+        );
     }
 }

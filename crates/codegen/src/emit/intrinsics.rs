@@ -75,7 +75,6 @@ impl IntrinsicEntry {
             IntrinsicOp::ShowVia { .. } | IntrinsicOp::ShowIdentity
         )
     }
-
 }
 
 /// Registry of all intrinsic (trait, type) → operation mappings.

@@ -271,7 +271,6 @@ impl TraitState {
             .find(|((tn, _), _)| tn.local_name == bare_name)
             .map(|(_, &slot)| slot)
     }
-
 }
 
 #[derive(Clone)]
@@ -404,8 +403,7 @@ impl Compiler {
         let throwable_class = cp.add_class("java/lang/Throwable")?;
         let system_class = cp.add_class("java/lang/System")?;
         let printstream_class = cp.add_class("java/io/PrintStream")?;
-        let system_err_field =
-            cp.add_field_ref(system_class, "err", "Ljava/io/PrintStream;")?;
+        let system_err_field = cp.add_field_ref(system_class, "err", "Ljava/io/PrintStream;")?;
         let printstream_println =
             cp.add_method_ref(printstream_class, "println", "(Ljava/lang/String;)V")?;
         let refs = CpoolRefs {
@@ -1519,7 +1517,6 @@ impl Compiler {
                     let cap_type = self.compile_ir_atom(capture)?;
                     self.builder.box_if_needed(cap_type);
                 }
-
 
                 self.emit_fun_reference_indy(
                     arity,
@@ -2690,15 +2687,12 @@ impl Compiler {
         // javac's try-with-resources: `Resource r = null; try { r = ...; } finally { ... }`
         if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
             for fc in finally_closes {
-                let slot = self.builder.alloc_anonymous_local(JvmType::StructRef(
-                    self.builder.refs.object_class,
-                ));
+                let slot = self
+                    .builder
+                    .alloc_anonymous_local(JvmType::StructRef(self.builder.refs.object_class));
                 self.builder.emit(Instruction::Aconst_null);
-                self.builder
-                    .frame
-                    .push_type(VerificationType::Null);
-                self.builder
-                    .emit(Instruction::Astore(slot as u8));
+                self.builder.frame.push_type(VerificationType::Null);
+                self.builder.emit(Instruction::Astore(slot as u8));
                 self.builder.frame.pop_type();
                 self.pre_allocated_slots.insert(fc.resource_var, slot);
             }
@@ -2763,11 +2757,9 @@ impl Compiler {
         // Set up StackMapTable frame at handler entry: stack = [Throwable],
         // locals = only params + pre-initialized resource slots (valid at all PCs in protected range)
         self.builder.frame.stack_types.clear();
-        self.builder
-            .frame
-            .push_type(VerificationType::Object {
-                cpool_index: self.builder.refs.throwable_class,
-            });
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: self.builder.refs.throwable_class,
+        });
         self.builder.frame.local_types = handler_locals.to_vec();
         self.builder.record_frame();
 
@@ -2804,8 +2796,11 @@ impl Compiler {
 
         // Close each resource in LIFO order (reverse of declaration order)
         for fc in finally_closes.iter().rev() {
-            let (resource_slot, _resource_jvm_type) =
-                self.var_locals.get(&fc.resource_var).copied().ok_or_else(|| {
+            let (resource_slot, _resource_jvm_type) = self
+                .var_locals
+                .get(&fc.resource_var)
+                .copied()
+                .ok_or_else(|| {
                     CodegenError::UndefinedVariable(
                         format!(
                             "finally handler: resource var {:?} not found",
@@ -2820,16 +2815,14 @@ impl Compiler {
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,
             });
-            let null_check_placeholder =
-                self.builder.emit_placeholder(Instruction::Ifnull(0));
+            let null_check_placeholder = self.builder.emit_placeholder(Instruction::Ifnull(0));
             self.builder.frame.pop_type();
 
             // Inner try: protect close() call so double-panic is suppressed
             let inner_try_start = self.builder.current_offset();
 
             // Load dict for Resource[type_name]
-            let resource_type =
-                krypton_ir::Type::Named(fc.type_name.clone(), vec![]);
+            let resource_type = krypton_ir::Type::Named(fc.type_name.clone(), vec![]);
             self.emit_dict_argument_for_type(&resource_trait, &resource_type, iface_class)?;
 
             // Load and box the resource value
@@ -2843,7 +2836,7 @@ impl Compiler {
                 .emit(Instruction::Invokeinterface(close_method_ref, 2));
             self.builder.frame.pop_type(); // resource
             self.builder.frame.pop_type(); // dict
-            // close returns Object (boxed Unit) — pop it
+                                           // close returns Object (boxed Unit) — pop it
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,
             });
@@ -2853,18 +2846,15 @@ impl Compiler {
             let inner_try_end = self.builder.current_offset();
 
             // goto after_inner (skip the inner catch handler)
-            let goto_placeholder =
-                self.builder.emit_placeholder(Instruction::Goto(0));
+            let goto_placeholder = self.builder.emit_placeholder(Instruction::Goto(0));
 
             // Inner catch handler: suppress exception from close(), log warning
             let inner_handler = self.builder.current_offset();
             // Frame: stack = [Throwable], locals = active_locals
             self.builder.frame.stack_types.clear();
-            self.builder
-                .frame
-                .push_type(VerificationType::Object {
-                    cpool_index: self.builder.refs.throwable_class,
-                });
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: self.builder.refs.throwable_class,
+            });
             self.builder.frame.local_types = active_locals.clone();
             self.builder.record_frame();
 
@@ -2878,21 +2868,27 @@ impl Compiler {
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,
             });
-            let warning_msg = self.cp.add_string("warning: resource close failed during panic")?;
+            let warning_msg = self
+                .cp
+                .add_string("warning: resource close failed during panic")?;
             self.builder.emit(Instruction::Ldc_w(warning_msg));
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: self.builder.refs.string_class,
             });
-            self.builder
-                .emit(Instruction::Invokevirtual(self.builder.refs.printstream_println));
+            self.builder.emit(Instruction::Invokevirtual(
+                self.builder.refs.printstream_println,
+            ));
             self.builder.frame.pop_type(); // string arg
             self.builder.frame.pop_type(); // printstream receiver
 
             // after_inner: patch the goto and null check
             let after_inner = self.builder.current_offset();
-            self.builder.patch(goto_placeholder, Instruction::Goto(after_inner as u16));
             self.builder
-                .patch(null_check_placeholder, Instruction::Ifnull(after_inner as u16));
+                .patch(goto_placeholder, Instruction::Goto(after_inner as u16));
+            self.builder.patch(
+                null_check_placeholder,
+                Instruction::Ifnull(after_inner as u16),
+            );
 
             // Record frame at after_inner (merge point of goto, null check, and inner catch)
             self.builder.frame.stack_types.clear();

@@ -126,8 +126,6 @@ type List[h] = Cons#0(h, List[h]) | Nil#1
 instance core/show.Show[List] { show=Show$$List$$show }
 import core/option/Some as Some(g): Option[g]
 import core/option/None as None(): Option[g]
-import core/option/Some as Some(g): Option[g]
-import core/option/None as None(): Option[g]
 
 fn length(v0: List[p]) -> Int =
   switch v0 {
@@ -356,12 +354,8 @@ import core/list/map as list_map(List[y], (y) -> a1): List[a1]
 import core/list/filter as list_filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as list_fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/sort_by as list_sort_by(List[z5], (z5) -> o5): List[z5]
-import core/list/Cons as Cons(g, List[g]): List[g]
-import core/list/Nil as Nil(): List[g]
 import core/option/Some as Some(g): Option[g]
 import core/option/None as None(): Option[g]
-import core/option/Some as Some(h): Option[h]
-import core/option/None as None(): Option[h]
 declare list_filter: (List[j1], (j1) -> Bool) -> List[j1]
 declare list_fold: (List[w1], y1, (y1, w1) -> y1) -> y1
 declare list_length: (List[p]) -> Int
@@ -560,13 +554,9 @@ extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
 extern type java "krypton.runtime.KryptonMap" Map
 import core/option/Some as Some(g): Option[g]
 import core/option/None as None(): Option[g]
-import core/option/Some as Some(g): Option[g]
-import core/option/None as None(): Option[g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 import core/vec/to_list as vec_to_list(Vec[c8]): List[c8]
 declare fold: (List[w1], y1, (y1, w1) -> y1) -> y1
 declare staticContainsKey: (Object, Object) -> Bool
@@ -683,8 +673,6 @@ extern js "../runtime/js/io.mjs" read_file(String): Result[String, String]
 extern js "../runtime/js/io.mjs" write_file(String, String): Result[String, Unit]
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
-import core/result/Ok as Ok(h): Result[g, h]
-import core/result/Err as Err(g): Result[g, h]
 declare raw_print: (Object) -> Unit
 declare raw_println: (Object) -> Unit
 
@@ -702,12 +690,8 @@ module prelude
 import core/peek/peek as peek(h): h
 import core/option/Some as Some(g): Option[g]
 import core/option/None as None(): Option[g]
-import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
-import core/result/Ok as Ok(g): Result[f, g]
-import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
 import core/list/map as map(List[y], (y) -> a1): List[a1]
@@ -715,12 +699,7 @@ import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
@@ -777,5 +756,3 @@ import core/ordering/GT as GT(): Ordering
 import vis_lib/Red as Red(): Color
 import vis_lib/Blue as Blue(): Color
 import vis_lib/public_fn as public_fn(Int): Int
-import vis_lib/Red as Red(): Color
-import vis_lib/Blue as Blue(): Color

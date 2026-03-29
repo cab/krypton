@@ -558,12 +558,8 @@ impl fmt::Display for TypeScheme {
             write!(f, ". {}", format_type_with_var_names(&renamed_ty, &names))?;
             if !self.constraints.is_empty() {
                 // Build id → sequential index mapping (same as display_var_names)
-                let id_mapping: HashMap<TypeVarId, usize> = self
-                    .vars
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &v)| (v, i))
-                    .collect();
+                let id_mapping: HashMap<TypeVarId, usize> =
+                    self.vars.iter().enumerate().map(|(i, &v)| (v, i)).collect();
                 let mut where_parts: Vec<String> = Vec::new();
                 for (trait_name, var) in &self.constraints {
                     let var_name = id_mapping
@@ -881,17 +877,14 @@ impl TypeEnv {
         }
     }
 
-    /// Bind a name and record its definition span (for secondary diagnostics).
-    pub fn bind_with_def_span(
+    /// Bind a name with explicit source metadata and record its definition span.
+    pub fn bind_with_source_and_def_span(
         &mut self,
         name: std::string::String,
         scheme: TypeScheme,
+        source: BindingSource,
         def_span: DefSpan,
     ) {
-        let source = self
-            .lookup_entry(&name)
-            .map(|entry| entry.source.clone())
-            .unwrap_or(BindingSource::LocalValue);
         self.bind_with_source(name.clone(), scheme, source);
         self.def_spans.insert(name, def_span);
     }

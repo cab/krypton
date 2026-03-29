@@ -5,13 +5,12 @@ use krypton_parser::ast::{Decl, ImportName, Module, Span, TypeDecl, Visibility};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::ExportedTypeInfo;
 use crate::typed_ast::{self as typed_ast, TraitName, TypedModule};
-use crate::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
+use crate::types::{Type, TypeScheme, TypeVarGen};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
-    build_type_param_map, constructor_names, find_type_decl, imported_binding_ref,
-    process_extern_methods, spanned, ModuleInferenceState, QualifiedExport,
-    QualifiedModuleBinding,
+    constructor_names, find_type_decl, imported_binding_ref, spanned, ModuleInferenceState,
+    QualifiedExport, QualifiedModuleBinding,
 };
 
 /// Register a type using pre-resolved export info if available,
@@ -215,16 +214,6 @@ impl ModuleInferenceState {
             }
             s
         };
-        // Build fn visibility map from parsed imported module (needed for extern method privacy)
-        let mut fn_vis: HashMap<&str, &Visibility> = HashMap::new();
-        for d in &imported_module.decls {
-            if let Decl::Extern { methods, .. } = d {
-                for m in methods {
-                    fn_vis.entry(m.name.as_str()).or_insert(&m.visibility);
-                }
-            }
-        }
-
         for name in &requested {
             if !exported_fn_names.contains(name)
                 && !reexported_fn_names.contains(name)
@@ -254,10 +243,6 @@ impl ModuleInferenceState {
                         span,
                     ));
                 }
-                // Extern methods are handled separately below
-                if fn_vis.contains_key(name) {
-                    continue;
-                }
                 // Name truly doesn't exist in the module
                 return Err(spanned(
                     TypeError::UnknownExport {
@@ -266,21 +251,6 @@ impl ModuleInferenceState {
                     },
                     span,
                 ));
-            }
-        }
-
-        // Check visibility of explicitly requested extern methods
-        for name in &requested {
-            if let Some(vis) = fn_vis.get(name) {
-                if matches!(vis, Visibility::Private) {
-                    return Err(spanned(
-                        TypeError::PrivateName {
-                            name: name.to_string(),
-                            module_path: path.to_string(),
-                        },
-                        span,
-                    ));
-                }
             }
         }
 
@@ -293,7 +263,7 @@ impl ModuleInferenceState {
                     .get(&ef.name)
                     .cloned()
                     .unwrap_or_else(|| ef.name.clone());
-                self.imports.bind_import(
+                let binding_source = self.imports.bind_import(
                     &mut self.env,
                     effective_name.clone(),
                     ef.scheme.clone(),
@@ -305,9 +275,10 @@ impl ModuleInferenceState {
                 )?;
                 // Store definition span for imported function
                 if let Some(ds) = ef.def_span {
-                    self.env.bind_with_def_span(
+                    self.env.bind_with_source_and_def_span(
                         effective_name.clone(),
                         ef.scheme.clone(),
+                        binding_source,
                         crate::types::DefSpan {
                             span: ds,
                             source_module: Some(path.to_string()),
@@ -326,10 +297,7 @@ impl ModuleInferenceState {
                     QualifiedExport {
                         local_name: hidden_name.clone(),
                         scheme: ef.scheme.clone(),
-                        resolved_ref: Some(imported_binding_ref(
-                            path.to_string(),
-                            ef.name.clone(),
-                        )),
+                        resolved_ref: Some(imported_binding_ref(path.to_string(), ef.name.clone())),
                     },
                 );
                 self.imports.bind_hidden_fn(
@@ -395,7 +363,7 @@ impl ModuleInferenceState {
                         )
                     })
                     .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
-                self.imports.bind_import(
+                let binding_source = self.imports.bind_import(
                     &mut self.env,
                     effective_name.clone(),
                     ef.scheme.clone(),
@@ -406,9 +374,10 @@ impl ModuleInferenceState {
                     span,
                 )?;
                 if let Some(ds) = ef.def_span {
-                    self.env.bind_with_def_span(
+                    self.env.bind_with_source_and_def_span(
                         effective_name.clone(),
                         ef.scheme.clone(),
+                        binding_source,
                         crate::types::DefSpan {
                             span: ds,
                             source_module: Some(original_prov.0.clone()),
@@ -678,18 +647,12 @@ impl ModuleInferenceState {
                 module_path,
                 alias,
                 type_params,
-                methods,
-                span: ext_span,
                 ..
             } = sdecl
             {
                 // Register extern java type binding if present
-                let mut tp_map: Option<HashMap<String, TypeVarId>> = None;
-                let mut tp_arity: Option<HashMap<String, usize>> = None;
                 if let Some(name) = alias {
-                    let type_param_vars = if let Some(existing) = self.registry.lookup_type(name) {
-                        existing.type_param_vars.clone()
-                    } else {
+                    if self.registry.lookup_type(name).is_none() {
                         let vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
                         let _ = self.registry.register_type(crate::type_registry::TypeInfo {
                             name: name.clone(),
@@ -706,8 +669,7 @@ impl ModuleInferenceState {
                         // ext_type_info no longer accumulated — the codegen resolves
                         // extern types from dependency modules' IR directly.
                         let _ = ext_type_info;
-                        vars
-                    };
+                    }
                     // Mark user-visible if explicitly requested or import_all
                     if requested.contains(name.as_str()) || import_all {
                         self.registry.mark_user_visible(name);
@@ -720,52 +682,7 @@ impl ModuleInferenceState {
                         .unwrap_or(Visibility::Private);
                     self.imports
                         .bind_type_info(name.clone(), path.to_string(), vis);
-
-                    // Build type_param_map for method resolution
-                    if !type_params.is_empty() {
-                        let (map, arity) =
-                            build_type_param_map(type_params, &type_param_vars, name);
-                        tp_map = Some(map);
-                        tp_arity = Some(arity);
-                    }
                 }
-
-                let tp_names = type_params.as_slice();
-                let empty_trait_lookup = HashMap::new();
-                let result = process_extern_methods(
-                    module_path,
-                    target,
-                    methods,
-                    &mut self.env,
-                    &mut self.gen,
-                    &self.registry,
-                    &empty_trait_lookup,
-                    path,
-                    *ext_span,
-                    None,
-                    &aliases,
-                    tp_map.as_ref(),
-                    tp_arity.as_ref(),
-                    if tp_map.is_some() {
-                        Some(tp_names)
-                    } else {
-                        None
-                    },
-                )?;
-                for info in &result.extern_fns {
-                    if let Some(scheme) = self.env.lookup(&info.name).cloned() {
-                        self.env.bind_imported_function(
-                            info.name.clone(),
-                            scheme,
-                            path.to_string(),
-                            info.name.clone(),
-                            is_synthetic_prelude_import,
-                        );
-                    }
-                }
-                // Extern fn type bindings are registered in the env by process_extern_methods.
-                // The extern fn declarations themselves are no longer accumulated here —
-                // the IR lowering resolves them from all modules' local extern_fns.
             }
         }
 

@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen_js::compile_modules_js;
+use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
-use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_typechecker::diagnostics::{lower_infer_error, lower_infer_errors};
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
@@ -29,11 +29,15 @@ fn compile_js_result_with_resolver(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
-        let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
-        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
-        panic!("fixture {fixture_name}: type check failed:\n{rendered}");
-    });
+    let typed_modules =
+        infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
+            let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
+            let rendered: String = diags
+                .iter()
+                .map(|d| PlainTextRenderer.render(d, &srcs))
+                .collect();
+            panic!("fixture {fixture_name}: type check failed:\n{rendered}");
+        });
     compile_modules_js(&typed_modules, "test", false)
 }
 
@@ -145,7 +149,11 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
         .expect("expected root typed module");
     let all_instance_defs: Vec<_> = typed_modules
         .iter()
-        .flat_map(|tm| tm.instance_defs.iter().map(|inst| (tm.module_path.clone(), inst.clone())))
+        .flat_map(|tm| {
+            tm.instance_defs
+                .iter()
+                .map(|inst| (tm.module_path.clone(), inst.clone()))
+        })
         .collect();
     let all_extern_fns: Vec<_> = typed_modules
         .iter()
@@ -155,8 +163,14 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
         .iter()
         .flat_map(|tm| tm.extern_types.iter().cloned())
         .collect();
-    let lowered = krypton_ir::lower::lower_module(root, "test", &all_instance_defs, &all_extern_fns, &all_extern_types)
-        .expect("lowering should succeed");
+    let lowered = krypton_ir::lower::lower_module(
+        root,
+        "test",
+        &all_instance_defs,
+        &all_extern_fns,
+        &all_extern_types,
+    )
+    .expect("lowering should succeed");
 
     assert!(
         lowered.extern_fns.iter().any(|ext| ext.name == "println"
@@ -326,7 +340,10 @@ fn js_codegen_fixture(
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+                        let rendered: String = diags
+                            .iter()
+                            .map(|d| PlainTextRenderer.render(d, &srcs))
+                            .collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 compile_modules_js(&typed_modules, "test", true).unwrap_or_else(|e| {
@@ -376,7 +393,10 @@ fn js_codegen_module(
                 let typed_modules = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                        let rendered: String = diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect();
+                        let rendered: String = diags
+                            .iter()
+                            .map(|d| PlainTextRenderer.render(d, &srcs))
+                            .collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 let _ = compile_modules_js(&typed_modules, "test", true);

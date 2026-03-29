@@ -29,3 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+sort: forall a. (Vec[a]) -> Vec[a] where a: Ord
+contains: forall a. (Vec[a], a) -> Bool where a: Eq

@@ -29,3 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+parse_int: (String) -> Option[Int]
+max_value: () -> Int

@@ -21,9 +21,11 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-declare concat
+import core/string/concat as concat(String, String): String
+import core/string/trim as trim(String): String
+declare concat: (String, String) -> String
 declare println: (o) -> Unit
-declare trim
+declare trim: (String) -> String
 
 fn main() -> Int =
   let v0: String = call concat("  hello", " world  ")

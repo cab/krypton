@@ -1,10 +1,7 @@
 use include_dir::{include_dir, Dir};
 use krypton_codegen_js::compile_modules_js;
 use krypton_diagnostics::Diagnostic;
-use krypton_modules::{
-    module_resolver::ModuleResolver,
-    stdlib_loader::StdlibLoader,
-};
+use krypton_modules::{module_resolver::ModuleResolver, stdlib_loader::StdlibLoader};
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use serde::Serialize;
@@ -83,7 +80,8 @@ fn package_runtime_files(files: &mut Vec<CompiledJsFile>) {
 pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let (module, parse_errors) = parse(source);
     if !parse_errors.is_empty() {
-        let (diags, _srcs) = krypton_parser::diagnostics::lower_parse_errors(ROOT_FILENAME, source, &parse_errors);
+        let (diags, _srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(ROOT_FILENAME, source, &parse_errors);
         return CompileToJsResult::failure(diags);
     }
 
@@ -93,7 +91,11 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let typed_modules = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
         Ok(typed_modules) => typed_modules,
         Err(errors) => {
-            let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_errors(ROOT_FILENAME, source, &errors);
+            let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                ROOT_FILENAME,
+                source,
+                &errors,
+            );
             return CompileToJsResult::failure(diags);
         }
     };
@@ -101,7 +103,11 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false) {
         Ok(files) => files,
         Err(err) => {
-            let (diags, _srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(ROOT_FILENAME, source, &err);
+            let (diags, _srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(
+                ROOT_FILENAME,
+                source,
+                &err,
+            );
             return CompileToJsResult::failure(diags);
         }
     };
@@ -142,7 +148,10 @@ mod tests {
         assert!(result.success, "expected success: {result:?}");
         assert_eq!(result.entry_module, "main.mjs");
         assert!(
-            result.files.iter().any(|file| file.path == "runtime/js/io.mjs"),
+            result
+                .files
+                .iter()
+                .any(|file| file.path == "runtime/js/io.mjs"),
             "runtime io module should be packaged"
         );
         assert!(
@@ -160,7 +169,10 @@ mod tests {
         assert_eq!(diag.severity, krypton_diagnostics::Severity::Error);
         assert!(!diag.code.is_empty(), "diagnostic should have a code");
         assert!(!diag.message.is_empty(), "diagnostic should have a message");
-        assert!(result.files.is_empty(), "failed compile should not return files");
+        assert!(
+            result.files.is_empty(),
+            "failed compile should not return files"
+        );
     }
 
     #[test]

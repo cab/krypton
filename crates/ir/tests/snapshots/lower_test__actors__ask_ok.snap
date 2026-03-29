@@ -25,7 +25,6 @@ import core/actor/spawn as spawn((Mailbox[c10]) -> Unit): Ref[c10]
 import core/actor/send as send(Ref[g10], g10): Unit
 import core/actor/receive as receive(Mailbox[r10]): r10
 import core/actor/ask as ask(Ref[y11], (Ref[z11]) -> y11, Int): Result[Timeout, z11]
-import core/actor/Timeout as Timeout(): Timeout
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 declare ask: (Ref[y11], (Ref[z11]) -> y11, Int) -> Result[Timeout, z11]

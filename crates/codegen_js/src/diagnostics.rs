@@ -49,7 +49,10 @@ fn lower_missing_extern_targets(
         let (report_file, report_source) = if item.is_root_module {
             (filename.to_string(), source.to_string())
         } else if let Some(module_source) = &item.referencing_module_source {
-            (format!("{}.kr", item.referencing_module), module_source.clone())
+            (
+                format!("{}.kr", item.referencing_module),
+                module_source.clone(),
+            )
         } else {
             // No source available — spanless fallback
             diags.push(Diagnostic {
@@ -107,7 +110,9 @@ fn lower_missing_extern_targets(
             ),
             primary_file: report_file,
             primary_span: Some((use_span.start, use_span.end)),
-            primary_label: Some("reachable JS code in this module requires this extern".to_string()),
+            primary_label: Some(
+                "reachable JS code in this module requires this extern".to_string(),
+            ),
             secondary_labels,
             help: None,
             note: Some(format!(
@@ -136,7 +141,10 @@ mod tests {
 
     fn render(error: &JsCodegenError, filename: &str, source: &str) -> String {
         let (diags, srcs) = lower_js_codegen_error(filename, source, error);
-        diags.iter().map(|d| PlainTextRenderer.render(d, &srcs)).collect()
+        diags
+            .iter()
+            .map(|d| PlainTextRenderer.render(d, &srcs))
+            .collect()
     }
 
     #[test]
@@ -153,7 +161,10 @@ mod tests {
             declaration_span: (12, 19),
         }]);
         let output = render(&err, "test.kr", "fun main() = println(42)\n");
-        assert!(output.contains("J0001"), "should contain error code: {output}");
+        assert!(
+            output.contains("J0001"),
+            "should contain error code: {output}"
+        );
         assert!(
             output.contains("println"),
             "should mention function name: {output}"

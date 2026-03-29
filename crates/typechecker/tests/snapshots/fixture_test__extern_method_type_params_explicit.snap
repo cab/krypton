@@ -29,3 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+identity: forall a. (a) -> a
+raw_println: forall a. (a) -> Unit

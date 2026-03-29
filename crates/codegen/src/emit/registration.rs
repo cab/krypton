@@ -359,9 +359,7 @@ impl Compiler {
             let qualified = qualify_ir(&imp.module_path, &imp.name);
             let class_index = self.cp.add_class(&qualified)?;
             let class_desc = format!("L{qualified};");
-            self.types
-                .class_descriptors
-                .insert(class_index, class_desc);
+            self.types.class_descriptors.insert(class_index, class_desc);
             self.types.struct_info.insert(
                 imp.name.clone(),
                 StructInfo {

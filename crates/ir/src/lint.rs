@@ -283,8 +283,7 @@ impl LintContext {
                 self.check_atom_not_join(value)
             }
 
-            SimpleExprKind::MakeTuple { elements }
-            | SimpleExprKind::MakeVec { elements, .. } => {
+            SimpleExprKind::MakeTuple { elements } | SimpleExprKind::MakeVec { elements, .. } => {
                 for atom in elements {
                     self.check_atom_not_join(atom)?;
                 }

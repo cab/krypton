@@ -26,10 +26,8 @@ import core/json/JNum as JNum(Float): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
 import core/json/JNull as JNull(): Json
 import core/json/JBool as JBool(Bool): Json
-import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
-import core/json/JObj as JObj(Map[String, Json]): Json
 import core/map/from_list as from_list(List[(v14, w14)]): Map[v14, w14]
 declare from_list: (List[(v14, w14)]) -> Map[v14, w14]
 declare get: (Map[h11, t11], h11) -> Option[t11]

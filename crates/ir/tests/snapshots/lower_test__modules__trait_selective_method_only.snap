@@ -22,7 +22,6 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 import trait_selective_lib/MkWidget as MkWidget(String): Widget
-import trait_selective_lib/MkWidget as MkWidget(String): Widget
 declare println: (o) -> Unit
 
 fn main() -> Unit =

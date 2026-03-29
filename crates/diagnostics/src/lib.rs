@@ -85,15 +85,14 @@ fn render_ariadne(diagnostic: &Diagnostic, src_entries: &[SourceEntry], color: b
         Severity::Warning => ReportKind::Warning,
     };
 
-    let mut report =
-        Report::build(report_kind, (diagnostic.primary_file.clone(), start..end))
-            .with_config(
-                Config::new()
-                    .with_index_type(IndexType::Byte)
-                    .with_color(color),
-            )
-            .with_code(&diagnostic.code)
-            .with_message(&diagnostic.message);
+    let mut report = Report::build(report_kind, (diagnostic.primary_file.clone(), start..end))
+        .with_config(
+            Config::new()
+                .with_index_type(IndexType::Byte)
+                .with_color(color),
+        )
+        .with_code(&diagnostic.code)
+        .with_message(&diagnostic.message);
 
     if let Some(label_msg) = &diagnostic.primary_label {
         report = report.with_label(
@@ -173,7 +172,10 @@ mod tests {
         let diag = sample_diagnostic();
         let sources = sample_sources();
         let output = AriadneRenderer.render(&diag, &sources);
-        assert!(output.contains("E0001"), "should contain error code: {output}");
+        assert!(
+            output.contains("E0001"),
+            "should contain error code: {output}"
+        );
         assert!(
             output.contains("type mismatch"),
             "should contain message: {output}"
@@ -193,7 +195,10 @@ mod tests {
             !output.contains("\x1b["),
             "should not contain ANSI escape codes: {output}"
         );
-        assert!(output.contains("E0001"), "should contain error code: {output}");
+        assert!(
+            output.contains("E0001"),
+            "should contain error code: {output}"
+        );
         assert!(
             output.contains("type mismatch"),
             "should contain message: {output}"
@@ -269,7 +274,10 @@ mod tests {
         assert_eq!(json["primary_file"], "test.kr");
         assert_eq!(json["primary_span"], serde_json::json!([10, 15]));
         assert_eq!(json["primary_label"], "expected Int");
-        assert_eq!(json["secondary_labels"][0]["span"], serde_json::json!([0, 5]));
+        assert_eq!(
+            json["secondary_labels"][0]["span"],
+            serde_json::json!([0, 5])
+        );
         assert_eq!(json["secondary_labels"][0]["message"], "first defined here");
         assert_eq!(json["secondary_labels"][0]["filename"], "other.kr");
         assert_eq!(json["help"], "try converting the type");

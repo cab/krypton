@@ -21,10 +21,11 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
+import core/string/split as split(String, String): Vec[String]
 import core/vec/nth as nth(Vec[l7], Int): Option[l7]
 declare nth: (Vec[l7], Int) -> Option[l7]
 declare println: (o) -> Unit
-declare split
+declare split: (String, String) -> Vec[String]
 
 fn main() -> Unit =
   let v0: Vec[String] = call split("hello world", " ")

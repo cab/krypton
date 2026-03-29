@@ -27,8 +27,6 @@ import core/json/json_object as json_object(List[(String, Json)]): Json
 import core/json/json_get as json_get(Json, String): Option[Json]
 import core/json/JNull as JNull(): Json
 import core/json/JBool as JBool(Bool): Json
-import core/json/JNum as JNum(Float): Json
-import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json
 import core/json/JObj as JObj(Map[String, Json]): Json
 declare json_get: (Json, String) -> Option[Json]

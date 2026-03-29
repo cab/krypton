@@ -352,8 +352,7 @@ pub fn bind_type_vars(
         (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
             if decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
         {
-            let (ctor_fn, remaining) =
-                decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
+            let (ctor_fn, remaining) = decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
             bind_type_vars(p_ctor, &ctor_fn, bindings)
                 && remaining.len() == p_args.len()
                 && p_args
@@ -435,7 +434,6 @@ pub struct Module {
     // --- Cross-module metadata (self-contained compilation unit) ---
     // Each module embeds the metadata it needs from dependencies so codegen
     // can compile it without access to other modules' IR.
-
     /// Struct definitions from dependency modules (field accessor + class registration).
     pub imported_structs: Vec<ImportedStructDef>,
     /// Sum type definitions from dependency modules (pattern match dispatch).

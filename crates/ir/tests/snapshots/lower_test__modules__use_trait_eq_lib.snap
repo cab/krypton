@@ -22,7 +22,6 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 import trait_eq_lib/North as North(): Dir
-import trait_eq_lib/North as North(): Dir
 import trait_eq_lib/South as South(): Dir
 declare println: (o) -> Unit
 

@@ -33,7 +33,10 @@ pub fn lower_parse_errors(
     filename: &str,
     source: &str,
     errors: &[ParseError],
-) -> (Vec<krypton_diagnostics::Diagnostic>, Vec<krypton_diagnostics::SourceEntry>) {
+) -> (
+    Vec<krypton_diagnostics::Diagnostic>,
+    Vec<krypton_diagnostics::SourceEntry>,
+) {
     let sources = vec![krypton_diagnostics::SourceEntry {
         filename: filename.to_string(),
         source: source.to_string(),

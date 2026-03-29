@@ -22,7 +22,6 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 import trait_lib/Red as Red(): Color
-import trait_lib/Red as Red(): Color
 import trait_lib/Green as Green(): Color
 import trait_lib/Blue as Blue(): Color
 declare println: (o) -> Unit

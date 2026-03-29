@@ -680,9 +680,24 @@ impl TypeError {
     /// in the given environment, set `is_value = true`.
     pub fn enrich_unknown_type_with_env(self, env: &crate::types::TypeEnv) -> Self {
         match self {
-            TypeError::UnknownType { ref name, is_value: false, .. } if env.lookup(name).is_some() => {
-                if let TypeError::UnknownType { name, suggestion, variant_of, .. } = self {
-                    TypeError::UnknownType { name, suggestion, variant_of, is_value: true }
+            TypeError::UnknownType {
+                ref name,
+                is_value: false,
+                ..
+            } if env.lookup(name).is_some() => {
+                if let TypeError::UnknownType {
+                    name,
+                    suggestion,
+                    variant_of,
+                    ..
+                } = self
+                {
+                    TypeError::UnknownType {
+                        name,
+                        suggestion,
+                        variant_of,
+                        is_value: true,
+                    }
                 } else {
                     unreachable!()
                 }
@@ -960,7 +975,10 @@ impl fmt::Display for TypeError {
                     missing.join(", ")
                 )
             }
-            TypeError::MissingTraitMethodAnnotation { trait_name, method_name } => {
+            TypeError::MissingTraitMethodAnnotation {
+                trait_name,
+                method_name,
+            } => {
                 write!(
                     f,
                     "trait method `{}` in trait `{}` is missing a return type annotation",

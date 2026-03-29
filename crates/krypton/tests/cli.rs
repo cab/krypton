@@ -264,7 +264,14 @@ fn test_compile_target_js_produces_mjs() {
     let out_dir = dir.path().join("out");
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(dir.path())
-        .args(["compile", "hello.kr", "--target", "js", "-o", out_dir.to_str().unwrap()])
+        .args([
+            "compile",
+            "hello.kr",
+            "--target",
+            "js",
+            "-o",
+            out_dir.to_str().unwrap(),
+        ])
         .output()
         .expect("failed to run krypton");
     assert!(

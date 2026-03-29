@@ -22,7 +22,6 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import vis_lib/Red as Red(): Color
-import vis_lib/Red as Red(): Color
 import vis_lib/Blue as Blue(): Color
 declare println: (Object) -> Unit
 

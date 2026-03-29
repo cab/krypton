@@ -380,7 +380,7 @@ where
                                 exprs: vec![single],
                                 span: to_span(e.span()),
                             },
-                            _ => single
+                            _ => single,
                         }
                     } else {
                         Expr::Do {
@@ -918,15 +918,13 @@ fn visibility_parser<'tokens, 'src: 'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
-    symbol(Token::Pub)
-        .or_not()
-        .map(|pub_tok| {
-            if pub_tok.is_some() {
-                Visibility::Pub
-            } else {
-                Visibility::Private
-            }
-        })
+    symbol(Token::Pub).or_not().map(|pub_tok| {
+        if pub_tok.is_some() {
+            Visibility::Pub
+        } else {
+            Visibility::Private
+        }
+    })
 }
 
 /// Visibility parser that also accepts `pub opaque` (for type declarations only).
@@ -1147,22 +1145,27 @@ where
             |((((((pub_span, name), type_params), params), return_type), constraints), body), e| {
                 let warning = pub_span.map(|span| ParseError {
                     code: ErrorCode::P0004,
-                    message: "pub is not needed on trait methods — they share the trait's visibility".to_string(),
+                    message:
+                        "pub is not needed on trait methods — they share the trait's visibility"
+                            .to_string(),
                     span,
                 });
-                (FnDecl {
-                    name,
-                    visibility: Visibility::Private,
-                    type_params,
-                    params,
-                    constraints,
-                    return_type,
-                    body: Box::new(body.unwrap_or(Expr::Lit {
-                        value: Lit::Unit,
+                (
+                    FnDecl {
+                        name,
+                        visibility: Visibility::Private,
+                        type_params,
+                        params,
+                        constraints,
+                        return_type,
+                        body: Box::new(body.unwrap_or(Expr::Lit {
+                            value: Lit::Unit,
+                            span: to_span(e.span()),
+                        })),
                         span: to_span(e.span()),
-                    })),
-                    span: to_span(e.span()),
-                }, warning)
+                    },
+                    warning,
+                )
             },
         );
 
@@ -1203,14 +1206,17 @@ where
                         warnings.push(w);
                     }
                 }
-                (Decl::DefTrait {
-                    visibility,
-                    name,
-                    type_param,
-                    superclasses,
-                    methods,
-                    span: to_span(e.span()),
-                }, warnings)
+                (
+                    Decl::DefTrait {
+                        visibility,
+                        name,
+                        type_param,
+                        superclasses,
+                        methods,
+                        span: to_span(e.span()),
+                    },
+                    warnings,
+                )
             },
         );
 

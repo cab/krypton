@@ -23,7 +23,6 @@ import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 import core/json/JBool as JBool(Bool): Json
 import core/json/JNull as JNull(): Json
-import core/json/JBool as JBool(Bool): Json
 import core/json/JNum as JNum(Float): Json
 import core/json/JStr as JStr(String): Json
 import core/json/JArr as JArr(List[Json]): Json

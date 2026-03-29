@@ -150,5 +150,4 @@ impl Compiler {
         self.builder.push_jvm_type(result_type);
         Ok(result_type)
     }
-
 }

@@ -105,26 +105,22 @@ pub(super) fn resolved_ref_from_binding_source(
 ) -> Option<ResolvedBindingRef> {
     match source {
         BindingSource::LocalValue => None,
-        BindingSource::TopLevelLocalFunction { qualified_name } => {
-            Some(ResolvedBindingRef::Callable(
-                ResolvedCallableRef::LocalFunction {
-                    qualified_name: typed_ast::QualifiedName::new(
-                        qualified_name.module_path.clone(),
-                        qualified_name.local_name.clone(),
-                    ),
-                },
-            ))
-        }
-        BindingSource::ImportedFunction { qualified_name, .. } => {
-            Some(ResolvedBindingRef::Callable(
-                ResolvedCallableRef::ImportedFunction {
-                    qualified_name: typed_ast::QualifiedName::new(
-                        qualified_name.module_path.clone(),
-                        qualified_name.local_name.clone(),
-                    ),
-                },
-            ))
-        }
+        BindingSource::TopLevelLocalFunction { qualified_name } => Some(
+            ResolvedBindingRef::Callable(ResolvedCallableRef::LocalFunction {
+                qualified_name: typed_ast::QualifiedName::new(
+                    qualified_name.module_path.clone(),
+                    qualified_name.local_name.clone(),
+                ),
+            }),
+        ),
+        BindingSource::ImportedFunction { qualified_name, .. } => Some(
+            ResolvedBindingRef::Callable(ResolvedCallableRef::ImportedFunction {
+                qualified_name: typed_ast::QualifiedName::new(
+                    qualified_name.module_path.clone(),
+                    qualified_name.local_name.clone(),
+                ),
+            }),
+        ),
         BindingSource::TraitMethod {
             trait_module_path,
             trait_name,
@@ -134,11 +130,9 @@ pub(super) fn resolved_ref_from_binding_source(
             TraitName::new(trait_module_path.clone(), trait_name.clone()),
             method_name.clone(),
         )),
-        BindingSource::IntrinsicFunction { name } => {
-            Some(ResolvedBindingRef::Callable(
-                ResolvedCallableRef::Intrinsic { name: name.clone() },
-            ))
-        }
+        BindingSource::IntrinsicFunction { name } => Some(ResolvedBindingRef::Callable(
+            ResolvedCallableRef::Intrinsic { name: name.clone() },
+        )),
     }
 }
 
@@ -1051,8 +1045,17 @@ fn extern_method_sig_eq(a: &ExternMethod, b: &ExternMethod) -> bool {
 /// Result of processing extern methods: function info for codegen + dict requirements.
 pub(super) struct ExternMethodsResult {
     pub(super) extern_fns: Vec<ExternFnInfo>,
+    pub(super) bindings: Vec<ExternBindingInfo>,
     /// Dict requirements for extern functions with `where` clauses.
     pub(super) fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+}
+
+#[derive(Clone)]
+pub(super) struct ExternBindingInfo {
+    pub(super) name: String,
+    pub(super) scheme: TypeScheme,
+    pub(super) visibility: Visibility,
+    pub(super) def_span: Span,
 }
 
 /// Process extern methods from an `extern "class" { ... }` block, binding their
@@ -1068,7 +1071,6 @@ fn process_extern_methods(
     module_path_str: &str,
     span: Span,
     name_filter: Option<&HashSet<&str>>,
-    aliases: &HashMap<String, String>,
     type_param_map: Option<&HashMap<String, TypeVarId>>,
     type_param_arity: Option<&HashMap<String, usize>>,
     type_param_names: Option<&[String]>,
@@ -1083,9 +1085,10 @@ fn process_extern_methods(
         _ => vec![],
     };
     let mut extern_fns = Vec::new();
+    let mut bindings = Vec::new();
     let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for method in methods {
-        let bind_name = aliases.get(&method.name).unwrap_or(&method.name);
+        let bind_name = &method.name;
         if let Some(filter) = name_filter {
             if !filter.contains(method.name.as_str()) && !filter.contains(bind_name.as_str()) {
                 continue;
@@ -1165,7 +1168,18 @@ fn process_extern_methods(
                 var_names: HashMap::new(),
             }
         };
-        env.bind(bind_name.clone(), scheme);
+        env.bind_top_level_function(
+            bind_name.clone(),
+            scheme.clone(),
+            module_path_str.to_string(),
+            bind_name.clone(),
+        );
+        bindings.push(ExternBindingInfo {
+            name: bind_name.clone(),
+            scheme,
+            visibility: method.visibility.clone(),
+            def_span: method.span,
+        });
 
         // Register where clause dict requirements
         if !method.where_clauses.is_empty() {
@@ -1235,6 +1249,7 @@ fn process_extern_methods(
     }
     Ok(ExternMethodsResult {
         extern_fns,
+        bindings,
         fn_constraints,
     })
 }
@@ -1449,12 +1464,11 @@ impl ImportContext {
         self.imported_fn_index.contains_key(name)
     }
 
-    /// Atomically bind an imported function: env + fn_types + provenance.
+    /// Register imported-function metadata and compute its canonical binding source.
     /// Returns an error if the same name is already imported from a different
     /// (non-prelude) module. The user must alias one import to resolve the conflict.
-    fn bind_import(
+    fn register_import_binding(
         &mut self,
-        env: &mut TypeEnv,
         name: String,
         scheme: TypeScheme,
         origin: Option<TraitName>,
@@ -1462,7 +1476,7 @@ impl ImportContext {
         original_name: String,
         is_prelude: bool,
         span: Span,
-    ) -> Result<(), SpannedTypeError> {
+    ) -> Result<BindingSource, SpannedTypeError> {
         let same_symbol_as_prelude = !is_prelude
             && self.get_by_name(&name).any(|existing| {
                 existing.is_prelude
@@ -1496,24 +1510,22 @@ impl ImportContext {
             }
         }
 
-        if let Some(trait_name) = &origin {
-            env.bind_trait_method(
-                name.clone(),
-                scheme.clone(),
-                trait_name.module_path.clone(),
-                trait_name.local_name.clone(),
-                original_name.clone(),
-                effective_is_prelude,
-            );
+        let binding_source = if let Some(trait_name) = &origin {
+            BindingSource::TraitMethod {
+                trait_module_path: trait_name.module_path.clone(),
+                trait_name: trait_name.local_name.clone(),
+                method_name: original_name.clone(),
+                is_prelude: effective_is_prelude,
+            }
         } else {
-            env.bind_imported_function(
-                name.clone(),
-                scheme.clone(),
-                source_module.clone(),
-                original_name.clone(),
-                effective_is_prelude,
-            );
-        }
+            BindingSource::ImportedFunction {
+                qualified_name: crate::types::BindingQualifiedName {
+                    module_path: source_module.clone(),
+                    local_name: original_name.clone(),
+                },
+                is_prelude: effective_is_prelude,
+            }
+        };
         self.push_fn(typed_ast::ImportedFn {
             name: name.clone(),
             scheme,
@@ -1521,7 +1533,32 @@ impl ImportContext {
             qualified_name: typed_ast::QualifiedName::new(source_module, original_name),
             is_prelude: effective_is_prelude,
         });
-        Ok(())
+        Ok(binding_source)
+    }
+
+    /// Atomically bind an imported function: env + fn_types + provenance.
+    fn bind_import(
+        &mut self,
+        env: &mut TypeEnv,
+        name: String,
+        scheme: TypeScheme,
+        origin: Option<TraitName>,
+        source_module: String,
+        original_name: String,
+        is_prelude: bool,
+        span: Span,
+    ) -> Result<BindingSource, SpannedTypeError> {
+        let binding_source = self.register_import_binding(
+            name.clone(),
+            scheme.clone(),
+            origin,
+            source_module,
+            original_name,
+            is_prelude,
+            span,
+        )?;
+        env.bind_with_source(name, scheme, binding_source.clone());
+        Ok(binding_source)
     }
 
     /// Bind a hidden (qualified) function: fn_types + provenance, no env bind.
@@ -1626,12 +1663,14 @@ impl ModuleInferenceState {
         (
             Vec<ExternFnInfo>,
             Vec<ExternTypeInfo>,
+            Vec<ExternBindingInfo>,
             HashMap<String, Vec<(TraitName, TypeVarId)>>,
         ),
         SpannedTypeError,
     > {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
         let mut extern_types: Vec<ExternTypeInfo> = Vec::new();
+        let mut extern_bindings: Vec<ExternBindingInfo> = Vec::new();
         let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> =
             HashMap::new();
 
@@ -1735,7 +1774,6 @@ impl ModuleInferenceState {
 
                 // Only process methods not already seen from another target
                 if !new_method_names.is_empty() {
-                    let no_aliases = HashMap::new();
                     let tp_names = type_params.as_slice();
                     let result = process_extern_methods(
                         module_path,
@@ -1748,7 +1786,6 @@ impl ModuleInferenceState {
                         mod_path,
                         *span,
                         Some(&new_method_names),
-                        &no_aliases,
                         tp_map.as_ref(),
                         tp_arity.as_ref(),
                         if tp_map.is_some() {
@@ -1758,25 +1795,22 @@ impl ModuleInferenceState {
                         },
                     )?;
 
-                    for info in &result.extern_fns {
-                        if let Some(scheme) = self.env.lookup(&info.name).cloned() {
-                            self.env.bind_top_level_function(
-                                info.name.clone(),
-                                scheme,
-                                mod_path.to_string(),
-                                info.name.clone(),
-                            );
-                        }
-                    }
-
                     for (name, reqs) in result.fn_constraints {
                         extern_fn_constraints.insert(name, reqs);
+                    }
+                    // Deduplicate bindings by name: cross-target extern methods
+                    // share one callable binding but produce separate ExternFnInfo
+                    // entries per backend target.
+                    for binding in result.bindings {
+                        if !extern_bindings.iter().any(|b| b.name == binding.name) {
+                            extern_bindings.push(binding);
+                        }
                     }
                     extern_fns.extend(result.extern_fns);
                 }
             }
         }
-        Ok((extern_fns, extern_types, extern_fn_constraints))
+        Ok((extern_fns, extern_types, extern_bindings, extern_fn_constraints))
     }
 
     fn cleanup_prelude_shadows(&mut self, module: &Module) {
@@ -1826,7 +1860,10 @@ impl ModuleInferenceState {
         for decl in &module.decls {
             match decl {
                 Decl::DefFn(f) => {
-                    if let Some(imp) = self.imports.get_by_name(&f.name).find(|imp| !imp.is_prelude)
+                    if let Some(imp) = self
+                        .imports
+                        .get_by_name(&f.name)
+                        .find(|imp| !imp.is_prelude)
                     {
                         return Err(spanned(
                             TypeError::DefinitionConflictsWithImport {
@@ -1839,8 +1876,10 @@ impl ModuleInferenceState {
                 }
                 Decl::Extern { methods, .. } => {
                     for m in methods {
-                        if let Some(imp) =
-                            self.imports.get_by_name(&m.name).find(|imp| !imp.is_prelude)
+                        if let Some(imp) = self
+                            .imports
+                            .get_by_name(&m.name)
+                            .find(|imp| !imp.is_prelude)
                         {
                             return Err(spanned(
                                 TypeError::DefinitionConflictsWithImport {
@@ -1914,6 +1953,7 @@ impl ModuleInferenceState {
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
         extern_types: Vec<ExternTypeInfo>,
+        extern_bindings: Vec<ExternBindingInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
         parsed_modules: &HashMap<String, &Module>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
@@ -1942,6 +1982,19 @@ impl ModuleInferenceState {
                     qualified_name: typed_ast::QualifiedName::new(
                         module_path.to_string(),
                         n.clone(),
+                    ),
+                }),
+        );
+        results.extend(
+            extern_bindings
+                .iter()
+                .map(|binding| typed_ast::FnTypeEntry {
+                    name: binding.name.clone(),
+                    scheme: binding.scheme.clone(),
+                    origin: None,
+                    qualified_name: typed_ast::QualifiedName::new(
+                        module_path.to_string(),
+                        binding.name.clone(),
                     ),
                 }),
         );
@@ -1980,7 +2033,8 @@ impl ModuleInferenceState {
         }
 
         // Build exported_fn_types: the public API surface for downstream importers.
-        // Includes pub (transparent) constructors, pub local functions, and instance methods.
+        // Includes pub (transparent) constructors, pub local functions, pub extern methods,
+        // and instance methods.
         // Does NOT include imported functions.
         let mut exported_fn_types: Vec<typed_ast::ExportedFn> = Vec::new();
 
@@ -2012,6 +2066,18 @@ impl ModuleInferenceState {
                     scheme: result_schemes[i].clone().unwrap(),
                     origin: None,
                     def_span: Some(decl.span),
+                });
+            }
+        }
+
+        // 3. Local pub extern methods
+        for binding in &extern_bindings {
+            if matches!(binding.visibility, Visibility::Pub) {
+                exported_fn_types.push(typed_ast::ExportedFn {
+                    name: binding.name.clone(),
+                    scheme: binding.scheme.clone(),
+                    origin: None,
+                    def_span: Some(binding.def_span),
                 });
             }
         }
@@ -3586,9 +3652,15 @@ fn infer_function_bodies<'a>(
                     }
                 }
             }
-            state.env.bind_with_def_span(
+            state.env.bind_with_source_and_def_span(
                 fn_decls[idx].name.clone(),
                 scheme.clone(),
+                BindingSource::TopLevelLocalFunction {
+                    qualified_name: crate::types::BindingQualifiedName {
+                        module_path: mod_path.to_string(),
+                        local_name: fn_decls[idx].name.clone(),
+                    },
+                },
                 crate::types::DefSpan {
                     span: fn_decls[idx].span,
                     source_module: None,
@@ -4013,7 +4085,7 @@ pub(crate) fn infer_module_inner(
         )
         .map_err(|e| vec![e])?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let (extern_fns, extern_types, extern_fn_constraints) = state
+    let (extern_fns, extern_types, extern_bindings, extern_fn_constraints) = state
         .process_local_externs(module, &module_path)
         .map_err(|e| vec![e])?;
     state.cleanup_prelude_shadows(module);
@@ -4081,6 +4153,7 @@ pub(crate) fn infer_module_inner(
         exported_trait_defs,
         extern_fns,
         extern_types,
+        extern_bindings,
         constructor_schemes,
         parsed_modules,
         &shared_type_vars,
