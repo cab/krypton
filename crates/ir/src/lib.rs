@@ -311,11 +311,12 @@ pub fn canonical_type_name(ty: &Type) -> std::string::String {
 }
 
 /// Extract the type name from a CanonicalRef's symbol (for pretty-printing).
-/// Panics if the symbol is not a Type variant.
-pub fn canonical_ref_type_name(cref: &CanonicalRef) -> &str {
+/// Returns a diagnostic fallback for non-Type symbols instead of panicking,
+/// since this is used in Display impls where crashing hinders debugging.
+pub fn canonical_ref_type_name(cref: &CanonicalRef) -> String {
     match &cref.symbol {
-        LocalSymbolKey::Type(name) => name,
-        other => panic!("ICE: expected LocalSymbolKey::Type, got {other}"),
+        LocalSymbolKey::Type(name) => name.clone(),
+        other => format!("<non-type:{}>", other),
     }
 }
 

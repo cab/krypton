@@ -562,13 +562,17 @@ struct LowerCtx {
     fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
     /// Module path of the module being lowered (for filtering local dict refs).
     module_path: String,
-    /// Cross-module instance references: (trait_name, target_type) pairs resolved
-    /// via GetDict/MakeDict that are not locally defined. The codegen uses these
-    /// to determine which dicts need to be imported from other modules.
-    imported_dict_refs: Vec<(TraitName, IrType)>,
+    /// Cross-module instance references resolved via GetDict/MakeDict that are
+    /// not locally defined. Stores the resolved canonical ref, trait name, and IR type.
+    /// The codegen uses these to determine which dicts need to be imported.
+    imported_dict_refs: Vec<(CanonicalRef, TraitName, IrType)>,
     /// All known instances with source module and target type info,
     /// for resolving instance CanonicalRefs during GetDict/MakeDict emission.
     all_instances: Vec<InstanceSourceInfo>,
+    /// (trait_local_name, canonical_type_name) → index into all_instances.
+    /// Fast path for exact-match instance resolution; parameterized instances
+    /// fall through to the linear structural scan.
+    instance_exact_index: HashMap<(String, String), usize>,
 }
 
 impl LowerCtx {
@@ -615,8 +619,10 @@ impl LowerCtx {
                 return self.type_canonical_ref(type_ref);
             }
         }
-        // Fallback to current module
-        self.type_canonical_ref_from_parts(&self.module_path, local_name)
+        panic!(
+            "ICE: type '{}' not found in sum_variants or struct_fields",
+            local_name
+        )
     }
 
     /// Build a CanonicalRef for an instance from trait + type info.
@@ -631,28 +637,27 @@ impl LowerCtx {
         let ir_type: IrType = target_type.clone().into();
         let canonical_name = crate::canonical_type_name(&ir_type);
 
-        // Find the matching instance: exact canonical name match first,
-        // then structural match for parameterized instances.
-        let matched = self
-            .all_instances
-            .iter()
-            .filter(|info| info.trait_name == *trait_name)
-            .find(|info| {
-                // Exact match (concrete instances)
-                if info.target_type_name == canonical_name {
-                    return true;
-                }
-                // Structural match (parameterized instances like impl[a] Convert[(a) -> Int])
-                let mut bindings = HashMap::new();
-                bind_type_vars(&info.target_type, target_type, &mut bindings)
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "ICE: no instance source for {}[{}] — \
-                     all_instances should contain all local + imported instances",
-                    trait_name.local_name, canonical_name
-                )
-            });
+        // Fast path: exact match via pre-built index
+        let key = (trait_name.local_name.clone(), canonical_name.clone());
+        let matched = if let Some(&idx) = self.instance_exact_index.get(&key) {
+            &self.all_instances[idx]
+        } else {
+            // Slow path: structural match for parameterized instances
+            self.all_instances
+                .iter()
+                .filter(|info| info.trait_name == *trait_name)
+                .find(|info| {
+                    let mut bindings = HashMap::new();
+                    bind_type_vars(&info.target_type, target_type, &mut bindings)
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "ICE: no instance source for {}[{}] — \
+                         all_instances should contain all local + imported instances",
+                        trait_name.local_name, canonical_name
+                    )
+                })
+        };
 
         CanonicalRef {
             module: ModulePath::new(matched.source_module.clone()),
@@ -4443,8 +4448,9 @@ impl LowerCtx {
         // to determine which instance dicts to import from other modules).
         // Skip dicts whose trait is defined in the current module — those are local.
         if trait_name.module_path != self.module_path {
+            let cref = self.instance_canonical_ref(trait_name, ty);
             self.imported_dict_refs
-                .push((trait_name.clone(), ty.clone().into()));
+                .push((cref, trait_name.clone(), ty.clone().into()));
         }
 
         // Strategy 2: Check for parameterized instance with where-constraints
@@ -5461,7 +5467,13 @@ pub fn lower_module(
             }
             infos
         },
+        instance_exact_index: HashMap::new(), // populated below
     };
+    // Build exact-match index for instance resolution
+    for (i, info) in ctx.all_instances.iter().enumerate() {
+        let key = (info.trait_name.local_name.clone(), info.target_type_name.clone());
+        ctx.instance_exact_index.entry(key).or_insert(i);
+    }
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
     //    Sort by name for deterministic TypeVarId allocation order.
@@ -5718,6 +5730,11 @@ pub fn lower_module(
     functions.extend(ctx.lifted_fns.drain(..));
 
     // 7. Build fn_identities lookup (includes lifted lambdas registered in fn_ids)
+    let callable_by_id: HashMap<FnId, &QualifiedName> = ctx
+        .callable_ids
+        .iter()
+        .map(|(qn, &fid)| (fid, qn))
+        .collect();
     let mut fn_identities = HashMap::new();
     for (name, &id) in &ctx.fn_ids {
         if let Some(existing) = fn_identities.get(&id) {
@@ -5737,7 +5754,7 @@ pub fn lower_module(
         // Determine identity variant
         let identity = if crate::COMPILER_INTRINSICS.contains(&name.as_str()) {
             FnIdentity::Intrinsic { name: name.clone() }
-        } else if let Some(qn) = ctx.callable_ids.iter().find(|(_, &fid)| fid == id).map(|(qn, _)| qn) {
+        } else if let Some(qn) = callable_by_id.get(&id) {
             if qn.module_path == "__builtin__" {
                 FnIdentity::Intrinsic { name: name.clone() }
             } else if qn.module_path == ctx.module_path {
@@ -5752,6 +5769,10 @@ pub fn lower_module(
                 }
             }
         } else {
+            // Not in callable_ids: lifted synthetics (lambda$, ctor$, fn_ref$,
+            // trait_ref$) and nullary constructors referenced by name.
+            // TODO(M27): nullary constructors shouldn't have FnIds — they lower
+            // to ConstructVariant, not FnDef. Clean up in a follow-up.
             FnIdentity::Local { name: name.clone() }
         };
         fn_identities.insert(id, identity);
@@ -6102,19 +6123,15 @@ pub fn lower_module(
         .collect();
 
     // Build ManifestDictRef entries from imported dict refs
-    let ir_imported_dict_refs: Vec<ManifestDictRef> = ctx.imported_dict_refs.iter().map(|(trait_name, ty)| {
-        ManifestDictRef {
-            canonical: CanonicalRef {
-                module: ModulePath::new(trait_name.module_path.clone()),
-                symbol: LocalSymbolKey::Instance {
-                    trait_name: trait_name.local_name.clone(),
-                    target_type: crate::canonical_type_name(ty),
-                },
-            },
+    let ir_imported_dict_refs: Vec<ManifestDictRef> = ctx
+        .imported_dict_refs
+        .iter()
+        .map(|(cref, trait_name, ty)| ManifestDictRef {
+            canonical: cref.clone(),
             trait_name: trait_name.clone(),
             ty: ty.clone(),
-        }
-    }).collect();
+        })
+        .collect();
 
     // Collect tuple arities from all FnDefs
     let mut tuple_arities = std::collections::BTreeSet::new();
