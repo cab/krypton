@@ -496,6 +496,7 @@ pub struct ExternFnDef {
     pub declaring_module_path: String,
     pub span: Span,
     pub target: ExternTarget,
+    pub nullable: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
 }

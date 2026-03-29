@@ -229,6 +229,7 @@ pub struct ExternFnSummary {
     pub declaring_module: ModulePath,
     pub host_module_path: String,
     pub target: ExternTarget,
+    pub nullable: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
 }
@@ -548,6 +549,7 @@ fn extract_extern_fns(externs: &[ExternFnInfo]) -> Vec<ExternFnSummary> {
             declaring_module: ModulePath::new(&ef.declaring_module_path),
             host_module_path: ef.module_path.clone(),
             target: ef.target.clone(),
+            nullable: ef.nullable,
             param_types: ef.param_types.clone(),
             return_type: ef.return_type.clone(),
         })
@@ -745,8 +747,9 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
         efns.sort_by_key(|e| &e.name);
         for e in efns {
             out.push_str(&format!(
-                "  {} ({:?} \"{}\") : ({}) -> {}\n",
+                "  {}{} ({:?} \"{}\") : ({}) -> {}\n",
                 e.name,
+                if e.nullable { " [nullable]" } else { "" },
                 e.target,
                 e.host_module_path,
                 e.param_types

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module extern__extern_nullable
 
-extern java "java.lang.Integer" parse_int(String): Option[Int]
+extern java "java.lang.Integer" parse_int [nullable](String): Option[Int]
 extern java "java.lang.Integer" max_value(): Int
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
