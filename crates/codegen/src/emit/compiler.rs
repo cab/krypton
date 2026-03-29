@@ -143,6 +143,7 @@ impl std::fmt::Display for CodegenErrorKind {
 }
 
 /// Info about a compiled user-defined function, used for invokestatic calls.
+#[derive(Clone)]
 pub(super) struct FunctionInfo {
     pub(super) method_ref: u16,
     pub(super) param_types: Vec<JvmType>,
@@ -336,6 +337,7 @@ pub(super) struct Compiler {
     pub(super) sum_type_params: HashMap<String, Vec<krypton_ir::TypeVarId>>,
     /// variant_name → field types (from IR SumTypeDef) for resolving generic bindings.
     pub(super) variant_field_types: HashMap<String, Vec<Type>>,
+    pub(super) raw_extern_functions: HashMap<String, FunctionInfo>,
 }
 
 impl Compiler {
@@ -458,6 +460,9 @@ impl Compiler {
                 class_descriptors: {
                     let mut cd = HashMap::new();
                     cd.insert(string_class, "Ljava/lang/String;".to_string());
+                    cd.insert(long_box_class, "Ljava/lang/Long;".to_string());
+                    cd.insert(double_box_class, "Ljava/lang/Double;".to_string());
+                    cd.insert(bool_box_class, "Ljava/lang/Boolean;".to_string());
                     cd
                 },
                 sum_type_info: HashMap::new(),
@@ -483,6 +488,7 @@ impl Compiler {
             variant_tags: HashMap::new(),
             sum_type_params: HashMap::new(),
             variant_field_types: HashMap::new(),
+            raw_extern_functions: HashMap::new(),
         };
 
         Ok(compiler)
@@ -597,8 +603,107 @@ impl Compiler {
         result_type
     }
 
+    pub(super) fn nullable_inner_type<'a>(
+        &self,
+        ty: &'a Type,
+    ) -> Result<&'a Type, CodegenError> {
+        match ty {
+            Type::Named(name, args) if name == "Option" && args.len() == 1 => Ok(&args[0]),
+            other => Err(CodegenError::TypeError(
+                format!("nullable extern must return Option[T], found {other}"),
+                None,
+            )),
+        }
+    }
+
+    pub(super) fn nullable_host_return_jvm(
+        &self,
+        ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        self.nullable_host_jvm_for_inner(self.nullable_inner_type(ty)?)
+    }
+
+    fn nullable_host_jvm_for_inner(&self, inner: &Type) -> Result<JvmType, CodegenError> {
+        Ok(match inner {
+            Type::Int => JvmType::StructRef(self.builder.refs.long_box_class),
+            Type::Float => JvmType::StructRef(self.builder.refs.double_box_class),
+            Type::Bool => JvmType::StructRef(self.builder.refs.bool_box_class),
+            Type::String => JvmType::StructRef(self.builder.refs.string_class),
+            Type::Own(inner) => return self.nullable_host_jvm_for_inner(inner),
+            Type::Named(name, args) => {
+                if args.is_empty() {
+                    if let Some(info) = self.types.struct_info.get(name) {
+                        JvmType::StructRef(info.class_index)
+                    } else {
+                        JvmType::StructRef(self.builder.refs.object_class)
+                    }
+                } else {
+                    JvmType::StructRef(self.builder.refs.object_class)
+                }
+            }
+            other => match self.type_to_jvm(other)? {
+                JvmType::StructRef(idx) => JvmType::StructRef(idx),
+                primitive => {
+                    return Err(CodegenError::TypeError(
+                        format!("unsupported nullable host return type: {primitive:?}"),
+                        None,
+                    ))
+                }
+            },
+        })
+    }
+
+    pub(super) fn option_variant_construct_info(
+        &self,
+        option_type: &Type,
+        variant_name: &str,
+    ) -> Result<(u16, u16, u16, Vec<VariantField>), CodegenError> {
+        let sum_name = match option_type {
+            Type::Named(name, _) => name,
+            other => {
+                return Err(CodegenError::TypeError(
+                    format!("expected Option sum type, found {other}"),
+                    None,
+                ))
+            }
+        };
+        let sum_info = self.types.sum_type_info.get(sum_name).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown Option sum type: {sum_name}"), None)
+        })?;
+        let variant = sum_info.variants.get(variant_name).ok_or_else(|| {
+            CodegenError::TypeError(
+                format!("missing Option variant {variant_name} for {sum_name}"),
+                None,
+            )
+        })?;
+        Ok((
+            variant.class_index,
+            variant.constructor_ref,
+            sum_info.interface_class_index,
+            variant.fields.clone(),
+        ))
+    }
+
+    pub(super) fn variant_singleton_field_ref(
+        &mut self,
+        class_index: u16,
+    ) -> Result<u16, CodegenError> {
+        let desc = self
+            .types
+            .class_descriptors
+            .get(&class_index)
+            .cloned()
+            .ok_or_else(|| {
+                CodegenError::TypeError(
+                    format!("missing class descriptor for singleton variant {}", class_index),
+                    None,
+                )
+            })?;
+        Ok(self.cp.add_field_ref(class_index, "INSTANCE", &desc)?)
+    }
+
     /// Emit coercion bytecode to convert `actual` type on the stack to `target` type.
-    fn emit_type_coercion(&mut self, actual: JvmType, target: JvmType) {
+    pub(super) fn emit_type_coercion(&mut self, actual: JvmType, target: JvmType) {
         let obj = self.builder.refs.object_class;
         if matches!(target, JvmType::StructRef(idx) if idx == obj)
             && !matches!(actual, JvmType::StructRef(_))

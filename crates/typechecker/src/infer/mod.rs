@@ -1236,6 +1236,7 @@ fn process_extern_methods(
             span: method.span,
             module_path: class_name.to_string(),
             target: target.clone(),
+            nullable: method.nullable,
             param_types: concrete_params,
             return_type: codegen_return,
         });

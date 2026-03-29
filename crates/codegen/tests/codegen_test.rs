@@ -12,7 +12,7 @@ use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
 use krypton_modules::module_resolver::CompositeResolver;
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile;
 
@@ -103,6 +103,41 @@ fn compile_typed_modules(typed_modules: &[TypedModule]) -> tempfile::TempDir {
     dir
 }
 
+fn compile_java_sources(class_dir: &Path, sources: &[(&str, &str)]) {
+    if sources.is_empty() {
+        return;
+    }
+
+    let mut java_files = Vec::new();
+    for (class_name, source) in sources {
+        let java_path = class_dir.join(format!("{class_name}.java"));
+        std::fs::write(&java_path, source).unwrap();
+        java_files.push(java_path);
+    }
+
+    let mut cmd = Command::new("javac");
+    cmd.arg("-d").arg(class_dir);
+    for path in &java_files {
+        cmd.arg(path);
+    }
+    let output = cmd.output().expect("javac should run");
+    assert!(
+        output.status.success(),
+        "javac exited with {}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn compile_typed_modules_with_java_sources(
+    typed_modules: &[TypedModule],
+    sources: &[(&str, &str)],
+) -> tempfile::TempDir {
+    let dir = compile_typed_modules(typed_modules);
+    compile_java_sources(dir.path(), sources);
+    dir
+}
+
 fn run_typed_modules(typed_modules: &[TypedModule]) -> String {
     let dir = compile_typed_modules(typed_modules);
     let output = Command::new("java")
@@ -121,6 +156,54 @@ fn run_typed_modules(typed_modules: &[TypedModule]) -> String {
 
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
+
+fn run_typed_modules_with_java_sources(
+    typed_modules: &[TypedModule],
+    sources: &[(&str, &str)],
+) -> String {
+    let dir = compile_typed_modules_with_java_sources(typed_modules, sources);
+    let output = Command::new("java")
+        .arg("-cp")
+        .arg(build_classpath(dir.path()))
+        .arg("Test")
+        .output()
+        .expect("java command should run");
+
+    assert!(
+        output.status.success(),
+        "java exited with {}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn infer_typed_modules(source: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> Vec<TypedModule> {
+    let (module, errors) = parse(source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    infer_module(&module, resolver, "test".to_string()).expect("type check should succeed")
+}
+
+const NULLABLE_HOST_JAVA: &str = r#"
+public final class NullableHost {
+    public static String maybe_string(String s) {
+        return "none".equals(s) ? null : s.toUpperCase();
+    }
+
+    public static Long maybe_int(String s) {
+        return "none".equals(s) ? null : Long.valueOf(Long.parseLong(s));
+    }
+
+    public static Double maybe_float(String s) {
+        return "none".equals(s) ? null : Double.valueOf(Double.parseDouble(s));
+    }
+
+    public static String definitely_string(String s) {
+        return s.toUpperCase();
+    }
+}
+"#;
 
 fn string_lit(value: &str) -> TypedExpr {
     TypedExpr {
@@ -435,6 +518,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             module_path: "krypton.runtime.KryptonIO".to_string(),
             declaring_module_path: "test".to_string(),
             target: krypton_parser::ast::ExternTarget::Java,
+            nullable: false,
             param_types: vec![Type::Var(println_var)],
             return_type: Type::Unit,
             span: (0, 0),
@@ -515,6 +599,105 @@ fn test_bool_literal() {
 #[test]
 fn test_string_literal() {
     assert_eq!(run_program(r#"fun main() = println("hello")"#), "hello");
+}
+
+#[test]
+fn nullable_extern_wrappers_produce_expected_options() {
+    let source = r#"
+extern java "NullableHost" {
+    @nullable fun maybe_string(s: String) -> Option[String]
+    @nullable fun maybe_int(s: String) -> Option[Int]
+    @nullable fun maybe_float(s: String) -> Option[Float]
+    fun definitely_string(s: String) -> String
+}
+
+fun main() = {
+    println(maybe_string("none"))
+    println(maybe_string("hi"))
+    println(maybe_int("none"))
+    println(maybe_int("42"))
+    println(maybe_float("none"))
+    println(maybe_float("3.5"))
+    println(definitely_string("ok"))
+}
+"#;
+
+    let typed_modules = infer_typed_modules(source, &CompositeResolver::stdlib_only());
+    let output =
+        run_typed_modules_with_java_sources(&typed_modules, &[("NullableHost", NULLABLE_HOST_JAVA)]);
+
+    assert_eq!(
+        output,
+        "None\nSome(HI)\nNone\nSome(42)\nNone\nSome(3.5)\nOK"
+    );
+}
+
+#[test]
+fn imported_nullable_extern_calls_route_through_declaring_module_wrapper() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("nullable_lib.kr"),
+        r#"
+extern java "NullableHost" {
+    @nullable pub fun maybe_int(s: String) -> Option[Int]
+}
+"#,
+    )
+    .unwrap();
+
+    let source = r#"
+import nullable_lib.{maybe_int}
+
+fun main() = println(maybe_int("42"))
+"#;
+    let resolver = CompositeResolver::with_source_root(temp.path().to_path_buf());
+    let typed_modules = infer_typed_modules(source, &resolver);
+    let dir = compile_typed_modules(&typed_modules);
+
+    let test_output = javap_output(&dir.path().join("Test.class"), true);
+    assert!(
+        test_output.contains("Method nullable_lib.maybe_int:(Ljava/lang/String;)Lcore/option/Option;")
+            || test_output.contains("Method nullable_lib.maybe_int:(Ljava/lang/String;)Ljava/lang/Object;"),
+        "expected imported call to target nullable_lib wrapper, got:\n{test_output}"
+    );
+
+    let lib_output = javap_output(&dir.path().join("nullable_lib.class"), true);
+    assert!(
+        lib_output.contains("public static core.option.Option maybe_int(java.lang.String);"),
+        "expected declaring module to emit nullable wrapper, got:\n{lib_output}"
+    );
+}
+
+#[test]
+fn nullable_wrapper_bytecode_is_emitted_only_for_nullable_externs() {
+    let source = r#"
+extern java "NullableHost" {
+    @nullable fun maybe_string(s: String) -> Option[String]
+    @nullable fun maybe_int(s: String) -> Option[Int]
+    @nullable fun maybe_float(s: String) -> Option[Float]
+    fun definitely_string(s: String) -> String
+}
+
+fun main() = {
+    println(maybe_string("hi"))
+    println(maybe_int("42"))
+    println(maybe_float("3.5"))
+    println(definitely_string("ok"))
+}
+"#;
+
+    let typed_modules = infer_typed_modules(source, &CompositeResolver::stdlib_only());
+    let dir =
+        compile_typed_modules_with_java_sources(&typed_modules, &[("NullableHost", NULLABLE_HOST_JAVA)]);
+    let javap_out = javap_output(&dir.path().join("Test.class"), true);
+
+    assert!(javap_out.contains("public static core.option.Option maybe_string(java.lang.String);"));
+    assert!(javap_out.contains("public static core.option.Option maybe_int(java.lang.String);"));
+    assert!(javap_out.contains("public static core.option.Option maybe_float(java.lang.String);"));
+    assert!(!javap_out.contains("public static java.lang.String definitely_string(java.lang.String);"));
+    assert!(javap_out.contains("java/lang/Long.longValue:()J"));
+    assert!(javap_out.contains("java/lang/Double.doubleValue:()D"));
+    assert!(javap_out.contains("Field core/option/Option$None.INSTANCE:Lcore/option/Option$None;"));
 }
 
 #[test]

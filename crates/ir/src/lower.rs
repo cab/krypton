@@ -5209,6 +5209,7 @@ pub fn lower_module(
                 declaring_module_path: ext.declaring_module_path.clone(),
                 span: ext.span,
                 target: ir_target,
+                nullable: ext.nullable,
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
             });
@@ -5472,6 +5473,7 @@ pub fn lower_module(
                 declaring_module_path: ext.declaring_module_path.clone(),
                 span: ext.span,
                 target: ir_target,
+                nullable: ext.nullable,
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
             }

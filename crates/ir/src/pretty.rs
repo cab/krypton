@@ -534,8 +534,9 @@ impl fmt::Display for Module {
             let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
             writeln!(
                 f,
-                "extern {target} {}({}): {}",
+                "extern {target} {}{}({}): {}",
                 ext.name,
+                if ext.nullable { " [nullable]" } else { "" },
                 params.join(", "),
                 ext.return_type
             )?;
@@ -701,7 +702,7 @@ mod tests {
     #[test]
     fn pretty_atom_literals() {
         insta::assert_snapshot!(Literal::Int(42).to_string(), @"42");
-        insta::assert_snapshot!(Literal::Float(3.14).to_string(), @"3.14");
+        insta::assert_snapshot!(Literal::Float(3.25).to_string(), @"3.25");
         insta::assert_snapshot!(Literal::Float(1.0).to_string(), @"1.0");
         insta::assert_snapshot!(Literal::Bool(true).to_string(), @"true");
         insta::assert_snapshot!(Literal::Bool(false).to_string(), @"false");
