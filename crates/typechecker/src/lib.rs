@@ -3,6 +3,7 @@ pub mod diagnostics;
 pub mod exhaustiveness;
 pub mod infer;
 pub mod intrinsics;
+pub mod link_context;
 pub mod module_interface;
 pub mod ownership;
 pub mod scc;
