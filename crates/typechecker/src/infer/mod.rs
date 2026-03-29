@@ -48,13 +48,6 @@ impl InferError {
     }
 }
 
-fn find_type_decl<'a>(decls: &'a [Decl], name: &str) -> Option<&'a TypeDecl> {
-    decls.iter().find_map(|d| match d {
-        Decl::DefType(td) if td.name == name => Some(td),
-        _ => None,
-    })
-}
-
 fn constructor_names(td: &TypeDecl) -> Vec<String> {
     match &td.kind {
         TypeDeclKind::Sum { variants } => variants.iter().map(|v| v.name.clone()).collect(),
@@ -1292,18 +1285,21 @@ pub fn infer_module(
         }]
     })?;
 
-    // Build parsed module lookup for import binding (borrows from graph)
-    let mut parsed_modules: HashMap<String, &Module> = HashMap::new();
     let mut cache: HashMap<String, TypedModule> = HashMap::new();
+    let mut interface_cache: HashMap<String, crate::module_interface::ModuleInterface> =
+        HashMap::new();
 
     // Type-check each dependency in topological order
     for resolved in &graph.modules {
-        parsed_modules.insert(resolved.path.clone(), &resolved.module);
         if !cache.contains_key(&resolved.path) {
+            let dep_paths: Vec<String> =
+                crate::module_interface::collect_direct_deps(&resolved.module)
+                    .iter()
+                    .map(|p| p.0.clone())
+                    .collect();
             let typed = infer_module_inner(
                 &resolved.module,
-                &mut cache,
-                &parsed_modules,
+                &interface_cache,
                 resolved.path.clone(),
                 &graph.prelude_tree_paths,
             )
@@ -1331,6 +1327,10 @@ pub fn infer_module(
             typed.module_source = StdlibLoader::get_source(&resolved.path)
                 .map(|s| s.to_string())
                 .or_else(|| resolver.resolve(&resolved.path));
+            // Extract interface for downstream modules
+            let iface =
+                crate::module_interface::extract_interface(&typed, &dep_paths);
+            interface_cache.insert(resolved.path.clone(), iface);
             cache.insert(resolved.path.clone(), typed);
         }
     }
@@ -1338,8 +1338,7 @@ pub fn infer_module(
     // Type-check the root module
     let main = infer_module_inner(
         module,
-        &mut cache,
-        &parsed_modules,
+        &interface_cache,
         root_module_path,
         &graph.prelude_tree_paths,
     )
@@ -1955,7 +1954,7 @@ impl ModuleInferenceState {
         extern_types: Vec<ExternTypeInfo>,
         extern_bindings: Vec<ExternBindingInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
-        parsed_modules: &HashMap<String, &Module>,
+        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
         shared_type_vars: &HashMap<String, HashSet<String>>,
     ) -> Result<TypedModule, Vec<SpannedTypeError>> {
         let mut instance_defs = instance_defs;
@@ -2332,6 +2331,9 @@ impl ModuleInferenceState {
             })
             .collect();
 
+        // Record imported sum type provenance for IR lowering.
+        // Variant data comes from exported_type_infos; sum_decls entries only
+        // carry the source module_path so lower_module can build imported_sum_types.
         {
             let existing_type_names: HashSet<String> =
                 sum_decls.iter().map(|d| d.name.clone()).collect();
@@ -2342,19 +2344,24 @@ impl ModuleInferenceState {
                 if existing_type_names.contains(type_name) || !matches!(vis, Visibility::Pub) {
                     continue;
                 }
-                if let Some(imported_mod) = parsed_modules.get(source_path.as_str()) {
-                    if let Some(td) = find_type_decl(&imported_mod.decls, type_name) {
-                        if let TypeDeclKind::Sum { variants } = &td.kind {
-                            sum_decls.push(SumDecl {
-                                name: td.name.clone(),
-                                type_params: td.type_params.clone(),
-                                variants: variants.clone(),
-                                qualified_name: typed_ast::QualifiedName::new(
-                                    source_path.clone(),
-                                    td.name.clone(),
-                                ),
-                            });
-                        }
+                if let Some(iface) = interface_cache.get(source_path.as_str()) {
+                    let is_sum = iface.exported_types.iter().any(|t| {
+                        t.name == *type_name
+                            && matches!(
+                                t.kind,
+                                crate::module_interface::TypeSummaryKind::Sum { .. }
+                            )
+                    });
+                    if is_sum {
+                        sum_decls.push(SumDecl {
+                            name: type_name.clone(),
+                            type_params: vec![],
+                            variants: vec![],
+                            qualified_name: typed_ast::QualifiedName::new(
+                                source_path.clone(),
+                                type_name.clone(),
+                            ),
+                        });
                     }
                 }
             }
@@ -2432,6 +2439,47 @@ impl ModuleInferenceState {
             }
         }
 
+        // Include extern type aliases in exported_type_infos so they flow
+        // through the interface like any other type — consumers register
+        // them uniformly via register_type_from_export.
+        for decl in &module.decls {
+            if let Decl::Extern {
+                alias: Some(name), ..
+            } = decl
+            {
+                if exported_type_infos.contains_key(name) {
+                    continue;
+                }
+                if let Some(type_info) = self.registry.lookup_type(name) {
+                    exported_type_infos.insert(
+                        name.clone(),
+                        typed_ast::ExportedTypeInfo {
+                            name: name.clone(),
+                            type_params: type_info.type_params.clone(),
+                            type_param_vars: type_info.type_param_vars.clone(),
+                            kind: typed_ast::ExportedTypeKind::Record {
+                                fields: vec![],
+                            },
+                        },
+                    );
+                }
+            }
+        }
+
+        // Include imported types (sum and record) in exported_type_infos so
+        // IR lowering can resolve them without AST fallback.
+        for (type_name, (source_path, _vis)) in &self.imports.imported_type_info {
+            if exported_type_infos.contains_key(type_name) {
+                continue;
+            }
+            if let Some(iface) = interface_cache.get(source_path.as_str()) {
+                if let Some(ts) = iface.exported_types.iter().find(|t| t.name == *type_name) {
+                    let export = crate::module_interface::type_summary_to_export_info(ts);
+                    exported_type_infos.insert(type_name.clone(), export);
+                }
+            }
+        }
+
         let fn_types_by_name: HashMap<String, usize> = results
             .iter()
             .enumerate()
@@ -2471,7 +2519,7 @@ impl ModuleInferenceState {
 fn process_traits_and_deriving(
     state: &mut ModuleInferenceState,
     module: &Module,
-    cache: &HashMap<String, TypedModule>,
+    interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
     module_path: &str,
     is_core_module: bool,
 ) -> Result<
@@ -2491,7 +2539,7 @@ fn process_traits_and_deriving(
         &mut trait_registry,
         &state.imports.imported_type_info,
         &state.imported_trait_defs,
-        cache,
+        interface_cache,
     );
 
     // Phase 2: Register imported trait definitions
@@ -2563,7 +2611,7 @@ fn import_cached_instances(
     trait_registry: &mut TraitRegistry,
     imported_type_info: &HashMap<String, (String, Visibility)>,
     imported_trait_defs: &[ExportedTraitDef],
-    cache: &HashMap<String, TypedModule>,
+    interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
 ) -> Vec<InstanceDefInfo> {
     let mut imported_instance_defs = Vec::new();
     // Structural instance lookup: for each type/trait in scope, look up instances
@@ -2584,16 +2632,19 @@ fn import_cached_instances(
 
     let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
     for mod_path in &source_modules {
-        if let Some(cached_module) = cache.get(*mod_path) {
-            for inst in &cached_module.instance_defs {
-                let key = (inst.trait_name.clone(), inst.target_type.clone());
+        if let Some(iface) = interface_cache.get(*mod_path) {
+            for inst_summary in &iface.exported_instances {
+                let key = (
+                    inst_summary.trait_name.clone(),
+                    inst_summary.target_type.clone(),
+                );
                 if seen_instances.insert(key) {
                     let instance = InstanceInfo {
-                        trait_name: inst.trait_name.clone(),
-                        target_type: inst.target_type.clone(),
-                        target_type_name: inst.target_type_name.clone(),
-                        type_var_ids: inst.type_var_ids.clone(),
-                        constraints: inst.constraints.clone(),
+                        trait_name: inst_summary.trait_name.clone(),
+                        target_type: inst_summary.target_type.clone(),
+                        target_type_name: inst_summary.target_type_name.clone(),
+                        type_var_ids: inst_summary.type_var_ids.clone(),
+                        constraints: inst_summary.constraints.clone(),
                         span: (0, 0),
                         is_builtin: false,
                     };
@@ -2604,7 +2655,9 @@ fn import_cached_instances(
                         }
                         Err(_) => {}
                     }
-                    imported_instance_defs.push(inst.clone());
+                    imported_instance_defs.push(
+                        crate::module_interface::instance_summary_to_def_info(inst_summary),
+                    );
                 }
             }
         }
@@ -4042,7 +4095,7 @@ fn typecheck_impl_methods(
 /// Internal per-module inference with pre-resolved module cache.
 ///
 /// The module graph has already been resolved and toposorted by `infer_module`.
-/// Import declarations look up parsed ASTs from `parsed_modules` and typed
+/// Import declarations look up module interfaces from `interface_cache` and typed
 /// results from `cache` — no recursive resolution or cycle detection needed.
 ///
 /// Pipeline phases:
@@ -4063,8 +4116,7 @@ fn typecheck_impl_methods(
 /// 15. Assemble TypedModule
 pub(crate) fn infer_module_inner(
     module: &Module,
-    cache: &mut HashMap<String, TypedModule>,
-    parsed_modules: &HashMap<String, &Module>,
+    interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
     module_path: String,
     prelude_tree_paths: &HashSet<String>,
 ) -> Result<TypedModule, Vec<SpannedTypeError>> {
@@ -4074,15 +4126,10 @@ pub(crate) fn infer_module_inner(
     let mut state = ModuleInferenceState::new(is_core_module);
 
     let synthetic_prelude_import =
-        state.build_synthetic_prelude_import(is_prelude_tree, cache, parsed_modules);
+        state.build_synthetic_prelude_import(is_prelude_tree, interface_cache);
 
     state
-        .process_imports(
-            module,
-            cache,
-            parsed_modules,
-            synthetic_prelude_import.as_ref(),
-        )
+        .process_imports(module, interface_cache, synthetic_prelude_import.as_ref())
         .map_err(|e| vec![e])?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
     let (extern_fns, extern_types, extern_bindings, extern_fn_constraints) = state
@@ -4107,8 +4154,14 @@ pub(crate) fn infer_module_inner(
         derived_instance_defs,
         imported_instance_defs,
         trait_method_map,
-    ) = process_traits_and_deriving(&mut state, module, cache, &module_path, is_core_module)
-        .map_err(|e| vec![e])?;
+    ) = process_traits_and_deriving(
+        &mut state,
+        module,
+        interface_cache,
+        &module_path,
+        is_core_module,
+    )
+    .map_err(|e| vec![e])?;
 
     // Phase: SCC-based function inference
     let (fn_decls, result_schemes, fn_bodies, mut fn_constraint_requirements, shared_type_vars) =
@@ -4155,7 +4208,7 @@ pub(crate) fn infer_module_inner(
         extern_types,
         extern_bindings,
         constructor_schemes,
-        parsed_modules,
+        interface_cache,
         &shared_type_vars,
     )
 }

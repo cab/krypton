@@ -38,7 +38,7 @@ fn main() -> Unit =
   let v0: String = call json_to_string(v1)
   let v2: Result[String, Json] = call parse_json(v0)
   switch v2 {
-    0 (v3: d) ->
+    0 (v3: h) ->
       switch v3 {
         0 ->
           let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]

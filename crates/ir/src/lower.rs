@@ -5359,39 +5359,40 @@ pub fn lower_module(
         .collect();
 
     // Imported sum types: sum type definitions from dependency modules.
+    // Uses exported_type_infos for type params and sum_variants for resolved field types.
     let ir_imported_sum_types: Vec<ImportedSumTypeDef> = typed
         .sum_decls
         .iter()
         .filter(|decl| decl.qualified_name.module_path != typed.module_path)
-        .map(|decl| {
-            let type_params = typed
-                .exported_type_infos
-                .get(&decl.name)
-                .map(|info| info.type_param_vars.clone())
-                .or_else(|| ctx.private_type_params.get(&decl.name).cloned())
-                .unwrap_or_default();
-            let variants = decl
-                .variants
-                .iter()
-                .enumerate()
-                .map(|(tag, v)| {
-                    let fields = ctx
-                        .sum_variants
-                        .get(&v.name)
-                        .map(|(_, _, f)| f.iter().cloned().map(Into::into).collect())
-                        .unwrap_or_default();
-                    VariantDef {
-                        name: v.name.clone(),
-                        tag: tag as u32,
-                        fields,
-                    }
+        .filter_map(|decl| {
+            // Only emit imported sum types (records are handled separately)
+            let info = typed.exported_type_infos.get(&decl.name)?;
+            if let ExportedTypeKind::Sum { variants } = &info.kind {
+                let type_params = info.type_param_vars.clone();
+                let variants = variants
+                    .iter()
+                    .enumerate()
+                    .map(|(tag, v)| {
+                        let fields = ctx
+                            .sum_variants
+                            .get(&v.name)
+                            .map(|(_, _, f)| f.iter().cloned().map(Into::into).collect())
+                            .unwrap_or_default();
+                        VariantDef {
+                            name: v.name.clone(),
+                            tag: tag as u32,
+                            fields,
+                        }
+                    })
+                    .collect();
+                Some(ImportedSumTypeDef {
+                    name: decl.name.clone(),
+                    module_path: decl.qualified_name.module_path.clone(),
+                    type_params,
+                    variants,
                 })
-                .collect();
-            ImportedSumTypeDef {
-                name: decl.name.clone(),
-                module_path: decl.qualified_name.module_path.clone(),
-                type_params,
-                variants,
+            } else {
+                None
             }
         })
         .collect();

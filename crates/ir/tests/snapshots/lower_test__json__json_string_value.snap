@@ -39,7 +39,7 @@ fn main() -> Unit =
     0 (v1: Json) ->
       let v2: Option[Json] = call json_get(v1, "name")
       switch v2 {
-        0 (v3: b) ->
+        0 (v3: g) ->
           switch v3 {
             3 (v4: String) ->
               let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]

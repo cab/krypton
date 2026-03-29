@@ -40,11 +40,11 @@ fn main() -> Unit =
   let v12: ~List[Int] = construct List::Cons#0(2, v11)
   let v9: ~List[Int] = construct List::Cons#0(1, v12)
   switch v9 {
-    0 (v13: a, v14: List[a]) ->
+    0 (v13: h, v14: List[h]) ->
       switch v14 {
-        0 (v15: a, v16: List[a]) ->
+        0 (v15: h, v16: List[h]) ->
           switch v16 {
-            0 (v17: Int, v18: List[a]) ->
+            0 (v17: Int, v18: List[h]) ->
               switch v18 {
                 1 ->
                   let v19: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]

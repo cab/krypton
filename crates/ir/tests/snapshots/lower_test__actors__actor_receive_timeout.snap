@@ -29,7 +29,7 @@ fn actor(v0: Mailbox[Msg]) -> Unit =
   let_join [recur] v1(v2: Mailbox[Msg]) =
     let v3: Option[Msg] = call receive_timeout(v2, 5000)
     switch v3 {
-      0 (v4: b) ->
+      0 (v4: g) ->
         switch v4 {
           0 ->
             jump v1(v2)

@@ -41,7 +41,7 @@ fn main() -> Unit =
     0 (v7: Int) ->
       let v8: Unit = call println(v7)
       v8
-    1 (v9: c) ->
+    1 (v9: g) ->
       switch v9 {
         0 ->
           let v10: Unit = call println("timeout")

@@ -59,12 +59,12 @@ fn main() -> Unit =
     0 (v17: Json) ->
       let v18: Option[Json] = call json_get(v17, "a")
       switch v18 {
-        0 (v19: b) ->
+        0 (v19: g) ->
           switch v19 {
             5 (v20: Map[String, Json]) ->
               let v21: Option[Json] = call json_get(v17, "list")
               switch v21 {
-                0 (v22: b) ->
+                0 (v22: g) ->
                   switch v22 {
                     4 (v23: List[Json]) ->
                       let v24: Dict[core/show.Show, String] = get_dict core/show.Show[String]

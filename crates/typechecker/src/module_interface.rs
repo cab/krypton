@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use krypton_parser::ast::{ExternTarget, Visibility};
+use krypton_parser::ast::{ExternTarget, Span, Visibility};
 
 use crate::typed_ast::{
     ExportedFn, ExportedTypeKind, ExternFnInfo, ExternTypeInfo, InstanceDefInfo, ParamQualifier,
@@ -54,6 +54,19 @@ pub enum LocalSymbolKey {
         trait_name: String,
         target_type: String,
     },
+}
+
+impl LocalSymbolKey {
+    /// Extract the bare local name from any key variant.
+    pub fn local_name(&self) -> String {
+        match self {
+            LocalSymbolKey::Function(name) => name.clone(),
+            LocalSymbolKey::Type(name) => name.clone(),
+            LocalSymbolKey::Trait(name) => name.clone(),
+            LocalSymbolKey::Constructor { name, .. } => name.clone(),
+            LocalSymbolKey::Instance { trait_name, .. } => trait_name.clone(),
+        }
+    }
 }
 
 impl fmt::Display for LocalSymbolKey {
@@ -110,6 +123,8 @@ pub struct ModuleInterface {
     pub extern_types: Vec<ExternTypeSummary>,
     pub exported_fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
     pub type_visibility: HashMap<String, Visibility>,
+    /// All top-level names that exist but aren't exported — enables "exists but private" diagnostics.
+    pub private_names: HashSet<String>,
 }
 
 /// Summary of an exported function.
@@ -119,6 +134,7 @@ pub struct ExportedFnSummary {
     pub name: String,
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
+    pub def_span: Option<Span>,
 }
 
 /// A reexported function — points back to the canonical defining module.
@@ -128,6 +144,7 @@ pub struct ReexportedFnEntry {
     pub canonical_ref: CanonicalRef,
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
+    pub def_span: Option<Span>,
 }
 
 /// Summary of an exported type (summary-based, not AST copy).
@@ -278,6 +295,9 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
     let extern_fns = extract_extern_fns(&typed.extern_fns);
     let extern_types = extract_extern_types(&typed.extern_types);
 
+    // Build private_names: all top-level names that exist but aren't exported.
+    let private_names = extract_private_names(typed);
+
     ModuleInterface {
         module_path,
         direct_deps,
@@ -291,6 +311,7 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
         extern_types,
         exported_fn_qualifiers: typed.exported_fn_qualifiers.clone(),
         type_visibility: typed.type_visibility.clone(),
+        private_names,
     }
 }
 
@@ -314,6 +335,7 @@ fn extract_exported_fns(
                 name: ef.name.clone(),
                 scheme: ef.scheme.clone(),
                 origin: ef.origin.clone(),
+                def_span: ef.def_span,
             }
         })
         .collect()
@@ -324,38 +346,58 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
         .reexported_fn_types
         .iter()
         .map(|ef| {
-            // Look up canonical defining module from fn_types
-            let canonical_module = typed
+            // Look up canonical defining module and original name from fn_types
+            let (canonical_module, canonical_name) = typed
                 .fn_types_by_name
                 .get(&ef.name)
                 .and_then(|&idx| typed.fn_types.get(idx))
-                .map(|entry| entry.qualified_name.module_path.clone())
-                .unwrap_or_else(|| typed.module_path.clone());
+                .map(|entry| {
+                    (
+                        entry.qualified_name.module_path.clone(),
+                        entry.qualified_name.local_name.clone(),
+                    )
+                })
+                .unwrap_or_else(|| (typed.module_path.clone(), ef.name.clone()));
 
             ReexportedFnEntry {
                 local_name: ef.name.clone(),
                 canonical_ref: CanonicalRef {
                     module: ModulePath::new(&canonical_module),
-                    symbol: LocalSymbolKey::Function(ef.name.clone()),
+                    symbol: LocalSymbolKey::Function(canonical_name),
                 },
                 scheme: ef.scheme.clone(),
                 origin: ef.origin.clone(),
+                def_span: ef.def_span,
             }
         })
         .collect()
 }
 
 fn extract_exported_types(typed: &TypedModule) -> Vec<TypeSummary> {
+    // Extern type names — these are opaque from the consumer's perspective
+    // (you can name the type, but you can't construct it).
+    let extern_type_names: HashSet<&str> = typed
+        .extern_types
+        .iter()
+        .map(|et| et.krypton_name.as_str())
+        .collect();
+
     typed
         .exported_type_infos
         .iter()
         .filter_map(|(name, info)| {
-            let vis = typed
+            let mut vis = typed
                 .type_visibility
                 .get(name)
                 .copied()
                 .unwrap_or(Visibility::Private);
-            if vis == Visibility::Private {
+            // Extern types need to be in the interface regardless of visibility,
+            // because consumers need them to resolve function signatures that
+            // reference these types (e.g. `send(target: Ref[m], ...)`).
+            // They are always Opaque — you can name them but not construct them.
+            if extern_type_names.contains(name.as_str()) {
+                vis = Visibility::Opaque;
+            } else if vis == Visibility::Private {
                 return None;
             }
 
@@ -495,6 +537,35 @@ fn extract_extern_types(externs: &[ExternTypeInfo]) -> Vec<ExternTypeSummary> {
             target: et.target.clone(),
         })
         .collect()
+}
+
+fn extract_private_names(typed: &TypedModule) -> HashSet<String> {
+    let mut private = HashSet::new();
+
+    // Exported/reexported fn names
+    let exported_fn_names: HashSet<&str> = typed
+        .exported_fn_types
+        .iter()
+        .map(|f| f.name.as_str())
+        .chain(typed.reexported_fn_types.iter().map(|f| f.name.as_str()))
+        .collect();
+
+    // Private functions: any name in fn_types that isn't exported or reexported.
+    // This includes locally-defined private fns AND non-pub-imported fns.
+    for entry in &typed.fn_types {
+        if !exported_fn_names.contains(entry.name.as_str()) {
+            private.insert(entry.name.clone());
+        }
+    }
+
+    // Private types: in type_visibility as Private
+    for (name, vis) in &typed.type_visibility {
+        if matches!(vis, Visibility::Private) {
+            private.insert(name.clone());
+        }
+    }
+
+    private
 }
 
 // ---------------------------------------------------------------------------
@@ -672,4 +743,92 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
     }
 
     out
+}
+
+// ---------------------------------------------------------------------------
+// Conversion helpers: interface summary → typed_ast types
+// ---------------------------------------------------------------------------
+
+use crate::typed_ast::{
+    ExportedTraitDef, ExportedTraitMethod, ExportedTypeInfo, ExportedVariantInfo, InstanceMethod,
+};
+
+/// Convert `TypeSummary` → `ExportedTypeInfo` for type registry registration.
+pub fn type_summary_to_export_info(ts: &TypeSummary) -> ExportedTypeInfo {
+    let kind = match &ts.kind {
+        TypeSummaryKind::Record { fields } => ExportedTypeKind::Record {
+            fields: fields.clone(),
+        },
+        TypeSummaryKind::Sum { variants } => ExportedTypeKind::Sum {
+            variants: variants
+                .iter()
+                .map(|v| ExportedVariantInfo {
+                    name: v.name.clone(),
+                    fields: v.fields.clone(),
+                })
+                .collect(),
+        },
+    };
+    ExportedTypeInfo {
+        name: ts.name.clone(),
+        type_params: ts.type_params.clone(),
+        type_param_vars: ts.type_param_vars.clone(),
+        kind,
+    }
+}
+
+/// Convert `TraitSummary` → `ExportedTraitDef` for trait registration.
+pub fn trait_summary_to_exported_def(ts: &TraitSummary) -> ExportedTraitDef {
+    ExportedTraitDef {
+        visibility: ts.visibility,
+        name: ts.name.clone(),
+        module_path: ts.module_path.0.clone(),
+        type_var: ts.type_var.clone(),
+        type_var_id: ts.type_var_id,
+        type_var_arity: ts.type_var_arity,
+        superclasses: ts.superclasses.clone(),
+        methods: ts
+            .methods
+            .iter()
+            .map(|m| ExportedTraitMethod {
+                name: m.name.clone(),
+                param_types: m.param_types.clone(),
+                return_type: m.return_type.clone(),
+                constraints: m.constraints.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Convert `InstanceSummary` → `InstanceDefInfo` for instance registration.
+/// Note: method bodies and param names are not available in the interface,
+/// so they are filled with dummy values (empty body/params). This is fine
+/// because imported instances only need the type information, not bodies.
+pub fn instance_summary_to_def_info(is: &InstanceSummary) -> InstanceDefInfo {
+    use crate::typed_ast::{TypedExpr, TypedExprKind};
+    let dummy_body = TypedExpr {
+        kind: TypedExprKind::Lit(krypton_parser::ast::Lit::Unit),
+        ty: Type::Unit,
+        span: (0, 0),
+        resolved_ref: None,
+    };
+    InstanceDefInfo {
+        trait_name: is.trait_name.clone(),
+        target_type_name: is.target_type_name.clone(),
+        target_type: is.target_type.clone(),
+        type_var_ids: is.type_var_ids.clone(),
+        constraints: is.constraints.clone(),
+        methods: is
+            .method_summaries
+            .iter()
+            .map(|m| InstanceMethod {
+                name: m.name.clone(),
+                params: vec![],
+                body: dummy_body.clone(),
+                scheme: m.scheme.clone(),
+                constraint_pairs: m.constraint_pairs.clone(),
+            })
+            .collect(),
+        is_intrinsic: is.is_intrinsic,
+    }
 }

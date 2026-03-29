@@ -27,11 +27,11 @@ declare read_file: (String) -> Result[String, String]
 
 fn handle(v0: Result[u8, v8]) -> Unit =
   switch v0 {
-    0 (v1: d) ->
+    0 (v1: h) ->
       let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v3: Unit = call println(v2, "unexpected")
       v3
-    1 (v4: c) ->
+    1 (v4: g) ->
       let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v6: Unit = call println(v5, "got error")
       v6

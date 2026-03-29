@@ -29,7 +29,7 @@ fn test(v1: ~String) -> String =
   let v5: ~List[~() -> String] = construct List::Nil#1()
   let v6: ~List[~() -> String] = construct List::Cons#0(v4, v5)
   switch v6 {
-    0 (v7: ~() -> String, v8: List[a]) ->
+    0 (v7: ~() -> String, v8: List[h]) ->
       let v9: String = call_closure v7()
       v9
     1 ->

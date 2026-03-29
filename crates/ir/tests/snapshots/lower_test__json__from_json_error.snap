@@ -34,11 +34,11 @@ fn main() -> Unit =
   let v2: Dict[core/json.FromJson, String] = get_dict core/json.FromJson[String]
   let v0: Result[String, String] = trait_call core/json.FromJson.from_json(v2, v1)
   switch v0 {
-    0 (v3: d) ->
+    0 (v3: h) ->
       let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v5: Unit = call println(v4, "ok")
       v5
-    1 (v6: c) ->
+    1 (v6: g) ->
       let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
       let v8: Unit = call println(v7, "error")
       v8

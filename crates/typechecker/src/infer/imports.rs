@@ -1,36 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{Decl, ImportName, Module, Span, TypeDecl, Visibility};
+use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
-use crate::type_registry::{self, TypeRegistry};
-use crate::typed_ast::ExportedTypeInfo;
-use crate::typed_ast::{self as typed_ast, TraitName, TypedModule};
-use crate::types::{Type, TypeScheme, TypeVarGen};
+use crate::type_registry;
+use crate::typed_ast::{self as typed_ast, TraitName};
+use crate::types::{Type, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
-    constructor_names, find_type_decl, imported_binding_ref, spanned, ModuleInferenceState,
-    QualifiedExport, QualifiedModuleBinding,
+    imported_binding_ref, spanned, ModuleInferenceState, QualifiedExport, QualifiedModuleBinding,
 };
-
-/// Register a type using pre-resolved export info if available,
-/// falling back to processing the type declaration from AST.
-fn register_type_with_fallback(
-    export_info: Option<&ExportedTypeInfo>,
-    td: &TypeDecl,
-    registry: &mut TypeRegistry,
-    gen: &mut TypeVarGen,
-    span: Span,
-) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
-    if let Some(export) = export_info {
-        registry.register_name(&export.name);
-        type_registry::register_type_from_export(export, registry, gen)
-            .map_err(|e| spanned(e, span))
-    } else {
-        registry.register_name(&td.name);
-        type_registry::process_type_decl(td, registry, gen).map_err(|e| spanned(e, span))
-    }
-}
 
 impl ModuleInferenceState {
     /// Build a synthetic `Decl::Import` for the prelude, gathering all re-exported names
@@ -39,20 +18,20 @@ impl ModuleInferenceState {
     pub(super) fn build_synthetic_prelude_import(
         &mut self,
         is_prelude_tree: bool,
-        cache: &HashMap<String, TypedModule>,
-        parsed_modules: &HashMap<String, &Module>,
+        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
     ) -> Option<Decl> {
         if is_prelude_tree {
             return None;
         }
-        let cached = cache.get("prelude")?;
+        let iface = interface_cache.get("prelude")?;
+        use crate::module_interface::LocalSymbolKey;
 
         let mut names: Vec<ImportName> = Vec::new();
 
         // Re-exported type names (e.g. Option, Result, List, Ordering)
-        for type_name in &cached.reexported_type_names {
+        for reex in &iface.reexported_types {
             names.push(ImportName {
-                name: type_name.clone(),
+                name: reex.local_name.clone(),
                 alias: None,
             });
         }
@@ -60,17 +39,13 @@ impl ModuleInferenceState {
         // Build set of constructor names from pub (transparent) re-exported types,
         // so we can exclude them from the re-exported fn list (they come from type processing).
         let mut prelude_constructor_names: HashSet<String> = HashSet::new();
-        for type_name in &cached.reexported_type_names {
-            let vis = cached
-                .reexported_type_visibility
-                .get(type_name)
-                .cloned()
-                .unwrap_or(Visibility::Opaque);
-            if matches!(vis, Visibility::Pub) {
-                if let Some(orig_path) = cached.type_origin(type_name) {
-                    if let Some(orig_module) = parsed_modules.get(orig_path) {
-                        if let Some(td) = find_type_decl(&orig_module.decls, type_name) {
-                            prelude_constructor_names.extend(constructor_names(td));
+        for reex in &iface.reexported_types {
+            if matches!(reex.visibility, Visibility::Pub) {
+                let orig_path = &reex.canonical_ref.module.0;
+                if let Some(orig_iface) = interface_cache.get(orig_path.as_str()) {
+                    for ef in &orig_iface.exported_fns {
+                        if matches!(ef.key, LocalSymbolKey::Constructor { .. }) {
+                            prelude_constructor_names.insert(ef.name.clone());
                         }
                     }
                 }
@@ -78,19 +53,19 @@ impl ModuleInferenceState {
         }
 
         // Re-exported trait names (e.g. Eq, Show, Semigroup, etc.)
-        for trait_def in &cached.exported_trait_defs {
+        for trait_summary in &iface.exported_traits {
             names.push(ImportName {
-                name: trait_def.name.clone(),
+                name: trait_summary.name.clone(),
                 alias: None,
             });
         }
 
         // Re-exported functions (e.g. println), excluding constructors
         // that will be bound via type processing
-        for ef in &cached.reexported_fn_types {
-            if !prelude_constructor_names.contains(&ef.name) {
+        for ef in &iface.reexported_fns {
+            if !prelude_constructor_names.contains(&ef.local_name) {
                 names.push(ImportName {
-                    name: ef.name.clone(),
+                    name: ef.local_name.clone(),
                     alias: None,
                 });
             }
@@ -113,8 +88,7 @@ impl ModuleInferenceState {
     pub(super) fn process_imports(
         &mut self,
         module: &Module,
-        cache: &mut HashMap<String, TypedModule>,
-        parsed_modules: &HashMap<String, &Module>,
+        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
         synthetic_prelude_import: Option<&Decl>,
     ) -> Result<(), SpannedTypeError> {
         // Build decl list: synthetic prelude import (if any) + module's own decls
@@ -130,7 +104,13 @@ impl ModuleInferenceState {
                 span,
             } = decl
             {
-                self.process_single_import(*is_pub, path, names, *span, cache, parsed_modules)?;
+                self.process_single_import(
+                    *is_pub,
+                    path,
+                    names,
+                    *span,
+                    interface_cache,
+                )?;
             }
         }
         Ok(())
@@ -142,19 +122,14 @@ impl ModuleInferenceState {
         path: &str,
         names: &[ImportName],
         span: Span,
-        cache: &mut HashMap<String, TypedModule>,
-        parsed_modules: &HashMap<String, &Module>,
+        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
     ) -> Result<(), SpannedTypeError> {
-        // Graph builder already validated: no cycles and no unknown modules.
-        let imported_module = parsed_modules
-            .get(path)
-            .expect("module graph should contain all imported modules");
+        use crate::module_interface;
 
         // Module should already be type-checked (topological order guarantees this)
-        assert!(
-            cache.contains_key(path),
-            "module {path} should be in cache (topological order)"
-        );
+        let iface = interface_cache
+            .get(path)
+            .expect("module interface should be in cache (topological order)");
 
         let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
         let import_all = names.is_empty();
@@ -166,51 +141,39 @@ impl ModuleInferenceState {
             .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
             .collect();
 
-        // Extract type signatures from cached module and bind with provenance.
-        let cached = cache.get(path).unwrap();
         let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
         let mut qualified_exports: HashMap<String, QualifiedExport> = HashMap::new();
 
-        // Check for explicitly requested names that exist in fn_types but not
-        // in exported_fn_types — these are private/non-exported names.
-        let exported_fn_names: HashSet<&str> = cached
-            .exported_fn_types
+        // Build name sets from interface for visibility checks
+        let exported_fn_names: HashSet<&str> = iface
+            .exported_fns
             .iter()
             .map(|ef| ef.name.as_str())
             .collect();
-        let reexported_fn_names: HashSet<&str> = cached
-            .reexported_fn_types
+        let reexported_fn_names: HashSet<&str> = iface
+            .reexported_fns
             .iter()
-            .map(|ef| ef.name.as_str())
+            .map(|ef| ef.local_name.as_str())
             .collect();
-        // Build set of names importable via type/trait paths (not fn_types)
+        // Build set of names importable via type/trait/extern paths
         let type_or_trait_names: HashSet<&str> = {
             let mut s: HashSet<&str> = HashSet::new();
-            for d in &imported_module.decls {
-                if let Decl::DefType(td) = d {
-                    if !matches!(td.visibility, Visibility::Private) {
-                        s.insert(&td.name);
-                    }
-                }
-                if let Decl::DefTrait { name, .. } = d {
-                    s.insert(name);
-                }
-                // Extern java type aliases (e.g. `extern "..." as Ref[m] {}`)
-                if let Decl::Extern {
-                    alias: Some(name), ..
-                } = d
-                {
-                    s.insert(name);
+            for t in &iface.exported_types {
+                if !matches!(t.visibility, Visibility::Private) {
+                    s.insert(&t.name);
                 }
             }
-            for tn in &cached.reexported_type_names {
-                s.insert(tn);
-            }
-            for td in &cached.exported_trait_defs {
-                s.insert(&td.name);
-                for m in &td.methods {
+            for t in &iface.exported_traits {
+                s.insert(&t.name);
+                for m in &t.methods {
                     s.insert(&m.name);
                 }
+            }
+            for et in &iface.extern_types {
+                s.insert(&et.krypton_name);
+            }
+            for reex in &iface.reexported_types {
+                s.insert(&reex.local_name);
             }
             s
         };
@@ -219,22 +182,8 @@ impl ModuleInferenceState {
                 && !reexported_fn_names.contains(name)
                 && !type_or_trait_names.contains(name)
             {
-                // Check if the name exists in fn_types (i.e. it's private, not missing)
-                let exists_in_fn_types = cached.fn_types.iter().any(|e| e.name.as_str() == *name);
-                if exists_in_fn_types {
-                    return Err(spanned(
-                        TypeError::PrivateName {
-                            name: name.to_string(),
-                            module_path: path.to_string(),
-                        },
-                        span,
-                    ));
-                }
-                // Check if it's a private type
-                let is_private_type = imported_module.decls.iter().any(|d| {
-                    matches!(d, Decl::DefType(td) if td.name.as_str() == *name && matches!(td.visibility, Visibility::Private))
-                });
-                if is_private_type {
+                // Check if the name is private (exists but not exported)
+                if iface.private_names.contains(*name) {
                     return Err(spanned(
                         TypeError::PrivateName {
                             name: name.to_string(),
@@ -254,7 +203,8 @@ impl ModuleInferenceState {
             }
         }
 
-        for ef in &cached.exported_fn_types {
+        // Bind exported functions from the interface
+        for ef in &iface.exported_fns {
             if reexported_fn_names.contains(ef.name.as_str()) {
                 continue;
             }
@@ -285,7 +235,7 @@ impl ModuleInferenceState {
                         },
                     );
                 }
-                if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
+                if let Some(quals) = iface.exported_fn_qualifiers.get(&ef.name) {
                     self.imports
                         .imported_fn_qualifiers
                         .insert(effective_name, quals.clone());
@@ -310,22 +260,17 @@ impl ModuleInferenceState {
             }
         }
 
-        for ef in &cached.reexported_fn_types {
+        // Bind reexported functions (import_all qualified hidden bindings)
+        for ef in &iface.reexported_fns {
             if import_all {
-                let hidden_name = format!("__qual${}${}", qualifier_name, ef.name);
-                let original_prov = cached
-                    .fn_types_by_name
-                    .get(&ef.name)
-                    .map(|&i| &cached.fn_types[i])
-                    .map(|e| {
-                        (
-                            e.qualified_name.module_path.clone(),
-                            e.qualified_name.local_name.clone(),
-                        )
-                    })
-                    .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
+                let hidden_name = format!("__qual${}${}", qualifier_name, ef.local_name);
+                let canonical_name = ef.canonical_ref.symbol.local_name();
+                let original_prov = (
+                    ef.canonical_ref.module.0.clone(),
+                    canonical_name.clone(),
+                );
                 qualified_exports.insert(
-                    ef.name.clone(),
+                    ef.local_name.clone(),
                     QualifiedExport {
                         local_name: hidden_name.clone(),
                         scheme: ef.scheme.clone(),
@@ -345,24 +290,18 @@ impl ModuleInferenceState {
             }
         }
 
-        // Process re-exported functions from the cached module.
-        for ef in &cached.reexported_fn_types {
-            if requested.contains(ef.name.as_str()) {
+        // Process re-exported functions from the interface (explicit requests).
+        for ef in &iface.reexported_fns {
+            if requested.contains(ef.local_name.as_str()) {
                 let effective_name = aliases
-                    .get(&ef.name)
+                    .get(&ef.local_name)
                     .cloned()
-                    .unwrap_or_else(|| ef.name.clone());
-                let original_prov = cached
-                    .fn_types_by_name
-                    .get(&ef.name)
-                    .map(|&i| &cached.fn_types[i])
-                    .map(|e| {
-                        (
-                            e.qualified_name.module_path.clone(),
-                            e.qualified_name.local_name.clone(),
-                        )
-                    })
-                    .unwrap_or_else(|| (path.to_string(), ef.name.clone()));
+                    .unwrap_or_else(|| ef.local_name.clone());
+                let canonical_name = ef.canonical_ref.symbol.local_name();
+                let original_prov = (
+                    ef.canonical_ref.module.0.clone(),
+                    canonical_name,
+                );
                 let binding_source = self.imports.bind_import(
                     &mut self.env,
                     effective_name.clone(),
@@ -384,7 +323,7 @@ impl ModuleInferenceState {
                         },
                     );
                 }
-                if let Some(quals) = cached.exported_fn_qualifiers.get(&ef.name) {
+                if let Some(quals) = iface.exported_fn_qualifiers.get(&ef.local_name) {
                     self.imports
                         .imported_fn_qualifiers
                         .insert(effective_name, quals.clone());
@@ -392,34 +331,30 @@ impl ModuleInferenceState {
             }
         }
 
-        // Process re-exported types from the cached module
-        for reex_type_name in &cached.reexported_type_names {
+        // Process re-exported types from the interface
+        for reex in &iface.reexported_types {
+            let reex_type_name = &reex.local_name;
             if requested.contains(reex_type_name.as_str()) {
                 let effective_type_name = aliases
                     .get(reex_type_name)
                     .cloned()
                     .unwrap_or_else(|| reex_type_name.clone());
                 // Re-exported type explicitly requested — mark user-visible
-                // mark_user_visible canonicalizes internally, so one call suffices
                 self.registry.mark_user_visible(reex_type_name);
-                let original_vis = cached
-                    .reexported_type_visibility
-                    .get(reex_type_name)
-                    .cloned()
-                    .unwrap_or(Visibility::Opaque);
+                let original_vis = reex.visibility;
                 if self.registry.lookup_type(reex_type_name).is_none() {
-                    let original_path = cached.type_origin(reex_type_name).map(|s| s.to_string());
-                    // Try pre-resolved export from the original source module's cache
-                    let export_info = original_path.as_ref().and_then(|orig_path| {
-                        cache
-                            .get(orig_path.as_str())
-                            .and_then(|orig_cached| {
-                                orig_cached.exported_type_infos.get(reex_type_name.as_str())
-                            })
-                            .cloned()
-                    });
+                    let orig_path = reex.canonical_ref.module.0.clone();
+                    // Try pre-resolved export from the origin module's interface
+                    let export_info = interface_cache
+                        .get(orig_path.as_str())
+                        .and_then(|orig_iface| {
+                            orig_iface
+                                .exported_types
+                                .iter()
+                                .find(|ts| ts.name == *reex_type_name)
+                        })
+                        .map(module_interface::type_summary_to_export_info);
                     if let Some(ref export) = export_info {
-                        let orig_path = original_path.unwrap();
                         self.registry.register_name(&export.name);
                         let constructors = type_registry::register_type_from_export(
                             export,
@@ -452,47 +387,8 @@ impl ModuleInferenceState {
                         self.imports.bind_type_info(
                             effective_type_name.clone(),
                             orig_path.clone(),
-                            original_vis.clone(),
+                            original_vis,
                         );
-                    } else if let Some(orig_path) = original_path {
-                        if let Some(orig_module) = parsed_modules.get(orig_path.as_str()) {
-                            if let Some(td) = find_type_decl(&orig_module.decls, reex_type_name) {
-                                self.registry.register_name(&td.name);
-                                let constructors = type_registry::process_type_decl(
-                                    td,
-                                    &mut self.registry,
-                                    &mut self.gen,
-                                )
-                                .map_err(|e| spanned(e, span))?;
-                                if effective_type_name != *reex_type_name {
-                                    self.registry
-                                        .register_type_alias(&effective_type_name, reex_type_name)
-                                        .map_err(|e| spanned(e, span))?;
-                                }
-                                if path == "prelude" {
-                                    self.registry.set_prelude(&td.name);
-                                }
-                                if matches!(original_vis, Visibility::Pub) {
-                                    for (cname, scheme) in &constructors {
-                                        self.imports.bind_import(
-                                            &mut self.env,
-                                            cname.clone(),
-                                            scheme.clone(),
-                                            None,
-                                            orig_path.clone(),
-                                            cname.clone(),
-                                            is_synthetic_prelude_import,
-                                            span,
-                                        )?;
-                                    }
-                                }
-                                self.imports.bind_type_info(
-                                    effective_type_name.clone(),
-                                    orig_path.clone(),
-                                    original_vis.clone(),
-                                );
-                            }
-                        }
                     }
                 } else if effective_type_name != *reex_type_name {
                     self.registry
@@ -501,130 +397,123 @@ impl ModuleInferenceState {
                     self.imports.bind_type_info(
                         effective_type_name.clone(),
                         path.to_string(),
-                        original_vis.clone(),
+                        original_vis,
                     );
                 }
             }
         }
 
-        // Process type declarations from imported module source with visibility enforcement
-        for sdecl in &imported_module.decls {
-            if let Decl::DefType(td) = sdecl {
-                if requested.contains(td.name.as_str()) {
-                    let effective_type_name = aliases
-                        .get(&td.name)
-                        .cloned()
-                        .unwrap_or_else(|| td.name.clone());
-                    if matches!(td.visibility, Visibility::Private) {
-                        return Err(spanned(
-                            TypeError::PrivateName {
-                                name: td.name.clone(),
-                                module_path: path.to_string(),
-                            },
-                            span,
-                        ));
-                    }
-                    if self.registry.lookup_type(&td.name).is_none() {
-                        let constructors = register_type_with_fallback(
-                            cached.exported_type_infos.get(td.name.as_str()),
-                            td,
-                            &mut self.registry,
-                            &mut self.gen,
-                            span,
-                        )?;
-                        if effective_type_name != td.name {
-                            self.registry
-                                .register_type_alias(&effective_type_name, &td.name)
-                                .map_err(|e| spanned(e, span))?;
-                        }
-                        if path == "prelude" {
-                            self.registry.set_prelude(&td.name);
-                        }
-                        if matches!(td.visibility, Visibility::Pub) {
-                            for (cname, scheme) in constructors {
-                                self.imports.bind_import(
-                                    &mut self.env,
-                                    cname.clone(),
-                                    scheme,
-                                    None,
-                                    path.to_string(),
-                                    cname,
-                                    is_synthetic_prelude_import,
-                                    span,
-                                )?;
-                            }
-                        }
-                    } else if effective_type_name != td.name {
-                        self.registry
-                            .register_type_alias(&effective_type_name, &td.name)
-                            .map_err(|e| spanned(e, span))?;
-                    }
-                    // Branch A: type explicitly requested — mark user-visible
-                    // mark_user_visible canonicalizes internally, so one call suffices
-                    self.registry.mark_user_visible(&td.name);
-                    self.imports.bind_type_info(
-                        effective_type_name.clone(),
-                        path.to_string(),
-                        td.visibility.clone(),
-                    );
-                } else if import_all {
-                    if matches!(td.visibility, Visibility::Private) {
-                        continue;
-                    }
-                    // Branch B: import_all — mark user-visible
-                    self.registry.mark_user_visible(&td.name);
-                    if self.registry.lookup_type(&td.name).is_none() {
-                        let constructors = register_type_with_fallback(
-                            cached.exported_type_infos.get(td.name.as_str()),
-                            td,
-                            &mut self.registry,
-                            &mut self.gen,
-                            span,
-                        )?;
-                        if path == "prelude" {
-                            self.registry.set_prelude(&td.name);
-                        }
-                        if matches!(td.visibility, Visibility::Pub) {
-                            for (cname, scheme) in constructors {
-                                let hidden_name = format!("__qual${}${}", qualifier_name, cname);
-                                qualified_exports.insert(
-                                    cname.clone(),
-                                    QualifiedExport {
-                                        local_name: hidden_name.clone(),
-                                        scheme: scheme.clone(),
-                                        resolved_ref: None,
-                                    },
-                                );
-                                self.imports.bind_hidden_fn(
-                                    hidden_name,
-                                    scheme.clone(),
-                                    None,
-                                    (path.to_string(), cname.clone()),
-                                    is_synthetic_prelude_import,
-                                );
-                                self.env.bind(cname, scheme);
-                            }
-                        }
-                    }
-                } else if self.registry.lookup_type(&td.name).is_none() {
-                    let constructors = register_type_with_fallback(
-                        cached.exported_type_infos.get(td.name.as_str()),
-                        td,
+        // Process type declarations from the interface (exported_types)
+        for ts in &iface.exported_types {
+            if requested.contains(ts.name.as_str()) {
+                let effective_type_name = aliases
+                    .get(&ts.name)
+                    .cloned()
+                    .unwrap_or_else(|| ts.name.clone());
+                // Private types are already excluded from exported_types,
+                // and the visibility check above catches private_names.
+                if self.registry.lookup_type(&ts.name).is_none() {
+                    let export = module_interface::type_summary_to_export_info(ts);
+                    self.registry.register_name(&export.name);
+                    let constructors = type_registry::register_type_from_export(
+                        &export,
                         &mut self.registry,
                         &mut self.gen,
-                        span,
-                    )?;
-                    for (cname, scheme) in constructors {
-                        self.env.bind(cname, scheme);
+                    )
+                    .map_err(|e| spanned(e, span))?;
+                    if effective_type_name != ts.name {
+                        self.registry
+                            .register_type_alias(&effective_type_name, &ts.name)
+                            .map_err(|e| spanned(e, span))?;
                     }
-                    // Track the parent type so codegen can resolve it
-                    // (importing constructors implicitly depends on the type)
-                    self.imports.bind_type_info(
-                        td.name.clone(),
-                        path.to_string(),
-                        td.visibility.clone(),
-                    );
+                    if path == "prelude" {
+                        self.registry.set_prelude(&ts.name);
+                    }
+                    if matches!(ts.visibility, Visibility::Pub) {
+                        for (cname, scheme) in constructors {
+                            self.imports.bind_import(
+                                &mut self.env,
+                                cname.clone(),
+                                scheme,
+                                None,
+                                path.to_string(),
+                                cname,
+                                is_synthetic_prelude_import,
+                                span,
+                            )?;
+                        }
+                    }
+                } else if effective_type_name != ts.name {
+                    self.registry
+                        .register_type_alias(&effective_type_name, &ts.name)
+                        .map_err(|e| spanned(e, span))?;
                 }
+                // Mark user-visible
+                self.registry.mark_user_visible(&ts.name);
+                self.imports.bind_type_info(
+                    effective_type_name.clone(),
+                    path.to_string(),
+                    ts.visibility,
+                );
+            } else if import_all {
+                if matches!(ts.visibility, Visibility::Private) {
+                    continue;
+                }
+                // import_all — mark user-visible
+                self.registry.mark_user_visible(&ts.name);
+                if self.registry.lookup_type(&ts.name).is_none() {
+                    let export = module_interface::type_summary_to_export_info(ts);
+                    self.registry.register_name(&export.name);
+                    let constructors = type_registry::register_type_from_export(
+                        &export,
+                        &mut self.registry,
+                        &mut self.gen,
+                    )
+                    .map_err(|e| spanned(e, span))?;
+                    if path == "prelude" {
+                        self.registry.set_prelude(&ts.name);
+                    }
+                    if matches!(ts.visibility, Visibility::Pub) {
+                        for (cname, scheme) in constructors {
+                            let hidden_name = format!("__qual${}${}", qualifier_name, cname);
+                            qualified_exports.insert(
+                                cname.clone(),
+                                QualifiedExport {
+                                    local_name: hidden_name.clone(),
+                                    scheme: scheme.clone(),
+                                    resolved_ref: None,
+                                },
+                            );
+                            self.imports.bind_hidden_fn(
+                                hidden_name,
+                                scheme.clone(),
+                                None,
+                                (path.to_string(), cname.clone()),
+                                is_synthetic_prelude_import,
+                            );
+                            self.env.bind(cname, scheme);
+                        }
+                    }
+                }
+            } else if self.registry.lookup_type(&ts.name).is_none() {
+                // Not explicitly requested and not import_all — register type silently
+                // (needed for constructor resolution)
+                let export = module_interface::type_summary_to_export_info(ts);
+                self.registry.register_name(&export.name);
+                let constructors = type_registry::register_type_from_export(
+                    &export,
+                    &mut self.registry,
+                    &mut self.gen,
+                )
+                .map_err(|e| spanned(e, span))?;
+                for (cname, scheme) in constructors {
+                    self.env.bind(cname, scheme);
+                }
+                self.imports.bind_type_info(
+                    ts.name.clone(),
+                    path.to_string(),
+                    ts.visibility,
+                );
             }
         }
 
@@ -640,61 +529,28 @@ impl ModuleInferenceState {
             );
         }
 
-        // Process extern declarations from imported module
-        for sdecl in &imported_module.decls {
-            if let Decl::Extern {
-                target,
-                module_path,
-                alias,
-                type_params,
-                ..
-            } = sdecl
-            {
-                // Register extern java type binding if present
-                if let Some(name) = alias {
-                    if self.registry.lookup_type(name).is_none() {
-                        let vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
-                        let _ = self.registry.register_type(crate::type_registry::TypeInfo {
-                            name: name.clone(),
-                            type_params: type_params.clone(),
-                            type_param_vars: vars.clone(),
-                            kind: crate::type_registry::TypeKind::Record { fields: vec![] },
-                            is_prelude: false,
-                        });
-                        let ext_type_info = typed_ast::ExternTypeInfo {
-                            krypton_name: name.clone(),
-                            host_module: module_path.clone(),
-                            target: target.clone(),
-                        };
-                        // ext_type_info no longer accumulated — the codegen resolves
-                        // extern types from dependency modules' IR directly.
-                        let _ = ext_type_info;
-                    }
-                    // Mark user-visible if explicitly requested or import_all
-                    if requested.contains(name.as_str()) || import_all {
-                        self.registry.mark_user_visible(name);
-                    }
-                    // Track visibility so pub re-exports can find this type
-                    let vis = cached
-                        .type_visibility
-                        .get(name)
-                        .cloned()
-                        .unwrap_or(Visibility::Private);
-                    self.imports
-                        .bind_type_info(name.clone(), path.to_string(), vis);
-                }
+        // Extern type aliases are included in exported_types (via exported_type_infos),
+        // so they are registered uniformly above. We only need to track visibility
+        // for re-export purposes from extern_types metadata.
+        for et in &iface.extern_types {
+            let name = &et.krypton_name;
+            // Mark user-visible if explicitly requested or import_all
+            if requested.contains(name.as_str()) || import_all {
+                self.registry.mark_user_visible(name);
             }
+            // Track visibility so pub re-exports can find this type
+            let vis = iface
+                .type_visibility
+                .get(name)
+                .copied()
+                .unwrap_or(Visibility::Private);
+            self.imports
+                .bind_type_info(name.clone(), path.to_string(), vis);
         }
 
-        // Transitive propagation of extern fns/types is no longer needed here.
-        // The IR lowering and codegen resolve cross-module externs from all_ir_modules,
-        // eliminating the O(N²) transitive copy that previously lived here.
-
-        // Constraint requirements now flow through TypeScheme.constraints in exported_fn_types,
-        // so no separate transitive propagation is needed.
-
-        // Propagate trait definitions from the imported module
-        for trait_def in &cached.exported_trait_defs {
+        // Propagate trait definitions from the interface
+        for trait_summary in &iface.exported_traits {
+            let trait_def = module_interface::trait_summary_to_exported_def(trait_summary);
             // Compute effective (possibly aliased) name
             let effective_name = aliases
                 .get(&trait_def.name)

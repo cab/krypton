@@ -36,7 +36,7 @@ declare println: (o) -> Unit
 fn main() -> Unit =
   let v0: Result[String, Json] = call parse_json("[1,2,3]")
   switch v0 {
-    0 (v1: d) ->
+    0 (v1: h) ->
       switch v1 {
         4 (v2: List[Json]) ->
           let v4: ~Json = construct Json::JArr#4(v2)
