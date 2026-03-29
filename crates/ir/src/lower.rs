@@ -5431,7 +5431,11 @@ pub fn lower_module(
                     .fn_ids
                     .get(&ext.name)
                     .copied()
-                    .unwrap_or_else(|| FnId(u32::MAX)),
+                    .unwrap_or_else(|| panic!(
+                        "ICE: imported extern fn '{}' has no FnId — \
+                         pre-allocation in lower_module step 3 should have assigned one",
+                        ext.name
+                    )),
                 name: ext.name.clone(),
                 declaring_module_path: ext.declaring_module_path.clone(),
                 span: ext.span,

@@ -482,6 +482,11 @@ fn validate_js_extern_targets(
                 externs_by_id.entry(ext.id).or_default().push(ext);
             }
         }
+        for ext in &ir_module.imported_extern_fns {
+            if referenced.contains_key(&ext.id) {
+                externs_by_id.entry(ext.id).or_default().push(ext);
+            }
+        }
 
         for (fn_id, use_span) in referenced {
             let Some(entries) = externs_by_id.get(&fn_id) else {
