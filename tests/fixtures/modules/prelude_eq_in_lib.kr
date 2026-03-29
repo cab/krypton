@@ -1,0 +1,1 @@
+pub fun are_equal(x: Int, y: Int) -> Bool = x == y

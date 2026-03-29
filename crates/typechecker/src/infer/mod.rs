@@ -1405,11 +1405,14 @@ pub fn infer_module(
     // Type-check each dependency in topological order
     for resolved in &graph.modules {
         if !cache.contains_key(&resolved.path) {
-            let dep_paths: Vec<String> =
+            let mut dep_paths: Vec<String> =
                 crate::module_interface::collect_direct_deps(&resolved.module)
                     .iter()
                     .map(|p| p.0.clone())
                     .collect();
+            if !graph.prelude_tree_paths.contains(&resolved.path) {
+                dep_paths.push("prelude".to_string());
+            }
             let typed = infer_module_inner(
                 &resolved.module,
                 &interface_cache,
@@ -1447,6 +1450,16 @@ pub fn infer_module(
         }
     }
 
+    // Compute root direct deps before root_module_path is moved.
+    let mut root_dep_paths: Vec<String> =
+        crate::module_interface::collect_direct_deps(module)
+            .iter()
+            .map(|p| p.0.clone())
+            .collect();
+    if !graph.prelude_tree_paths.contains(&root_module_path) {
+        root_dep_paths.push("prelude".to_string());
+    }
+
     // Type-check the root module
     let main = infer_module_inner(
         module,
@@ -1464,10 +1477,6 @@ pub fn infer_module(
             .collect::<Vec<_>>()
     })?;
 
-    // Extract root module's interface.
-    // Include all graph modules (prelude + explicit imports) as direct deps
-    // so the LinkContext can compute correct transitive reachability.
-    let root_dep_paths: Vec<String> = graph.modules.iter().map(|m| m.path.clone()).collect();
     let root_iface = crate::module_interface::extract_interface(&main, &root_dep_paths);
 
     let mut result = vec![main];

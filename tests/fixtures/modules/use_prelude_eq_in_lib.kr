@@ -1,0 +1,7 @@
+# expect: output "true"
+import core/io.{println}
+import prelude_eq_in_lib.{are_equal}
+
+fun main() = {
+  println(are_equal(1, 1));
+}
