@@ -1,0 +1,24 @@
+---
+source: crates/typechecker/tests/module_interface_test.rs
+expression: display_interface(&iface)
+---
+module test
+
+deps:
+  core/show
+
+exported fns:
+  type/Color/ctor/Blue : Color
+  type/Color/ctor/Green : Color
+  type/Point/ctor/Point : (Int, Int) -> Point
+  type/Color/ctor/Red : Color
+  fn/add : (Int, Int) -> Int
+  fn/origin : () -> Point
+
+exported types:
+  type/Color (pub) = Red | Green | Blue
+  type/Point (pub) = { x: Int,  y: Int }
+
+exported instances:
+  instance/Show/Color
+    show: (Color) -> ~String

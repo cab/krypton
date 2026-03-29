@@ -1,0 +1,20 @@
+---
+source: crates/typechecker/tests/module_interface_test.rs
+expression: display_interface(&iface)
+---
+module test
+
+deps:
+  mylib
+
+exported fns:
+  fn/use_it : () -> Int
+
+reexported fns:
+  Blue -> mylib::fn/Blue : Color
+  Green -> mylib::fn/Green : Color
+  Red -> mylib::fn/Red : Color
+  helper -> mylib::fn/helper : () -> Int
+
+reexported types:
+  Color -> mylib::type/Color (pub)
