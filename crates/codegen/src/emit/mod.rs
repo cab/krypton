@@ -120,6 +120,7 @@ fn type_has_vars(ty: &Type) -> bool {
 pub fn compile_modules(
     typed_modules: &[TypedModule],
     main_class_name: &str,
+    link_ctx: &krypton_typechecker::link_context::LinkContext,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut all_classes = Vec::new();
 
@@ -131,24 +132,6 @@ pub fn compile_modules(
         .first()
         .map(|tm| tm.module_path.as_str())
         .unwrap_or("");
-    // Collect all modules' local instance defs once for cross-module dict resolution.
-    // Passed to each lower_module call; duplicates from the current module are harmless.
-    let all_instance_defs: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| {
-            tm.instance_defs
-                .iter()
-                .map(|inst| (tm.module_path.clone(), inst.clone()))
-        })
-        .collect();
-    let all_extern_fns: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_fns.iter().cloned())
-        .collect();
-    let all_extern_types: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_types.iter().cloned())
-        .collect();
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
         // JVM class name: main_class_name for the entry module, module_path for libraries.
@@ -157,14 +140,12 @@ pub fn compile_modules(
         } else {
             &tm.module_path
         };
-        let ir = krypton_ir::lower::lower_module(
-            tm,
-            jvm_class_name,
-            &all_instance_defs,
-            &all_extern_fns,
-            &all_extern_types,
-        )
-        .map_err(|e| {
+        let view = link_ctx
+            .view_for(&krypton_typechecker::module_interface::ModulePath::new(&tm.module_path))
+            .unwrap_or_else(|| {
+                panic!("ICE: no LinkContext view for module '{}'", tm.module_path)
+            });
+        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name, &view).map_err(|e| {
             CodegenError::TypeError(
                 format!("IR lowering error in module {jvm_class_name}: {e}"),
                 None,

@@ -34,7 +34,7 @@ fn run_program_raw(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let typed_modules =
+    let (typed_modules, interfaces) =
         infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
             let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
             let rendered: String = diags
@@ -43,7 +43,8 @@ fn run_program_raw(
                 .collect();
             panic!("fixture {fixture_name}: type check failed:\n{rendered}");
         });
-    let classes = compile_modules(&typed_modules, "Kr$Test")
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let classes = compile_modules(&typed_modules, "Kr$Test", &link_ctx)
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
     let dir = tempfile::tempdir().unwrap();
@@ -155,7 +156,7 @@ fn codegen_fixture(
                         errors.is_empty(),
                         "fixture {name}: expected ok but parse errors: {errors:?}"
                     );
-                    let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                    let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
                         .unwrap_or_else(|errors| {
                             let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                             let rendered: String = diags
@@ -164,7 +165,8 @@ fn codegen_fixture(
                                 .collect();
                             panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                         });
-                    match compile_modules(&typed_modules, "Kr$Test") {
+                    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+                    match compile_modules(&typed_modules, "Kr$Test", &link_ctx) {
                         Ok(_)
                         | Err(krypton_codegen::emit::CodegenError {
                             kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
@@ -205,7 +207,7 @@ fn codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags
@@ -214,7 +216,8 @@ fn codegen_module(
                             .collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
-                match compile_modules(&typed_modules, "Kr$Test") {
+                let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+                match compile_modules(&typed_modules, "Kr$Test", &link_ctx) {
                     Ok(_)
                     | Err(krypton_codegen::emit::CodegenError {
                         kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,

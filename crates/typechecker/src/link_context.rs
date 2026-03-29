@@ -438,6 +438,30 @@ impl<'a> ModuleLinkView<'a> {
             .filter(|(path, _)| self.is_reachable(path))
             .collect()
     }
+
+    pub fn all_extern_fns(&self) -> Vec<(&'a ModulePath, &'a ExternFnSummary)> {
+        self.ctx
+            .interfaces
+            .iter()
+            .filter(|(mod_id, _)| self.reachable.contains(mod_id))
+            .flat_map(|(mod_id, iface)| {
+                let path = self.ctx.interner.resolve(*mod_id);
+                iface.extern_fns.iter().map(move |ef| (path, ef))
+            })
+            .collect()
+    }
+
+    pub fn all_extern_types(&self) -> Vec<(&'a ModulePath, &'a ExternTypeSummary)> {
+        self.ctx
+            .interfaces
+            .iter()
+            .filter(|(mod_id, _)| self.reachable.contains(mod_id))
+            .flat_map(|(mod_id, iface)| {
+                let path = self.ctx.interner.resolve(*mod_id);
+                iface.extern_types.iter().map(move |et| (path, et))
+            })
+            .collect()
+    }
 }
 
 // ===========================================================================

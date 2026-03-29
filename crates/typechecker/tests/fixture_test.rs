@@ -19,7 +19,7 @@ fn infer_module_snapshot_with_resolver(
         return Err(vec![errors[0].code.to_string()]);
     }
     match infer::infer_module(&module, resolver, "test".to_string()) {
-        Ok(modules) => {
+        Ok((modules, _)) => {
             let lines: Vec<String> = modules[0]
                 .fn_types
                 .iter()

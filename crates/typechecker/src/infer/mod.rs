@@ -1375,7 +1375,7 @@ pub fn infer_module(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     root_module_path: String,
-) -> Result<Vec<TypedModule>, Vec<InferError>> {
+) -> Result<(Vec<TypedModule>, Vec<crate::module_interface::ModuleInterface>), Vec<InferError>> {
     use krypton_modules::module_graph;
     use krypton_modules::stdlib_loader::StdlibLoader;
 
@@ -1464,6 +1464,12 @@ pub fn infer_module(
             .collect::<Vec<_>>()
     })?;
 
+    // Extract root module's interface.
+    // Include all graph modules (prelude + explicit imports) as direct deps
+    // so the LinkContext can compute correct transitive reachability.
+    let root_dep_paths: Vec<String> = graph.modules.iter().map(|m| m.path.clone()).collect();
+    let root_iface = crate::module_interface::extract_interface(&main, &root_dep_paths);
+
     let mut result = vec![main];
     // Collect cached imported modules in topological order (dependencies first)
     for resolved in &graph.modules {
@@ -1471,7 +1477,16 @@ pub fn infer_module(
             result.push(typed);
         }
     }
-    Ok(result)
+
+    // Collect all interfaces: root first, then deps in topological order
+    let mut interfaces = vec![root_iface];
+    for resolved in &graph.modules {
+        if let Some(iface) = interface_cache.remove(&resolved.path) {
+            interfaces.push(iface);
+        }
+    }
+
+    Ok((result, interfaces))
 }
 
 /// Convert a non-parse `ModuleGraphError` into a `SpannedTypeError`.
@@ -1499,7 +1514,7 @@ pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<TypedModule, Vec<InferError>> {
-    let mut modules = infer_module(module, resolver, "main".to_string())?;
+    let (mut modules, _) = infer_module(module, resolver, "main".to_string())?;
     Ok(modules.remove(0))
 }
 

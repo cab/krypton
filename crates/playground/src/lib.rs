@@ -88,8 +88,8 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let resolver = PlaygroundResolver {
         root_source: source.to_string(),
     };
-    let typed_modules = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
-        Ok(typed_modules) => typed_modules,
+    let (typed_modules, interfaces) = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
+        Ok(result) => result,
         Err(errors) => {
             let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
                 ROOT_FILENAME,
@@ -100,7 +100,8 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
         }
     };
 
-    let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false) {
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false, &link_ctx) {
         Ok(files) => files,
         Err(err) => {
             let (diags, _srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(

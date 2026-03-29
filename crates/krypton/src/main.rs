@@ -261,12 +261,12 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(
+            let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
                 &module,
                 &resolver,
                 root_module_path(&file),
             ) {
-                Ok(modules) => modules,
+                Ok(result) => result,
                 Err(errors) => {
                     let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
                         &file, &source, &errors,
@@ -295,10 +295,11 @@ fn main() {
                 format!("Kr${base}")
             };
 
+            let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
             match target {
                 Target::Jvm => {
                     let t = Instant::now();
-                    match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
+                    match krypton_codegen::emit::compile_modules(&typed_modules, &class_name, &link_ctx) {
                         Ok(classes) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(classes = classes.len(), "codegen complete");
@@ -348,7 +349,7 @@ fn main() {
                 }
                 Target::Js => {
                     let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem, true) {
+                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem, true, &link_ctx) {
                         Ok(files) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(files = files.len(), "JS codegen complete");
@@ -427,12 +428,12 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(
+            let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
                 &module,
                 &resolver,
                 root_module_path(&file),
             ) {
-                Ok(modules) => modules,
+                Ok(result) => result,
                 Err(errors) => {
                     let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
                         &file, &source, &errors,
@@ -459,10 +460,11 @@ fn main() {
                 format!("Kr${base}")
             };
 
+            let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
             match target {
                 Target::Jvm => {
                     let t = Instant::now();
-                    match krypton_codegen::emit::compile_modules(&typed_modules, &class_name) {
+                    match krypton_codegen::emit::compile_modules(&typed_modules, &class_name, &link_ctx) {
                         Ok(classes) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(classes = classes.len(), "codegen complete");
@@ -516,7 +518,7 @@ fn main() {
                 }
                 Target::Js => {
                     let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem, true) {
+                    match krypton_codegen_js::compile_modules_js(&typed_modules, stem, true, &link_ctx) {
                         Ok(files) => {
                             let debug_js = std::env::var_os("KRYPTON_DEBUG_JS").is_some();
                             phases.push(("codegen", t.elapsed()));
@@ -624,7 +626,7 @@ fn main() {
                 &resolver,
                 root_module_path(&file),
             ) {
-                Ok(modules) => {
+                Ok((modules, _)) => {
                     phases.push(("typecheck", t.elapsed()));
                     let info = &modules[0];
                     for entry in &info.fn_types {
@@ -670,12 +672,12 @@ fn main() {
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
             let t = Instant::now();
-            let typed_modules = match krypton_typechecker::infer::infer_module(
+            let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
                 &module,
                 &resolver,
                 root_module_path(&file),
             ) {
-                Ok(modules) => modules,
+                Ok(result) => result,
                 Err(errors) => {
                     let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
                         &file, &source, &errors,
@@ -695,22 +697,7 @@ fn main() {
 
             let mut lower_dur = Duration::ZERO;
             let mut lint_dur = Duration::ZERO;
-            let all_instance_defs: Vec<_> = typed_modules
-                .iter()
-                .flat_map(|tm| {
-                    tm.instance_defs
-                        .iter()
-                        .map(|inst| (tm.module_path.clone(), inst.clone()))
-                })
-                .collect();
-            let all_extern_fns: Vec<_> = typed_modules
-                .iter()
-                .flat_map(|tm| tm.extern_fns.iter().cloned())
-                .collect();
-            let all_extern_types: Vec<_> = typed_modules
-                .iter()
-                .flat_map(|tm| tm.extern_types.iter().cloned())
-                .collect();
+            let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
             for (i, typed) in typed_modules.iter().enumerate() {
                 if !all && i > 0 {
                     continue;
@@ -720,14 +707,15 @@ fn main() {
                 } else {
                     typed.module_path.clone()
                 };
+                let view = link_ctx
+                    .view_for(&krypton_typechecker::module_interface::ModulePath::new(
+                        &typed.module_path,
+                    ))
+                    .unwrap_or_else(|| {
+                        panic!("ICE: no LinkContext view for module '{}'", typed.module_path)
+                    });
                 let t = Instant::now();
-                match krypton_ir::lower::lower_module(
-                    typed,
-                    &mod_name,
-                    &all_instance_defs,
-                    &all_extern_fns,
-                    &all_extern_types,
-                ) {
+                match krypton_ir::lower::lower_module(typed, &mod_name, &view) {
                     Ok(ir_module) => {
                         lower_dur += t.elapsed();
                         let t = Instant::now();
@@ -779,7 +767,7 @@ fn main() {
                 &resolver,
                 root_module_path(&file),
             ) {
-                Ok(modules) => {
+                Ok((modules, _)) => {
                     let info = &modules[0];
                     let output = inspect::render_inspect(
                         &module,

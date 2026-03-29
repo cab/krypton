@@ -7,6 +7,8 @@ use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
 use krypton_typechecker::infer::infer_module;
+use krypton_typechecker::link_context::LinkContext;
+use krypton_typechecker::module_interface::ModulePath;
 use rstest::rstest;
 
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "inspect"];
@@ -60,33 +62,15 @@ fn ir_lower(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, &resolver, name.clone())
+    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.clone())
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
-    let all_instance_defs: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| {
-            tm.instance_defs
-                .iter()
-                .map(|inst| (tm.module_path.clone(), inst.clone()))
-        })
-        .collect();
-    let all_extern_fns: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_fns.iter().cloned())
-        .collect();
-    let all_extern_types: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_types.iter().cloned())
-        .collect();
-    let ir_module = lower_module(
-        &typed_modules[0],
-        &name,
-        &all_instance_defs,
-        &all_extern_fns,
-        &all_extern_types,
-    )
-    .unwrap_or_else(|e| panic!("fixture {name}: IR lowering failed: {e:?}"));
+    let link_ctx = LinkContext::build(interfaces);
+    let view = link_ctx
+        .view_for(&ModulePath::new(&typed_modules[0].module_path))
+        .unwrap_or_else(|| panic!("fixture {name}: no LinkContext view for root module"));
+    let ir_module = lower_module(&typed_modules[0], &name, &view)
+        .unwrap_or_else(|e| panic!("fixture {name}: IR lowering failed: {e:?}"));
 
     insta::assert_snapshot!(name, ir_module.to_string());
 }
@@ -116,26 +100,10 @@ fn ir_link(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let typed_modules = infer_module(&module, &resolver, stem.clone())
+    let (typed_modules, interfaces) = infer_module(&module, &resolver, stem.clone())
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
-    // Lower and lint each module, then concatenate output.
-    let all_instance_defs: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| {
-            tm.instance_defs
-                .iter()
-                .map(|inst| (tm.module_path.clone(), inst.clone()))
-        })
-        .collect();
-    let all_extern_fns: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_fns.iter().cloned())
-        .collect();
-    let all_extern_types: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_types.iter().cloned())
-        .collect();
+    let link_ctx = LinkContext::build(interfaces);
     let mut output = String::new();
     for (i, typed) in typed_modules.iter().enumerate() {
         let mod_name = if i == 0 {
@@ -143,14 +111,12 @@ fn ir_link(
         } else {
             typed.module_path.clone()
         };
-        let ir_module = lower_module(
-            typed,
-            &mod_name,
-            &all_instance_defs,
-            &all_extern_fns,
-            &all_extern_types,
-        )
-        .unwrap_or_else(|e| {
+        let view = link_ctx
+            .view_for(&ModulePath::new(&typed.module_path))
+            .unwrap_or_else(|| {
+                panic!("fixture {name}: no LinkContext view for module {mod_name}")
+            });
+        let ir_module = lower_module(typed, &mod_name, &view).unwrap_or_else(|e| {
             panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}")
         });
         let ir_module = LintPass.run(ir_module).unwrap_or_else(|e| {

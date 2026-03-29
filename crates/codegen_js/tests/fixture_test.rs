@@ -29,7 +29,7 @@ fn compile_js_result_with_resolver(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let typed_modules =
+    let (typed_modules, interfaces) =
         infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
             let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
             let rendered: String = diags
@@ -38,7 +38,8 @@ fn compile_js_result_with_resolver(
                 .collect();
             panic!("fixture {fixture_name}: type check failed:\n{rendered}");
         });
-    compile_modules_js(&typed_modules, "test", false)
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    compile_modules_js(&typed_modules, "test", false, &link_ctx)
 }
 
 /// Copy runtime/js/*.mjs files into the temp output directory so that
@@ -137,7 +138,7 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
     "#;
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let typed_modules = infer_module(
+    let (typed_modules, interfaces) = infer_module(
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
@@ -147,30 +148,12 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
         .iter()
         .find(|tm| tm.module_path == "test")
         .expect("expected root typed module");
-    let all_instance_defs: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| {
-            tm.instance_defs
-                .iter()
-                .map(|inst| (tm.module_path.clone(), inst.clone()))
-        })
-        .collect();
-    let all_extern_fns: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_fns.iter().cloned())
-        .collect();
-    let all_extern_types: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_types.iter().cloned())
-        .collect();
-    let lowered = krypton_ir::lower::lower_module(
-        root,
-        "test",
-        &all_instance_defs,
-        &all_extern_fns,
-        &all_extern_types,
-    )
-    .expect("lowering should succeed");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let view = link_ctx
+        .view_for(&krypton_typechecker::module_interface::ModulePath::new("test"))
+        .expect("expected link view for test module");
+    let lowered =
+        krypton_ir::lower::lower_module(root, "test", &view).expect("lowering should succeed");
 
     assert!(
         lowered.extern_fns.iter().any(|ext| ext.name == "println"
@@ -360,7 +343,7 @@ fn js_codegen_fixture(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags
@@ -369,7 +352,8 @@ fn js_codegen_fixture(
                             .collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
-                compile_modules_js(&typed_modules, "test", true).unwrap_or_else(|e| {
+                let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+                compile_modules_js(&typed_modules, "test", true, &link_ctx).unwrap_or_else(|e| {
                     panic!("fixture {name}: JS codegen failed: {e}");
                 });
             }
@@ -413,7 +397,7 @@ fn js_codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let typed_modules = infer_module(&module, &resolver, "test".to_string())
+                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags
@@ -422,7 +406,8 @@ fn js_codegen_module(
                             .collect();
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
-                let _ = compile_modules_js(&typed_modules, "test", true);
+                let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+                let _ = compile_modules_js(&typed_modules, "test", true, &link_ctx);
             }
             Expectation::Error(_) | Expectation::Panic(_) => {}
         }

@@ -5323,9 +5323,7 @@ enum LoweredValue {
 pub fn lower_module(
     typed: &TypedModule,
     module_name: &str,
-    imported_instances: &[(String, typed_ast::InstanceDefInfo)],
-    imported_extern_fns: &[typed_ast::ExternFnInfo],
-    imported_extern_types: &[typed_ast::ExternTypeInfo],
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
 ) -> Result<Module, LowerError> {
     // Build fn_constraints from TypeScheme constraints (embedded during inference)
     let mut fn_constraints: HashMap<QualifiedName, Vec<(TraitName, TypeVarId)>> = HashMap::new();
@@ -5404,10 +5402,12 @@ pub fn lower_module(
                     source_module: typed.module_path.clone(),
                     target_type_name: inst.target_type_name.clone(),
                 });
-            let imported_param = imported_instances
-                .iter()
+            let imported_param = link_view
+                .all_instances()
+                .into_iter()
+                .filter(|(path, _)| path.as_str() != typed.module_path)
                 .filter(|(_, inst)| !inst.constraints.is_empty())
-                .map(|(src, inst)| ParamInstanceInfo {
+                .map(|(path, inst)| ParamInstanceInfo {
                     trait_name: inst.trait_name.clone(),
                     target_type: inst.target_type.clone(),
                     type_var_ids: inst.type_var_ids.clone(),
@@ -5416,7 +5416,7 @@ pub fn lower_module(
                         .iter()
                         .map(|c| (c.trait_name.clone(), c.type_var.clone()))
                         .collect(),
-                    source_module: src.clone(),
+                    source_module: path.as_str().to_string(),
                     target_type_name: inst.target_type_name.clone(),
                 });
             local_param.chain(imported_param).collect()
@@ -5457,13 +5457,15 @@ pub fn lower_module(
                     source_module: typed.module_path.clone(),
                 });
             }
-            for (src, inst) in imported_instances {
-                infos.push(InstanceSourceInfo {
-                    trait_name: inst.trait_name.clone(),
-                    target_type: inst.target_type.clone(),
-                    target_type_name: inst.target_type_name.clone(),
-                    source_module: src.clone(),
-                });
+            for (path, inst) in link_view.all_instances() {
+                if path.as_str() != typed.module_path {
+                    infos.push(InstanceSourceInfo {
+                        trait_name: inst.trait_name.clone(),
+                        target_type: inst.target_type.clone(),
+                        target_type_name: inst.target_type_name.clone(),
+                        source_module: path.as_str().to_string(),
+                    });
+                }
             }
             infos
         },
@@ -5592,12 +5594,12 @@ pub fn lower_module(
     }
     // Imported extern fns need FnIds for call resolution during lowering,
     // even though they are not emitted into the IR module's extern_fns list.
-    for ext in imported_extern_fns {
-        if !ctx.fn_ids.contains_key(&ext.name) {
+    for (_, ef) in link_view.all_extern_fns() {
+        if !ctx.fn_ids.contains_key(&ef.name) {
             let fn_id = ctx.fresh_fn();
-            ctx.fn_ids.insert(ext.name.clone(), fn_id);
+            ctx.fn_ids.insert(ef.name.clone(), fn_id);
             ctx.callable_ids.insert(
-                QualifiedName::new(ext.declaring_module_path.clone(), ext.name.clone()),
+                QualifiedName::new(ef.declaring_module.as_str().to_string(), ef.name.clone()),
                 fn_id,
             );
         }
@@ -6035,10 +6037,11 @@ pub fn lower_module(
         .collect();
 
     // Imported extern types: extern type bindings from dependency modules.
-    let ir_imported_extern_types: Vec<ManifestExternType> = imported_extern_types
-        .iter()
-        .filter(|info| info.host_module != typed.module_path)
-        .filter_map(|info| {
+    let ir_imported_extern_types: Vec<ManifestExternType> = link_view
+        .all_extern_types()
+        .into_iter()
+        .filter(|(path, _)| path.as_str() != typed.module_path)
+        .filter_map(|(_, info)| {
             let ir_target = match &info.target {
                 krypton_parser::ast::ExternTarget::Java => Some(ExternTarget::Java {
                     class: info.host_module.clone(),
@@ -6057,44 +6060,48 @@ pub fn lower_module(
         .collect();
 
     // Imported extern fns: extern FFI function bindings from dependency modules.
-    let ir_imported_extern_fns: Vec<ManifestExternFn> = imported_extern_fns
-        .iter()
-        .map(|ext| {
-            let ir_target = match &ext.target {
+    let ir_imported_extern_fns: Vec<ManifestExternFn> = link_view
+        .all_extern_fns()
+        .into_iter()
+        .filter(|(path, _)| path.as_str() != typed.module_path)
+        .map(|(_, ef)| {
+            let ir_target = match &ef.target {
                 krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
-                    class: ext.module_path.clone(),
+                    class: ef.host_module_path.clone(),
                 },
                 krypton_parser::ast::ExternTarget::Js => ExternTarget::Js {
-                    module: ext.module_path.clone(),
+                    module: ef.host_module_path.clone(),
                 },
             };
             ManifestExternFn {
                 canonical: CanonicalRef {
-                    module: ModulePath::new(ext.declaring_module_path.clone()),
-                    symbol: LocalSymbolKey::Function(ext.name.clone()),
+                    module: ModulePath::new(ef.declaring_module.as_str().to_string()),
+                    symbol: LocalSymbolKey::Function(ef.name.clone()),
                 },
-                id: ctx.fn_ids.get(&ext.name).copied().unwrap_or_else(|| {
+                id: ctx.fn_ids.get(&ef.name).copied().unwrap_or_else(|| {
                     panic!(
                         "ICE: imported extern fn '{}' has no FnId — \
                          pre-allocation in lower_module step 3 should have assigned one",
-                        ext.name
+                        ef.name
                     )
                 }),
-                name: ext.name.clone(),
-                declaring_module_path: ext.declaring_module_path.clone(),
-                span: ext.span,
+                name: ef.name.clone(),
+                declaring_module_path: ef.declaring_module.as_str().to_string(),
+                span: (0, 0),
                 target: ir_target,
-                nullable: ext.nullable,
-                param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
-                return_type: ext.return_type.clone().into(),
+                nullable: ef.nullable,
+                param_types: ef.param_types.iter().cloned().map(Into::into).collect(),
+                return_type: ef.return_type.clone().into(),
             }
         })
         .collect();
 
     // Imported instances: instance metadata from dependency modules.
-    let ir_imported_instances: Vec<ManifestInstance> = imported_instances
-        .iter()
-        .map(|(source_module_path, inst)| {
+    let ir_imported_instances: Vec<ManifestInstance> = link_view
+        .all_instances()
+        .into_iter()
+        .filter(|(path, _)| path.as_str() != typed.module_path)
+        .map(|(path, inst)| {
             let sub_dict_requirements = inst
                 .constraints
                 .iter()
@@ -6106,13 +6113,13 @@ pub fn lower_module(
                 .collect();
             ManifestInstance {
                 canonical: CanonicalRef {
-                    module: ModulePath::new(source_module_path.clone()),
+                    module: ModulePath::new(path.as_str().to_string()),
                     symbol: LocalSymbolKey::Instance {
                         trait_name: inst.trait_name.local_name.clone(),
                         target_type: inst.target_type_name.clone(),
                     },
                 },
-                source_module_path: source_module_path.clone(),
+                source_module_path: path.as_str().to_string(),
                 trait_name: inst.trait_name.clone(),
                 target_type_name: inst.target_type_name.clone(),
                 target_type: inst.target_type.clone().into(),

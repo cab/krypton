@@ -310,6 +310,7 @@ pub fn compile_modules_js(
     typed_modules: &[TypedModule],
     main_module_name: &str,
     emit_main_call: bool,
+    link_ctx: &krypton_typechecker::link_context::LinkContext,
 ) -> Result<Vec<(String, String)>, JsCodegenError> {
     let root_module_path = typed_modules
         .first()
@@ -318,22 +319,6 @@ pub fn compile_modules_js(
 
     let mut ir_modules: Vec<Module> = Vec::new();
     let mut module_sources: HashMap<String, Option<String>> = HashMap::new();
-    let all_instance_defs: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| {
-            tm.instance_defs
-                .iter()
-                .map(|inst| (tm.module_path.clone(), inst.clone()))
-        })
-        .collect();
-    let all_extern_fns: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_fns.iter().cloned())
-        .collect();
-    let all_extern_types: Vec<_> = typed_modules
-        .iter()
-        .flat_map(|tm| tm.extern_types.iter().cloned())
-        .collect();
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
         let mod_name = if is_root {
@@ -341,14 +326,13 @@ pub fn compile_modules_js(
         } else {
             &tm.module_path
         };
-        let ir = krypton_ir::lower::lower_module(
-            tm,
-            mod_name,
-            &all_instance_defs,
-            &all_extern_fns,
-            &all_extern_types,
-        )
-        .map_err(|e| JsCodegenError::LowerError(format!("module {mod_name}: {e}")))?;
+        let view = link_ctx
+            .view_for(&krypton_typechecker::module_interface::ModulePath::new(&tm.module_path))
+            .unwrap_or_else(|| {
+                panic!("ICE: no LinkContext view for module '{}'", tm.module_path)
+            });
+        let ir = krypton_ir::lower::lower_module(tm, mod_name, &view)
+            .map_err(|e| JsCodegenError::LowerError(format!("module {mod_name}: {e}")))?;
         ir_modules.push(ir);
         module_sources.insert(mod_name.to_string(), tm.module_source.clone());
         module_sources.insert(tm.module_path.clone(), tm.module_source.clone());

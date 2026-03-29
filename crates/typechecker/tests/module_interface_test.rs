@@ -62,7 +62,7 @@ fn typecheck_and_extract(src: &str) -> ModuleInterface {
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let dep_paths = collect_direct_deps(&module);
     let dep_strs: Vec<String> = dep_paths.iter().map(|p| p.0.clone()).collect();
-    let modules = infer::infer_module(
+    let (modules, _) = infer::infer_module(
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
@@ -77,7 +77,7 @@ fn extract_multi(root_src: &str, libs: Vec<(&str, &str)>) -> ModuleInterface {
     let dep_paths = collect_direct_deps(&root_module);
     let dep_strs: Vec<String> = dep_paths.iter().map(|p| p.0.clone()).collect();
     let resolver = TestResolver::new(libs);
-    let modules =
+    let (modules, _) =
         infer::infer_module(&root_module, &resolver, "test".to_string()).expect("typecheck failed");
     extract_interface(&modules[0], &dep_strs)
 }
