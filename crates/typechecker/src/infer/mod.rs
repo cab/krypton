@@ -56,11 +56,17 @@ fn constructor_names(td: &TypeDecl) -> Vec<String> {
     }
 }
 
-fn constructor_binding_kind_for_decl(td: &TypeDecl, constructor_name: &str) -> ConstructorBindingKind {
+fn constructor_binding_kind_for_decl(
+    td: &TypeDecl,
+    constructor_name: &str,
+) -> ConstructorBindingKind {
     match &td.kind {
         TypeDeclKind::Record { .. } => ConstructorBindingKind::Record,
         TypeDeclKind::Sum { variants } => {
-            if variants.iter().any(|variant| variant.name == constructor_name) {
+            if variants
+                .iter()
+                .any(|variant| variant.name == constructor_name)
+            {
                 ConstructorBindingKind::Variant
             } else {
                 ConstructorBindingKind::Record
@@ -74,9 +80,15 @@ fn constructor_binding_kind_for_export(
     constructor_name: &str,
 ) -> ConstructorBindingKind {
     match &info.kind {
+        typed_ast::ExportedTypeKind::Opaque => {
+            unreachable!("opaque exported types do not have constructors")
+        }
         typed_ast::ExportedTypeKind::Record { .. } => ConstructorBindingKind::Record,
         typed_ast::ExportedTypeKind::Sum { variants } => {
-            if variants.iter().any(|variant| variant.name == constructor_name) {
+            if variants
+                .iter()
+                .any(|variant| variant.name == constructor_name)
+            {
                 ConstructorBindingKind::Variant
             } else {
                 ConstructorBindingKind::Record
@@ -1396,8 +1408,7 @@ pub fn infer_module(
                 .map(|s| s.to_string())
                 .or_else(|| resolver.resolve(&resolved.path));
             // Extract interface for downstream modules
-            let iface =
-                crate::module_interface::extract_interface(&typed, &dep_paths);
+            let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
             interface_cache.insert(resolved.path.clone(), iface);
             cache.insert(resolved.path.clone(), typed);
         }
@@ -1702,8 +1713,7 @@ impl ImportContext {
         source: String,
         vis: Visibility,
     ) {
-        self.imported_type_info
-            .insert(name, (source.clone(), vis));
+        self.imported_type_info.insert(name, (source.clone(), vis));
         if let Some(canonical_name) = canonical_name {
             self.imported_type_info
                 .entry(canonical_name)
@@ -1937,7 +1947,12 @@ impl ModuleInferenceState {
                 }
             }
         }
-        Ok((extern_fns, extern_types, extern_bindings, extern_fn_constraints))
+        Ok((
+            extern_fns,
+            extern_types,
+            extern_bindings,
+            extern_fn_constraints,
+        ))
     }
 
     fn cleanup_prelude_shadows(&mut self, module: &Module) {
@@ -2559,9 +2574,7 @@ impl ModuleInferenceState {
                             source_module: module_path.to_string(),
                             type_params: type_info.type_params.clone(),
                             type_param_vars: type_info.type_param_vars.clone(),
-                            kind: typed_ast::ExportedTypeKind::Record {
-                                fields: vec![],
-                            },
+                            kind: typed_ast::ExportedTypeKind::Opaque,
                         },
                     );
                 }

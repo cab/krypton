@@ -16,6 +16,8 @@ import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
@@ -28,8 +30,6 @@ import core/string/to_upper as to_upper(String): String
 import core/string/replace as replace(String, String, String): String
 import core/string/join as join(List[String], String): String
 import core/string/char_at as char_at(String, Int): Option[String]
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 declare char_at: (String, Int) -> Option[String]
 declare contains: (String, String) -> Bool
 declare ends_with: (String, String) -> Bool

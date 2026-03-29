@@ -15,11 +15,11 @@ import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 fn map(v0: Int, v1: (Int) -> Int) -> Int =
   let v2: Int = call_closure v1(v0)
   v2

@@ -1835,23 +1835,39 @@ impl<'a> JsEmitter<'a> {
         // Try to look up the type from var_types.
         if let Atom::Var(id) = value {
             if let Some(ty) = self.var_types.get(id) {
-                let type_name = match ty {
-                    krypton_ir::Type::Named(name, _) => {
-                        Some(name.rsplit('/').next().unwrap_or(name))
-                    }
-                    krypton_ir::Type::Own(inner) => {
-                        if let krypton_ir::Type::Named(name, _) = inner.as_ref() {
-                            Some(name.rsplit('/').next().unwrap_or(name))
-                        } else {
-                            None
-                        }
-                    }
+                let named = match ty {
+                    krypton_ir::Type::Named(name, _) => Some(name.as_str()),
+                    krypton_ir::Type::Own(inner) => match inner.as_ref() {
+                        krypton_ir::Type::Named(name, _) => Some(name.as_str()),
+                        _ => None,
+                    },
                     _ => None,
                 };
-                if let Some(type_name) = type_name {
-                    for s in &self.module.structs {
-                        if s.name == type_name && field_index < s.fields.len() {
-                            return s.fields[field_index].0.clone();
+                if let Some(named) = named {
+                    if let Some((module_path, type_name)) = named.rsplit_once('/') {
+                        for s in &self.module.imported_structs {
+                            if s.module_path == module_path
+                                && s.name == type_name
+                                && field_index < s.fields.len()
+                            {
+                                return s.fields[field_index].0.clone();
+                            }
+                        }
+                    } else {
+                        for s in &self.module.structs {
+                            if s.name == named && field_index < s.fields.len() {
+                                return s.fields[field_index].0.clone();
+                            }
+                        }
+                        let mut imported = self
+                            .module
+                            .imported_structs
+                            .iter()
+                            .filter(|s| s.name == named);
+                        if let Some(s) = imported.next() {
+                            if imported.next().is_none() && field_index < s.fields.len() {
+                                return s.fields[field_index].0.clone();
+                            }
                         }
                     }
                 }

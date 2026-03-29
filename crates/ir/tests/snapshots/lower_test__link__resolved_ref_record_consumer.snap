@@ -2,15 +2,15 @@
 source: crates/ir/tests/lower_test.rs
 expression: output
 ---
-module ufcs_trait_unaffected
+module resolved_ref_record_consumer
 
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -20,21 +20,21 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-fn map(v0: Int, v1: (Int) -> Int) -> Int =
-  let v2: Int = call_closure v1(v0)
-  v2
+import core/io/println as println(o): Unit
+import resolved_ref_record_lib/Point as Point(Int, Int): Point
+declare println: (o) -> Unit
 
-fn double(v3: Int) -> Int =
-  let v4: Int = add_int(v3, v3)
-  v4
+fn mk() -> Point =
+  let v0: ~Point = construct Point(5, 7)
+  v0
 
-fn main() -> Int =
-  let v7: (Int) -> Int = make_closure(lambda$52, [])
-  let v8: Int = call map(5, v7)
-  v8
-
-fn lambda$52(v5: Int) -> Int =
-  let v6: Int = call double(v5)
+fn main() -> Unit =
+  let v1: Point = call mk()
+  let v3: Int = project v1.0
+  let v4: Int = project v1.1
+  let v5: Int = add_int(v3, v4)
+  let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v6: Unit = call println(v2, v5)
   v6
 module core/eq
 
@@ -711,3 +711,23 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
+module resolved_ref_record_lib
+
+struct Point { x: Int, y: Int }
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
+import core/option/Some as Some(e): Option[e]
+import core/option/None as None(): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/list/Nil as Nil(): List[h]
+import core/ordering/LT as LT(): Ordering
+import core/ordering/EQ as EQ(): Ordering
+import core/ordering/GT as GT(): Ordering

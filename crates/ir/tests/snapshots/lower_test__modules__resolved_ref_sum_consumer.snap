@@ -2,7 +2,7 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module json__json_parse_error
+module modules__resolved_ref_sum_consumer
 
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -11,7 +11,6 @@ import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -21,19 +20,23 @@ import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
-import core/json/parse_json as parse_json(String): Result[String, Json]
-declare parse_json: (String) -> Result[String, Json]
+import core/io/println as println(o): Unit
+import resolved_ref_sum_lib/Keep as Keep(Int): Packet
+import resolved_ref_sum_lib/Drop as Drop(): Packet
 declare println: (o) -> Unit
 
-fn main() -> Unit =
-  let v0: Result[String, Json] = call parse_json("not json")
+fn render(v0: Packet) -> Int =
   switch v0 {
-    1 (v1: String) ->
-      let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-      let v3: Unit = call println(v2, "error")
-      v3
-    0 (v4: Json) ->
-      let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-      let v6: Unit = call println(v5, "FAIL")
-      v6
+    0 (v1: Int) ->
+      let v2: Int = add_int(v1, 1)
+      v2
+    1 ->
+      0
   }
+
+fn main() -> Unit =
+  let v4: ~Packet = construct Packet::Keep#0(8)
+  let v5: Int = call render(v4)
+  let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v6: Unit = call println(v3, v5)
+  v6

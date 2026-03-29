@@ -24,6 +24,8 @@ Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]
 Ok: forall a b. (b) -> Result[a, b]
 Err: forall a b. (a) -> Result[a, b]
+Cons: forall a. (a, List[a]) -> List[a]
+Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering

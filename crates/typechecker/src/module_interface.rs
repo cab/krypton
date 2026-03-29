@@ -160,6 +160,7 @@ pub struct TypeSummary {
 
 #[derive(Clone, Debug)]
 pub enum TypeSummaryKind {
+    Opaque,
     Record { fields: Vec<(String, Type)> },
     Sum { variants: Vec<VariantSummary> },
 }
@@ -427,6 +428,7 @@ fn extract_exported_types(typed: &TypedModule) -> Vec<TypeSummary> {
 
             let parent_name = name.clone();
             let kind = match &info.kind {
+                ExportedTypeKind::Opaque => TypeSummaryKind::Opaque,
                 ExportedTypeKind::Record { fields } => TypeSummaryKind::Record {
                     fields: fields.clone(),
                 },
@@ -647,6 +649,9 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
                 out.push_str(&format!("[{}]", t.type_params.join(", ")));
             }
             match &t.kind {
+                TypeSummaryKind::Opaque => {
+                    out.push_str(" = opaque\n");
+                }
                 TypeSummaryKind::Record { fields } => {
                     out.push_str(" = {");
                     for (i, (name, ty)) in fields.iter().enumerate() {
@@ -780,6 +785,7 @@ use crate::typed_ast::{
 /// Convert `TypeSummary` → `ExportedTypeInfo` for type registry registration.
 pub fn type_summary_to_export_info(ts: &TypeSummary, source_module: &str) -> ExportedTypeInfo {
     let kind = match &ts.kind {
+        TypeSummaryKind::Opaque => ExportedTypeKind::Opaque,
         TypeSummaryKind::Record { fields } => ExportedTypeKind::Record {
             fields: fields.clone(),
         },

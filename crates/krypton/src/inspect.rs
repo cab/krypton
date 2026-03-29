@@ -487,7 +487,9 @@ impl<'a> TypedFormatter<'a> {
                     }
                 }
             }
-            TypedExprKind::FieldAccess { expr: inner, field } => {
+            TypedExprKind::FieldAccess {
+                expr: inner, field, ..
+            } => {
                 self.fmt_expr_prec(inner, 7);
                 self.buf.push('.');
                 self.buf.push_str(field);
@@ -563,7 +565,7 @@ impl<'a> TypedFormatter<'a> {
                 }
                 self.buf.push(']');
             }
-            TypedExprKind::StructLit { name, fields } => {
+            TypedExprKind::StructLit { name, fields, .. } => {
                 self.buf.push_str(name);
                 self.buf.push_str(" { ");
                 for (i, (fname, fval)) in fields.iter().enumerate() {

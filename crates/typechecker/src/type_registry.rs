@@ -558,6 +558,7 @@ pub fn register_type_from_export(
     let mut constructors: Vec<(String, TypeScheme)> = Vec::new();
 
     let kind = match &info.kind {
+        ExportedTypeKind::Opaque => TypeKind::Record { fields: vec![] },
         ExportedTypeKind::Record { fields } => {
             let resolved_fields: Vec<(String, Type)> = fields
                 .iter()

@@ -8,14 +8,17 @@ use crate::types::{Type, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
-    constructor_binding_ref, imported_binding_ref, spanned, ModuleInferenceState,
-    QualifiedExport, QualifiedModuleBinding,
+    constructor_binding_ref, imported_binding_ref, spanned, ModuleInferenceState, QualifiedExport,
+    QualifiedModuleBinding,
 };
 
 fn constructor_kind_from_summary(
     summary: &crate::module_interface::TypeSummary,
 ) -> crate::types::ConstructorBindingKind {
     match summary.kind {
+        crate::module_interface::TypeSummaryKind::Opaque => {
+            unreachable!("opaque exported types do not have constructors")
+        }
         crate::module_interface::TypeSummaryKind::Record { .. } => {
             crate::types::ConstructorBindingKind::Record
         }
@@ -118,13 +121,7 @@ impl ModuleInferenceState {
                 span,
             } = decl
             {
-                self.process_single_import(
-                    *is_pub,
-                    path,
-                    names,
-                    *span,
-                    interface_cache,
-                )?;
+                self.process_single_import(*is_pub, path, names, *span, interface_cache)?;
             }
         }
         Ok(())
@@ -229,8 +226,7 @@ impl ModuleInferenceState {
                     .unwrap_or_else(|| ef.name.clone());
                 match &ef.key {
                     crate::module_interface::LocalSymbolKey::Constructor {
-                        parent_type,
-                        ..
+                        parent_type, ..
                     } => {
                         let kind = iface
                             .exported_types
@@ -303,10 +299,7 @@ impl ModuleInferenceState {
             if import_all {
                 let hidden_name = format!("__qual${}${}", qualifier_name, ef.local_name);
                 let canonical_name = ef.canonical_ref.symbol.local_name();
-                let original_prov = (
-                    ef.canonical_ref.module.0.clone(),
-                    canonical_name.clone(),
-                );
+                let original_prov = (ef.canonical_ref.module.0.clone(), canonical_name.clone());
                 qualified_exports.insert(
                     ef.local_name.clone(),
                     QualifiedExport {
@@ -339,7 +332,10 @@ impl ModuleInferenceState {
                                     }
                                 },
                             ),
-                            _ => imported_binding_ref(original_prov.0.clone(), original_prov.1.clone()),
+                            _ => imported_binding_ref(
+                                original_prov.0.clone(),
+                                original_prov.1.clone(),
+                            ),
                         }),
                     },
                 );
@@ -374,14 +370,10 @@ impl ModuleInferenceState {
                     .cloned()
                     .unwrap_or_else(|| ef.local_name.clone());
                 let canonical_name = ef.canonical_ref.symbol.local_name();
-                let original_prov = (
-                    ef.canonical_ref.module.0.clone(),
-                    canonical_name,
-                );
+                let original_prov = (ef.canonical_ref.module.0.clone(), canonical_name);
                 match &ef.canonical_ref.symbol {
                     crate::module_interface::LocalSymbolKey::Constructor {
-                        parent_type,
-                        ..
+                        parent_type, ..
                     } => {
                         let kind = interface_cache
                             .get(original_prov.0.as_str())

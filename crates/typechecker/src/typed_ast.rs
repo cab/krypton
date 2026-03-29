@@ -423,6 +423,7 @@ pub struct ExportedTypeInfo {
 
 #[derive(Clone, Debug)]
 pub enum ExportedTypeKind {
+    Opaque,
     Record { fields: Vec<(String, Type)> },
     Sum { variants: Vec<ExportedVariantInfo> },
 }

@@ -270,6 +270,29 @@ fn stdlib_modules_compile_to_js() {
     }
 }
 
+#[test]
+fn generated_map_import_omits_opaque_map_type() {
+    let files = compile_js_result_with_resolver(
+        r#"
+            import core/map.{empty, size}
+            fun main() = size(empty())
+        "#,
+        &CompositeResolver::stdlib_only(),
+        "map_no_type_import",
+    )
+    .expect("JS compilation should succeed");
+
+    let root = files
+        .iter()
+        .find(|(name, _)| name == "test.mjs")
+        .expect("root module should be present");
+    assert!(
+        !root.1.contains("import { Map,"),
+        "root JS module should not import opaque Map type:\n{}",
+        root.1
+    );
+}
+
 /// Verify that actor module compiles to JS (runtime panics, not compile errors).
 #[test]
 fn actor_module_compiles_to_js() {

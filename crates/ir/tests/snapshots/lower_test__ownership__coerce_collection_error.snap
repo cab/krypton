@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__coerce_collection_error
 
-type MyList = Cons#0(h, List[h]) | Nil#1
+type MyList = Cons#0(String, MyList) | Nil#1
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
@@ -24,7 +24,7 @@ import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 
 fn test(v0: ~String) -> MyList =
-  let v1: ~MyList = construct List::Nil#1()
+  let v1: ~MyList = construct MyList::Nil#1()
   let v2: ~MyList = v1
-  let v3: ~MyList = construct List::Cons#0(v0, v2)
+  let v3: ~MyList = construct MyList::Cons#0(v0, v2)
   v3

@@ -15,6 +15,8 @@ import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
 import core/option/None as None(): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/list/Nil as Nil(): List[h]
 import core/ordering/LT as LT(): Ordering
@@ -23,8 +25,6 @@ import core/ordering/GT as GT(): Ordering
 import core/actor/Timeout as Timeout(): Timeout
 import core/actor/spawn as spawn((Mailbox[c10]) -> Unit): Ref[c10]
 import core/actor/ask as ask(Ref[y11], (Ref[z11]) -> y11, Int): Result[Timeout, z11]
-import core/result/Ok as Ok(h): Result[g, h]
-import core/result/Err as Err(g): Result[g, h]
 declare ask: (Ref[y11], (Ref[z11]) -> y11, Int) -> Result[Timeout, z11]
 declare println: (Object) -> Unit
 declare spawn: ((Mailbox[c10]) -> Unit) -> Ref[c10]

@@ -77,8 +77,8 @@ fn extract_multi(root_src: &str, libs: Vec<(&str, &str)>) -> ModuleInterface {
     let dep_paths = collect_direct_deps(&root_module);
     let dep_strs: Vec<String> = dep_paths.iter().map(|p| p.0.clone()).collect();
     let resolver = TestResolver::new(libs);
-    let modules = infer::infer_module(&root_module, &resolver, "test".to_string())
-        .expect("typecheck failed");
+    let modules =
+        infer::infer_module(&root_module, &resolver, "test".to_string()).expect("typecheck failed");
     extract_interface(&modules[0], &dep_strs)
 }
 
@@ -189,7 +189,10 @@ fn extract_interface_pub_fn() {
         "expected 'add' in exported_fns"
     );
     assert!(
-        !iface.exported_fns.iter().any(|f| f.name == "private_helper"),
+        !iface
+            .exported_fns
+            .iter()
+            .any(|f| f.name == "private_helper"),
         "private_helper should not be in exported_fns"
     );
 }
@@ -265,6 +268,18 @@ fn extract_interface_opaque_type() {
         .find(|t| t.name == "Secret")
         .expect("Secret should be in exported_types");
     assert_eq!(t.visibility, krypton_parser::ast::Visibility::Opaque);
+}
+
+#[test]
+fn extract_interface_extern_alias_is_opaque() {
+    let iface = typecheck_and_extract(r#"extern js "./ffi.mjs" as pub Blob[a] {}"#);
+    let t = iface
+        .exported_types
+        .iter()
+        .find(|t| t.name == "Blob")
+        .expect("Blob should be in exported_types");
+    assert_eq!(t.visibility, krypton_parser::ast::Visibility::Opaque);
+    assert!(matches!(t.kind, TypeSummaryKind::Opaque));
 }
 
 #[test]
