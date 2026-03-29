@@ -73,6 +73,10 @@ bench-compare name:
 bench-gen *ARGS:
     python3 bench/gen_bench.py {{ARGS}}
 
-# Time compilation of the generated benchmark (run bench-gen first)
+# Time type-checking of the generated benchmark (run bench-gen first)
 bench-compile *ARGS:
     cargo run --release -- check bench/generated/main.kr --timings {{ARGS}}
+
+# Time full compilation (parse + typecheck + codegen + emit) of the generated benchmark
+bench-compile-full target="jvm" *ARGS:
+    cargo run --release -- compile bench/generated/main.kr --timings --target {{target}} -o /tmp/kr_bench_out {{ARGS}}
