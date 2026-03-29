@@ -18,8 +18,7 @@ public final class KryptonActors {
     }
 
     public static Object raw_receive_timeout(Object mailbox, long millis) {
-        Object msg = ((Mailbox<Object>) mailbox).receiveTimeout(millis);
-        return (msg != null) ? wrapSome(msg) : wrapNone();
+        return ((Mailbox<Object>) mailbox).receiveTimeout(millis);
     }
 
     public static Object raw_actor_ref(Object mailbox) {
@@ -46,60 +45,8 @@ public final class KryptonActors {
         Object msg = fn.apply(replyRef);
         raw_send(target, msg);
         Object reply = replyMb.receiveTimeout(timeout);
-        if (reply != null) {
-            replyMb.close();
-            return wrapOk(reply);
-        } else {
-            replyMb.close();
-            return wrapErr(wrapTimeout());
-        }
-    }
-
-    // --- Helpers ---
-
-    private static Object wrapSome(Object value) {
-        try {
-            Class<?> cls = Class.forName("core.option.Option$Some");
-            return cls.getDeclaredConstructor(Object.class).newInstance(value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct Some: " + e.getMessage(), e);
-        }
-    }
-
-    private static Object wrapNone() {
-        try {
-            Class<?> cls = Class.forName("core.option.Option$None");
-            return cls.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct None: " + e.getMessage(), e);
-        }
-    }
-
-    private static Object wrapOk(Object value) {
-        try {
-            Class<?> cls = Class.forName("core.result.Result$Ok");
-            return cls.getDeclaredConstructor(Object.class).newInstance(value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct Ok: " + e.getMessage(), e);
-        }
-    }
-
-    private static Object wrapErr(Object value) {
-        try {
-            Class<?> cls = Class.forName("core.result.Result$Err");
-            return cls.getDeclaredConstructor(Object.class).newInstance(value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct Err: " + e.getMessage(), e);
-        }
-    }
-
-    private static Object wrapTimeout() {
-        try {
-            Class<?> cls = Class.forName("core.actor.Timeout$Timeout");
-            return cls.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct Timeout: " + e.getMessage(), e);
-        }
+        replyMb.close();
+        return reply;  // null on timeout, value on success
     }
 
     private KryptonActors() {}

@@ -1298,17 +1298,49 @@ fn process_extern_methods(
             };
             concrete_params.push(resolved);
         }
-        let codegen_return = match type_registry::resolve_type_expr(
-            &method.return_type,
-            &empty_map,
-            &empty_arity,
-            registry,
-            ResolutionContext::UserAnnotation,
-            None,
-        ) {
-            Ok(ty) => ty,
-            Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
-            Err(e) => return Err(spanned(e, span)),
+        let codegen_return = if method.nullable {
+            // Nullable externs must preserve Option[T] structure for the codegen
+            // wrapper generator. Resolve inner args with Object fallback for
+            // erased type params.
+            match &method.return_type {
+                TypeExpr::App { name, args, .. } => {
+                    let resolved_args: Vec<Type> = args
+                        .iter()
+                        .map(|a| {
+                            match type_registry::resolve_type_expr(
+                                a, &empty_map, &empty_arity, registry,
+                                ResolutionContext::UserAnnotation, None,
+                            ) {
+                                Ok(ty) => ty,
+                                Err(_) => Type::Named("Object".to_string(), vec![]),
+                            }
+                        })
+                        .collect();
+                    Type::Named(
+                        registry.canonical_name(name).to_string(),
+                        resolved_args,
+                    )
+                }
+                _ => {
+                    panic!(
+                        "ICE: @nullable extern `{}` has non-App return type in codegen resolution",
+                        method.name
+                    );
+                }
+            }
+        } else {
+            match type_registry::resolve_type_expr(
+                &method.return_type,
+                &empty_map,
+                &empty_arity,
+                registry,
+                ResolutionContext::UserAnnotation,
+                None,
+            ) {
+                Ok(ty) => ty,
+                Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
+                Err(e) => return Err(spanned(e, span)),
+            }
         };
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),

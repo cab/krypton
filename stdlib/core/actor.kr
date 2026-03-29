@@ -1,35 +1,35 @@
 # core/actor — Actor primitives
-import core/option.{Option}
-import core/result.{Result}
+import core/option.{Option, Some, None}
+import core/result.{Result, Ok, Err}
 
 extern java "krypton.runtime.Mailbox" as Mailbox[m] {}
 extern java "krypton.runtime.Ref" as Ref[m] {}
 
 extern java "krypton.runtime.KryptonActors" {
-    fun raw_spawn[m, r](f: (Mailbox[m]) -> Unit) -> r
-    fun raw_send[a, b](target: a, msg: b) -> Unit
-    fun raw_receive[m, r](mb: Mailbox[m]) -> r
-    fun raw_receive_timeout[m, r](mb: Mailbox[m], ms: Int) -> r
-    fun raw_actor_ref[m, r](mb: Mailbox[m]) -> r
+    fun raw_spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m]
+    fun raw_send[m](target: Ref[m], msg: m) -> Unit
+    fun raw_receive[m](mb: Mailbox[m]) -> m
+    @nullable fun raw_receive_timeout[m](mb: Mailbox[m], ms: Int) -> Option[m]
+    fun raw_actor_ref[m](mb: Mailbox[m]) -> Ref[m]
     fun raw_mailbox_size[m](mb: Mailbox[m]) -> Int
     fun raw_create_mailbox[m]() -> Mailbox[m]
-    fun raw_adapter[a, b, c](target: a, wrapper: b) -> c
-    fun raw_ask[a, b, c](target: a, wrapper: b, timeout: Int) -> c
+    fun raw_adapter[m, r](target: Ref[m], wrapper: (r) -> m) -> Ref[r]
+    @nullable fun raw_ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Option[r]
 }
 
 extern js "../runtime/js/actor.mjs" as Mailbox[m] {}
 extern js "../runtime/js/actor.mjs" as Ref[m] {}
 
 extern js "../runtime/js/actor.mjs" {
-    fun raw_spawn[m, r](f: (Mailbox[m]) -> Unit) -> r
-    fun raw_send[a, b](target: a, msg: b) -> Unit
-    fun raw_receive[m, r](mb: Mailbox[m]) -> r
-    fun raw_receive_timeout[m, r](mb: Mailbox[m], ms: Int) -> r
-    fun raw_actor_ref[m, r](mb: Mailbox[m]) -> r
+    fun raw_spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m]
+    fun raw_send[m](target: Ref[m], msg: m) -> Unit
+    fun raw_receive[m](mb: Mailbox[m]) -> m
+    @nullable fun raw_receive_timeout[m](mb: Mailbox[m], ms: Int) -> Option[m]
+    fun raw_actor_ref[m](mb: Mailbox[m]) -> Ref[m]
     fun raw_mailbox_size[m](mb: Mailbox[m]) -> Int
     fun raw_create_mailbox[m]() -> Mailbox[m]
-    fun raw_adapter[a, b, c](target: a, wrapper: b) -> c
-    fun raw_ask[a, b, c](target: a, wrapper: b, timeout: Int) -> c
+    fun raw_adapter[m, r](target: Ref[m], wrapper: (r) -> m) -> Ref[r]
+    @nullable fun raw_ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Option[r]
 }
 
 pub type Timeout = Timeout
@@ -42,4 +42,8 @@ pub fun actor_ref[m](mb: Mailbox[m]) -> Ref[m] = raw_actor_ref(mb)
 pub fun mailbox_size[m](mb: Mailbox[m]) -> Int = raw_mailbox_size(mb)
 pub fun mailbox[m]() -> Mailbox[m] = raw_create_mailbox()
 pub fun adapter[m, r](ref: Ref[m], wrapper: (r) -> m) -> Ref[r] = raw_adapter(ref, wrapper)
-pub fun ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Result[Timeout, r] = raw_ask(target, wrapper, timeout)
+pub fun ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Result[Timeout, r] =
+  match raw_ask(target, wrapper, timeout) {
+    Some(v) => Ok(v),
+    None => Err(Timeout),
+  }

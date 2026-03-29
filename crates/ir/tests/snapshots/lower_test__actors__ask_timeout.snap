@@ -23,11 +23,11 @@ import core/ordering/LT as LT(): Ordering
 import core/ordering/EQ as EQ(): Ordering
 import core/ordering/GT as GT(): Ordering
 import core/actor/Timeout as Timeout(): Timeout
-import core/actor/spawn as spawn((Mailbox[c10]) -> Unit): Ref[c10]
-import core/actor/ask as ask(Ref[y11], (Ref[z11]) -> y11, Int): Result[Timeout, z11]
-declare ask: (Ref[y11], (Ref[z11]) -> y11, Int) -> Result[Timeout, z11]
+import core/actor/spawn as spawn((Mailbox[o9]) -> Unit): Ref[o9]
+import core/actor/ask as ask(Ref[e11], (Ref[s11]) -> e11, Int): Result[Timeout, s11]
+declare ask: (Ref[e11], (Ref[s11]) -> e11, Int) -> Result[Timeout, s11]
 declare println: (Object) -> Unit
-declare spawn: ((Mailbox[c10]) -> Unit) -> Ref[c10]
+declare spawn: ((Mailbox[o9]) -> Unit) -> Ref[o9]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()
