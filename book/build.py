@@ -42,6 +42,10 @@ ROOT_WATCH_FILES = {
     (WORKSPACE_ROOT / "Cargo.toml").resolve(),
     (WORKSPACE_ROOT / "Cargo.lock").resolve(),
 }
+REQUIRED_FRONTEND_ASSETS = [
+    GENERATED / "tour.js",
+    GENERATED / "playground-worker.js",
+]
 
 
 def resolved_path(path: Path) -> Path:
@@ -60,15 +64,27 @@ def build_frontend():
         raise RuntimeError("npm is required to build the book frontend.") from exc
 
 
-def build_playground_wasm():
+def build_playground_wasm(release: bool = True):
     """Build the wasm playground package into generated/compiler/."""
     GENERATED.mkdir(exist_ok=True)
     try:
-        subprocess.run(["npm", "run", "build:playground-wasm"], cwd=ROOT, check=True)
+        task = "build:playground-wasm:release" if release else "build:playground-wasm"
+        subprocess.run(["npm", "run", task], cwd=ROOT, check=True)
     except FileNotFoundError as exc:
         raise RuntimeError(
             "wasm-pack is required to build the playground compiler."
         ) from exc
+
+
+def ensure_generated_frontend_assets():
+    """Fail clearly when the generated frontend bundle is missing."""
+    missing = [path.name for path in REQUIRED_FRONTEND_ASSETS if not path.exists()]
+    if missing:
+        assets = ", ".join(missing)
+        raise RuntimeError(
+            f"Missing generated frontend assets: {assets}. "
+            "Run `npm run build:frontend` from book/ before rendering the site."
+        )
 
 
 def slug_from_dir(name: str) -> str:
@@ -113,7 +129,7 @@ def discover_content():
                 "code": code_kr.read_text() if code_kr.exists() else "",
                 "chapter": chapter,
             }
-            lesson["url"] = f"/{chapter['slug']}/{lesson['slug']}/"
+            lesson["url"] = f"/guide/{chapter['slug']}/{lesson['slug']}/"
             chapter["lessons"].append(lesson)
         if chapter["lessons"]:
             chapters.append(chapter)
@@ -121,6 +137,7 @@ def discover_content():
 
 
 def render_site():
+    ensure_generated_frontend_assets()
     env = Environment(loader=FileSystemLoader(TEMPLATES))
     chapters = discover_content()
 
@@ -158,7 +175,7 @@ def render_site():
     for lesson in all_lessons:
         ch_slug = lesson["chapter"]["slug"]
         l_slug = lesson["slug"]
-        out_dir = DIST / ch_slug / l_slug
+        out_dir = DIST / "guide" / ch_slug / l_slug
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "index.html").write_text(
             lesson_tmpl.render(
@@ -171,11 +188,13 @@ def render_site():
     print(f"Built {len(all_lessons)} lessons in {len(chapters)} chapters → dist/")
 
 
-def build(*, include_frontend: bool = True, include_wasm: bool = True):
+def build(
+    *, release: bool = True, include_frontend: bool = True, include_wasm: bool = True
+):
     if include_frontend:
         build_frontend()
     if include_wasm:
-        build_playground_wasm()
+        build_playground_wasm(release=release)
     render_site()
 
 
@@ -200,7 +219,7 @@ def serve(port: int = 8000):
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
 
-    build()
+    build(release=False)
 
     class RebuildHandler(FileSystemEventHandler):
         def __init__(self):
@@ -277,4 +296,4 @@ if __name__ == "__main__":
     if args.command == "serve":
         serve(args.port)
     else:
-        build()
+        build(release=True)

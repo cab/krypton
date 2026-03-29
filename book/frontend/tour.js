@@ -1,5 +1,5 @@
 import { basicSetup, EditorView } from "codemirror";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Prec } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { indentUnit } from "@codemirror/language";
 import { setDiagnostics, lintGutter } from "@codemirror/lint";
@@ -165,11 +165,13 @@ document.querySelectorAll(".code-block").forEach((block) => {
   textarea.replaceWith(host);
 
   let view;
+  let isRunning = false;
   const run = async () => {
-    outputEl?.classList.add("visible");
-    if (!outputText) {
+    if (!outputText || isRunning) {
       return;
     }
+    isRunning = true;
+    outputEl?.classList.add("visible");
     outputText.textContent = "Running...";
     if (runBtn instanceof HTMLButtonElement) {
       runBtn.disabled = true;
@@ -191,6 +193,7 @@ document.querySelectorAll(".code-block").forEach((block) => {
           : String(error);
       view.dispatch(setDiagnostics(view.state, []));
     } finally {
+      isRunning = false;
       if (runBtn instanceof HTMLButtonElement) {
         runBtn.disabled = false;
       }
@@ -208,7 +211,7 @@ document.querySelectorAll(".code-block").forEach((block) => {
         kryptonLanguage,
         kryptonTheme,
         lintGutter(),
-        keymap.of([
+        Prec.highest(keymap.of([
           {
             key: "Mod-Enter",
             run: () => {
@@ -216,7 +219,7 @@ document.querySelectorAll(".code-block").forEach((block) => {
               return true;
             },
           },
-        ]),
+        ])),
       ],
     }),
   });
