@@ -35,7 +35,7 @@ struct LintContext {
 
 impl LintContext {
     fn new(module: &Module) -> Self {
-        let known_fns: HashSet<FnId> = module.fn_names.keys().copied().collect();
+        let known_fns: HashSet<FnId> = module.fn_names().keys().copied().collect();
 
         let known_traits: HashSet<String> = module.traits.iter().map(|t| t.name.clone()).collect();
 
@@ -292,7 +292,7 @@ impl LintContext {
 
             SimpleExprKind::TupleProject { value, .. } => self.check_atom_not_join(value),
 
-            SimpleExprKind::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty, .. } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
                     return Err(
                         self.err(format!("GetDict references unknown trait '{trait_name}'"))
@@ -308,6 +308,7 @@ impl LintContext {
                 trait_name,
                 ty,
                 sub_dicts,
+                ..
             } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
                     return Err(

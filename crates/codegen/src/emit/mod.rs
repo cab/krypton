@@ -179,11 +179,11 @@ pub fn compile_modules(
     // from its local instances + imported_instances metadata.
     for &(typed_module, ir_idx) in &typed_with_ir {
         let ir_module = &ir_modules[ir_idx];
-        let is_entry = ir_module.module_path == root_module_path;
+        let is_entry = ir_module.module_path.as_str() == root_module_path;
         let class_name = if is_entry {
             main_class_name
         } else {
-            &ir_module.module_path
+            ir_module.module_path.as_str()
         };
         let classes = compile_module_inner(ir_module, class_name, is_entry).map_err(|e| {
             if let Some(s) = &typed_module.module_source {
@@ -269,7 +269,7 @@ fn build_instance_class_map(
         }
         let class_name = format!(
             "{}/{}$${}",
-            ir_module.module_path, inst.trait_name.local_name, inst.target_type_name
+            ir_module.module_path.as_str(), inst.trait_name.local_name, inst.target_type_name
         );
         let requirements: Vec<DictRequirement> = inst
             .sub_dict_requirements
@@ -290,7 +290,7 @@ fn build_instance_class_map(
     }
 
     // Imported instances from cross-module metadata
-    for imp in &ir_module.imported_instances {
+    for imp in &ir_module.imported_instances() {
         if imp.is_intrinsic {
             continue;
         }

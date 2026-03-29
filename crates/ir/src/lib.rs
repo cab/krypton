@@ -8,6 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
 use krypton_parser::ast::Span;
+pub use krypton_typechecker::module_interface::{CanonicalRef, LocalSymbolKey, ModulePath};
 pub use krypton_typechecker::typed_ast::TraitName;
 pub use krypton_typechecker::types::TypeVarId;
 
@@ -67,6 +68,104 @@ impl Module {
             .find(|f| f.id == func)
             .map(|f| f.params.len().saturating_sub(capture_count))
             .unwrap_or(0)
+    }
+
+    // --- Backward-compat methods (T8/T9 will remove these) ---
+
+    /// Get the bare name for a FnId.
+    pub fn fn_name(&self, id: FnId) -> Option<&str> {
+        self.fn_identities.get(&id).map(|fi| fi.name())
+    }
+
+    /// Reconstruct the old `fn_names: HashMap<FnId, String>` map.
+    pub fn fn_names(&self) -> HashMap<FnId, String> {
+        self.fn_identities
+            .iter()
+            .map(|(&id, fi)| (id, fi.name().to_string()))
+            .collect()
+    }
+
+    /// Reconstruct imported structs from the import manifest.
+    pub fn imported_structs(&self) -> Vec<ImportedStructDef> {
+        self.imports
+            .structs
+            .iter()
+            .map(|m| ImportedStructDef {
+                name: m.name.clone(),
+                module_path: m.module_path.clone(),
+                type_params: m.type_params.clone(),
+                fields: m.fields.clone(),
+            })
+            .collect()
+    }
+
+    /// Reconstruct imported sum types from the import manifest.
+    pub fn imported_sum_types(&self) -> Vec<ImportedSumTypeDef> {
+        self.imports
+            .sum_types
+            .iter()
+            .map(|m| ImportedSumTypeDef {
+                name: m.name.clone(),
+                module_path: m.module_path.clone(),
+                type_params: m.type_params.clone(),
+                variants: m.variants.clone(),
+            })
+            .collect()
+    }
+
+    /// Reconstruct imported extern types from the import manifest.
+    pub fn imported_extern_types(&self) -> Vec<ExternTypeDef> {
+        self.imports
+            .extern_types
+            .iter()
+            .map(|m| ExternTypeDef {
+                name: m.name.clone(),
+                target: m.target.clone(),
+            })
+            .collect()
+    }
+
+    /// Reconstruct imported extern fns from the import manifest.
+    pub fn imported_extern_fns(&self) -> Vec<ExternFnDef> {
+        self.imports
+            .extern_fns
+            .iter()
+            .map(|m| ExternFnDef {
+                id: m.id,
+                name: m.name.clone(),
+                declaring_module_path: m.declaring_module_path.clone(),
+                span: m.span,
+                target: m.target.clone(),
+                nullable: m.nullable,
+                param_types: m.param_types.clone(),
+                return_type: m.return_type.clone(),
+            })
+            .collect()
+    }
+
+    /// Reconstruct imported instances from the import manifest.
+    pub fn imported_instances(&self) -> Vec<ImportedInstanceRef> {
+        self.imports
+            .instances
+            .iter()
+            .map(|m| ImportedInstanceRef {
+                source_module_path: m.source_module_path.clone(),
+                trait_name: m.trait_name.clone(),
+                target_type_name: m.target_type_name.clone(),
+                target_type: m.target_type.clone(),
+                sub_dict_requirements: m.sub_dict_requirements.clone(),
+                is_intrinsic: m.is_intrinsic,
+            })
+            .collect()
+    }
+
+    /// Reconstruct imported dict refs from the import manifest.
+    pub fn imported_dict_refs(&self) -> Vec<(TraitName, Type)> {
+        self.imports
+            .dict_refs
+            .iter()
+            .map(|m| (m.trait_name.clone(), m.ty.clone()))
+            .collect()
     }
 }
 
@@ -209,6 +308,15 @@ pub fn canonical_type_name(ty: &Type) -> std::string::String {
     }
     let mut var_map = HashMap::new();
     inner(ty, &mut var_map)
+}
+
+/// Extract the type name from a CanonicalRef's symbol (for pretty-printing).
+/// Panics if the symbol is not a Type variant.
+pub fn canonical_ref_type_name(cref: &CanonicalRef) -> &str {
+    match &cref.symbol {
+        LocalSymbolKey::Type(name) => name,
+        other => panic!("ICE: expected LocalSymbolKey::Type, got {other}"),
+    }
 }
 
 /// Returns true if the type contains any type variables or HKT placeholders.
@@ -384,6 +492,115 @@ pub struct FinallyClose {
     pub type_name: String,
 }
 
+// ---------------------------------------------------------------------------
+// Symbol-based identity types
+// ---------------------------------------------------------------------------
+
+/// Identity of a function known to the IR module.
+#[derive(Debug, Clone)]
+pub enum FnIdentity {
+    /// Defined in this module.
+    Local { name: String },
+    /// Imported from another Krypton module.
+    Imported {
+        canonical: CanonicalRef,
+        local_alias: String,
+    },
+    /// Extern FFI binding (Java/JS).
+    Extern {
+        canonical: CanonicalRef,
+        target: ExternTarget,
+        name: String,
+    },
+    /// Compiler intrinsic (panic, is_null, trait_dict).
+    Intrinsic { name: String },
+}
+
+impl FnIdentity {
+    /// The bare name used by codegen (binding name / alias).
+    pub fn name(&self) -> &str {
+        match self {
+            FnIdentity::Local { name } => name,
+            FnIdentity::Imported { local_alias, .. } => local_alias,
+            FnIdentity::Extern { name, .. } => name,
+            FnIdentity::Intrinsic { name } => name,
+        }
+    }
+}
+
+/// Structured import manifest — replaces the 5 blob lists on Module.
+#[derive(Debug, Clone, Default)]
+pub struct ImportManifest {
+    pub structs: Vec<ManifestStruct>,
+    pub sum_types: Vec<ManifestSumType>,
+    pub extern_types: Vec<ManifestExternType>,
+    pub extern_fns: Vec<ManifestExternFn>,
+    pub instances: Vec<ManifestInstance>,
+    pub dict_refs: Vec<ManifestDictRef>,
+}
+
+/// Imported struct definition with canonical identity.
+#[derive(Debug, Clone)]
+pub struct ManifestStruct {
+    pub canonical: CanonicalRef,
+    pub name: String,
+    pub module_path: String,
+    pub type_params: Vec<TypeVarId>,
+    pub fields: Vec<(String, Type)>,
+}
+
+/// Imported sum type definition with canonical identity.
+#[derive(Debug, Clone)]
+pub struct ManifestSumType {
+    pub canonical: CanonicalRef,
+    pub name: String,
+    pub module_path: String,
+    pub type_params: Vec<TypeVarId>,
+    pub variants: Vec<VariantDef>,
+}
+
+/// Imported extern type with canonical identity.
+#[derive(Debug, Clone)]
+pub struct ManifestExternType {
+    pub canonical: CanonicalRef,
+    pub name: String,
+    pub target: ExternTarget,
+}
+
+/// Imported extern function with canonical identity.
+#[derive(Debug, Clone)]
+pub struct ManifestExternFn {
+    pub canonical: CanonicalRef,
+    pub id: FnId,
+    pub name: String,
+    pub declaring_module_path: String,
+    pub span: Span,
+    pub target: ExternTarget,
+    pub nullable: bool,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
+}
+
+/// Imported instance with canonical identity.
+#[derive(Debug, Clone)]
+pub struct ManifestInstance {
+    pub canonical: CanonicalRef,
+    pub source_module_path: String,
+    pub trait_name: TraitName,
+    pub target_type_name: String,
+    pub target_type: Type,
+    pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
+    pub is_intrinsic: bool,
+}
+
+/// Cross-module dict reference with canonical identity.
+#[derive(Debug, Clone)]
+pub struct ManifestDictRef {
+    pub canonical: CanonicalRef,
+    pub trait_name: TraitName,
+    pub ty: Type,
+}
+
 /// Variable with debug info.
 #[derive(Debug, Clone)]
 pub struct VarInfo {
@@ -400,8 +617,8 @@ pub struct Module {
     pub structs: Vec<StructDef>,
     pub sum_types: Vec<SumTypeDef>,
     pub functions: Vec<FnDef>,
-    /// FnId → debug name for all known functions (local + extern + imported).
-    pub fn_names: HashMap<FnId, String>,
+    /// FnId → identity for all known functions (local + extern + imported + intrinsic).
+    pub fn_identities: HashMap<FnId, FnIdentity>,
     /// Extern FFI function bindings (Java/JS).
     pub extern_fns: Vec<ExternFnDef>,
     /// Extern type registrations (opaque types backed by host types).
@@ -414,12 +631,8 @@ pub struct Module {
     pub instances: Vec<InstanceDef>,
     /// Set of tuple arities used in this module (for codegen class generation).
     pub tuple_arities: BTreeSet<usize>,
-    /// Module path for qualified type names (empty for root module).
-    pub module_path: String,
-    /// Cross-module instance references: (trait_name, target_type) pairs that
-    /// this module's functions need but are not locally defined. The codegen
-    /// uses these to import dicts from defining modules.
-    pub imported_dict_refs: Vec<(TraitName, Type)>,
+    /// Canonical module path.
+    pub module_path: ModulePath,
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
@@ -432,18 +645,8 @@ pub struct Module {
     pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
 
     // --- Cross-module metadata (self-contained compilation unit) ---
-    // Each module embeds the metadata it needs from dependencies so codegen
-    // can compile it without access to other modules' IR.
-    /// Struct definitions from dependency modules (field accessor + class registration).
-    pub imported_structs: Vec<ImportedStructDef>,
-    /// Sum type definitions from dependency modules (pattern match dispatch).
-    pub imported_sum_types: Vec<ImportedSumTypeDef>,
-    /// Extern type bindings from dependency modules (JVM class descriptors).
-    pub imported_extern_types: Vec<ExternTypeDef>,
-    /// Extern FFI function bindings from dependency modules (method references).
-    pub imported_extern_fns: Vec<ExternFnDef>,
-    /// Instance metadata from dependency modules (cross-module dict dispatch).
-    pub imported_instances: Vec<ImportedInstanceRef>,
+    // Structured import manifest with canonical refs, replacing bare-string blob lists.
+    pub imports: ImportManifest,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -649,11 +852,17 @@ mod tests {
             captures: vec![Atom::Var(VarId(0))],
         });
         let _construct = simple(SimpleExprKind::Construct {
-            type_name: "Point".into(),
+            type_ref: CanonicalRef {
+                module: ModulePath::new("test"),
+                symbol: LocalSymbolKey::Type("Point".into()),
+            },
             fields: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
         });
         let _variant = simple(SimpleExprKind::ConstructVariant {
-            type_name: "Option".into(),
+            type_ref: CanonicalRef {
+                module: ModulePath::new("test"),
+                symbol: LocalSymbolKey::Type("Option".into()),
+            },
             variant: "Some".into(),
             tag: 0,
             fields: vec![Atom::Lit(Literal::Int(42))],
@@ -724,7 +933,7 @@ mod tests {
     fn module_structure() {
         let _module = Module {
             name: "test".into(),
-            fn_names: HashMap::new(),
+            fn_identities: HashMap::new(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],
@@ -759,15 +968,10 @@ mod tests {
             traits: vec![],
             instances: vec![],
             tuple_arities: BTreeSet::new(),
-            module_path: "test".to_string(),
-            imported_dict_refs: vec![],
+            module_path: ModulePath::new("test"),
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
-            imported_structs: vec![],
-            imported_sum_types: vec![],
-            imported_extern_types: vec![],
-            imported_extern_fns: vec![],
-            imported_instances: vec![],
+            imports: ImportManifest::default(),
         };
     }
 }

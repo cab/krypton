@@ -11,10 +11,11 @@ use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, Ty
 
 use crate::Type as IrType;
 use crate::{
-    Atom, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose, FnDef, FnId,
-    ImportedFnDef, ImportedInstanceRef, ImportedStructDef, ImportedSumTypeDef, InstanceDef,
-    Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, SwitchBranch,
-    TraitDef, TraitMethodDef, VarId, VariantDef,
+    Atom, CanonicalRef, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose,
+    FnDef, FnId, FnIdentity, ImportManifest, ImportedFnDef, InstanceDef, Literal, LocalSymbolKey,
+    ManifestDictRef, ManifestExternFn, ManifestExternType, ManifestInstance, ManifestStruct,
+    ManifestSumType, Module, ModulePath, PrimOp, SimpleExpr, SimpleExprKind, StructDef,
+    SumTypeDef, SwitchBranch, TraitDef, TraitMethodDef, VarId, VariantDef,
 };
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,17 @@ struct ParamInstanceInfo {
     target_type: Type,
     type_var_ids: HashMap<String, TypeVarId>,
     constraints: Vec<(TraitName, String)>, // (trait_name, type_var_name)
+    source_module: String,                 // module defining this instance
+    target_type_name: String,              // for building CanonicalRef
+}
+
+/// Source info for all instances (concrete and parameterized), used to
+/// resolve instance CanonicalRefs during GetDict emission.
+struct InstanceSourceInfo {
+    trait_name: TraitName,
+    target_type: Type,            // TC type (may contain type vars)
+    target_type_name: String,     // type_to_canonical_name output
+    source_module: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -430,7 +442,7 @@ fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
             }
         }
         SimpleExprKind::Construct {
-            type_name: _,
+            type_ref: _,
             fields,
         } => {
             for atom in fields {
@@ -554,6 +566,9 @@ struct LowerCtx {
     /// via GetDict/MakeDict that are not locally defined. The codegen uses these
     /// to determine which dicts need to be imported from other modules.
     imported_dict_refs: Vec<(TraitName, IrType)>,
+    /// All known instances with source module and target type info,
+    /// for resolving instance CanonicalRefs during GetDict/MakeDict emission.
+    all_instances: Vec<InstanceSourceInfo>,
 }
 
 impl LowerCtx {
@@ -567,6 +582,85 @@ impl LowerCtx {
         let id = FnId(self.next_fn);
         self.next_fn += 1;
         id
+    }
+
+    /// Build a CanonicalRef for a type from its ResolvedTypeRef.
+    fn type_canonical_ref(&self, type_ref: &ResolvedTypeRef) -> CanonicalRef {
+        CanonicalRef {
+            module: ModulePath::new(type_ref.qualified_name.module_path.clone()),
+            symbol: LocalSymbolKey::Type(type_ref.qualified_name.local_name.clone()),
+        }
+    }
+
+    /// Build a CanonicalRef for a type from module_path + local_name.
+    fn type_canonical_ref_from_parts(&self, module_path: &str, local_name: &str) -> CanonicalRef {
+        CanonicalRef {
+            module: ModulePath::new(module_path),
+            symbol: LocalSymbolKey::Type(local_name.to_string()),
+        }
+    }
+
+    /// Build a CanonicalRef for a type from its bare local name,
+    /// looking up the defining module from sum_variants/struct_fields.
+    fn type_canonical_ref_for_name(&self, local_name: &str) -> CanonicalRef {
+        // Try sum_variants
+        for variant_ref in self.sum_variants.keys() {
+            if variant_ref.type_ref.qualified_name.local_name == local_name {
+                return self.type_canonical_ref(&variant_ref.type_ref);
+            }
+        }
+        // Try struct_fields
+        for type_ref in self.struct_fields.keys() {
+            if type_ref.qualified_name.local_name == local_name {
+                return self.type_canonical_ref(type_ref);
+            }
+        }
+        // Fallback to current module
+        self.type_canonical_ref_from_parts(&self.module_path, local_name)
+    }
+
+    /// Build a CanonicalRef for an instance from trait + type info.
+    /// Resolve the CanonicalRef for an instance given a trait and concrete target type.
+    /// First tries exact match by canonical type name, then structural match via
+    /// bind_type_vars (for parameterized instances like `Convert[(a) -> Int]`).
+    fn instance_canonical_ref(
+        &self,
+        trait_name: &TraitName,
+        target_type: &Type,
+    ) -> CanonicalRef {
+        let ir_type: IrType = target_type.clone().into();
+        let canonical_name = crate::canonical_type_name(&ir_type);
+
+        // Find the matching instance: exact canonical name match first,
+        // then structural match for parameterized instances.
+        let matched = self
+            .all_instances
+            .iter()
+            .filter(|info| info.trait_name == *trait_name)
+            .find(|info| {
+                // Exact match (concrete instances)
+                if info.target_type_name == canonical_name {
+                    return true;
+                }
+                // Structural match (parameterized instances like impl[a] Convert[(a) -> Int])
+                let mut bindings = HashMap::new();
+                bind_type_vars(&info.target_type, target_type, &mut bindings)
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "ICE: no instance source for {}[{}] — \
+                     all_instances should contain all local + imported instances",
+                    trait_name.local_name, canonical_name
+                )
+            });
+
+        CanonicalRef {
+            module: ModulePath::new(matched.source_module.clone()),
+            symbol: LocalSymbolKey::Instance {
+                trait_name: trait_name.local_name.clone(),
+                target_type: matched.target_type_name.clone(),
+            },
+        }
     }
 
     fn push_var(&mut self, name: &str, id: VarId) {
@@ -1080,7 +1174,7 @@ impl LowerCtx {
         &mut self,
         name: &str,
         expr: &TypedExpr,
-        type_name: String,
+        type_qn: &QualifiedName,
         tag: u32,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         let (param_types, return_type) = match &expr.ty {
@@ -1114,7 +1208,10 @@ impl LowerCtx {
                 value: simple_at(
                     expr.span,
                     SimpleExprKind::ConstructVariant {
-                        type_name,
+                        type_ref: CanonicalRef {
+                            module: ModulePath::new(type_qn.module_path.clone()),
+                            symbol: LocalSymbolKey::Type(type_qn.local_name.clone()),
+                        },
                         variant: name.to_string(),
                         tag,
                         fields: field_atoms,
@@ -1154,7 +1251,7 @@ impl LowerCtx {
     fn lower_struct_constructor_as_value(
         &mut self,
         constructor_name: &str,
-        type_name: &str,
+        type_qn: &QualifiedName,
         expr: &TypedExpr,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         let (param_types, return_type) = match &expr.ty {
@@ -1188,7 +1285,10 @@ impl LowerCtx {
                 value: simple_at(
                     expr.span,
                     SimpleExprKind::Construct {
-                        type_name: type_name.to_string(),
+                        type_ref: CanonicalRef {
+                            module: ModulePath::new(type_qn.module_path.clone()),
+                            symbol: LocalSymbolKey::Type(type_qn.local_name.clone()),
+                        },
                         fields: field_atoms,
                     },
                 ),
@@ -1246,15 +1346,15 @@ impl LowerCtx {
                                     ))
                                 })?;
                             let (tag, fields) = self.variant_info(&variant_ref)?;
-                            let type_name =
-                                constructor_ref.type_ref.qualified_name.local_name.clone();
+                            let type_cref =
+                                self.type_canonical_ref(&constructor_ref.type_ref);
                             if fields.is_empty() {
                                 return Ok((
                                     vec![],
                                     simple_at(
                                         expr.span,
                                         SimpleExprKind::ConstructVariant {
-                                            type_name,
+                                            type_ref: type_cref,
                                             variant: constructor_ref.constructor_name.clone(),
                                             tag,
                                             fields: vec![],
@@ -1265,14 +1365,14 @@ impl LowerCtx {
                             return self.lower_variant_constructor_as_value(
                                 &constructor_ref.constructor_name,
                                 expr,
-                                type_name,
+                                &constructor_ref.type_ref.qualified_name,
                                 tag,
                             );
                         }
                         typed_ast::ConstructorKind::Record => {
                             return self.lower_struct_constructor_as_value(
                                 &constructor_ref.constructor_name,
-                                &constructor_ref.type_ref.qualified_name.local_name,
+                                &constructor_ref.type_ref.qualified_name,
                                 expr,
                             );
                         }
@@ -1280,14 +1380,15 @@ impl LowerCtx {
                 }
                 if let Some(variant_ref) = self.fallback_variant_ref(name) {
                     let (tag, fields) = self.variant_info(&variant_ref)?;
-                    let type_name = variant_ref.type_ref.qualified_name.local_name.clone();
+                    let type_cref =
+                        self.type_canonical_ref(&variant_ref.type_ref);
                     if fields.is_empty() {
                         return Ok((
                             vec![],
                             simple_at(
                                 expr.span,
                                 SimpleExprKind::ConstructVariant {
-                                    type_name,
+                                    type_ref: type_cref,
                                     variant: name.clone(),
                                     tag,
                                     fields: vec![],
@@ -1295,12 +1396,17 @@ impl LowerCtx {
                             ),
                         ));
                     }
-                    return self.lower_variant_constructor_as_value(name, expr, type_name, tag);
+                    return self.lower_variant_constructor_as_value(
+                        name,
+                        expr,
+                        &variant_ref.type_ref.qualified_name,
+                        tag,
+                    );
                 }
                 if let Some(type_ref) = self.fallback_type_ref(name) {
                     return self.lower_struct_constructor_as_value(
                         name,
-                        &type_ref.qualified_name.local_name,
+                        &type_ref.qualified_name,
                         expr,
                     );
                 }
@@ -1570,8 +1676,8 @@ impl LowerCtx {
                                     ))
                                 })?;
                             let (tag, fields) = self.variant_info(&variant_ref)?;
-                            let type_name =
-                                constructor_ref.type_ref.qualified_name.local_name.clone();
+                            let type_cref =
+                                self.type_canonical_ref(&constructor_ref.type_ref);
                             if fields.is_empty() {
                                 let var = self.fresh_var();
                                 return Ok(expr_at(
@@ -1583,7 +1689,7 @@ impl LowerCtx {
                                         value: simple_at(
                                             expr.span,
                                             SimpleExprKind::ConstructVariant {
-                                                type_name,
+                                                type_ref: type_cref,
                                                 variant: constructor_ref.constructor_name.clone(),
                                                 tag,
                                                 fields: vec![],
@@ -1600,7 +1706,7 @@ impl LowerCtx {
                             let (bindings, simple) = self.lower_variant_constructor_as_value(
                                 &constructor_ref.constructor_name,
                                 expr,
-                                type_name,
+                                &constructor_ref.type_ref.qualified_name,
                                 tag,
                             )?;
                             let var = self.fresh_var();
@@ -1635,7 +1741,7 @@ impl LowerCtx {
                         typed_ast::ConstructorKind::Record => {
                             let (bindings, simple) = self.lower_struct_constructor_as_value(
                                 &constructor_ref.constructor_name,
-                                &constructor_ref.type_ref.qualified_name.local_name,
+                                &constructor_ref.type_ref.qualified_name,
                                 expr,
                             )?;
                             let var = self.fresh_var();
@@ -1671,7 +1777,7 @@ impl LowerCtx {
                 }
                 if let Some(variant_ref) = self.fallback_variant_ref(name) {
                     let (tag, fields) = self.variant_info(&variant_ref)?;
-                    let type_name = variant_ref.type_ref.qualified_name.local_name.clone();
+                    let type_cref = self.type_canonical_ref(&variant_ref.type_ref);
                     if fields.is_empty() {
                         let var = self.fresh_var();
                         return Ok(expr_at(
@@ -1683,7 +1789,7 @@ impl LowerCtx {
                                 value: simple_at(
                                     expr.span,
                                     SimpleExprKind::ConstructVariant {
-                                        type_name,
+                                        type_ref: type_cref,
                                         variant: name.clone(),
                                         tag,
                                         fields: vec![],
@@ -1698,7 +1804,7 @@ impl LowerCtx {
                         ));
                     }
                     let (bindings, simple) =
-                        self.lower_variant_constructor_as_value(name, expr, type_name, tag)?;
+                        self.lower_variant_constructor_as_value(name, expr, &variant_ref.type_ref.qualified_name, tag)?;
                     let var = self.fresh_var();
                     let mut result = expr_at(
                         expr.span,
@@ -1731,7 +1837,7 @@ impl LowerCtx {
                 if let Some(type_ref) = self.fallback_type_ref(name) {
                     let (bindings, simple) = self.lower_struct_constructor_as_value(
                         name,
-                        &type_ref.qualified_name.local_name,
+                        &type_ref.qualified_name,
                         expr,
                     )?;
                     let var = self.fresh_var();
@@ -2216,7 +2322,7 @@ impl LowerCtx {
                                                 value: simple_at(
                                                     expr.span,
                                                     SimpleExprKind::ConstructVariant {
-                                                        type_name: "Option".to_string(),
+                                                        type_ref: ctx.type_canonical_ref_for_name("Option"),
                                                         variant: "None".to_string(),
                                                         tag: 1,
                                                         fields: vec![],
@@ -2278,7 +2384,7 @@ impl LowerCtx {
                                                 value: simple_at(
                                                     expr.span,
                                                     SimpleExprKind::ConstructVariant {
-                                                        type_name: "Result".to_string(),
+                                                        type_ref: ctx.type_canonical_ref_for_name("Result"),
                                                         variant: "Err".to_string(),
                                                         tag: 1,
                                                         fields: vec![Atom::Var(err_var)],
@@ -3722,11 +3828,7 @@ impl LowerCtx {
                             simple_at(
                                 func.span,
                                 SimpleExprKind::ConstructVariant {
-                                    type_name: constructor_ref
-                                        .type_ref
-                                        .qualified_name
-                                        .local_name
-                                        .clone(),
+                                    type_ref: self.type_canonical_ref(&constructor_ref.type_ref),
                                     variant: constructor_ref.constructor_name.clone(),
                                     tag,
                                     fields: arg_atoms,
@@ -3740,11 +3842,7 @@ impl LowerCtx {
                             simple_at(
                                 func.span,
                                 SimpleExprKind::Construct {
-                                    type_name: constructor_ref
-                                        .type_ref
-                                        .qualified_name
-                                        .local_name
-                                        .clone(),
+                                    type_ref: self.type_canonical_ref(&constructor_ref.type_ref),
                                     fields: arg_atoms,
                                 },
                             ),
@@ -3759,7 +3857,7 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::ConstructVariant {
-                            type_name: variant_ref.type_ref.qualified_name.local_name.clone(),
+                            type_ref: self.type_canonical_ref(&variant_ref.type_ref),
                             variant: name.clone(),
                             tag,
                             fields: arg_atoms,
@@ -3773,7 +3871,7 @@ impl LowerCtx {
                     simple_at(
                         func.span,
                         SimpleExprKind::Construct {
-                            type_name: type_ref.qualified_name.local_name.clone(),
+                            type_ref: self.type_canonical_ref(&type_ref),
                             fields: arg_atoms,
                         },
                     ),
@@ -3876,7 +3974,7 @@ impl LowerCtx {
             simple_at(
                 fields.first().map(|(_, e)| e.span).unwrap_or((0, 0)),
                 SimpleExprKind::Construct {
-                    type_name: type_ref.qualified_name.local_name,
+                    type_ref: self.type_canonical_ref(&type_ref),
                     fields: ordered_atoms,
                 },
             ),
@@ -3986,7 +4084,7 @@ impl LowerCtx {
                             })?;
                         let (tag, _fields) = self.variant_info(&variant_ref)?;
                         let variant_name = constructor_ref.constructor_name.clone();
-                        let type_name = constructor_ref.type_ref.qualified_name.local_name.clone();
+                        let type_cref = self.type_canonical_ref(&constructor_ref.type_ref);
                         return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                             let var = ctx.fresh_var();
                             let ty = result_ty.clone();
@@ -3999,7 +4097,7 @@ impl LowerCtx {
                                     value: simple_at(
                                         func.span,
                                         SimpleExprKind::ConstructVariant {
-                                            type_name: type_name.clone(),
+                                            type_ref: type_cref.clone(),
                                             variant: variant_name.clone(),
                                             tag,
                                             fields: arg_atoms,
@@ -4015,7 +4113,7 @@ impl LowerCtx {
                         });
                     }
                     typed_ast::ConstructorKind::Record => {
-                        let type_name = constructor_ref.type_ref.qualified_name.local_name.clone();
+                        let type_cref = self.type_canonical_ref(&constructor_ref.type_ref);
                         return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                             let var = ctx.fresh_var();
                             let ty = result_ty.clone();
@@ -4028,7 +4126,7 @@ impl LowerCtx {
                                     value: simple_at(
                                         func.span,
                                         SimpleExprKind::Construct {
-                                            type_name: type_name.clone(),
+                                            type_ref: type_cref.clone(),
                                             fields: arg_atoms,
                                         },
                                     ),
@@ -4046,7 +4144,7 @@ impl LowerCtx {
             if let Some(variant_ref) = self.fallback_variant_ref(name) {
                 let (tag, _fields) = self.variant_info(&variant_ref)?;
                 let variant_name = name.clone();
-                let type_name = variant_ref.type_ref.qualified_name.local_name.clone();
+                let type_cref = self.type_canonical_ref(&variant_ref.type_ref);
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let var = ctx.fresh_var();
                     let ty = result_ty.clone();
@@ -4059,7 +4157,7 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::ConstructVariant {
-                                    type_name: type_name.clone(),
+                                    type_ref: type_cref.clone(),
                                     variant: variant_name.clone(),
                                     tag,
                                     fields: arg_atoms,
@@ -4071,7 +4169,7 @@ impl LowerCtx {
                 });
             }
             if let Some(type_ref) = self.fallback_type_ref(name) {
-                let type_name = type_ref.qualified_name.local_name.clone();
+                let type_cref = self.type_canonical_ref(&type_ref);
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let var = ctx.fresh_var();
                     let ty = result_ty.clone();
@@ -4084,7 +4182,7 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::Construct {
-                                    type_name: type_name.clone(),
+                                    type_ref: type_cref.clone(),
                                     fields: arg_atoms,
                                 },
                             ),
@@ -4209,7 +4307,7 @@ impl LowerCtx {
         }
 
         let result_ty = result_ty.clone();
-        let type_name = type_ref.qualified_name.local_name.clone();
+        let type_cref = self.type_canonical_ref(&type_ref);
         self.lower_atoms_then(&ordered_exprs, vec![], |ctx, atoms| {
             let var = ctx.fresh_var();
             let ty = result_ty;
@@ -4222,7 +4320,7 @@ impl LowerCtx {
                     value: simple_at(
                         ordered_exprs.first().map(|e| e.span).unwrap_or((0, 0)),
                         SimpleExprKind::Construct {
-                            type_name,
+                            type_ref: type_cref,
                             fields: atoms,
                         },
                     ),
@@ -4286,13 +4384,14 @@ impl LowerCtx {
                 }
 
                 let construct_var = ctx.fresh_var();
+                let type_cref = ctx.type_canonical_ref(&type_ref);
                 bindings.push(LetBinding {
                     bind: construct_var,
                     ty: result_ty.clone().into(),
                     value: simple_at(
                         base.span,
                         SimpleExprKind::Construct {
-                            type_name: type_ref.qualified_name.local_name.clone(),
+                            type_ref: type_cref,
                             fields: field_atoms,
                         },
                     ),
@@ -4365,6 +4464,7 @@ impl LowerCtx {
                 value: simple_at(
                     (0, 0),
                     SimpleExprKind::GetDict {
+                        instance_ref: self.instance_canonical_ref(trait_name, ty),
                         trait_name: trait_name.clone(),
                         ty: ty.clone().into(),
                     },
@@ -4448,6 +4548,13 @@ impl LowerCtx {
             value: simple_at(
                 (0, 0),
                 SimpleExprKind::MakeDict {
+                    instance_ref: CanonicalRef {
+                        module: ModulePath::new(inst.source_module.clone()),
+                        symbol: LocalSymbolKey::Instance {
+                            trait_name: inst.trait_name.local_name.clone(),
+                            target_type: inst.target_type_name.clone(),
+                        },
+                    },
                     trait_name: trait_name.clone(),
                     ty: ty.clone().into(),
                     sub_dicts: sub_dict_atoms,
@@ -5274,22 +5381,40 @@ pub fn lower_module(
         dict_params: HashMap::new(),
         fn_schemes,
         module_path: typed.module_path.clone(),
-        param_instances: typed
-            .instance_defs
-            .iter()
-            .chain(imported_instances.iter().map(|(_, inst)| inst))
-            .filter(|inst| !inst.constraints.is_empty())
-            .map(|inst| ParamInstanceInfo {
-                trait_name: inst.trait_name.clone(),
-                target_type: inst.target_type.clone(),
-                type_var_ids: inst.type_var_ids.clone(),
-                constraints: inst
-                    .constraints
-                    .iter()
-                    .map(|c| (c.trait_name.clone(), c.type_var.clone()))
-                    .collect(),
-            })
-            .collect(),
+        param_instances: {
+            let local_param = typed
+                .instance_defs
+                .iter()
+                .filter(|inst| !inst.constraints.is_empty())
+                .map(|inst| ParamInstanceInfo {
+                    trait_name: inst.trait_name.clone(),
+                    target_type: inst.target_type.clone(),
+                    type_var_ids: inst.type_var_ids.clone(),
+                    constraints: inst
+                        .constraints
+                        .iter()
+                        .map(|c| (c.trait_name.clone(), c.type_var.clone()))
+                        .collect(),
+                    source_module: typed.module_path.clone(),
+                    target_type_name: inst.target_type_name.clone(),
+                });
+            let imported_param = imported_instances
+                .iter()
+                .filter(|(_, inst)| !inst.constraints.is_empty())
+                .map(|(src, inst)| ParamInstanceInfo {
+                    trait_name: inst.trait_name.clone(),
+                    target_type: inst.target_type.clone(),
+                    type_var_ids: inst.type_var_ids.clone(),
+                    constraints: inst
+                        .constraints
+                        .iter()
+                        .map(|c| (c.trait_name.clone(), c.type_var.clone()))
+                        .collect(),
+                    source_module: src.clone(),
+                    target_type_name: inst.target_type_name.clone(),
+                });
+            local_param.chain(imported_param).collect()
+        },
         trait_method_types: typed
             .trait_defs
             .iter()
@@ -5316,6 +5441,26 @@ pub fn lower_module(
         fn_exit_vars: HashMap::new(),
         fn_exit_closes: HashMap::new(),
         imported_dict_refs: vec![],
+        all_instances: {
+            let mut infos = Vec::new();
+            for inst in &typed.instance_defs {
+                infos.push(InstanceSourceInfo {
+                    trait_name: inst.trait_name.clone(),
+                    target_type: inst.target_type.clone(),
+                    target_type_name: inst.target_type_name.clone(),
+                    source_module: typed.module_path.clone(),
+                });
+            }
+            for (src, inst) in imported_instances {
+                infos.push(InstanceSourceInfo {
+                    trait_name: inst.trait_name.clone(),
+                    target_type: inst.target_type.clone(),
+                    target_type_name: inst.target_type_name.clone(),
+                    source_module: src.clone(),
+                });
+            }
+            infos
+        },
     };
 
     // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
@@ -5572,17 +5717,44 @@ pub fn lower_module(
     // 6b. Append lifted lambdas
     functions.extend(ctx.lifted_fns.drain(..));
 
-    // 7. Build fn_names lookup (includes lifted lambdas registered in fn_ids)
-    let mut fn_names = HashMap::new();
+    // 7. Build fn_identities lookup (includes lifted lambdas registered in fn_ids)
+    let mut fn_identities = HashMap::new();
     for (name, &id) in &ctx.fn_ids {
-        if let Some(existing) = fn_names.get(&id) {
+        if let Some(existing) = fn_identities.get(&id) {
+            let existing_name: &str = match existing {
+                FnIdentity::Local { name } => name,
+                FnIdentity::Imported { local_alias, .. } => local_alias,
+                FnIdentity::Extern { name, .. } => name,
+                FnIdentity::Intrinsic { name } => name,
+            };
             assert_eq!(
-                existing, name,
+                existing_name, name,
                 "ICE: FnId {:?} maps to both '{}' and '{}'",
-                id, existing, name
+                id, existing_name, name
             );
+            continue;
         }
-        fn_names.insert(id, name.clone());
+        // Determine identity variant
+        let identity = if crate::COMPILER_INTRINSICS.contains(&name.as_str()) {
+            FnIdentity::Intrinsic { name: name.clone() }
+        } else if let Some(qn) = ctx.callable_ids.iter().find(|(_, &fid)| fid == id).map(|(qn, _)| qn) {
+            if qn.module_path == "__builtin__" {
+                FnIdentity::Intrinsic { name: name.clone() }
+            } else if qn.module_path == ctx.module_path {
+                FnIdentity::Local { name: name.clone() }
+            } else {
+                FnIdentity::Imported {
+                    canonical: CanonicalRef {
+                        module: ModulePath::new(qn.module_path.clone()),
+                        symbol: LocalSymbolKey::Function(qn.local_name.clone()),
+                    },
+                    local_alias: name.clone(),
+                }
+            }
+        } else {
+            FnIdentity::Local { name: name.clone() }
+        };
+        fn_identities.insert(id, identity);
     }
 
     // 8. Build extern_fns from local definitions only.
@@ -5757,7 +5929,7 @@ pub fn lower_module(
     // --- Cross-module metadata for self-contained compilation ---
 
     // Imported structs: struct definitions from dependency modules.
-    let ir_imported_structs: Vec<ImportedStructDef> = typed
+    let ir_imported_structs: Vec<ManifestStruct> = typed
         .exported_type_infos
         .values()
         .filter(|info| info.source_module != typed.module_path)
@@ -5777,7 +5949,11 @@ pub fn lower_module(
                     .into_iter()
                     .map(|(n, t)| (n, t.into()))
                     .collect();
-                Some(ImportedStructDef {
+                Some(ManifestStruct {
+                    canonical: CanonicalRef {
+                        module: ModulePath::new(info.source_module.clone()),
+                        symbol: LocalSymbolKey::Type(info.name.clone()),
+                    },
                     name: info.name.clone(),
                     module_path: info.source_module.clone(),
                     type_params: info.type_param_vars.clone(),
@@ -5790,7 +5966,7 @@ pub fn lower_module(
 
     // Imported sum types: sum type definitions from dependency modules.
     // Uses exported_type_infos for type params and sum_variants for resolved field types.
-    let ir_imported_sum_types: Vec<ImportedSumTypeDef> = typed
+    let ir_imported_sum_types: Vec<ManifestSumType> = typed
         .exported_type_infos
         .values()
         .filter(|info| info.source_module != typed.module_path)
@@ -5821,7 +5997,11 @@ pub fn lower_module(
                         }
                     })
                     .collect();
-                Some(ImportedSumTypeDef {
+                Some(ManifestSumType {
+                    canonical: CanonicalRef {
+                        module: ModulePath::new(info.source_module.clone()),
+                        symbol: LocalSymbolKey::Type(info.name.clone()),
+                    },
                     name: info.name.clone(),
                     module_path: info.source_module.clone(),
                     type_params: info.type_param_vars.clone(),
@@ -5834,7 +6014,7 @@ pub fn lower_module(
         .collect();
 
     // Imported extern types: extern type bindings from dependency modules.
-    let ir_imported_extern_types: Vec<ExternTypeDef> = imported_extern_types
+    let ir_imported_extern_types: Vec<ManifestExternType> = imported_extern_types
         .iter()
         .filter(|info| info.host_module != typed.module_path)
         .filter_map(|info| {
@@ -5844,7 +6024,11 @@ pub fn lower_module(
                 }),
                 krypton_parser::ast::ExternTarget::Js => None,
             };
-            ir_target.map(|target| ExternTypeDef {
+            ir_target.map(|target| ManifestExternType {
+                canonical: CanonicalRef {
+                    module: ModulePath::new(info.host_module.clone()),
+                    symbol: LocalSymbolKey::Type(info.krypton_name.clone()),
+                },
                 name: info.krypton_name.clone(),
                 target,
             })
@@ -5852,7 +6036,7 @@ pub fn lower_module(
         .collect();
 
     // Imported extern fns: extern FFI function bindings from dependency modules.
-    let ir_imported_extern_fns: Vec<ExternFnDef> = imported_extern_fns
+    let ir_imported_extern_fns: Vec<ManifestExternFn> = imported_extern_fns
         .iter()
         .map(|ext| {
             let ir_target = match &ext.target {
@@ -5863,7 +6047,11 @@ pub fn lower_module(
                     module: ext.module_path.clone(),
                 },
             };
-            ExternFnDef {
+            ManifestExternFn {
+                canonical: CanonicalRef {
+                    module: ModulePath::new(ext.declaring_module_path.clone()),
+                    symbol: LocalSymbolKey::Function(ext.name.clone()),
+                },
                 id: ctx.fn_ids.get(&ext.name).copied().unwrap_or_else(|| {
                     panic!(
                         "ICE: imported extern fn '{}' has no FnId — \
@@ -5883,7 +6071,7 @@ pub fn lower_module(
         .collect();
 
     // Imported instances: instance metadata from dependency modules.
-    let ir_imported_instances: Vec<ImportedInstanceRef> = imported_instances
+    let ir_imported_instances: Vec<ManifestInstance> = imported_instances
         .iter()
         .map(|(source_module_path, inst)| {
             let sub_dict_requirements = inst
@@ -5895,7 +6083,14 @@ pub fn lower_module(
                         .map(|&tv| (c.trait_name.clone(), tv))
                 })
                 .collect();
-            ImportedInstanceRef {
+            ManifestInstance {
+                canonical: CanonicalRef {
+                    module: ModulePath::new(source_module_path.clone()),
+                    symbol: LocalSymbolKey::Instance {
+                        trait_name: inst.trait_name.local_name.clone(),
+                        target_type: inst.target_type_name.clone(),
+                    },
+                },
                 source_module_path: source_module_path.clone(),
                 trait_name: inst.trait_name.clone(),
                 target_type_name: inst.target_type_name.clone(),
@@ -5905,6 +6100,21 @@ pub fn lower_module(
             }
         })
         .collect();
+
+    // Build ManifestDictRef entries from imported dict refs
+    let ir_imported_dict_refs: Vec<ManifestDictRef> = ctx.imported_dict_refs.iter().map(|(trait_name, ty)| {
+        ManifestDictRef {
+            canonical: CanonicalRef {
+                module: ModulePath::new(trait_name.module_path.clone()),
+                symbol: LocalSymbolKey::Instance {
+                    trait_name: trait_name.local_name.clone(),
+                    target_type: crate::canonical_type_name(ty),
+                },
+            },
+            trait_name: trait_name.clone(),
+            ty: ty.clone(),
+        }
+    }).collect();
 
     // Collect tuple arities from all FnDefs
     let mut tuple_arities = std::collections::BTreeSet::new();
@@ -5917,15 +6127,14 @@ pub fn lower_module(
         structs,
         sum_types,
         functions,
-        fn_names,
+        fn_identities,
         extern_fns,
         extern_types,
         imported_fns,
         traits,
         instances,
         tuple_arities,
-        module_path: typed.module_path.clone(),
-        imported_dict_refs: ctx.imported_dict_refs,
+        module_path: ModulePath::new(typed.module_path.clone()),
         fn_dict_requirements: {
             // Reconstruct string-keyed dict requirements for codegen:
             // fn_types entries use binding name, instance methods use mangled name.
@@ -5944,11 +6153,14 @@ pub fn lower_module(
             reqs
         },
         fn_exit_closes: ctx.fn_exit_closes,
-        imported_structs: ir_imported_structs,
-        imported_sum_types: ir_imported_sum_types,
-        imported_extern_types: ir_imported_extern_types,
-        imported_extern_fns: ir_imported_extern_fns,
-        imported_instances: ir_imported_instances,
+        imports: ImportManifest {
+            structs: ir_imported_structs,
+            sum_types: ir_imported_sum_types,
+            extern_types: ir_imported_extern_types,
+            extern_fns: ir_imported_extern_fns,
+            instances: ir_imported_instances,
+            dict_refs: ir_imported_dict_refs,
+        },
     })
 }
 
@@ -6126,15 +6338,6 @@ fn convert_lit(lit: &Lit) -> Literal {
         Lit::Bool(b) => Literal::Bool(*b),
         Lit::String(s) => Literal::String(s.clone()),
         Lit::Unit => Literal::Unit,
-    }
-}
-
-/// Extract the type name from a Type::Named, stripping Own wrappers.
-fn type_name_of(ty: &Type) -> Option<String> {
-    match ty {
-        Type::Named(name, _) => Some(name.clone()),
-        Type::Own(inner) => type_name_of(inner),
-        _ => None,
     }
 }
 

@@ -208,7 +208,7 @@ impl Compiler {
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         for struct_def in &ir_module.structs {
-            let qualified = qualify_ir(&ir_module.module_path, &struct_def.name);
+            let qualified = qualify_ir(ir_module.module_path.as_str(), &struct_def.name);
             self.register_struct_metadata(struct_def, &qualified)?;
             let info = &self.types.struct_info[&struct_def.name];
             let struct_bytes = generate_struct_class(
@@ -346,7 +346,7 @@ impl Compiler {
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
         for sum_def in &ir_module.sum_types {
-            let qualified_sum = qualify_ir(&ir_module.module_path, &sum_def.name);
+            let qualified_sum = qualify_ir(ir_module.module_path.as_str(), &sum_def.name);
             let variant_pairs = self.register_sum_type_metadata(sum_def, &qualified_sum)?;
 
             let sum_info = &self.types.sum_type_info[&sum_def.name];
@@ -376,7 +376,7 @@ impl Compiler {
         &mut self,
         ir_module: &krypton_ir::Module,
     ) -> Result<(), CodegenError> {
-        for ext in &ir_module.imported_extern_types {
+        for ext in &ir_module.imported_extern_types() {
             let jvm_class = match &ext.target {
                 krypton_ir::ExternTarget::Java { class } => class.replace('.', "/"),
                 krypton_ir::ExternTarget::Js { .. } => continue,
@@ -409,7 +409,8 @@ impl Compiler {
     ) -> Result<(), CodegenError> {
         // Two-pass: pre-register class indices, then process fields.
         let mut to_process: Vec<(krypton_ir::StructDef, String)> = Vec::new();
-        for imp in &ir_module.imported_structs {
+        let imported_structs = ir_module.imported_structs();
+        for imp in &imported_structs {
             if self.types.struct_info.contains_key(&imp.name) {
                 continue;
             }
@@ -451,7 +452,8 @@ impl Compiler {
         // cross-references between types (e.g., Json's JArr(List[Json]) referencing
         // List) can be resolved during variant field processing.
         let mut to_process: Vec<(krypton_ir::SumTypeDef, String)> = Vec::new();
-        for imp in &ir_module.imported_sum_types {
+        let imported_sum_types = ir_module.imported_sum_types();
+        for imp in &imported_sum_types {
             if self.types.sum_type_info.contains_key(&imp.name) {
                 continue;
             }
@@ -721,7 +723,7 @@ impl Compiler {
             }
             let instance_class_name = format!(
                 "{}/{}$${}",
-                ir_module.module_path, inst.trait_name.local_name, inst.target_type_name
+                ir_module.module_path.as_str(), inst.trait_name.local_name, inst.target_type_name
             );
             // The trait interface class uses the qualified trait name
             let q_trait = inst.trait_name.jvm_qualified();
@@ -1020,10 +1022,11 @@ impl Compiler {
             .filter(|ext| ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
             .map(|ext| ext.name.as_str())
             .collect();
+        let imported_extern_fns = ir_module.imported_extern_fns();
         let all_extern_fns: Vec<&krypton_ir::ExternFnDef> = ir_module
             .extern_fns
             .iter()
-            .chain(ir_module.imported_extern_fns.iter())
+            .chain(imported_extern_fns.iter())
             .collect();
         for ext in all_extern_fns {
             let (_, extern_class) = match &ext.target {
@@ -1139,10 +1142,11 @@ impl Compiler {
         &mut self,
         ir_module: &krypton_ir::Module,
     ) -> Result<Vec<Method>, CodegenError> {
-        self.fn_names = ir_module.fn_names.clone();
+        self.fn_names = ir_module.fn_names();
 
         // Build variant_tags, sum_type_params, and variant_field_types from imported sum types
-        for sum_def in &ir_module.imported_sum_types {
+        let imported_sum_types_for_tags = ir_module.imported_sum_types();
+        for sum_def in &imported_sum_types_for_tags {
             let mut tag_map = std::collections::HashMap::new();
             for variant in &sum_def.variants {
                 tag_map.insert(variant.tag, variant.name.clone());

@@ -116,18 +116,19 @@ impl fmt::Display for SimpleExpr {
             SimpleExprKind::MakeClosure { func, captures } => {
                 write!(f, "make_closure({func}, [{}])", fmt_atoms(captures))
             }
-            SimpleExprKind::Construct { type_name, fields } => {
-                write!(f, "construct {type_name}({})", fmt_atoms(fields))
+            SimpleExprKind::Construct { type_ref, fields } => {
+                write!(f, "construct {}({})", crate::canonical_ref_type_name(type_ref), fmt_atoms(fields))
             }
             SimpleExprKind::ConstructVariant {
-                type_name,
+                type_ref,
                 variant,
                 tag,
                 fields,
             } => {
                 write!(
                     f,
-                    "construct {type_name}::{variant}#{tag}({})",
+                    "construct {}::{variant}#{tag}({})",
+                    crate::canonical_ref_type_name(type_ref),
                     fmt_atoms(fields)
                 )
             }
@@ -146,13 +147,14 @@ impl fmt::Display for SimpleExpr {
             SimpleExprKind::PrimOp { op, args } => {
                 write!(f, "{op}({})", fmt_atoms(args))
             }
-            SimpleExprKind::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty, .. } => {
                 write!(f, "get_dict {trait_name}[{ty}]")
             }
             SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
+                ..
             } => {
                 write!(f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
             }
@@ -227,18 +229,19 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     fmt_atoms(captures)
                 )
             }
-            SimpleExprKind::Construct { type_name, fields } => {
-                write!(self.f, "construct {type_name}({})", fmt_atoms(fields))
+            SimpleExprKind::Construct { type_ref, fields } => {
+                write!(self.f, "construct {}({})", crate::canonical_ref_type_name(type_ref), fmt_atoms(fields))
             }
             SimpleExprKind::ConstructVariant {
-                type_name,
+                type_ref,
                 variant,
                 tag,
                 fields,
             } => {
                 write!(
                     self.f,
-                    "construct {type_name}::{variant}#{tag}({})",
+                    "construct {}::{variant}#{tag}({})",
+                    crate::canonical_ref_type_name(type_ref),
                     fmt_atoms(fields)
                 )
             }
@@ -257,13 +260,14 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             SimpleExprKind::PrimOp { op, args } => {
                 write!(self.f, "{op}({})", fmt_atoms(args))
             }
-            SimpleExprKind::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty, .. } => {
                 write!(self.f, "get_dict {trait_name}[{ty}]")
             }
             SimpleExprKind::MakeDict {
                 trait_name,
                 ty,
                 sub_dicts,
+                ..
             } => {
                 write!(
                     self.f,
@@ -503,12 +507,13 @@ impl fmt::Display for Module {
                 methods.join("; ")
             )?;
         }
+        let fn_names_map = self.fn_names();
         for inst in self.instances.iter().filter(|i| !i.is_imported) {
             let methods: Vec<String> = inst
                 .method_fn_ids
                 .iter()
                 .map(|(name, id)| {
-                    let fn_name = self.fn_names.get(id).map(|s| s.as_str()).unwrap_or("?");
+                    let fn_name = fn_names_map.get(id).map(|s| s.as_str()).unwrap_or("?");
                     format!("{name}={fn_name}")
                 })
                 .collect();
@@ -567,8 +572,7 @@ impl fmt::Display for Module {
         for func in &self.functions {
             collect_referenced_fns(&func.body, &mut referenced);
         }
-        let mut declares: Vec<_> = self
-            .fn_names
+        let mut declares: Vec<_> = fn_names_map
             .iter()
             .filter(|(id, _)| !local_fn_ids.contains(id) && referenced.contains(id))
             .map(|(id, name)| (name.as_str(), *id))
@@ -606,7 +610,7 @@ impl fmt::Display for Module {
             if i > 0 {
                 writeln!(f)?;
             }
-            func.fmt_with_names(f, &self.fn_names)?;
+            func.fmt_with_names(f, &fn_names_map)?;
         }
         Ok(())
     }
@@ -740,7 +744,10 @@ mod tests {
     #[test]
     fn pretty_simple_expr_construct() {
         let expr = simple(SimpleExprKind::Construct {
-            type_name: "Point".into(),
+            type_ref: crate::CanonicalRef {
+                module: crate::ModulePath::new("test"),
+                symbol: crate::LocalSymbolKey::Type("Point".into()),
+            },
             fields: vec![Atom::Lit(Literal::Int(1)), Atom::Lit(Literal::Int(2))],
         });
         insta::assert_snapshot!(expr.to_string(), @"construct Point(1, 2)");
@@ -749,7 +756,10 @@ mod tests {
     #[test]
     fn pretty_simple_expr_construct_variant() {
         let expr = simple(SimpleExprKind::ConstructVariant {
-            type_name: "Option".into(),
+            type_ref: crate::CanonicalRef {
+                module: crate::ModulePath::new("test"),
+                symbol: crate::LocalSymbolKey::Type("Option".into()),
+            },
             variant: "Some".into(),
             tag: 0,
             fields: vec![Atom::Lit(Literal::Int(42))],
@@ -976,14 +986,14 @@ mod tests {
         let ids = gen_type_var_ids(1);
         let module = Module {
             name: "test".into(),
-            fn_names: std::collections::HashMap::new(),
+            fn_identities: std::collections::HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
             tuple_arities: std::collections::BTreeSet::new(),
-            module_path: "test".to_string(),
+            module_path: crate::ModulePath::new("test"),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],
@@ -1012,14 +1022,9 @@ mod tests {
                 return_type: Type::Unit,
                 body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
             }],
-            imported_dict_refs: vec![],
             fn_dict_requirements: std::collections::HashMap::new(),
             fn_exit_closes: std::collections::HashMap::new(),
-            imported_structs: vec![],
-            imported_sum_types: vec![],
-            imported_extern_types: vec![],
-            imported_extern_fns: vec![],
-            imported_instances: vec![],
+            imports: crate::ImportManifest::default(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

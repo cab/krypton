@@ -1,4 +1,4 @@
-use crate::{FnId, TraitName, Type, VarId};
+use crate::{CanonicalRef, FnId, TraitName, Type, VarId};
 use krypton_parser::ast::Span;
 
 /// An IR expression. Every expression carries a `Type`.
@@ -106,13 +106,13 @@ pub enum SimpleExprKind {
 
     /// Construct a struct value.
     Construct {
-        type_name: String,
+        type_ref: CanonicalRef,
         fields: Vec<Atom>,
     },
 
     /// Construct a sum type variant.
     ConstructVariant {
-        type_name: String,
+        type_ref: CanonicalRef,
         variant: String,
         tag: u32,
         fields: Vec<Atom>,
@@ -134,10 +134,15 @@ pub enum SimpleExprKind {
     PrimOp { op: PrimOp, args: Vec<Atom> },
 
     /// Reference a singleton trait dictionary (concrete type, no type vars).
-    GetDict { trait_name: TraitName, ty: Type },
+    GetDict {
+        instance_ref: CanonicalRef,
+        trait_name: TraitName,
+        ty: Type,
+    },
 
     /// Construct a parameterized trait dictionary from sub-dicts.
     MakeDict {
+        instance_ref: CanonicalRef,
         trait_name: TraitName,
         ty: Type,
         sub_dicts: Vec<Atom>,

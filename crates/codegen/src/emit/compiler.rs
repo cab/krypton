@@ -1632,8 +1632,9 @@ impl Compiler {
                 )
             }
 
-            SimpleExprKind::Construct { type_name, fields } => {
-                let si = self.types.struct_info.get(type_name).ok_or_else(|| {
+            SimpleExprKind::Construct { type_ref, fields } => {
+                let type_name = type_ref.symbol.local_name();
+                let si = self.types.struct_info.get(&type_name).ok_or_else(|| {
                     CodegenError::TypeError(format!("unknown struct: {type_name}"), None)
                 })?;
                 let class_index = si.class_index;
@@ -1659,7 +1660,7 @@ impl Compiler {
             }
 
             SimpleExprKind::ConstructVariant {
-                type_name: _,
+                type_ref: _,
                 variant,
                 tag: _,
                 fields,
@@ -1809,7 +1810,7 @@ impl Compiler {
                 Ok(expected)
             }
 
-            SimpleExprKind::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { instance_ref: _, trait_name, ty } => {
                 let pushed_class = self
                     .traits
                     .trait_dispatch
@@ -1821,6 +1822,7 @@ impl Compiler {
             }
 
             SimpleExprKind::MakeDict {
+                instance_ref: _,
                 trait_name,
                 ty,
                 sub_dicts,

@@ -482,7 +482,8 @@ fn validate_js_extern_targets(
                 externs_by_id.entry(ext.id).or_default().push(ext);
             }
         }
-        for ext in &ir_module.imported_extern_fns {
+        let imported_extern_fns = ir_module.imported_extern_fns();
+        for ext in &imported_extern_fns {
             if referenced.contains_key(&ext.id) {
                 externs_by_id.entry(ext.id).or_default().push(ext);
             }
@@ -499,7 +500,7 @@ fn validate_js_extern_targets(
                 continue;
             }
 
-            let fn_name = ir_module.fn_names.get(&fn_id).cloned().unwrap_or_else(|| {
+            let fn_name = ir_module.fn_name(fn_id).map(|s| s.to_string()).unwrap_or_else(|| {
                 entries
                     .first()
                     .map(|ext| ext.name.clone())
@@ -516,9 +517,9 @@ fn validate_js_extern_targets(
                 .expect("extern entry missing after map lookup");
             missing.push(MissingExternTarget {
                 function_name: fn_name,
-                referencing_module: ir_module.module_path.clone(),
+                referencing_module: ir_module.module_path.as_str().to_string(),
                 referencing_module_source: module_sources
-                    .get(&ir_module.module_path)
+                    .get(ir_module.module_path.as_str())
                     .cloned()
                     .flatten()
                     .or_else(|| module_sources.get(&ir_module.name).cloned().flatten()),
@@ -575,7 +576,7 @@ fn collect_reachable_modules(
                 stack.push(imported.source_module.clone());
             }
         }
-        for (trait_name, ty) in &module.imported_dict_refs {
+        for (trait_name, ty) in &module.imported_dict_refs() {
             if let Some(source) = registry.find_source_module(trait_name, ty) {
                 if !reachable.contains(source) {
                     stack.push(source.to_string());
@@ -775,7 +776,7 @@ impl<'a> JsEmitter<'a> {
     /// Compute a relative import path from the current module to `target_module`.
     fn relative_import_path(&self, target_module: &str) -> String {
         let from_dir: Vec<&str> = {
-            let parts: Vec<&str> = self.module.module_path.split('/').collect();
+            let parts: Vec<&str> = self.module.module_path.as_str().split('/').collect();
             if parts.len() > 1 {
                 parts[..parts.len() - 1].to_vec()
             } else {
@@ -848,7 +849,7 @@ impl<'a> JsEmitter<'a> {
         // `resolved` is now segments relative to the output root, e.g. ["runtime", "js", "io.mjs"]
 
         // 3. Compute relative path from the emitting module to the resolved path.
-        let emit_parts: Vec<&str> = self.module.module_path.split('/').collect();
+        let emit_parts: Vec<&str> = self.module.module_path.as_str().split('/').collect();
         let emit_dir = if emit_parts.len() > 1 {
             &emit_parts[..emit_parts.len() - 1]
         } else {
@@ -891,8 +892,7 @@ impl<'a> JsEmitter<'a> {
 
     fn fn_name(&self, id: FnId) -> String {
         self.module
-            .fn_names
-            .get(&id)
+            .fn_name(id)
             .map(|n| js_safe_name(n))
             .unwrap_or_else(|| format!("fn_{}", id.0))
     }
@@ -955,9 +955,8 @@ impl<'a> JsEmitter<'a> {
         // ── Krypton-to-Krypton imports ──
         // Skip names that will be imported via extern JS imports — the source
         // module's JS output doesn't re-export its extern methods.
-        let imported_extern_js_names: HashSet<&str> = self
-            .module
-            .imported_extern_fns
+        let imported_extern_fns = self.module.imported_extern_fns();
+        let imported_extern_js_names: HashSet<&str> = imported_extern_fns
             .iter()
             .filter(|e| !e.nullable && matches!(e.target, krypton_ir::ExternTarget::Js { .. }))
             .map(|e| e.name.as_str())
@@ -1046,9 +1045,7 @@ impl<'a> JsEmitter<'a> {
                     .push(specifier);
             }
         }
-        for ext in self
-            .module
-            .imported_extern_fns
+        for ext in imported_extern_fns
             .iter()
             .filter(|e| !e.nullable && !local_fn_names.contains(e.name.as_str()))
         {
@@ -1094,11 +1091,11 @@ impl<'a> JsEmitter<'a> {
         // Uses imported_dict_refs metadata recorded during IR lowering.
         {
             let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
-            for (trait_name, ty) in &self.module.imported_dict_refs {
+            for (trait_name, ty) in &self.module.imported_dict_refs() {
                 let js_name = self.resolve_dict_js_name(trait_name, ty);
                 if let Some(source) = self.registry.find_source_module(trait_name, ty) {
                     // Skip instances that are locally defined — they're emitted, not imported.
-                    if source == &self.module.name || source == &self.module.module_path {
+                    if source == &self.module.name || source == self.module.module_path.as_str() {
                         continue;
                     }
                     // Also skip if the dict is locally emitted (another module may
@@ -1148,7 +1145,7 @@ impl<'a> JsEmitter<'a> {
 
     /// Compute the relative path from this module to a runtime JS file.
     fn runtime_import_path(&self, filename: &str) -> String {
-        let parts: Vec<&str> = self.module.module_path.split('/').collect();
+        let parts: Vec<&str> = self.module.module_path.as_str().split('/').collect();
         let depth = if parts.len() > 1 { parts.len() - 1 } else { 0 };
         let mut path = String::new();
         if depth == 0 {
@@ -1752,9 +1749,9 @@ impl<'a> JsEmitter<'a> {
                     ));
                 }
             }
-            SimpleExprKind::Construct { type_name, fields } => {
+            SimpleExprKind::Construct { type_ref, fields } => {
                 let arg_strs: Vec<String> = fields.iter().map(|a| self.emit_atom(a)).collect();
-                let bare_name = type_name.rsplit('/').next().unwrap_or(type_name);
+                let bare_name = type_ref.symbol.local_name();
                 self.write(&format!("new {bare_name}({})", arg_strs.join(", ")));
             }
             SimpleExprKind::ConstructVariant {
@@ -1815,7 +1812,7 @@ impl<'a> JsEmitter<'a> {
                     }
                 }
             }
-            SimpleExprKind::GetDict { trait_name, ty } => {
+            SimpleExprKind::GetDict { trait_name, ty, .. } => {
                 let dict_name = self.resolve_dict_js_name(trait_name, ty);
                 self.write(&dict_name);
             }
@@ -1823,6 +1820,7 @@ impl<'a> JsEmitter<'a> {
                 trait_name,
                 ty,
                 sub_dicts,
+                ..
             } => {
                 let factory_name = self.resolve_dict_js_name(trait_name, ty);
                 let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
@@ -1935,8 +1933,9 @@ impl<'a> JsEmitter<'a> {
                     _ => None,
                 };
                 if let Some(named) = named {
+                    let imported_structs = self.module.imported_structs();
                     if let Some((module_path, type_name)) = named.rsplit_once('/') {
-                        for s in &self.module.imported_structs {
+                        for s in &imported_structs {
                             if s.module_path == module_path
                                 && s.name == type_name
                                 && field_index < s.fields.len()
@@ -1950,9 +1949,7 @@ impl<'a> JsEmitter<'a> {
                                 return s.fields[field_index].0.clone();
                             }
                         }
-                        let mut imported = self
-                            .module
-                            .imported_structs
+                        let mut imported = imported_structs
                             .iter()
                             .filter(|s| s.name == named);
                         if let Some(s) = imported.next() {
@@ -2045,7 +2042,10 @@ fn js_intrinsic_dicts() -> Vec<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krypton_ir::{ExternFnDef, ExternTarget, FnDef, ImportedFnDef, Module};
+    use krypton_ir::{
+        CanonicalRef, ExternFnDef, ExternTarget, FnDef, ImportManifest, ImportedFnDef,
+        LocalSymbolKey, ManifestExternFn, Module, ModulePath,
+    };
     use std::collections::{BTreeSet, HashMap, HashSet};
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
@@ -2062,22 +2062,17 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             functions: vec![],
-            fn_names: HashMap::new(),
+            fn_identities: HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
             tuple_arities: BTreeSet::new(),
-            module_path: name.to_string(),
-            imported_dict_refs: vec![],
+            module_path: ModulePath::new(name),
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
-            imported_structs: vec![],
-            imported_sum_types: vec![],
-            imported_extern_types: vec![],
-            imported_extern_fns: vec![],
-            imported_instances: vec![],
+            imports: ImportManifest::default(),
         }
     }
 
@@ -2137,7 +2132,11 @@ mod tests {
             param_types: vec![Type::String],
             return_type: Type::Named("Option".to_string(), vec![Type::Int]),
         });
-        module.imported_extern_fns.push(ExternFnDef {
+        module.imports.extern_fns.push(ManifestExternFn {
+            canonical: CanonicalRef {
+                module: ModulePath::new("stringlib"),
+                symbol: LocalSymbolKey::Function("parse_int".to_string()),
+            },
             id: FnId(2),
             name: "parse_int".to_string(),
             declaring_module_path: "stringlib".to_string(),
@@ -2183,7 +2182,7 @@ mod tests {
         let mut module = test_module("test");
         let bind = VarId(0);
         let extern_fn = FnId(1);
-        module.fn_names.insert(extern_fn, "println".to_string());
+        module.fn_identities.insert(extern_fn, krypton_ir::FnIdentity::Local { name: "println".to_string() });
         module.extern_fns.push(ExternFnDef {
             id: extern_fn,
             name: "println".to_string(),
@@ -2226,7 +2225,7 @@ mod tests {
     fn unreferenced_java_only_extern_passes_validation() {
         let mut module = test_module("test");
         let extern_fn = FnId(1);
-        module.fn_names.insert(extern_fn, "println".to_string());
+        module.fn_identities.insert(extern_fn, krypton_ir::FnIdentity::Local { name: "println".to_string() });
         module.extern_fns.push(ExternFnDef {
             id: extern_fn,
             name: "println".to_string(),

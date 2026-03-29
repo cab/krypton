@@ -25,22 +25,17 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             functions: vec![],
-            fn_names: HashMap::new(),
+            fn_identities: HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
             tuple_arities: BTreeSet::new(),
-            module_path: name.to_string(),
-            imported_dict_refs: vec![],
+            module_path: ModulePath::new(name),
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
-            imported_structs: vec![],
-            imported_sum_types: vec![],
-            imported_extern_types: vec![],
-            imported_extern_fns: vec![],
-            imported_instances: vec![],
+            imports: ImportManifest::default(),
         }
     }
 
@@ -98,7 +93,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "add".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "add".to_string() });
 
         let js = emit_module(&module);
         assert!(js.contains("export function add("), "should export add fn");
@@ -275,7 +270,7 @@ mod tests {
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
-        module.fn_names.insert(FnId(0), "filter".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "filter".to_string() });
         module.imported_fns.push(ImportedFnDef {
             id: FnId(1),
             name: "list_filter".to_string(),
@@ -284,7 +279,7 @@ mod tests {
             param_types: vec![],
             return_type: Type::Unit,
         });
-        module.fn_names.insert(FnId(1), "list_filter".to_string());
+        module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "list_filter".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -302,7 +297,7 @@ mod tests {
     fn import_relative_same_directory() {
         // core/io importing core/result should produce './result.mjs', not './core/result.mjs'
         let mut module = make_module("io");
-        module.module_path = "core/io".to_string();
+        module.module_path = ModulePath::new("core/io");
         module.imported_fns.push(ImportedFnDef {
             id: FnId(10),
             name: "Ok".to_string(),
@@ -323,7 +318,7 @@ mod tests {
     fn import_relative_parent_directory() {
         // core/io importing a root-level module 'util' should use '../util.mjs'
         let mut module = make_module("io");
-        module.module_path = "core/io".to_string();
+        module.module_path = ModulePath::new("core/io");
         module.imported_fns.push(ImportedFnDef {
             id: FnId(10),
             name: "helper".to_string(),
@@ -352,7 +347,7 @@ mod tests {
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
-        module.fn_names.insert(FnId(0), "combine".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "combine".to_string() });
         module.imported_fns.push(ImportedFnDef {
             id: FnId(0), // same FnId — IR lowerer reuses it
             name: "combine".to_string(),
@@ -408,7 +403,7 @@ mod tests {
             return_type: Type::Int,
             body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
         });
-        module.fn_names.insert(FnId(0), "answer".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "answer".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -430,7 +425,7 @@ mod tests {
                 ExprKind::Atom(Atom::Lit(Literal::String("hello".to_string()))),
             ),
         });
-        module.fn_names.insert(FnId(0), "greeting".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "greeting".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -449,7 +444,7 @@ mod tests {
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
         });
-        module.fn_names.insert(FnId(0), "yes".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "yes".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -468,7 +463,7 @@ mod tests {
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
-        module.fn_names.insert(FnId(0), "noop".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "noop".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -481,6 +476,16 @@ mod tests {
 
     fn make_trait_name(name: &str) -> krypton_ir::TraitName {
         krypton_ir::TraitName::new(format!("core/{}", name.to_lowercase()), name.to_string())
+    }
+
+    fn dummy_instance_ref(trait_name: &str, type_name: &str) -> CanonicalRef {
+        CanonicalRef {
+            module: ModulePath::new("test"),
+            symbol: LocalSymbolKey::Instance {
+                trait_name: trait_name.to_string(),
+                target_type: type_name.to_string(),
+            },
+        }
     }
 
     #[test]
@@ -515,6 +520,7 @@ mod tests {
                         target: Box::new(Type::Int),
                     },
                     value: simple(SimpleExprKind::GetDict {
+                        instance_ref: dummy_instance_ref("Eq", "Int"),
                         trait_name: make_trait_name("Eq"),
                         ty: Type::Int,
                     }),
@@ -534,7 +540,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -563,7 +569,7 @@ mod tests {
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
         });
-        module.fn_names.insert(FnId(1), "Eq$$Point$$eq".to_string());
+        module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "Eq$$Point$$eq".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_type: Type::Named("Point".to_string(), vec![]),
@@ -595,6 +601,7 @@ mod tests {
                         target: Box::new(Type::Named("Point".to_string(), vec![])),
                     },
                     value: simple(SimpleExprKind::GetDict {
+                        instance_ref: dummy_instance_ref("Eq", "Point"),
                         trait_name: make_trait_name("Eq"),
                         ty: Type::Named("Point".to_string(), vec![]),
                     }),
@@ -614,7 +621,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -664,7 +671,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -678,7 +685,7 @@ mod tests {
         use krypton_ir::{FnId, Type, VarId};
         let mut module = make_module("test");
         let panic_fn = FnId(99);
-        module.fn_names.insert(panic_fn, "panic".to_string());
+        module.fn_identities.insert(panic_fn, FnIdentity::Local { name: "panic".to_string() });
         let msg = VarId(0);
         let r = VarId(1);
         module.functions.push(FnDef {
@@ -699,7 +706,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -729,7 +736,7 @@ mod tests {
                 krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true))),
             ),
         });
-        module.fn_names.insert(FnId(1), "Eq$$Point$$eq".to_string());
+        module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "Eq$$Point$$eq".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_type: Type::Named("Point".to_string(), vec![]),
@@ -787,8 +794,8 @@ mod tests {
             ),
         });
         module
-            .fn_names
-            .insert(FnId(2), "Show$$Option$$show".to_string());
+            .fn_identities
+            .insert(FnId(2), FnIdentity::Local { name: "Show$$Option$$show".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Show"),
             target_type: Type::Named("Option".to_string(), vec![Type::Var(tv_a)]),
@@ -839,6 +846,7 @@ mod tests {
                         target: Box::new(Type::Int),
                     },
                     value: simple(krypton_ir::SimpleExprKind::GetDict {
+                        instance_ref: dummy_instance_ref("Eq", "Int"),
                         trait_name: make_trait_name("Eq"),
                         ty: Type::Int,
                     }),
@@ -849,7 +857,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let js = emit_module(&module);
         assert!(
@@ -875,7 +883,7 @@ mod tests {
                 krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true))),
             ),
         });
-        module.fn_names.insert(FnId(2), "Eq$$Pair$$eq".to_string());
+        module.fn_identities.insert(FnId(2), FnIdentity::Local { name: "Eq$$Pair$$eq".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_type: Type::Tuple(vec![Type::Var(tv), Type::Var(tv)]),
@@ -901,6 +909,7 @@ mod tests {
                         target: Box::new(Type::Tuple(vec![Type::Int, Type::String])),
                     },
                     value: simple(krypton_ir::SimpleExprKind::GetDict {
+                        instance_ref: dummy_instance_ref("Eq", "$Tuple2"),
                         trait_name: make_trait_name("Eq"),
                         ty: Type::Tuple(vec![Type::Int, Type::String]),
                     }),
@@ -911,7 +920,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let panic = std::panic::catch_unwind(|| emit_module(&module))
             .expect_err("mismatched repeated type vars should ICE");
@@ -947,8 +956,8 @@ mod tests {
             ),
         });
         module
-            .fn_names
-            .insert(FnId(2), "Show$$Option$$show".to_string());
+            .fn_identities
+            .insert(FnId(2), FnIdentity::Local { name: "Show$$Option$$show".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Show"),
             target_type: Type::Named("Option".to_string(), vec![Type::Var(tv_a)]),
@@ -973,6 +982,7 @@ mod tests {
                     bind: x_var,
                     ty: Type::Unit,
                     value: simple(krypton_ir::SimpleExprKind::MakeDict {
+                        instance_ref: dummy_instance_ref("Show", "Option"),
                         trait_name: make_trait_name("Show"),
                         ty: Type::Named("Option".to_string(), vec![Type::Int]),
                         sub_dicts: vec![krypton_ir::Atom::Var(d_var)],
@@ -984,7 +994,7 @@ mod tests {
                 },
             ),
         });
-        module.fn_names.insert(FnId(0), "test_fn".to_string());
+        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
 
         let js = emit_module(&module);
         assert!(
