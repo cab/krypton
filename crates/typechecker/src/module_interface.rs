@@ -358,12 +358,36 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
                     )
                 })
                 .unwrap_or_else(|| (typed.module_path.clone(), ef.name.clone()));
+            let symbol = typed
+                .exported_type_infos
+                .values()
+                .find_map(|info| {
+                    if info.source_module != canonical_module {
+                        return None;
+                    }
+                    match &info.kind {
+                        ExportedTypeKind::Record { .. } if info.name == canonical_name => {
+                            Some(LocalSymbolKey::Constructor {
+                                parent_type: info.name.clone(),
+                                name: canonical_name.clone(),
+                            })
+                        }
+                        ExportedTypeKind::Sum { variants } => variants.iter().find_map(|variant| {
+                            (variant.name == canonical_name).then(|| LocalSymbolKey::Constructor {
+                                parent_type: info.name.clone(),
+                                name: canonical_name.clone(),
+                            })
+                        }),
+                        _ => None,
+                    }
+                })
+                .unwrap_or_else(|| LocalSymbolKey::Function(canonical_name.clone()));
 
             ReexportedFnEntry {
                 local_name: ef.name.clone(),
                 canonical_ref: CanonicalRef {
                     module: ModulePath::new(&canonical_module),
-                    symbol: LocalSymbolKey::Function(canonical_name),
+                    symbol,
                 },
                 scheme: ef.scheme.clone(),
                 origin: ef.origin.clone(),
@@ -754,7 +778,7 @@ use crate::typed_ast::{
 };
 
 /// Convert `TypeSummary` → `ExportedTypeInfo` for type registry registration.
-pub fn type_summary_to_export_info(ts: &TypeSummary) -> ExportedTypeInfo {
+pub fn type_summary_to_export_info(ts: &TypeSummary, source_module: &str) -> ExportedTypeInfo {
     let kind = match &ts.kind {
         TypeSummaryKind::Record { fields } => ExportedTypeKind::Record {
             fields: fields.clone(),
@@ -771,6 +795,7 @@ pub fn type_summary_to_export_info(ts: &TypeSummary) -> ExportedTypeInfo {
     };
     ExportedTypeInfo {
         name: ts.name.clone(),
+        source_module: source_module.to_string(),
         type_params: ts.type_params.clone(),
         type_param_vars: ts.type_param_vars.clone(),
         kind,

@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
+use krypton_parser::ast::Visibility;
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
-use crate::typed_ast::{TraitName, TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{ResolvedTypeRef, TraitName, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
@@ -20,6 +21,8 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
     pub(super) type_param_arity: &'a HashMap<String, usize>,
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
+    pub(super) imported_type_info: &'a HashMap<String, (String, Visibility)>,
+    pub(super) module_path: &'a str,
     pub(super) extern_fn_names: &'a HashSet<String>,
     pub(super) enclosing_fn_constraints: &'a [(TraitName, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
@@ -108,6 +111,28 @@ impl<'a> InferenceContext<'a> {
                 Type::Fn(params, _) => Some(params.clone()),
                 _ => None,
             },
+            _ => None,
+        }
+    }
+
+    pub(super) fn resolved_type_ref_for_name(&self, name: &str) -> Option<ResolvedTypeRef> {
+        let registry = self.registry?;
+        let canonical_name = registry.canonical_name(name);
+        let source_module = self
+            .imported_type_info
+            .get(canonical_name)
+            .map(|(module_path, _)| module_path.as_str())
+            .unwrap_or(self.module_path);
+        Some(super::type_binding_ref(
+            source_module.to_string(),
+            canonical_name.to_string(),
+        ))
+    }
+
+    pub(super) fn resolved_type_ref_for_type(&self, ty: &Type) -> Option<ResolvedTypeRef> {
+        match ty {
+            Type::Named(name, _) => self.resolved_type_ref_for_name(name),
+            Type::Own(inner) => self.resolved_type_ref_for_type(inner),
             _ => None,
         }
     }
@@ -1058,6 +1083,7 @@ impl<'a> InferenceContext<'a> {
             kind: TypedExprKind::FieldAccess {
                 expr: Box::new(target_typed),
                 field: field.to_string(),
+                resolved_type_ref: self.resolved_type_ref_for_type(inner_resolved),
             },
             ty,
             span,
@@ -1222,7 +1248,8 @@ impl<'a> InferenceContext<'a> {
                     .iter()
                     .map(|_| Type::Var(self.fresh()))
                     .collect();
-                let struct_ty = Type::Named(name.to_string(), fresh_args.clone());
+                let struct_ty = Type::Named(info.name.clone(), fresh_args.clone());
+                let resolved_type_ref = self.resolved_type_ref_for_name(&info.name);
 
                 let provided: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
                 let missing: Vec<String> = record_fields
@@ -1267,6 +1294,7 @@ impl<'a> InferenceContext<'a> {
                     kind: TypedExprKind::StructLit {
                         name: name.to_string(),
                         fields: typed_fields,
+                        resolved_type_ref,
                     },
                     ty: Type::Own(Box::new(struct_ty)),
                     span,

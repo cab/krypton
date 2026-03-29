@@ -4,8 +4,9 @@ use krypton_parser::parser::parse;
 use krypton_typechecker::infer;
 use krypton_typechecker::scc;
 use krypton_typechecker::typed_ast::{
-    ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TypedExpr, TypedExprKind,
-    TypedModule,
+    ConstructorKind, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstructorRef,
+    ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, TypedExpr, TypedExprKind,
+    TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Substitution, TypeEnv, TypeVarGen};
 
@@ -191,6 +192,24 @@ fn peel_type_apps(expr: &TypedExpr) -> &TypedExpr {
     match &expr.kind {
         TypedExprKind::TypeApp { expr, .. } => peel_type_apps(expr),
         _ => expr,
+    }
+}
+
+fn match_arms(expr: &TypedExpr) -> &[krypton_typechecker::typed_ast::TypedMatchArm] {
+    match &expr.kind {
+        TypedExprKind::Match { arms, .. } => arms,
+        other => panic!("expected Match, got {other:?}"),
+    }
+}
+
+fn field_access(expr: &TypedExpr) -> (&TypedExpr, &str, Option<&ResolvedTypeRef>) {
+    match &expr.kind {
+        TypedExprKind::FieldAccess {
+            expr,
+            field,
+            resolved_type_ref,
+        } => (expr, field, resolved_type_ref.as_ref()),
+        other => panic!("expected FieldAccess, got {other:?}"),
     }
 }
 
@@ -2100,6 +2119,170 @@ fn infer_module_constructor_alias_resolves() {
             .map(|e| e.type_error().map(|te| te.error.error_code().to_string()))
             .collect::<Vec<_>>())
     );
+}
+
+#[test]
+fn local_record_constructor_preserves_resolved_constructor_ref() {
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        type Point = { x: Int, y: Int }
+        fun main() = Point(1, 2)
+        "#,
+        &CompositeResolver::stdlib_only(),
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::Constructor(ResolvedConstructorRef {
+            type_ref: ResolvedTypeRef {
+                qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                    "test".to_string(),
+                    "Point".to_string(),
+                ),
+            },
+            constructor_name: "Point".to_string(),
+            kind: ConstructorKind::Record,
+        }))
+    );
+}
+
+#[test]
+fn imported_constructor_alias_preserves_resolved_constructor_ref() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub type Box[a] = Box(a)".to_string())
+            } else {
+                CompositeResolver::stdlib_only().resolve(module_path)
+            }
+        }
+    }
+
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        import mylib.{Box as MkBox}
+        fun main() = MkBox(1)
+        "#,
+        &FakeResolver,
+        "test",
+    );
+
+    let callee = app_callee(function_body(&typed, "main"));
+    assert_eq!(
+        callee.resolved_ref,
+        Some(ResolvedBindingRef::Constructor(ResolvedConstructorRef {
+            type_ref: ResolvedTypeRef {
+                qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                    "mylib".to_string(),
+                    "Box".to_string(),
+                ),
+            },
+            constructor_name: "Box".to_string(),
+            kind: ConstructorKind::Variant,
+        }))
+    );
+}
+
+#[test]
+fn imported_field_access_carries_resolved_type_ref() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some(
+                    r#"
+                    pub type Point = { x: Int, y: Int }
+                    pub fun mk() -> Point = Point(1, 2)
+                    "#
+                    .to_string(),
+                )
+            } else {
+                CompositeResolver::stdlib_only().resolve(module_path)
+            }
+        }
+    }
+
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        import mylib.{mk}
+        fun main() -> Int = mk().x
+        "#,
+        &FakeResolver,
+        "test",
+    );
+
+    let (_base, field, resolved_type_ref) = field_access(function_body(&typed, "main"));
+    assert_eq!(field, "x");
+    assert_eq!(
+        resolved_type_ref,
+        Some(&ResolvedTypeRef {
+            qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                "mylib".to_string(),
+                "Point".to_string(),
+            ),
+        })
+    );
+}
+
+#[test]
+fn imported_match_patterns_carry_resolved_variant_refs() {
+    struct FakeResolver;
+    impl ModuleResolver for FakeResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if module_path == "mylib" {
+                Some("pub type Color = Red | Blue".to_string())
+            } else {
+                CompositeResolver::stdlib_only().resolve(module_path)
+            }
+        }
+    }
+
+    let typed = infer_typed_module_with_resolver(
+        r#"
+        import mylib.{Color, Red, Blue}
+        fun main(c: Color) -> Int = match c { Red => 1, Blue => 2 }
+        "#,
+        &FakeResolver,
+        "test",
+    );
+
+    let arms = match_arms(function_body(&typed, "main"));
+    let expected_red = Some(ResolvedVariantRef {
+        type_ref: ResolvedTypeRef {
+            qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                "mylib".to_string(),
+                "Color".to_string(),
+            ),
+        },
+        variant_name: "Red".to_string(),
+    });
+    let expected_blue = Some(ResolvedVariantRef {
+        type_ref: ResolvedTypeRef {
+            qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
+                "mylib".to_string(),
+                "Color".to_string(),
+            ),
+        },
+        variant_name: "Blue".to_string(),
+    });
+
+    match &arms[0].pattern {
+        TypedPattern::Constructor {
+            resolved_variant_ref,
+            ..
+        } => assert_eq!(resolved_variant_ref, &expected_red),
+        other => panic!("expected constructor pattern, got {other:?}"),
+    }
+    match &arms[1].pattern {
+        TypedPattern::Constructor {
+            resolved_variant_ref,
+            ..
+        } => assert_eq!(resolved_variant_ref, &expected_blue),
+        other => panic!("expected constructor pattern, got {other:?}"),
+    }
 }
 
 #[test]

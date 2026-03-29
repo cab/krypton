@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
 use krypton_typechecker::typed_ast::{
     self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry,
-    QualifiedName, ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TraitName,
-    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    QualifiedName, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstructorRef,
+    ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, TraitName, TypedExpr,
+    TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -510,10 +511,10 @@ struct LowerCtx {
     fn_ids: HashMap<String, FnId>,
     /// Canonical qualified name → FnId for resolved callable lookup.
     callable_ids: HashMap<QualifiedName, FnId>,
-    /// struct name → ordered fields with resolved types
-    struct_fields: HashMap<String, Vec<(String, Type)>>,
-    /// variant name → (type_name, tag, field_types)
-    sum_variants: HashMap<String, (String, u32, Vec<Type>)>,
+    /// Resolved type ref → ordered fields with resolved types
+    struct_fields: HashMap<ResolvedTypeRef, Vec<(String, Type)>>,
+    /// Resolved variant ref → (tag, field_types)
+    sum_variants: HashMap<ResolvedVariantRef, (u32, Vec<Type>)>,
     /// Cached type_params for private types (avoids double build_type_param_map)
     private_type_params: HashMap<String, Vec<TypeVarId>>,
     /// qualified name → [(trait_name, TypeVarId)] — required trait dicts
@@ -821,17 +822,67 @@ impl LowerCtx {
         }
     }
 
-    fn field_index(&self, type_name: &str, field_name: &str) -> Result<usize, LowerError> {
+    fn field_index(
+        &self,
+        type_ref: &ResolvedTypeRef,
+        field_name: &str,
+    ) -> Result<usize, LowerError> {
         let fields = self
             .struct_fields
-            .get(type_name)
-            .ok_or_else(|| LowerError::UnresolvedStruct(type_name.to_string()))?;
+            .get(type_ref)
+            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?;
         fields
             .iter()
             .position(|(n, _)| n == field_name)
             .ok_or_else(|| {
-                LowerError::UnresolvedField(type_name.to_string(), field_name.to_string())
+                LowerError::UnresolvedField(
+                    type_ref.qualified_name.to_string(),
+                    field_name.to_string(),
+                )
             })
+    }
+
+    fn variant_info(
+        &self,
+        variant_ref: &ResolvedVariantRef,
+    ) -> Result<(u32, Vec<Type>), LowerError> {
+        self.sum_variants
+            .get(variant_ref)
+            .cloned()
+            .ok_or_else(|| {
+                LowerError::InternalError(format!(
+                    "unknown variant ref in lowering: {}.{}",
+                    variant_ref.type_ref.qualified_name, variant_ref.variant_name
+                ))
+            })
+    }
+
+    fn fallback_type_ref(&self, type_name: &str) -> Option<ResolvedTypeRef> {
+        self.struct_fields
+            .keys()
+            .find(|type_ref| type_ref.qualified_name.local_name == type_name)
+            .cloned()
+            .or_else(|| {
+                self.sum_variants.keys().find_map(|variant_ref| {
+                    (variant_ref.type_ref.qualified_name.local_name == type_name)
+                        .then(|| variant_ref.type_ref.clone())
+                })
+            })
+    }
+
+    fn fallback_variant_ref(&self, variant_name: &str) -> Option<ResolvedVariantRef> {
+        self.sum_variants
+            .keys()
+            .find(|variant_ref| variant_ref.variant_name == variant_name)
+            .cloned()
+    }
+
+    fn resolved_type_ref_from_type(&self, ty: &Type) -> Option<ResolvedTypeRef> {
+        match ty {
+            Type::Named(name, _) => self.fallback_type_ref(name),
+            Type::Own(inner) => self.resolved_type_ref_from_type(inner),
+            _ => None,
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -862,8 +913,9 @@ impl LowerCtx {
         match &expr.kind {
             TypedExprKind::Lit(lit) => Ok((vec![], Atom::Lit(convert_lit(lit)))),
             TypedExprKind::Var(name) => {
-                if self.sum_variants.contains_key(name.as_str())
-                    || self.struct_fields.contains_key(name.as_str())
+                if resolved_constructor_ref(expr).is_some()
+                    || self.fallback_variant_ref(name).is_some()
+                    || self.fallback_type_ref(name).is_some()
                 {
                     let (bindings, simple) = self.lower_to_simple(expr)?;
                     let var = self.fresh_var();
@@ -958,7 +1010,7 @@ impl LowerCtx {
             TypedExprKind::Lit(lit) => return cont(self, Atom::Lit(convert_lit(lit))),
             TypedExprKind::Var(name) => {
                 // Variant constructors are lowered through the general value path.
-                if !self.sum_variants.contains_key(name.as_str()) {
+                if resolved_constructor_ref(expr).is_none() && self.fallback_variant_ref(name).is_none() {
                     if let Some(id) = self.lookup_var(name) {
                         return cont(self, Atom::Var(id));
                     }
@@ -1102,7 +1154,8 @@ impl LowerCtx {
     /// Creates a lifted function wrapping `Construct`, returns `MakeClosure`.
     fn lower_struct_constructor_as_value(
         &mut self,
-        name: &str,
+        constructor_name: &str,
+        type_name: &str,
         expr: &TypedExpr,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         let (param_types, return_type) = match &expr.ty {
@@ -1111,13 +1164,13 @@ impl LowerCtx {
             }
             other => {
                 return Err(LowerError::InternalError(format!(
-                    "struct constructor value `{name}` has non-function type: {other:?}"
+                    "struct constructor value `{constructor_name}` has non-function type: {other:?}"
                 )))
             }
         };
 
         let fn_id = self.fresh_fn();
-        let lifted_name = format!("ctor${}${}", name, fn_id.0);
+        let lifted_name = format!("ctor${}${}", constructor_name, fn_id.0);
         let mut params = Vec::with_capacity(param_types.len());
         let mut field_atoms = Vec::with_capacity(param_types.len());
         for param_ty in param_types {
@@ -1136,7 +1189,7 @@ impl LowerCtx {
                 value: simple_at(
                     expr.span,
                     SimpleExprKind::Construct {
-                        type_name: name.to_string(),
+                        type_name: type_name.to_string(),
                         fields: field_atoms,
                     },
                 ),
@@ -1183,10 +1236,52 @@ impl LowerCtx {
                 ))
             }
             TypedExprKind::Var(name) => {
-                // Nullary variant constructor
-                if let Some((type_name, tag, fields)) =
-                    self.sum_variants.get(name.as_str()).cloned()
-                {
+                if let Some((_binding_name, constructor_ref)) = resolved_constructor_ref(expr) {
+                    match constructor_ref.kind {
+                        typed_ast::ConstructorKind::Variant => {
+                            let variant_ref =
+                                variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                                    LowerError::InternalError(format!(
+                                        "missing variant ref for constructor `{}`",
+                                        constructor_ref.constructor_name
+                                    ))
+                                })?;
+                            let (tag, fields) = self.variant_info(&variant_ref)?;
+                            let type_name =
+                                constructor_ref.type_ref.qualified_name.local_name.clone();
+                            if fields.is_empty() {
+                                return Ok((
+                                    vec![],
+                                    simple_at(
+                                        expr.span,
+                                        SimpleExprKind::ConstructVariant {
+                                            type_name,
+                                            variant: constructor_ref.constructor_name.clone(),
+                                            tag,
+                                            fields: vec![],
+                                        },
+                                    ),
+                                ));
+                            }
+                            return self.lower_variant_constructor_as_value(
+                                &constructor_ref.constructor_name,
+                                expr,
+                                type_name,
+                                tag,
+                            );
+                        }
+                        typed_ast::ConstructorKind::Record => {
+                            return self.lower_struct_constructor_as_value(
+                                &constructor_ref.constructor_name,
+                                &constructor_ref.type_ref.qualified_name.local_name,
+                                expr,
+                            );
+                        }
+                    }
+                }
+                if let Some(variant_ref) = self.fallback_variant_ref(name) {
+                    let (tag, fields) = self.variant_info(&variant_ref)?;
+                    let type_name = variant_ref.type_ref.qualified_name.local_name.clone();
                     if fields.is_empty() {
                         return Ok((
                             vec![],
@@ -1203,9 +1298,12 @@ impl LowerCtx {
                     }
                     return self.lower_variant_constructor_as_value(name, expr, type_name, tag);
                 }
-                // Struct constructor used as value
-                if self.struct_fields.contains_key(name.as_str()) {
-                    return self.lower_struct_constructor_as_value(name, expr);
+                if let Some(type_ref) = self.fallback_type_ref(name) {
+                    return self.lower_struct_constructor_as_value(
+                        name,
+                        &type_ref.qualified_name.local_name,
+                        expr,
+                    );
                 }
                 // Function reference as value — wrap in MakeClosure
                 if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
@@ -1356,16 +1454,27 @@ impl LowerCtx {
                     simple_at(expr.span, SimpleExprKind::MakeTuple { elements: atoms }),
                 ))
             }
-            TypedExprKind::StructLit { name, fields } => self.lower_struct_lit(name, fields),
-            TypedExprKind::FieldAccess { expr: base, field } => {
+            TypedExprKind::StructLit {
+                name,
+                fields,
+                resolved_type_ref,
+            } => self.lower_struct_lit(name, fields, resolved_type_ref.as_ref()),
+            TypedExprKind::FieldAccess {
+                expr: base,
+                field,
+                resolved_type_ref,
+            } => {
                 let (bindings, base_atom) = self.lower_to_atom(base)?;
-                let type_name = type_name_of(&base.ty).ok_or_else(|| {
-                    LowerError::InternalError(format!(
-                        "FieldAccess on non-named type: {:?}",
-                        base.ty
-                    ))
-                })?;
-                let idx = self.field_index(&type_name, field)?;
+                let type_ref = resolved_type_ref
+                    .clone()
+                    .or_else(|| self.resolved_type_ref_from_type(&base.ty))
+                    .ok_or_else(|| {
+                        LowerError::InternalError(format!(
+                            "FieldAccess on non-named type: {:?}",
+                            base.ty
+                        ))
+                    })?;
+                let idx = self.field_index(&type_ref, field)?;
                 Ok((
                     bindings,
                     simple_at(
@@ -1459,9 +1568,119 @@ impl LowerCtx {
             )),
 
             TypedExprKind::Var(name) => {
-                if let Some((type_name, tag, fields)) =
-                    self.sum_variants.get(name.as_str()).cloned()
-                {
+                if let Some((_binding_name, constructor_ref)) = resolved_constructor_ref(expr) {
+                    match constructor_ref.kind {
+                        typed_ast::ConstructorKind::Variant => {
+                            let variant_ref =
+                                variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                                    LowerError::InternalError(format!(
+                                        "missing variant ref for constructor `{}`",
+                                        constructor_ref.constructor_name
+                                    ))
+                                })?;
+                            let (tag, fields) = self.variant_info(&variant_ref)?;
+                            let type_name =
+                                constructor_ref.type_ref.qualified_name.local_name.clone();
+                            if fields.is_empty() {
+                                let var = self.fresh_var();
+                                return Ok(expr_at(
+                                    expr.span,
+                                    expr.ty.clone().into(),
+                                    ExprKind::Let {
+                                        bind: var,
+                                        ty: expr.ty.clone().into(),
+                                        value: simple_at(
+                                            expr.span,
+                                            SimpleExprKind::ConstructVariant {
+                                                type_name,
+                                                variant: constructor_ref.constructor_name.clone(),
+                                                tag,
+                                                fields: vec![],
+                                            },
+                                        ),
+                                        body: Box::new(atom_expr_at(
+                                            expr.span,
+                                            expr.ty.clone().into(),
+                                            Atom::Var(var),
+                                        )),
+                                    },
+                                ));
+                            }
+                            let (bindings, simple) = self.lower_variant_constructor_as_value(
+                                &constructor_ref.constructor_name,
+                                expr,
+                                type_name,
+                                tag,
+                            )?;
+                            let var = self.fresh_var();
+                            let mut result = expr_at(
+                                expr.span,
+                                expr.ty.clone().into(),
+                                ExprKind::Let {
+                                    bind: var,
+                                    ty: expr.ty.clone().into(),
+                                    value: simple,
+                                    body: Box::new(atom_expr_at(
+                                        expr.span,
+                                        expr.ty.clone().into(),
+                                        Atom::Var(var),
+                                    )),
+                                },
+                            );
+                            for b in bindings.into_iter().rev() {
+                                result = expr_at(
+                                    b.value.span,
+                                    result.ty.clone(),
+                                    ExprKind::Let {
+                                        bind: b.bind,
+                                        ty: b.ty,
+                                        value: b.value,
+                                        body: Box::new(result),
+                                    },
+                                );
+                            }
+                            return Ok(result);
+                        }
+                        typed_ast::ConstructorKind::Record => {
+                            let (bindings, simple) = self.lower_struct_constructor_as_value(
+                                &constructor_ref.constructor_name,
+                                &constructor_ref.type_ref.qualified_name.local_name,
+                                expr,
+                            )?;
+                            let var = self.fresh_var();
+                            let mut result = expr_at(
+                                expr.span,
+                                expr.ty.clone().into(),
+                                ExprKind::Let {
+                                    bind: var,
+                                    ty: expr.ty.clone().into(),
+                                    value: simple,
+                                    body: Box::new(atom_expr_at(
+                                        expr.span,
+                                        expr.ty.clone().into(),
+                                        Atom::Var(var),
+                                    )),
+                                },
+                            );
+                            for b in bindings.into_iter().rev() {
+                                result = expr_at(
+                                    b.value.span,
+                                    result.ty.clone(),
+                                    ExprKind::Let {
+                                        bind: b.bind,
+                                        ty: b.ty,
+                                        value: b.value,
+                                        body: Box::new(result),
+                                    },
+                                );
+                            }
+                            return Ok(result);
+                        }
+                    }
+                }
+                if let Some(variant_ref) = self.fallback_variant_ref(name) {
+                    let (tag, fields) = self.variant_info(&variant_ref)?;
+                    let type_name = variant_ref.type_ref.qualified_name.local_name.clone();
                     if fields.is_empty() {
                         let var = self.fresh_var();
                         return Ok(expr_at(
@@ -1518,10 +1737,12 @@ impl LowerCtx {
                     }
                     return Ok(result);
                 }
-                // Struct constructor used as value
-                if self.struct_fields.contains_key(name.as_str()) {
-                    let (bindings, simple) =
-                        self.lower_struct_constructor_as_value(name, expr)?;
+                if let Some(type_ref) = self.fallback_type_ref(name) {
+                    let (bindings, simple) = self.lower_struct_constructor_as_value(
+                        name,
+                        &type_ref.qualified_name.local_name,
+                        expr,
+                    )?;
                     let var = self.fresh_var();
                     let mut result = expr_at(
                         expr.span,
@@ -1851,22 +2072,33 @@ impl LowerCtx {
                 })
             }
 
-            TypedExprKind::StructLit { name, fields } => {
-                self.lower_struct_lit_expr(name, fields, &expr.ty)
+            TypedExprKind::StructLit {
+                name,
+                fields,
+                resolved_type_ref,
+            } => {
+                self.lower_struct_lit_expr(name, fields, resolved_type_ref.as_ref(), &expr.ty)
             }
 
-            TypedExprKind::FieldAccess { expr: base, field } => {
+            TypedExprKind::FieldAccess {
+                expr: base,
+                field,
+                resolved_type_ref,
+            } => {
                 let result_ty = expr.ty.clone();
                 let base_ty = base.ty.clone();
                 let field = field.clone();
+                let type_ref = resolved_type_ref
+                    .clone()
+                    .or_else(|| self.resolved_type_ref_from_type(&base_ty));
                 self.lower_to_atom_then(base, |ctx, base_atom| {
-                    let type_name = type_name_of(&base_ty).ok_or_else(|| {
+                    let type_ref = type_ref.clone().ok_or_else(|| {
                         LowerError::InternalError(format!(
                             "FieldAccess on non-named type: {:?}",
                             base_ty
                         ))
                     })?;
-                    let idx = ctx.field_index(&type_name, &field)?;
+                    let idx = ctx.field_index(&type_ref, &field)?;
                     let var = ctx.fresh_var();
                     let ty = result_ty;
                     Ok(expr_at(
@@ -2422,19 +2654,23 @@ impl LowerCtx {
         let mut seen_tags: Vec<(String, u32, Vec<Type>)> = Vec::new();
         let mut seen_names: HashSet<String> = HashSet::new();
         for clause in &clauses {
-            if let TypedPattern::Constructor { name, .. } = &clause.patterns[col] {
+            if let TypedPattern::Constructor {
+                name,
+                resolved_variant_ref,
+                ..
+            } = &clause.patterns[col]
+            {
                 if seen_names.insert(name.clone()) {
-                    // Look up tag and field types from sum_variants
-                    if let Some((type_name, tag, field_types)) =
-                        self.sum_variants.get(name.as_str()).cloned()
-                    {
-                        let _ = type_name;
-                        seen_tags.push((name.clone(), tag, field_types));
-                    } else {
-                        return Err(LowerError::InternalError(format!(
-                            "unknown variant in pattern: {name}"
-                        )));
-                    }
+                    let variant_ref = resolved_variant_ref
+                        .clone()
+                        .or_else(|| self.fallback_variant_ref(name))
+                        .ok_or_else(|| {
+                            LowerError::InternalError(format!(
+                                "unknown variant ref in pattern: {name}"
+                            ))
+                        })?;
+                    let (tag, field_types) = self.variant_info(&variant_ref)?;
+                    seen_tags.push((name.clone(), tag, field_types));
                 }
             }
         }
@@ -2680,11 +2916,21 @@ impl LowerCtx {
         struct_name: &str,
     ) -> Result<Expr, LowerError> {
         let scrut = scrutinees[col].clone();
+        let type_ref = clauses
+            .iter()
+            .find_map(|clause| match &clause.patterns[col] {
+                TypedPattern::StructPat {
+                    resolved_type_ref, ..
+                } => resolved_type_ref.clone(),
+                _ => None,
+            })
+            .or_else(|| self.fallback_type_ref(struct_name))
+            .ok_or_else(|| LowerError::UnresolvedStruct(struct_name.to_string()))?;
 
         let canonical_fields = self
             .struct_fields
-            .get(struct_name)
-            .ok_or_else(|| LowerError::UnresolvedStruct(struct_name.to_string()))?
+            .get(&type_ref)
+            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
             .clone();
 
         // Project each field
@@ -3471,14 +3717,60 @@ impl LowerCtx {
         }
 
         if let Some(name) = &func_name {
-            // Check if it's a variant constructor
-            if let Some((type_name, tag, _fields)) = self.sum_variants.get(name.as_str()).cloned() {
+            if let Some(ResolvedBindingRef::Constructor(constructor_ref)) = resolved_ref.as_ref() {
+                match constructor_ref.kind {
+                    typed_ast::ConstructorKind::Variant => {
+                        let variant_ref =
+                            variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                                LowerError::InternalError(format!(
+                                    "missing variant ref for constructor `{}`",
+                                    constructor_ref.constructor_name
+                                ))
+                            })?;
+                        let (tag, _fields) = self.variant_info(&variant_ref)?;
+                        return Ok((
+                            bindings,
+                            simple_at(
+                                func.span,
+                                SimpleExprKind::ConstructVariant {
+                                    type_name: constructor_ref
+                                        .type_ref
+                                        .qualified_name
+                                        .local_name
+                                        .clone(),
+                                    variant: constructor_ref.constructor_name.clone(),
+                                    tag,
+                                    fields: arg_atoms,
+                                },
+                            ),
+                        ));
+                    }
+                    typed_ast::ConstructorKind::Record => {
+                        return Ok((
+                            bindings,
+                            simple_at(
+                                func.span,
+                                SimpleExprKind::Construct {
+                                    type_name: constructor_ref
+                                        .type_ref
+                                        .qualified_name
+                                        .local_name
+                                        .clone(),
+                                    fields: arg_atoms,
+                                },
+                            ),
+                        ));
+                    }
+                }
+            }
+            if let Some(variant_ref) = self.fallback_variant_ref(name) {
+                let (tag, _fields) = self.variant_info(&variant_ref)?;
                 return Ok((
                     bindings,
                     simple_at(
                         func.span,
                         SimpleExprKind::ConstructVariant {
-                            type_name,
+                            type_name: variant_ref.type_ref.qualified_name.local_name.clone(),
                             variant: name.clone(),
                             tag,
                             fields: arg_atoms,
@@ -3486,15 +3778,13 @@ impl LowerCtx {
                     ),
                 ));
             }
-
-            // Check if it's a struct constructor (positional syntax)
-            if self.struct_fields.contains_key(name.as_str()) {
+            if let Some(type_ref) = self.fallback_type_ref(name) {
                 return Ok((
                     bindings,
                     simple_at(
                         func.span,
                         SimpleExprKind::Construct {
-                            type_name: name.clone(),
+                            type_name: type_ref.qualified_name.local_name.clone(),
                             fields: arg_atoms,
                         },
                     ),
@@ -3563,11 +3853,16 @@ impl LowerCtx {
         &mut self,
         name: &str,
         fields: &[(String, TypedExpr)],
+        resolved_type_ref: Option<&ResolvedTypeRef>,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
+        let type_ref = resolved_type_ref
+            .cloned()
+            .or_else(|| self.fallback_type_ref(name))
+            .ok_or_else(|| LowerError::UnresolvedStruct(name.to_string()))?;
         let canonical_fields = self
             .struct_fields
-            .get(name)
-            .ok_or_else(|| LowerError::UnresolvedStruct(name.to_string()))?
+            .get(&type_ref)
+            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
             .clone();
 
         // Build a map of field name → lowered atom
@@ -3584,7 +3879,12 @@ impl LowerCtx {
         for (fname, _) in &canonical_fields {
             let atom = field_map
                 .remove(fname)
-                .ok_or_else(|| LowerError::UnresolvedField(name.to_string(), fname.clone()))?;
+                .ok_or_else(|| {
+                    LowerError::UnresolvedField(
+                        type_ref.qualified_name.to_string(),
+                        fname.clone(),
+                    )
+                })?;
             ordered_atoms.push(atom);
         }
 
@@ -3593,7 +3893,7 @@ impl LowerCtx {
             simple_at(
                 fields.first().map(|(_, e)| e.span).unwrap_or((0, 0)),
                 SimpleExprKind::Construct {
-                    type_name: name.to_string(),
+                    type_name: type_ref.qualified_name.local_name,
                     fields: ordered_atoms,
                 },
             ),
@@ -3691,9 +3991,73 @@ impl LowerCtx {
         }
 
         if let Some(name) = &func_name {
-            // Variant constructor
-            if let Some((type_name, tag, _fields)) = self.sum_variants.get(name.as_str()).cloned() {
-                let name = name.clone();
+            if let Some(ResolvedBindingRef::Constructor(constructor_ref)) = resolved_ref.as_ref() {
+                match constructor_ref.kind {
+                    typed_ast::ConstructorKind::Variant => {
+                        let variant_ref =
+                            variant_ref_from_constructor(constructor_ref).ok_or_else(|| {
+                                LowerError::InternalError(format!(
+                                    "missing variant ref for constructor `{}`",
+                                    constructor_ref.constructor_name
+                                ))
+                            })?;
+                        let (tag, _fields) = self.variant_info(&variant_ref)?;
+                        let variant_name = constructor_ref.constructor_name.clone();
+                        let type_name =
+                            constructor_ref.type_ref.qualified_name.local_name.clone();
+                        return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                            let var = ctx.fresh_var();
+                            let ty = result_ty.clone();
+                            Ok(expr_at(
+                                func.span,
+                                ty.clone().into(),
+                                ExprKind::Let {
+                                    bind: var,
+                                    ty: ty.clone().into(),
+                                    value: simple_at(
+                                        func.span,
+                                        SimpleExprKind::ConstructVariant {
+                                            type_name: type_name.clone(),
+                                            variant: variant_name.clone(),
+                                            tag,
+                                            fields: arg_atoms,
+                                        },
+                                    ),
+                                    body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
+                                },
+                            ))
+                        });
+                    }
+                    typed_ast::ConstructorKind::Record => {
+                        let type_name =
+                            constructor_ref.type_ref.qualified_name.local_name.clone();
+                        return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
+                            let var = ctx.fresh_var();
+                            let ty = result_ty.clone();
+                            Ok(expr_at(
+                                func.span,
+                                ty.clone().into(),
+                                ExprKind::Let {
+                                    bind: var,
+                                    ty: ty.clone().into(),
+                                    value: simple_at(
+                                        func.span,
+                                        SimpleExprKind::Construct {
+                                            type_name: type_name.clone(),
+                                            fields: arg_atoms,
+                                        },
+                                    ),
+                                    body: Box::new(atom_expr_at(func.span, ty.into(), Atom::Var(var))),
+                                },
+                            ))
+                        });
+                    }
+                }
+            }
+            if let Some(variant_ref) = self.fallback_variant_ref(name) {
+                let (tag, _fields) = self.variant_info(&variant_ref)?;
+                let variant_name = name.clone();
+                let type_name = variant_ref.type_ref.qualified_name.local_name.clone();
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let var = ctx.fresh_var();
                     let ty = result_ty.clone();
@@ -3707,7 +4071,7 @@ impl LowerCtx {
                                 func.span,
                                 SimpleExprKind::ConstructVariant {
                                     type_name: type_name.clone(),
-                                    variant: name,
+                                    variant: variant_name.clone(),
                                     tag,
                                     fields: arg_atoms,
                                 },
@@ -3717,10 +4081,8 @@ impl LowerCtx {
                     ))
                 });
             }
-
-            // Struct constructor (positional syntax)
-            if self.struct_fields.contains_key(name.as_str()) {
-                let type_name = name.clone();
+            if let Some(type_ref) = self.fallback_type_ref(name) {
+                let type_name = type_ref.qualified_name.local_name.clone();
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let var = ctx.fresh_var();
                     let ty = result_ty.clone();
@@ -3733,7 +4095,7 @@ impl LowerCtx {
                             value: simple_at(
                                 func.span,
                                 SimpleExprKind::Construct {
-                                    type_name,
+                                    type_name: type_name.clone(),
                                     fields: arg_atoms,
                                 },
                             ),
@@ -3834,12 +4196,17 @@ impl LowerCtx {
         &mut self,
         name: &str,
         fields: &[(String, TypedExpr)],
+        resolved_type_ref: Option<&ResolvedTypeRef>,
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
+        let type_ref = resolved_type_ref
+            .cloned()
+            .or_else(|| self.fallback_type_ref(name))
+            .ok_or_else(|| LowerError::UnresolvedStruct(name.to_string()))?;
         let canonical_fields = self
             .struct_fields
-            .get(name)
-            .ok_or_else(|| LowerError::UnresolvedStruct(name.to_string()))?
+            .get(&type_ref)
+            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
             .clone();
 
         // Reorder field expressions to canonical order
@@ -3849,12 +4216,17 @@ impl LowerCtx {
         for (fname, _) in &canonical_fields {
             let fexpr = field_map
                 .get(fname.as_str())
-                .ok_or_else(|| LowerError::UnresolvedField(name.to_string(), fname.clone()))?;
+                .ok_or_else(|| {
+                    LowerError::UnresolvedField(
+                        type_ref.qualified_name.to_string(),
+                        fname.clone(),
+                    )
+                })?;
             ordered_exprs.push((*fexpr).clone());
         }
 
         let result_ty = result_ty.clone();
-        let type_name = name.to_string();
+        let type_name = type_ref.qualified_name.local_name.clone();
         self.lower_atoms_then(&ordered_exprs, vec![], |ctx, atoms| {
             let var = ctx.fresh_var();
             let ty = result_ty;
@@ -3888,14 +4260,14 @@ impl LowerCtx {
         updates: &[(String, TypedExpr)],
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
-        let type_name = type_name_of(&base.ty).ok_or_else(|| {
+        let type_ref = self.resolved_type_ref_from_type(&base.ty).ok_or_else(|| {
             LowerError::InternalError(format!("StructUpdate on non-named type: {:?}", base.ty))
         })?;
 
         let canonical_fields = self
             .struct_fields
-            .get(&type_name)
-            .ok_or_else(|| LowerError::UnresolvedStruct(type_name.clone()))?
+            .get(&type_ref)
+            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
             .clone();
 
         let result_ty = result_ty.clone();
@@ -3937,7 +4309,7 @@ impl LowerCtx {
                     value: simple_at(
                         base.span,
                         SimpleExprKind::Construct {
-                            type_name: type_name.clone(),
+                            type_name: type_ref.qualified_name.local_name.clone(),
                             fields: field_atoms,
                         },
                     ),
@@ -4965,13 +5337,19 @@ pub fn lower_module(
     let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
     sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
     for (name, info) in &sorted_type_infos {
+        let type_ref = typed_ast::ResolvedTypeRef {
+            qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
+        };
         if let ExportedTypeKind::Record { fields } = &info.kind {
-            ctx.struct_fields.insert((*name).clone(), fields.clone());
+            ctx.struct_fields.insert(type_ref, fields.clone());
         }
     }
     // Fallback: private structs not in exported_type_infos
     for decl in &typed.struct_decls {
-        if !ctx.struct_fields.contains_key(&decl.name) {
+        let type_ref = typed_ast::ResolvedTypeRef {
+            qualified_name: decl.qualified_name.clone(),
+        };
+        if !ctx.struct_fields.contains_key(&type_ref) {
             let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
             let ordered_params: Vec<TypeVarId> = decl
                 .type_params
@@ -4988,17 +5366,23 @@ pub fn lower_module(
                     (fname.clone(), ty)
                 })
                 .collect();
-            ctx.struct_fields.insert(decl.name.clone(), fields);
+            ctx.struct_fields.insert(type_ref, fields);
         }
     }
 
     // 2. Build sum_variants from exported_type_infos
     for (name, info) in &sorted_type_infos {
         if let ExportedTypeKind::Sum { variants } = &info.kind {
+            let type_ref = typed_ast::ResolvedTypeRef {
+                qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
+            };
             for (tag, variant) in variants.iter().enumerate() {
                 ctx.sum_variants.insert(
-                    variant.name.clone(),
-                    ((*name).clone(), tag as u32, variant.fields.clone()),
+                    typed_ast::ResolvedVariantRef {
+                        type_ref: type_ref.clone(),
+                        variant_name: variant.name.clone(),
+                    },
+                    (tag as u32, variant.fields.clone()),
                 );
             }
         }
@@ -5008,7 +5392,14 @@ pub fn lower_module(
         let already = decl
             .variants
             .iter()
-            .any(|v| ctx.sum_variants.contains_key(&v.name));
+            .any(|v| {
+                ctx.sum_variants.contains_key(&typed_ast::ResolvedVariantRef {
+                    type_ref: typed_ast::ResolvedTypeRef {
+                        qualified_name: decl.qualified_name.clone(),
+                    },
+                    variant_name: v.name.clone(),
+                })
+            });
         if !already {
             let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
             let ordered_params: Vec<TypeVarId> = decl
@@ -5025,8 +5416,13 @@ pub fn lower_module(
                     .map(|texpr| resolve_type_expr_simple(texpr, &type_param_map))
                     .collect();
                 ctx.sum_variants.insert(
-                    variant.name.clone(),
-                    (decl.name.clone(), tag as u32, fields),
+                    typed_ast::ResolvedVariantRef {
+                        type_ref: typed_ast::ResolvedTypeRef {
+                            qualified_name: decl.qualified_name.clone(),
+                        },
+                        variant_name: variant.name.clone(),
+                    },
+                    (tag as u32, fields),
                 );
             }
         }
@@ -5099,9 +5495,15 @@ pub fn lower_module(
         .map(|decl| {
             let (type_params, fields) =
                 if let Some(info) = typed.exported_type_infos.get(&decl.name) {
+                    let type_ref = typed_ast::ResolvedTypeRef {
+                        qualified_name: QualifiedName::new(
+                            info.source_module.clone(),
+                            decl.name.clone(),
+                        ),
+                    };
                     let fields = ctx
                         .struct_fields
-                        .get(&decl.name)
+                        .get(&type_ref)
                         .cloned()
                         .unwrap_or_default();
                     (info.type_param_vars.clone(), fields)
@@ -5112,9 +5514,12 @@ pub fn lower_module(
                         .get(&decl.name)
                         .cloned()
                         .unwrap_or_default();
+                    let type_ref = typed_ast::ResolvedTypeRef {
+                        qualified_name: decl.qualified_name.clone(),
+                    };
                     let fields = ctx
                         .struct_fields
-                        .get(&decl.name)
+                        .get(&type_ref)
                         .cloned()
                         .unwrap_or_default();
                     (type_params, fields)
@@ -5147,10 +5552,16 @@ pub fn lower_module(
                 .iter()
                 .enumerate()
                 .map(|(tag, v)| {
+                    let variant_ref = typed_ast::ResolvedVariantRef {
+                        type_ref: typed_ast::ResolvedTypeRef {
+                            qualified_name: decl.qualified_name.clone(),
+                        },
+                        variant_name: v.name.clone(),
+                    };
                     let fields = ctx
                         .sum_variants
-                        .get(&v.name)
-                        .map(|(_, _, f)| f.clone())
+                        .get(&variant_ref)
+                        .map(|(_, f)| f.clone())
                         .unwrap_or_default();
                     VariantDef {
                         name: v.name.clone(),
@@ -5362,52 +5773,55 @@ pub fn lower_module(
 
     // Imported structs: struct definitions from dependency modules.
     let ir_imported_structs: Vec<ImportedStructDef> = typed
-        .struct_decls
-        .iter()
-        .filter(|decl| decl.qualified_name.module_path != typed.module_path)
-        .map(|decl| {
-            let type_params = typed
-                .exported_type_infos
-                .get(&decl.name)
-                .map(|info| info.type_param_vars.clone())
-                .or_else(|| ctx.private_type_params.get(&decl.name).cloned())
-                .unwrap_or_default();
-            let fields = ctx
-                .struct_fields
-                .get(&decl.name)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(n, t)| (n, t.into()))
-                .collect();
-            ImportedStructDef {
-                name: decl.name.clone(),
-                module_path: decl.qualified_name.module_path.clone(),
-                type_params,
-                fields,
+        .exported_type_infos
+        .values()
+        .filter(|info| info.source_module != typed.module_path)
+        .filter_map(|info| match &info.kind {
+            ExportedTypeKind::Record { .. } => {
+                let type_ref = typed_ast::ResolvedTypeRef {
+                    qualified_name: QualifiedName::new(info.source_module.clone(), info.name.clone()),
+                };
+                let fields = ctx
+                    .struct_fields
+                    .get(&type_ref)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(n, t)| (n, t.into()))
+                    .collect();
+                Some(ImportedStructDef {
+                    name: info.name.clone(),
+                    module_path: info.source_module.clone(),
+                    type_params: info.type_param_vars.clone(),
+                    fields,
+                })
             }
+            _ => None,
         })
         .collect();
 
     // Imported sum types: sum type definitions from dependency modules.
     // Uses exported_type_infos for type params and sum_variants for resolved field types.
     let ir_imported_sum_types: Vec<ImportedSumTypeDef> = typed
-        .sum_decls
-        .iter()
-        .filter(|decl| decl.qualified_name.module_path != typed.module_path)
-        .filter_map(|decl| {
-            // Only emit imported sum types (records are handled separately)
-            let info = typed.exported_type_infos.get(&decl.name)?;
+        .exported_type_infos
+        .values()
+        .filter(|info| info.source_module != typed.module_path)
+        .filter_map(|info| {
             if let ExportedTypeKind::Sum { variants } = &info.kind {
-                let type_params = info.type_param_vars.clone();
+                let type_ref = typed_ast::ResolvedTypeRef {
+                    qualified_name: QualifiedName::new(info.source_module.clone(), info.name.clone()),
+                };
                 let variants = variants
                     .iter()
                     .enumerate()
                     .map(|(tag, v)| {
                         let fields = ctx
                             .sum_variants
-                            .get(&v.name)
-                            .map(|(_, _, f)| f.iter().cloned().map(Into::into).collect())
+                            .get(&typed_ast::ResolvedVariantRef {
+                                type_ref: type_ref.clone(),
+                                variant_name: v.name.clone(),
+                            })
+                            .map(|(_, f)| f.iter().cloned().map(Into::into).collect())
                             .unwrap_or_default();
                         VariantDef {
                             name: v.name.clone(),
@@ -5417,9 +5831,9 @@ pub fn lower_module(
                     })
                     .collect();
                 Some(ImportedSumTypeDef {
-                    name: decl.name.clone(),
-                    module_path: decl.qualified_name.module_path.clone(),
-                    type_params,
+                    name: info.name.clone(),
+                    module_path: info.source_module.clone(),
+                    type_params: info.type_param_vars.clone(),
                     variants,
                 })
             } else {
@@ -5667,6 +6081,19 @@ fn resolved_callable_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedCallableRef
     }
 }
 
+fn resolved_constructor_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedConstructorRef)> {
+    match &expr.kind {
+        TypedExprKind::Var(name) => match resolved_ref(expr) {
+            Some(ResolvedBindingRef::Constructor(constructor_ref)) => {
+                Some((name.as_str(), constructor_ref))
+            }
+            _ => None,
+        },
+        TypedExprKind::TypeApp { expr: inner, .. } => resolved_constructor_ref(inner),
+        _ => None,
+    }
+}
+
 fn callable_qualified_name(r: &ResolvedCallableRef, _module_path: &str) -> QualifiedName {
     match r {
         ResolvedCallableRef::LocalFunction { qualified_name } => qualified_name.clone(),
@@ -5719,6 +6146,13 @@ fn type_name_of(ty: &Type) -> Option<String> {
         Type::Own(inner) => type_name_of(inner),
         _ => None,
     }
+}
+
+fn variant_ref_from_constructor(constructor_ref: &ResolvedConstructorRef) -> Option<ResolvedVariantRef> {
+    (constructor_ref.kind == typed_ast::ConstructorKind::Variant).then(|| ResolvedVariantRef {
+        type_ref: constructor_ref.type_ref.clone(),
+        variant_name: constructor_ref.constructor_name.clone(),
+    })
 }
 
 /// Strip Own wrappers to get the underlying type for operation resolution.

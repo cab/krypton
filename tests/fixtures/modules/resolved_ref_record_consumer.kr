@@ -1,0 +1,10 @@
+# expect: output 12
+import core/io.{println}
+import resolved_ref_record_lib.{Point}
+
+fun mk() -> Point = Point(5, 7)
+
+fun main() = {
+  let point = mk()
+  println(point.x + point.y)
+}

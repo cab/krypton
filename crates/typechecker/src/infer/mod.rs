@@ -9,13 +9,14 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTypeInfo, InstanceDefInfo,
-    ResolvedBindingRef, ResolvedCallableRef, ResolvedConstraint, ResolvedTraitMethodRef,
-    StructDecl, SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedFnDecl, TypedModule,
+    self, ConstructorKind, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTypeInfo,
+    InstanceDefInfo, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstraint,
+    ResolvedConstructorRef, ResolvedTraitMethodRef, ResolvedTypeRef, StructDecl, SumDecl,
+    TraitDefInfo, TraitName, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{
-    type_to_canonical_name, BindingSource, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen,
-    TypeVarId,
+    type_to_canonical_name, BindingSource, ConstructorBindingKind, Substitution, Type, TypeEnv,
+    TypeScheme, TypeVarGen, TypeVarId,
 };
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
 
@@ -52,6 +53,35 @@ fn constructor_names(td: &TypeDecl) -> Vec<String> {
     match &td.kind {
         TypeDeclKind::Sum { variants } => variants.iter().map(|v| v.name.clone()).collect(),
         TypeDeclKind::Record { .. } => vec![td.name.clone()],
+    }
+}
+
+fn constructor_binding_kind_for_decl(td: &TypeDecl, constructor_name: &str) -> ConstructorBindingKind {
+    match &td.kind {
+        TypeDeclKind::Record { .. } => ConstructorBindingKind::Record,
+        TypeDeclKind::Sum { variants } => {
+            if variants.iter().any(|variant| variant.name == constructor_name) {
+                ConstructorBindingKind::Variant
+            } else {
+                ConstructorBindingKind::Record
+            }
+        }
+    }
+}
+
+fn constructor_binding_kind_for_export(
+    info: &typed_ast::ExportedTypeInfo,
+    constructor_name: &str,
+) -> ConstructorBindingKind {
+    match &info.kind {
+        typed_ast::ExportedTypeKind::Record { .. } => ConstructorBindingKind::Record,
+        typed_ast::ExportedTypeKind::Sum { variants } => {
+            if variants.iter().any(|variant| variant.name == constructor_name) {
+                ConstructorBindingKind::Variant
+            } else {
+                ConstructorBindingKind::Record
+            }
+        }
     }
 }
 
@@ -93,6 +123,28 @@ pub(super) fn trait_method_binding_ref(
     })
 }
 
+pub(super) fn type_binding_ref(
+    module_path: impl Into<String>,
+    local_name: impl Into<String>,
+) -> ResolvedTypeRef {
+    ResolvedTypeRef {
+        qualified_name: typed_ast::QualifiedName::new(module_path.into(), local_name.into()),
+    }
+}
+
+pub(super) fn constructor_binding_ref(
+    type_module_path: impl Into<String>,
+    type_name: impl Into<String>,
+    constructor_name: impl Into<String>,
+    kind: ConstructorKind,
+) -> ResolvedBindingRef {
+    ResolvedBindingRef::Constructor(ResolvedConstructorRef {
+        type_ref: type_binding_ref(type_module_path, type_name),
+        constructor_name: constructor_name.into(),
+        kind,
+    })
+}
+
 pub(super) fn resolved_ref_from_binding_source(
     source: &BindingSource,
 ) -> Option<ResolvedBindingRef> {
@@ -114,6 +166,19 @@ pub(super) fn resolved_ref_from_binding_source(
                 ),
             }),
         ),
+        BindingSource::Constructor {
+            type_qualified_name,
+            constructor_name,
+            kind,
+        } => Some(constructor_binding_ref(
+            type_qualified_name.module_path.clone(),
+            type_qualified_name.local_name.clone(),
+            constructor_name.clone(),
+            match kind {
+                ConstructorBindingKind::Record => ConstructorKind::Record,
+                ConstructorBindingKind::Variant => ConstructorKind::Variant,
+            },
+        )),
         BindingSource::TraitMethod {
             trait_module_path,
             trait_name,
@@ -719,6 +784,7 @@ pub fn infer_expr(
     let empty_tpm = HashMap::new();
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
+    let empty_imported_types = HashMap::new();
     let empty_efn = HashSet::new();
     let mut ctx = InferenceContext {
         env,
@@ -731,6 +797,8 @@ pub fn infer_expr(
         type_param_map: &empty_tpm,
         type_param_arity: &empty_tpa,
         qualified_modules: &empty_qm,
+        imported_type_info: &empty_imported_types,
+        module_path: "__expr__",
         extern_fn_names: &empty_efn,
         enclosing_fn_constraints: &[],
         shadowed_prelude_fns: &[],
@@ -1578,9 +1646,69 @@ impl ImportContext {
         });
     }
 
+    fn bind_imported_constructor(
+        &mut self,
+        env: &mut TypeEnv,
+        binding_name: String,
+        scheme: TypeScheme,
+        type_module_path: String,
+        type_name: String,
+        constructor_name: String,
+        kind: ConstructorBindingKind,
+        is_prelude: bool,
+    ) {
+        self.push_fn(typed_ast::ImportedFn {
+            name: binding_name.clone(),
+            scheme: scheme.clone(),
+            origin: None,
+            qualified_name: typed_ast::QualifiedName::new(
+                type_module_path.clone(),
+                constructor_name.clone(),
+            ),
+            is_prelude,
+        });
+        env.bind_constructor(
+            binding_name,
+            scheme,
+            type_module_path,
+            type_name,
+            constructor_name,
+            kind,
+        );
+    }
+
+    fn bind_hidden_constructor(
+        &mut self,
+        name: String,
+        scheme: TypeScheme,
+        type_module_path: String,
+        constructor_name: String,
+        is_prelude: bool,
+    ) {
+        self.push_fn(typed_ast::ImportedFn {
+            name,
+            scheme,
+            origin: None,
+            qualified_name: typed_ast::QualifiedName::new(type_module_path, constructor_name),
+            is_prelude,
+        });
+    }
+
     /// Bind type info for an imported type.
-    fn bind_type_info(&mut self, name: String, source: String, vis: Visibility) {
-        self.imported_type_info.insert(name, (source, vis));
+    fn bind_type_info(
+        &mut self,
+        name: String,
+        canonical_name: Option<String>,
+        source: String,
+        vis: Visibility,
+    ) {
+        self.imported_type_info
+            .insert(name, (source.clone(), vis));
+        if let Some(canonical_name) = canonical_name {
+            self.imported_type_info
+                .entry(canonical_name)
+                .or_insert((source, vis));
+        }
     }
 
     fn remove_prelude_fn(&mut self, name: &str) {
@@ -1908,6 +2036,7 @@ impl ModuleInferenceState {
     fn process_local_type_decls(
         &mut self,
         module: &Module,
+        module_path: &str,
     ) -> Result<Vec<(String, TypeScheme)>, SpannedTypeError> {
         let mut constructor_schemes: Vec<(String, TypeScheme)> = Vec::new();
         for decl in &module.decls {
@@ -1927,7 +2056,14 @@ impl ModuleInferenceState {
                     type_registry::process_type_decl(type_decl, &mut self.registry, &mut self.gen)
                         .map_err(|e| spanned(e, type_decl.span))?;
                 for (name, scheme) in constructors {
-                    self.env.bind(name.clone(), scheme.clone());
+                    self.env.bind_constructor(
+                        name.clone(),
+                        scheme.clone(),
+                        module_path.to_string(),
+                        type_decl.name.clone(),
+                        name.clone(),
+                        constructor_binding_kind_for_decl(type_decl, &name),
+                    );
                     constructor_schemes.push((name, scheme));
                 }
             }
@@ -2311,7 +2447,7 @@ impl ModuleInferenceState {
             })
             .collect();
 
-        let mut sum_decls: Vec<SumDecl> = module
+        let sum_decls: Vec<SumDecl> = module
             .decls
             .iter()
             .filter_map(|decl| match decl {
@@ -2330,42 +2466,6 @@ impl ModuleInferenceState {
                 _ => None,
             })
             .collect();
-
-        // Record imported sum type provenance for IR lowering.
-        // Variant data comes from exported_type_infos; sum_decls entries only
-        // carry the source module_path so lower_module can build imported_sum_types.
-        {
-            let existing_type_names: HashSet<String> =
-                sum_decls.iter().map(|d| d.name.clone()).collect();
-            let mut sorted_imported_types: Vec<_> =
-                self.imports.imported_type_info.iter().collect();
-            sorted_imported_types.sort_by_key(|(name, _)| name.as_str());
-            for (type_name, (source_path, vis)) in sorted_imported_types {
-                if existing_type_names.contains(type_name) || !matches!(vis, Visibility::Pub) {
-                    continue;
-                }
-                if let Some(iface) = interface_cache.get(source_path.as_str()) {
-                    let is_sum = iface.exported_types.iter().any(|t| {
-                        t.name == *type_name
-                            && matches!(
-                                t.kind,
-                                crate::module_interface::TypeSummaryKind::Sum { .. }
-                            )
-                    });
-                    if is_sum {
-                        sum_decls.push(SumDecl {
-                            name: type_name.clone(),
-                            type_params: vec![],
-                            variants: vec![],
-                            qualified_name: typed_ast::QualifiedName::new(
-                                source_path.clone(),
-                                type_name.clone(),
-                            ),
-                        });
-                    }
-                }
-            }
-        }
 
         let _local_type_names: HashSet<String> = module
             .decls
@@ -2430,6 +2530,7 @@ impl ModuleInferenceState {
                         td.name.clone(),
                         typed_ast::ExportedTypeInfo {
                             name: td.name.clone(),
+                            source_module: module_path.to_string(),
                             type_params: td.type_params.clone(),
                             type_param_vars: type_info.type_param_vars.clone(),
                             kind,
@@ -2455,6 +2556,7 @@ impl ModuleInferenceState {
                         name.clone(),
                         typed_ast::ExportedTypeInfo {
                             name: name.clone(),
+                            source_module: module_path.to_string(),
                             type_params: type_info.type_params.clone(),
                             type_param_vars: type_info.type_param_vars.clone(),
                             kind: typed_ast::ExportedTypeKind::Record {
@@ -2474,7 +2576,8 @@ impl ModuleInferenceState {
             }
             if let Some(iface) = interface_cache.get(source_path.as_str()) {
                 if let Some(ts) = iface.exported_types.iter().find(|t| t.name == *type_name) {
-                    let export = crate::module_interface::type_summary_to_export_info(ts);
+                    let export =
+                        crate::module_interface::type_summary_to_export_info(ts, source_path);
                     exported_type_infos.insert(type_name.clone(), export);
                 }
             }
@@ -3637,6 +3740,8 @@ fn infer_function_bodies<'a>(
                     type_param_map: &type_param_map,
                     type_param_arity: &type_param_arity,
                     qualified_modules: &state.qualified_modules,
+                    imported_type_info: &state.imports.imported_type_info,
+                    module_path: mod_path,
                     extern_fn_names: &extern_fn_names,
                     enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
@@ -4019,6 +4124,8 @@ fn typecheck_impl_methods(
                         type_param_map: &impl_method_tpm,
                         type_param_arity: &impl_method_tpa,
                         qualified_modules: &state.qualified_modules,
+                        imported_type_info: &state.imports.imported_type_info,
+                        module_path,
                         extern_fn_names: &empty_efn,
                         enclosing_fn_constraints: &combined_constraints,
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
@@ -4144,7 +4251,7 @@ pub(crate) fn infer_module_inner(
         .map_err(|e| vec![e])?;
     state.preregister_type_names(module);
     let constructor_schemes = state
-        .process_local_type_decls(module)
+        .process_local_type_decls(module, &module_path)
         .map_err(|e| vec![e])?;
 
     // Phase: trait registration, deriving, impl registration

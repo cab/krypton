@@ -712,6 +712,12 @@ pub struct BindingQualifiedName {
     pub local_name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstructorBindingKind {
+    Record,
+    Variant,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingSource {
     LocalValue,
@@ -721,6 +727,11 @@ pub enum BindingSource {
     ImportedFunction {
         qualified_name: BindingQualifiedName,
         is_prelude: bool,
+    },
+    Constructor {
+        type_qualified_name: BindingQualifiedName,
+        constructor_name: String,
+        kind: ConstructorBindingKind,
     },
     TraitMethod {
         trait_module_path: String,
@@ -822,6 +833,29 @@ impl TypeEnv {
                     local_name: original_name,
                 },
                 is_prelude,
+            },
+        );
+    }
+
+    pub fn bind_constructor(
+        &mut self,
+        name: std::string::String,
+        scheme: TypeScheme,
+        type_module_path: String,
+        type_name: String,
+        constructor_name: String,
+        kind: ConstructorBindingKind,
+    ) {
+        self.bind_with_source(
+            name,
+            scheme,
+            BindingSource::Constructor {
+                type_qualified_name: BindingQualifiedName {
+                    module_path: type_module_path,
+                    local_name: type_name,
+                },
+                constructor_name,
+                kind,
             },
         );
     }

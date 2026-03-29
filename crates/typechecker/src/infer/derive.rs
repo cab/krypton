@@ -151,6 +151,7 @@ pub(super) fn synthesize_eq_body(
                         kind: TypedExprKind::FieldAccess {
                             expr: Box::new(param_a.clone()),
                             field: field_name.clone(),
+                            resolved_type_ref: None,
                         },
                         ty: field_ty.clone(),
                         span,
@@ -160,6 +161,7 @@ pub(super) fn synthesize_eq_body(
                         kind: TypedExprKind::FieldAccess {
                             expr: Box::new(param_b.clone()),
                             field: field_name.clone(),
+                            resolved_type_ref: None,
                         },
                         ty: field_ty.clone(),
                         span,
@@ -210,6 +212,7 @@ pub(super) fn synthesize_eq_body(
                             .collect(),
                         ty: target_type.clone(),
                         span,
+                        resolved_variant_ref: None,
                     };
 
                     // Inner match on __b
@@ -233,6 +236,7 @@ pub(super) fn synthesize_eq_body(
                                         .collect(),
                                     ty: target_type.clone(),
                                     span,
+                                    resolved_variant_ref: None,
                                 };
                                 // Compare all payload fields
                                 if inner_variant.fields.is_empty() {
@@ -398,6 +402,7 @@ pub(super) fn synthesize_show_body(
                     kind: TypedExprKind::FieldAccess {
                         expr: Box::new(param_a.clone()),
                         field: field_name.clone(),
+                        resolved_type_ref: None,
                     },
                     ty: field_ty.clone(),
                     span,
@@ -427,6 +432,7 @@ pub(super) fn synthesize_show_body(
                             .collect(),
                         ty: target_type.clone(),
                         span,
+                        resolved_variant_ref: None,
                     };
 
                     let body = if variant.fields.is_empty() {
@@ -546,6 +552,7 @@ pub(super) fn synthesize_hash_body(
                         kind: TypedExprKind::FieldAccess {
                             expr: Box::new(param_a.clone()),
                             field: field_name.clone(),
+                            resolved_type_ref: None,
                         },
                         ty: field_ty.clone(),
                         span,
@@ -558,6 +565,7 @@ pub(super) fn synthesize_hash_body(
                         kind: TypedExprKind::FieldAccess {
                             expr: Box::new(param_a.clone()),
                             field: field_name.clone(),
+                            resolved_type_ref: None,
                         },
                         ty: field_ty.clone(),
                         span,
@@ -589,6 +597,7 @@ pub(super) fn synthesize_hash_body(
                             .collect(),
                         ty: target_type.clone(),
                         span,
+                        resolved_variant_ref: None,
                     };
 
                     let mut result = hash_call(int_lit(idx as i64));

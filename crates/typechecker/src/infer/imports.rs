@@ -8,8 +8,22 @@ use crate::types::{Type, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::{
-    imported_binding_ref, spanned, ModuleInferenceState, QualifiedExport, QualifiedModuleBinding,
+    constructor_binding_ref, imported_binding_ref, spanned, ModuleInferenceState,
+    QualifiedExport, QualifiedModuleBinding,
 };
+
+fn constructor_kind_from_summary(
+    summary: &crate::module_interface::TypeSummary,
+) -> crate::types::ConstructorBindingKind {
+    match summary.kind {
+        crate::module_interface::TypeSummaryKind::Record { .. } => {
+            crate::types::ConstructorBindingKind::Record
+        }
+        crate::module_interface::TypeSummaryKind::Sum { .. } => {
+            crate::types::ConstructorBindingKind::Variant
+        }
+    }
+}
 
 impl ModuleInferenceState {
     /// Build a synthetic `Decl::Import` for the prelude, gathering all re-exported names
@@ -213,27 +227,51 @@ impl ModuleInferenceState {
                     .get(&ef.name)
                     .cloned()
                     .unwrap_or_else(|| ef.name.clone());
-                let binding_source = self.imports.bind_import(
-                    &mut self.env,
-                    effective_name.clone(),
-                    ef.scheme.clone(),
-                    ef.origin.clone(),
-                    path.to_string(),
-                    ef.name.clone(),
-                    is_synthetic_prelude_import,
-                    span,
-                )?;
-                // Store definition span for imported function
-                if let Some(ds) = ef.def_span {
-                    self.env.bind_with_source_and_def_span(
-                        effective_name.clone(),
-                        ef.scheme.clone(),
-                        binding_source,
-                        crate::types::DefSpan {
-                            span: ds,
-                            source_module: Some(path.to_string()),
-                        },
-                    );
+                match &ef.key {
+                    crate::module_interface::LocalSymbolKey::Constructor {
+                        parent_type,
+                        ..
+                    } => {
+                        let kind = iface
+                            .exported_types
+                            .iter()
+                            .find(|ts| ts.name == *parent_type)
+                            .map(constructor_kind_from_summary)
+                            .unwrap_or(crate::types::ConstructorBindingKind::Variant);
+                        self.imports.bind_imported_constructor(
+                            &mut self.env,
+                            effective_name.clone(),
+                            ef.scheme.clone(),
+                            path.to_string(),
+                            parent_type.clone(),
+                            ef.name.clone(),
+                            kind,
+                            is_synthetic_prelude_import,
+                        );
+                    }
+                    _ => {
+                        let binding_source = self.imports.bind_import(
+                            &mut self.env,
+                            effective_name.clone(),
+                            ef.scheme.clone(),
+                            ef.origin.clone(),
+                            path.to_string(),
+                            ef.name.clone(),
+                            is_synthetic_prelude_import,
+                            span,
+                        )?;
+                        if let Some(ds) = ef.def_span {
+                            self.env.bind_with_source_and_def_span(
+                                effective_name.clone(),
+                                ef.scheme.clone(),
+                                binding_source,
+                                crate::types::DefSpan {
+                                    span: ds,
+                                    source_module: Some(path.to_string()),
+                                },
+                            );
+                        }
+                    }
                 }
                 if let Some(quals) = iface.exported_fn_qualifiers.get(&ef.name) {
                     self.imports
@@ -274,19 +312,57 @@ impl ModuleInferenceState {
                     QualifiedExport {
                         local_name: hidden_name.clone(),
                         scheme: ef.scheme.clone(),
-                        resolved_ref: Some(imported_binding_ref(
-                            original_prov.0.clone(),
-                            original_prov.1.clone(),
-                        )),
+                        resolved_ref: Some(match &ef.canonical_ref.symbol {
+                            crate::module_interface::LocalSymbolKey::Constructor {
+                                parent_type,
+                                name,
+                            } => constructor_binding_ref(
+                                original_prov.0.clone(),
+                                parent_type.clone(),
+                                name.clone(),
+                                match interface_cache
+                                    .get(original_prov.0.as_str())
+                                    .and_then(|orig_iface| {
+                                        orig_iface
+                                            .exported_types
+                                            .iter()
+                                            .find(|ts| ts.name == *parent_type)
+                                    })
+                                    .map(constructor_kind_from_summary)
+                                    .unwrap_or(crate::types::ConstructorBindingKind::Variant)
+                                {
+                                    crate::types::ConstructorBindingKind::Record => {
+                                        crate::typed_ast::ConstructorKind::Record
+                                    }
+                                    crate::types::ConstructorBindingKind::Variant => {
+                                        crate::typed_ast::ConstructorKind::Variant
+                                    }
+                                },
+                            ),
+                            _ => imported_binding_ref(original_prov.0.clone(), original_prov.1.clone()),
+                        }),
                     },
                 );
-                self.imports.bind_hidden_fn(
-                    hidden_name,
-                    ef.scheme.clone(),
-                    ef.origin.clone(),
-                    original_prov,
-                    is_synthetic_prelude_import,
-                );
+                match &ef.canonical_ref.symbol {
+                    crate::module_interface::LocalSymbolKey::Constructor { .. } => {
+                        self.imports.bind_hidden_constructor(
+                            hidden_name,
+                            ef.scheme.clone(),
+                            original_prov.0,
+                            original_prov.1,
+                            is_synthetic_prelude_import,
+                        );
+                    }
+                    _ => {
+                        self.imports.bind_hidden_fn(
+                            hidden_name,
+                            ef.scheme.clone(),
+                            ef.origin.clone(),
+                            original_prov,
+                            is_synthetic_prelude_import,
+                        );
+                    }
+                }
             }
         }
 
@@ -302,26 +378,55 @@ impl ModuleInferenceState {
                     ef.canonical_ref.module.0.clone(),
                     canonical_name,
                 );
-                let binding_source = self.imports.bind_import(
-                    &mut self.env,
-                    effective_name.clone(),
-                    ef.scheme.clone(),
-                    ef.origin.clone(),
-                    original_prov.0.clone(),
-                    original_prov.1.clone(),
-                    is_synthetic_prelude_import,
-                    span,
-                )?;
-                if let Some(ds) = ef.def_span {
-                    self.env.bind_with_source_and_def_span(
-                        effective_name.clone(),
-                        ef.scheme.clone(),
-                        binding_source,
-                        crate::types::DefSpan {
-                            span: ds,
-                            source_module: Some(original_prov.0.clone()),
-                        },
-                    );
+                match &ef.canonical_ref.symbol {
+                    crate::module_interface::LocalSymbolKey::Constructor {
+                        parent_type,
+                        ..
+                    } => {
+                        let kind = interface_cache
+                            .get(original_prov.0.as_str())
+                            .and_then(|orig_iface| {
+                                orig_iface
+                                    .exported_types
+                                    .iter()
+                                    .find(|ts| ts.name == *parent_type)
+                            })
+                            .map(constructor_kind_from_summary)
+                            .unwrap_or(crate::types::ConstructorBindingKind::Variant);
+                        self.imports.bind_imported_constructor(
+                            &mut self.env,
+                            effective_name.clone(),
+                            ef.scheme.clone(),
+                            original_prov.0.clone(),
+                            parent_type.clone(),
+                            original_prov.1.clone(),
+                            kind,
+                            is_synthetic_prelude_import,
+                        );
+                    }
+                    _ => {
+                        let binding_source = self.imports.bind_import(
+                            &mut self.env,
+                            effective_name.clone(),
+                            ef.scheme.clone(),
+                            ef.origin.clone(),
+                            original_prov.0.clone(),
+                            original_prov.1.clone(),
+                            is_synthetic_prelude_import,
+                            span,
+                        )?;
+                        if let Some(ds) = ef.def_span {
+                            self.env.bind_with_source_and_def_span(
+                                effective_name.clone(),
+                                ef.scheme.clone(),
+                                binding_source,
+                                crate::types::DefSpan {
+                                    span: ds,
+                                    source_module: Some(original_prov.0.clone()),
+                                },
+                            );
+                        }
+                    }
                 }
                 if let Some(quals) = iface.exported_fn_qualifiers.get(&ef.local_name) {
                     self.imports
@@ -353,7 +458,7 @@ impl ModuleInferenceState {
                                 .iter()
                                 .find(|ts| ts.name == *reex_type_name)
                         })
-                        .map(module_interface::type_summary_to_export_info);
+                        .map(|ts| module_interface::type_summary_to_export_info(ts, &orig_path));
                     if let Some(ref export) = export_info {
                         self.registry.register_name(&export.name);
                         let constructors = type_registry::register_type_from_export(
@@ -372,20 +477,21 @@ impl ModuleInferenceState {
                         }
                         if matches!(original_vis, Visibility::Pub) {
                             for (cname, scheme) in &constructors {
-                                self.imports.bind_import(
+                                self.imports.bind_imported_constructor(
                                     &mut self.env,
                                     cname.clone(),
                                     scheme.clone(),
-                                    None,
                                     orig_path.clone(),
+                                    reex.canonical_ref.symbol.local_name(),
                                     cname.clone(),
+                                    super::constructor_binding_kind_for_export(export, cname),
                                     is_synthetic_prelude_import,
-                                    span,
-                                )?;
+                                );
                             }
                         }
                         self.imports.bind_type_info(
                             effective_type_name.clone(),
+                            Some(reex.canonical_ref.symbol.local_name()),
                             orig_path.clone(),
                             original_vis,
                         );
@@ -396,7 +502,8 @@ impl ModuleInferenceState {
                         .map_err(|e| spanned(e, span))?;
                     self.imports.bind_type_info(
                         effective_type_name.clone(),
-                        path.to_string(),
+                        Some(reex.canonical_ref.symbol.local_name()),
+                        reex.canonical_ref.module.0.clone(),
                         original_vis,
                     );
                 }
@@ -413,7 +520,7 @@ impl ModuleInferenceState {
                 // Private types are already excluded from exported_types,
                 // and the visibility check above catches private_names.
                 if self.registry.lookup_type(&ts.name).is_none() {
-                    let export = module_interface::type_summary_to_export_info(ts);
+                    let export = module_interface::type_summary_to_export_info(ts, path);
                     self.registry.register_name(&export.name);
                     let constructors = type_registry::register_type_from_export(
                         &export,
@@ -431,16 +538,17 @@ impl ModuleInferenceState {
                     }
                     if matches!(ts.visibility, Visibility::Pub) {
                         for (cname, scheme) in constructors {
-                            self.imports.bind_import(
+                            let kind = super::constructor_binding_kind_for_export(&export, &cname);
+                            self.imports.bind_imported_constructor(
                                 &mut self.env,
                                 cname.clone(),
                                 scheme,
-                                None,
                                 path.to_string(),
+                                export.name.clone(),
                                 cname,
+                                kind,
                                 is_synthetic_prelude_import,
-                                span,
-                            )?;
+                            );
                         }
                     }
                 } else if effective_type_name != ts.name {
@@ -452,6 +560,7 @@ impl ModuleInferenceState {
                 self.registry.mark_user_visible(&ts.name);
                 self.imports.bind_type_info(
                     effective_type_name.clone(),
+                    Some(ts.name.clone()),
                     path.to_string(),
                     ts.visibility,
                 );
@@ -462,7 +571,7 @@ impl ModuleInferenceState {
                 // import_all — mark user-visible
                 self.registry.mark_user_visible(&ts.name);
                 if self.registry.lookup_type(&ts.name).is_none() {
-                    let export = module_interface::type_summary_to_export_info(ts);
+                    let export = module_interface::type_summary_to_export_info(ts, path);
                     self.registry.register_name(&export.name);
                     let constructors = type_registry::register_type_from_export(
                         &export,
@@ -476,29 +585,49 @@ impl ModuleInferenceState {
                     if matches!(ts.visibility, Visibility::Pub) {
                         for (cname, scheme) in constructors {
                             let hidden_name = format!("__qual${}${}", qualifier_name, cname);
+                            let kind = super::constructor_binding_kind_for_export(&export, &cname);
                             qualified_exports.insert(
                                 cname.clone(),
                                 QualifiedExport {
                                     local_name: hidden_name.clone(),
                                     scheme: scheme.clone(),
-                                    resolved_ref: None,
+                                    resolved_ref: Some(constructor_binding_ref(
+                                        path.to_string(),
+                                        export.name.clone(),
+                                        cname.clone(),
+                                        match kind {
+                                            crate::types::ConstructorBindingKind::Record => {
+                                                crate::typed_ast::ConstructorKind::Record
+                                            }
+                                            crate::types::ConstructorBindingKind::Variant => {
+                                                crate::typed_ast::ConstructorKind::Variant
+                                            }
+                                        },
+                                    )),
                                 },
                             );
-                            self.imports.bind_hidden_fn(
+                            self.imports.bind_hidden_constructor(
                                 hidden_name,
                                 scheme.clone(),
-                                None,
-                                (path.to_string(), cname.clone()),
+                                path.to_string(),
+                                cname.clone(),
                                 is_synthetic_prelude_import,
                             );
-                            self.env.bind(cname, scheme);
+                            self.env.bind_constructor(
+                                cname.clone(),
+                                scheme,
+                                path.to_string(),
+                                export.name.clone(),
+                                cname.clone(),
+                                kind,
+                            );
                         }
                     }
                 }
             } else if self.registry.lookup_type(&ts.name).is_none() {
                 // Not explicitly requested and not import_all — register type silently
                 // (needed for constructor resolution)
-                let export = module_interface::type_summary_to_export_info(ts);
+                let export = module_interface::type_summary_to_export_info(ts, path);
                 self.registry.register_name(&export.name);
                 let constructors = type_registry::register_type_from_export(
                     &export,
@@ -507,10 +636,19 @@ impl ModuleInferenceState {
                 )
                 .map_err(|e| spanned(e, span))?;
                 for (cname, scheme) in constructors {
-                    self.env.bind(cname, scheme);
+                    let kind = super::constructor_binding_kind_for_export(&export, &cname);
+                    self.env.bind_constructor(
+                        cname.clone(),
+                        scheme,
+                        path.to_string(),
+                        export.name.clone(),
+                        cname,
+                        kind,
+                    );
                 }
                 self.imports.bind_type_info(
                     ts.name.clone(),
+                    Some(ts.name.clone()),
                     path.to_string(),
                     ts.visibility,
                 );
@@ -545,7 +683,7 @@ impl ModuleInferenceState {
                 .copied()
                 .unwrap_or(Visibility::Private);
             self.imports
-                .bind_type_info(name.clone(), path.to_string(), vis);
+                .bind_type_info(name.clone(), Some(name.clone()), path.to_string(), vis);
         }
 
         // Propagate trait definitions from the interface

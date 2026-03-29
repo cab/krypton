@@ -243,12 +243,14 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         args: vec![inner_pattern],
         ty: wrap_a_ty.clone(),
         span: (0, 0),
+        resolved_variant_ref: None,
     };
     let empty_pattern = TypedPattern::Constructor {
         name: "Empty".to_string(),
         args: vec![],
         ty: wrap_a_ty.clone(),
         span: (0, 0),
+        resolved_variant_ref: None,
     };
 
     let render_trait_id = TraitName::new("test".to_string(), "Render".to_string());

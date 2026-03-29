@@ -124,9 +124,34 @@ pub struct ResolvedTraitMethodRef {
     pub method_name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConstructorKind {
+    Record,
+    Variant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedTypeRef {
+    pub qualified_name: QualifiedName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedConstructorRef {
+    pub type_ref: ResolvedTypeRef,
+    pub constructor_name: String,
+    pub kind: ConstructorKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedVariantRef {
+    pub type_ref: ResolvedTypeRef,
+    pub variant_name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedBindingRef {
     Callable(ResolvedCallableRef),
+    Constructor(ResolvedConstructorRef),
     TraitMethod(ResolvedTraitMethodRef),
 }
 
@@ -175,6 +200,7 @@ pub enum TypedPattern {
         args: Vec<TypedPattern>,
         ty: Type,
         span: Span,
+        resolved_variant_ref: Option<ResolvedVariantRef>,
     },
     Lit {
         value: Lit,
@@ -192,6 +218,7 @@ pub enum TypedPattern {
         rest: bool,
         ty: Type,
         span: Span,
+        resolved_type_ref: Option<ResolvedTypeRef>,
     },
 }
 
@@ -239,6 +266,7 @@ pub enum TypedExprKind {
     FieldAccess {
         expr: Box<TypedExpr>,
         field: String,
+        resolved_type_ref: Option<ResolvedTypeRef>,
     },
     Recur(Vec<TypedExpr>),
     Tuple(Vec<TypedExpr>),
@@ -254,6 +282,7 @@ pub enum TypedExprKind {
     StructLit {
         name: String,
         fields: Vec<(String, TypedExpr)>,
+        resolved_type_ref: Option<ResolvedTypeRef>,
     },
     StructUpdate {
         base: Box<TypedExpr>,
@@ -385,6 +414,7 @@ pub struct ExternTypeInfo {
 #[derive(Clone, Debug)]
 pub struct ExportedTypeInfo {
     pub name: String,
+    pub source_module: String,
     pub type_params: Vec<String>,
     /// Original TypeVarIds corresponding to type_params (1:1 mapping).
     pub type_param_vars: Vec<TypeVarId>,
@@ -471,6 +501,9 @@ pub struct TypedModule {
 impl TypedModule {
     /// Get the source module path for a type by searching struct/sum declarations.
     pub fn type_origin(&self, name: &str) -> Option<&str> {
+        if let Some(info) = self.exported_type_infos.get(name) {
+            return Some(info.source_module.as_str());
+        }
         self.struct_decls
             .iter()
             .find(|d| d.name == name)

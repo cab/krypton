@@ -1,0 +1,10 @@
+# expect: output 9
+import core/io.{println}
+import resolved_ref_sum_reexport.{Packet, Keep, Drop}
+
+fun render(packet: Packet) -> Int = match packet {
+  Keep(value) => value + 1,
+  Drop => 0,
+}
+
+fun main() = println(render(Keep(8)))

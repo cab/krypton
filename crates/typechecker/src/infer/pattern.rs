@@ -117,6 +117,16 @@ impl<'a> InferenceContext<'a> {
                                     args: typed_args,
                                     ty: expected.clone(),
                                     span: *pat_span,
+                                    resolved_variant_ref: self.registry.and_then(|registry| {
+                                        registry.find_variant_parent(name).and_then(|parent| {
+                                            self.resolved_type_ref_for_name(parent).map(|type_ref| {
+                                                crate::typed_ast::ResolvedVariantRef {
+                                                    type_ref,
+                                                    variant_name: name.clone(),
+                                                }
+                                            })
+                                        })
+                                    }),
                                 })
                             }
                             _ => {
@@ -136,6 +146,16 @@ impl<'a> InferenceContext<'a> {
                                     args: vec![],
                                     ty: expected.clone(),
                                     span: *pat_span,
+                                    resolved_variant_ref: self.registry.and_then(|registry| {
+                                        registry.find_variant_parent(name).and_then(|parent| {
+                                            self.resolved_type_ref_for_name(parent).map(|type_ref| {
+                                                crate::typed_ast::ResolvedVariantRef {
+                                                    type_ref,
+                                                    variant_name: name.clone(),
+                                                }
+                                            })
+                                        })
+                                    }),
                                 })
                             }
                         }
@@ -194,7 +214,7 @@ impl<'a> InferenceContext<'a> {
                     .iter()
                     .map(|_| Type::Var(self.fresh()))
                     .collect();
-                let struct_ty = Type::Named(name.clone(), fresh_args.clone());
+                let struct_ty = Type::Named(info.name.clone(), fresh_args.clone());
                 self.unify_spanned(expected, &struct_ty, span)?;
                 match &info.kind {
                     type_registry::TypeKind::Record {
@@ -233,6 +253,7 @@ impl<'a> InferenceContext<'a> {
                             rest: *rest,
                             ty: expected.clone(),
                             span: *pat_span,
+                            resolved_type_ref: self.resolved_type_ref_for_name(&info.name),
                         })
                     }
                     _ => Err(super::spanned(
