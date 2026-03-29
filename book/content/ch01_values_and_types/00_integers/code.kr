@@ -1,0 +1,8 @@
+fun main() {
+  let apples = 8
+  let oranges = 3
+  println(apples + oranges)
+  println(apples - oranges)
+  println(apples * oranges)
+  println(apples / oranges)
+}

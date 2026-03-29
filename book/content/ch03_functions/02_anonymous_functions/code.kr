@@ -1,0 +1,6 @@
+fun main() {
+  let inc = x -> x + 1
+  let add = (a, b) -> a + b
+  println(inc(4))
+  println(add(2, 3))
+}

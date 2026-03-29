@@ -1,0 +1,6 @@
+fun consume(ticket: ~String) -> String = ticket
+
+fun main() {
+  let ticket: ~String = "session"
+  println(consume(ticket))
+}

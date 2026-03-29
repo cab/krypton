@@ -1,0 +1,5 @@
+import core/string.{parse_int}
+
+fun main() {
+  println(parse_int("42"))
+}

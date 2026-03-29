@@ -1,0 +1,7 @@
+fun main() {
+  let price = 19.95
+  let tax = 1.50
+  println(price + tax)
+  println(price / 2.0)
+  println(3.5 * 2.0)
+}

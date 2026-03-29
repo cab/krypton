@@ -1,0 +1,11 @@
+type MaybeScore = HasScore(Int) | Missing
+
+fun show_score(score: MaybeScore) -> String = match score {
+  HasScore(n) => "score: " + show(n),
+  Missing => "no score",
+}
+
+fun main() {
+  println(show_score(HasScore(12)))
+  println(show_score(Missing))
+}

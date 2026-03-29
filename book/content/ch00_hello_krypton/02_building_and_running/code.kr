@@ -1,0 +1,8 @@
+# src/main.kr
+fun main() {
+  println("Run me with krypton run")
+}
+
+# Typical commands:
+# krypton build
+# krypton run

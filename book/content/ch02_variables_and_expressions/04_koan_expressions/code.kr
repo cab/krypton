@@ -1,0 +1,8 @@
+fun main() {
+  let value = {
+    let x = ???
+    if x > 3 { x * 2 } else { ??? }
+  }
+  # TODO: make value evaluate to 8.
+  println(value)
+}

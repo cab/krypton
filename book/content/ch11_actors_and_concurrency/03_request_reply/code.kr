@@ -1,0 +1,15 @@
+import core/actor.{Mailbox, Ref, Timeout, ask, receive, send, spawn}
+
+type Msg = Get(Ref[Int])
+
+fun value_actor(mb: Mailbox[Msg]) -> Unit = match receive(mb) {
+  Get(reply) => send(reply, 42),
+}
+
+fun main() {
+  let ref = spawn(value_actor)
+  match ask(ref, reply -> Get(reply), 5000) {
+    Ok(value) => println(value),
+    Err(Timeout) => println("timeout"),
+  }
+}

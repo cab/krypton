@@ -1,0 +1,10 @@
+# math.kr
+pub fun double(x: Int) -> Int = x * 2
+
+# main.kr
+import math.{???}
+
+fun main() {
+  # TODO: import the right name and call it here.
+  println(double(21))
+}

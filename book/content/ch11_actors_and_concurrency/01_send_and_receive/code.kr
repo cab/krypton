@@ -1,0 +1,15 @@
+import core/actor.{Mailbox, Ref, actor_ref, mailbox, receive, send, spawn}
+
+type WorkerMsg = Echo(String, Ref[String])
+
+fun worker(mb: Mailbox[WorkerMsg]) -> Unit = match receive(mb) {
+  Echo(text, reply) => send(reply, text),
+}
+
+fun main() {
+  let ref = spawn(worker)
+  let replies = mailbox()
+  let reply_to = actor_ref(replies)
+  send(ref, Echo("hello", reply_to))
+  println(receive(replies))
+}

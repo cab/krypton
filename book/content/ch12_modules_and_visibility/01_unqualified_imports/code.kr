@@ -1,0 +1,9 @@
+# helpers.kr
+pub fun add_one(x: Int) -> Int = x + 1
+
+# main.kr
+import helpers.{add_one}
+
+fun main() {
+  println(add_one(41))
+}

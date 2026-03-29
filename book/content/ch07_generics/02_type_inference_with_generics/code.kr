@@ -1,0 +1,8 @@
+fun identity[a](x: a) -> a = x
+
+fun main() {
+  let n = identity(42)
+  let label = identity("hi")
+  println(n)
+  println(label)
+}

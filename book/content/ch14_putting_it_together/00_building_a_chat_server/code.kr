@@ -1,0 +1,17 @@
+import core/actor.{Mailbox, Ref, receive, send, spawn}
+
+type Msg = Join(String) | ListMembers(Ref[List[String]])
+
+fun chat_room(mb: Mailbox[Msg], members: List[String]) -> Unit = match receive(mb) {
+  Join(name) => recur(mb, Cons(name, members)),
+  ListMembers(reply) => {
+    send(reply, members)
+    recur(mb, members)
+  },
+}
+
+fun main() {
+  let room = spawn(mb -> chat_room(mb, Nil))
+  send(room, Join("Ada"))
+  send(room, Join("Bob"))
+}

@@ -1,0 +1,6 @@
+fun main() {
+  let first = "Krypton"
+  let second = " Tour"
+  println(first + second)
+  println("Lesson " + show(3))
+}

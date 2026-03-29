@@ -1,0 +1,5 @@
+fun apply_twice(x: Int, f: (Int) -> Int) -> Int = f(f(x))
+
+fun main() {
+  println(apply_twice(10, x -> x + 5))
+}

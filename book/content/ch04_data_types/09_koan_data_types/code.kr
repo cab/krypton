@@ -1,0 +1,7 @@
+type Point = { x: Int, y: Int }
+
+fun main() {
+  let point = Point { x = ???, y = ??? }
+  # TODO: make the point use the coordinates 3 and 4.
+  println(point)
+}

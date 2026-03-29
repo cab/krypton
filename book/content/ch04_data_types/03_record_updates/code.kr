@@ -1,0 +1,8 @@
+type Point = { x: Int, y: Int }
+
+fun main() {
+  let start = Point { x = 1, y = 2 }
+  let moved = { start | x = 10 }
+  println(start)
+  println(moved)
+}

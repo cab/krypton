@@ -1,0 +1,8 @@
+fun announce(name: String) -> Unit {
+  println("Hello, " + name)
+}
+
+fun main() {
+  let done = announce("Ada")
+  println(done)
+}

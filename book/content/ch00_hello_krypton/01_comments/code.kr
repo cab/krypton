@@ -1,0 +1,6 @@
+fun main() {
+  # This is a single-line comment
+  println("Comments are useful!")
+
+  # println("Uncomment me!")
+}

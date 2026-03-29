@@ -1,0 +1,7 @@
+fun can_ship(in_stock: Bool, paid: Bool) -> Bool = in_stock && paid
+
+fun main() {
+  println(can_ship(true, true))
+  println(can_ship(true, false))
+  println(!false)
+}

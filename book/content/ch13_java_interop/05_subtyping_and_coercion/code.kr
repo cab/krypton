@@ -1,0 +1,8 @@
+# Planned interop shape:
+# extern java "java.util.ArrayList" as ListBuilder : java.util.List {
+#   fun size(self: ListBuilder) -> Int
+# }
+
+fun main() {
+  println("subtyping and coercion scaffold")
+}

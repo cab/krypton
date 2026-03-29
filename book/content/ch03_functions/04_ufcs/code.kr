@@ -1,0 +1,7 @@
+fun trim_bang(s: String) -> String = s + "!"
+fun double(n: Int) -> Int = n * 2
+
+fun main() {
+  println(21.double())
+  println("Krypton".trim_bang())
+}

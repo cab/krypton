@@ -1,0 +1,7 @@
+fun main() {
+  let count: Int = ???
+  let label: String = ???
+  # TODO: make both bindings type-check, then print them.
+  println(count)
+  println(label)
+}

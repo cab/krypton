@@ -1,0 +1,7 @@
+fun identity[a](x: a) -> a = x
+
+fun main() {
+  println(identity[Int](42))
+  let as_string = identity[String]
+  println(as_string("Ada"))
+}

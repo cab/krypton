@@ -1,0 +1,6 @@
+fun add_one(x: Int) -> Int = ???
+
+fun main() {
+  # TODO: make add_one return 6 when given 5.
+  println(add_one(5))
+}

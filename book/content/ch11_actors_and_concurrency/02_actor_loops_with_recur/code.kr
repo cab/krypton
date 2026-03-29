@@ -1,0 +1,17 @@
+import core/actor.{Mailbox, Ref, receive, send, spawn}
+
+type CounterMsg = Inc | Get(Ref[Int])
+
+fun counter(mb: Mailbox[CounterMsg], total: Int) -> Unit = match receive(mb) {
+  Inc => recur(mb, total + 1),
+  Get(reply) => {
+    send(reply, total)
+    recur(mb, total)
+  },
+}
+
+fun main() {
+  let counter_ref = spawn(mb -> counter(mb, 0))
+  send(counter_ref, Inc)
+  send(counter_ref, Inc)
+}

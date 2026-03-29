@@ -1,0 +1,13 @@
+# secrets.kr
+pub opaque type Secret = Secret(String)
+
+fun reveal(secret: Secret) -> String = "not exported"
+pub fun make_secret(name: String) -> Secret = Secret(name)
+
+# main.kr
+import secrets.{Secret, make_secret}
+
+fun main() {
+  let secret: Secret = make_secret("launch")
+  println(secret)
+}

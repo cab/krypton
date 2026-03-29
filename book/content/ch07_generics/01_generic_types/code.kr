@@ -1,0 +1,10 @@
+type Box[a] = Box(a)
+
+fun open_box[a](box: Box[a]) -> a = match box {
+  Box(value) => value,
+}
+
+fun main() {
+  println(open_box(Box(42)))
+  println(open_box(Box("Krypton")))
+}

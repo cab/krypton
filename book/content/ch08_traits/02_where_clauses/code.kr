@@ -1,0 +1,6 @@
+fun show_twice[a](x: a) -> String where a: Show = show(x) + " / " + show(x)
+
+fun main() {
+  println(show_twice(5))
+  println(show_twice("Ada"))
+}

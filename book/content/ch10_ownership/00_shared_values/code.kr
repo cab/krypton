@@ -1,0 +1,7 @@
+fun repeat(s: String) -> String = s + " / " + s
+
+fun main() {
+  let name = "Ada"
+  println(repeat(name))
+  println(name)
+}

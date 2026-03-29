@@ -1,0 +1,8 @@
+type Box[a] = Box(a)
+
+fun unwrap[a](box: Box[a]) -> a = ???
+
+fun main() {
+  # TODO: make unwrap work for any Box[a].
+  println(unwrap(Box(5)))
+}

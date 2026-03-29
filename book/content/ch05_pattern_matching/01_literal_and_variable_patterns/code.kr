@@ -1,0 +1,9 @@
+fun describe(n: Int) -> String = match n {
+  0 => "zero",
+  1 => "one",
+  value => "something else: " + show(value),
+}
+
+fun main() {
+  println(describe(8))
+}

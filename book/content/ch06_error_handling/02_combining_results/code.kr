@@ -1,0 +1,15 @@
+fun first_name(ok: Bool) -> Result[String, String] =
+  if ok { Ok("Ada") } else { Err("missing first name") }
+
+fun last_name(ok: Bool) -> Result[String, String] =
+  if ok { Ok("Lovelace") } else { Err("missing last name") }
+
+fun full_name() -> Result[String, String] = {
+  let first = first_name(true)?
+  let last = last_name(true)?
+  Ok(first + " " + last)
+}
+
+fun main() {
+  println(full_name())
+}

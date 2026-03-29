@@ -1,0 +1,7 @@
+type Player = { name: String, score: Int }
+
+fun main() {
+  let name = "Ada"
+  let player = Player { name = name, score = 42 }
+  println(player)
+}

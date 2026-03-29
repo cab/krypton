@@ -1,0 +1,26 @@
+import core/string.{parse_int}
+
+fun map_option[a, b](opt: Option[a], f: (a) -> b) -> Option[b] = match opt {
+  Some(value) => Some(f(value)),
+  None => None,
+}
+
+fun map_result[e, a, b](res: Result[e, a], f: (a) -> b) -> Result[e, b] = match res {
+  Ok(value) => Ok(f(value)),
+  Err(err) => Err(err),
+}
+
+fun unwrap_or[a](opt: Option[a], default: a) -> a = match opt {
+  Some(value) => value,
+  None => default,
+}
+
+fun read_flag(ok: Bool) -> Result[String, Bool] =
+  if ok { Ok(true) } else { Err("no flag") }
+
+fun main() {
+  let doubled = map_option(parse_int("21"), x -> x * 2)
+  let labeled = map_result(read_flag(true), x -> if x { "yes" } else { "no" })
+  println(unwrap_or(doubled, 0))
+  println(labeled)
+}

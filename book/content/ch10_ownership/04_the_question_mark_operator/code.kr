@@ -1,0 +1,23 @@
+type LogFile = LogFile(String)
+
+impl Resource[LogFile] {
+  fun close(file: ~LogFile) -> Unit = match file {
+    LogFile(path) => println("closing " + path),
+  }
+}
+
+fun open_log(ok: Bool) -> Result[String, ~LogFile] =
+  if ok { Ok(LogFile("audit.log")) } else { Err("could not open log") }
+
+fun write_entry(file: ~LogFile, ok: Bool) -> Result[String, Unit] =
+  if ok { Ok(println("wrote entry")) } else { Err("could not write entry") }
+
+fun save_audit() -> Result[String, Unit] = {
+  let file = open_log(true)?
+  write_entry(file, true)?
+  Ok(())
+}
+
+fun main() {
+  println(save_audit())
+}

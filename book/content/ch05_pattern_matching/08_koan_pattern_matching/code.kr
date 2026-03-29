@@ -1,0 +1,10 @@
+fun describe(opt: Option[Int]) -> String = match opt {
+  Some(value) => ???
+  None => ???
+}
+
+fun main() {
+  # TODO: make the output describe both cases clearly.
+  println(describe(Some(5)))
+  println(describe(None))
+}

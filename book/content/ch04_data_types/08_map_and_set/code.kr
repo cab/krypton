@@ -1,0 +1,9 @@
+import core/map.{empty, put, get, keys, size}
+
+fun main() {
+  let scores = put(put(empty(), "Ada", 42), "Bob", 17)
+  println(size(scores))
+  println(get(scores, "Ada"))
+  println(keys(scores))
+  # TODO: add Set examples when the Set module lands.
+}

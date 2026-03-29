@@ -1,0 +1,9 @@
+fun describe(opt: Option[Option[Int]]) -> String = match opt {
+  Some(Some(value)) => "nested: " + show(value),
+  Some(None) => "inner none",
+  None => "outer none",
+}
+
+fun main() {
+  println(describe(Some(Some(9))))
+}

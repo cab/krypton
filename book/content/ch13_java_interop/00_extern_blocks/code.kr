@@ -1,0 +1,9 @@
+extern java "java.lang.Math" {
+  fun abs(n: Int) -> Int
+  fun max(a: Int, b: Int) -> Int
+}
+
+fun main() {
+  println(abs(-4))
+  println(max(3, 9))
+}

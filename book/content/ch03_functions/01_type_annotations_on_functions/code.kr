@@ -1,0 +1,7 @@
+fun greet(name: String) -> String = "Hello, " + name
+fun twice(n: Int) -> Int = n * 2
+
+fun main() {
+  println(greet("Ada"))
+  println(twice(21))
+}
