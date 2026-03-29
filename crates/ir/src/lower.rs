@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
 use krypton_typechecker::typed_ast::{
     self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry,
-    ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TraitName, TypedExpr,
-    TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    QualifiedName, ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TraitName,
+    TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -508,18 +508,20 @@ struct LowerCtx {
     var_scope: HashMap<String, Vec<VarId>>,
     /// top-level function name → FnId
     fn_ids: HashMap<String, FnId>,
+    /// Canonical qualified name → FnId for resolved callable lookup.
+    callable_ids: HashMap<QualifiedName, FnId>,
     /// struct name → ordered fields with resolved types
     struct_fields: HashMap<String, Vec<(String, Type)>>,
     /// variant name → (type_name, tag, field_types)
     sum_variants: HashMap<String, (String, u32, Vec<Type>)>,
     /// Cached type_params for private types (avoids double build_type_param_map)
     private_type_params: HashMap<String, Vec<TypeVarId>>,
-    /// fn_name → [(trait_name, TypeVarId)] — required trait dicts
-    fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    /// qualified name → [(trait_name, TypeVarId)] — required trait dicts
+    fn_constraints: HashMap<QualifiedName, Vec<(TraitName, TypeVarId)>>,
     /// (trait_name, TypeVarId) → VarId — dict param variables for the current function
     dict_params: HashMap<(TraitName, TypeVarId), VarId>,
-    /// fn_name → TypeScheme for resolving type var bindings at call sites
-    fn_schemes: HashMap<String, TypeScheme>,
+    /// qualified name → TypeScheme for resolving type var bindings at call sites
+    fn_schemes: HashMap<QualifiedName, TypeScheme>,
     /// Instance defs for parameterized dict resolution:
     /// (trait_name, target_type, type_var_ids, constraints)
     param_instances: Vec<ParamInstanceInfo>,
@@ -586,8 +588,8 @@ impl LowerCtx {
         self.var_scope.get(name).and_then(|s| s.last().copied())
     }
 
-    fn lookup_fn(&self, name: &str) -> Option<FnId> {
-        self.fn_ids.get(name).copied()
+    fn lookup_callable(&self, qn: &QualifiedName) -> Option<FnId> {
+        self.callable_ids.get(qn).copied()
     }
 
     /// Emit close() calls for a list of AutoCloseBindings, wrapping `inner`.
@@ -1206,19 +1208,20 @@ impl LowerCtx {
                     return self.lower_struct_constructor_as_value(name, expr);
                 }
                 // Function reference as value — wrap in MakeClosure
-                if let Some((binding_name, _callable_ref)) = resolved_callable_ref(expr) {
-                    let Some(fn_id) = self.lookup_fn(binding_name) else {
-                        return Err(LowerError::UnresolvedVar(binding_name.to_string()));
+                if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
+                    let qn = callable_qualified_name(callable_ref, &self.module_path);
+                    let Some(fn_id) = self.lookup_callable(&qn) else {
+                        return Err(LowerError::UnresolvedVar(name.to_string()));
                     };
                     // Check if this function has trait constraints that need dict captures
                     let constraints = self
                         .fn_constraints
-                        .get(binding_name)
+                        .get(&qn)
                         .cloned()
                         .unwrap_or_default();
                     if !constraints.is_empty() {
                         return self.lower_constrained_fn_as_value(
-                            binding_name,
+                            &qn,
                             fn_id,
                             &constraints,
                             &[],
@@ -1263,17 +1266,18 @@ impl LowerCtx {
                         type_args,
                     );
                 }
-                if let Some((binding_name, _callable_ref)) = resolved_callable_ref(expr) {
+                if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
                     // Constrained function reference with explicit type args
-                    if let Some(fn_id) = self.lookup_fn(binding_name) {
+                    let qn = callable_qualified_name(callable_ref, &self.module_path);
+                    if let Some(fn_id) = self.lookup_callable(&qn) {
                         let constraints = self
                             .fn_constraints
-                            .get(binding_name)
+                            .get(&qn)
                             .cloned()
                             .unwrap_or_default();
                         if !constraints.is_empty() {
                             return self.lower_constrained_fn_as_value(
-                                binding_name,
+                                &qn,
                                 fn_id,
                                 &constraints,
                                 type_args,
@@ -1553,9 +1557,10 @@ impl LowerCtx {
                         expr.ty.clone().into(),
                         Atom::Var(id),
                     ))
-                } else if let Some((binding_name, _callable_ref)) = resolved_callable_ref(expr) {
-                    let Some(fn_id) = self.lookup_fn(binding_name) else {
-                        return Err(LowerError::UnresolvedVar(binding_name.to_string()));
+                } else if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
+                    let qn = callable_qualified_name(callable_ref, &self.module_path);
+                    let Some(fn_id) = self.lookup_callable(&qn) else {
+                        return Err(LowerError::UnresolvedVar(name.to_string()));
                     };
                     // Top-level function used as value
                     let var = self.fresh_var();
@@ -3497,13 +3502,14 @@ impl LowerCtx {
             }
 
             // Check if it's a resolved top-level/imported function.
-            if matches!(resolved_ref, Some(ResolvedBindingRef::Callable(_))) {
-                let Some(fn_id) = self.lookup_fn(name) else {
+            if let Some(ResolvedBindingRef::Callable(callable_ref)) = resolved_ref.as_ref() {
+                let qn = callable_qualified_name(callable_ref, &self.module_path);
+                let Some(fn_id) = self.lookup_callable(&qn) else {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
                 // Resolve dict arguments for constrained functions
                 let (dict_bindings, dict_atoms) =
-                    self.resolve_call_dicts(name, args, &type_args)?;
+                    self.resolve_call_dicts(&qn, args, &type_args)?;
                 bindings.extend(dict_bindings);
 
                 let mut all_args = dict_atoms;
@@ -3738,12 +3744,13 @@ impl LowerCtx {
             }
 
             // Known top-level/imported function
-            if matches!(resolved_ref, Some(ResolvedBindingRef::Callable(_))) {
-                let Some(fn_id) = self.lookup_fn(name) else {
+            if let Some(ResolvedBindingRef::Callable(callable_ref)) = resolved_ref.as_ref() {
+                let qn = callable_qualified_name(callable_ref, &self.module_path);
+                let Some(fn_id) = self.lookup_callable(&qn) else {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
                 let (dict_bindings, dict_atoms) =
-                    self.resolve_call_dicts(name, args, &type_args)?;
+                    self.resolve_call_dicts(&qn, args, &type_args)?;
 
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let mut all_args = dict_atoms;
@@ -4099,17 +4106,17 @@ impl LowerCtx {
     /// Returns let-bindings and dict atom args to prepend.
     fn resolve_call_dicts(
         &mut self,
-        name: &str,
+        qn: &QualifiedName,
         args: &[TypedExpr],
         type_args: &[Type],
     ) -> Result<(Vec<LetBinding>, Vec<Atom>), LowerError> {
-        let constraints = match self.fn_constraints.get(name) {
+        let constraints = match self.fn_constraints.get(qn) {
             Some(c) if !c.is_empty() => c.clone(),
             _ => return Ok((vec![], vec![])),
         };
 
         // Get the function's type scheme to extract param type patterns
-        let scheme = self.fn_schemes.get(name).cloned();
+        let scheme = self.fn_schemes.get(qn).cloned();
 
         // Build type var bindings from type_args and argument types
         let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
@@ -4224,7 +4231,7 @@ impl LowerCtx {
     /// Creates a wrapper function that captures resolved dicts and forwards to the original fn.
     fn lower_constrained_fn_as_value(
         &mut self,
-        name: &str,
+        qn: &QualifiedName,
         fn_id: FnId,
         constraints: &[(TraitName, TypeVarId)],
         type_args: &[Type],
@@ -4233,7 +4240,7 @@ impl LowerCtx {
         // Build type var bindings from type_args and expression type
         let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
 
-        if let Some(scheme) = self.fn_schemes.get(name).cloned() {
+        if let Some(scheme) = self.fn_schemes.get(qn).cloned() {
             // Bind from explicit type args
             for (var_id, ty) in scheme.vars.iter().zip(type_args.iter()) {
                 type_bindings.insert(*var_id, ty.clone());
@@ -4643,7 +4650,8 @@ impl LowerCtx {
 
         // Prepend dict params for constrained functions
         let mut params = vec![];
-        if let Some(constraints) = self.fn_constraints.get(&decl.name).cloned() {
+        let fn_qn = QualifiedName::new(self.module_path.clone(), decl.name.clone());
+        if let Some(constraints) = self.fn_constraints.get(&fn_qn).cloned() {
             for (trait_name, type_var_id) in &constraints {
                 let var = self.fresh_var();
                 self.dict_params
@@ -4852,10 +4860,10 @@ pub fn lower_module(
     imported_extern_types: &[typed_ast::ExternTypeInfo],
 ) -> Result<Module, LowerError> {
     // Build fn_constraints from TypeScheme constraints (embedded during inference)
-    let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
+    let mut fn_constraints: HashMap<QualifiedName, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for entry in &typed.fn_types {
         if !entry.scheme.constraints.is_empty() {
-            fn_constraints.insert(entry.name.clone(), entry.scheme.constraints.clone());
+            fn_constraints.insert(entry.qualified_name.clone(), entry.scheme.constraints.clone());
         }
     }
 
@@ -4883,15 +4891,15 @@ pub fn lower_module(
                 &m.name,
             );
             fn_constraints
-                .entry(mangled)
+                .entry(QualifiedName::new(typed.module_path.clone(), mangled))
                 .or_insert_with(|| all_constraints);
         }
     }
 
     // Build fn_schemes from fn_types
-    let mut fn_schemes: HashMap<String, TypeScheme> = HashMap::new();
+    let mut fn_schemes: HashMap<QualifiedName, TypeScheme> = HashMap::new();
     for entry in &typed.fn_types {
-        fn_schemes.insert(entry.name.clone(), entry.scheme.clone());
+        fn_schemes.insert(entry.qualified_name.clone(), entry.scheme.clone());
     }
 
     let mut ctx = LowerCtx {
@@ -4900,6 +4908,7 @@ pub fn lower_module(
         type_var_gen: TypeVarGen::new(),
         var_scope: HashMap::new(),
         fn_ids: HashMap::new(),
+        callable_ids: HashMap::new(),
         struct_fields: HashMap::new(),
         sum_variants: HashMap::new(),
         private_type_params: HashMap::new(),
@@ -5028,12 +5037,20 @@ pub fn lower_module(
     for decl in &typed.functions {
         let fn_id = ctx.fresh_fn();
         ctx.fn_ids.insert(decl.name.clone(), fn_id);
+        ctx.callable_ids.insert(
+            QualifiedName::new(typed.module_path.clone(), decl.name.clone()),
+            fn_id,
+        );
     }
     // Extern functions (local)
     for ext in &typed.extern_fns {
         if !ctx.fn_ids.contains_key(&ext.name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(ext.name.clone(), fn_id);
+            ctx.callable_ids.insert(
+                QualifiedName::new(ext.declaring_module_path.clone(), ext.name.clone()),
+                fn_id,
+            );
         }
     }
     // Imported extern fns need FnIds for call resolution during lowering,
@@ -5042,6 +5059,10 @@ pub fn lower_module(
         if !ctx.fn_ids.contains_key(&ext.name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(ext.name.clone(), fn_id);
+            ctx.callable_ids.insert(
+                QualifiedName::new(ext.declaring_module_path.clone(), ext.name.clone()),
+                fn_id,
+            );
         }
     }
     // Imported functions (from fn_types entries with provenance)
@@ -5049,6 +5070,12 @@ pub fn lower_module(
         if !ctx.fn_ids.contains_key(&entry.name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(entry.name.clone(), fn_id);
+            ctx.callable_ids.insert(entry.qualified_name.clone(), fn_id);
+        } else if !ctx.callable_ids.contains_key(&entry.qualified_name) {
+            // The binding name already has a FnId (e.g., from an extern declaration).
+            // Ensure the canonical qualified_name also maps to the same FnId.
+            let fn_id = ctx.fn_ids[&entry.name];
+            ctx.callable_ids.insert(entry.qualified_name.clone(), fn_id);
         }
     }
 
@@ -5057,6 +5084,10 @@ pub fn lower_module(
         if !ctx.fn_ids.contains_key(name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(name.to_string(), fn_id);
+            ctx.callable_ids.insert(
+                QualifiedName::new("__builtin__".to_string(), name.to_string()),
+                fn_id,
+            );
         }
     }
 
@@ -5214,7 +5245,7 @@ pub fn lower_module(
             if !imported_fn_seen.insert(key) {
                 continue;
             }
-            if let Some(&fn_id) = ctx.fn_ids.get(&entry.name) {
+            if let Some(&fn_id) = ctx.callable_ids.get(&entry.qualified_name) {
                 let (param_types, return_type) = match &entry.scheme.ty {
                     Type::Fn(params, ret) => (params.clone(), (**ret).clone()),
                     other => (vec![], other.clone()),
@@ -5491,7 +5522,23 @@ pub fn lower_module(
         tuple_arities,
         module_path: typed.module_path.clone(),
         imported_dict_refs: ctx.imported_dict_refs,
-        fn_dict_requirements: ctx.fn_constraints.clone(),
+        fn_dict_requirements: {
+            // Reconstruct string-keyed dict requirements for codegen:
+            // fn_types entries use binding name, instance methods use mangled name.
+            let mut reqs: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
+            for entry in &typed.fn_types {
+                if !entry.scheme.constraints.is_empty() {
+                    reqs.insert(entry.name.clone(), entry.scheme.constraints.clone());
+                }
+            }
+            for (qn, v) in &ctx.fn_constraints {
+                // Instance method mangled names are local to this module
+                if qn.module_path == typed.module_path && !reqs.contains_key(&qn.local_name) {
+                    reqs.insert(qn.local_name.clone(), v.clone());
+                }
+            }
+            reqs
+        },
         fn_exit_closes: ctx.fn_exit_closes,
         imported_structs: ir_imported_structs,
         imported_sum_types: ir_imported_sum_types,
@@ -5617,6 +5664,16 @@ fn resolved_callable_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedCallableRef
         },
         TypedExprKind::TypeApp { expr: inner, .. } => resolved_callable_ref(inner),
         _ => None,
+    }
+}
+
+fn callable_qualified_name(r: &ResolvedCallableRef, _module_path: &str) -> QualifiedName {
+    match r {
+        ResolvedCallableRef::LocalFunction { qualified_name } => qualified_name.clone(),
+        ResolvedCallableRef::ImportedFunction { qualified_name } => qualified_name.clone(),
+        ResolvedCallableRef::Intrinsic { name } => {
+            QualifiedName::new("__builtin__".to_string(), name.clone())
+        }
     }
 }
 
