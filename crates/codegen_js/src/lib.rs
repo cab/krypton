@@ -1,5 +1,6 @@
 pub mod diagnostics;
 pub mod emit;
+pub mod suspend;
 
 pub use emit::{compile_modules_js, JsCodegenError};
 
