@@ -4,6 +4,7 @@ use std::process::Command;
 
 use krypton_codegen::emit::compile_modules;
 use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
+use krypton_ir::lower::lower_all;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
@@ -44,7 +45,9 @@ fn run_program_raw(
             panic!("fixture {fixture_name}: type check failed:\n{rendered}");
         });
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    let classes = compile_modules(&typed_modules, "Kr$Test", &link_ctx)
+    let (ir_modules, module_sources) = lower_all(&typed_modules, "Kr$Test", &link_ctx)
+        .unwrap_or_else(|e| panic!("fixture {fixture_name}: lowering failed: {e}"));
+    let classes = compile_modules(&ir_modules, "Kr$Test", &link_ctx, &module_sources)
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
     let dir = tempfile::tempdir().unwrap();
@@ -166,7 +169,9 @@ fn codegen_fixture(
                             panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                         });
                     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-                    match compile_modules(&typed_modules, "Kr$Test", &link_ctx) {
+                    let (ir_modules, module_sources) = lower_all(&typed_modules, "Kr$Test", &link_ctx)
+                        .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
+                    match compile_modules(&ir_modules, "Kr$Test", &link_ctx, &module_sources) {
                         Ok(_)
                         | Err(krypton_codegen::emit::CodegenError {
                             kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
@@ -217,7 +222,9 @@ fn codegen_module(
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-                match compile_modules(&typed_modules, "Kr$Test", &link_ctx) {
+                let (ir_modules, module_sources) = lower_all(&typed_modules, "Kr$Test", &link_ctx)
+                    .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
+                match compile_modules(&ir_modules, "Kr$Test", &link_ctx, &module_sources) {
                     Ok(_)
                     | Err(krypton_codegen::emit::CodegenError {
                         kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,

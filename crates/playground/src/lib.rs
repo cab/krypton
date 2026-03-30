@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use include_dir::{include_dir, Dir};
 use krypton_codegen_js::compile_modules_js;
 use krypton_diagnostics::Diagnostic;
+use krypton_ir::lower::lower_all;
 use krypton_modules::{module_resolver::ModuleResolver, stdlib_loader::StdlibLoader};
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
@@ -101,7 +104,25 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     };
 
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    let js_files = match compile_modules_js(&typed_modules, ROOT_MODULE_NAME, false, &link_ctx) {
+    let (ir_modules, module_sources) = match lower_all(&typed_modules, ROOT_MODULE_NAME, &link_ctx) {
+        Ok(result) => result,
+        Err(err) => {
+            return CompileToJsResult::failure(vec![krypton_diagnostics::Diagnostic {
+                severity: krypton_diagnostics::Severity::Error,
+                code: "L0001".to_string(),
+                message: format!("IR lowering error: {err}"),
+                primary_file: ROOT_FILENAME.to_string(),
+                primary_span: None,
+                primary_label: None,
+                secondary_labels: vec![],
+                help: None,
+                note: None,
+            }]);
+        }
+    };
+    let js_module_sources: HashMap<String, Option<String>> =
+        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+    let js_files = match compile_modules_js(&ir_modules, ROOT_MODULE_NAME, false, &link_ctx, &js_module_sources) {
         Ok(files) => files,
         Err(err) => {
             let (diags, _srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(

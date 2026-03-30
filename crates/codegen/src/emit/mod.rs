@@ -12,7 +12,6 @@ mod trait_class_gen;
 use std::collections::HashMap;
 
 use krypton_ir::{TraitName, Type, TypeVarId};
-use krypton_typechecker::typed_ast::TypedModule;
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
     ClassAccessFlags, ClassFile, ConstantPool, FieldType, Method, MethodAccessFlags, Version,
@@ -117,51 +116,27 @@ fn type_has_vars(ty: &Type) -> bool {
     }
 }
 
-/// Compile all modules returned by the typechecker. The first module is the main module;
+/// Compile pre-lowered IR modules to JVM class files. The first module is the main module;
 /// the rest are library modules that each get their own class.
+///
+/// Callers must lower `TypedModule`s to IR before calling this function (e.g. via
+/// `krypton_ir::lower::lower_all`). This ensures codegen never touches `TypedModule`.
 pub fn compile_modules(
-    typed_modules: &[TypedModule],
+    ir_modules: &[krypton_ir::Module],
     main_class_name: &str,
     link_ctx: &krypton_typechecker::link_context::LinkContext,
+    module_sources: &HashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut all_classes = Vec::new();
 
-    // Lower each TypedModule to an IR Module.
-    let mut ir_modules: Vec<krypton_ir::Module> = Vec::new();
-    let mut typed_with_ir: Vec<(&TypedModule, usize)> = Vec::new(); // (typed_module, ir_index)
-                                                                    // The first module is the root/main module; subsequent ones are library modules.
-    let root_module_path = typed_modules
+    let root_module_path = ir_modules
         .first()
-        .map(|tm| tm.module_path.as_str())
+        .map(|m| m.module_path.as_str())
         .unwrap_or("");
-    for tm in typed_modules {
-        let is_root = tm.module_path == root_module_path;
-        // JVM class name: main_class_name for the entry module, module_path for libraries.
-        let jvm_class_name = if is_root {
-            main_class_name
-        } else {
-            &tm.module_path
-        };
-        let view = link_ctx
-            .view_for(&krypton_typechecker::module_interface::ModulePath::new(&tm.module_path))
-            .unwrap_or_else(|| {
-                panic!("ICE: no LinkContext view for module '{}'", tm.module_path)
-            });
-        let ir = krypton_ir::lower::lower_module(tm, jvm_class_name, &view).map_err(|e| {
-            CodegenError::TypeError(
-                format!("IR lowering error in module {jvm_class_name}: {e}"),
-                None,
-            )
-        })?;
-        let idx = ir_modules.len();
-        ir_modules.push(ir);
-        typed_with_ir.push((tm, idx));
-    }
 
     // Compile each module independently — each module builds its own instance map
     // from its local instances + imported_instances metadata.
-    for &(typed_module, ir_idx) in &typed_with_ir {
-        let ir_module = &ir_modules[ir_idx];
+    for ir_module in ir_modules {
         let is_entry = ir_module.module_path.as_str() == root_module_path;
         let class_name = if is_entry {
             main_class_name
@@ -174,8 +149,8 @@ pub fn compile_modules(
                 panic!("ICE: no LinkContext view for module '{}'", ir_module.module_path)
             });
         let classes = compile_module_inner(ir_module, class_name, is_entry, &view).map_err(|e| {
-            if let Some(s) = &typed_module.module_source {
-                return e.with_source(typed_module.module_path.clone(), s.clone());
+            if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
+                return e.with_source(ir_module.module_path.as_str().to_string(), s.clone());
             }
             e
         })?;

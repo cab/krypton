@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use krypton_codegen_js::compile_modules_js;
 use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
+use krypton_ir::lower::lower_all;
 use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
@@ -39,7 +41,11 @@ fn compile_js_result_with_resolver(
             panic!("fixture {fixture_name}: type check failed:\n{rendered}");
         });
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    compile_modules_js(&typed_modules, "test", false, &link_ctx)
+    let (ir_modules, module_sources) = lower_all(&typed_modules, "test", &link_ctx)
+        .unwrap_or_else(|e| panic!("fixture {fixture_name}: lowering failed: {e}"));
+    let js_module_sources: HashMap<String, Option<String>> =
+        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+    compile_modules_js(&ir_modules, "test", false, &link_ctx, &js_module_sources)
 }
 
 /// Copy runtime/js/*.mjs files into the temp output directory so that
@@ -353,7 +359,11 @@ fn js_codegen_fixture(
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-                compile_modules_js(&typed_modules, "test", true, &link_ctx).unwrap_or_else(|e| {
+                let (ir_modules, module_sources) = lower_all(&typed_modules, "test", &link_ctx)
+                    .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
+                let js_module_sources: HashMap<String, Option<String>> =
+                    module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+                compile_modules_js(&ir_modules, "test", true, &link_ctx, &js_module_sources).unwrap_or_else(|e| {
                     panic!("fixture {name}: JS codegen failed: {e}");
                 });
             }
@@ -407,7 +417,11 @@ fn js_codegen_module(
                         panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
                     });
                 let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-                let _ = compile_modules_js(&typed_modules, "test", true, &link_ctx);
+                let (ir_modules, module_sources) = lower_all(&typed_modules, "test", &link_ctx)
+                    .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
+                let js_module_sources: HashMap<String, Option<String>> =
+                    module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+                let _ = compile_modules_js(&ir_modules, "test", true, &link_ctx, &js_module_sources);
             }
             Expectation::Error(_) | Expectation::Panic(_) => {}
         }

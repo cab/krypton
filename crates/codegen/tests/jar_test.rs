@@ -1,5 +1,6 @@
 use krypton_codegen::emit::generate_empty_main;
 use krypton_codegen::jar::{find_runtime_jar, write_jar};
+use krypton_ir::lower::lower_all;
 use std::io::{Cursor, Read, Write};
 use std::process::Command;
 
@@ -137,7 +138,9 @@ fn test_fat_jar_runs_with_java_jar() {
             .expect("type checking should succeed");
 
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    let classes = krypton_codegen::emit::compile_modules(&typed_modules, "FatJarTest", &link_ctx)
+    let (ir_modules, module_sources) =
+        lower_all(&typed_modules, "FatJarTest", &link_ctx).expect("lowering should succeed");
+    let classes = krypton_codegen::emit::compile_modules(&ir_modules, "FatJarTest", &link_ctx, &module_sources)
         .expect("codegen should succeed");
 
     let jar_bytes =

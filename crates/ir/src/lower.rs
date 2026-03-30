@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
+use krypton_typechecker::link_context::LinkContext;
 use krypton_typechecker::typed_ast::{
     self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry,
     QualifiedName, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstructorRef,
@@ -6679,4 +6680,44 @@ fn collect_tuple_arities_from_simple(
         }
         _ => {}
     }
+}
+
+/// Lower all typed modules to IR and collect their source texts.
+///
+/// The first module is treated as the root: its IR name is set to `root_name`,
+/// while subsequent modules keep their `module_path`.
+///
+/// Returns `(ir_modules, module_sources)` where `module_sources` maps
+/// `module_path → source_text` for error rendering during codegen.
+pub fn lower_all(
+    typed_modules: &[TypedModule],
+    root_name: &str,
+    link_ctx: &LinkContext,
+) -> Result<(Vec<Module>, HashMap<String, String>), LowerError> {
+    let root_module_path = typed_modules
+        .first()
+        .map(|tm| tm.module_path.as_str())
+        .unwrap_or("");
+
+    let mut ir_modules = Vec::with_capacity(typed_modules.len());
+    let mut module_sources: HashMap<String, String> = HashMap::new();
+
+    for tm in typed_modules {
+        let is_root = tm.module_path == root_module_path;
+        let mod_name = if is_root { root_name } else { &tm.module_path };
+        let view = link_ctx
+            .view_for(&krypton_typechecker::module_interface::ModulePath::new(
+                &tm.module_path,
+            ))
+            .unwrap_or_else(|| {
+                panic!("ICE: no LinkContext view for module '{}'", tm.module_path)
+            });
+        let ir = lower_module(tm, mod_name, &view)?;
+        ir_modules.push(ir);
+        if let Some(src) = &tm.module_source {
+            module_sources.insert(tm.module_path.clone(), src.clone());
+        }
+    }
+
+    Ok((ir_modules, module_sources))
 }

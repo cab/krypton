@@ -390,9 +390,7 @@ mod tests {
 
     #[test]
     fn output_file_naming() {
-        // Build a Module directly and check that compile_modules_js produces .mjs filenames.
-        // We can't call compile_modules_js with hand-built modules (it takes TypedModule),
-        // so we test the emitter's filename logic directly.
+        // Build a Module directly and test the emitter's filename logic directly.
         let module = make_module("hello");
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = std::collections::HashSet::new();

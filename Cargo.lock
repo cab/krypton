@@ -891,6 +891,7 @@ dependencies = [
  "include_dir",
  "krypton-codegen-js",
  "krypton-diagnostics",
+ "krypton-ir",
  "krypton-modules",
  "krypton-parser",
  "krypton-typechecker",

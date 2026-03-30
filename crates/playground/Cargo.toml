@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 include_dir = "0.7"
 krypton-codegen-js = { path = "../codegen_js" }
 krypton-diagnostics = { path = "../diagnostics" }
+krypton-ir = { path = "../ir" }
 krypton-modules = { path = "../modules" }
 krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }

@@ -8,7 +8,7 @@ use krypton_ir::{
 use krypton_parser::ast::Span;
 use krypton_typechecker::link_context::ModuleLinkView;
 use krypton_typechecker::module_interface::{ModulePath as LinkModulePath, TypeSummaryKind};
-use krypton_typechecker::typed_ast::{TraitName, TypedModule};
+use krypton_typechecker::typed_ast::TraitName;
 
 /// Concrete singleton dict: exact type lookup.
 struct SingletonInstance {
@@ -414,37 +414,22 @@ impl std::error::Error for JsCodegenError {}
 /// Compile all typed modules to JavaScript ESM (.mjs) files.
 ///
 /// Returns `Vec<(filename, js_source)>` where filename uses `.mjs` extension.
+/// Compile pre-lowered IR modules to JS. The first module is the main module;
+/// the rest are library modules.
+///
+/// Callers must lower `TypedModule`s to IR before calling this function (e.g. via
+/// `krypton_ir::lower::lower_all`). This ensures codegen never touches `TypedModule`.
 pub fn compile_modules_js(
-    typed_modules: &[TypedModule],
+    ir_modules: &[Module],
     main_module_name: &str,
     emit_main_call: bool,
     link_ctx: &krypton_typechecker::link_context::LinkContext,
+    module_sources: &HashMap<String, Option<String>>,
 ) -> Result<Vec<(String, String)>, JsCodegenError> {
-    let root_module_path = typed_modules
+    let root_module_path = ir_modules
         .first()
-        .map(|tm| tm.module_path.as_str())
+        .map(|m| m.module_path.as_str())
         .unwrap_or("");
-
-    let mut ir_modules: Vec<Module> = Vec::new();
-    let mut module_sources: HashMap<String, Option<String>> = HashMap::new();
-    for tm in typed_modules {
-        let is_root = tm.module_path == root_module_path;
-        let mod_name = if is_root {
-            main_module_name
-        } else {
-            &tm.module_path
-        };
-        let view = link_ctx
-            .view_for(&krypton_typechecker::module_interface::ModulePath::new(&tm.module_path))
-            .unwrap_or_else(|| {
-                panic!("ICE: no LinkContext view for module '{}'", tm.module_path)
-            });
-        let ir = krypton_ir::lower::lower_module(tm, mod_name, &view)
-            .map_err(|e| JsCodegenError::LowerError(format!("module {mod_name}: {e}")))?;
-        ir_modules.push(ir);
-        module_sources.insert(mod_name.to_string(), tm.module_source.clone());
-        module_sources.insert(tm.module_path.clone(), tm.module_source.clone());
-    }
 
     // Use root module's link view for global variant lookup and instance registry.
     let root_view = link_ctx
@@ -460,7 +445,7 @@ pub fn compile_modules_js(
     let mut bare_sum_type_names: HashSet<String> = HashSet::new();
 
     // Local sum types from IR modules
-    for ir_module in &ir_modules {
+    for ir_module in ir_modules {
         for st in &ir_module.sum_types {
             let qualified = format!("{}/{}", ir_module.name, st.name);
             qualified_sum_type_names.insert(qualified.clone());
@@ -506,12 +491,12 @@ pub fn compile_modules_js(
     }
 
     // Build instance registry for dict dispatch resolution.
-    let registry = build_registry_from_link_view(&root_view, &ir_modules);
+    let registry = build_registry_from_link_view(&root_view, ir_modules);
 
-    validate_js_extern_targets(&ir_modules, &root_view, &module_sources)?;
+    validate_js_extern_targets(ir_modules, &root_view, module_sources)?;
 
     let mut results = Vec::new();
-    for ir_module in &ir_modules {
+    for ir_module in ir_modules {
         let is_main = ir_module.name == main_module_name;
         let view = link_ctx
             .view_for(&LinkModulePath::new(ir_module.module_path.as_str()))
