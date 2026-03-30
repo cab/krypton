@@ -839,7 +839,7 @@ impl<'a> JsEmitter<'a> {
         self.emit_nonnullable_extern_wrappers();
         self.emit_functions();
         if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
-            self.writeln("main();");
+            self.writeln("await runMain(main);");
         }
         self.output.clone()
     }
@@ -1230,6 +1230,12 @@ impl<'a> JsEmitter<'a> {
                 runtime_path
             ));
             emitted_any = true;
+        }
+
+        // ── runMain import (main entry only) ──
+        if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
+            let runtime_path = self.runtime_import_path("actor.mjs");
+            self.writeln(&format!("import {{ runMain }} from '{}';", runtime_path));
         }
 
         if emitted_any {

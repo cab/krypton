@@ -88,7 +88,7 @@ fn run_js_files(files: &[(String, String)], fixture_name: &str) -> String {
     std::fs::write(
         &bootstrap,
         format!(
-            "import * as module from './{}';\nmodule.main?.();\n",
+            "import {{ runMain }} from './runtime/js/actor.mjs';\nimport * as module from './{}';\nif (module.main) await runMain(module.main);\n",
             entry.file_name().unwrap().to_string_lossy()
         ),
     )

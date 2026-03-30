@@ -12,6 +12,7 @@ import {
   raw_spawn, raw_send, raw_receive, raw_receive_timeout,
   raw_actor_ref, raw_mailbox_size, raw_create_mailbox,
   raw_adapter, raw_ask,
+  _liveCount, runMain,
 } from './actor.mjs';
 
 let passed = 0;
@@ -239,6 +240,49 @@ async function runActorTests() {
     console.error = origError;
     assert(errors.length === 1, 'actor crash logs one error');
     assert(errors[0].includes('boom'), 'actor crash error contains message');
+  }
+
+  // _liveCount tracking
+  {
+    const before = _liveCount;
+    const ref = raw_spawn(async (mb) => {
+      await mb.receive();
+    });
+    // After spawn, before actor finishes
+    assert(_liveCount === before + 1, '_liveCount increments on spawn');
+    raw_send(ref, 'done');
+    await new Promise(r => setTimeout(r, 10));
+    assert(_liveCount === before, '_liveCount decrements when actor finishes');
+  }
+
+  // _liveCount decrements on crash
+  {
+    const before = _liveCount;
+    const origError = console.error;
+    console.error = () => {};
+    raw_spawn(async (_mb) => { throw new Error('crash'); });
+    await new Promise(r => setTimeout(r, 10));
+    console.error = origError;
+    assert(_liveCount === before, '_liveCount decrements on actor crash');
+  }
+
+  // runMain with non-actor function completes immediately
+  {
+    let called = false;
+    await runMain(() => { called = true; });
+    assert(called, 'runMain with non-actor function completes immediately');
+  }
+
+  // runMain with fire-and-forget actor waits until actor finishes
+  {
+    let actorDone = false;
+    await runMain(() => {
+      raw_spawn(async (mb) => {
+        await new Promise(r => setTimeout(r, 20));
+        actorDone = true;
+      });
+    });
+    assert(actorDone, 'runMain waits for fire-and-forget actor to finish');
   }
 }
 

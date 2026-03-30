@@ -141,7 +141,8 @@ self.onmessage = async (event) => {
     const loader = createModuleLoader(compiled.files ?? []);
     const module = await import(loader.moduleUrl(compiled.entry_module));
     if (typeof module.main === "function") {
-      await module.main();
+      const actor = await import(loader.moduleUrl("runtime/js/actor.mjs"));
+      await actor.runMain(module.main);
     }
 
     response.ok = true;

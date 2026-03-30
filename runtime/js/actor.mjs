@@ -1,5 +1,10 @@
 // Krypton JS runtime — actor primitives (event-loop-based)
 
+let _liveCount = 0;
+let _resolveQuiescent = null;
+
+export { _liveCount };
+
 export class Mailbox {
   constructor() {
     this.inbox = [];
@@ -57,10 +62,16 @@ export class Ref {
 
 export function raw_spawn(f) {
   const mb = new Mailbox();
+  _liveCount++;
   Promise.resolve().then(() => f(mb)).catch(err => {
     console.error(`[krypton] actor crashed: ${err.message}`);
   }).finally(() => {
     mb.close();
+    _liveCount--;
+    if (_liveCount === 0 && _resolveQuiescent) {
+      _resolveQuiescent();
+      _resolveQuiescent = null;
+    }
   });
   return mb.ref();
 }
@@ -101,5 +112,13 @@ export function raw_ask(target, wrapperFn, timeout) {
   return replyMb.receiveTimeout(timeout).then(reply => {
     replyMb.close();
     return reply;
+  });
+}
+
+export function runMain(fn) {
+  const result = fn();
+  if (_liveCount === 0) return Promise.resolve(result);
+  return new Promise(resolve => {
+    _resolveQuiescent = resolve;
   });
 }
