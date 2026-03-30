@@ -10,6 +10,8 @@ use krypton_typechecker::link_context::ModuleLinkView;
 use krypton_typechecker::module_interface::{ModulePath as LinkModulePath, TypeSummaryKind};
 use krypton_typechecker::typed_ast::TraitName;
 
+use crate::suspend::{analyze_suspend, SuspendSummary};
+
 /// Concrete singleton dict: exact type lookup.
 struct SingletonInstance {
     js_name: String,
@@ -495,8 +497,10 @@ pub fn compile_modules_js(
 
     validate_js_extern_targets(ir_modules, &root_view, module_sources)?;
 
+    let suspend = analyze_suspend(ir_modules);
+
     let mut results = Vec::new();
-    for ir_module in ir_modules {
+    for (module_index, ir_module) in ir_modules.iter().enumerate() {
         let is_main = ir_module.name == main_module_name;
         let view = link_ctx
             .view_for(&LinkModulePath::new(ir_module.module_path.as_str()))
@@ -511,6 +515,8 @@ pub fn compile_modules_js(
             &bare_sum_type_names,
             &registry,
             &view,
+            module_index,
+            &suspend,
         );
         let js_source = emitter.emit();
         let filename = format!("{}.mjs", ir_module.name);
@@ -797,6 +803,12 @@ pub(crate) struct JsEmitter<'a> {
     registry: &'a InstanceRegistry,
     /// Link view for cross-module metadata lookups.
     link_view: &'a ModuleLinkView<'a>,
+    /// Index of the current module in the IR module list.
+    module_index: usize,
+    /// Suspend analysis summary for async/await emission.
+    suspend: &'a SuspendSummary,
+    /// Whether the function currently being emitted is async.
+    current_fn_is_async: bool,
 }
 
 impl<'a> JsEmitter<'a> {
@@ -811,6 +823,8 @@ impl<'a> JsEmitter<'a> {
         bare_sum_type_names: &'a HashSet<String>,
         registry: &'a InstanceRegistry,
         link_view: &'a ModuleLinkView<'a>,
+        module_index: usize,
+        suspend: &'a SuspendSummary,
     ) -> Self {
         JsEmitter {
             output: String::new(),
@@ -827,7 +841,15 @@ impl<'a> JsEmitter<'a> {
             inline_joins: HashMap::new(),
             registry,
             link_view,
+            module_index,
+            suspend,
+            current_fn_is_async: false,
         }
+    }
+
+    /// Check if a function in the current module suspends.
+    fn fn_suspends(&self, id: FnId) -> bool {
+        self.suspend.fn_suspends(self.module_index, id)
     }
 
     pub(crate) fn emit(&mut self) -> String {
@@ -1477,15 +1499,18 @@ impl<'a> JsEmitter<'a> {
             .map(|i| format!("arg{i}"))
             .collect();
         let args = params.join(", ");
+        let is_async = self.fn_suspends(ext.id);
+        let async_prefix = if is_async { "async " } else { "" };
+        let await_prefix = if is_async { "await " } else { "" };
 
         self.writeln(&format!(
-            "export function {}({}) {{",
+            "export {async_prefix}function {}({}) {{",
             js_safe_name(&ext.name),
             args
         ));
         self.indent += 1;
         self.writeln(&format!(
-            "return {}({});",
+            "return {await_prefix}{}({});",
             Self::raw_extern_alias(&ext.name),
             args
         ));
@@ -1498,15 +1523,18 @@ impl<'a> JsEmitter<'a> {
             .map(|i| format!("arg{i}"))
             .collect();
         let args = params.join(", ");
+        let is_async = self.fn_suspends(ext.id);
+        let async_prefix = if is_async { "async " } else { "" };
+        let await_prefix = if is_async { "await " } else { "" };
 
         self.writeln(&format!(
-            "export function {}({}) {{",
+            "export {async_prefix}function {}({}) {{",
             js_safe_name(&ext.name),
             args
         ));
         self.indent += 1;
         self.writeln(&format!(
-            "const value = {}({});",
+            "const value = {await_prefix}{}({});",
             Self::raw_nullable_extern_alias(&ext.name),
             args
         ));
@@ -1526,6 +1554,9 @@ impl<'a> JsEmitter<'a> {
         self.recur_joins.clear();
         self.inline_joins.clear();
 
+        let is_async = self.fn_suspends(func.id);
+        self.current_fn_is_async = is_async;
+
         let param_names: Vec<String> = func
             .params
             .iter()
@@ -1535,8 +1566,9 @@ impl<'a> JsEmitter<'a> {
             })
             .collect();
 
+        let async_prefix = if is_async { "async " } else { "" };
         self.writeln(&format!(
-            "export function {}({}) {{",
+            "export {async_prefix}function {}({}) {{",
             js_safe_name(&func.name),
             param_names.join(", ")
         ));
@@ -1594,12 +1626,21 @@ impl<'a> JsEmitter<'a> {
                         let free_count = self.module.closure_free_params(*fn_id, captures.len());
                         let free_params: Vec<String> =
                             (0..free_count).map(|i| format!("a${i}")).collect();
-                        self.writeln(&format!(
-                            "{var_name} = ({}) => {fn_name}({}, {});",
-                            free_params.join(", "),
-                            caps.join(", "),
-                            free_params.join(", ")
-                        ));
+                        if self.fn_suspends(*fn_id) {
+                            self.writeln(&format!(
+                                "{var_name} = async ({}) => await {fn_name}({}, {});",
+                                free_params.join(", "),
+                                caps.join(", "),
+                                free_params.join(", ")
+                            ));
+                        } else {
+                            self.writeln(&format!(
+                                "{var_name} = ({}) => {fn_name}({}, {});",
+                                free_params.join(", "),
+                                caps.join(", "),
+                                free_params.join(", ")
+                            ));
+                        }
                     }
                 }
                 self.emit_expr(body, tail);
@@ -1679,8 +1720,9 @@ impl<'a> JsEmitter<'a> {
                         })
                         .collect();
 
+                    let async_prefix = if self.current_fn_is_async { "async " } else { "" };
                     self.writeln(&format!(
-                        "function {join_name}({}) {{",
+                        "{async_prefix}function {join_name}({}) {{",
                         param_names.join(", ")
                     ));
                     self.indent += 1;
@@ -1730,10 +1772,11 @@ impl<'a> JsEmitter<'a> {
                 } else {
                     let target_name = self.var_name(*target);
                     let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
+                    let await_prefix = if self.current_fn_is_async { "await " } else { "" };
                     if tail {
-                        self.writeln(&format!("return {target_name}({});", arg_strs.join(", ")));
+                        self.writeln(&format!("return {await_prefix}{target_name}({});", arg_strs.join(", ")));
                     } else {
-                        self.writeln(&format!("{target_name}({});", arg_strs.join(", ")));
+                        self.writeln(&format!("{await_prefix}{target_name}({});", arg_strs.join(", ")));
                     }
                 }
             }
@@ -1854,13 +1897,19 @@ impl<'a> JsEmitter<'a> {
                 } else if fn_name == "is_null" {
                     self.write(&format!("({} == null)", arg_strs[0]));
                 } else {
-                    self.write(&format!("{fn_name}({})", arg_strs.join(", ")));
+                    let await_prefix = if self.current_fn_is_async && self.fn_suspends(*func) {
+                        "await "
+                    } else {
+                        ""
+                    };
+                    self.write(&format!("{await_prefix}{fn_name}({})", arg_strs.join(", ")));
                 }
             }
             SimpleExprKind::CallClosure { closure, args } => {
                 let closure_str = self.emit_atom(closure);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
-                self.write(&format!("{closure_str}({})", arg_strs.join(", ")));
+                let await_prefix = if self.current_fn_is_async { "await " } else { "" };
+                self.write(&format!("{await_prefix}{closure_str}({})", arg_strs.join(", ")));
             }
             SimpleExprKind::MakeClosure { func, captures } => {
                 let fn_name = self.fn_name(*func);
@@ -1871,12 +1920,21 @@ impl<'a> JsEmitter<'a> {
                     let free_count = self.module.closure_free_params(*func, captures.len());
                     let free_params: Vec<String> =
                         (0..free_count).map(|i| format!("a${i}")).collect();
-                    self.write(&format!(
-                        "({}) => {fn_name}({}, {})",
-                        free_params.join(", "),
-                        caps.join(", "),
-                        free_params.join(", ")
-                    ));
+                    if self.fn_suspends(*func) {
+                        self.write(&format!(
+                            "async ({}) => await {fn_name}({}, {})",
+                            free_params.join(", "),
+                            caps.join(", "),
+                            free_params.join(", ")
+                        ));
+                    } else {
+                        self.write(&format!(
+                            "({}) => {fn_name}({}, {})",
+                            free_params.join(", "),
+                            caps.join(", "),
+                            free_params.join(", ")
+                        ));
+                    }
                 }
             }
             SimpleExprKind::Construct { type_ref, fields } => {
@@ -1938,7 +1996,8 @@ impl<'a> JsEmitter<'a> {
                     } else {
                         let dict = &arg_strs[0];
                         let user_args = &arg_strs[1..];
-                        self.write(&format!("{dict}.{method_name}({})", user_args.join(", ")));
+                        let await_prefix = if self.current_fn_is_async { "await " } else { "" };
+                        self.write(&format!("{await_prefix}{dict}.{method_name}({})", user_args.join(", ")));
                     }
                 }
             }
@@ -2240,6 +2299,7 @@ mod tests {
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = HashSet::new();
         let bare_sum_type_names = HashSet::new();
+        let suspend = SuspendSummary::empty();
         let link_ctx = test_link_ctx(module.module_path.as_str());
         let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
         let mut emitter = JsEmitter::new(
@@ -2250,6 +2310,8 @@ mod tests {
             &bare_sum_type_names,
             &registry,
             &view,
+            0,
+            &suspend,
         );
         emitter.emit()
     }
@@ -2332,6 +2394,7 @@ mod tests {
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = HashSet::new();
         let bare_sum_type_names = HashSet::new();
+        let suspend = SuspendSummary::empty();
         let mut emitter = JsEmitter::new(
             &module,
             false,
@@ -2340,6 +2403,8 @@ mod tests {
             &bare_sum_type_names,
             &registry,
             &view,
+            0,
+            &suspend,
         );
         let output = emitter.emit();
         assert!(output.contains("import { parse_int } from '../stringlib.mjs';"));

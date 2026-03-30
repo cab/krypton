@@ -17,6 +17,13 @@ pub struct SuspendSummary {
 }
 
 impl SuspendSummary {
+    /// Create an empty summary (nothing suspends).
+    pub fn empty() -> Self {
+        SuspendSummary {
+            suspending: HashMap::new(),
+        }
+    }
+
     /// Does the given function in the given module suspend?
     pub fn fn_suspends(&self, module_index: usize, id: FnId) -> bool {
         self.suspending

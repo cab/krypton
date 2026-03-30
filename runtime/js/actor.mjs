@@ -115,9 +115,9 @@ export function raw_ask(target, wrapperFn, timeout) {
   });
 }
 
-export function runMain(fn) {
-  const result = fn();
-  if (_liveCount === 0) return Promise.resolve(result);
+export async function runMain(fn) {
+  const result = await fn();
+  if (_liveCount === 0) return result;
   return new Promise(resolve => {
     _resolveQuiescent = resolve;
   });

@@ -736,7 +736,6 @@ fn main() {
                 .unwrap_or("main");
 
             let mut lower_dur = Duration::ZERO;
-            let mut lint_dur = Duration::ZERO;
             let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
             for (i, typed) in typed_modules.iter().enumerate() {
                 if !all && i > 0 {
@@ -758,15 +757,6 @@ fn main() {
                 match krypton_ir::lower::lower_module(typed, &mod_name, &view) {
                     Ok(ir_module) => {
                         lower_dur += t.elapsed();
-                        let t = Instant::now();
-                        let ir_module =
-                            krypton_ir::lint::LintPass
-                                .run(ir_module)
-                                .unwrap_or_else(|e| {
-                                    eprintln!("IR lint error (module {}): {}", mod_name, e);
-                                    std::process::exit(1);
-                                });
-                        lint_dur += t.elapsed();
                         print!("{}", ir_module);
                     }
                     Err(e) => {
@@ -776,7 +766,6 @@ fn main() {
                 }
             }
             phases.push(("lower", lower_dur));
-            phases.push(("lint", lint_dur));
 
             if timings {
                 print_timings(&phases);

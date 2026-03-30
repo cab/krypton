@@ -61,6 +61,16 @@ mod tests {
 
     /// Emit JS from a hand-built IR Module directly (bypasses lowering).
     fn emit_module(module: &Module) -> String {
+        let suspend = crate::suspend::SuspendSummary::empty();
+        emit_module_with_suspend(module, 0, &suspend)
+    }
+
+    /// Emit JS from a hand-built IR Module with a specific suspend summary.
+    fn emit_module_with_suspend(
+        module: &Module,
+        module_index: usize,
+        suspend: &crate::suspend::SuspendSummary,
+    ) -> String {
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = std::collections::HashSet::new();
         let bare_sum_type_names = std::collections::HashSet::new();
@@ -75,6 +85,8 @@ mod tests {
             &bare_sum_type_names,
             &registry,
             &view,
+            module_index,
+            suspend,
         );
         emitter.emit()
     }
@@ -395,6 +407,7 @@ mod tests {
         let qualified_sum_type_names = std::collections::HashSet::new();
         let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[&module]);
+        let suspend = crate::suspend::SuspendSummary::empty();
         let link_ctx = test_link_ctx(module.module_path.as_str());
         let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
         let mut emitter = crate::emit::JsEmitter::new(
@@ -405,6 +418,8 @@ mod tests {
             &bare_sum_type_names,
             &registry,
             &view,
+            0,
+            &suspend,
         );
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"
@@ -1064,6 +1079,446 @@ mod tests {
         assert!(
             js.contains("get $tag() { return 2; }"),
             "Blue should have tag 2"
+        );
+    }
+
+    // ── Async/await emission tests ────────────────────────────
+
+    /// Build a 2-module IR: module 0 = core/actor with raw_receive seed,
+    /// module 1 = app with main calling imported receive.
+    #[test]
+    fn async_emit_basic() {
+        // Module 0: core/actor with raw_receive extern
+        let mut actor_mod = make_module("core/actor");
+        actor_mod.extern_fns.push(ExternFnDef {
+            id: FnId(0),
+            name: "raw_receive".to_string(),
+            declaring_module_path: "core/actor".to_string(),
+            span: (0, 0),
+            target: ExternTarget::Js {
+                module: "../runtime/js/actor.mjs".to_string(),
+            },
+            nullable: false,
+            param_types: vec![Type::Named("Mailbox".into(), vec![])],
+            return_type: Type::Int,
+        });
+        actor_mod.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Extern {
+                canonical: CanonicalRef {
+                    module: ModulePath::new("core/actor"),
+                    symbol: LocalSymbolKey::Function("raw_receive".into()),
+                },
+                target: ExternTarget::Js {
+                    module: "../runtime/js/actor.mjs".to_string(),
+                },
+                name: "raw_receive".to_string(),
+            },
+        );
+        // receive wraps raw_receive (in real code it's a function, here we
+        // just make it a function that calls raw_receive).
+        actor_mod.functions.push(FnDef {
+            id: FnId(1),
+            name: "receive".to_string(),
+            params: vec![(VarId(0), Type::Named("Mailbox".into(), vec![]))],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
+                    bind: VarId(1),
+                    ty: Type::Int,
+                    value: simple(SimpleExprKind::Call {
+                        func: FnId(0),
+                        args: vec![Atom::Var(VarId(0))],
+                    }),
+                    body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1))))),
+                },
+            ),
+        });
+        actor_mod.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "receive".to_string(),
+            },
+        );
+
+        // Module 1: app with main calling imported receive
+        let mut app_mod = make_module("app");
+        app_mod.imported_fns.push(ImportedFnDef {
+            id: FnId(0),
+            name: "receive".to_string(),
+            source_module: "core/actor".to_string(),
+            original_name: "receive".to_string(),
+            param_types: vec![Type::Named("Mailbox".into(), vec![])],
+            return_type: Type::Int,
+        });
+        app_mod.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Imported {
+                canonical: CanonicalRef {
+                    module: ModulePath::new("core/actor"),
+                    symbol: LocalSymbolKey::Function("receive".into()),
+                },
+                local_alias: "receive".to_string(),
+            },
+        );
+        // non_suspending() — a plain function
+        app_mod.functions.push(FnDef {
+            id: FnId(1),
+            name: "non_suspending".to_string(),
+            params: vec![],
+            return_type: Type::Int,
+            body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(0)))),
+        });
+        app_mod.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "non_suspending".to_string(),
+            },
+        );
+        // main(mb) calls receive(mb)
+        app_mod.functions.push(FnDef {
+            id: FnId(2),
+            name: "main".to_string(),
+            params: vec![(VarId(0), Type::Named("Mailbox".into(), vec![]))],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
+                    bind: VarId(1),
+                    ty: Type::Int,
+                    value: simple(SimpleExprKind::Call {
+                        func: FnId(0),
+                        args: vec![Atom::Var(VarId(0))],
+                    }),
+                    body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1))))),
+                },
+            ),
+        });
+        app_mod.fn_identities.insert(
+            FnId(2),
+            FnIdentity::Local {
+                name: "main".to_string(),
+            },
+        );
+
+        let modules = vec![actor_mod, app_mod];
+        let suspend = crate::suspend::analyze_suspend(&modules);
+
+        // actor/receive should suspend (calls raw_receive)
+        assert!(suspend.fn_suspends(0, FnId(1)), "receive should suspend");
+        // app/main should suspend (calls imported receive)
+        assert!(suspend.fn_suspends(1, FnId(2)), "main should suspend");
+        // app/non_suspending should not
+        assert!(!suspend.fn_suspends(1, FnId(1)), "non_suspending should not suspend");
+
+        // Emit app module
+        let app = &modules[1];
+        let js = emit_module_with_suspend(app, 1, &suspend);
+        assert!(
+            js.contains("export async function main("),
+            "main should be async, got:\n{js}"
+        );
+        assert!(
+            js.contains("await receive("),
+            "call to receive should have await, got:\n{js}"
+        );
+        assert!(
+            js.contains("export function non_suspending("),
+            "non_suspending should be plain function, got:\n{js}"
+        );
+        assert!(
+            !js.contains("async function non_suspending("),
+            "non_suspending must NOT be async, got:\n{js}"
+        );
+    }
+
+    #[test]
+    fn closure_await() {
+        // Module 0: core/actor with raw_receive seed
+        let mut actor_mod = make_module("core/actor");
+        actor_mod.extern_fns.push(ExternFnDef {
+            id: FnId(0),
+            name: "raw_receive".to_string(),
+            declaring_module_path: "core/actor".to_string(),
+            span: (0, 0),
+            target: ExternTarget::Js {
+                module: "../runtime/js/actor.mjs".to_string(),
+            },
+            nullable: false,
+            param_types: vec![Type::Int],
+            return_type: Type::Int,
+        });
+        actor_mod.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Extern {
+                canonical: CanonicalRef {
+                    module: ModulePath::new("core/actor"),
+                    symbol: LocalSymbolKey::Function("raw_receive".into()),
+                },
+                target: ExternTarget::Js {
+                    module: "../runtime/js/actor.mjs".to_string(),
+                },
+                name: "raw_receive".to_string(),
+            },
+        );
+        // recv(x) — wraps raw_receive
+        actor_mod.functions.push(FnDef {
+            id: FnId(1),
+            name: "recv".to_string(),
+            params: vec![(VarId(0), Type::Int)],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
+                    bind: VarId(1),
+                    ty: Type::Int,
+                    value: simple(SimpleExprKind::Call {
+                        func: FnId(0),
+                        args: vec![Atom::Var(VarId(0))],
+                    }),
+                    body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1))))),
+                },
+            ),
+        });
+        actor_mod.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "recv".to_string(),
+            },
+        );
+
+        // Module 1: app with a local suspending fn and MakeClosure over it
+        let mut app_mod = make_module("app");
+        app_mod.imported_fns.push(ImportedFnDef {
+            id: FnId(0),
+            name: "recv".to_string(),
+            source_module: "core/actor".to_string(),
+            original_name: "recv".to_string(),
+            param_types: vec![Type::Int],
+            return_type: Type::Int,
+        });
+        app_mod.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Imported {
+                canonical: CanonicalRef {
+                    module: ModulePath::new("core/actor"),
+                    symbol: LocalSymbolKey::Function("recv".into()),
+                },
+                local_alias: "recv".to_string(),
+            },
+        );
+        // suspending_fn(cap, x) — local fn that calls imported recv
+        // (MakeClosure always targets local fns in real IR)
+        app_mod.functions.push(FnDef {
+            id: FnId(1),
+            name: "suspending_fn".to_string(),
+            params: vec![(VarId(0), Type::Int), (VarId(1), Type::Int)],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
+                    bind: VarId(2),
+                    ty: Type::Int,
+                    value: simple(SimpleExprKind::Call {
+                        func: FnId(0),
+                        args: vec![Atom::Var(VarId(1))],
+                    }),
+                    body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(2))))),
+                },
+            ),
+        });
+        app_mod.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "suspending_fn".to_string(),
+            },
+        );
+        // wrapper(mb) { let cls = MakeClosure(suspending_fn, [mb]); let r = CallClosure(cls, [42]); r }
+        app_mod.functions.push(FnDef {
+            id: FnId(2),
+            name: "wrapper".to_string(),
+            params: vec![(VarId(10), Type::Int)],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
+                    bind: VarId(11),
+                    ty: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
+                    value: simple(SimpleExprKind::MakeClosure {
+                        func: FnId(1),
+                        captures: vec![Atom::Var(VarId(10))],
+                    }),
+                    body: Box::new(expr(
+                        Type::Int,
+                        ExprKind::Let {
+                            bind: VarId(12),
+                            ty: Type::Int,
+                            value: simple(SimpleExprKind::CallClosure {
+                                closure: Atom::Var(VarId(11)),
+                                args: vec![Atom::Lit(Literal::Int(42))],
+                            }),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(12))))),
+                        },
+                    )),
+                },
+            ),
+        });
+        app_mod.fn_identities.insert(
+            FnId(2),
+            FnIdentity::Local {
+                name: "wrapper".to_string(),
+            },
+        );
+
+        let modules = vec![actor_mod, app_mod];
+        let suspend = crate::suspend::analyze_suspend(&modules);
+
+        assert!(suspend.fn_suspends(1, FnId(1)), "suspending_fn should suspend");
+        assert!(suspend.fn_suspends(1, FnId(2)), "wrapper should suspend (closure calls suspending fn)");
+
+        let app = &modules[1];
+        let js = emit_module_with_suspend(app, 1, &suspend);
+        assert!(
+            js.contains("async (a$0) => await suspending_fn("),
+            "closure wrapper should be async with await, got:\n{js}"
+        );
+        assert!(
+            js.contains("await v$1("),
+            "CallClosure should emit await, got:\n{js}"
+        );
+    }
+
+    #[test]
+    fn non_recur_join_async() {
+        // Module 0: core/actor with raw_receive seed
+        let mut actor_mod = make_module("core/actor");
+        actor_mod.extern_fns.push(ExternFnDef {
+            id: FnId(0),
+            name: "raw_receive".to_string(),
+            declaring_module_path: "core/actor".to_string(),
+            span: (0, 0),
+            target: ExternTarget::Js {
+                module: "../runtime/js/actor.mjs".to_string(),
+            },
+            nullable: false,
+            param_types: vec![Type::Int],
+            return_type: Type::Int,
+        });
+        actor_mod.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Extern {
+                canonical: CanonicalRef {
+                    module: ModulePath::new("core/actor"),
+                    symbol: LocalSymbolKey::Function("raw_receive".into()),
+                },
+                target: ExternTarget::Js {
+                    module: "../runtime/js/actor.mjs".to_string(),
+                },
+                name: "raw_receive".to_string(),
+            },
+        );
+        actor_mod.functions.push(FnDef {
+            id: FnId(1),
+            name: "recv".to_string(),
+            params: vec![(VarId(0), Type::Int)],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::Let {
+                    bind: VarId(1),
+                    ty: Type::Int,
+                    value: simple(SimpleExprKind::Call {
+                        func: FnId(0),
+                        args: vec![Atom::Var(VarId(0))],
+                    }),
+                    body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(1))))),
+                },
+            ),
+        });
+        actor_mod.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "recv".to_string(),
+            },
+        );
+
+        // Module 1: app with a non-recur LetJoin whose body calls recv
+        let mut app_mod = make_module("app");
+        app_mod.imported_fns.push(ImportedFnDef {
+            id: FnId(0),
+            name: "recv".to_string(),
+            source_module: "core/actor".to_string(),
+            original_name: "recv".to_string(),
+            param_types: vec![Type::Int],
+            return_type: Type::Int,
+        });
+        app_mod.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Imported {
+                canonical: CanonicalRef {
+                    module: ModulePath::new("core/actor"),
+                    symbol: LocalSymbolKey::Function("recv".into()),
+                },
+                local_alias: "recv".to_string(),
+            },
+        );
+        // main(x): LetJoin j(y) = recv(y); in Jump(j, x)
+        let join_name = VarId(10);
+        app_mod.functions.push(FnDef {
+            id: FnId(1),
+            name: "main".to_string(),
+            params: vec![(VarId(0), Type::Int)],
+            return_type: Type::Int,
+            body: expr(
+                Type::Int,
+                ExprKind::LetJoin {
+                    name: join_name,
+                    params: vec![(VarId(1), Type::Int)],
+                    join_body: Box::new(expr(
+                        Type::Int,
+                        ExprKind::Let {
+                            bind: VarId(2),
+                            ty: Type::Int,
+                            value: simple(SimpleExprKind::Call {
+                                func: FnId(0),
+                                args: vec![Atom::Var(VarId(1))],
+                            }),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(2))))),
+                        },
+                    )),
+                    body: Box::new(expr(
+                        Type::Int,
+                        ExprKind::Jump {
+                            target: join_name,
+                            args: vec![Atom::Var(VarId(0))],
+                        },
+                    )),
+                    is_recur: false,
+                },
+            ),
+        });
+        app_mod.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "main".to_string(),
+            },
+        );
+
+        let modules = vec![actor_mod, app_mod];
+        let suspend = crate::suspend::analyze_suspend(&modules);
+
+        assert!(suspend.fn_suspends(1, FnId(1)), "main should suspend");
+
+        let app = &modules[1];
+        let js = emit_module_with_suspend(app, 1, &suspend);
+        assert!(
+            js.contains("async function v$1("),
+            "join helper should be async function, got:\n{js}"
+        );
+        assert!(
+            js.contains("return await v$1("),
+            "jump to join should emit return await, got:\n{js}"
         );
     }
 }

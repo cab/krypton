@@ -1,0 +1,23 @@
+# expect: output 99
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+import core/actor.{Mailbox, Ref, spawn, send, receive, actor_ref, mailbox}
+
+type Msg = Ping(Int, Ref[Int])
+
+fun echo(mb: Mailbox[Msg]) =
+  match receive(mb) {
+    Ping(n, sender) => send(sender, n),
+  }
+
+# receive is an imported suspending function used inside a closure (via apply).
+fun apply(f: (Mailbox[Int]) -> Int, mb: Mailbox[Int]) -> Int = f(mb)
+
+fun main() {
+  let target = spawn(echo)
+  let my_mb: Mailbox[Int] = mailbox()
+  send(target, Ping(99, actor_ref(my_mb)))
+  let result = apply(receive, my_mb)
+  println(result)
+}

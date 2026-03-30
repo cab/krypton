@@ -11,6 +11,7 @@ use krypton_typechecker::typed_ast::{
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
 use crate::Type as IrType;
+use crate::pass::IrPass;
 use crate::{
     Atom, CanonicalRef, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose,
     FnDef, FnId, FnIdentity, ImportedFnDef, InstanceDef, Literal, LocalSymbolKey, Module,
@@ -5007,10 +5008,15 @@ impl LowerCtx {
         // Set dict_params to the captured dicts (mapped to new VarIds)
         let old_dict_params = std::mem::replace(&mut self.dict_params, new_dict_params);
 
+        // Save and clear recur/early-return join points — these belong to the
+        // enclosing function and must not leak into the lifted lambda.
+        let old_recur_join = self.recur_join.take();
+        let old_early_return_join = self.early_return_join.take();
+
         // Lower body
         let lowered_body = self.lower_expr(body)?;
 
-        // Pop all from var_scope, restore dict_params
+        // Pop all from var_scope, restore dict_params and join points
         for (name, _, _) in lambda_var_mappings.iter().rev() {
             self.pop_var(name);
         }
@@ -5018,6 +5024,8 @@ impl LowerCtx {
             self.pop_var(name);
         }
         self.dict_params = old_dict_params;
+        self.recur_join = old_recur_join;
+        self.early_return_join = old_early_return_join;
 
         // 7. Filter dict captures to only those actually used in the body
         let used_vars = referenced_vars_in_expr(&lowered_body);
@@ -5934,7 +5942,7 @@ pub fn lower_module(
         collect_tuple_arities_from_fn(func, &mut tuple_arities);
     }
 
-    Ok(Module {
+    let module = Module {
         name: module_name.to_string(),
         structs,
         sum_types,
@@ -5965,7 +5973,11 @@ pub fn lower_module(
             reqs
         },
         fn_exit_closes: ctx.fn_exit_closes,
-    })
+    };
+
+    crate::lint::LintPass
+        .run(module)
+        .map_err(|e| LowerError::InternalError(format!("{}: {}", e.pass, e.message)))
 }
 
 // ---------------------------------------------------------------------------
