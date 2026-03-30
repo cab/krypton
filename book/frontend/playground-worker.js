@@ -116,8 +116,9 @@ self.onmessage = async (event) => {
   const originalLog = console.log;
   let logged = "";
   console.log = (...args) => {
-    originalLog(...args);
-    logged += `${args.map((arg) => String(arg)).join(" ")}\n`;
+    const line = `${args.map((arg) => String(arg)).join(" ")}\n`;
+    logged += line;
+    self.postMessage({ id, type: "log", text: line });
   };
 
   try {

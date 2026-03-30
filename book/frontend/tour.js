@@ -177,13 +177,19 @@ document.querySelectorAll(".code-block").forEach((block) => {
       runBtn.disabled = true;
     }
     try {
-      const result = await runSnippet(view.state.doc.toString());
+      const result = await runSnippet(view.state.doc.toString(), (log) => {
+        outputText.textContent = log;
+        outputText.scrollTop = outputText.scrollHeight;
+      });
       const diagnostics = result.diagnostics ?? [];
       if (diagnostics.length > 0) {
         renderDiagnosticsDom(diagnostics, outputText);
         view.dispatch(setDiagnostics(view.state, toCmDiagnostics(diagnostics)));
       } else {
         outputText.textContent = result.output || "(no output)";
+        requestAnimationFrame(() => {
+          outputText.scrollTop = outputText.scrollHeight;
+        });
         view.dispatch(setDiagnostics(view.state, []));
       }
     } catch (error) {

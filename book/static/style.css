@@ -152,7 +152,7 @@ body {
   display: flex;
   align-items: stretch;
   gap: 2rem;
-  min-height: calc(100vh - 48px);
+  /* min-height: calc(100vh - 48px); */
   max-height: calc(100vh - 48px);
   overflow: hidden;
 }
@@ -388,6 +388,8 @@ body {
   margin: 0;
   background: none;
   border-radius: 0;
+  max-height: 12rem;
+  overflow-y: auto;
 }
 
 .diagnostic {
