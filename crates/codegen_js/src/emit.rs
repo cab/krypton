@@ -711,25 +711,36 @@ fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashMap<FnId, Span
 
 /// Collect all `(TraitName, Type)` pairs referenced by GetDict/MakeDict in a module's functions.
 /// Collects `(source_module, import_name)` pairs for all imported constructors
-/// by reading the module's `ImportManifest`. This covers struct names and all
-/// sum type variant names (both nullary and non-nullary), ensuring they're
-/// available for construction (`new Foo(...)`, `Nil.INSTANCE`) and pattern
-/// matching (`instanceof Nil`).
-fn collect_constructor_imports(module: &Module) -> Vec<(String, String)> {
+/// by querying the `ModuleLinkView` for exported types. This covers struct
+/// names and all sum type variant names (both nullary and non-nullary),
+/// ensuring they're available for construction (`new Foo(...)`,
+/// `Nil.INSTANCE`) and pattern matching (`instanceof Nil`).
+fn collect_constructor_imports<'a>(
+    link_view: &'a ModuleLinkView<'a>,
+    local_module: &str,
+) -> Vec<(String, String)> {
     let mut refs = Vec::new();
     let mut seen = HashSet::new();
-    for st in &module.imports.structs {
-        let key = (st.module_path.clone(), st.name.clone());
-        if seen.insert(key.clone()) {
-            refs.push(key);
+    for (mod_path, ts) in link_view.all_exported_types() {
+        if mod_path.as_str() == local_module {
+            continue;
         }
-    }
-    for sum in &module.imports.sum_types {
-        for v in &sum.variants {
-            let key = (sum.module_path.clone(), v.name.clone());
-            if seen.insert(key.clone()) {
-                refs.push(key);
+        match &ts.kind {
+            TypeSummaryKind::Record { .. } => {
+                let key = (mod_path.as_str().to_string(), ts.name.clone());
+                if seen.insert(key.clone()) {
+                    refs.push(key);
+                }
             }
+            TypeSummaryKind::Sum { variants } => {
+                for v in variants {
+                    let key = (mod_path.as_str().to_string(), v.name.clone());
+                    if seen.insert(key.clone()) {
+                        refs.push(key);
+                    }
+                }
+            }
+            TypeSummaryKind::Opaque => {}
         }
     }
     refs
@@ -1134,7 +1145,7 @@ impl<'a> JsEmitter<'a> {
         // This covers construction (new Foo(...), Nil.INSTANCE) and pattern
         // matching (instanceof Nil). Merged into the same by_module map so
         // deduplication with function imports happens automatically.
-        let ctor_refs = collect_constructor_imports(self.module);
+        let ctor_refs = collect_constructor_imports(self.link_view, self.module.module_path.as_str());
         for (mod_path, name) in &ctor_refs {
             by_module
                 .entry(mod_path.as_str())
