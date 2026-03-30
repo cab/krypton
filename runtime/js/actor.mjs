@@ -2,8 +2,18 @@
 
 let _liveCount = 0;
 let _resolveQuiescent = null;
+let _keepAlive = null;
 
 export { _liveCount };
+
+function _updateKeepAlive() {
+  if (_liveCount > 0 && !_keepAlive) {
+    _keepAlive = setInterval(() => {}, 1 << 30);
+  } else if (_liveCount === 0 && _keepAlive) {
+    clearInterval(_keepAlive);
+    _keepAlive = null;
+  }
+}
 
 export class Mailbox {
   constructor() {
@@ -63,11 +73,13 @@ export class Ref {
 export function raw_spawn(f) {
   const mb = new Mailbox();
   _liveCount++;
+  _updateKeepAlive();
   Promise.resolve().then(() => f(mb)).catch(err => {
     console.error(`[krypton] actor crashed: ${err.message}`);
   }).finally(() => {
     mb.close();
     _liveCount--;
+    _updateKeepAlive();
     if (_liveCount === 0 && _resolveQuiescent) {
       _resolveQuiescent();
       _resolveQuiescent = null;
