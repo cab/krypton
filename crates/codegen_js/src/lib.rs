@@ -8,6 +8,8 @@ mod tests {
     use std::collections::{BTreeSet, HashMap, HashSet};
 
     use krypton_ir::*;
+    use krypton_typechecker::link_context::LinkContext;
+    use krypton_typechecker::module_interface::{ModuleInterface, ModulePath as LinkModulePath};
     use krypton_typechecker::types::TypeVarGen;
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
@@ -39,12 +41,33 @@ mod tests {
         }
     }
 
+    fn test_link_ctx(module_path: &str) -> LinkContext {
+        let iface = ModuleInterface {
+            module_path: LinkModulePath::new(module_path),
+            direct_deps: vec![],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_fns: vec![],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        LinkContext::build(vec![iface])
+    }
+
     /// Emit JS from a hand-built IR Module directly (bypasses lowering).
     fn emit_module(module: &Module) -> String {
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = std::collections::HashSet::new();
         let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[module]);
+        let link_ctx = test_link_ctx(module.module_path.as_str());
+        let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
         let mut emitter = crate::emit::JsEmitter::new(
             module,
             false,
@@ -52,6 +75,7 @@ mod tests {
             &qualified_sum_type_names,
             &bare_sum_type_names,
             &registry,
+            &view,
         );
         emitter.emit()
     }
@@ -374,6 +398,8 @@ mod tests {
         let qualified_sum_type_names = std::collections::HashSet::new();
         let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[&module]);
+        let link_ctx = test_link_ctx(module.module_path.as_str());
+        let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
         let mut emitter = crate::emit::JsEmitter::new(
             &module,
             false,
@@ -381,6 +407,7 @@ mod tests {
             &qualified_sum_type_names,
             &bare_sum_type_names,
             &registry,
+            &view,
         );
         let _js = emitter.emit();
         // The compile_modules_js function produces "{name}.mjs"

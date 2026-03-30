@@ -6,6 +6,8 @@ use krypton_ir::{
     Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
 };
 use krypton_parser::ast::Span;
+use krypton_typechecker::link_context::ModuleLinkView;
+use krypton_typechecker::module_interface::{ModulePath as LinkModulePath, TypeSummaryKind};
 use krypton_typechecker::typed_ast::{TraitName, TypedModule};
 
 /// Concrete singleton dict: exact type lookup.
@@ -126,12 +128,26 @@ fn compute_dict_js_name(inst: &krypton_ir::InstanceDef) -> String {
     format!("{}$${}", inst.trait_name.local_name, type_key)
 }
 
+/// Compute the JS name for a dict instance from an `InstanceSummary`.
+fn compute_dict_js_name_from_summary(
+    inst: &krypton_typechecker::module_interface::InstanceSummary,
+) -> String {
+    let ir_type: Type = inst.target_type.clone().into();
+    let type_key = if has_type_vars(&ir_type) {
+        canonical_type_name(&ir_type)
+    } else {
+        inst.target_type_name.clone()
+    };
+    format!("{}$${}", inst.trait_name.local_name, type_key)
+}
+
 /// Strip Own wrappers from a type for registry key normalization.
 fn strip_own_type(ty: &Type) -> Type {
     ty.strip_own()
 }
 
 /// Build an InstanceRegistry from a set of IR modules (for unit tests).
+#[cfg(test)]
 pub(crate) fn build_registry_for_modules(modules: &[&Module]) -> InstanceRegistry {
     let mut registry = InstanceRegistry {
         singletons: HashMap::new(),
@@ -190,6 +206,98 @@ pub(crate) fn build_registry_for_modules(modules: &[&Module]) -> InstanceRegistr
     }
 
     registry
+}
+
+/// Build an InstanceRegistry using the root module's `ModuleLinkView` for imported
+/// instances and local IR modules for locally-defined instances.
+fn build_registry_from_link_view(
+    root_view: &ModuleLinkView<'_>,
+    ir_modules: &[Module],
+) -> InstanceRegistry {
+    let mut registry = InstanceRegistry {
+        singletons: HashMap::new(),
+        parametric: HashMap::new(),
+        intrinsic_dict_names: HashMap::new(),
+    };
+
+    // Register intrinsic dicts
+    for (trait_name, type_name, _) in js_intrinsic_dicts() {
+        let js_name = format!("{trait_name}$${type_name}");
+        registry
+            .intrinsic_dict_names
+            .insert((trait_name.to_string(), type_name.to_string()), js_name);
+    }
+
+    // Local instances from IR modules
+    for ir_module in ir_modules {
+        for inst in &ir_module.instances {
+            if inst.is_intrinsic {
+                continue;
+            }
+            let js_name = compute_dict_js_name(inst);
+            let source_module = Some(ir_module.name.clone());
+            register_instance(&mut registry, js_name, inst.target_type.clone(), &inst.trait_name, source_module);
+        }
+    }
+
+    // Imported instances from link view
+    let local_module_paths: HashSet<&str> = ir_modules.iter().map(|m| m.module_path.as_str()).collect();
+    for (path, inst) in root_view.all_instances() {
+        if local_module_paths.contains(path.as_str()) {
+            continue;
+        }
+        if inst.is_intrinsic {
+            continue;
+        }
+        let js_name = compute_dict_js_name_from_summary(inst);
+        let source_module = Some(path.as_str().to_string());
+        let ir_type: Type = inst.target_type.clone().into();
+        register_instance(&mut registry, js_name, ir_type, &inst.trait_name, source_module);
+    }
+
+    registry
+}
+
+/// Register a single instance into the registry (shared helper for both IR and summary paths).
+fn register_instance(
+    registry: &mut InstanceRegistry,
+    js_name: String,
+    target_type: Type,
+    trait_name: &TraitName,
+    source_module: Option<String>,
+) {
+    if has_type_vars(&target_type) {
+        let param_inst = ParametricInstance {
+            js_name,
+            head_key: parametric_head_key(&target_type),
+            target_type,
+            source_module,
+        };
+        let bucket = registry
+            .parametric
+            .entry(trait_name.clone())
+            .or_insert_with(|| ParametricBucket {
+                wildcard: Vec::new(),
+                by_head: HashMap::new(),
+            });
+        if let Some(head_key) = &param_inst.head_key {
+            bucket
+                .by_head
+                .entry(head_key.clone())
+                .or_default()
+                .push(param_inst);
+        } else {
+            bucket.wildcard.push(param_inst);
+        }
+    } else {
+        registry.singletons.insert(
+            (trait_name.clone(), strip_own_type(&target_type)),
+            SingletonInstance {
+                js_name,
+                source_module,
+            },
+        );
+    }
 }
 
 /// JS reserved words that cannot be used as identifiers.
@@ -338,22 +446,28 @@ pub fn compile_modules_js(
         module_sources.insert(tm.module_path.clone(), tm.module_source.clone());
     }
 
-    // Build variant lookup from all modules: (module/type_name, tag) → variant_name
-    // Uses module-qualified names to avoid collisions when types shadow across modules.
+    // Use root module's link view for global variant lookup and instance registry.
+    let root_view = link_ctx
+        .view_for(&LinkModulePath::new(root_module_path))
+        .unwrap_or_else(|| {
+            panic!("ICE: no LinkContext view for root module '{}'", root_module_path)
+        });
+
+    // Build variant lookup: (type_name, tag) → variant_name
+    // Local sum types come from ir_modules, imported from link view.
     let mut variant_lookup: HashMap<(String, u32), String> = HashMap::new();
     let mut qualified_sum_type_names: HashSet<String> = HashSet::new();
     let mut bare_sum_type_names: HashSet<String> = HashSet::new();
+
+    // Local sum types from IR modules
     for ir_module in &ir_modules {
         for st in &ir_module.sum_types {
             let qualified = format!("{}/{}", ir_module.name, st.name);
             qualified_sum_type_names.insert(qualified.clone());
             for v in &st.variants {
-                // Insert both qualified and bare keys. Qualified keys take priority
-                // and prevent collisions; bare keys are fallback for local types.
                 let qkey = (qualified.clone(), v.tag);
                 variant_lookup.insert(qkey, v.name.clone());
                 let bare_key = (st.name.clone(), v.tag);
-                // Only insert bare key if no collision
                 if variant_lookup
                     .entry(bare_key)
                     .or_insert_with(|| v.name.clone())
@@ -365,73 +479,45 @@ pub fn compile_modules_js(
         }
     }
 
-    // Build instance registry for dict dispatch resolution.
-    let mut registry = InstanceRegistry {
-        singletons: HashMap::new(),
-        parametric: HashMap::new(),
-        intrinsic_dict_names: HashMap::new(),
-    };
-
-    // Register intrinsic dicts
-    for (trait_name, type_name, _) in js_intrinsic_dicts() {
-        let js_name = format!("{trait_name}$${type_name}");
-        registry
-            .intrinsic_dict_names
-            .insert((trait_name.to_string(), type_name.to_string()), js_name);
-    }
-
-    // Register all instances with their defining module.
-    // Each IR module now contains only local instances (no is_imported entries),
-    // so the defining module is always the current ir_module.
-    for ir_module in &ir_modules {
-        for inst in &ir_module.instances {
-            if inst.is_intrinsic {
-                continue;
-            }
-            let js_name = compute_dict_js_name(inst);
-            let source_module = Some(ir_module.name.clone());
-
-            if has_type_vars(&inst.target_type) {
-                let param_inst = ParametricInstance {
-                    js_name,
-                    target_type: inst.target_type.clone(),
-                    head_key: parametric_head_key(&inst.target_type),
-                    source_module,
-                };
-                let bucket = registry
-                    .parametric
-                    .entry(inst.trait_name.clone())
-                    .or_insert_with(|| ParametricBucket {
-                        wildcard: Vec::new(),
-                        by_head: HashMap::new(),
-                    });
-                if let Some(head_key) = &param_inst.head_key {
-                    bucket
-                        .by_head
-                        .entry(head_key.clone())
-                        .or_default()
-                        .push(param_inst);
-                } else {
-                    bucket.wildcard.push(param_inst);
-                }
-            } else {
-                registry.singletons.insert(
-                    (inst.trait_name.clone(), strip_own_type(&inst.target_type)),
-                    SingletonInstance {
-                        js_name,
-                        source_module,
-                    },
-                );
+    // Imported sum types from link view
+    let local_module_paths: HashSet<&str> = ir_modules.iter().map(|m| m.module_path.as_str()).collect();
+    for (path, ts) in root_view.all_exported_types() {
+        if local_module_paths.contains(path.as_str()) {
+            continue;
+        }
+        let TypeSummaryKind::Sum { variants } = &ts.kind else {
+            continue;
+        };
+        let qualified = format!("{}/{}", path.as_str(), ts.name);
+        qualified_sum_type_names.insert(qualified.clone());
+        for (tag, v) in variants.iter().enumerate() {
+            let tag = tag as u32;
+            let qkey = (qualified.clone(), tag);
+            variant_lookup.insert(qkey, v.name.clone());
+            let bare_key = (ts.name.clone(), tag);
+            if variant_lookup
+                .entry(bare_key)
+                .or_insert_with(|| v.name.clone())
+                == &v.name
+            {
+                bare_sum_type_names.insert(ts.name.clone());
             }
         }
     }
 
-    let reachable_modules = collect_reachable_modules(&ir_modules, &registry);
-    validate_js_extern_targets(&ir_modules, &reachable_modules, &module_sources)?;
+    // Build instance registry for dict dispatch resolution.
+    let registry = build_registry_from_link_view(&root_view, &ir_modules);
+
+    validate_js_extern_targets(&ir_modules, &root_view, &module_sources)?;
 
     let mut results = Vec::new();
     for ir_module in &ir_modules {
         let is_main = ir_module.name == main_module_name;
+        let view = link_ctx
+            .view_for(&LinkModulePath::new(ir_module.module_path.as_str()))
+            .unwrap_or_else(|| {
+                panic!("ICE: no LinkContext view for module '{}'", ir_module.module_path)
+            });
         let mut emitter = JsEmitter::new(
             ir_module,
             is_main && emit_main_call,
@@ -439,6 +525,7 @@ pub fn compile_modules_js(
             &qualified_sum_type_names,
             &bare_sum_type_names,
             &registry,
+            &view,
         );
         let js_source = emitter.emit();
         let filename = format!("{}.mjs", ir_module.name);
@@ -450,57 +537,90 @@ pub fn compile_modules_js(
 
 fn validate_js_extern_targets(
     ir_modules: &[Module],
-    reachable_modules: &HashSet<String>,
+    root_view: &ModuleLinkView<'_>,
     module_sources: &HashMap<String, Option<String>>,
 ) -> Result<(), JsCodegenError> {
     let mut missing = Vec::new();
 
+    // Pre-build name→summaries lookup from link view for imported externs.
+    let all_view_externs = root_view.all_extern_fns();
+
     for ir_module in ir_modules {
-        if !reachable_modules.contains(&ir_module.name) {
+        if !root_view.is_reachable(&LinkModulePath::new(ir_module.module_path.as_str())) {
             continue;
         }
         let referenced = collect_referenced_fns(ir_module);
-        let mut externs_by_id: HashMap<FnId, Vec<&krypton_ir::ExternFnDef>> = HashMap::new();
-        for ext in &ir_module.extern_fns {
-            if referenced.contains_key(&ext.id) {
-                externs_by_id.entry(ext.id).or_default().push(ext);
-            }
-        }
-        let imported_extern_fns = ir_module.imported_extern_fns();
-        for ext in &imported_extern_fns {
-            if referenced.contains_key(&ext.id) {
-                externs_by_id.entry(ext.id).or_default().push(ext);
+
+        // Index local extern fns by FnId.
+        let local_externs_by_id: HashMap<FnId, &krypton_ir::ExternFnDef> = ir_module
+            .extern_fns
+            .iter()
+            .filter(|ext| referenced.contains_key(&ext.id))
+            .map(|ext| (ext.id, ext))
+            .collect();
+
+        // Index imported extern summaries by name.
+        let mut imported_by_name: HashMap<&str, Vec<&krypton_typechecker::module_interface::ExternFnSummary>> = HashMap::new();
+        for (path, ef) in &all_view_externs {
+            if path.as_str() != ir_module.module_path.as_str() {
+                imported_by_name.entry(ef.name.as_str()).or_default().push(ef);
             }
         }
 
-        for (fn_id, use_span) in referenced {
-            let Some(entries) = externs_by_id.get(&fn_id) else {
+        for (fn_id, use_span) in &referenced {
+            // Local extern: has FnId, span, IR ExternTarget directly.
+            if let Some(ext) = local_externs_by_id.get(fn_id) {
+                if matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
+                    continue;
+                }
+                let fn_name = ir_module
+                    .fn_name(*fn_id)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| ext.name.clone());
+                missing.push(MissingExternTarget {
+                    function_name: fn_name,
+                    referencing_module: ir_module.module_path.as_str().to_string(),
+                    referencing_module_source: module_sources
+                        .get(ir_module.module_path.as_str())
+                        .cloned()
+                        .flatten()
+                        .or_else(|| module_sources.get(&ir_module.name).cloned().flatten()),
+                    available_targets: vec![format_extern_target(&ext.target)],
+                    is_root_module: ir_module.name == ir_modules[0].name,
+                    use_span: *use_span,
+                    declaring_module: ext.declaring_module_path.clone(),
+                    declaring_module_source: module_sources
+                        .get(&ext.declaring_module_path)
+                        .cloned()
+                        .flatten(),
+                    declaration_span: ext.span,
+                });
+                continue;
+            }
+
+            // Imported extern: matched by name via ExternFnSummary from link view.
+            let Some(fn_name) = ir_module.fn_name(*fn_id) else {
                 continue;
             };
-            if entries
+            let Some(summaries) = imported_by_name.get(fn_name) else {
+                continue;
+            };
+            if summaries
                 .iter()
-                .any(|ext| matches!(ext.target, krypton_ir::ExternTarget::Js { .. }))
+                .any(|ef| matches!(ef.target, krypton_parser::ast::ExternTarget::Js))
             {
                 continue;
             }
 
-            let fn_name = ir_module.fn_name(fn_id).map(|s| s.to_string()).unwrap_or_else(|| {
-                entries
-                    .first()
-                    .map(|ext| ext.name.clone())
-                    .unwrap_or_else(|| format!("fn_{}", fn_id.0))
-            });
-            let mut available_targets: Vec<String> = entries
+            let first = summaries[0];
+            let mut available_targets: Vec<String> = summaries
                 .iter()
-                .map(|ext| format_extern_target(&ext.target))
+                .map(|ef| format_summary_target(&ef.target, &ef.host_module_path))
                 .collect();
             available_targets.sort();
             available_targets.dedup();
-            let declaration = entries
-                .first()
-                .expect("extern entry missing after map lookup");
             missing.push(MissingExternTarget {
-                function_name: fn_name,
+                function_name: fn_name.to_string(),
                 referencing_module: ir_module.module_path.as_str().to_string(),
                 referencing_module_source: module_sources
                     .get(ir_module.module_path.as_str())
@@ -509,13 +629,13 @@ fn validate_js_extern_targets(
                     .or_else(|| module_sources.get(&ir_module.name).cloned().flatten()),
                 available_targets,
                 is_root_module: ir_module.name == ir_modules[0].name,
-                use_span,
-                declaring_module: declaration.declaring_module_path.clone(),
+                use_span: *use_span,
+                declaring_module: first.declaring_module.as_str().to_string(),
                 declaring_module_source: module_sources
-                    .get(&declaration.declaring_module_path)
+                    .get(first.declaring_module.as_str())
                     .cloned()
                     .flatten(),
-                declaration_span: declaration.span,
+                declaration_span: (0, 0),
             });
         }
     }
@@ -533,49 +653,17 @@ fn validate_js_extern_targets(
     }
 }
 
-fn collect_reachable_modules(
-    ir_modules: &[Module],
-    registry: &InstanceRegistry,
-) -> HashSet<String> {
-    let mut by_name: HashMap<&str, &Module> = HashMap::new();
-    for module in ir_modules {
-        by_name.insert(module.name.as_str(), module);
-    }
-
-    let Some(root) = ir_modules.first() else {
-        return HashSet::new();
-    };
-
-    let mut reachable = HashSet::new();
-    let mut stack = vec![root.name.clone()];
-    while let Some(module_name) = stack.pop() {
-        if !reachable.insert(module_name.clone()) {
-            continue;
-        }
-        let Some(module) = by_name.get(module_name.as_str()) else {
-            continue;
-        };
-        for imported in &module.imported_fns {
-            if !reachable.contains(&imported.source_module) {
-                stack.push(imported.source_module.clone());
-            }
-        }
-        for (trait_name, ty) in &module.imported_dict_refs() {
-            if let Some(source) = registry.find_source_module(trait_name, ty) {
-                if !reachable.contains(source) {
-                    stack.push(source.to_string());
-                }
-            }
-        }
-    }
-
-    reachable
-}
-
 fn format_extern_target(target: &krypton_ir::ExternTarget) -> String {
     match target {
         krypton_ir::ExternTarget::Java { class } => format!("java:{class}"),
         krypton_ir::ExternTarget::Js { module } => format!("js:{module}"),
+    }
+}
+
+fn format_summary_target(target: &krypton_parser::ast::ExternTarget, host_path: &str) -> String {
+    match target {
+        krypton_parser::ast::ExternTarget::Java => format!("java:{host_path}"),
+        krypton_parser::ast::ExternTarget::Js => format!("js:{host_path}"),
     }
 }
 
@@ -636,6 +724,74 @@ fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashMap<FnId, Span
     }
 }
 
+/// Collect all `(TraitName, Type)` pairs referenced by GetDict/MakeDict in a module's functions.
+fn collect_dict_refs(module: &Module) -> Vec<(TraitName, Type)> {
+    let mut refs = Vec::new();
+    let mut seen = HashSet::new();
+    for func in &module.functions {
+        collect_dict_refs_expr(&func.body, &mut refs, &mut seen);
+    }
+    refs
+}
+
+fn collect_dict_refs_expr(
+    expr: &Expr,
+    refs: &mut Vec<(TraitName, Type)>,
+    seen: &mut HashSet<(TraitName, Type)>,
+) {
+    match &expr.kind {
+        ExprKind::Let { value, body, .. } => {
+            collect_dict_refs_simple(value, refs, seen);
+            collect_dict_refs_expr(body, refs, seen);
+        }
+        ExprKind::LetRec { body, .. } => {
+            collect_dict_refs_expr(body, refs, seen);
+        }
+        ExprKind::LetJoin {
+            join_body, body, ..
+        } => {
+            collect_dict_refs_expr(join_body, refs, seen);
+            collect_dict_refs_expr(body, refs, seen);
+        }
+        ExprKind::BoolSwitch {
+            true_body,
+            false_body,
+            ..
+        } => {
+            collect_dict_refs_expr(true_body, refs, seen);
+            collect_dict_refs_expr(false_body, refs, seen);
+        }
+        ExprKind::Switch {
+            branches, default, ..
+        } => {
+            for branch in branches {
+                collect_dict_refs_expr(&branch.body, refs, seen);
+            }
+            if let Some(default) = default {
+                collect_dict_refs_expr(default, refs, seen);
+            }
+        }
+        ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
+    }
+}
+
+fn collect_dict_refs_simple(
+    expr: &SimpleExpr,
+    refs: &mut Vec<(TraitName, Type)>,
+    seen: &mut HashSet<(TraitName, Type)>,
+) {
+    match &expr.kind {
+        SimpleExprKind::GetDict { trait_name, ty, .. }
+        | SimpleExprKind::MakeDict { trait_name, ty, .. } => {
+            let key = (trait_name.clone(), ty.clone());
+            if seen.insert(key.clone()) {
+                refs.push(key);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Tracks info about a recur join point for while(true) + continue emission.
 struct RecurJoinInfo {
     param_names: Vec<String>,
@@ -676,6 +832,8 @@ pub(crate) struct JsEmitter<'a> {
     inline_joins: HashMap<VarId, InlineJoinInfo<'a>>,
     /// Instance registry for dict dispatch resolution.
     registry: &'a InstanceRegistry,
+    /// Link view for cross-module metadata lookups.
+    link_view: &'a ModuleLinkView<'a>,
 }
 
 impl<'a> JsEmitter<'a> {
@@ -689,6 +847,7 @@ impl<'a> JsEmitter<'a> {
         qualified_sum_type_names: &'a HashSet<String>,
         bare_sum_type_names: &'a HashSet<String>,
         registry: &'a InstanceRegistry,
+        link_view: &'a ModuleLinkView<'a>,
     ) -> Self {
         JsEmitter {
             output: String::new(),
@@ -704,6 +863,7 @@ impl<'a> JsEmitter<'a> {
             recur_joins: HashMap::new(),
             inline_joins: HashMap::new(),
             registry,
+            link_view,
         }
     }
 
@@ -939,11 +1099,14 @@ impl<'a> JsEmitter<'a> {
         // ── Krypton-to-Krypton imports ──
         // Skip names that will be imported via extern JS imports — the source
         // module's JS output doesn't re-export its extern methods.
-        let imported_extern_fns = self.module.imported_extern_fns();
+        let imported_extern_fns: Vec<_> = self.link_view.all_extern_fns()
+            .into_iter()
+            .filter(|(path, _)| path.as_str() != self.module.module_path.as_str())
+            .collect();
         let imported_extern_js_names: HashSet<&str> = imported_extern_fns
             .iter()
-            .filter(|e| !e.nullable && matches!(e.target, krypton_ir::ExternTarget::Js { .. }))
-            .map(|e| e.name.as_str())
+            .filter(|(_, e)| !e.nullable && matches!(e.target, krypton_parser::ast::ExternTarget::Js))
+            .map(|(_, e)| e.name.as_str())
             .collect();
         let mut by_module: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
         for imp in &self.module.imported_fns {
@@ -1029,12 +1192,13 @@ impl<'a> JsEmitter<'a> {
                     .push(specifier);
             }
         }
-        for ext in imported_extern_fns
+        for (_, ext) in imported_extern_fns
             .iter()
-            .filter(|e| !e.nullable && !local_fn_names.contains(e.name.as_str()))
+            .filter(|(_, e)| !e.nullable && !local_fn_names.contains(e.name.as_str()))
         {
-            if let krypton_ir::ExternTarget::Js { module } = &ext.target {
-                let resolved = self.resolve_extern_js_path(module, &ext.declaring_module_path);
+            if matches!(ext.target, krypton_parser::ast::ExternTarget::Js) {
+                let resolved =
+                    self.resolve_extern_js_path(&ext.host_module_path, ext.declaring_module.as_str());
                 extern_by_resolved
                     .entry(resolved)
                     .or_default()
@@ -1072,10 +1236,11 @@ impl<'a> JsEmitter<'a> {
         }
 
         // ── Cross-module dict imports ──
-        // Uses imported_dict_refs metadata recorded during IR lowering.
+        // Collect dict refs by walking IR function bodies for GetDict/MakeDict nodes.
         {
+            let dict_refs = collect_dict_refs(self.module);
             let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
-            for (trait_name, ty) in &self.module.imported_dict_refs() {
+            for (trait_name, ty) in &dict_refs {
                 let js_name = self.resolve_dict_js_name(trait_name, ty);
                 if let Some(source) = self.registry.find_source_module(trait_name, ty) {
                     // Skip instances that are locally defined — they're emitted, not imported.
@@ -1917,28 +2082,37 @@ impl<'a> JsEmitter<'a> {
                     _ => None,
                 };
                 if let Some(named) = named {
-                    let imported_structs = self.module.imported_structs();
                     if let Some((module_path, type_name)) = named.rsplit_once('/') {
-                        for s in &imported_structs {
-                            if s.module_path == module_path
-                                && s.name == type_name
-                                && field_index < s.fields.len()
-                            {
-                                return s.fields[field_index].0.clone();
+                        // Qualified name: look up from link view
+                        let link_path = LinkModulePath::new(module_path);
+                        if let Some(ts) = self.link_view.lookup_type_summary(&link_path, type_name) {
+                            if let TypeSummaryKind::Record { fields } = &ts.kind {
+                                if field_index < fields.len() {
+                                    return fields[field_index].0.clone();
+                                }
                             }
                         }
                     } else {
+                        // Bare name: try local structs first
                         for s in &self.module.structs {
                             if s.name == named && field_index < s.fields.len() {
                                 return s.fields[field_index].0.clone();
                             }
                         }
-                        let mut imported = imported_structs
-                            .iter()
-                            .filter(|s| s.name == named);
-                        if let Some(s) = imported.next() {
-                            if imported.next().is_none() && field_index < s.fields.len() {
-                                return s.fields[field_index].0.clone();
+                        // Then try imported types from link view
+                        let matches: Vec<_> = self.link_view.all_exported_types()
+                            .into_iter()
+                            .filter(|(path, ts)| {
+                                path.as_str() != self.module.module_path.as_str()
+                                    && ts.name == named
+                                    && matches!(ts.kind, TypeSummaryKind::Record { .. })
+                            })
+                            .collect();
+                        if matches.len() == 1 {
+                            if let TypeSummaryKind::Record { fields } = &matches[0].1.kind {
+                                if field_index < fields.len() {
+                                    return fields[field_index].0.clone();
+                                }
                             }
                         }
                     }
@@ -2030,6 +2204,9 @@ mod tests {
         CanonicalRef, ExternFnDef, ExternTarget, FnDef, ImportManifest, ImportedFnDef,
         LocalSymbolKey, ManifestExternFn, Module, ModulePath,
     };
+    use krypton_typechecker::link_context::LinkContext;
+    use krypton_typechecker::module_interface::ModuleInterface;
+    use krypton_typechecker::typed_ast::ParamQualifier;
     use std::collections::{BTreeSet, HashMap, HashSet};
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
@@ -2060,11 +2237,32 @@ mod tests {
         }
     }
 
+    fn test_link_ctx(module_path: &str) -> LinkContext {
+        let iface = ModuleInterface {
+            module_path: LinkModulePath::new(module_path),
+            direct_deps: vec![],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_fns: vec![],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        LinkContext::build(vec![iface])
+    }
+
     fn emit_test_module(module: &Module) -> String {
         let registry = build_registry_for_modules(&[module]);
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = HashSet::new();
         let bare_sum_type_names = HashSet::new();
+        let link_ctx = test_link_ctx(module.module_path.as_str());
+        let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
         let mut emitter = JsEmitter::new(
             module,
             false,
@@ -2072,6 +2270,7 @@ mod tests {
             &qualified_sum_type_names,
             &bare_sum_type_names,
             &registry,
+            &view,
         );
         emitter.emit()
     }
@@ -2107,6 +2306,8 @@ mod tests {
 
     #[test]
     fn imported_nullable_js_extern_uses_module_import_not_raw_extern_import() {
+        use krypton_typechecker::module_interface::ExternFnSummary;
+
         let mut module = test_module("app/main");
         module.imported_fns.push(ImportedFnDef {
             id: FnId(2),
@@ -2116,24 +2317,77 @@ mod tests {
             param_types: vec![Type::String],
             return_type: Type::Named("Option".to_string(), vec![Type::Int]),
         });
-        module.imports.extern_fns.push(ManifestExternFn {
-            canonical: CanonicalRef {
-                module: ModulePath::new("stringlib"),
-                symbol: LocalSymbolKey::Function("parse_int".to_string()),
-            },
-            id: FnId(2),
-            name: "parse_int".to_string(),
-            declaring_module_path: "stringlib".to_string(),
-            span: (0, 0),
-            target: ExternTarget::Js {
-                module: "../runtime/js/string.mjs".to_string(),
-            },
-            nullable: true,
-            param_types: vec![Type::String],
-            return_type: Type::Named("Option".to_string(), vec![Type::Int]),
-        });
 
-        let output = emit_test_module(&module);
+        // Build a LinkContext that has the extern fn in stringlib's interface
+        let stringlib_iface = ModuleInterface {
+            module_path: LinkModulePath::new("stringlib"),
+            direct_deps: vec![],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_fns: vec![ExternFnSummary {
+                name: "parse_int".to_string(),
+                declaring_module: LinkModulePath::new("stringlib"),
+                host_module_path: "../runtime/js/string.mjs".to_string(),
+                target: krypton_parser::ast::ExternTarget::Js,
+                nullable: true,
+                param_types: vec![krypton_typechecker::types::Type::String],
+                return_type: krypton_typechecker::types::Type::Named(
+                    "Option".to_string(),
+                    vec![krypton_typechecker::types::Type::Int],
+                ),
+            }],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        let main_iface = ModuleInterface {
+            module_path: LinkModulePath::new("app/main"),
+            direct_deps: vec![LinkModulePath::new("stringlib")],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_fns: vec![ExternFnSummary {
+                name: "parse_int".to_string(),
+                declaring_module: LinkModulePath::new("stringlib"),
+                host_module_path: "../runtime/js/string.mjs".to_string(),
+                target: krypton_parser::ast::ExternTarget::Js,
+                nullable: true,
+                param_types: vec![krypton_typechecker::types::Type::String],
+                return_type: krypton_typechecker::types::Type::Named(
+                    "Option".to_string(),
+                    vec![krypton_typechecker::types::Type::Int],
+                ),
+            }],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        let link_ctx = LinkContext::build(vec![main_iface, stringlib_iface]);
+        let view = link_ctx.view_for(&LinkModulePath::new("app/main")).unwrap();
+
+        let registry = build_registry_for_modules(&[&module]);
+        let variant_lookup = HashMap::new();
+        let qualified_sum_type_names = HashSet::new();
+        let bare_sum_type_names = HashSet::new();
+        let mut emitter = JsEmitter::new(
+            &module,
+            false,
+            &variant_lookup,
+            &qualified_sum_type_names,
+            &bare_sum_type_names,
+            &registry,
+            &view,
+        );
+        let output = emitter.emit();
         assert!(output.contains("import { parse_int } from '../stringlib.mjs';"));
         assert!(!output.contains("runtime/js/string.mjs"));
     }
@@ -2198,9 +2452,10 @@ mod tests {
             ),
         });
 
-        let reachable = HashSet::from([module.name.clone()]);
+        let link_ctx = test_link_ctx("test");
+        let view = link_ctx.view_for(&LinkModulePath::new("test")).unwrap();
         let module_sources = HashMap::from([("test".to_string(), None)]);
-        let err = validate_js_extern_targets(&[module], &reachable, &module_sources)
+        let err = validate_js_extern_targets(&[module], &view, &module_sources)
             .expect_err("referenced Java-only extern should fail");
         assert!(err.to_string().contains("println"));
     }
@@ -2230,9 +2485,10 @@ mod tests {
             body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
         });
 
-        let reachable = HashSet::from([module.name.clone()]);
+        let link_ctx = test_link_ctx("test");
+        let view = link_ctx.view_for(&LinkModulePath::new("test")).unwrap();
         let module_sources = HashMap::from([("test".to_string(), None)]);
-        validate_js_extern_targets(&[module], &reachable, &module_sources)
+        validate_js_extern_targets(&[module], &view, &module_sources)
             .expect("unreferenced Java-only extern should pass");
     }
 }
