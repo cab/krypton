@@ -2150,7 +2150,7 @@ const JS_INTRINSICS: &[(&str, &str, &str, &str)] = &[
     ("Hash", "String", "hash", "(x) => { let h = 0; for (let i = 0; i < x.length; i++) { h = (Math.imul(31, h) + x.charCodeAt(i)) | 0; } return h; }"),
 ];
 
-/// Lookup a single intrinsic body. Used by M23-T6 for inline TraitCall optimization.
+/// Lookup a single intrinsic body. Used for inline TraitCall optimization.
 pub fn js_intrinsic_body(
     trait_name: &str,
     type_name: &str,

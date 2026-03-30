@@ -642,7 +642,7 @@ pub struct Module {
     /// (JVM: exception table finally handlers, JS: try/finally, etc.).
     ///
     /// Future: consider promoting to explicit IR unwind semantics (invoke/landingpad)
-    /// rather than side metadata. See BL-T5 for related variable identity work.
+    /// rather than side metadata.
     pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
 
     // --- Cross-module metadata (self-contained compilation unit) ---

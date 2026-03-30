@@ -1481,7 +1481,7 @@ fn mutual_type_refs_ok() {
     );
 }
 
-// ── Multi-module typechecking (M11-T2b) ──
+// ── Multi-module typechecking ──
 
 #[test]
 fn infer_module_returns_all_modules() {

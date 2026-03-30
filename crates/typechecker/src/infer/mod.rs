@@ -3656,7 +3656,7 @@ fn infer_function_bodies<'a>(
     let adj = scc::build_dependency_graph(&fn_decls);
     let sccs = scc::tarjan_scc(&adj);
 
-    // TODO(BL-T6 follow-up): include imported extern fn names once extern fns
+    // TODO: include imported extern fn names once extern fns
     // are unified with regular fn_types in the typechecker.
     let extern_fn_names: HashSet<String> = extern_fns.iter().map(|ef| ef.name.clone()).collect();
 

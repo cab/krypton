@@ -1,6 +1,6 @@
 /// Static invariant: codegen must not import TypedModule.
 ///
-/// After M27-T11, lowering happens before codegen. The codegen crate receives
+/// Lowering happens before codegen. The codegen crate receives
 /// only IR modules, never TypedModule. This test greps the codegen source files
 /// to ensure no one re-introduces a TypedModule dependency.
 #[test]

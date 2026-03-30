@@ -73,7 +73,7 @@ impl TypeRegistry {
             });
         }
         // Vec[a] — registered as a builtin so orphan checks and arity checks work.
-        // The real implementation lives in stdlib/core/vec.kr (future M11-T29).
+        // The real implementation lives in stdlib/core/vec.kr.
         self.types.entry("Vec".to_string()).or_insert(TypeInfo {
             name: "Vec".to_string(),
             type_params: vec!["a".to_string()],

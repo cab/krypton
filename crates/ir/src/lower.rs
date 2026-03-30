@@ -5774,7 +5774,7 @@ pub fn lower_module(
         } else {
             // Not in callable_ids: lifted synthetics (lambda$, ctor$, fn_ref$,
             // trait_ref$) and nullary constructors referenced by name.
-            // TODO(M27): nullary constructors shouldn't have FnIds — they lower
+            // TODO: nullary constructors shouldn't have FnIds — they lower
             // to ConstructVariant, not FnDef. Clean up in a follow-up.
             FnIdentity::Local { name: name.clone() }
         };
