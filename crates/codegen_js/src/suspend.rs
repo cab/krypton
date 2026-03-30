@@ -226,18 +226,17 @@ fn walk_expr(
             for (var_id, ty) in params {
                 var_types.insert(*var_id, ty.clone());
             }
-            // Non-recur join bodies are inlined at the call site, so if
-            // the join body suspends, the enclosing function suspends.
-            if !is_recur {
-                walk_expr(
-                    join_body,
-                    module,
-                    mod_idx,
-                    closure_origins,
-                    var_types,
-                    fn_edges,
-                );
-            }
+            // Both recur and non-recur join bodies are inlined (as
+            // while(true) loops or helper functions), so if the join body
+            // suspends, the enclosing function suspends.
+            walk_expr(
+                join_body,
+                module,
+                mod_idx,
+                closure_origins,
+                var_types,
+                fn_edges,
+            );
             walk_expr(body, module, mod_idx, closure_origins, var_types, fn_edges);
         }
         ExprKind::BoolSwitch {
