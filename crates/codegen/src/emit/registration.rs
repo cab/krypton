@@ -1005,15 +1005,17 @@ impl<'link> Compiler<'link> {
                 .insert(name.clone(), (tc_param_types, fn_def.return_type.clone()));
         }
 
+        // Register wrapper method refs for all Java externs (nullable and non-nullable).
+        // The wrapper lives on this_class; consumers import it as a regular function.
         for ext in ir_module
             .extern_fns
             .iter()
-            .filter(|ext| ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
+            .filter(|ext| matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
         {
             let wrapper_param_types: Vec<JvmType> = ext
                 .param_types
                 .iter()
-                .map(|ty| extern_param_info(self, ty).map(|(jvm, _)| jvm))
+                .map(|ty| self.type_to_jvm(ty))
                 .collect::<Result<_, _>>()?;
             let wrapper_return_type = self.type_to_jvm(&ext.return_type)?;
             let wrapper_desc = self
@@ -1030,13 +1032,8 @@ impl<'link> Compiler<'link> {
             });
         }
 
-        // Extern functions: local externs first
-        let local_nullable_java_externs: std::collections::HashSet<&str> = ir_module
-            .extern_fns
-            .iter()
-            .filter(|ext| ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
-            .map(|ext| ext.name.as_str())
-            .collect();
+        // Register raw extern method refs (pointing to the actual Java host class).
+        // These are used by the wrapper body to invoke the real extern.
         for ext in &ir_module.extern_fns {
             let (_, extern_class) = match &ext.target {
                 krypton_ir::ExternTarget::Java { class } => {
@@ -1071,67 +1068,7 @@ impl<'link> Compiler<'link> {
                 is_void,
             };
 
-            if ext.nullable {
-                if local_nullable_java_externs.contains(ext.name.as_str()) {
-                    self.raw_extern_functions.insert(ext.name.clone(), info);
-                }
-                continue;
-            }
-
-            self.types
-                .functions
-                .entry(ext.name.clone())
-                .or_insert_with(|| vec![info]);
-        }
-
-        // Imported extern functions from link view
-        for (path, ef) in self.link_view.all_extern_fns() {
-            if path.as_str() == ir_module.module_path.as_str() { continue; }
-            let extern_class = match &ef.target {
-                krypton_parser::ast::ExternTarget::Java => {
-                    let jvm = ef.host_module_path.replace('.', "/");
-                    self.cp.add_class(&jvm)?
-                }
-                krypton_parser::ast::ExternTarget::Js => continue,
-            };
-
-            let ir_param_types: Vec<krypton_ir::Type> = ef.param_types.iter()
-                .map(|ty| krypton_ir::Type::from(ty.clone()))
-                .collect();
-            let ir_return_type: krypton_ir::Type = ef.return_type.clone().into();
-
-            let mut param_jvm_types = Vec::new();
-            let mut param_desc = String::from("(");
-            for pt in &ir_param_types {
-                let (jvm, desc) = extern_param_info(self, pt)?;
-                param_jvm_types.push(jvm);
-                param_desc.push_str(&desc);
-            }
-            param_desc.push(')');
-
-            let (return_type, ret_desc, is_void) =
-                extern_return_info(self, &ir_return_type, ef.nullable)?;
-
-            let descriptor = format!("{param_desc}{ret_desc}");
-            let method_ref = self
-                .cp
-                .add_method_ref(extern_class, &ef.name, &descriptor)?;
-
-            let info = FunctionInfo {
-                method_ref,
-                param_types: param_jvm_types,
-                return_type,
-                is_void,
-            };
-
-            if ef.nullable {
-                continue;
-            }
-
-            self.types
-                .functions
-                .entry(ef.name.clone())
-                .or_insert_with(|| vec![info]);
+            self.raw_extern_functions.insert(ext.name.clone(), info);
         }
 
         // Imported functions
@@ -1240,9 +1177,13 @@ impl<'link> Compiler<'link> {
         for ext in ir_module
             .extern_fns
             .iter()
-            .filter(|ext| ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
+            .filter(|ext| matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
         {
-            extra_methods.push(self.compile_nullable_extern_wrapper(ext)?);
+            if ext.nullable {
+                extra_methods.push(self.compile_nullable_extern_wrapper(ext)?);
+            } else {
+                extra_methods.push(self.compile_nonnullable_extern_wrapper(ext)?);
+            }
         }
         Ok(extra_methods)
     }
@@ -1350,6 +1291,91 @@ impl<'link> Compiler<'link> {
         self.emit_type_coercion(actual_jvm, expected);
         self.emit_variant_invokespecial(some_ctor, &some_fields, option_iface);
         self.builder.emit(Instruction::Areturn);
+
+        let descriptor = self
+            .types
+            .build_descriptor(&wrapper_info.param_types, wrapper_info.return_type);
+        let name_idx = self.cp.add_utf8(&ext.name)?;
+        let desc_idx = self.cp.add_utf8(&descriptor)?;
+
+        Ok(Method {
+            access_flags: ristretto_classfile::MethodAccessFlags::PUBLIC
+                | ristretto_classfile::MethodAccessFlags::STATIC,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            attributes: vec![self.builder.finish_method()],
+        })
+    }
+
+    fn compile_nonnullable_extern_wrapper(
+        &mut self,
+        ext: &krypton_ir::ExternFnDef,
+    ) -> Result<Method, CodegenError> {
+        self.reset_method_state();
+
+        let wrapper_info = self
+            .types
+            .get_function(&ext.name)
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "ICE: No wrapper FunctionInfo for non-nullable extern '{}'",
+                    ext.name
+                )
+            });
+        let raw_info = self
+            .raw_extern_functions
+            .get(&ext.name)
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "ICE: No raw FunctionInfo for non-nullable extern '{}'",
+                    ext.name
+                )
+            });
+
+        let mut param_slots = Vec::new();
+        for &jvm_ty in &wrapper_info.param_types {
+            let slot = self.builder.next_local;
+            let slot_size: u16 = match jvm_ty {
+                JvmType::Long | JvmType::Double => 2,
+                _ => 1,
+            };
+            self.builder.next_local += slot_size;
+            self.builder
+                .frame
+                .local_types
+                .extend(self.builder.jvm_type_to_vtypes(jvm_ty));
+            param_slots.push((slot, jvm_ty));
+        }
+        self.builder.fn_params = param_slots.clone();
+        self.builder.fn_return_type = Some(wrapper_info.return_type);
+
+        // Load params and invoke the raw extern
+        for (slot, jvm_ty) in &param_slots {
+            self.builder.emit_load(*slot, *jvm_ty);
+        }
+        for jvm_ty in raw_info.param_types.iter().rev() {
+            self.builder.pop_jvm_type(*jvm_ty);
+        }
+        self.builder.emit(Instruction::Invokestatic(raw_info.method_ref));
+
+        if raw_info.is_void {
+            // Void externs (e.g. println): push Unit value (0) and return
+            self.builder.emit(Instruction::Iconst_0);
+            self.builder.push_jvm_type(JvmType::Int);
+        } else {
+            self.builder.push_jvm_type(raw_info.return_type);
+            self.emit_type_coercion(raw_info.return_type, wrapper_info.return_type);
+        }
+
+        let ret_instr = match wrapper_info.return_type {
+            JvmType::Long => Instruction::Lreturn,
+            JvmType::Double => Instruction::Dreturn,
+            JvmType::Int => Instruction::Ireturn,
+            JvmType::StructRef(_) => Instruction::Areturn,
+        };
+        self.builder.emit(ret_instr);
 
         let descriptor = self
             .types

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__op_same_method_name
 
-trait Joinable[n8] { join(n8, n8): n8 }
+trait Joinable[d9] { join(d9, d9): d9 }
 instance traits__op_same_method_name.Joinable[String] { join=Joinable$$String$$join }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -12,20 +12,20 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/io/println as println(o): Unit
-declare println: (o) -> Unit
+import core/io/println as println(s): Unit
+declare println: (s) -> Unit
 
-fn apply_combine(v0: Dict[core/semigroup.Semigroup, t8], v1: t8, v2: t8) -> t8 =
-  let v3: t8 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
+fn apply_combine(v0: Dict[core/semigroup.Semigroup, j9], v1: j9, v2: j9) -> j9 =
+  let v3: j9 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
   v3
 
-fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, z8], v5: z8, v6: z8) -> z8 =
-  let v7: z8 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
+fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, p9], v5: p9, v6: p9) -> p9 =
+  let v7: p9 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
   v7
 
 fn main() -> Unit =

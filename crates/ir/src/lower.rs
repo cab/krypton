@@ -5578,18 +5578,6 @@ pub fn lower_module(
             );
         }
     }
-    // Imported extern fns need FnIds for call resolution during lowering,
-    // even though they are not emitted into the IR module's extern_fns list.
-    for (_, ef) in link_view.all_extern_fns() {
-        if !ctx.fn_ids.contains_key(&ef.name) {
-            let fn_id = ctx.fresh_fn();
-            ctx.fn_ids.insert(ef.name.clone(), fn_id);
-            ctx.callable_ids.insert(
-                QualifiedName::new(ef.declaring_module.as_str().to_string(), ef.name.clone()),
-                fn_id,
-            );
-        }
-    }
     // Imported functions (from fn_types entries with provenance)
     for entry in &typed.fn_types {
         // Nullary constructors have Type::Named, not Type::Fn.

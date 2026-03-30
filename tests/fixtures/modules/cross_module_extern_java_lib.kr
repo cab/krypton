@@ -1,0 +1,5 @@
+extern java "java.lang.Math" {
+    pub fun abs(n: Int) -> Int
+}
+
+pub fun negate(x: Int) -> Int = 0 - x

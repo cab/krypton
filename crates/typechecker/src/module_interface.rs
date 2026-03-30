@@ -4,7 +4,7 @@ use std::fmt;
 use krypton_parser::ast::{ExternTarget, Span, Visibility};
 
 use crate::typed_ast::{
-    ExportedFn, ExportedTypeKind, ExternFnInfo, ExternTypeInfo, InstanceDefInfo, ParamQualifier,
+    ExportedFn, ExportedTypeKind, ExternTypeInfo, InstanceDefInfo, ParamQualifier,
     TraitName, TypedModule,
 };
 use crate::types::{Type, TypeScheme, TypeVarId};
@@ -119,7 +119,6 @@ pub struct ModuleInterface {
     pub reexported_types: Vec<ReexportedTypeEntry>,
     pub exported_traits: Vec<TraitSummary>,
     pub exported_instances: Vec<InstanceSummary>,
-    pub extern_fns: Vec<ExternFnSummary>,
     pub extern_types: Vec<ExternTypeSummary>,
     pub exported_fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
     pub type_visibility: HashMap<String, Visibility>,
@@ -222,18 +221,6 @@ pub struct InstanceMethodSummary {
     pub constraint_pairs: Vec<(TraitName, TypeVarId)>,
 }
 
-/// Extern function ownership summary.
-#[derive(Clone, Debug)]
-pub struct ExternFnSummary {
-    pub name: String,
-    pub declaring_module: ModulePath,
-    pub host_module_path: String,
-    pub target: ExternTarget,
-    pub nullable: bool,
-    pub param_types: Vec<Type>,
-    pub return_type: Type,
-}
-
 /// Extern type ownership summary.
 #[derive(Clone, Debug)]
 pub struct ExternTypeSummary {
@@ -294,7 +281,6 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
     let reexported_types = extract_reexported_types(typed);
     let exported_traits = extract_exported_traits(typed);
     let exported_instances = extract_instances(&typed.instance_defs);
-    let extern_fns = extract_extern_fns(&typed.extern_fns);
     let extern_types = extract_extern_types(&typed.extern_types);
 
     // Build private_names: all top-level names that exist but aren't exported.
@@ -309,7 +295,6 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
         reexported_types,
         exported_traits,
         exported_instances,
-        extern_fns,
         extern_types,
         exported_fn_qualifiers: typed.exported_fn_qualifiers.clone(),
         type_visibility: typed.type_visibility.clone(),
@@ -541,21 +526,6 @@ fn extract_instances(instances: &[InstanceDefInfo]) -> Vec<InstanceSummary> {
         .collect()
 }
 
-fn extract_extern_fns(externs: &[ExternFnInfo]) -> Vec<ExternFnSummary> {
-    externs
-        .iter()
-        .map(|ef| ExternFnSummary {
-            name: ef.name.clone(),
-            declaring_module: ModulePath::new(&ef.declaring_module_path),
-            host_module_path: ef.module_path.clone(),
-            target: ef.target.clone(),
-            nullable: ef.nullable,
-            param_types: ef.param_types.clone(),
-            return_type: ef.return_type.clone(),
-        })
-        .collect()
-}
-
 fn extract_extern_types(externs: &[ExternTypeInfo]) -> Vec<ExternTypeSummary> {
     externs
         .iter()
@@ -738,27 +708,6 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
             for m in &inst.method_summaries {
                 out.push_str(&format!("    {}: {}\n", m.name, m.scheme));
             }
-        }
-    }
-
-    if !iface.extern_fns.is_empty() {
-        out.push_str("\nextern fns:\n");
-        let mut efns: Vec<_> = iface.extern_fns.iter().collect();
-        efns.sort_by_key(|e| &e.name);
-        for e in efns {
-            out.push_str(&format!(
-                "  {}{} ({:?} \"{}\") : ({}) -> {}\n",
-                e.name,
-                if e.nullable { " [nullable]" } else { "" },
-                e.target,
-                e.host_module_path,
-                e.param_types
-                    .iter()
-                    .map(|t| format!("{t}"))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                e.return_type,
-            ));
         }
     }
 

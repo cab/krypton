@@ -10,22 +10,22 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-fn ok_val() -> Result[p8, Int] =
-  let v0: ~Result[p8, Int] = construct Result::Ok#0(42)
+fn ok_val() -> Result[f9, Int] =
+  let v0: ~Result[f9, Int] = construct Result::Ok#0(42)
   v0
 
-fn err_val() -> Result[String, v8] =
-  let v1: ~Result[String, v8] = construct Result::Err#1("oops")
+fn err_val() -> Result[String, l9] =
+  let v1: ~Result[String, l9] = construct Result::Err#1("oops")
   v1
 
 fn main() -> Int =
-  let v2: Result[d9, Int] = call ok_val()
+  let v2: Result[t9, Int] = call ok_val()
   switch v2 {
     0 (v3: Int) ->
       v3

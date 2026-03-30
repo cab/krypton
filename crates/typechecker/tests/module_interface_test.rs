@@ -365,40 +365,6 @@ impl Show[Color] {
 }
 
 #[test]
-fn extract_interface_extern_fn() {
-    let src = r#"
-extern java "java.lang.Math" {
-    pub fun abs(n: Int) -> Int
-}
-"#;
-    let iface = typecheck_and_extract(src);
-    let ef = iface
-        .extern_fns
-        .iter()
-        .find(|e| e.name == "abs")
-        .expect("abs should be in extern_fns");
-    assert_eq!(ef.declaring_module, ModulePath::new("test"));
-    assert_eq!(ef.host_module_path, "java.lang.Math");
-    assert!(!ef.nullable);
-}
-
-#[test]
-fn extract_interface_nullable_extern_fn() {
-    let src = r#"
-extern java "java.lang.Integer" {
-    @nullable pub fun parse_int(s: String) -> Option[Int]
-}
-"#;
-    let iface = typecheck_and_extract(src);
-    let ef = iface
-        .extern_fns
-        .iter()
-        .find(|e| e.name == "parse_int")
-        .expect("parse_int should be in extern_fns");
-    assert!(ef.nullable);
-}
-
-#[test]
 fn extract_interface_no_transitive_deps() {
     let iface = extract_multi(
         "import mylib.{helper}\nfun main() = helper()",

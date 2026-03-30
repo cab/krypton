@@ -30,5 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Box: forall a. (a) -> Box[a]
-Functor$$Box$$fmap: (Box[x8], (x8) -> z8) -> ~Box[z8]
-Container$$Box$$wrap: (s8) -> ~Box[s8]
+Functor$$Box$$fmap: (Box[n9], (n9) -> p9) -> ~Box[p9]
+Container$$Box$$wrap: (i9) -> ~Box[i9]

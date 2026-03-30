@@ -527,9 +527,6 @@ fn validate_js_extern_targets(
 ) -> Result<(), JsCodegenError> {
     let mut missing = Vec::new();
 
-    // Pre-build name→summaries lookup from link view for imported externs.
-    let all_view_externs = root_view.all_extern_fns();
-
     for ir_module in ir_modules {
         if !root_view.is_reachable(&LinkModulePath::new(ir_module.module_path.as_str())) {
             continue;
@@ -544,16 +541,9 @@ fn validate_js_extern_targets(
             .map(|ext| (ext.id, ext))
             .collect();
 
-        // Index imported extern summaries by name.
-        let mut imported_by_name: HashMap<&str, Vec<&krypton_typechecker::module_interface::ExternFnSummary>> = HashMap::new();
-        for (path, ef) in &all_view_externs {
-            if path.as_str() != ir_module.module_path.as_str() {
-                imported_by_name.entry(ef.name.as_str()).or_default().push(ef);
-            }
-        }
-
         for (fn_id, use_span) in &referenced {
-            // Local extern: has FnId, span, IR ExternTarget directly.
+            // Only local externs need validation — imported externs are now
+            // accessed through the defining module's wrapper, not directly.
             if let Some(ext) = local_externs_by_id.get(fn_id) {
                 if matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
                     continue;
@@ -580,48 +570,7 @@ fn validate_js_extern_targets(
                         .flatten(),
                     declaration_span: ext.span,
                 });
-                continue;
             }
-
-            // Imported extern: matched by name via ExternFnSummary from link view.
-            let Some(fn_name) = ir_module.fn_name(*fn_id) else {
-                continue;
-            };
-            let Some(summaries) = imported_by_name.get(fn_name) else {
-                continue;
-            };
-            if summaries
-                .iter()
-                .any(|ef| matches!(ef.target, krypton_parser::ast::ExternTarget::Js))
-            {
-                continue;
-            }
-
-            let first = summaries[0];
-            let mut available_targets: Vec<String> = summaries
-                .iter()
-                .map(|ef| format_summary_target(&ef.target, &ef.host_module_path))
-                .collect();
-            available_targets.sort();
-            available_targets.dedup();
-            missing.push(MissingExternTarget {
-                function_name: fn_name.to_string(),
-                referencing_module: ir_module.module_path.as_str().to_string(),
-                referencing_module_source: module_sources
-                    .get(ir_module.module_path.as_str())
-                    .cloned()
-                    .flatten()
-                    .or_else(|| module_sources.get(&ir_module.name).cloned().flatten()),
-                available_targets,
-                is_root_module: ir_module.name == ir_modules[0].name,
-                use_span: *use_span,
-                declaring_module: first.declaring_module.as_str().to_string(),
-                declaring_module_source: module_sources
-                    .get(first.declaring_module.as_str())
-                    .cloned()
-                    .flatten(),
-                declaration_span: (0, 0),
-            });
         }
     }
 
@@ -642,13 +591,6 @@ fn format_extern_target(target: &krypton_ir::ExternTarget) -> String {
     match target {
         krypton_ir::ExternTarget::Java { class } => format!("java:{class}"),
         krypton_ir::ExternTarget::Js { module } => format!("js:{module}"),
-    }
-}
-
-fn format_summary_target(target: &krypton_parser::ast::ExternTarget, host_path: &str) -> String {
-    match target {
-        krypton_parser::ast::ExternTarget::Java => format!("java:{host_path}"),
-        krypton_parser::ast::ExternTarget::Js => format!("js:{host_path}"),
     }
 }
 
@@ -894,6 +836,7 @@ impl<'a> JsEmitter<'a> {
         self.emit_sum_types();
         self.emit_dict_instances();
         self.emit_nullable_extern_wrappers();
+        self.emit_nonnullable_extern_wrappers();
         self.emit_functions();
         if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
             self.writeln("main();");
@@ -1066,6 +1009,10 @@ impl<'a> JsEmitter<'a> {
         format!("__krypton_nullable_raw${}", js_safe_name(name))
     }
 
+    fn raw_extern_alias(name: &str) -> String {
+        format!("__krypton_raw${}", js_safe_name(name))
+    }
+
     /// Extract the sum type name from an IR type, if it names a known sum type.
     /// Returns the key used in variant_lookup: prefers the full qualified name,
     /// falls back to bare name for backward compat.
@@ -1101,7 +1048,7 @@ impl<'a> JsEmitter<'a> {
             local_names.insert(&f.name);
         }
         for ext in &self.module.extern_fns {
-            if ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
+            if matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
                 local_names.insert(&ext.name);
             }
         }
@@ -1118,22 +1065,10 @@ impl<'a> JsEmitter<'a> {
         let mut emitted_any = false;
 
         // ── Krypton-to-Krypton imports ──
-        // Skip names that will be imported via extern JS imports — the source
-        // module's JS output doesn't re-export its extern methods.
-        let imported_extern_fns: Vec<_> = self.link_view.all_extern_fns()
-            .into_iter()
-            .filter(|(path, _)| path.as_str() != self.module.module_path.as_str())
-            .collect();
-        let imported_extern_js_names: HashSet<&str> = imported_extern_fns
-            .iter()
-            .filter(|(_, e)| !e.nullable && matches!(e.target, krypton_parser::ast::ExternTarget::Js))
-            .map(|(_, e)| e.name.as_str())
-            .collect();
+        // The defining module now wraps all externs (nullable and non-nullable),
+        // so consumers import them as regular functions through the Krypton module path.
         let mut by_module: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
         for imp in &self.module.imported_fns {
-            if imported_extern_js_names.contains(imp.name.as_str()) {
-                continue;
-            }
             by_module
                 .entry(&imp.source_module)
                 .or_default()
@@ -1192,21 +1127,6 @@ impl<'a> JsEmitter<'a> {
         // Include local extern fns and imported extern fns, but skip imported extern fns
         // whose name collides with a local function (they are accessed via cross-module
         // imports instead).
-        let local_fn_names: HashSet<&str> = self
-            .module
-            .functions
-            .iter()
-            .map(|f| f.name.as_str())
-            .chain(
-                self.module
-                    .extern_fns
-                    .iter()
-                    .filter(|ext| {
-                        ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Js { .. })
-                    })
-                    .map(|ext| ext.name.as_str()),
-            )
-            .collect();
         let mut extern_by_resolved: HashMap<String, Vec<String>> = HashMap::new();
         for ext in &self.module.extern_fns {
             if let krypton_ir::ExternTarget::Js { module } = &ext.target {
@@ -1218,25 +1138,16 @@ impl<'a> JsEmitter<'a> {
                         Self::raw_nullable_extern_alias(&ext.name)
                     )
                 } else {
-                    js_safe_name(&ext.name)
+                    format!(
+                        "{} as {}",
+                        js_safe_name(&ext.name),
+                        Self::raw_extern_alias(&ext.name)
+                    )
                 };
                 extern_by_resolved
                     .entry(resolved)
                     .or_default()
                     .push(specifier);
-            }
-        }
-        for (_, ext) in imported_extern_fns
-            .iter()
-            .filter(|(_, e)| !e.nullable && !local_fn_names.contains(e.name.as_str()))
-        {
-            if matches!(ext.target, krypton_parser::ast::ExternTarget::Js) {
-                let resolved =
-                    self.resolve_extern_js_path(&ext.host_module_path, ext.declaring_module.as_str());
-                extern_by_resolved
-                    .entry(resolved)
-                    .or_default()
-                    .push(js_safe_name(&ext.name));
             }
         }
         let mut extern_modules: Vec<&String> = extern_by_resolved.keys().collect();
@@ -1544,6 +1455,36 @@ impl<'a> JsEmitter<'a> {
                 self.write("\n");
             }
         }
+    }
+
+    fn emit_nonnullable_extern_wrappers(&mut self) {
+        for ext in &self.module.extern_fns {
+            if !ext.nullable && matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
+                self.emit_nonnullable_extern_wrapper(ext);
+                self.write("\n");
+            }
+        }
+    }
+
+    fn emit_nonnullable_extern_wrapper(&mut self, ext: &krypton_ir::ExternFnDef) {
+        let params: Vec<String> = (0..ext.param_types.len())
+            .map(|i| format!("arg{i}"))
+            .collect();
+        let args = params.join(", ");
+
+        self.writeln(&format!(
+            "export function {}({}) {{",
+            js_safe_name(&ext.name),
+            args
+        ));
+        self.indent += 1;
+        self.writeln(&format!(
+            "return {}({});",
+            Self::raw_extern_alias(&ext.name),
+            args
+        ));
+        self.indent -= 1;
+        self.writeln("}");
     }
 
     fn emit_nullable_extern_wrapper(&mut self, ext: &krypton_ir::ExternFnDef) {
@@ -2280,7 +2221,6 @@ mod tests {
             reexported_types: vec![],
             exported_traits: vec![],
             exported_instances: vec![],
-            extern_fns: vec![],
             extern_types: vec![],
             exported_fn_qualifiers: HashMap::new(),
             type_visibility: HashMap::new(),
@@ -2339,8 +2279,6 @@ mod tests {
 
     #[test]
     fn imported_nullable_js_extern_uses_module_import_not_raw_extern_import() {
-        use krypton_typechecker::module_interface::ExternFnSummary;
-
         let mut module = test_module("app/main");
         module.imported_fns.push(ImportedFnDef {
             id: FnId(2),
@@ -2351,7 +2289,8 @@ mod tests {
             return_type: Type::Named("Option".to_string(), vec![Type::Int]),
         });
 
-        // Build a LinkContext that has the extern fn in stringlib's interface
+        // Build a LinkContext — the defining module wraps its externs,
+        // so the consumer just imports via normal Krypton module path.
         let stringlib_iface = ModuleInterface {
             module_path: LinkModulePath::new("stringlib"),
             direct_deps: vec![],
@@ -2361,18 +2300,6 @@ mod tests {
             reexported_types: vec![],
             exported_traits: vec![],
             exported_instances: vec![],
-            extern_fns: vec![ExternFnSummary {
-                name: "parse_int".to_string(),
-                declaring_module: LinkModulePath::new("stringlib"),
-                host_module_path: "../runtime/js/string.mjs".to_string(),
-                target: krypton_parser::ast::ExternTarget::Js,
-                nullable: true,
-                param_types: vec![krypton_typechecker::types::Type::String],
-                return_type: krypton_typechecker::types::Type::Named(
-                    "Option".to_string(),
-                    vec![krypton_typechecker::types::Type::Int],
-                ),
-            }],
             extern_types: vec![],
             exported_fn_qualifiers: HashMap::new(),
             type_visibility: HashMap::new(),
@@ -2387,18 +2314,6 @@ mod tests {
             reexported_types: vec![],
             exported_traits: vec![],
             exported_instances: vec![],
-            extern_fns: vec![ExternFnSummary {
-                name: "parse_int".to_string(),
-                declaring_module: LinkModulePath::new("stringlib"),
-                host_module_path: "../runtime/js/string.mjs".to_string(),
-                target: krypton_parser::ast::ExternTarget::Js,
-                nullable: true,
-                param_types: vec![krypton_typechecker::types::Type::String],
-                return_type: krypton_typechecker::types::Type::Named(
-                    "Option".to_string(),
-                    vec![krypton_typechecker::types::Type::Int],
-                ),
-            }],
             extern_types: vec![],
             exported_fn_qualifiers: HashMap::new(),
             type_visibility: HashMap::new(),
@@ -2426,7 +2341,7 @@ mod tests {
     }
 
     #[test]
-    fn non_nullable_js_extern_stays_raw_import_without_wrapper() {
+    fn non_nullable_js_extern_gets_raw_alias_and_wrapper() {
         let mut module = test_module("test");
         module.extern_fns.push(ExternFnDef {
             id: FnId(1),
@@ -2442,9 +2357,9 @@ mod tests {
         });
 
         let output = emit_test_module(&module);
-        assert!(output.contains("import { length } from './runtime/js/string.mjs';"));
-        assert!(!output.contains("__krypton_nullable_raw$length"));
-        assert!(!output.contains("export function length("));
+        assert!(output.contains("import { length as __krypton_raw$length } from './runtime/js/string.mjs';"));
+        assert!(output.contains("export function length(arg0) {"));
+        assert!(output.contains("return __krypton_raw$length(arg0);"));
         assert!(!output.contains("__krypton_nullable_Some"));
     }
 

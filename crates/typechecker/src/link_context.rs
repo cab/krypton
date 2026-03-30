@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::module_interface::{
-    CanonicalRef, ExportedFnSummary, ExternFnSummary, ExternTypeSummary, InstanceSummary,
+    CanonicalRef, ExportedFnSummary, ExternTypeSummary, InstanceSummary,
     ModuleInterface, ModulePath, TraitSummary, TypeSummary,
 };
 use crate::typed_ast::TraitName;
@@ -74,7 +74,6 @@ pub struct LinkContext {
     type_index: HashMap<(ModuleId, String), TypeEntry>,
     trait_index: HashMap<(ModuleId, String), ModuleId>,
     instance_index: HashMap<TraitName, Vec<(ModuleId, usize)>>,
-    extern_fn_index: HashMap<String, (ModuleId, usize)>,
     extern_type_index: HashMap<String, (ModuleId, usize)>,
     transitive_deps: HashMap<ModuleId, HashSet<ModuleId>>,
 }
@@ -161,19 +160,7 @@ impl LinkContext {
             }
         }
 
-        // Step 7: Build extern_fn_index (first declaring module wins)
-        let mut extern_fn_index = HashMap::new();
-        for (&mod_id, iface) in &iface_map {
-            for (i, ef) in iface.extern_fns.iter().enumerate() {
-                let declaring_id = interner.intern(&ef.declaring_module);
-                extern_fn_index.entry(ef.name.clone()).or_insert((declaring_id, i));
-                // Also index by the module that has the extern in its interface
-                // so lookup can find it. Use declaring module as the key.
-                let _ = mod_id; // suppress unused warning
-            }
-        }
-
-        // Step 8: Build extern_type_index
+        // Step 7: Build extern_type_index
         let mut extern_type_index = HashMap::new();
         for (&mod_id, iface) in &iface_map {
             for (i, et) in iface.extern_types.iter().enumerate() {
@@ -224,7 +211,6 @@ impl LinkContext {
             type_index,
             trait_index,
             instance_index,
-            extern_fn_index,
             extern_type_index,
             transitive_deps,
         }
@@ -310,13 +296,6 @@ impl LinkContext {
             let path = self.interner.resolve(*mod_id);
             iface.exported_instances.iter().map(move |inst| (path, inst))
         })
-    }
-
-    pub fn lookup_extern_fn(&self, name: &str) -> Option<(&ModulePath, &ExternFnSummary)> {
-        let &(mod_id, idx) = self.extern_fn_index.get(name)?;
-        let iface = self.interfaces.get(&mod_id)?;
-        let ef = iface.extern_fns.get(idx)?;
-        Some((self.interner.resolve(mod_id), ef))
     }
 
     pub fn lookup_extern_type(&self, name: &str) -> Option<&ExternTypeSummary> {
@@ -412,15 +391,6 @@ impl<'a> ModuleLinkView<'a> {
         Some(summary)
     }
 
-    pub fn lookup_extern_fn(&self, name: &str) -> Option<(&'a ModulePath, &'a ExternFnSummary)> {
-        let result = self.ctx.lookup_extern_fn(name)?;
-        let mod_id = self.ctx.interner.lookup(result.0)?;
-        if !self.reachable.contains(&mod_id) {
-            return None;
-        }
-        Some(result)
-    }
-
     pub fn instances_for_trait(
         &self,
         trait_name: &TraitName,
@@ -436,18 +406,6 @@ impl<'a> ModuleLinkView<'a> {
         self.ctx
             .all_instances()
             .filter(|(path, _)| self.is_reachable(path))
-            .collect()
-    }
-
-    pub fn all_extern_fns(&self) -> Vec<(&'a ModulePath, &'a ExternFnSummary)> {
-        self.ctx
-            .interfaces
-            .iter()
-            .filter(|(mod_id, _)| self.reachable.contains(mod_id))
-            .flat_map(|(mod_id, iface)| {
-                let path = self.ctx.interner.resolve(*mod_id);
-                iface.extern_fns.iter().map(move |ef| (path, ef))
-            })
             .collect()
     }
 
@@ -498,7 +456,6 @@ mod tests {
             reexported_types: vec![],
             exported_traits: vec![],
             exported_instances: vec![],
-            extern_fns: vec![],
             extern_types: vec![],
             exported_fn_qualifiers: HashMap::new(),
             type_visibility: HashMap::new(),
@@ -673,29 +630,7 @@ mod tests {
         assert_eq!(all.len(), 3);
     }
 
-    // 8. Extern fn lookup
-    #[test]
-    fn test_extern_fn_lookup() {
-        let mut iface = make_interface("mod_a");
-        iface.extern_fns.push(ExternFnSummary {
-            name: "abs".to_string(),
-            declaring_module: ModulePath::new("mod_a"),
-            host_module_path: "java.lang.Math".to_string(),
-            target: ExternTarget::Java,
-            nullable: false,
-            param_types: vec![Type::Int],
-            return_type: Type::Int,
-        });
-        let ctx = LinkContext::build(vec![iface]);
-
-        let result = ctx.lookup_extern_fn("abs");
-        assert!(result.is_some());
-        let (path, ef) = result.unwrap();
-        assert_eq!(path, &ModulePath::new("mod_a"));
-        assert_eq!(ef.name, "abs");
-    }
-
-    // 9. Extern type lookup
+    // 8. Extern type lookup
     #[test]
     fn test_extern_type_lookup() {
         let mut iface = make_interface("mod_a");

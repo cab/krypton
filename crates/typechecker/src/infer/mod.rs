@@ -1293,29 +1293,29 @@ fn process_extern_methods(
                 None,
             ) {
                 Ok(ty) => ty,
-                Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
+                Err(TypeError::UnknownType { .. }) => Type::Var(gen.fresh()),
                 Err(e) => return Err(spanned(e, span)),
             };
             concrete_params.push(resolved);
         }
         let codegen_return = if method.nullable {
             // Nullable externs must preserve Option[T] structure for the codegen
-            // wrapper generator. Resolve inner args with Object fallback for
+            // wrapper generator. Resolve inner args with Var fallback for
             // erased type params.
             match &method.return_type {
                 TypeExpr::App { name, args, .. } => {
-                    let resolved_args: Vec<Type> = args
-                        .iter()
-                        .map(|a| {
-                            match type_registry::resolve_type_expr(
-                                a, &empty_map, &empty_arity, registry,
-                                ResolutionContext::UserAnnotation, None,
-                            ) {
-                                Ok(ty) => ty,
-                                Err(_) => Type::Named("Object".to_string(), vec![]),
-                            }
-                        })
-                        .collect();
+                    let mut resolved_args: Vec<Type> = Vec::new();
+                    for a in args {
+                        let ty = match type_registry::resolve_type_expr(
+                            a, &empty_map, &empty_arity, registry,
+                            ResolutionContext::UserAnnotation, None,
+                        ) {
+                            Ok(ty) => ty,
+                            Err(TypeError::UnknownType { .. }) => Type::Var(gen.fresh()),
+                            Err(e) => return Err(spanned(e, span)),
+                        };
+                        resolved_args.push(ty);
+                    }
                     Type::Named(
                         registry.canonical_name(name).to_string(),
                         resolved_args,
@@ -1338,7 +1338,7 @@ fn process_extern_methods(
                 None,
             ) {
                 Ok(ty) => ty,
-                Err(TypeError::UnknownType { .. }) => Type::Named("Object".to_string(), vec![]),
+                Err(TypeError::UnknownType { .. }) => Type::Var(gen.fresh()),
                 Err(e) => return Err(spanned(e, span)),
             }
         };

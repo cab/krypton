@@ -11,19 +11,19 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/actor/spawn as spawn((Mailbox[o9]) -> Unit): Ref[o9]
-import core/actor/send as send(Ref[r9], r9): Unit
-import core/actor/receive as receive(Mailbox[a10]): a10
-declare receive: (Mailbox[a10]) -> a10
-declare send: (Ref[r9], r9) -> Unit
+import core/actor/spawn as spawn((Mailbox[o11]) -> Unit): Ref[o11]
+import core/actor/send as send(Ref[r11], r11): Unit
+import core/actor/receive as receive(Mailbox[a12]): a12
+declare receive: (Mailbox[a12]) -> a12
+declare send: (Ref[r11], r11) -> Unit
 
-fn counter(v0: Mailbox[CounterMsg], v1: Int) -> v10 =
+fn counter(v0: Mailbox[CounterMsg], v1: Int) -> v12 =
   let_join [recur] v2(v3: Mailbox[CounterMsg], v4: Int) =
     let v5: CounterMsg = call receive(v3)
     switch v5 {
@@ -40,6 +40,6 @@ fn counter(v0: Mailbox[CounterMsg], v1: Int) -> v10 =
   in
   jump v2(v0, v1)
 
-fn main() -> (Mailbox[CounterMsg], Int) -> y10 =
-  let v10: (Mailbox[CounterMsg], Int) -> y10 = make_closure(counter, [])
+fn main() -> (Mailbox[CounterMsg], Int) -> y12 =
+  let v10: (Mailbox[CounterMsg], Int) -> y12 = make_closure(counter, [])
   v10

@@ -681,7 +681,7 @@ fun main() = println(maybe_int("42"))
 }
 
 #[test]
-fn nullable_wrapper_bytecode_is_emitted_only_for_nullable_externs() {
+fn wrapper_bytecode_is_emitted_for_all_externs() {
     let source = r#"
 extern java "NullableHost" {
     @nullable fun maybe_string(s: String) -> Option[String]
@@ -704,10 +704,11 @@ fun main() = {
         compile_typed_modules_with_java_sources(&typed_modules, &[("NullableHost", NULLABLE_HOST_JAVA)], &link_ctx);
     let javap_out = javap_output(&dir.path().join("Test.class"), true);
 
+    // All externs (nullable and non-nullable) get wrapper methods on the defining class.
     assert!(javap_out.contains("public static core.option.Option maybe_string(java.lang.String);"));
     assert!(javap_out.contains("public static core.option.Option maybe_int(java.lang.String);"));
     assert!(javap_out.contains("public static core.option.Option maybe_float(java.lang.String);"));
-    assert!(!javap_out.contains("public static java.lang.String definitely_string(java.lang.String);"));
+    assert!(javap_out.contains("public static java.lang.String definitely_string(java.lang.String);"));
     assert!(javap_out.contains("java/lang/Long.longValue:()J"));
     assert!(javap_out.contains("java/lang/Double.doubleValue:()D"));
     assert!(javap_out.contains("Field core/option/Option$None.INSTANCE:Lcore/option/Option$None;"));

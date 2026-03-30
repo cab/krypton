@@ -10,20 +10,20 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/io/println as println(o): Unit
-declare println: (o) -> Unit
+import core/io/println as println(s): Unit
+declare println: (s) -> Unit
 
-fn show_it(v0: Dict[core/show.Show, o8], v1: o8) -> String =
+fn show_it(v0: Dict[core/show.Show, e9], v1: e9) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 
 fn main() -> Unit =
-  let v3: (Int) -> String = make_closure(lambda$47, [])
+  let v3: (Int) -> String = make_closure(lambda$27, [])
   let_join v13(v11: Bool) =
     let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v12: Unit = call println(v7, v11)
@@ -34,7 +34,7 @@ fn main() -> Unit =
   let v10: Bool = trait_call core/eq.Eq.eq(v8, v9, "42")
   jump v13(v10)
 
-fn lambda$47(v4: Int) -> String =
+fn lambda$27(v4: Int) -> String =
   let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: String = call show_it(v5, v4)
   v6

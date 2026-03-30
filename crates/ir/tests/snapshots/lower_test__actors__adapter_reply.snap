@@ -6,31 +6,31 @@ module actors__adapter_reply
 
 type Msg = Get#0(Ref[Int])
 type MainMsg = Reply#0(Int)
-extern java "krypton.runtime.KryptonIO" println(Object): Unit
+extern java "krypton.runtime.KryptonIO" println(d13): Unit
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/actor/spawn as spawn((Mailbox[o9]) -> Unit): Ref[o9]
-import core/actor/send as send(Ref[r9], r9): Unit
-import core/actor/receive as receive(Mailbox[a10]): a10
-import core/actor/actor_ref as actor_ref(Mailbox[i10]): Ref[i10]
-import core/actor/mailbox as mailbox(): Mailbox[t10]
-import core/actor/adapter as adapter(Ref[w10], (b11) -> w10): Ref[b11]
-declare actor_ref: (Mailbox[i10]) -> Ref[i10]
-declare adapter: (Ref[w10], (b11) -> w10) -> Ref[b11]
-declare mailbox: () -> Mailbox[t10]
-declare println: (Object) -> Unit
-declare receive: (Mailbox[a10]) -> a10
-declare send: (Ref[r9], r9) -> Unit
-declare spawn: ((Mailbox[o9]) -> Unit) -> Ref[o9]
+import core/actor/spawn as spawn((Mailbox[o11]) -> Unit): Ref[o11]
+import core/actor/send as send(Ref[r11], r11): Unit
+import core/actor/receive as receive(Mailbox[a12]): a12
+import core/actor/actor_ref as actor_ref(Mailbox[i12]): Ref[i12]
+import core/actor/mailbox as mailbox(): Mailbox[t12]
+import core/actor/adapter as adapter(Ref[w12], (b13) -> w12): Ref[b13]
+declare actor_ref: (Mailbox[i12]) -> Ref[i12]
+declare adapter: (Ref[w12], (b13) -> w12) -> Ref[b13]
+declare mailbox: () -> Mailbox[t12]
+declare println: (d13) -> Unit
+declare receive: (Mailbox[a12]) -> a12
+declare send: (Ref[r11], r11) -> Unit
+declare spawn: ((Mailbox[o11]) -> Unit) -> Ref[o11]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)
@@ -45,7 +45,7 @@ fn main() -> Unit =
   let v4: Ref[Msg] = call spawn(v5)
   let v6: Mailbox[MainMsg] = call mailbox()
   let v8: Ref[MainMsg] = call actor_ref(v6)
-  let v11: (Int) -> MainMsg = make_closure(ctor$Reply$64, [])
+  let v11: (Int) -> MainMsg = make_closure(ctor$Reply$35, [])
   let v7: Ref[Int] = call adapter(v8, v11)
   let v12: ~Msg = construct Msg::Get#0(v7)
   let v13: Unit = call send(v4, v12)
@@ -56,6 +56,6 @@ fn main() -> Unit =
       v16
   }
 
-fn ctor$Reply$64(v9: Int) -> MainMsg =
+fn ctor$Reply$35(v9: Int) -> MainMsg =
   let v10: MainMsg = construct MainMsg::Reply#0(v9)
   v10

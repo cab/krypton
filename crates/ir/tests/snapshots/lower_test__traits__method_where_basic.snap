@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__method_where_basic
 
-trait Default[n8] { default(): n8 }
-trait R[o8] { lol(o8[p8]): o8[p8] }
+trait Default[d9] { default(): d9 }
+trait R[e9] { lol(e9[f9]): e9[f9] }
 instance traits__method_where_basic.Default[Int] { default=Default$$Int$$default }
 instance traits__method_where_basic.R[List] { lol=R$$List$$lol }
 import core/peek/peek as peek(h): h
@@ -14,16 +14,16 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-declare println: (o) -> Unit
+declare println: (s) -> Unit
 
 fn main() -> Unit =
-  let v2: ~List[v8] = construct List::Nil#1()
+  let v2: ~List[l9] = construct List::Nil#1()
   let v3: Dict[traits__method_where_basic.R, List] = get_dict traits__method_where_basic.R[List]
   let v4: Dict[traits__method_where_basic.Default, Int] = get_dict traits__method_where_basic.Default[Int]
   let v5: List[Int] = trait_call traits__method_where_basic.R.lol(v3, v4, v2)
@@ -35,7 +35,7 @@ fn main() -> Unit =
 fn Default$$Int$$default() -> ~Int =
   0
 
-fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, p8], v8: List[p8]) -> ~List[p8] =
-  let v9: p8 = trait_call traits__method_where_basic.Default.default(v7)
-  let v10: ~List[p8] = construct List::Cons#0(v9, v8)
+fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, f9], v8: List[f9]) -> ~List[f9] =
+  let v9: f9 = trait_call traits__method_where_basic.Default.default(v7)
+  let v10: ~List[f9] = construct List::Cons#0(v9, v8)
   v10

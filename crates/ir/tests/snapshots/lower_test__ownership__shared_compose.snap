@@ -10,11 +10,11 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-fn assert_eq_show(v0: Dict[core/eq.Eq, o8], v1: Dict[core/show.Show, o8], v2: o8, v3: o8) -> o8 =
+fn assert_eq_show(v0: Dict[core/eq.Eq, e9], v1: Dict[core/show.Show, e9], v2: e9, v3: e9) -> e9 =
   v2

@@ -10,8 +10,8 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
@@ -19,15 +19,15 @@ import core/list/Cons as Cons(h, List[h]): List[h]
 fn consume(v0: ~String) -> String =
   v0
 
-fn apply(v1: ~(q8) -> String, v2: q8) -> String =
+fn apply(v1: ~(g9) -> String, v2: g9) -> String =
   let v3: String = call_closure v1(v2)
   v3
 
 fn test(v4: ~String) -> String =
-  let v7: (~String) -> String = make_closure(lambda$48, [])
+  let v7: (~String) -> String = make_closure(lambda$28, [])
   let v8: String = call apply(v7, v4)
   v8
 
-fn lambda$48(v5: ~String) -> String =
+fn lambda$28(v5: ~String) -> String =
   let v6: String = call consume(v5)
   v6

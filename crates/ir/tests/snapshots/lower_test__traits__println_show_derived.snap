@@ -12,13 +12,13 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/io/println as println(o): Unit
-declare println: (o) -> Unit
+import core/io/println as println(s): Unit
+declare println: (s) -> Unit
 
 fn main() -> Unit =
   let v2: ~MyOption[Int] = construct MyOption::MySome#0(1)
@@ -27,9 +27,9 @@ fn main() -> Unit =
   let v3: Unit = call println(v1, v2)
   v3
 
-fn Show$$MyOption$$show(v4: Dict[core/show.Show, d8], v5: MyOption[d8]) -> String =
+fn Show$$MyOption$$show(v4: Dict[core/show.Show, t8], v5: MyOption[t8]) -> String =
   switch v5 {
-    0 (v6: d8) ->
+    0 (v6: t8) ->
       let v7: String = trait_call core/show.Show.show(v4, v6)
       let v8: String = concat_string("MySome(", v7)
       let v9: String = concat_string(v8, ")")

@@ -50,7 +50,6 @@ mod tests {
             reexported_types: vec![],
             exported_traits: vec![],
             exported_instances: vec![],
-            extern_fns: vec![],
             extern_types: vec![],
             exported_fn_qualifiers: HashMap::new(),
             type_visibility: HashMap::new(),
