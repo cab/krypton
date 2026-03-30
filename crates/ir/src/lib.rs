@@ -85,88 +85,6 @@ impl Module {
             .collect()
     }
 
-    /// Reconstruct imported structs from the import manifest.
-    pub fn imported_structs(&self) -> Vec<ImportedStructDef> {
-        self.imports
-            .structs
-            .iter()
-            .map(|m| ImportedStructDef {
-                name: m.name.clone(),
-                module_path: m.module_path.clone(),
-                type_params: m.type_params.clone(),
-                fields: m.fields.clone(),
-            })
-            .collect()
-    }
-
-    /// Reconstruct imported sum types from the import manifest.
-    pub fn imported_sum_types(&self) -> Vec<ImportedSumTypeDef> {
-        self.imports
-            .sum_types
-            .iter()
-            .map(|m| ImportedSumTypeDef {
-                name: m.name.clone(),
-                module_path: m.module_path.clone(),
-                type_params: m.type_params.clone(),
-                variants: m.variants.clone(),
-            })
-            .collect()
-    }
-
-    /// Reconstruct imported extern types from the import manifest.
-    pub fn imported_extern_types(&self) -> Vec<ExternTypeDef> {
-        self.imports
-            .extern_types
-            .iter()
-            .map(|m| ExternTypeDef {
-                name: m.name.clone(),
-                target: m.target.clone(),
-            })
-            .collect()
-    }
-
-    /// Reconstruct imported extern fns from the import manifest.
-    pub fn imported_extern_fns(&self) -> Vec<ExternFnDef> {
-        self.imports
-            .extern_fns
-            .iter()
-            .map(|m| ExternFnDef {
-                id: m.id,
-                name: m.name.clone(),
-                declaring_module_path: m.declaring_module_path.clone(),
-                span: m.span,
-                target: m.target.clone(),
-                nullable: m.nullable,
-                param_types: m.param_types.clone(),
-                return_type: m.return_type.clone(),
-            })
-            .collect()
-    }
-
-    /// Reconstruct imported instances from the import manifest.
-    pub fn imported_instances(&self) -> Vec<ImportedInstanceRef> {
-        self.imports
-            .instances
-            .iter()
-            .map(|m| ImportedInstanceRef {
-                source_module_path: m.source_module_path.clone(),
-                trait_name: m.trait_name.clone(),
-                target_type_name: m.target_type_name.clone(),
-                target_type: m.target_type.clone(),
-                sub_dict_requirements: m.sub_dict_requirements.clone(),
-                is_intrinsic: m.is_intrinsic,
-            })
-            .collect()
-    }
-
-    /// Reconstruct imported dict refs from the import manifest.
-    pub fn imported_dict_refs(&self) -> Vec<(TraitName, Type)> {
-        self.imports
-            .dict_refs
-            .iter()
-            .map(|m| (m.trait_name.clone(), m.ty.clone()))
-            .collect()
-    }
 }
 
 impl Type {
@@ -529,79 +447,6 @@ impl FnIdentity {
     }
 }
 
-/// Structured import manifest — replaces the 5 blob lists on Module.
-#[derive(Debug, Clone, Default)]
-pub struct ImportManifest {
-    pub structs: Vec<ManifestStruct>,
-    pub sum_types: Vec<ManifestSumType>,
-    pub extern_types: Vec<ManifestExternType>,
-    pub extern_fns: Vec<ManifestExternFn>,
-    pub instances: Vec<ManifestInstance>,
-    pub dict_refs: Vec<ManifestDictRef>,
-}
-
-/// Imported struct definition with canonical identity.
-#[derive(Debug, Clone)]
-pub struct ManifestStruct {
-    pub canonical: CanonicalRef,
-    pub name: String,
-    pub module_path: String,
-    pub type_params: Vec<TypeVarId>,
-    pub fields: Vec<(String, Type)>,
-}
-
-/// Imported sum type definition with canonical identity.
-#[derive(Debug, Clone)]
-pub struct ManifestSumType {
-    pub canonical: CanonicalRef,
-    pub name: String,
-    pub module_path: String,
-    pub type_params: Vec<TypeVarId>,
-    pub variants: Vec<VariantDef>,
-}
-
-/// Imported extern type with canonical identity.
-#[derive(Debug, Clone)]
-pub struct ManifestExternType {
-    pub canonical: CanonicalRef,
-    pub name: String,
-    pub target: ExternTarget,
-}
-
-/// Imported extern function with canonical identity.
-#[derive(Debug, Clone)]
-pub struct ManifestExternFn {
-    pub canonical: CanonicalRef,
-    pub id: FnId,
-    pub name: String,
-    pub declaring_module_path: String,
-    pub span: Span,
-    pub target: ExternTarget,
-    pub nullable: bool,
-    pub param_types: Vec<Type>,
-    pub return_type: Type,
-}
-
-/// Imported instance with canonical identity.
-#[derive(Debug, Clone)]
-pub struct ManifestInstance {
-    pub canonical: CanonicalRef,
-    pub source_module_path: String,
-    pub trait_name: TraitName,
-    pub target_type_name: String,
-    pub target_type: Type,
-    pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
-    pub is_intrinsic: bool,
-}
-
-/// Cross-module dict reference with canonical identity.
-#[derive(Debug, Clone)]
-pub struct ManifestDictRef {
-    pub canonical: CanonicalRef,
-    pub trait_name: TraitName,
-    pub ty: Type,
-}
-
 /// Variable with debug info.
 #[derive(Debug, Clone)]
 pub struct VarInfo {
@@ -645,9 +490,6 @@ pub struct Module {
     /// rather than side metadata.
     pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
 
-    // --- Cross-module metadata (self-contained compilation unit) ---
-    // Structured import manifest with canonical refs, replacing bare-string blob lists.
-    pub imports: ImportManifest,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -972,7 +814,6 @@ mod tests {
             module_path: ModulePath::new("test"),
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
-            imports: ImportManifest::default(),
         };
     }
 }

@@ -6,7 +6,7 @@ use krypton_ir::expr::{
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
 use krypton_ir::{
-    CanonicalRef, FnDef, FnId, FnIdentity, ImportManifest, InstanceDef, LocalSymbolKey, Module,
+    CanonicalRef, FnDef, FnId, FnIdentity, InstanceDef, LocalSymbolKey, Module,
     ModulePath, TraitDef, TraitMethodDef, TraitName, Type, VarId,
 };
 use krypton_typechecker::types::TypeVarGen;
@@ -27,7 +27,6 @@ fn make_simple_module(functions: Vec<FnDef>, fn_identities: HashMap<FnId, FnIden
         module_path: ModulePath::new("test"),
         fn_dict_requirements: std::collections::HashMap::new(),
         fn_exit_closes: std::collections::HashMap::new(),
-        imports: ImportManifest::default(),
     }
 }
 

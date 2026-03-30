@@ -1024,7 +1024,6 @@ mod tests {
             }],
             fn_dict_requirements: std::collections::HashMap::new(),
             fn_exit_closes: std::collections::HashMap::new(),
-            imports: crate::ImportManifest::default(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

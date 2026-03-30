@@ -13,10 +13,9 @@ use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, Ty
 use crate::Type as IrType;
 use crate::{
     Atom, CanonicalRef, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose,
-    FnDef, FnId, FnIdentity, ImportManifest, ImportedFnDef, InstanceDef, Literal, LocalSymbolKey,
-    ManifestDictRef, ManifestExternFn, ManifestExternType, ManifestInstance, ManifestStruct,
-    ManifestSumType, Module, ModulePath, PrimOp, SimpleExpr, SimpleExprKind, StructDef,
-    SumTypeDef, SwitchBranch, TraitDef, TraitMethodDef, VarId, VariantDef,
+    FnDef, FnId, FnIdentity, ImportedFnDef, InstanceDef, Literal, LocalSymbolKey, Module,
+    ModulePath, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, SwitchBranch, TraitDef,
+    TraitMethodDef, VarId, VariantDef,
 };
 
 // ---------------------------------------------------------------------------
@@ -563,10 +562,6 @@ struct LowerCtx {
     fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
     /// Module path of the module being lowered (for filtering local dict refs).
     module_path: String,
-    /// Cross-module instance references resolved via GetDict/MakeDict that are
-    /// not locally defined. Stores the resolved canonical ref, trait name, and IR type.
-    /// The codegen uses these to determine which dicts need to be imported.
-    imported_dict_refs: Vec<(CanonicalRef, TraitName, IrType)>,
     /// All known instances with source module and target type info,
     /// for resolving instance CanonicalRefs during GetDict/MakeDict emission.
     all_instances: Vec<InstanceSourceInfo>,
@@ -4445,15 +4440,6 @@ impl LowerCtx {
             return Ok((vec![], Atom::Var(var_id)));
         }
 
-        // Record cross-module dict references (the codegen uses these
-        // to determine which instance dicts to import from other modules).
-        // Skip dicts whose trait is defined in the current module — those are local.
-        if trait_name.module_path != self.module_path {
-            let cref = self.instance_canonical_ref(trait_name, ty);
-            self.imported_dict_refs
-                .push((cref, trait_name.clone(), ty.clone().into()));
-        }
-
         // Strategy 2: Check for parameterized instance with where-constraints
         if let Some(result) = self.try_resolve_parameterized_dict(trait_name, ty)? {
             return Ok(result);
@@ -5447,7 +5433,6 @@ pub fn lower_module(
         fn_exit_track: HashSet::new(),
         fn_exit_vars: HashMap::new(),
         fn_exit_closes: HashMap::new(),
-        imported_dict_refs: vec![],
         all_instances: {
             let mut infos = Vec::new();
             for inst in &typed.instance_defs {
@@ -5955,197 +5940,6 @@ pub fn lower_module(
     for inst in &typed.instance_defs {
         instances.push(lower_instance(inst, false, &ctx));
     }
-    // --- Cross-module metadata for self-contained compilation ---
-
-    // Imported structs: struct definitions from dependency modules.
-    let ir_imported_structs: Vec<ManifestStruct> = typed
-        .exported_type_infos
-        .values()
-        .filter(|info| info.source_module != typed.module_path)
-        .filter_map(|info| match &info.kind {
-            ExportedTypeKind::Record { .. } => {
-                let type_ref = typed_ast::ResolvedTypeRef {
-                    qualified_name: QualifiedName::new(
-                        info.source_module.clone(),
-                        info.name.clone(),
-                    ),
-                };
-                let fields = ctx
-                    .struct_fields
-                    .get(&type_ref)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|(n, t)| (n, t.into()))
-                    .collect();
-                Some(ManifestStruct {
-                    canonical: CanonicalRef {
-                        module: ModulePath::new(info.source_module.clone()),
-                        symbol: LocalSymbolKey::Type(info.name.clone()),
-                    },
-                    name: info.name.clone(),
-                    module_path: info.source_module.clone(),
-                    type_params: info.type_param_vars.clone(),
-                    fields,
-                })
-            }
-            _ => None,
-        })
-        .collect();
-
-    // Imported sum types: sum type definitions from dependency modules.
-    // Uses exported_type_infos for type params and sum_variants for resolved field types.
-    let ir_imported_sum_types: Vec<ManifestSumType> = typed
-        .exported_type_infos
-        .values()
-        .filter(|info| info.source_module != typed.module_path)
-        .filter_map(|info| {
-            if let ExportedTypeKind::Sum { variants } = &info.kind {
-                let type_ref = typed_ast::ResolvedTypeRef {
-                    qualified_name: QualifiedName::new(
-                        info.source_module.clone(),
-                        info.name.clone(),
-                    ),
-                };
-                let variants = variants
-                    .iter()
-                    .enumerate()
-                    .map(|(tag, v)| {
-                        let fields = ctx
-                            .sum_variants
-                            .get(&typed_ast::ResolvedVariantRef {
-                                type_ref: type_ref.clone(),
-                                variant_name: v.name.clone(),
-                            })
-                            .map(|(_, f)| f.iter().cloned().map(Into::into).collect())
-                            .unwrap_or_default();
-                        VariantDef {
-                            name: v.name.clone(),
-                            tag: tag as u32,
-                            fields,
-                        }
-                    })
-                    .collect();
-                Some(ManifestSumType {
-                    canonical: CanonicalRef {
-                        module: ModulePath::new(info.source_module.clone()),
-                        symbol: LocalSymbolKey::Type(info.name.clone()),
-                    },
-                    name: info.name.clone(),
-                    module_path: info.source_module.clone(),
-                    type_params: info.type_param_vars.clone(),
-                    variants,
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Imported extern types: extern type bindings from dependency modules.
-    let ir_imported_extern_types: Vec<ManifestExternType> = link_view
-        .all_extern_types()
-        .into_iter()
-        .filter(|(path, _)| path.as_str() != typed.module_path)
-        .filter_map(|(_, info)| {
-            let ir_target = match &info.target {
-                krypton_parser::ast::ExternTarget::Java => Some(ExternTarget::Java {
-                    class: info.host_module.clone(),
-                }),
-                krypton_parser::ast::ExternTarget::Js => None,
-            };
-            ir_target.map(|target| ManifestExternType {
-                canonical: CanonicalRef {
-                    module: ModulePath::new(info.host_module.clone()),
-                    symbol: LocalSymbolKey::Type(info.krypton_name.clone()),
-                },
-                name: info.krypton_name.clone(),
-                target,
-            })
-        })
-        .collect();
-
-    // Imported extern fns: extern FFI function bindings from dependency modules.
-    let ir_imported_extern_fns: Vec<ManifestExternFn> = link_view
-        .all_extern_fns()
-        .into_iter()
-        .filter(|(path, _)| path.as_str() != typed.module_path)
-        .map(|(_, ef)| {
-            let ir_target = match &ef.target {
-                krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
-                    class: ef.host_module_path.clone(),
-                },
-                krypton_parser::ast::ExternTarget::Js => ExternTarget::Js {
-                    module: ef.host_module_path.clone(),
-                },
-            };
-            ManifestExternFn {
-                canonical: CanonicalRef {
-                    module: ModulePath::new(ef.declaring_module.as_str().to_string()),
-                    symbol: LocalSymbolKey::Function(ef.name.clone()),
-                },
-                id: ctx.fn_ids.get(&ef.name).copied().unwrap_or_else(|| {
-                    panic!(
-                        "ICE: imported extern fn '{}' has no FnId — \
-                         pre-allocation in lower_module step 3 should have assigned one",
-                        ef.name
-                    )
-                }),
-                name: ef.name.clone(),
-                declaring_module_path: ef.declaring_module.as_str().to_string(),
-                span: (0, 0),
-                target: ir_target,
-                nullable: ef.nullable,
-                param_types: ef.param_types.iter().cloned().map(Into::into).collect(),
-                return_type: ef.return_type.clone().into(),
-            }
-        })
-        .collect();
-
-    // Imported instances: instance metadata from dependency modules.
-    let ir_imported_instances: Vec<ManifestInstance> = link_view
-        .all_instances()
-        .into_iter()
-        .filter(|(path, _)| path.as_str() != typed.module_path)
-        .map(|(path, inst)| {
-            let sub_dict_requirements = inst
-                .constraints
-                .iter()
-                .filter_map(|c| {
-                    inst.type_var_ids
-                        .get(&c.type_var)
-                        .map(|&tv| (c.trait_name.clone(), tv))
-                })
-                .collect();
-            ManifestInstance {
-                canonical: CanonicalRef {
-                    module: ModulePath::new(path.as_str().to_string()),
-                    symbol: LocalSymbolKey::Instance {
-                        trait_name: inst.trait_name.local_name.clone(),
-                        target_type: inst.target_type_name.clone(),
-                    },
-                },
-                source_module_path: path.as_str().to_string(),
-                trait_name: inst.trait_name.clone(),
-                target_type_name: inst.target_type_name.clone(),
-                target_type: inst.target_type.clone().into(),
-                sub_dict_requirements,
-                is_intrinsic: inst.is_intrinsic,
-            }
-        })
-        .collect();
-
-    // Build ManifestDictRef entries from imported dict refs
-    let ir_imported_dict_refs: Vec<ManifestDictRef> = ctx
-        .imported_dict_refs
-        .iter()
-        .map(|(cref, trait_name, ty)| ManifestDictRef {
-            canonical: cref.clone(),
-            trait_name: trait_name.clone(),
-            ty: ty.clone(),
-        })
-        .collect();
-
     // Collect tuple arities from all FnDefs
     let mut tuple_arities = std::collections::BTreeSet::new();
     for func in &functions {
@@ -6183,14 +5977,6 @@ pub fn lower_module(
             reqs
         },
         fn_exit_closes: ctx.fn_exit_closes,
-        imports: ImportManifest {
-            structs: ir_imported_structs,
-            sum_types: ir_imported_sum_types,
-            extern_types: ir_imported_extern_types,
-            extern_fns: ir_imported_extern_fns,
-            instances: ir_imported_instances,
-            dict_refs: ir_imported_dict_refs,
-        },
     })
 }
 

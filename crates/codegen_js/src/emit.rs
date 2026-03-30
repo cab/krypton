@@ -1141,7 +1141,7 @@ impl<'a> JsEmitter<'a> {
         }
 
         // ── Constructor imports ──
-        // Import struct names and sum type variant names from the ImportManifest.
+        // Import struct names and sum type variant names from dependency modules.
         // This covers construction (new Foo(...), Nil.INSTANCE) and pattern
         // matching (instanceof Nil). Merged into the same by_module map so
         // deduplication with function imports happens automatically.
@@ -2235,8 +2235,8 @@ fn js_intrinsic_dicts() -> Vec<(
 mod tests {
     use super::*;
     use krypton_ir::{
-        CanonicalRef, ExternFnDef, ExternTarget, FnDef, ImportManifest, ImportedFnDef,
-        LocalSymbolKey, ManifestExternFn, Module, ModulePath,
+        CanonicalRef, ExternFnDef, ExternTarget, FnDef, ImportedFnDef, LocalSymbolKey, Module,
+        ModulePath,
     };
     use krypton_typechecker::link_context::LinkContext;
     use krypton_typechecker::module_interface::ModuleInterface;
@@ -2267,7 +2267,6 @@ mod tests {
             module_path: ModulePath::new(name),
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
-            imports: ImportManifest::default(),
         }
     }
 

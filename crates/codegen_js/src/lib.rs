@@ -37,7 +37,6 @@ mod tests {
             module_path: ModulePath::new(name),
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
-            imports: ImportManifest::default(),
         }
     }
 
