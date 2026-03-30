@@ -451,6 +451,18 @@ impl<'a> ModuleLinkView<'a> {
             .collect()
     }
 
+    pub fn all_exported_types(&self) -> Vec<(&'a ModulePath, &'a TypeSummary)> {
+        self.ctx
+            .interfaces
+            .iter()
+            .filter(|(mod_id, _)| self.reachable.contains(mod_id))
+            .flat_map(|(mod_id, iface)| {
+                let path = self.ctx.interner.resolve(*mod_id);
+                iface.exported_types.iter().map(move |ts| (path, ts))
+            })
+            .collect()
+    }
+
     pub fn all_extern_types(&self) -> Vec<(&'a ModulePath, &'a ExternTypeSummary)> {
         self.ctx
             .interfaces

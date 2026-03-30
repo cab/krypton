@@ -314,7 +314,8 @@ pub(super) struct JoinPointInfo {
     pub(super) forward_jumps: Vec<usize>,
 }
 
-pub(super) struct Compiler {
+pub(super) struct Compiler<'link> {
+    pub(super) link_view: &'link krypton_typechecker::link_context::ModuleLinkView<'link>,
     pub(super) cp: ConstantPool,
     pub(super) this_class: u16,
     pub(super) builder: BytecodeBuilder,
@@ -340,7 +341,7 @@ pub(super) struct Compiler {
     pub(super) raw_extern_functions: HashMap<String, FunctionInfo>,
 }
 
-impl Compiler {
+impl<'link> Compiler<'link> {
     pub(super) fn is_abstract_type_ctor(ty: &Type) -> bool {
         match ty {
             Type::Var(_) => true,
@@ -351,7 +352,7 @@ impl Compiler {
         }
     }
 
-    pub(super) fn new(class_name: &str) -> Result<Self, CodegenError> {
+    pub(super) fn new(class_name: &str, link_view: &'link krypton_typechecker::link_context::ModuleLinkView<'link>) -> Result<Self, CodegenError> {
         let mut cp = ConstantPool::default();
 
         let this_class = cp.add_class(class_name)?;
@@ -444,6 +445,7 @@ impl Compiler {
         }];
 
         let compiler = Compiler {
+            link_view,
             cp,
             this_class,
             builder,

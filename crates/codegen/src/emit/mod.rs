@@ -21,6 +21,8 @@ use ristretto_classfile::{
 pub use compiler::{CodegenError, CodegenErrorKind, JvmType};
 
 use compiler::{Compiler, DictRequirement};
+use krypton_typechecker::link_context::ModuleLinkView;
+use krypton_typechecker::module_interface::ModulePath;
 
 use krypton_typechecker::typed_ast::QualifiedName;
 
@@ -166,7 +168,12 @@ pub fn compile_modules(
         } else {
             ir_module.module_path.as_str()
         };
-        let classes = compile_module_inner(ir_module, class_name, is_entry).map_err(|e| {
+        let view = link_ctx
+            .view_for(&ModulePath::new(ir_module.module_path.as_str()))
+            .unwrap_or_else(|| {
+                panic!("ICE: no LinkContext view for module '{}'", ir_module.module_path)
+            });
+        let classes = compile_module_inner(ir_module, class_name, is_entry, &view).map_err(|e| {
             if let Some(s) = &typed_module.module_source {
                 return e.with_source(typed_module.module_path.clone(), s.clone());
             }
@@ -182,22 +189,24 @@ fn compile_module_inner(
     ir_module: &krypton_ir::Module,
     class_name: &str,
     is_main: bool,
+    link_view: &ModuleLinkView<'_>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     if is_main && !ir_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction());
     }
 
-    let mut compiler = Compiler::new(class_name)?;
+    let mut compiler = Compiler::new(class_name, link_view)?;
     compiler.types.class_descriptors.insert(
         compiler.builder.refs.object_class,
         "Ljava/lang/Object;".to_string(),
     );
 
-    // Phase 1: Register types — local first, then imported metadata from the module.
+    // Phase 1: Register types — local first, then imported metadata from link view.
+    let module_path = ir_module.module_path.as_str();
     compiler.register_extern_types_ir(ir_module)?;
-    compiler.register_imported_extern_types(ir_module)?;
-    compiler.register_imported_structs_from_metadata(ir_module)?;
-    compiler.register_imported_sum_types_from_metadata(ir_module)?;
+    compiler.register_imported_extern_types(module_path)?;
+    compiler.register_imported_structs_from_metadata(module_path)?;
+    compiler.register_imported_sum_types_from_metadata(module_path)?;
 
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     result_classes.extend(compiler.register_structs_ir(ir_module)?);
@@ -210,7 +219,7 @@ fn compile_module_inner(
     result_classes.extend(compiler.register_builtin_instances_ir(ir_module)?);
 
     // Build instance map from local + imported instances
-    let instance_class_map = build_instance_class_map(ir_module);
+    let instance_class_map = build_instance_class_map(ir_module, link_view);
     compiler.register_imported_instances(&instance_class_map)?;
     result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name)?);
 
@@ -233,8 +242,9 @@ fn compile_module_inner(
 /// Build instance class map from a module's local + imported instances.
 fn build_instance_class_map(
     ir_module: &krypton_ir::Module,
-) -> HashMap<(TraitName, String), ImportedInstanceInfo> {
-    let mut map: HashMap<(TraitName, String), ImportedInstanceInfo> = HashMap::new();
+    link_view: &ModuleLinkView<'_>,
+) -> HashMap<(TraitName, Type), ImportedInstanceInfo> {
+    let mut map: HashMap<(TraitName, Type), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
 
     // Local non-imported instances
@@ -261,7 +271,7 @@ fn build_instance_class_map(
             })
             .collect();
         map.insert(
-            (inst.trait_name.clone(), inst.target_type_name.clone()),
+            (inst.trait_name.clone(), inst.target_type.clone()),
             ImportedInstanceInfo {
                 class_name,
                 target_type: inst.target_type.clone(),
@@ -270,34 +280,38 @@ fn build_instance_class_map(
         );
     }
 
-    // Imported instances from cross-module metadata
-    for imp in &ir_module.imported_instances() {
-        if imp.is_intrinsic {
+    // Imported instances from link view
+    for (path, inst) in link_view.all_instances() {
+        if path.as_str() == ir_module.module_path.as_str() { continue; }
+        if inst.is_intrinsic {
             continue;
         }
         if intrinsic_registry
-            .get(&imp.trait_name.local_name, &imp.target_type_name)
+            .get(&inst.trait_name.local_name, &inst.target_type_name)
             .is_some()
         {
             continue;
         }
         let class_name = format!(
             "{}/{}$${}",
-            imp.source_module_path, imp.trait_name.local_name, imp.target_type_name
+            path.as_str(), inst.trait_name.local_name, inst.target_type_name
         );
-        let requirements: Vec<DictRequirement> = imp
-            .sub_dict_requirements
+        let target_type: krypton_ir::Type = inst.target_type.clone().into();
+        let requirements: Vec<DictRequirement> = inst
+            .constraints
             .iter()
-            .map(|(trait_name, type_var)| DictRequirement {
-                trait_name: trait_name.clone(),
-                type_var: *type_var,
+            .filter_map(|c| {
+                inst.type_var_ids.get(&c.type_var).map(|&id| DictRequirement {
+                    trait_name: c.trait_name.clone(),
+                    type_var: id,
+                })
             })
             .collect();
         map.insert(
-            (imp.trait_name.clone(), imp.target_type_name.clone()),
+            (inst.trait_name.clone(), target_type.clone()),
             ImportedInstanceInfo {
                 class_name,
-                target_type: imp.target_type.clone(),
+                target_type,
                 requirements,
             },
         );

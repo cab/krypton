@@ -69,7 +69,7 @@ pub(super) struct MethodScope {
     saved: BytecodeBuilder,
 }
 
-impl Compiler {
+impl<'link> Compiler<'link> {
     /// Stash the current builder and install a fresh one for compiling a nested method.
     pub(super) fn push_method_scope(&mut self) -> MethodScope {
         let refs = self.builder.refs.clone();

@@ -9,7 +9,7 @@ use super::compiler::{
     CodegenError, Compiler, DictRequirement, JvmType, ParameterizedInstanceInfo,
 };
 
-impl Compiler {
+impl<'link> Compiler<'link> {
     /// Coerce an Object result from invokeinterface to the expected JVM type.
     /// Used by both higher-order calls and trait method dispatch.
     pub(super) fn coerce_interface_return(&mut self, expected_ret: JvmType) {
