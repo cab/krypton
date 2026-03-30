@@ -1,8 +1,6 @@
 # expect: output 0
 
-fun countdown(n: Int) -> Int {
-  let f = (x: Int) -> { recur(x - 1) }
-  if n == 0 { 0 } else { f(n) }
+fun main() = {
+  let f = (x: Int) -> { if x == 0 { 0 } else { recur(x - 1) } }
+  println(f(3))
 }
-
-fun main() = println(countdown(3))

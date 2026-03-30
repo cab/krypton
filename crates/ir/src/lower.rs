@@ -318,7 +318,7 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
                     .map_or(false, |b| contains_expr_kind(b, pred))
         }
         TypedExprKind::Do(exprs) => exprs.iter().any(|e| contains_expr_kind(e, pred)),
-        TypedExprKind::Lambda { body, .. } => contains_expr_kind(body, pred),
+        TypedExprKind::Lambda { .. } => false, // don't cross lambda boundaries
         TypedExprKind::Match { scrutinee, arms } => {
             contains_expr_kind(scrutinee, pred)
                 || arms.iter().any(|a| contains_expr_kind(&a.body, pred))
@@ -5013,8 +5013,33 @@ impl LowerCtx {
         let old_recur_join = self.recur_join.take();
         let old_early_return_join = self.early_return_join.take();
 
+        // Set up recur join point if the lambda body contains recur
+        let has_recur = contains_recur(body);
+        let recur_join_info = if has_recur {
+            let join_name = self.fresh_var();
+            let mut join_param_vars = vec![];
+            for (param_name, _, ty) in &lambda_var_mappings {
+                let join_var = self.fresh_var();
+                self.var_types.insert(join_var, ty.clone());
+                self.push_var(param_name, join_var);
+                join_param_vars.push(join_var);
+            }
+            self.recur_join = Some((join_name, join_param_vars.clone()));
+            Some((join_name, join_param_vars))
+        } else {
+            None
+        };
+
         // Lower body
-        let lowered_body = self.lower_expr(body)?;
+        let mut lowered_body = self.lower_expr(body)?;
+
+        // Pop recur join params (they shadow lambda params)
+        if recur_join_info.is_some() {
+            for (name, _, _) in lambda_var_mappings.iter().rev() {
+                self.pop_var(name);
+            }
+        }
+        self.recur_join = None;
 
         // Pop all from var_scope, restore dict_params and join points
         for (name, _, _) in lambda_var_mappings.iter().rev() {
@@ -5061,7 +5086,42 @@ impl LowerCtx {
             lifted_params.push((*new_var, ty.clone().into()));
         }
 
-        // 9. Push FnDef onto lifted_fns
+        // 9. Wrap body with recur join if needed
+        if let Some((join_name, join_param_vars)) = recur_join_info {
+            let join_params: Vec<(VarId, IrType)> = join_param_vars
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+                    (v, ty.into())
+                })
+                .collect();
+            let original_atoms: Vec<Atom> = lambda_var_mappings
+                .iter()
+                .map(|(_, new_var, _)| Atom::Var(*new_var))
+                .collect();
+            let body_span = lowered_body.span;
+            lowered_body = expr_at(
+                body_span,
+                return_type.clone().into(),
+                ExprKind::LetJoin {
+                    name: join_name,
+                    params: join_params,
+                    join_body: Box::new(lowered_body),
+                    body: Box::new(expr_at(
+                        body_span,
+                        return_type.clone().into(),
+                        ExprKind::Jump {
+                            target: join_name,
+                            args: original_atoms,
+                        },
+                    )),
+                    is_recur: true,
+                },
+            );
+        }
+
+        // 10. Push FnDef onto lifted_fns
         let lowered_body_span = lowered_body.span;
         self.lifted_fns.push(FnDef {
             id: fn_id,
