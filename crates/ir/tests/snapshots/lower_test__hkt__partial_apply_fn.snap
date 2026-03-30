@@ -15,19 +15,14 @@ import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 declare println: (o) -> Unit
 
 fn main() -> Unit =
-  let v0: (Int) -> Int = make_closure(lambda$52, [])
-  let v6: (Int) -> Int = make_closure(lambda$53, [])
+  let v0: (Int) -> Int = make_closure(lambda$47, [])
+  let v6: (Int) -> Int = make_closure(lambda$48, [])
   let v7: Dict[hkt__partial_apply_fn.Functor, (Int) -> _] = get_dict hkt__partial_apply_fn.Functor[(Int) -> _]
   let v3: (Int) -> Int = trait_call hkt__partial_apply_fn.Functor.fmap(v7, v0, v6)
   let v9: Int = call_closure v3(10)
@@ -36,18 +31,18 @@ fn main() -> Unit =
   v10
 
 fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (i9) -> k9, v12: (k9) -> l9) -> (i9) -> l9 =
-  let v18: (i9) -> l9 = make_closure(lambda$54, [v12, v11])
+  let v18: (i9) -> l9 = make_closure(lambda$49, [v12, v11])
   v18
 
-fn lambda$52(v1: Int) -> Int =
+fn lambda$47(v1: Int) -> Int =
   let v2: Int = add_int(v1, 1)
   v2
 
-fn lambda$53(v4: Int) -> Int =
+fn lambda$48(v4: Int) -> Int =
   let v5: Int = mul_int(v4, 2)
   v5
 
-fn lambda$54(v13: (k9) -> l9, v14: (i9) -> k9, v15: i9) -> l9 =
+fn lambda$49(v13: (k9) -> l9, v14: (i9) -> k9, v15: i9) -> l9 =
   let v16: k9 = call_closure v14(v15)
   let v17: l9 = call_closure v13(v16)
   v17

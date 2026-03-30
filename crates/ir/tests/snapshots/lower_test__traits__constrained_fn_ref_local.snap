@@ -12,14 +12,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 declare println: (o) -> Unit
 
@@ -29,7 +24,7 @@ fn show_it(v0: Dict[core/show.Show, o8], v1: o8) -> String =
 
 fn main() -> Unit =
   let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v3: (Int) -> String = make_closure(fn_ref$52, [v4])
+  let v3: (Int) -> String = make_closure(fn_ref$47, [v4])
   let_join v14(v12: Bool) =
     let v8: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v13: Unit = call println(v8, v12)
@@ -40,6 +35,6 @@ fn main() -> Unit =
   let v11: Bool = trait_call core/eq.Eq.eq(v9, v10, "42")
   jump v14(v11)
 
-fn fn_ref$52(v5: Dict[core/show.Show, Int], v6: Int) -> String =
+fn fn_ref$47(v5: Dict[core/show.Show, Int], v6: Int) -> String =
   let v7: String = call show_it(v5, v6)
   v7

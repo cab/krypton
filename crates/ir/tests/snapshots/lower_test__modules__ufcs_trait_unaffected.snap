@@ -12,14 +12,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 fn map(v0: Int, v1: (Int) -> Int) -> Int =
   let v2: Int = call_closure v1(v0)
   v2
@@ -29,10 +24,10 @@ fn double(v3: Int) -> Int =
   v4
 
 fn main() -> Int =
-  let v7: (Int) -> Int = make_closure(lambda$52, [])
+  let v7: (Int) -> Int = make_closure(lambda$47, [])
   let v8: Int = call map(5, v7)
   v8
 
-fn lambda$52(v5: Int) -> Int =
+fn lambda$47(v5: Int) -> Int =
   let v6: Int = call double(v5)
   v6

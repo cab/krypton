@@ -11,14 +11,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/list/length as length(List[p]): Int
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/io/println as println(o): Unit
@@ -27,13 +22,13 @@ declare sort_by: (List[z5], (z5) -> o5) -> List[z5]
 
 fn main() -> Unit =
   let v1: ~List[Int] = construct List::Nil#1()
-  let v3: (Int) -> Int = make_closure(lambda$52, [])
+  let v3: (Int) -> Int = make_closure(lambda$47, [])
   let v4: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v0: List[Int] = call sort_by(v4, v1, v3)
   let_join v41(v9: Unit) =
     let v11: ~List[Int] = construct List::Nil#1()
     let v12: ~List[Int] = construct List::Cons#0(42, v11)
-    let v14: (Int) -> Int = make_closure(lambda$53, [])
+    let v14: (Int) -> Int = make_closure(lambda$48, [])
     let v15: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
     let v10: List[Int] = call sort_by(v15, v12, v14)
     let_join v40(v24: Unit) =
@@ -42,7 +37,7 @@ fn main() -> Unit =
       let v28: ~List[Int] = construct List::Cons#0(2, v27)
       let v29: ~List[Int] = construct List::Cons#0(1, v28)
       let v30: ~List[Int] = construct List::Cons#0(3, v29)
-      let v32: (Int) -> Int = make_closure(lambda$54, [])
+      let v32: (Int) -> Int = make_closure(lambda$49, [])
       let v33: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
       let v25: List[Int] = call sort_by(v33, v30, v32)
       switch v25 {
@@ -85,11 +80,11 @@ fn main() -> Unit =
       jump v41(v8)
   }
 
-fn lambda$52(v2: Int) -> Int =
+fn lambda$47(v2: Int) -> Int =
   v2
 
-fn lambda$53(v13: Int) -> Int =
+fn lambda$48(v13: Int) -> Int =
   v13
 
-fn lambda$54(v31: Int) -> Int =
+fn lambda$49(v31: Int) -> Int =
   v31

@@ -11,14 +11,9 @@ import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 declare fold: (List[w1], y1, (y1, w1) -> y1) -> y1
@@ -30,18 +25,18 @@ fn main() -> Unit =
   let v2: ~List[Int] = construct List::Cons#0(3, v1)
   let v3: ~List[Int] = construct List::Cons#0(2, v2)
   let v4: ~List[Int] = construct List::Cons#0(1, v3)
-  let v7: (Int) -> Int = make_closure(lambda$51, [])
+  let v7: (Int) -> Int = make_closure(lambda$46, [])
   let v8: List[Int] = call map(v4, v7)
-  let v12: (Int, Int) -> Int = make_closure(lambda$52, [])
+  let v12: (Int, Int) -> Int = make_closure(lambda$47, [])
   let v13: Int = call fold(v8, 0, v12)
   let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v14: Unit = call println(v0, v13)
   v14
 
-fn lambda$51(v5: Int) -> Int =
+fn lambda$46(v5: Int) -> Int =
   let v6: Int = mul_int(v5, 2)
   v6
 
-fn lambda$52(v9: Int, v10: Int) -> Int =
+fn lambda$47(v9: Int, v10: Int) -> Int =
   let v11: Int = add_int(v9, v10)
   v11

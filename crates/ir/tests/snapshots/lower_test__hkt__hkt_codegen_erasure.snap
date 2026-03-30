@@ -15,14 +15,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 declare println: (o) -> Unit
 declare to_list: (Vec[c8]) -> List[c8]
@@ -43,7 +38,7 @@ fn main() -> Unit =
   let v11: Vec[Int] = make_vec(1, 2, 4)
   let v12: List[Int] = call to_list(v11)
   let v13: ~Box[Int] = construct Box::Box#0(0)
-  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$54, [])
+  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$49, [])
   let v10: Box[Int] = call fold_box(v12, v13, v19)
   switch v10 {
     0 (v20: Int) ->
@@ -60,7 +55,7 @@ fn Functor$$Box$$fmap(v23: Box[x9], v24: (x9) -> z9) -> ~Box[z9] =
       v27
   }
 
-fn lambda$54(v14: Box[Int], v15: Int) -> ~Box[Int] =
+fn lambda$49(v14: Box[Int], v15: Int) -> ~Box[Int] =
   switch v14 {
     0 (v16: Int) ->
       let v17: Int = add_int(v16, v15)

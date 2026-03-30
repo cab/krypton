@@ -13,14 +13,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import helpers_a/compute as magnitude(Int): Int
 declare magnitude: (Int) -> Int
 declare println: (Object) -> Unit
@@ -131,7 +126,6 @@ module core/list
 type List[h] = Cons#0(h, List[h]) | Nil#1
 instance core/show.Show[List] { show=Show$$List$$show }
 import core/option/Some as Some(g): Option[g]
-import core/option/None as None(): Option[g]
 
 fn length(v0: List[p]) -> Int =
   switch v0 {
@@ -195,7 +189,7 @@ fn concat(v29: List[e2], v30: List[e2]) -> List[e2] =
 fn reverse(v35: List[n2]) -> List[n2] =
   let v36: ~List[n2] = construct List::Nil#1()
   let v37: ~List[n2] = v36
-  let v41: (List[n2], n2) -> ~List[n2] = make_closure(lambda$20, [])
+  let v41: (List[n2], n2) -> ~List[n2] = make_closure(lambda$18, [])
   let v42: List[n2] = call fold(v35, v37, v41)
   v42
 
@@ -336,7 +330,7 @@ fn Show$$List$$show(v117: Dict[core/show.Show, h], v118: List[h]) -> String =
       "Nil"
   }
 
-fn lambda$20(v38: List[n2], v39: n2) -> ~List[n2] =
+fn lambda$18(v38: List[n2], v39: n2) -> ~List[n2] =
   let v40: ~List[n2] = construct List::Cons#0(v39, v38)
   v40
 module core/vec
@@ -354,14 +348,12 @@ extern js "../runtime/js/array.mjs" staticSet(Object, Int, Object): Unit
 extern js "../runtime/js/array.mjs" staticFreeze(Object): Object
 extern type java "krypton.runtime.KryptonArray" Vec
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 import core/list/length as list_length(List[p]): Int
 import core/list/map as list_map(List[y], (y) -> a1): List[a1]
 import core/list/filter as list_filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as list_fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/sort_by as list_sort_by(List[z5], (z5) -> o5): List[z5]
 import core/option/Some as Some(g): Option[g]
-import core/option/None as None(): Option[g]
 declare list_filter: (List[j1], (j1) -> Bool) -> List[j1]
 declare list_fold: (List[w1], y1, (y1, w1) -> y1) -> y1
 declare list_length: (List[p]) -> Int
@@ -559,9 +551,7 @@ extern js "../runtime/js/array.mjs" staticLength(Object): Int
 extern js "../runtime/js/array.mjs" staticGet(Object, Int): Object
 extern type java "krypton.runtime.KryptonMap" Map
 import core/option/Some as Some(g): Option[g]
-import core/option/None as None(): Option[g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/vec/to_list as vec_to_list(Vec[c8]): List[c8]
 declare fold: (List[w1], y1, (y1, w1) -> y1) -> y1
@@ -648,7 +638,7 @@ fn entries(v47: Map[a14, b14]) -> List[(a14, b14)] =
 
 fn from_list(v54: Dict[core/eq.Eq, v14], v55: Dict[core/hash.Hash, v14], v56: List[(v14, w14)]) -> Map[v14, w14] =
   let v57: Map[v14, w14] = call empty()
-  let v65: (Map[v14, w14], (v14, w14)) -> Map[v14, w14] = make_closure(lambda$36, [v54, v55])
+  let v65: (Map[v14, w14], (v14, w14)) -> Map[v14, w14] = make_closure(lambda$34, [v54, v55])
   let v66: Map[v14, w14] = call fold(v56, v57, v65)
   v66
 
@@ -660,7 +650,7 @@ fn merge(v69: Dict[core/eq.Eq, j15], v70: Dict[core/hash.Hash, j15], v71: Map[j1
   let v73: Map[j15, k15] = call staticMerge(v71, v72)
   v73
 
-fn lambda$36(v58: Dict[core/eq.Eq, v14], v59: Dict[core/hash.Hash, v14], v60: Map[v14, w14], v61: (v14, w14)) -> Map[v14, w14] =
+fn lambda$34(v58: Dict[core/eq.Eq, v14], v59: Dict[core/hash.Hash, v14], v60: Map[v14, w14], v61: (v14, w14)) -> Map[v14, w14] =
   let v62: v14 = tuple_project v61.0
   let v63: w14 = tuple_project v61.1
   let v64: Map[v14, w14] = call put(v58, v59, v60, v62, v63)
@@ -695,20 +685,15 @@ module prelude
 
 import core/peek/peek as peek(h): h
 import core/option/Some as Some(g): Option[g]
-import core/option/None as None(): Option[g]
 import core/result/Ok as Ok(h): Result[g, h]
 import core/result/Err as Err(g): Result[g, h]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 module helpers_a
 
@@ -721,14 +706,9 @@ import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 fn compute(v0: Int) -> Int =
   let v1: Int = add_int(v0, 10)
   v1

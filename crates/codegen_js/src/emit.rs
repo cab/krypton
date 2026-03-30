@@ -710,6 +710,31 @@ fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashMap<FnId, Span
 }
 
 /// Collect all `(TraitName, Type)` pairs referenced by GetDict/MakeDict in a module's functions.
+/// Collects `(source_module, import_name)` pairs for all imported constructors
+/// by reading the module's `ImportManifest`. This covers struct names and all
+/// sum type variant names (both nullary and non-nullary), ensuring they're
+/// available for construction (`new Foo(...)`, `Nil.INSTANCE`) and pattern
+/// matching (`instanceof Nil`).
+fn collect_constructor_imports(module: &Module) -> Vec<(String, String)> {
+    let mut refs = Vec::new();
+    let mut seen = HashSet::new();
+    for st in &module.imports.structs {
+        let key = (st.module_path.clone(), st.name.clone());
+        if seen.insert(key.clone()) {
+            refs.push(key);
+        }
+    }
+    for sum in &module.imports.sum_types {
+        for v in &sum.variants {
+            let key = (sum.module_path.clone(), v.name.clone());
+            if seen.insert(key.clone()) {
+                refs.push(key);
+            }
+        }
+    }
+    refs
+}
+
 fn collect_dict_refs(module: &Module) -> Vec<(TraitName, Type)> {
     let mut refs = Vec::new();
     let mut seen = HashSet::new();
@@ -1102,6 +1127,19 @@ impl<'a> JsEmitter<'a> {
                 .entry(&imp.source_module)
                 .or_default()
                 .push((&imp.original_name, &imp.name));
+        }
+
+        // ── Constructor imports ──
+        // Import struct names and sum type variant names from the ImportManifest.
+        // This covers construction (new Foo(...), Nil.INSTANCE) and pattern
+        // matching (instanceof Nil). Merged into the same by_module map so
+        // deduplication with function imports happens automatically.
+        let ctor_refs = collect_constructor_imports(self.module);
+        for (mod_path, name) in &ctor_refs {
+            by_module
+                .entry(mod_path.as_str())
+                .or_default()
+                .push((name.as_str(), name.as_str()));
         }
 
         let mut modules: Vec<&&str> = by_module.keys().collect();

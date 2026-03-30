@@ -18,17 +18,12 @@ import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 
 fn apply(v0: Dict[hkt__hkt_function.Functor, v8], v1: v8[w8]) -> v8[w8] =
-  let v4: (w8) -> w8 = make_closure(lambda$55, [])
+  let v4: (w8) -> w8 = make_closure(lambda$50, [])
   let v5: v8[w8] = trait_call hkt__hkt_function.Functor.fmap(v0, v1, v4)
   v5
 
@@ -49,5 +44,5 @@ fn Hoist$$Int$$hoist(v14: s8[Int], v15: (s8[Int]) -> t8[Int]) -> t8[Int] =
   let v16: t8[Int] = call_closure v15(v14)
   v16
 
-fn lambda$55(v3: w8) -> w8 =
+fn lambda$50(v3: w8) -> w8 =
   v3

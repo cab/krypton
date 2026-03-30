@@ -12,14 +12,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 import constrained_ref_hof/apply_to_int as apply_to_int((Int) -> String, Int): String
 import constrained_ref_lib/render_it as render_it(o8): String
@@ -29,7 +24,7 @@ declare render_it: (o8) -> String
 
 fn main() -> Unit =
   let v1: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v0: (Int) -> String = make_closure(fn_ref$53, [v1])
+  let v0: (Int) -> String = make_closure(fn_ref$48, [v1])
   let_join v11(v9: Bool) =
     let v5: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v10: Unit = call println(v5, v9)
@@ -40,6 +35,6 @@ fn main() -> Unit =
   let v8: Bool = trait_call core/eq.Eq.eq(v6, v7, "42")
   jump v11(v8)
 
-fn fn_ref$53(v2: Dict[core/show.Show, Int], v3: Int) -> String =
+fn fn_ref$48(v2: Dict[core/show.Show, Int], v3: Int) -> String =
   let v4: String = call render_it(v2, v3)
   v4

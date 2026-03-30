@@ -127,3 +127,41 @@ fn ir_link(
 
     insta::assert_snapshot!(name, output);
 }
+
+#[test]
+fn nullary_constructors_have_no_fn_id() {
+    let source = r#"
+type Opt[a] = Some(a) | None
+fun main() = {
+    let x = None
+    0
+}
+"#;
+    let name = "nullary_ctor_no_fn_id";
+    let resolver = CompositeResolver::stdlib_only();
+
+    let (module, errors) = parse(source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+
+    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.to_string())
+        .unwrap_or_else(|e| panic!("typecheck failed: {e:?}"));
+
+    let link_ctx = LinkContext::build(interfaces);
+    let view = link_ctx
+        .view_for(&ModulePath::new(&typed_modules[0].module_path))
+        .unwrap_or_else(|| panic!("no LinkContext view"));
+    let ir_module = lower_module(&typed_modules[0], name, &view)
+        .unwrap_or_else(|e| panic!("IR lowering failed: {e:?}"));
+
+    let has_none = ir_module
+        .fn_identities
+        .values()
+        .any(|fi| fi.name() == "None");
+    assert!(!has_none, "fn_identities should not contain nullary constructor 'None'");
+
+    let has_main = ir_module
+        .fn_identities
+        .values()
+        .any(|fi| fi.name() == "main");
+    assert!(has_main, "fn_identities should contain 'main'");
+}

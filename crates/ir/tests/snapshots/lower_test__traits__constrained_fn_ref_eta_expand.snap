@@ -12,14 +12,9 @@ import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
 import core/vec/to_list as to_list(Vec[c8]): List[c8]
 import core/option/Some as Some(e): Option[e]
-import core/option/None as None(): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/list/Nil as Nil(): List[h]
-import core/ordering/LT as LT(): Ordering
-import core/ordering/EQ as EQ(): Ordering
-import core/ordering/GT as GT(): Ordering
 import core/io/println as println(o): Unit
 declare println: (o) -> Unit
 
@@ -28,7 +23,7 @@ fn show_it(v0: Dict[core/show.Show, o8], v1: o8) -> String =
   v2
 
 fn main() -> Unit =
-  let v3: (Int) -> String = make_closure(lambda$52, [])
+  let v3: (Int) -> String = make_closure(lambda$47, [])
   let_join v13(v11: Bool) =
     let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v12: Unit = call println(v7, v11)
@@ -39,7 +34,7 @@ fn main() -> Unit =
   let v10: Bool = trait_call core/eq.Eq.eq(v8, v9, "42")
   jump v13(v10)
 
-fn lambda$52(v4: Int) -> String =
+fn lambda$47(v4: Int) -> String =
   let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: String = call show_it(v5, v4)
   v6

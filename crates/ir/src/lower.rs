@@ -5607,6 +5607,11 @@ pub fn lower_module(
     }
     // Imported functions (from fn_types entries with provenance)
     for entry in &typed.fn_types {
+        // Nullary constructors have Type::Named, not Type::Fn.
+        // They lower to ConstructVariant, never produce FnDefs.
+        if !matches!(entry.scheme.ty, Type::Fn(..)) {
+            continue;
+        }
         if !ctx.fn_ids.contains_key(&entry.name) {
             let fn_id = ctx.fresh_fn();
             ctx.fn_ids.insert(entry.name.clone(), fn_id);
@@ -5772,10 +5777,7 @@ pub fn lower_module(
                 }
             }
         } else {
-            // Not in callable_ids: lifted synthetics (lambda$, ctor$, fn_ref$,
-            // trait_ref$) and nullary constructors referenced by name.
-            // TODO: nullary constructors shouldn't have FnIds — they lower
-            // to ConstructVariant, not FnDef. Clean up in a follow-up.
+            // Not in callable_ids: lifted synthetics (lambda$, ctor$, fn_ref$, trait_ref$).
             FnIdentity::Local { name: name.clone() }
         };
         fn_identities.insert(id, identity);
@@ -5832,23 +5834,26 @@ pub fn lower_module(
         if entry.origin.is_some() {
             continue;
         }
+        // Nullary constructors lower to ConstructVariant, not imported function calls.
+        if !matches!(entry.scheme.ty, Type::Fn(..)) {
+            continue;
+        }
         if entry.qualified_name.module_path != typed.module_path {
             let key = (entry.name.clone(), entry.qualified_name.module_path.clone());
             if !imported_fn_seen.insert(key) {
                 continue;
             }
             if let Some(&fn_id) = ctx.callable_ids.get(&entry.qualified_name) {
-                let (param_types, return_type) = match &entry.scheme.ty {
-                    Type::Fn(params, ret) => (params.clone(), (**ret).clone()),
-                    other => (vec![], other.clone()),
+                let Type::Fn(param_types, ret) = &entry.scheme.ty else {
+                    unreachable!()
                 };
                 imported_fns.push(ImportedFnDef {
                     id: fn_id,
                     name: entry.name.clone(),
                     source_module: entry.qualified_name.module_path.clone(),
                     original_name: entry.qualified_name.local_name.clone(),
-                    param_types: param_types.into_iter().map(Into::into).collect(),
-                    return_type: return_type.into(),
+                    param_types: param_types.iter().cloned().map(Into::into).collect(),
+                    return_type: (**ret).clone().into(),
                 });
             }
         }
