@@ -1,0 +1,6 @@
+# expect: output "42"
+extern java "java.lang.Math" {
+    fun abs(x: Int) -> Int
+}
+
+fun main() = println(show(abs(-42)))

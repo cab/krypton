@@ -952,6 +952,32 @@ where
 }
 
 #[allow(clippy::type_complexity)]
+fn platform_attr_parser<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, Option<Vec<CompileTarget>>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
+       + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    let target_ident = select! {
+        Token::Ident(s) if s == "jvm" => CompileTarget::Jvm,
+        Token::Ident(s) if s == "js" => CompileTarget::Js,
+    };
+    symbol(Token::At)
+        .ignore_then(select! { Token::Ident(s) if s == "platform" => () })
+        .ignore_then(
+            target_ident
+                .separated_by(symbol(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(
+                    symbol(Token::LParen).then(symbol(Token::LBracket)),
+                    closing_symbol(Token::RBracket).then(closing_symbol(Token::RParen)),
+                ),
+        )
+        .or_not()
+}
+
+#[allow(clippy::type_complexity)]
 fn decl_parser<'tokens, 'src: 'tokens, I>(
 ) -> impl Parser<'tokens, I, (Decl, Vec<ParseError>), extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
 where
@@ -1003,11 +1029,14 @@ where
         .or_not()
         .map(|tp| tp.unwrap_or_default());
 
+    let platform_attr = platform_attr_parser();
+
     // --- Function declaration ---
     // fun name[tparams](params) -> RetType where constraints = expr
     // fun name(params) { body }
-    let fun_decl = vis
+    let fun_decl = platform_attr
         .clone()
+        .then(vis.clone())
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(fn_type_params.clone())
@@ -1027,9 +1056,10 @@ where
                 .or(expr.clone()),
         )
         .map_with(
-            |((((((visibility, name), type_params), params), return_type), constraints), body),
+            |(((((((platform, visibility), name), type_params), params), return_type), constraints), body),
              e| {
                 Decl::DefFn(FnDecl {
+                    platform,
                     name,
                     visibility,
                     type_params,
@@ -1090,15 +1120,18 @@ where
 
     let type_vis = type_visibility_parser();
 
-    let type_decl = type_vis
+    let type_decl = platform_attr
+        .clone()
+        .then(type_vis)
         .then_ignore(symbol(Token::Type))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(type_decl_params.clone())
         .then_ignore(symbol(Token::Assign))
         .then(record_kind.or(sum_kind))
         .then(deriving)
-        .map_with(|((((visibility, name), type_params), kind), deriving), e| {
+        .map_with(|(((((platform, visibility), name), type_params), kind), deriving), e| {
             Decl::DefType(TypeDecl {
+                platform,
                 name,
                 visibility,
                 type_params,
@@ -1157,6 +1190,7 @@ where
                 });
                 (
                     FnDecl {
+                        platform: None,
                         name,
                         visibility: Visibility::Private,
                         type_params,
@@ -1187,8 +1221,9 @@ where
         .or_not()
         .map(|s| s.unwrap_or_default());
 
-    let trait_decl = vis
+    let trait_decl = platform_attr
         .clone()
+        .then(vis.clone())
         .then_ignore(symbol(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(type_param.delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)))
@@ -1202,7 +1237,7 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |((((visibility, name), type_param), superclasses), method_pairs), e| {
+            |(((((platform, visibility), name), type_param), superclasses), method_pairs), e| {
                 let mut methods = Vec::with_capacity(method_pairs.len());
                 let mut warnings = Vec::new();
                 for (method, warning) in method_pairs {
@@ -1213,6 +1248,7 @@ where
                 }
                 (
                     Decl::DefTrait {
+                        platform,
                         visibility,
                         name,
                         type_param,
@@ -1245,6 +1281,7 @@ where
         )
         .map_with(
             |(((((name, type_params), params), return_type), constraints), body), e| FnDecl {
+                platform: None,
                 name,
                 visibility: Visibility::Private,
                 type_params,
@@ -1258,8 +1295,10 @@ where
 
     let impl_constraints = where_clause_parser();
 
-    let impl_decl = symbol(Token::Impl)
-        .ignore_then(fn_type_params.clone())
+    let impl_decl = platform_attr
+        .clone()
+        .then_ignore(symbol(Token::Impl))
+        .then(fn_type_params.clone())
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(
             ty.clone()
@@ -1274,8 +1313,9 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |((((type_params, trait_name), target_type), type_constraints), methods), e| {
+            |(((((platform, type_params), trait_name), target_type), type_constraints), methods), e| {
                 Decl::DefImpl {
+                    platform,
                     trait_name,
                     target_type,
                     type_params,
@@ -1323,21 +1363,27 @@ where
         .or_not()
         .map(|n| n.unwrap_or_default());
 
-    let pub_import_decl = symbol(Token::Pub)
-        .ignore_then(symbol(Token::Import))
-        .ignore_then(import_path.clone())
+    let pub_import_decl = platform_attr
+        .clone()
+        .then_ignore(symbol(Token::Pub))
+        .then_ignore(symbol(Token::Import))
+        .then(import_path.clone())
         .then(import_names.clone())
-        .map_with(|(path, names), e| Decl::Import {
+        .map_with(|((platform, path), names), e| Decl::Import {
+            platform,
             is_pub: true,
             path,
             names,
             span: to_span(e.span()),
         });
 
-    let import_decl = symbol(Token::Import)
-        .ignore_then(import_path)
+    let import_decl = platform_attr
+        .clone()
+        .then_ignore(symbol(Token::Import))
+        .then(import_path)
         .then(import_names)
-        .map_with(|(path, names), e| Decl::Import {
+        .map_with(|((platform, path), names), e| Decl::Import {
+            platform,
             is_pub: false,
             path,
             names,
@@ -1416,8 +1462,10 @@ where
         )
         .or_not();
 
-    let extern_decl = symbol(Token::Extern)
-        .ignore_then(extern_target)
+    let extern_decl = platform_attr
+        .clone()
+        .then_ignore(symbol(Token::Extern))
+        .then(extern_target)
         .then(select! { Token::String(s) => s.to_string() })
         .then(extern_as_clause)
         .then(
@@ -1427,7 +1475,7 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
-        .map_with(|(((target, module_path), as_clause), methods), e| {
+        .map_with(|((((platform, target), module_path), as_clause), methods), e| {
             let (alias, alias_visibility, type_params) = match as_clause {
                 Some(((is_pub, name), params)) => {
                     let vis = if is_pub.is_some() {
@@ -1440,6 +1488,7 @@ where
                 None => (None, None, vec![]),
             };
             Decl::Extern {
+                platform,
                 target,
                 module_path,
                 alias,

@@ -47,6 +47,7 @@ fn run_program(source: &str) -> String {
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check should succeed");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -190,7 +191,7 @@ fn run_typed_modules_with_java_sources(
 fn infer_typed_modules(source: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> (Vec<TypedModule>, Vec<krypton_typechecker::module_interface::ModuleInterface>) {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    infer_module(&module, resolver, "test".to_string()).expect("type check should succeed")
+    infer_module(&module, resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).expect("type check should succeed")
 }
 
 const NULLABLE_HOST_JAVA: &str = r#"
@@ -801,6 +802,7 @@ fn test_java_21_classfile_version() {
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -871,6 +873,7 @@ fun main() = None
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -1073,6 +1076,7 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -1113,6 +1117,7 @@ fn test_typed_module_direct() {
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -1162,6 +1167,7 @@ fun main() = println(Some(42))
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -1293,6 +1299,7 @@ fun main() = println(render(Wrap(42)))
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -1403,6 +1410,7 @@ fun main() = {
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check should succeed");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
@@ -1442,6 +1450,7 @@ fun main() = println(default[Int]())
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("type check");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);

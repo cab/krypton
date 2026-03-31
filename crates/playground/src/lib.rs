@@ -91,7 +91,7 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let resolver = PlaygroundResolver {
         root_source: source.to_string(),
     };
-    let (typed_modules, interfaces) = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string()) {
+    let (typed_modules, interfaces) = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string(), krypton_parser::ast::CompileTarget::Jvm) {
         Ok(result) => result,
         Err(errors) => {
             let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_errors(

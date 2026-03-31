@@ -24,7 +24,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     // Trivial: pre-parse + pre-typecheck + pre-lower, benchmark only codegen
     let (trivial_module, errors) = parse(TRIVIAL);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let (trivial_typed, trivial_interfaces) = infer_module(&trivial_module, &resolver, "test".to_string())
+    let (trivial_typed, trivial_interfaces) = infer_module(&trivial_module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
         .expect("typecheck should succeed");
     let trivial_link_ctx = krypton_typechecker::link_context::LinkContext::build(trivial_interfaces);
     let (trivial_ir, trivial_sources) =
@@ -40,7 +40,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     // Stress: pre-parse + pre-typecheck + pre-lower, benchmark only codegen
     let (stress_module, errors) = parse(stress_source());
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let (stress_typed, stress_interfaces) = infer_module(&stress_module, &resolver, "test".to_string())
+    let (stress_typed, stress_interfaces) = infer_module(&stress_module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
         .expect("typecheck should succeed");
     let stress_link_ctx = krypton_typechecker::link_context::LinkContext::build(stress_interfaces);
     let (stress_ir, stress_sources) =
@@ -58,7 +58,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     c.bench_function("pipeline_stress", |b| {
         b.iter(|| {
             let (module, _errors) = parse(std::hint::black_box(source));
-            let (typed, interfaces) = infer_module(&module, &resolver, "test".to_string()).expect("typecheck");
+            let (typed, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).expect("typecheck");
             let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
             let (ir, sources) = lower_all(&typed, "Bench", &link_ctx).expect("lower");
             compile_modules(&ir, "Bench", &link_ctx, &sources).expect("codegen")

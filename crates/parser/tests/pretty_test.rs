@@ -23,6 +23,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             methods,
             ..
         } => Decl::DefTrait {
+            platform: None,
             visibility: visibility.clone(),
             name: name.clone(),
             type_param: TypeParam {
@@ -42,6 +43,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             methods,
             ..
         } => Decl::DefImpl {
+            platform: None,
             trait_name: trait_name.clone(),
             target_type: zero_spans_type_expr(target_type),
             type_params: type_params
@@ -69,6 +71,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             names,
             ..
         } => Decl::Import {
+            platform: None,
             is_pub: *is_pub,
             path: path.clone(),
             names: names.clone(),
@@ -83,6 +86,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             methods,
             ..
         } => Decl::Extern {
+            platform: None,
             target: target.clone(),
             module_path: module_path.clone(),
             alias: alias.clone(),
@@ -120,6 +124,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
 
 fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
     FnDecl {
+        platform: f.platform.clone(),
         name: f.name.clone(),
         visibility: f.visibility.clone(),
         type_params: f.type_params.clone(),
@@ -149,6 +154,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
 
 fn zero_spans_type_decl(t: &TypeDecl) -> TypeDecl {
     TypeDecl {
+        platform: t.platform.clone(),
         name: t.name.clone(),
         visibility: t.visibility.clone(),
         type_params: t.type_params.clone(),

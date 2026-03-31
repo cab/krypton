@@ -29,6 +29,7 @@ fn typecheck_benchmarks(c: &mut Criterion) {
                 std::hint::black_box(&trivial_module),
                 &resolver,
                 "bench".to_string(),
+                krypton_parser::ast::CompileTarget::Jvm,
             )
         });
     });
@@ -43,6 +44,7 @@ fn typecheck_benchmarks(c: &mut Criterion) {
                 std::hint::black_box(&stress_module),
                 &resolver,
                 "bench".to_string(),
+                krypton_parser::ast::CompileTarget::Jvm,
             )
         });
     });

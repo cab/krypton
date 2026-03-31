@@ -3,6 +3,13 @@ use serde::Serialize;
 /// Byte offset span: (start, end).
 pub type Span = (usize, usize);
 
+/// Compile target for platform-conditional declarations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum CompileTarget {
+    Jvm,
+    Js,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Module {
     pub decls: Vec<Decl>,
@@ -13,6 +20,7 @@ pub enum Decl {
     DefFn(FnDecl),
     DefType(TypeDecl),
     DefTrait {
+        platform: Option<Vec<CompileTarget>>,
         visibility: Visibility,
         name: String,
         type_param: TypeParam,
@@ -21,6 +29,7 @@ pub enum Decl {
         span: Span,
     },
     DefImpl {
+        platform: Option<Vec<CompileTarget>>,
         trait_name: String,
         target_type: TypeExpr,
         type_params: Vec<TypeParam>,
@@ -29,12 +38,14 @@ pub enum Decl {
         span: Span,
     },
     Import {
+        platform: Option<Vec<CompileTarget>>,
         is_pub: bool,
         path: String,
         names: Vec<ImportName>,
         span: Span,
     },
     Extern {
+        platform: Option<Vec<CompileTarget>>,
         target: ExternTarget,
         module_path: String,
         alias: Option<String>,
@@ -78,6 +89,7 @@ pub enum ExternTarget {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeDecl {
+    pub platform: Option<Vec<CompileTarget>>,
     pub name: String,
     pub visibility: Visibility,
     pub type_params: Vec<String>,
@@ -101,6 +113,7 @@ pub struct Variant {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FnDecl {
+    pub platform: Option<Vec<CompileTarget>>,
     pub name: String,
     pub visibility: Visibility,
     pub type_params: Vec<TypeParam>,

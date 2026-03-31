@@ -32,7 +32,7 @@ fn compile_js_result_with_resolver(
     );
 
     let (typed_modules, interfaces) =
-        infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
+        infer_module(&module, resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Js).unwrap_or_else(|errors| {
             let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
             let rendered: String = diags
                 .iter()
@@ -48,19 +48,17 @@ fn compile_js_result_with_resolver(
     compile_modules_js(&ir_modules, "test", false, &link_ctx, &js_module_sources)
 }
 
-/// Copy runtime/js/*.mjs files into the temp output directory so that
+/// Copy committed runtime/js/dist/*.mjs files into the temp output directory so that
 /// stdlib extern JS imports (e.g. `../runtime/js/io.mjs`) resolve at Node runtime.
 fn copy_runtime_files(dest: &Path) {
-    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js");
+    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js/dist");
     let runtime_dest = dest.join("runtime/js");
     std::fs::create_dir_all(&runtime_dest).unwrap();
 
     for entry in std::fs::read_dir(&runtime_src).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("mjs")
-            && path.file_name().unwrap() != "test_runtime.mjs"
-        {
+        if path.extension().and_then(|e| e.to_str()) == Some("mjs") {
             std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap())).unwrap();
         }
     }
@@ -148,6 +146,7 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
         &module,
         &CompositeResolver::stdlib_only(),
         "test".to_string(),
+        krypton_parser::ast::CompileTarget::Js,
     )
     .expect("typecheck should succeed");
     let root = typed_modules
@@ -349,7 +348,7 @@ fn js_codegen_fixture(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
+                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Js)
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags
@@ -407,7 +406,7 @@ fn js_codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
+                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Js)
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags

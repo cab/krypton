@@ -1339,12 +1339,18 @@ pub fn infer_module(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     root_module_path: String,
+    target: krypton_parser::ast::CompileTarget,
 ) -> Result<(Vec<TypedModule>, Vec<crate::module_interface::ModuleInterface>), Vec<InferError>> {
     use krypton_modules::module_graph;
     use krypton_modules::stdlib_loader::StdlibLoader;
 
+    // Filter root module by platform before anything else
+    let mut module = module.clone();
+    krypton_parser::platform::filter_by_platform(&mut module, target);
+    let module = &module;
+
     // Build the module graph (resolves, parses, toposorts all imports + prelude)
-    let graph = module_graph::build_module_graph(module, resolver).map_err(|e| {
+    let graph = module_graph::build_module_graph(module, resolver, target).map_err(|e| {
         vec![match e {
             module_graph::ModuleGraphError::ParseError {
                 path,
@@ -1487,7 +1493,7 @@ pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<TypedModule, Vec<InferError>> {
-    let (mut modules, _) = infer_module(module, resolver, "main".to_string())?;
+    let (mut modules, _) = infer_module(module, resolver, "main".to_string(), krypton_parser::ast::CompileTarget::Jvm)?;
     Ok(modules.remove(0))
 }
 
@@ -2878,6 +2884,7 @@ fn register_local_traits(
             superclasses,
             methods,
             span,
+            ..
         } = decl
         {
             if trait_registry.lookup_trait_by_name(name).is_some() {

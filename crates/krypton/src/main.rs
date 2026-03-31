@@ -35,10 +35,10 @@ fn find_runtime_jar() -> Option<PathBuf> {
     None
 }
 
-/// Copy runtime/js/*.mjs files into the output directory so that stdlib
-/// extern JS imports resolve at Node runtime.
+/// Copy committed runtime/js/dist/*.mjs files into the output directory so that
+/// stdlib extern JS imports resolve at Node runtime.
 fn copy_js_runtime(dest: &std::path::Path) {
-    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js");
+    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js/dist");
     if !runtime_src.exists() {
         return;
     }
@@ -50,9 +50,7 @@ fn copy_js_runtime(dest: &std::path::Path) {
     if let Ok(entries) = std::fs::read_dir(&runtime_src) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("mjs")
-                && path.file_name().unwrap() != "test_runtime.mjs"
-            {
+            if path.extension().and_then(|e| e.to_str()) == Some("mjs") {
                 std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap())).unwrap_or_else(
                     |e| {
                         eprintln!("Error copying runtime file: {}", e);
@@ -134,6 +132,15 @@ enum Target {
     #[default]
     Jvm,
     Js,
+}
+
+impl Target {
+    fn to_compile_target(&self) -> krypton_parser::ast::CompileTarget {
+        match self {
+            Target::Jvm => krypton_parser::ast::CompileTarget::Jvm,
+            Target::Js => krypton_parser::ast::CompileTarget::Js,
+        }
+    }
 }
 
 fn do_parse(
@@ -265,6 +272,7 @@ fn main() {
                 &module,
                 &resolver,
                 root_module_path(&file),
+                target.to_compile_target(),
             ) {
                 Ok(result) => result,
                 Err(errors) => {
@@ -452,6 +460,7 @@ fn main() {
                 &module,
                 &resolver,
                 root_module_path(&file),
+                target.to_compile_target(),
             ) {
                 Ok(result) => result,
                 Err(errors) => {
@@ -665,6 +674,7 @@ fn main() {
                 &module,
                 &resolver,
                 root_module_path(&file),
+                krypton_parser::ast::CompileTarget::Jvm,
             ) {
                 Ok((modules, _)) => {
                     phases.push(("typecheck", t.elapsed()));
@@ -716,6 +726,7 @@ fn main() {
                 &module,
                 &resolver,
                 root_module_path(&file),
+                krypton_parser::ast::CompileTarget::Jvm,
             ) {
                 Ok(result) => result,
                 Err(errors) => {
@@ -795,6 +806,7 @@ fn main() {
                 &module,
                 &resolver,
                 root_module_path(&file),
+                krypton_parser::ast::CompileTarget::Jvm,
             ) {
                 Ok((modules, _)) => {
                     let info = &modules[0];

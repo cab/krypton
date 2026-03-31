@@ -134,7 +134,7 @@ fn test_fat_jar_runs_with_java_jar() {
 
     let resolver = krypton_modules::module_resolver::CompositeResolver::stdlib_only();
     let (typed_modules, interfaces) =
-        krypton_typechecker::infer::infer_module(&module, &resolver, "test".to_string())
+        krypton_typechecker::infer::infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
             .expect("type checking should succeed");
 
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);

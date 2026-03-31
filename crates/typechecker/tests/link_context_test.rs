@@ -73,7 +73,7 @@ fn extract_multi(
     let (root_module, errors) = parse(root_src);
     assert!(errors.is_empty(), "root parse errors: {:?}", errors);
     let resolver = TestResolver::new(libs);
-    let (modules, _) = infer::infer_module(&root_module, &resolver, root_path.to_string())
+    let (modules, _) = infer::infer_module(&root_module, &resolver, root_path.to_string(), krypton_parser::ast::CompileTarget::Jvm)
         .expect("typecheck failed");
 
     modules

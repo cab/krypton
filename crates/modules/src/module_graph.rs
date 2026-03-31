@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
-use krypton_parser::ast::{Decl, Module, Span};
+use krypton_parser::ast::{CompileTarget, Decl, Module, Span};
 use krypton_parser::diagnostics::ParseError;
+use krypton_parser::platform::filter_by_platform;
 
 use crate::module_resolver::ModuleResolver;
 use crate::stdlib_loader::StdlibLoader;
@@ -53,6 +54,7 @@ pub enum ModuleGraphError {
 pub fn build_module_graph(
     root: &Module,
     resolver: &dyn ModuleResolver,
+    target: CompileTarget,
 ) -> Result<ModuleGraph, ModuleGraphError> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut stack: Vec<String> = Vec::new();
@@ -63,6 +65,7 @@ pub fn build_module_graph(
     visit_prelude_tree(
         "prelude",
         resolver,
+        target,
         &mut visited,
         &mut stack,
         &mut stack_set,
@@ -78,6 +81,7 @@ pub fn build_module_graph(
                 path,
                 *span,
                 resolver,
+                target,
                 &mut visited,
                 &mut stack,
                 &mut stack_set,
@@ -96,6 +100,7 @@ pub fn build_module_graph(
 fn visit_prelude_tree(
     path: &str,
     resolver: &dyn ModuleResolver,
+    target: CompileTarget,
     visited: &mut HashSet<String>,
     stack: &mut Vec<String>,
     stack_set: &mut HashSet<String>,
@@ -129,7 +134,7 @@ fn visit_prelude_tree(
         }
     };
 
-    let (module, parse_errors) = krypton_parser::parser::parse(&source);
+    let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
     if !parse_errors.is_empty() {
         return Err(ModuleGraphError::ParseError {
             path: path.to_string(),
@@ -138,12 +143,14 @@ fn visit_prelude_tree(
         });
     }
 
+    filter_by_platform(&mut module, target);
+
     stack.push(path.to_string());
     stack_set.insert(path.to_string());
 
     for decl in &module.decls {
         if let Decl::Import { path: dep_path, .. } = decl {
-            visit_prelude_tree(dep_path, resolver, visited, stack, stack_set, result)?;
+            visit_prelude_tree(dep_path, resolver, target, visited, stack, stack_set, result)?;
         }
     }
 
@@ -164,6 +171,7 @@ fn visit_user_module(
     path: &str,
     import_span: Span,
     resolver: &dyn ModuleResolver,
+    target: CompileTarget,
     visited: &mut HashSet<String>,
     stack: &mut Vec<String>,
     stack_set: &mut HashSet<String>,
@@ -189,7 +197,7 @@ fn visit_user_module(
             span: import_span,
         })?;
 
-    let (module, parse_errors) = krypton_parser::parser::parse(&source);
+    let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
     if !parse_errors.is_empty() {
         return Err(ModuleGraphError::ParseError {
             path: path.to_string(),
@@ -197,6 +205,8 @@ fn visit_user_module(
             errors: parse_errors,
         });
     }
+
+    filter_by_platform(&mut module, target);
 
     stack.push(path.to_string());
     stack_set.insert(path.to_string());
@@ -208,7 +218,7 @@ fn visit_user_module(
             ..
         } = decl
         {
-            visit_user_module(dep_path, *span, resolver, visited, stack, stack_set, result)?;
+            visit_user_module(dep_path, *span, resolver, target, visited, stack, stack_set, result)?;
         }
     }
 

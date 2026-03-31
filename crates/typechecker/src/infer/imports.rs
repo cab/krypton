@@ -95,6 +95,7 @@ impl ModuleInferenceState {
         }
 
         Some(Decl::Import {
+            platform: None,
             is_pub: false,
             path: "prelude".to_string(),
             names,
@@ -119,6 +120,7 @@ impl ModuleInferenceState {
                 path,
                 names,
                 span,
+                ..
             } = decl
             {
                 self.process_single_import(*is_pub, path, names, *span, interface_cache)?;

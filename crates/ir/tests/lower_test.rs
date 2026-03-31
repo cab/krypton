@@ -62,7 +62,7 @@ fn ir_lower(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.clone())
+    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.clone(), krypton_parser::ast::CompileTarget::Jvm)
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     let link_ctx = LinkContext::build(interfaces);
@@ -100,7 +100,7 @@ fn ir_link(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let (typed_modules, interfaces) = infer_module(&module, &resolver, stem.clone())
+    let (typed_modules, interfaces) = infer_module(&module, &resolver, stem.clone(), krypton_parser::ast::CompileTarget::Jvm)
         .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     let link_ctx = LinkContext::build(interfaces);
@@ -143,7 +143,7 @@ fun main() = {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.to_string())
+    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.to_string(), krypton_parser::ast::CompileTarget::Jvm)
         .unwrap_or_else(|e| panic!("typecheck failed: {e:?}"));
 
     let link_ctx = LinkContext::build(interfaces);

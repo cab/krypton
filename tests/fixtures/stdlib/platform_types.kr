@@ -1,0 +1,6 @@
+# expect: ok
+@platform([jvm])
+pub opaque type Handle = Int
+
+@platform([js])
+pub opaque type Handle = String

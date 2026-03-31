@@ -1,0 +1,5 @@
+# expect: ok
+@platform([jvm, js])
+fun universal() -> Int = 42
+
+fun main() = println(show(universal()))

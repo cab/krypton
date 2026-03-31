@@ -58,11 +58,34 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    fn fmt_platform(&mut self, platform: &Option<Vec<CompileTarget>>) {
+        if let Some(targets) = platform {
+            self.buf.push_str("@platform([");
+            for (i, t) in targets.iter().enumerate() {
+                if i > 0 {
+                    self.buf.push_str(", ");
+                }
+                match t {
+                    CompileTarget::Jvm => self.buf.push_str("jvm"),
+                    CompileTarget::Js => self.buf.push_str("js"),
+                }
+            }
+            self.buf.push_str("])\n");
+        }
+    }
+
     fn fmt_decl(&mut self, decl: &Decl) {
         match decl {
-            Decl::DefFn(f) => self.fmt_fn_decl(f),
-            Decl::DefType(t) => self.fmt_type_decl(t),
+            Decl::DefFn(f) => {
+                self.fmt_platform(&f.platform);
+                self.fmt_fn_decl(f);
+            }
+            Decl::DefType(t) => {
+                self.fmt_platform(&t.platform);
+                self.fmt_type_decl(t);
+            }
             Decl::DefTrait {
+                platform,
                 visibility,
                 name,
                 type_param,
@@ -70,30 +93,40 @@ impl<'a> Formatter<'a> {
                 methods,
                 ..
             } => {
+                self.fmt_platform(platform);
                 self.fmt_visibility(visibility);
                 self.fmt_trait(name, type_param, superclasses, methods);
             }
             Decl::DefImpl {
+                platform,
                 trait_name,
                 target_type,
                 type_params,
                 type_constraints,
                 methods,
                 ..
-            } => self.fmt_impl(
-                trait_name,
-                target_type,
-                type_params,
-                type_constraints,
-                methods,
-            ),
+            } => {
+                self.fmt_platform(platform);
+                self.fmt_impl(
+                    trait_name,
+                    target_type,
+                    type_params,
+                    type_constraints,
+                    methods,
+                );
+            }
             Decl::Import {
+                platform,
                 is_pub,
                 path,
                 names,
                 ..
-            } => self.fmt_import(*is_pub, path, names),
+            } => {
+                self.fmt_platform(platform);
+                self.fmt_import(*is_pub, path, names);
+            }
             Decl::Extern {
+                platform,
                 target,
                 module_path,
                 alias,
@@ -101,14 +134,17 @@ impl<'a> Formatter<'a> {
                 type_params,
                 methods,
                 ..
-            } => self.fmt_extern(
-                target,
-                module_path,
-                alias.as_deref(),
-                alias_visibility.as_ref(),
-                type_params,
-                methods,
-            ),
+            } => {
+                self.fmt_platform(platform);
+                self.fmt_extern(
+                    target,
+                    module_path,
+                    alias.as_deref(),
+                    alias_visibility.as_ref(),
+                    type_params,
+                    methods,
+                );
+            }
         }
     }
 

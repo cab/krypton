@@ -1,0 +1,8 @@
+# expect: output "jvm hello"
+@platform([jvm])
+fun greet() -> String = "jvm hello"
+
+@platform([js])
+fun greet() -> String = "js hello"
+
+fun main() = println(greet())

@@ -36,7 +36,7 @@ fn run_program_raw(
     );
 
     let (typed_modules, interfaces) =
-        infer_module(&module, resolver, "test".to_string()).unwrap_or_else(|errors| {
+        infer_module(&module, resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).unwrap_or_else(|errors| {
             let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
             let rendered: String = diags
                 .iter()
@@ -159,7 +159,7 @@ fn codegen_fixture(
                         errors.is_empty(),
                         "fixture {name}: expected ok but parse errors: {errors:?}"
                     );
-                    let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
+                    let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
                         .unwrap_or_else(|errors| {
                             let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                             let rendered: String = diags
@@ -212,7 +212,7 @@ fn codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string())
+                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
                     .unwrap_or_else(|errors| {
                         let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
                         let rendered: String = diags

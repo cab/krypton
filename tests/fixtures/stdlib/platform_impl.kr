@@ -1,0 +1,11 @@
+# expect: ok
+type Wrapper = Wrapper(Int)
+
+trait Describe[a] {
+    fun describe(x: a) -> String
+}
+
+@platform([jvm])
+impl Describe[Wrapper] {
+    fun describe(w) = match w { Wrapper(n) => "jvm:" + show(n) }
+}
