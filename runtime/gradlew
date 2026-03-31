@@ -214,6 +214,7 @@ set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
         -classpath "$CLASSPATH" \
         -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" \
+        --project-dir "$APP_HOME" \
         "$@"
 
 # Stop when "xargs" is not available.
