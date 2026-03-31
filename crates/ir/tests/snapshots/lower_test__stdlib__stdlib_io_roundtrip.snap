@@ -10,24 +10,24 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[y8]): List[y8]
-import core/io/println as println(s): Unit
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 import core/io/read_file as read_file(String): Result[String, String]
 import core/io/write_file as write_file(String, String): Result[String, Unit]
-declare println: (s) -> Unit
+declare println: (o) -> Unit
 declare read_file: (String) -> Result[String, String]
 declare write_file: (String, String) -> Result[String, Unit]
 
-fn handle(v0: Dict[core/show.Show, q9], v1: Dict[core/show.Show, r9], v2: Result[q9, r9]) -> Unit =
+fn handle(v0: Dict[core/show.Show, u8], v1: Dict[core/show.Show, v8], v2: Result[u8, v8]) -> Unit =
   switch v2 {
-    0 (v3: r9) ->
+    0 (v3: v8) ->
       let v4: Unit = call println(v1, v3)
       v4
-    1 (v5: q9) ->
+    1 (v5: u8) ->
       let v6: Unit = call println(v0, v5)
       v6
   }

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__self_type_generic
 
 struct Wrapper[a] { value: a }
-trait MyEq[k9] { my_eq(k9, k9): Bool }
+trait MyEq[o8] { my_eq(o8, o8): Bool }
 instance inference__self_type_generic.MyEq[String] { my_eq=MyEq$$String$$my_eq }
 instance inference__self_type_generic.MyEq[Wrapper$$Var0] { my_eq=MyEq$$Wrapper$$Var0$$my_eq }
 import core/peek/peek as peek(h): h
@@ -14,13 +14,13 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[y8]): List[y8]
-import core/io/println as println(s): Unit
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-declare println: (s) -> Unit
+declare println: (o) -> Unit
 
 fn main() -> Unit =
   let v0: ~Wrapper[String] = construct Wrapper("hello")
@@ -37,8 +37,8 @@ fn MyEq$$String$$my_eq(v7: String, v8: String) -> Bool =
   let v10: Bool = trait_call core/eq.Eq.eq(v9, v7, v8)
   v10
 
-fn MyEq$$Wrapper$$Var0$$my_eq(v11: Dict[inference__self_type_generic.MyEq, l9], v12: Wrapper[l9], v13: Wrapper[l9]) -> Bool =
-  let v14: l9 = project v12.0
-  let v15: l9 = project v13.0
+fn MyEq$$Wrapper$$Var0$$my_eq(v11: Dict[inference__self_type_generic.MyEq, p8], v12: Wrapper[p8], v13: Wrapper[p8]) -> Bool =
+  let v14: p8 = project v12.0
+  let v15: p8 = project v13.0
   let v16: Bool = trait_call inference__self_type_generic.MyEq.my_eq(v11, v14, v15)
   v16

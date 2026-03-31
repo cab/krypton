@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_fn
 
-trait Functor[j9] { fmap(j9[k9], (k9) -> l9): j9[l9] }
+trait Functor[n8] { fmap(n8[o8], (o8) -> p8): n8[p8] }
 instance hkt__partial_apply_fn.Functor[$Fun1$$Var0$$Var1] { fmap=Functor$$$Fun1$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -12,13 +12,13 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[y8]): List[y8]
-import core/io/println as println(s): Unit
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-declare println: (s) -> Unit
+declare println: (o) -> Unit
 
 fn main() -> Unit =
   let v0: (Int) -> Int = make_closure(lambda$27, [])
@@ -30,8 +30,8 @@ fn main() -> Unit =
   let v10: Unit = call println(v8, v9)
   v10
 
-fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (e10) -> g10, v12: (g10) -> h10) -> (e10) -> h10 =
-  let v18: (e10) -> h10 = make_closure(lambda$29, [v12, v11])
+fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (i9) -> k9, v12: (k9) -> l9) -> (i9) -> l9 =
+  let v18: (i9) -> l9 = make_closure(lambda$29, [v12, v11])
   v18
 
 fn lambda$27(v1: Int) -> Int =
@@ -42,7 +42,7 @@ fn lambda$28(v4: Int) -> Int =
   let v5: Int = mul_int(v4, 2)
   v5
 
-fn lambda$29(v13: (g10) -> h10, v14: (e10) -> g10, v15: e10) -> h10 =
-  let v16: g10 = call_closure v14(v15)
-  let v17: h10 = call_closure v13(v16)
+fn lambda$29(v13: (k9) -> l9, v14: (i9) -> k9, v15: i9) -> l9 =
+  let v16: k9 = call_closure v14(v15)
+  let v17: l9 = call_closure v13(v16)
   v17

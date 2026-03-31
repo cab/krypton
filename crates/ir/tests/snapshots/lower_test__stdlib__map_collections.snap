@@ -10,23 +10,23 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[y8]): List[y8]
-import core/io/println as println(s): Unit
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/map/empty as empty(): Map[m13, n13]
-import core/map/put as put(Map[q13, r13], q13, r13): Map[q13, r13]
-import core/map/from_list as from_list(List[(v17, w17)]): Map[v17, w17]
-import core/map/size as size(Map[c18, d18]): Int
-import core/map/merge as merge(Map[j18, k18], Map[j18, k18]): Map[j18, k18]
-declare empty: () -> Map[m13, n13]
-declare from_list: (List[(v17, w17)]) -> Map[v17, w17]
-declare merge: (Map[j18, k18], Map[j18, k18]) -> Map[j18, k18]
-declare println: (s) -> Unit
-declare put: (Map[q13, r13], q13, r13) -> Map[q13, r13]
-declare size: (Map[c18, d18]) -> Int
+import core/map/empty as empty(): Map[m10, n10]
+import core/map/put as put(Map[q10, r10], q10, r10): Map[q10, r10]
+import core/map/from_list as from_list(List[(v14, w14)]): Map[v14, w14]
+import core/map/size as size(Map[c15, d15]): Int
+import core/map/merge as merge(Map[j15, k15], Map[j15, k15]): Map[j15, k15]
+declare empty: () -> Map[m10, n10]
+declare from_list: (List[(v14, w14)]) -> Map[v14, w14]
+declare merge: (Map[j15, k15], Map[j15, k15]) -> Map[j15, k15]
+declare println: (o) -> Unit
+declare put: (Map[q10, r10], q10, r10) -> Map[q10, r10]
+declare size: (Map[c15, d15]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
