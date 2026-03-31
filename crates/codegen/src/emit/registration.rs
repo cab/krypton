@@ -37,24 +37,18 @@ fn name_to_builtin_type(name: &str) -> Type {
 }
 
 /// Map a `Type::Named` to its JVM type and descriptor fragment.
+/// Type args are irrelevant — Java erases them, but the container type is preserved.
 fn jvm_type_for_named(
     name: &str,
-    args: &[Type],
+    _args: &[Type],
     struct_info: &HashMap<String, StructInfo>,
     object_class: u16,
 ) -> (JvmType, String) {
-    if args.is_empty() {
-        if let Some(info) = struct_info.get(name) {
-            (
-                JvmType::StructRef(info.class_index),
-                format!("L{};", info.class_name),
-            )
-        } else {
-            (
-                JvmType::StructRef(object_class),
-                "Ljava/lang/Object;".to_string(),
-            )
-        }
+    if let Some(info) = struct_info.get(name) {
+        (
+            JvmType::StructRef(info.class_index),
+            format!("L{};", info.class_name),
+        )
     } else {
         (
             JvmType::StructRef(object_class),

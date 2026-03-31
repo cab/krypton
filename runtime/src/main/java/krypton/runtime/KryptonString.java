@@ -9,7 +9,7 @@ public final class KryptonString {
         int endOffset = s.offsetByCodePoints(0, end);
         return s.substring(startOffset, endOffset);
     }
-    public static Object split(String s, String delimiter) {
+    public static KryptonArray split(String s, String delimiter) {
         String[] parts = s.split(delimiter, -1);
         KryptonArray arr = new KryptonArray(parts.length);
         for (int i = 0; i < parts.length; i++) {

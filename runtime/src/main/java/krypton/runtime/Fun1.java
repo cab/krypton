@@ -1,6 +1,6 @@
 package krypton.runtime;
 
 @FunctionalInterface
-public interface Fun1 {
-    Object apply(Object a);
+public interface Fun1<A, R> {
+    R apply(A a);
 }

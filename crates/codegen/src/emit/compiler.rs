@@ -632,13 +632,9 @@ impl<'link> Compiler<'link> {
             Type::Bool => JvmType::StructRef(self.builder.refs.bool_box_class),
             Type::String => JvmType::StructRef(self.builder.refs.string_class),
             Type::Own(inner) => return self.nullable_host_jvm_for_inner(inner),
-            Type::Named(name, args) => {
-                if args.is_empty() {
-                    if let Some(info) = self.types.struct_info.get(name) {
-                        JvmType::StructRef(info.class_index)
-                    } else {
-                        JvmType::StructRef(self.builder.refs.object_class)
-                    }
+            Type::Named(name, _args) => {
+                if let Some(info) = self.types.struct_info.get(name) {
+                    JvmType::StructRef(info.class_index)
                 } else {
                     JvmType::StructRef(self.builder.refs.object_class)
                 }

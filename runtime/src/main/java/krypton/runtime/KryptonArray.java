@@ -56,31 +56,30 @@ public class KryptonArray {
     }
 
     // Static wrappers for extern descriptor convention
-    public static long staticLength(Object arr) {
-        return ((KryptonArray) arr).length();
+    public static long staticLength(KryptonArray arr) {
+        return arr.length();
     }
 
-    public static Object staticGet(Object arr, long index) {
-        return ((KryptonArray) arr).get((int) index);
+    public static Object staticGet(KryptonArray arr, long index) {
+        return arr.get((int) index);
     }
 
-    public static Object staticPush(Object arr, Object value) {
-        KryptonArray base = ((KryptonArray) arr);
-        KryptonArray copy = new KryptonArray(Arrays.copyOf(base.data, base.data.length + 1), base.size);
+    public static KryptonArray staticPush(KryptonArray arr, Object value) {
+        KryptonArray copy = new KryptonArray(Arrays.copyOf(arr.data, arr.data.length + 1), arr.size);
         copy.push(value);
         return copy;
     }
 
-    public static Object staticNew(long capacity) {
+    public static KryptonArray staticNew(long capacity) {
         return new KryptonArray((int) capacity);
     }
 
-    public static void staticSet(Object arr, long index, Object value) {
-        ((KryptonArray) arr).set((int) index, value);
+    public static void staticSet(KryptonArray arr, long index, Object value) {
+        arr.set((int) index, value);
     }
 
-    public static Object staticFreeze(Object arr) {
-        ((KryptonArray) arr).freeze();
+    public static KryptonArray staticFreeze(KryptonArray arr) {
+        arr.freeze();
         return arr;
     }
 }

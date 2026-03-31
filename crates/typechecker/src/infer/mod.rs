@@ -1279,69 +1279,33 @@ fn process_extern_methods(
             }
         }
 
-        // Store concrete types for codegen — resolve without type param map so
-        // erased positions stay as Object (JVM erasure). Bare type params like `a`
-        // won't resolve and fall back to Object.
+        // Store concrete types for codegen — resolve with the type param map
+        // so container types like Vec[a] resolve to Named("Vec", [Var(a)])
+        // rather than being erased entirely to a bare Var. The type args
+        // (which map to Var) will be erased to Object by JVM codegen, matching
+        // Java's own type erasure behavior.
         let mut concrete_params = Vec::new();
         for (_, ty_expr) in &method.params {
-            let resolved = match type_registry::resolve_type_expr(
+            let resolved = type_registry::resolve_type_expr(
                 ty_expr,
-                &empty_map,
-                &empty_arity,
+                effective_resolve_map,
+                effective_resolve_arity,
                 registry,
                 ResolutionContext::UserAnnotation,
                 None,
-            ) {
-                Ok(ty) => ty,
-                Err(TypeError::UnknownType { .. }) => Type::Var(gen.fresh()),
-                Err(e) => return Err(spanned(e, span)),
-            };
+            )
+            .map_err(|e| spanned(e, span))?;
             concrete_params.push(resolved);
         }
-        let codegen_return = if method.nullable {
-            // Nullable externs must preserve Option[T] structure for the codegen
-            // wrapper generator. Resolve inner args with Var fallback for
-            // erased type params.
-            match &method.return_type {
-                TypeExpr::App { name, args, .. } => {
-                    let mut resolved_args: Vec<Type> = Vec::new();
-                    for a in args {
-                        let ty = match type_registry::resolve_type_expr(
-                            a, &empty_map, &empty_arity, registry,
-                            ResolutionContext::UserAnnotation, None,
-                        ) {
-                            Ok(ty) => ty,
-                            Err(TypeError::UnknownType { .. }) => Type::Var(gen.fresh()),
-                            Err(e) => return Err(spanned(e, span)),
-                        };
-                        resolved_args.push(ty);
-                    }
-                    Type::Named(
-                        registry.canonical_name(name).to_string(),
-                        resolved_args,
-                    )
-                }
-                _ => {
-                    panic!(
-                        "ICE: @nullable extern `{}` has non-App return type in codegen resolution",
-                        method.name
-                    );
-                }
-            }
-        } else {
-            match type_registry::resolve_type_expr(
-                &method.return_type,
-                &empty_map,
-                &empty_arity,
-                registry,
-                ResolutionContext::UserAnnotation,
-                None,
-            ) {
-                Ok(ty) => ty,
-                Err(TypeError::UnknownType { .. }) => Type::Var(gen.fresh()),
-                Err(e) => return Err(spanned(e, span)),
-            }
-        };
+        let codegen_return = type_registry::resolve_type_expr(
+            &method.return_type,
+            effective_resolve_map,
+            effective_resolve_arity,
+            registry,
+            ResolutionContext::UserAnnotation,
+            None,
+        )
+        .map_err(|e| spanned(e, span))?;
         extern_fns.push(ExternFnInfo {
             name: bind_name.clone(),
             declaring_module_path: module_path_str.to_string(),

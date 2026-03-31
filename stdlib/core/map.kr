@@ -22,8 +22,8 @@ extern java "krypton.runtime.KryptonMap" {
 }
 
 extern java "krypton.runtime.KryptonArray" {
-    fun staticLength[a](xs: a) -> Int
-    fun staticGet[a, b](xs: a, index: Int) -> b
+    fun staticLength[a](xs: Vec[a]) -> Int
+    fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
 extern js "../runtime/js/map.mjs" as pub Map[k, v] {}
@@ -42,8 +42,8 @@ extern js "../runtime/js/map.mjs" {
 }
 
 extern js "../runtime/js/array.mjs" {
-    fun staticLength[a](xs: a) -> Int
-    fun staticGet[a, b](xs: a, index: Int) -> b
+    fun staticLength[a](xs: Vec[a]) -> Int
+    fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
 # empty() intentionally has no `where k: Eq + Hash` constraint.

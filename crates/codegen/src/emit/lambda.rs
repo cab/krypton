@@ -19,6 +19,20 @@ pub(super) struct LambdaState {
 }
 
 impl LambdaState {
+    /// Pre-register Fun0 through Fun8 so that extern descriptors with
+    /// function-typed parameters resolve to their actual Fun class
+    /// instead of falling back to Object.
+    pub(super) fn preregister_fun_interfaces(
+        &mut self,
+        cp: &mut ConstantPool,
+        class_descriptors: &mut HashMap<u16, String>,
+    ) -> Result<(), CodegenError> {
+        for arity in 0..=8u8 {
+            self.ensure_fun_interface(arity, cp, class_descriptors)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn ensure_fun_interface(
         &mut self,
         arity: u8,

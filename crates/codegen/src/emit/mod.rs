@@ -188,6 +188,10 @@ fn compile_module_inner(
     result_classes.extend(compiler.register_sum_types_ir(ir_module)?);
 
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
+    compiler.lambda.preregister_fun_interfaces(
+        &mut compiler.cp,
+        &mut compiler.types.class_descriptors,
+    )?;
     compiler.register_fun_interfaces_ir(ir_module)?;
     compiler.register_vec()?;
     result_classes.extend(compiler.register_traits_ir(ir_module)?);

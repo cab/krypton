@@ -1,6 +1,6 @@
 package krypton.runtime;
 
 @FunctionalInterface
-public interface Fun8 {
-    Object apply(Object a, Object b, Object c, Object d, Object e, Object f, Object g, Object h);
+public interface Fun8<A, B, C, D, E, F, G, H, R> {
+    R apply(A a, B b, C c, D d, E e, F f, G g, H h);
 }

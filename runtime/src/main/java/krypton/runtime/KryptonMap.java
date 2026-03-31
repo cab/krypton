@@ -58,63 +58,57 @@ public class KryptonMap {
         return new KryptonMap((HashMap<HashedKey, Object>) data.clone(), hashFn, eqFn);
     }
 
-    public static Object staticEmpty() {
+    public static KryptonMap staticEmpty() {
         return new KryptonMap();
     }
 
-    public static Object staticPut(Object map, Object key, Object value, Object eqFn, Object hashFn) {
-        KryptonMap m = ((KryptonMap) map).copy();
-        // Set eq/hash fns from the dict singletons (or lambdas for backwards compat)
+    public static KryptonMap staticPut(KryptonMap map, Object key, Object value, Object eqFn, Object hashFn) {
+        KryptonMap m = map.copy();
         m.eqFn = (Fun2) eqFn;
         m.hashFn = (Fun1) hashFn;
         m.data.put(m.wrap(key), value);
         return m;
     }
 
-    public static Object staticGetUnsafe(Object map, Object key) {
-        KryptonMap m = (KryptonMap) map;
-        return m.data.get(m.wrap(key));
+    public static Object staticGetUnsafe(KryptonMap map, Object key) {
+        return map.data.get(map.wrap(key));
     }
 
-    public static boolean staticContainsKey(Object map, Object key) {
-        KryptonMap m = (KryptonMap) map;
-        if (m.eqFn == null) return false; // empty map, never put-to
-        return m.data.containsKey(m.wrap(key));
+    public static boolean staticContainsKey(KryptonMap map, Object key) {
+        if (map.eqFn == null) return false; // empty map, never put-to
+        return map.data.containsKey(map.wrap(key));
     }
 
-    public static Object staticDelete(Object map, Object key) {
-        KryptonMap m = ((KryptonMap) map).copy();
+    public static KryptonMap staticDelete(KryptonMap map, Object key) {
+        KryptonMap m = map.copy();
         m.data.remove(m.wrap(key));
         return m;
     }
 
-    public static Object staticKeys(Object map) {
-        KryptonMap m = (KryptonMap) map;
-        KryptonArray arr = new KryptonArray(m.data.size());
+    public static KryptonArray staticKeys(KryptonMap map) {
+        KryptonArray arr = new KryptonArray(map.data.size());
         int i = 0;
-        for (HashedKey k : m.data.keySet()) {
+        for (HashedKey k : map.data.keySet()) {
             arr.set(i++, k.key);
         }
         arr.freeze();
         return arr;
     }
 
-    public static Object staticValues(Object map) {
-        KryptonMap m = (KryptonMap) map;
-        KryptonArray arr = new KryptonArray(m.data.size());
+    public static KryptonArray staticValues(KryptonMap map) {
+        KryptonArray arr = new KryptonArray(map.data.size());
         int i = 0;
-        for (Object v : m.data.values()) {
+        for (Object v : map.data.values()) {
             arr.set(i++, v);
         }
         arr.freeze();
         return arr;
     }
 
-    public static Object staticEntries(Object map) {
-        KryptonMap m = (KryptonMap) map;
-        KryptonArray arr = new KryptonArray(m.data.size() * 2);
+    public static Object staticEntries(KryptonMap map) {
+        KryptonArray arr = new KryptonArray(map.data.size() * 2);
         int i = 0;
-        for (var e : m.data.entrySet()) {
+        for (var e : map.data.entrySet()) {
             arr.set(i++, e.getKey().key);
             arr.set(i++, e.getValue());
         }
@@ -122,13 +116,13 @@ public class KryptonMap {
         return arr;
     }
 
-    public static long staticSize(Object map) {
-        return ((KryptonMap) map).data.size();
+    public static long staticSize(KryptonMap map) {
+        return map.data.size();
     }
 
-    public static Object staticMerge(Object a, Object b) {
-        KryptonMap ma = ((KryptonMap) a).copy();
-        ma.data.putAll(((KryptonMap) b).data);
-        return ma;
+    public static KryptonMap staticMerge(KryptonMap m1, KryptonMap m2) {
+        KryptonMap result = m1.copy();
+        result.data.putAll(m2.data);
+        return result;
     }
 }

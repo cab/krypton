@@ -29,8 +29,8 @@ extern java "krypton.runtime.JsonRuntime" {
 }
 
 extern java "krypton.runtime.KryptonArray" {
-    fun staticLength[a](xs: a) -> Int
-    fun staticGet[a, b](xs: a, index: Int) -> b
+    fun staticLength[a](xs: Vec[a]) -> Int
+    fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
 extern js "../runtime/js/json.mjs" {
@@ -53,8 +53,8 @@ extern js "../runtime/js/json.mjs" {
 }
 
 extern js "../runtime/js/array.mjs" {
-    fun staticLength[a](xs: a) -> Int
-    fun staticGet[a, b](xs: a, index: Int) -> b
+    fun staticLength[a](xs: Vec[a]) -> Int
+    fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
 # ── Parse direction: JavaJson → Krypton Json ──────────────────────

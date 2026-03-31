@@ -1,3 +1,3 @@
 package krypton.runtime;
 
-public record Tuple2(Object _0, Object _1) {}
+public record Tuple2<A, B>(A _0, B _1) {}
