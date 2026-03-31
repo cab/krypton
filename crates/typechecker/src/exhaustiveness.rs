@@ -30,30 +30,83 @@ enum Pat {
     Wild,
 }
 
-/// Convert a TypedPattern into our internal Pat representation.
-fn convert(pat: &TypedPattern) -> Pat {
+/// Expand a top-level pattern into multiple Pat rows (for or-patterns).
+/// Non-or patterns produce a single row. Or-patterns produce one row per alternative.
+/// Nested or-patterns inside constructors are expanded recursively.
+fn convert_or_expand(pat: &TypedPattern) -> Vec<Pat> {
     match pat {
-        TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => Pat::Wild,
-        TypedPattern::Constructor { name, args, .. } => Pat::Con(
-            Con::Variant(name.clone()),
-            args.iter().map(convert).collect(),
-        ),
-        TypedPattern::Lit { value, .. } => match value {
-            Lit::Bool(b) => Pat::Con(Con::BoolLit(*b), vec![]),
-            Lit::Int(n) => Pat::Con(Con::Literal(n.to_string()), vec![]),
-            Lit::Float(f) => Pat::Con(Con::Literal(f.to_string()), vec![]),
-            Lit::String(s) => Pat::Con(Con::Literal(s.clone()), vec![]),
-            Lit::Unit => Pat::Con(Con::Tuple(0), vec![]),
-        },
-        TypedPattern::Tuple { elements, .. } => Pat::Con(
-            Con::Tuple(elements.len()),
-            elements.iter().map(convert).collect(),
-        ),
+        TypedPattern::Or { alternatives, .. } => {
+            alternatives.iter().flat_map(convert_or_expand).collect()
+        }
+        _ => expand_nested_or(pat),
+    }
+}
+
+/// Expand nested or-patterns within a single pattern into multiple Pat alternatives.
+/// E.g., `Some(A | B)` becomes `[Some(A), Some(B)]`.
+fn expand_nested_or(pat: &TypedPattern) -> Vec<Pat> {
+    match pat {
+        TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => vec![Pat::Wild],
+        TypedPattern::Lit { value, .. } => {
+            let p = match value {
+                Lit::Bool(b) => Pat::Con(Con::BoolLit(*b), vec![]),
+                Lit::Int(n) => Pat::Con(Con::Literal(n.to_string()), vec![]),
+                Lit::Float(f) => Pat::Con(Con::Literal(f.to_string()), vec![]),
+                Lit::String(s) => Pat::Con(Con::Literal(s.clone()), vec![]),
+                Lit::Unit => Pat::Con(Con::Tuple(0), vec![]),
+            };
+            vec![p]
+        }
+        TypedPattern::Constructor { name, args, .. } => {
+            let sub_expansions: Vec<Vec<Pat>> = args.iter().map(|a| expand_nested_or(a)).collect();
+            let combos = cartesian_product(&sub_expansions);
+            combos
+                .into_iter()
+                .map(|subs| Pat::Con(Con::Variant(name.clone()), subs))
+                .collect()
+        }
+        TypedPattern::Tuple { elements, .. } => {
+            let sub_expansions: Vec<Vec<Pat>> =
+                elements.iter().map(|e| expand_nested_or(e)).collect();
+            let combos = cartesian_product(&sub_expansions);
+            combos
+                .into_iter()
+                .map(|subs| Pat::Con(Con::Tuple(elements.len()), subs))
+                .collect()
+        }
         TypedPattern::StructPat { name, fields, .. } => {
-            let sub_pats: Vec<Pat> = fields.iter().map(|(_, p)| convert(p)).collect();
-            Pat::Con(Con::Record(name.clone()), sub_pats)
+            let sub_expansions: Vec<Vec<Pat>> =
+                fields.iter().map(|(_, p)| expand_nested_or(p)).collect();
+            let combos = cartesian_product(&sub_expansions);
+            combos
+                .into_iter()
+                .map(|subs| Pat::Con(Con::Record(name.clone()), subs))
+                .collect()
+        }
+        TypedPattern::Or { alternatives, .. } => {
+            alternatives.iter().flat_map(expand_nested_or).collect()
         }
     }
+}
+
+/// Compute the cartesian product of a list of Vec<Pat> alternatives.
+fn cartesian_product(lists: &[Vec<Pat>]) -> Vec<Vec<Pat>> {
+    if lists.is_empty() {
+        return vec![vec![]];
+    }
+    let mut result = vec![vec![]];
+    for list in lists {
+        let mut new_result = Vec::new();
+        for existing in &result {
+            for item in list {
+                let mut new = existing.clone();
+                new.push(item.clone());
+                new_result.push(new);
+            }
+        }
+        result = new_result;
+    }
+    result
 }
 
 /// Enumerate all constructors for a type. Returns None when the constructor
@@ -458,29 +511,55 @@ pub fn check_exhaustiveness(
         None => return Ok(()),
     };
 
-    let pats: Vec<Vec<Pat>> = arms.iter().map(|a| vec![convert(&a.pattern)]).collect();
+    // Flatten or-patterns: each alternative becomes its own row in the matrix,
+    // sharing the same arm index for redundancy checking.
+    let mut pats: Vec<Vec<Pat>> = Vec::new();
+    let mut arm_indices: Vec<usize> = Vec::new();
+    for (i, arm) in arms.iter().enumerate() {
+        let converted = convert_or_expand(&arm.pattern);
+        for row in converted {
+            pats.push(vec![row]);
+            arm_indices.push(i);
+        }
+    }
     let types = vec![scrutinee_ty.clone()];
 
-    // Redundancy: check each arm against prior arms
+    // Redundancy: an arm is redundant if none of its expanded rows are useful
+    // against all prior rows.
+    let mut checked_arms: HashSet<usize> = HashSet::new();
     for i in 0..pats.len() {
         let prior = &pats[..i];
-        if !is_useful(prior, &pats[i], &types, registry, 0) {
-            let arm_span = match &arms[i].pattern {
-                TypedPattern::Wildcard { span, .. } => *span,
-                TypedPattern::Var { span, .. } => *span,
-                TypedPattern::Constructor { span, .. } => *span,
-                TypedPattern::Lit { span, .. } => *span,
-                TypedPattern::Tuple { span, .. } => *span,
-                TypedPattern::StructPat { span, .. } => *span,
-            };
-            return Err(SpannedTypeError {
-                error: TypeError::RedundantPattern,
-                span: arm_span,
-                note: Some("this arm can never be reached".to_string()),
-                secondary_span: None,
-                source_file: None,
-                var_names: None,
-            });
+        let arm_idx = arm_indices[i];
+        if checked_arms.contains(&arm_idx) {
+            // Already reported or confirmed useful for this arm
+            continue;
+        }
+        let useful = is_useful(prior, &pats[i], &types, registry, 0);
+        if useful {
+            checked_arms.insert(arm_idx);
+        } else {
+            // Check if any remaining row for this arm is useful
+            let mut any_useful = false;
+            for j in (i + 1)..pats.len() {
+                if arm_indices[j] == arm_idx {
+                    if is_useful(&pats[..j], &pats[j], &types, registry, 0) {
+                        any_useful = true;
+                        break;
+                    }
+                }
+            }
+            if !any_useful {
+                let arm_span = arms[arm_idx].pattern.span();
+                return Err(SpannedTypeError {
+                    error: TypeError::RedundantPattern,
+                    span: arm_span,
+                    note: Some("this arm can never be reached".to_string()),
+                    secondary_span: None,
+                    source_file: None,
+                    var_names: None,
+                });
+            }
+            checked_arms.insert(arm_idx);
         }
     }
 

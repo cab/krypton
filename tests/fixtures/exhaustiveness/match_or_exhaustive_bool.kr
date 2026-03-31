@@ -1,0 +1,6 @@
+# expect: ok
+# Or-pattern providing exhaustive coverage over Bool
+fun test(a, b) = match (a, b) {
+    (true, _) | (_, true) => 1,
+    (false, false) => 2,
+}

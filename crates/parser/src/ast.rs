@@ -292,6 +292,10 @@ pub enum Pattern {
         rest: bool,
         span: Span,
     },
+    Or {
+        alternatives: Vec<Pattern>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

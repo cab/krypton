@@ -928,6 +928,21 @@ impl TypeEnv {
         self.def_spans.get(name)
     }
 
+    /// Return the names and types bound in the top (current) scope.
+    pub fn top_scope_bindings(&self) -> Vec<(std::string::String, Type)> {
+        self.scopes
+            .last()
+            .map(|scope| {
+                let mut bindings: Vec<_> = scope
+                    .iter()
+                    .map(|(name, entry)| (name.clone(), entry.scheme.ty.clone()))
+                    .collect();
+                bindings.sort_by(|a, b| a.0.cmp(&b.0));
+                bindings
+            })
+            .unwrap_or_default()
+    }
+
     /// Iterate over all type schemes in the environment.
     pub fn for_each_scheme(&self, mut f: impl FnMut(&TypeScheme)) {
         for scope in &self.scopes {

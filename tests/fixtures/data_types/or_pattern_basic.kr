@@ -1,0 +1,20 @@
+# expect: output "yes\nno\nyes"
+type ABC = A | B | C
+
+fun classify(x) = match x {
+    A | B => "yes",
+    C => "no",
+}
+
+type Option[a] = Some(a) | None
+
+fun classify_nested(x) = match x {
+    Some(A | B) => "yes",
+    _ => "no",
+}
+
+fun main() = {
+    println(classify(A))
+    println(classify(C))
+    println(classify_nested(Some(B)))
+}

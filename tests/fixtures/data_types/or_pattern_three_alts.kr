@@ -1,0 +1,14 @@
+# expect: output "yes\nyes\nyes\nno"
+type ABCD = A | B | C | D
+
+fun classify(x) = match x {
+    A | B | C => "yes",
+    D => "no",
+}
+
+fun main() = {
+    println(classify(A))
+    println(classify(B))
+    println(classify(C))
+    println(classify(D))
+}

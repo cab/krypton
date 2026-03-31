@@ -1,0 +1,11 @@
+# expect: output "yes\nyes\nno"
+fun check(pair) = match pair {
+    (true, _) | (_, true) => "yes",
+    _ => "no",
+}
+
+fun main() = {
+    println(check((true, false)))
+    println(check((false, true)))
+    println(check((false, false)))
+}

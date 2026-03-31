@@ -680,6 +680,14 @@ impl<'a> TypedFormatter<'a> {
                 }
                 self.buf.push_str(" }");
             }
+            TypedPattern::Or { alternatives, .. } => {
+                for (i, alt) in alternatives.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(" | ");
+                    }
+                    self.fmt_typed_pattern(alt);
+                }
+            }
         }
     }
 }

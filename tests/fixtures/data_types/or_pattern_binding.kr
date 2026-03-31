@@ -1,0 +1,11 @@
+# expect: output "3\n5"
+type Wrapper[a] = Some(a) | Wrap(a)
+
+fun extract(w) = match w {
+    Some(x) | Wrap(x) => x,
+}
+
+fun main() = {
+    println(extract(Some(3)))
+    println(extract(Wrap(5)))
+}

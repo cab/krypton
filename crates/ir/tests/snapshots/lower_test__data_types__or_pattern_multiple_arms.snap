@@ -1,0 +1,51 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__or_pattern_multiple_arms
+
+type T = A#0 | B#1 | C#2 | D#3 | E#4 | F#5
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
+import core/option/Some as Some(e): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+declare println: (o) -> Unit
+
+fn classify(v0: T) -> String =
+  switch v0 {
+    0 ->
+      "a"
+    1 ->
+      "a"
+    2 ->
+      "b"
+    3 ->
+      "b"
+    4 ->
+      "c"
+    5 ->
+      "c"
+  }
+
+fn main() -> Unit =
+  let v1: ~T = construct T::A#0()
+  let v2: String = call classify(v1)
+  let v3: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v4: Unit = call println(v3, v2)
+  let v5: ~T = construct T::D#3()
+  let v6: String = call classify(v5)
+  let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v8: Unit = call println(v7, v6)
+  let v10: ~T = construct T::F#5()
+  let v11: String = call classify(v10)
+  let v9: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v12: Unit = call println(v9, v11)
+  v12

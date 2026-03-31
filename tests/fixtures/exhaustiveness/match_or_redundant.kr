@@ -1,0 +1,8 @@
+# expect: error E0013
+type ABC = A | B | C
+
+fun test(x) = match x {
+    A | B => 1,
+    A => 2,
+    C => 3,
+}

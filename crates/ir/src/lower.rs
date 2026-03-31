@@ -115,6 +115,30 @@ fn is_wildcard_or_var(pat: &TypedPattern) -> bool {
     )
 }
 
+/// Flatten or-patterns in a specific column, expanding each clause with an Or pattern
+/// into multiple clauses (one per alternative). All other columns are preserved.
+fn flatten_or_at_column(clauses: Vec<Clause>, col: usize) -> Vec<Clause> {
+    let mut result = Vec::new();
+    for clause in clauses {
+        if col < clause.patterns.len() {
+            if let TypedPattern::Or { alternatives, .. } = &clause.patterns[col] {
+                for alt in alternatives {
+                    let mut new_pats = clause.patterns.clone();
+                    new_pats[col] = alt.clone();
+                    result.push(Clause {
+                        patterns: new_pats,
+                        body: clause.body.clone(),
+                        extra_bindings: clause.extra_bindings.clone(),
+                    });
+                }
+                continue;
+            }
+        }
+        result.push(clause);
+    }
+    result
+}
+
 /// Get the type annotation from a pattern.
 fn pattern_type(pat: &TypedPattern) -> Type {
     match pat {
@@ -123,6 +147,7 @@ fn pattern_type(pat: &TypedPattern) -> Type {
         | TypedPattern::Constructor { ty, .. }
         | TypedPattern::Lit { ty, .. }
         | TypedPattern::Tuple { ty, .. }
+        | TypedPattern::Or { ty, .. }
         | TypedPattern::StructPat { ty, .. } => ty.clone(),
     }
 }
@@ -282,6 +307,11 @@ fn collect_pattern_bindings(
             }
         }
         TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+        TypedPattern::Or { alternatives, .. } => {
+            if let Some(first) = alternatives.first() {
+                collect_pattern_bindings(first, bound);
+            }
+        }
     }
 }
 
@@ -2518,10 +2548,20 @@ impl LowerCtx {
         self.lower_to_atom_then(scrutinee, |ctx, scrut_atom| {
             let clauses: Vec<Clause> = arms
                 .iter()
-                .map(|arm| Clause {
-                    patterns: vec![arm.pattern.clone()],
-                    body: arm.body.clone(),
-                    extra_bindings: vec![],
+                .flat_map(|arm| match &arm.pattern {
+                    TypedPattern::Or { alternatives, .. } => alternatives
+                        .iter()
+                        .map(|alt| Clause {
+                            patterns: vec![alt.clone()],
+                            body: arm.body.clone(),
+                            extra_bindings: vec![],
+                        })
+                        .collect::<Vec<_>>(),
+                    _ => vec![Clause {
+                        patterns: vec![arm.pattern.clone()],
+                        body: arm.body.clone(),
+                        extra_bindings: vec![],
+                    }],
                 })
                 .collect();
             ctx.compile_clauses(vec![scrut_atom], clauses, &result_ty)
@@ -2587,6 +2627,9 @@ impl LowerCtx {
 
         // Pick the first column with a non-wildcard pattern
         let col = self.pick_column(&clauses);
+
+        // Flatten any or-patterns at the picked column before classification
+        let clauses = flatten_or_at_column(clauses, col);
 
         // Determine what kind of head constructors appear in this column
         let head_kind = self.classify_column(&clauses, col);
@@ -2705,6 +2748,7 @@ impl LowerCtx {
                 TypedPattern::Tuple { elements, .. } => return ColumnKind::Tuple(elements.len()),
                 TypedPattern::StructPat { name, .. } => return ColumnKind::Struct(name.clone()),
                 TypedPattern::Wildcard { .. } | TypedPattern::Var { .. } => continue,
+                TypedPattern::Or { .. } => continue, // flattened before reaching here
             }
         }
         // All wildcards — shouldn't happen since we chose a non-wildcard column

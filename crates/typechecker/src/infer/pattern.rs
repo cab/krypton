@@ -191,6 +191,77 @@ impl<'a> InferenceContext<'a> {
                 })
             }
 
+            Pattern::Or {
+                alternatives,
+                span: pat_span,
+            } => {
+                // Type-check each alternative in a child scope, collecting bindings
+                let mut typed_alternatives = Vec::new();
+                let mut all_bindings: Vec<Vec<(String, Type)>> = Vec::new();
+
+                for alt in alternatives {
+                    self.env.push_scope();
+                    let typed_alt =
+                        self.check_pattern(alt, expected, span, scrutinee_is_owned)?;
+                    let bindings = self.env.top_scope_bindings();
+                    all_bindings.push(bindings);
+                    self.env.pop_scope();
+                    typed_alternatives.push(typed_alt);
+                }
+
+                // Verify all alternatives bind the same names with the same types
+                if !all_bindings.is_empty() {
+                    let first_names: Vec<&str> =
+                        all_bindings[0].iter().map(|(n, _)| n.as_str()).collect();
+                    for (i, bindings) in all_bindings.iter().enumerate().skip(1) {
+                        let names: Vec<&str> =
+                            bindings.iter().map(|(n, _)| n.as_str()).collect();
+                        if names != first_names {
+                            return Err(super::spanned(
+                                TypeError::OrPatternBindingMismatch {
+                                    alt_index: i,
+                                    expected_names: first_names
+                                        .iter()
+                                        .map(|s| s.to_string())
+                                        .collect(),
+                                    actual_names: names
+                                        .iter()
+                                        .map(|s| s.to_string())
+                                        .collect(),
+                                },
+                                span,
+                            ));
+                        }
+                        // Check types match
+                        for (j, (name, ty)) in bindings.iter().enumerate() {
+                            let (_, expected_ty) = &all_bindings[0][j];
+                            self.unify_spanned(expected_ty, ty, span).map_err(
+                                |mut e| {
+                                    e.note = Some(format!(
+                                        "binding `{}` has different types in or-pattern alternatives",
+                                        name
+                                    ));
+                                    e
+                                },
+                            )?;
+                        }
+                    }
+
+                    // Bind the shared variables in the parent scope
+                    for (name, ty) in &all_bindings[0] {
+                        let resolved = self.subst.apply(ty);
+                        self.env
+                            .bind(name.clone(), TypeScheme::mono(resolved));
+                    }
+                }
+
+                Ok(TypedPattern::Or {
+                    alternatives: typed_alternatives,
+                    ty: expected.clone(),
+                    span: *pat_span,
+                })
+            }
+
             Pattern::StructPat {
                 name,
                 fields,

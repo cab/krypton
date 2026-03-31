@@ -1,0 +1,14 @@
+# expect: output "10\n20\n0"
+# Verify the second alternative actually works (not just first)
+type T = A(Int) | B(Int) | C
+
+fun value(x) = match x {
+    A(n) | B(n) => n,
+    C => 0,
+}
+
+fun main() = {
+    println(value(A(10)))
+    println(value(B(20)))
+    println(value(C))
+}

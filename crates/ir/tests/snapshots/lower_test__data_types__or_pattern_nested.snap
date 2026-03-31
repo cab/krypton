@@ -1,0 +1,62 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__or_pattern_nested
+
+type Expr = Lit#0(Int) | Neg#1(Expr) | Add#2(Expr, Expr)
+type Option[a] = Some#0(a) | None#1
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
+import core/option/Some as Some(e): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+declare println: (o) -> Unit
+
+fn classify(v0: Option[Expr]) -> String =
+  switch v0 {
+    0 (v1: a) ->
+      switch v1 {
+        0 (v2: Int) ->
+          "lit"
+        1 (v3: Expr) ->
+          switch v3 {
+            0 (v4: Int) ->
+              "lit"
+            _ ->
+              "other"
+          }
+        _ ->
+          "other"
+      }
+    _ ->
+      "other"
+  }
+
+fn main() -> Unit =
+  let v5: ~Expr = construct Expr::Lit#0(1)
+  let v6: ~Option[Expr] = construct Option::Some#0(v5)
+  let v7: String = call classify(v6)
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v9: Unit = call println(v8, v7)
+  let v10: ~Expr = construct Expr::Lit#0(2)
+  let v11: ~Expr = construct Expr::Neg#1(v10)
+  let v12: ~Option[Expr] = construct Option::Some#0(v11)
+  let v13: String = call classify(v12)
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v15: Unit = call println(v14, v13)
+  let v17: ~Expr = construct Expr::Lit#0(1)
+  let v18: ~Expr = construct Expr::Lit#0(2)
+  let v19: ~Expr = construct Expr::Add#2(v17, v18)
+  let v20: ~Option[Expr] = construct Option::Some#0(v19)
+  let v21: String = call classify(v20)
+  let v16: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v22: Unit = call println(v16, v21)
+  v22

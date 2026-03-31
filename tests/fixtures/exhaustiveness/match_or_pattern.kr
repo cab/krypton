@@ -1,0 +1,7 @@
+# expect: ok
+type ABC = A | B | C
+
+fun test(x) = match x {
+    A | B => 1,
+    C => 2,
+}

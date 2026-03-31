@@ -1,0 +1,15 @@
+# expect: output "one\nother\nother\nfour"
+type T = A | B | C | D
+
+fun classify(x) = match x {
+    A => "one",
+    B | C => "other",
+    D => "four",
+}
+
+fun main() = {
+    println(classify(A))
+    println(classify(B))
+    println(classify(C))
+    println(classify(D))
+}

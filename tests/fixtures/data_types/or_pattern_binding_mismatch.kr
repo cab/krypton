@@ -1,0 +1,7 @@
+# expect: error E0014
+# Alternatives must bind the same variable names
+type T = A(Int) | B(String)
+
+fun bad(x) = match x {
+    A(n) | B(s) => 0,
+}

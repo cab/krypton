@@ -1,0 +1,8 @@
+# expect: ok
+# Three alternatives covering all four variants
+type Four = A | B | C | D
+
+fun test(x) = match x {
+    A | B | C => 1,
+    D => 2,
+}

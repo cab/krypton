@@ -1,0 +1,14 @@
+# expect: output "a\nb\nc"
+type T = A | B | C | D | E | F
+
+fun classify(x) = match x {
+    A | B => "a",
+    C | D => "b",
+    E | F => "c",
+}
+
+fun main() = {
+    println(classify(A))
+    println(classify(D))
+    println(classify(F))
+}

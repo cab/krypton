@@ -339,6 +339,11 @@ fn collect_owned_pattern_vars_inner(pattern: &TypedPattern, out: &mut Vec<String
             }
         }
         TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+        TypedPattern::Or { alternatives, .. } => {
+            if let Some(first) = alternatives.first() {
+                collect_owned_pattern_vars_inner(first, out);
+            }
+        }
     }
 }
 
@@ -368,6 +373,11 @@ fn collect_pattern_var_names_inner(pattern: &TypedPattern, out: &mut Vec<String>
             }
         }
         TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+        TypedPattern::Or { alternatives, .. } => {
+            if let Some(first) = alternatives.first() {
+                collect_pattern_var_names_inner(first, out);
+            }
+        }
     }
 }
 

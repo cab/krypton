@@ -116,6 +116,12 @@ fn collect_resource_bindings_inner(
             }
         }
         TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+        TypedPattern::Or { alternatives, .. } => {
+            // Use bindings from the first alternative (all alternatives bind the same names)
+            if let Some(first) = alternatives.first() {
+                collect_resource_bindings_inner(first, registry, acc);
+            }
+        }
     }
 }
 

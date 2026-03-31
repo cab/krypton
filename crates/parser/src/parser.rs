@@ -268,13 +268,18 @@ where
             var_pat,
         ));
 
-        // Or-pattern: A | B
+        // Or-pattern: A | B | C
         atomic.clone().foldl_with(
             symbol(Token::Pipe).ignore_then(atomic).repeated(),
-            |_lhs, rhs, e| {
-                let span = e.span();
-                e.emit(Rich::custom(span, "or-patterns are not yet supported"));
-                rhs
+            |lhs, rhs, e| {
+                let span = to_span(e.span());
+                // Accumulate into a flat list of alternatives
+                let mut alternatives = match lhs {
+                    Pattern::Or { alternatives, .. } => alternatives,
+                    other => vec![other],
+                };
+                alternatives.push(rhs);
+                Pattern::Or { alternatives, span }
             },
         )
     })

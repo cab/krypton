@@ -351,6 +351,10 @@ fn zero_spans_pattern(pat: &Pattern) -> Pattern {
             rest: *rest,
             span: (0, 0),
         },
+        Pattern::Or { alternatives, .. } => Pattern::Or {
+            alternatives: alternatives.iter().map(zero_spans_pattern).collect(),
+            span: (0, 0),
+        },
     }
 }
 

@@ -1,0 +1,15 @@
+# expect: output "lit\nlit\nother"
+type Expr = Lit(Int) | Neg(Expr) | Add(Expr, Expr)
+
+type Option[a] = Some(a) | None
+
+fun classify(e) = match e {
+    Some(Lit(n) | Neg(Lit(n))) => "lit",
+    _ => "other",
+}
+
+fun main() = {
+    println(classify(Some(Lit(1))))
+    println(classify(Some(Neg(Lit(2)))))
+    println(classify(Some(Add(Lit(1), Lit(2)))))
+}

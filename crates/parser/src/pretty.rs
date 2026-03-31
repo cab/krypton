@@ -917,6 +917,14 @@ impl<'a> Formatter<'a> {
                 }
                 self.buf.push_str(" }");
             }
+            Pattern::Or { alternatives, .. } => {
+                for (i, alt) in alternatives.iter().enumerate() {
+                    if i > 0 {
+                        self.buf.push_str(" | ");
+                    }
+                    self.fmt_pattern(alt);
+                }
+            }
         }
     }
 }

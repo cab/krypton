@@ -61,6 +61,7 @@ pub enum TypeErrorCode {
     E0513, // Definition conflicts with explicit import
     E0514, // Duplicate function definition
     E0316, // Cannot implement trait for owned type
+    E0014, // Or-pattern binding mismatch
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -286,6 +287,11 @@ pub enum TypeError {
     DuplicateFunction {
         name: String,
     },
+    OrPatternBindingMismatch {
+        alt_index: usize,
+        expected_names: Vec<String>,
+        actual_names: Vec<String>,
+    },
 }
 
 impl TypeError {
@@ -354,6 +360,7 @@ impl TypeError {
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
+            TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
         }
     }
 
@@ -593,6 +600,9 @@ impl TypeError {
             }
             TypeError::DuplicateFunction { name } => {
                 Some(format!("function `{name}` is already defined in this module; use a trait for type-based dispatch"))
+            }
+            TypeError::OrPatternBindingMismatch { .. } => {
+                Some("all alternatives in an or-pattern must bind the same set of variables".to_string())
             }
         }
     }
@@ -1080,6 +1090,19 @@ impl fmt::Display for TypeError {
             }
             TypeError::DuplicateFunction { name } => {
                 write!(f, "duplicate function definition: {}", name)
+            }
+            TypeError::OrPatternBindingMismatch {
+                alt_index,
+                expected_names,
+                actual_names,
+            } => {
+                write!(
+                    f,
+                    "or-pattern alternative {} binds different variables: expected [{}], found [{}]",
+                    alt_index,
+                    expected_names.join(", "),
+                    actual_names.join(", ")
+                )
             }
         }
     }

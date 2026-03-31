@@ -1,0 +1,12 @@
+# expect: output "small\nsmall\nsmall\nbig"
+fun classify(n) = match n {
+    1 | 2 | 3 => "small",
+    _ => "big",
+}
+
+fun main() = {
+    println(classify(1))
+    println(classify(2))
+    println(classify(3))
+    println(classify(99))
+}

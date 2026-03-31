@@ -1,0 +1,39 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module data_types__or_pattern_binding
+
+type Wrapper[a] = Some#0(a) | Wrap#1(a)
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(o): Unit
+import core/option/Some as Some(e): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+declare println: (o) -> Unit
+
+fn extract(v0: Wrapper[s8]) -> s8 =
+  switch v0 {
+    0 (v1: s8) ->
+      v1
+    1 (v2: s8) ->
+      v2
+  }
+
+fn main() -> Unit =
+  let v3: ~Wrapper[Int] = construct Wrapper::Some#0(3)
+  let v4: Int = call extract(v3)
+  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v6: Unit = call println(v5, v4)
+  let v8: ~Wrapper[Int] = construct Wrapper::Wrap#1(5)
+  let v9: Int = call extract(v8)
+  let v7: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v10: Unit = call println(v7, v9)
+  v10

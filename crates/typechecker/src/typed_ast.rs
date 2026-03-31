@@ -220,6 +220,11 @@ pub enum TypedPattern {
         span: Span,
         resolved_type_ref: Option<ResolvedTypeRef>,
     },
+    Or {
+        alternatives: Vec<TypedPattern>,
+        ty: Type,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -443,7 +448,8 @@ impl TypedPattern {
             | TypedPattern::Constructor { span, .. }
             | TypedPattern::Lit { span, .. }
             | TypedPattern::Tuple { span, .. }
-            | TypedPattern::StructPat { span, .. } => *span,
+            | TypedPattern::StructPat { span, .. }
+            | TypedPattern::Or { span, .. } => *span,
         }
     }
 }
@@ -545,6 +551,14 @@ pub fn apply_subst_pattern(pat: &mut TypedPattern, subst: &Substitution) {
             *ty = subst.apply(ty);
             for (_, field_pat) in fields {
                 apply_subst_pattern(field_pat, subst);
+            }
+        }
+        TypedPattern::Or {
+            alternatives, ty, ..
+        } => {
+            *ty = subst.apply(ty);
+            for alt in alternatives {
+                apply_subst_pattern(alt, subst);
             }
         }
     }

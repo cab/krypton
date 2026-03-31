@@ -1,0 +1,14 @@
+# expect: output "found\nfound\nnope"
+# Or-pattern where one alternative is nullary and the other has args — no bindings
+type Option[a] = Some(a) | None
+
+fun check(x) = match x {
+    Some(1) | Some(2) => "found",
+    _ => "nope",
+}
+
+fun main() = {
+    println(check(Some(1)))
+    println(check(Some(2)))
+    println(check(Some(3)))
+}
