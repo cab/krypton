@@ -36,27 +36,6 @@ fn name_to_builtin_type(name: &str) -> Type {
     }
 }
 
-/// Map a `Type::Named` to its JVM type and descriptor fragment.
-/// Type args are irrelevant — Java erases them, but the container type is preserved.
-fn jvm_type_for_named(
-    name: &str,
-    _args: &[Type],
-    struct_info: &HashMap<String, StructInfo>,
-    object_class: u16,
-) -> (JvmType, String) {
-    if let Some(info) = struct_info.get(name) {
-        (
-            JvmType::StructRef(info.class_index),
-            format!("L{};", info.class_name),
-        )
-    } else {
-        (
-            JvmType::StructRef(object_class),
-            "Ljava/lang/Object;".to_string(),
-        )
-    }
-}
-
 fn jvm_descriptor(compiler: &Compiler, ty: JvmType) -> String {
     match ty {
         JvmType::StructRef(_) => compiler.types.jvm_type_descriptor(ty),
@@ -64,23 +43,34 @@ fn jvm_descriptor(compiler: &Compiler, ty: JvmType) -> String {
     }
 }
 
-fn extern_param_info(compiler: &Compiler, ty: &Type) -> Result<(JvmType, String), CodegenError> {
+/// Resolve a type to its JVM representation for raw extern descriptors.
+///
+/// This must match what the Java host method actually declares. For most types,
+/// `type_to_jvm` gives the right answer. The only override is `Type::Named`:
+/// extern types (Vec, Map, Ref, etc.) in `struct_info` resolve to their Java
+/// backing class, but Krypton-only named types (sum types, etc.) that Java
+/// doesn't know about must map to Object.
+fn extern_type_to_jvm(compiler: &Compiler, ty: &Type) -> Result<JvmType, CodegenError> {
     match ty {
-        Type::Named(name, args) => {
-            let (jvm, desc) = jvm_type_for_named(
-                name,
-                args,
-                &compiler.types.struct_info,
-                compiler.builder.refs.object_class,
-            );
-            Ok((jvm, desc))
+        Type::Named(name, _) => {
+            if name == "Dict" {
+                return Ok(JvmType::StructRef(compiler.builder.refs.object_class));
+            }
+            if let Some(info) = compiler.types.struct_info.get(name) {
+                Ok(JvmType::StructRef(info.class_index))
+            } else {
+                // Sum types, etc. — Java sees these as Object
+                Ok(JvmType::StructRef(compiler.builder.refs.object_class))
+            }
         }
-        Type::Own(inner) => extern_param_info(compiler, inner),
-        other => {
-            let jvm = compiler.type_to_jvm(other)?;
-            Ok((jvm, jvm_descriptor(compiler, jvm)))
-        }
+        Type::Own(inner) => extern_type_to_jvm(compiler, inner),
+        other => compiler.type_to_jvm(other),
     }
+}
+
+fn extern_param_info(compiler: &Compiler, ty: &Type) -> Result<(JvmType, String), CodegenError> {
+    let jvm = extern_type_to_jvm(compiler, ty)?;
+    Ok((jvm, jvm_descriptor(compiler, jvm)))
 }
 
 fn extern_return_info(
@@ -95,22 +85,8 @@ fn extern_return_info(
     if matches!(ty, Type::Unit) {
         return Ok((JvmType::Int, "V".to_string(), true));
     }
-    match ty {
-        Type::Named(name, args) => {
-            let (jvm, desc) = jvm_type_for_named(
-                name,
-                args,
-                &compiler.types.struct_info,
-                compiler.builder.refs.object_class,
-            );
-            Ok((jvm, desc, false))
-        }
-        Type::Own(inner) => extern_return_info(compiler, inner, false),
-        other => {
-            let jvm = compiler.type_to_jvm(other)?;
-            Ok((jvm, jvm_descriptor(compiler, jvm), false))
-        }
-    }
+    let jvm = extern_type_to_jvm(compiler, ty)?;
+    Ok((jvm, jvm_descriptor(compiler, jvm), false))
 }
 
 impl<'link> Compiler<'link> {
@@ -921,17 +897,16 @@ impl<'link> Compiler<'link> {
     }
 
     pub(super) fn register_vec(&mut self) -> Result<(), CodegenError> {
-        let ka_class = self.cp.add_class("krypton/runtime/KryptonArray")?;
+        let Some(vec_struct) = self.types.struct_info.get("Vec") else {
+            return Ok(());
+        };
+        let ka_class = vec_struct.class_index;
         let ka_init = self.cp.add_method_ref(ka_class, "<init>", "(I)V")?;
         let ka_set = self
             .cp
             .add_method_ref(ka_class, "set", "(ILjava/lang/Object;)V")?;
         let ka_freeze = self.cp.add_method_ref(ka_class, "freeze", "()V")?;
-        self.types
-            .class_descriptors
-            .insert(ka_class, "Lkrypton/runtime/KryptonArray;".to_string());
         self.vec_info = Some(VecInfo {
-            class_index: ka_class,
             init_ref: ka_init,
             set_ref: ka_set,
             freeze_ref: ka_freeze,

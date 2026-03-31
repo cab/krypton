@@ -300,7 +300,6 @@ pub(super) struct ParameterizedInstanceInfo {
 /// Info about the Vec backing class (KryptonArray).
 #[derive(Clone)]
 pub(super) struct VecInfo {
-    pub(super) class_index: u16,
     pub(super) init_ref: u16,
     pub(super) set_ref: u16,
     pub(super) freeze_ref: u16,
@@ -497,16 +496,16 @@ impl<'link> Compiler<'link> {
     }
 
     /// Map a typechecker Type to a JvmType, using struct_info/sum_type_info for Named types.
+    ///
+    /// This resolves ALL Krypton types including sum types and tuples. For raw
+    /// extern descriptors (which must match Java's actual signatures), use
+    /// `extern_type_to_jvm` instead — it falls back to Object for Krypton-only
+    /// named types that Java doesn't know about.
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
                 if name == "Dict" {
                     return Ok(JvmType::StructRef(self.builder.refs.object_class));
-                }
-                if name == "Vec" {
-                    if let Some(info) = &self.vec_info {
-                        return Ok(JvmType::StructRef(info.class_index));
-                    }
                 }
                 if let Some(info) = self.types.struct_info.get(name) {
                     Ok(JvmType::StructRef(info.class_index))
@@ -632,13 +631,15 @@ impl<'link> Compiler<'link> {
             Type::Bool => JvmType::StructRef(self.builder.refs.bool_box_class),
             Type::String => JvmType::StructRef(self.builder.refs.string_class),
             Type::Own(inner) => return self.nullable_host_jvm_for_inner(inner),
-            Type::Named(name, _args) => {
-                if let Some(info) = self.types.struct_info.get(name) {
-                    JvmType::StructRef(info.class_index)
-                } else {
-                    JvmType::StructRef(self.builder.refs.object_class)
+            Type::Named(_, _) => match self.type_to_jvm(inner)? {
+                JvmType::StructRef(idx) => JvmType::StructRef(idx),
+                primitive => {
+                    return Err(CodegenError::TypeError(
+                        format!("unsupported nullable host return type: {primitive:?}"),
+                        None,
+                    ))
                 }
-            }
+            },
             other => match self.type_to_jvm(other)? {
                 JvmType::StructRef(idx) => JvmType::StructRef(idx),
                 primitive => {
@@ -1894,6 +1895,17 @@ impl<'link> Compiler<'link> {
                 element_type: _,
                 elements,
             } => {
+                let vec_class = self
+                    .types
+                    .struct_info
+                    .get("Vec")
+                    .ok_or_else(|| {
+                        CodegenError::TypeError(
+                            "ICE: Vec not in struct_info".to_string(),
+                            None,
+                        )
+                    })?
+                    .class_index;
                 let info = self
                     .vec_info
                     .as_ref()
@@ -1902,11 +1914,11 @@ impl<'link> Compiler<'link> {
                     })?
                     .clone();
                 let arr_vtype = VerificationType::Object {
-                    cpool_index: info.class_index,
+                    cpool_index: vec_class,
                 };
 
                 let new_offset = self.builder.current_offset();
-                self.builder.emit(Instruction::New(info.class_index));
+                self.builder.emit(Instruction::New(vec_class));
                 self.builder
                     .frame
                     .push_type(VerificationType::Uninitialized { offset: new_offset });
@@ -1941,7 +1953,7 @@ impl<'link> Compiler<'link> {
                     .emit(Instruction::Invokevirtual(info.freeze_ref));
                 self.builder.frame.pop_type();
 
-                Ok(JvmType::StructRef(info.class_index))
+                Ok(JvmType::StructRef(vec_class))
             }
         }
     }
