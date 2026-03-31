@@ -1,0 +1,8 @@
+# expect: error E0316
+import core/show.{Show}
+
+type Foo = { x: Int }
+
+impl Show[~Foo] {
+    fun show(f: ~Foo) -> String = "foo"
+}

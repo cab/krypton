@@ -3395,6 +3395,15 @@ fn register_impl_instances(
                         crate::types::format_type_with_var_map(&resolved_target, &names)
                     }
                 }
+                Type::Own(inner) => {
+                    return Err(spanned(
+                        TypeError::OwnedTypeImpl {
+                            trait_name: trait_name.clone(),
+                            ty: format!("{}", inner),
+                        },
+                        *span,
+                    ));
+                }
                 other => {
                     return Err(spanned(
                         TypeError::OrphanInstance {

@@ -60,6 +60,7 @@ pub enum TypeErrorCode {
     E0602, // Invalid @nullable return type
     E0513, // Definition conflicts with explicit import
     E0514, // Duplicate function definition
+    E0316, // Cannot implement trait for owned type
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -133,6 +134,10 @@ pub enum TypeError {
         required_by: Option<String>,
     },
     OrphanInstance {
+        trait_name: String,
+        ty: String,
+    },
+    OwnedTypeImpl {
         trait_name: String,
         ty: String,
     },
@@ -311,6 +316,7 @@ impl TypeError {
                 ..
             } => TypeErrorCode::E0303,
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
+            TypeError::OwnedTypeImpl { .. } => TypeErrorCode::E0316,
             TypeError::DuplicateInstance { .. } => TypeErrorCode::E0309,
             TypeError::CannotDerive { .. } => TypeErrorCode::E0304,
             TypeError::DefinitionConflictsWithTraitMethod { .. } => TypeErrorCode::E0305,
@@ -437,6 +443,9 @@ impl TypeError {
             TypeError::NoInstance { .. } => None,
             TypeError::OrphanInstance { trait_name, ty } => {
                 Some(format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty))
+            }
+            TypeError::OwnedTypeImpl { trait_name, ty } => {
+                Some(format!("implement `{}` for `{}` instead; the `~` ownership qualifier is erased for trait resolution", trait_name, ty))
             }
             TypeError::DuplicateInstance { existing_ty, .. } => {
                 Some(format!("conflicts with existing implementation for `{}`", existing_ty))
@@ -797,6 +806,13 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "orphan instance: cannot implement `{}` for `{}`",
+                    trait_name, ty
+                )
+            }
+            TypeError::OwnedTypeImpl { trait_name, ty } => {
+                write!(
+                    f,
+                    "cannot implement `{}` for owned type `~{}`",
                     trait_name, ty
                 )
             }
