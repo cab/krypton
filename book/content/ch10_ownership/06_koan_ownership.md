@@ -1,0 +1,17 @@
+In the previous lesson, we explored Ownership In Practice. Now we are going to take a look at Koan Ownership, which is an important concept in Krypton. As you may already be aware, many programming languages have some way of talking about repairing a tiny owned-value example so the value is used exactly once in the intended place, and Krypton is no exception to that general pattern. It is worth mentioning, however, that the exact spelling still matters, because small syntax choices tend to shape how comfortably a reader can move through later code.
+
+The example below demonstrates that the exercise is intentionally narrow because ownership mistakes are usually about one particular move, not about giant pages of syntax. Note that this is useful because ownership often feels obvious in explanation and then somewhat less obvious when a real binding must be threaded through code correctly. This may sound somewhat ordinary, and in a sense it is, but that is also why it is useful to see it written out plainly before the lessons get more layered. Interestingly, this is somewhat similar to small ownership drills in linear-type tutorials, although the Krypton version has its own punctuation and naming choices that should be read carefully.
+
+With that in mind, let us now turn our attention to the incomplete example. The missing pieces are small on purpose, although it is worth mentioning that they are still large enough to force the reader to actually think about the rule instead of merely recognizing it. You may find it helpful to fill in one blank, run the program, and then fill in the next blank after seeing what changed. Feel free to experiment with the code above and generally notice what kind of compiler complaints or outputs appear.
+
+
+```krypton
+fun consume(token: ~String) -> String = token
+
+fun main() {
+  let token: ~String = ???
+  # TODO: pass token exactly once to consume.
+  println(consume(token))
+}
+
+```

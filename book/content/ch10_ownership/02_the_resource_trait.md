@@ -1,0 +1,22 @@
+In the previous lesson, we explored Owned Values. Now we are going to take a look at The Resource Trait, which is an important concept in Krypton. As you may already be aware, many programming languages have some way of talking about describing how an owned resource should be cleaned up when it is finished, and Krypton is no exception to that general pattern. It is worth mentioning, however, that the exact spelling still matters, because small syntax choices tend to shape how comfortably a reader can move through later code.
+
+The example below demonstrates that `Resource` provides a `close` method that consumes the owned value being cleaned up. Note that this lesson is important because ownership in Krypton is not only about preventing double use; it is also about giving the compiler enough information to release resources automatically. This may sound somewhat ordinary, and in a sense it is, but that is also why it is useful to see it written out plainly before the lessons get more layered. Interestingly, this is somewhat similar to resource finalization traits or interfaces, although the Krypton version has its own punctuation and naming choices that should be read carefully.
+
+With that in mind, let us now turn our attention to what the program is doing at runtime and at compile time. The point is not only that the example works, but also that the surface shape of the code communicates the rule being introduced here in a fairly direct way. It is generally considered best practice to make one small change and see what changes elsewhere, even if the change is something as minor as a different literal, branch, field name, or type annotation. Feel free to experiment with the code above and observe what happens.
+
+
+```krypton
+type LogFile = LogFile(String)
+
+impl Resource[LogFile] {
+  fun close(file: ~LogFile) -> Unit = match file {
+    LogFile(path) => println("closing " + path),
+  }
+}
+
+fun main() {
+  let file = LogFile("app.log")
+  close(file)
+}
+
+```

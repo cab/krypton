@@ -1,0 +1,23 @@
+In the previous lesson, we explored Unqualified Imports. Now we are going to take a look at Visibility, which is an important concept in Krypton. As you may already be aware, many programming languages have some way of talking about the difference between private declarations, `pub` declarations, and opaque public types, and Krypton is no exception to that general pattern. It is worth mentioning, however, that the exact spelling still matters, because small syntax choices tend to shape how comfortably a reader can move through later code.
+
+The example below demonstrates that visibility is attached to declarations themselves, and `pub opaque type` exposes the type name without exposing its internals. Note that this lesson is mostly about code organization, so a commented multi-file scaffold is acceptable and still directionally useful at this stage. This may sound somewhat ordinary, and in a sense it is, but that is also why it is useful to see it written out plainly before the lessons get more layered. Interestingly, this is somewhat similar to public, private, and opaque module boundaries, although the Krypton version has its own punctuation and naming choices that should be read carefully.
+
+With that in mind, let us now turn our attention to what the program is doing at runtime and at compile time. The point is not only that the example works, but also that the surface shape of the code communicates the rule being introduced here in a fairly direct way. It is generally considered best practice to make one small change and see what changes elsewhere, even if the change is something as minor as a different literal, branch, field name, or type annotation. Feel free to experiment with the code above and observe what happens.
+
+
+```krypton
+# secrets.kr
+pub opaque type Secret = Secret(String)
+
+fun reveal(secret: Secret) -> String = "not exported"
+pub fun make_secret(name: String) -> Secret = Secret(name)
+
+# main.kr
+import secrets.{Secret, make_secret}
+
+fun main() {
+  let secret: Secret = make_secret("launch")
+  println(secret)
+}
+
+```

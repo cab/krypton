@@ -199,17 +199,15 @@ def discover_content():
             "slug": slug_from_dir(ch_dir.name),
             "lessons": [],
         }
-        for lesson_dir in sorted(ch_dir.iterdir()):
-            if not lesson_dir.is_dir():
+        for lesson_file in sorted(ch_dir.iterdir()):
+            if lesson_file.is_dir() or lesson_file.suffix != ".md":
                 continue
-            lesson_md = lesson_dir / "lesson.md"
-            if not lesson_md.exists():
-                continue
+            lesson_name = lesson_file.stem
             lesson = {
-                "dir_name": lesson_dir.name,
-                "title": title_from_dir(lesson_dir.name),
-                "slug": slug_from_dir(lesson_dir.name),
-                "prose": render_lesson_prose(lesson_md.read_text()),
+                "source_name": lesson_name,
+                "title": title_from_dir(lesson_name),
+                "slug": slug_from_dir(lesson_name),
+                "prose": render_lesson_prose(lesson_file.read_text()),
                 "chapter": chapter,
             }
             lesson["url"] = f"/guide/{chapter['slug']}/{lesson['slug']}/"

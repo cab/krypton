@@ -1,0 +1,18 @@
+In the previous lesson, we explored Sam Conversion. Now we are going to take a look at Subtyping And Coercion, which is an important concept in Krypton. As you may already be aware, many programming languages have some way of talking about describing foreign subtype relationships so Krypton can perform safe upcasts at the interop boundary, and Krypton is no exception to that general pattern. It is worth mentioning, however, that the exact spelling still matters, because small syntax choices tend to shape how comfortably a reader can move through later code.
+
+The example below demonstrates that the lesson stores the intended extern-header shape in comments because this part of the Java surface area is still more of a design scaffold than a polished browser example. Note that this kind of placeholder is still useful because subtyping tends to affect how many other interop examples want to be written later. This may sound somewhat ordinary, and in a sense it is, but that is also why it is useful to see it written out plainly before the lessons get more layered. Interestingly, this is somewhat similar to subtype metadata in foreign bindings, although the Krypton version has its own punctuation and naming choices that should be read carefully.
+
+With that in mind, let us now turn our attention to what the program is doing at runtime and at compile time. The point is not only that the example works, but also that the surface shape of the code communicates the rule being introduced here in a fairly direct way. It is generally considered best practice to make one small change and see what changes elsewhere, even if the change is something as minor as a different literal, branch, field name, or type annotation. Feel free to experiment with the code above and observe what happens.
+
+
+```krypton
+# Planned interop shape:
+# extern java "java.util.ArrayList" as ListBuilder : java.util.List {
+#   fun size(self: ListBuilder) -> Int
+# }
+
+fun main() {
+  println("subtyping and coercion scaffold")
+}
+
+```
