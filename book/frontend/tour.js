@@ -165,15 +165,17 @@ function createEditorState(doc, { readOnly = false, onRun } = {}) {
   } else {
     extensions.push(lintGutter());
     extensions.push(
-      Prec.highest(keymap.of([
-        {
-          key: "Mod-Enter",
-          run: () => {
-            onRun?.();
-            return true;
+      Prec.highest(
+        keymap.of([
+          {
+            key: "Mod-Enter",
+            run: () => {
+              onRun?.();
+              return true;
+            },
           },
-        },
-      ])),
+        ]),
+      ),
     );
   }
 
@@ -212,22 +214,37 @@ document.querySelectorAll(".code-block").forEach((block) => {
     if (!outputText || isRunning) {
       return;
     }
+
+    const spinnerFrames = ["/", "-", "\\", "|"];
+    let spinnerIndex = 0;
+    const renderSpinner = () => {
+      outputText.textContent = spinnerFrames[spinnerIndex];
+      spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+    };
+    const spinnerTimer = window.setInterval(renderSpinner, 120);
+    const stopSpinner = () => {
+      window.clearInterval(spinnerTimer);
+    };
+
     isRunning = true;
     outputEl?.classList.add("visible");
-    outputText.textContent = "Running...";
+    renderSpinner();
     if (runBtn instanceof HTMLButtonElement) {
       runBtn.disabled = true;
     }
     try {
       const result = await runSnippet(view.state.doc.toString(), (log) => {
+        stopSpinner();
         outputText.textContent = log;
         outputText.scrollTop = outputText.scrollHeight;
       });
       const diagnostics = result.diagnostics ?? [];
       if (diagnostics.length > 0) {
+        stopSpinner();
         renderDiagnosticsDom(diagnostics, outputText);
         view.dispatch(setDiagnostics(view.state, toCmDiagnostics(diagnostics)));
       } else {
+        stopSpinner();
         outputText.textContent = result.output || "(no output)";
         requestAnimationFrame(() => {
           outputText.scrollTop = outputText.scrollHeight;
@@ -235,12 +252,14 @@ document.querySelectorAll(".code-block").forEach((block) => {
         view.dispatch(setDiagnostics(view.state, []));
       }
     } catch (error) {
+      stopSpinner();
       outputText.textContent =
         error instanceof Error
           ? `${error.name}: ${error.message}`
           : String(error);
       view.dispatch(setDiagnostics(view.state, []));
     } finally {
+      stopSpinner();
       isRunning = false;
       if (runBtn instanceof HTMLButtonElement) {
         runBtn.disabled = false;
