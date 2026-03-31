@@ -4,14 +4,14 @@ expression: ir_module.to_string()
 ---
 module extern__extern_method_where
 
-extern java "krypton.runtime.Collections" sort(u8): v8
+extern java "krypton.runtime.Collections" sort(a9): b9
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]

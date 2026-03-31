@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__hkt_functor
 
 type Box[a] = Box#0(a)
-trait Functor[e9] { fmap(e9[f9], (f9) -> g9): e9[g9] }
+trait Functor[k9] { fmap(k9[l9], (l9) -> m9): k9[m9] }
 instance traits__hkt_functor.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -13,17 +13,17 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 
-fn Functor$$Box$$fmap(v0: Box[l9], v1: (l9) -> n9) -> ~Box[n9] =
+fn Functor$$Box$$fmap(v0: Box[r9], v1: (r9) -> t9) -> ~Box[t9] =
   switch v0 {
-    0 (v2: l9) ->
-      let v3: n9 = call_closure v1(v2)
-      let v4: ~Box[n9] = construct Box::Box#0(v3)
+    0 (v2: r9) ->
+      let v3: t9 = call_closure v1(v2)
+      let v4: ~Box[t9] = construct Box::Box#0(v3)
       v4
   }

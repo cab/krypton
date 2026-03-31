@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_context
 
-trait Default[d9] { default(): d9 }
+trait Default[j9] { default(): j9 }
 instance traits__trait_zero_arg_context.Default[Int] { default=Default$$Int$$default }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -12,7 +12,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
@@ -25,8 +25,8 @@ fn int_default() -> Int =
   let v1: Int = trait_call traits__trait_zero_arg_context.Default.default(v0)
   v1
 
-fn default2(v2: Dict[traits__trait_zero_arg_context.Default, k9]) -> k9 =
-  let v3: k9 = trait_call traits__trait_zero_arg_context.Default.default(v2)
+fn default2(v2: Dict[traits__trait_zero_arg_context.Default, q9]) -> q9 =
+  let v3: q9 = trait_call traits__trait_zero_arg_context.Default.default(v2)
   v3
 
 fn main() -> Unit =

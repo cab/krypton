@@ -6,20 +6,20 @@ module resources__resource_finally_double_panic
 
 type Handle = MkHandle#0(String)
 instance core/resource.Resource[Handle] { close=Resource$$Handle$$close }
-extern java "krypton.runtime.KryptonIO" println(u8): Unit
+extern java "krypton.runtime.KryptonIO" println(a9): Unit
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 declare panic
-declare println: (u8) -> Unit
+declare println: (a9) -> Unit
 
 fn main() -> Unit =
   let v0: ~Handle = construct Handle::MkHandle#0("test")
@@ -29,6 +29,6 @@ fn main() -> Unit =
   let v4: Unit = trait_call core/resource.Resource.close(v3, v0)
   v2
 
-fn Resource$$Handle$$close(v5: ~Handle) -> n9 =
-  let v6: n9 = call panic("close failed")
+fn Resource$$Handle$$close(v5: ~Handle) -> t9 =
+  let v6: t9 = call panic("close failed")
   v6

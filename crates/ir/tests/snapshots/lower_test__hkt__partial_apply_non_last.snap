@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
-trait Contravariant[f9] { contramap(f9[g9], (h9) -> g9): f9[h9] }
+trait Contravariant[l9] { contramap(l9[m9], (n9) -> m9): l9[n9] }
 instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=Contravariant$$Predicate$$Var0$$Var1$$contramap }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -13,20 +13,20 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 
-fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[o9, o9], v1: (o9) -> o9) -> ~Predicate[o9, o9] =
-  let v8: (o9) -> o9 = make_closure(lambda$27, [v0, v1])
-  let v9: ~Predicate[o9, o9] = construct Predicate(v8)
+fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[u9, u9], v1: (u9) -> u9) -> ~Predicate[u9, u9] =
+  let v8: (u9) -> u9 = make_closure(lambda$27, [v0, v1])
+  let v9: ~Predicate[u9, u9] = construct Predicate(v8)
   v9
 
-fn lambda$27(v2: Predicate[o9, o9], v3: (o9) -> o9, v4: o9) -> o9 =
-  let v5: (o9) -> o9 = project v2.0
-  let v6: o9 = call_closure v3(v4)
-  let v7: o9 = call_closure v5(v6)
+fn lambda$27(v2: Predicate[u9, u9], v3: (u9) -> u9, v4: u9) -> u9 =
+  let v5: (u9) -> u9 = project v2.0
+  let v6: u9 = call_closure v3(v4)
+  let v7: u9 = call_closure v5(v6)
   v7

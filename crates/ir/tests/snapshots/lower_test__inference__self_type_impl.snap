@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
-trait MyEq[d9] { my_eq(d9, d9): Bool }
+trait MyEq[j9] { my_eq(j9, j9): Bool }
 instance inference__self_type_impl.MyEq[Point] { my_eq=MyEq$$Point$$my_eq }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -13,7 +13,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]

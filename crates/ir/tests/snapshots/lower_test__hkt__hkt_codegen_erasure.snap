@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
-trait Functor[e9] { fmap(e9[f9], (f9) -> g9): e9[g9] }
+trait Functor[k9] { fmap(k9[l9], (l9) -> m9): k9[m9] }
 instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(h): h
 import core/list/last as last(List[u3]): Option[u3]
@@ -18,17 +18,17 @@ import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 declare println: (s) -> Unit
-declare to_list: (Vec[s8]) -> List[s8]
+declare to_list: (Vec[y8]) -> List[y8]
 
-fn fold_box(v0: List[o9], v1: i9[o9], v2: (i9[o9], o9) -> i9[o9]) -> i9[o9] =
-  let_join [recur] v3(v4: List[o9], v5: i9[o9], v6: (i9[o9], o9) -> i9[o9]) =
+fn fold_box(v0: List[u9], v1: o9[u9], v2: (o9[u9], u9) -> o9[u9]) -> o9[u9] =
+  let_join [recur] v3(v4: List[u9], v5: o9[u9], v6: (o9[u9], u9) -> o9[u9]) =
     switch v4 {
       1 ->
         v5
-      0 (v7: o9, v8: List[o9]) ->
-        let v9: i9[o9] = call_closure v6(v5, v7)
+      0 (v7: u9, v8: List[u9]) ->
+        let v9: o9[u9] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }
   in
@@ -47,11 +47,11 @@ fn main() -> Unit =
       v22
   }
 
-fn Functor$$Box$$fmap(v23: Box[n10], v24: (n10) -> p10) -> ~Box[p10] =
+fn Functor$$Box$$fmap(v23: Box[t10], v24: (t10) -> v10) -> ~Box[v10] =
   switch v23 {
-    0 (v25: n10) ->
-      let v26: p10 = call_closure v24(v25)
-      let v27: ~Box[p10] = construct Box::Box#0(v26)
+    0 (v25: t10) ->
+      let v26: v10 = call_closure v24(v25)
+      let v27: ~Box[v10] = construct Box::Box#0(v26)
       v27
   }
 

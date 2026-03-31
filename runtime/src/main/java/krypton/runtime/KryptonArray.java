@@ -39,6 +39,10 @@ public class KryptonArray {
         }
     }
 
+    public void push(Object value) {
+        set(length(), value);
+    }
+
     public int length() {
         return size;
     }
@@ -58,6 +62,13 @@ public class KryptonArray {
 
     public static Object staticGet(Object arr, long index) {
         return ((KryptonArray) arr).get((int) index);
+    }
+
+    public static Object staticPush(Object arr, Object value) {
+        KryptonArray base = ((KryptonArray) arr);
+        KryptonArray copy = new KryptonArray(Arrays.copyOf(base.data, base.data.length + 1), base.size);
+        copy.push(value);
+        return copy;
     }
 
     public static Object staticNew(long capacity) {

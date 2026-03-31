@@ -13,6 +13,7 @@ extern java "krypton.runtime.KryptonArray" as Vec[a] {
     fun staticNew(size: Int) -> Vec[a]
     fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
     fun staticFreeze(xs: Vec[a]) -> Vec[a]
+    fun staticPush(xs: Vec[a], x: a) -> Vec[a]
 }
 
 fun join_elems[a](v: Vec[a], i: Int, acc: String) -> String where a: Show =
@@ -33,6 +34,7 @@ extern js "../runtime/js/array.mjs" as Vec[a] {
     fun staticNew(size: Int) -> Vec[a]
     fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
     fun staticFreeze(xs: Vec[a]) -> Vec[a]
+    fun staticPush(xs: Vec[a], x: a) -> Vec[a]
 }
 
 pub fun len[a](xs: Vec[a]) -> Int = staticLength(xs)
@@ -76,3 +78,5 @@ pub fun map[a, b](xs: Vec[a], f: (a) -> b) -> Vec[b] = from_list(list_map(to_lis
 pub fun fold[a, b](xs: Vec[a], acc: b, f: (b, a) -> b) -> b = list_fold(to_list(xs), acc, f)
 
 pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord = from_list(list_sort_by(to_list(xs), key))
+
+pub fun push[a](xs: Vec[a], x: a) -> Vec[a] = staticPush(xs, x)

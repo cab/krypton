@@ -11,20 +11,20 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/io/println as println(s): Unit
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
 import core/list/Cons as Cons(h, List[h]): List[h]
 
-fn map_option(v0: Option[m9], v1: (m9) -> n9) -> Option[n9] =
+fn map_option(v0: Option[s9], v1: (s9) -> t9) -> Option[t9] =
   switch v0 {
-    0 (v2: m9) ->
-      let v3: n9 = call_closure v1(v2)
-      let v4: ~Option[n9] = construct Option::Some#0(v3)
+    0 (v2: s9) ->
+      let v3: t9 = call_closure v1(v2)
+      let v4: ~Option[t9] = construct Option::Some#0(v3)
       v4
     1 ->
-      let v5: ~Option[n9] = construct Option::None#1()
+      let v5: ~Option[t9] = construct Option::None#1()
       v5
   }

@@ -10,7 +10,7 @@ import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
 import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
 import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
 import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/vec/to_list as to_list(Vec[y8]): List[y8]
 import core/option/Some as Some(e): Option[e]
 import core/result/Ok as Ok(g): Result[f, g]
 import core/result/Err as Err(f): Result[f, g]
@@ -18,13 +18,13 @@ import core/list/Cons as Cons(h, List[h]): List[h]
 import core/io/println as println(s): Unit
 declare println: (s) -> Unit
 
-fn show_it(v0: Dict[core/show.Show, e9], v1: e9) -> String =
+fn show_it(v0: Dict[core/show.Show, k9], v1: k9) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 
-fn use_it(v3: Dict[core/show.Show, j9], v4: j9) -> String =
-  let v9: (l9) -> String = make_closure(fn_ref$28, [v3])
-  let v5: (l9) -> String = v9
+fn use_it(v3: Dict[core/show.Show, p9], v4: p9) -> String =
+  let v9: (r9) -> String = make_closure(fn_ref$28, [v3])
+  let v5: (r9) -> String = v9
   let v10: String = call_closure v5(v4)
   v10
 
@@ -40,6 +40,6 @@ fn main() -> Unit =
   let v15: Bool = trait_call core/eq.Eq.eq(v12, v14, "42")
   jump v18(v15)
 
-fn fn_ref$28(v6: Dict[core/show.Show, l9], v7: l9) -> String =
+fn fn_ref$28(v6: Dict[core/show.Show, r9], v7: r9) -> String =
   let v8: String = call show_it(v6, v7)
   v8
