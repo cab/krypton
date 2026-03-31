@@ -1,0 +1,16 @@
+{
+  "name": "@krypton/runtime-js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run typecheck && node build-runtime.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

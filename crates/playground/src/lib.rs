@@ -10,7 +10,7 @@ use krypton_typechecker::infer::infer_module;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-static JS_RUNTIME_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../runtime/js");
+static JS_RUNTIME_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../runtime/js/dist");
 
 const ROOT_MODULE_NAME: &str = "main";
 const ROOT_FILENAME: &str = "main.kr";

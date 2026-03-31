@@ -1,7 +1,5 @@
-// Krypton JS runtime — panic
-
 export class KryptonPanic extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message);
     this.name = 'KryptonPanic';
   }

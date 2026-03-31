@@ -1,29 +1,29 @@
-// Krypton JS runtime — actor primitives (event-loop-based)
-
-let _liveCount = 0;
-let _resolveQuiescent = null;
-let _keepAlive = null;
-
-export { _liveCount };
-
+// src/actor.mts
+var _liveCount = 0;
+var _resolveQuiescent = null;
+var _keepAlive = null;
 function _updateKeepAlive() {
   if (_liveCount > 0 && !_keepAlive) {
-    _keepAlive = setInterval(() => {}, 1 << 30);
+    _keepAlive = setInterval(() => {
+    }, 1 << 30);
   } else if (_liveCount === 0 && _keepAlive) {
     clearInterval(_keepAlive);
     _keepAlive = null;
   }
 }
-
-export class Mailbox {
+var Mailbox = class {
+  inbox;
+  waiting;
+  closed;
   constructor() {
     this.inbox = [];
     this.waiting = null;
     this.closed = false;
   }
-
   enqueue(msg) {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     if (this.waiting) {
       const resolve = this.waiting;
       this.waiting = null;
@@ -32,19 +32,19 @@ export class Mailbox {
       this.inbox.push(msg);
     }
   }
-
   receive() {
     if (this.inbox.length > 0) {
       return Promise.resolve(this.inbox.shift());
     }
-    return new Promise(resolve => { this.waiting = resolve; });
+    return new Promise((resolve) => {
+      this.waiting = resolve;
+    });
   }
-
   receiveTimeout(ms) {
     if (this.inbox.length > 0) {
       return Promise.resolve(this.inbox.shift());
     }
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.waiting = null;
         resolve(null);
@@ -55,30 +55,34 @@ export class Mailbox {
       };
     });
   }
-
-  ref() { return new Ref(this); }
-  close() { this.closed = true; }
-  size() { return this.inbox.length; }
-}
-
-export class Ref {
-  constructor(targetOrFn) {
-    this._send = (targetOrFn instanceof Mailbox)
-      ? (msg) => targetOrFn.enqueue(msg)
-      : targetOrFn;
+  ref() {
+    return new Ref(this);
   }
-  send(msg) { this._send(msg); }
-}
-
-export function raw_spawn(f) {
+  close() {
+    this.closed = true;
+  }
+  size() {
+    return this.inbox.length;
+  }
+};
+var Ref = class {
+  _send;
+  constructor(targetOrFn) {
+    this._send = targetOrFn instanceof Mailbox ? (msg) => targetOrFn.enqueue(msg) : targetOrFn;
+  }
+  send(msg) {
+    this._send(msg);
+  }
+};
+function raw_spawn(f) {
   const mb = new Mailbox();
-  _liveCount++;
+  _liveCount += 1;
   _updateKeepAlive();
-  Promise.resolve().then(() => f(mb)).catch(err => {
+  Promise.resolve().then(() => f(mb)).catch((err) => {
     console.error(`[krypton] actor crashed: ${err.message}`);
   }).finally(() => {
     mb.close();
-    _liveCount--;
+    _liveCount -= 1;
     _updateKeepAlive();
     if (_liveCount === 0 && _resolveQuiescent) {
       _resolveQuiescent();
@@ -87,50 +91,58 @@ export function raw_spawn(f) {
   });
   return mb.ref();
 }
-
-export function raw_send(ref, msg) {
+function raw_send(ref, msg) {
   ref.send(msg);
 }
-
-export function raw_receive(mb) {
+function raw_receive(mb) {
   return mb.receive();
 }
-
-export function raw_receive_timeout(mb, ms) {
+function raw_receive_timeout(mb, ms) {
   return mb.receiveTimeout(ms);
 }
-
-export function raw_actor_ref(mb) {
+function raw_actor_ref(mb) {
   return mb.ref();
 }
-
-export function raw_mailbox_size(mb) {
+function raw_mailbox_size(mb) {
   return mb.size();
 }
-
-export function raw_create_mailbox() {
+function raw_create_mailbox() {
   return new Mailbox();
 }
-
-export function raw_adapter(ref, wrapper) {
+function raw_adapter(ref, wrapper) {
   return new Ref((msg) => ref.send(wrapper(msg)));
 }
-
-export function raw_ask(target, wrapperFn, timeout) {
+function raw_ask(target, wrapperFn, timeout) {
   const replyMb = new Mailbox();
   const replyRef = replyMb.ref();
   const msg = wrapperFn(replyRef);
   target.send(msg);
-  return replyMb.receiveTimeout(timeout).then(reply => {
+  return replyMb.receiveTimeout(timeout).then((reply) => {
     replyMb.close();
     return reply;
   });
 }
-
-export async function runMain(fn) {
+async function runMain(fn) {
   const result = await fn();
-  if (_liveCount === 0) return result;
-  return new Promise(resolve => {
-    _resolveQuiescent = resolve;
+  if (_liveCount === 0) {
+    return result;
+  }
+  return new Promise((resolve) => {
+    _resolveQuiescent = () => resolve(result);
   });
 }
+export {
+  Mailbox,
+  Ref,
+  _liveCount,
+  raw_actor_ref,
+  raw_adapter,
+  raw_ask,
+  raw_create_mailbox,
+  raw_mailbox_size,
+  raw_receive,
+  raw_receive_timeout,
+  raw_send,
+  raw_spawn,
+  runMain
+};
