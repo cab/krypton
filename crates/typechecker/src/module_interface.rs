@@ -368,6 +368,7 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
                         _ => None,
                     }
                 })
+                // Re-exported symbols that aren't constructors or type names are functions
                 .unwrap_or_else(|| LocalSymbolKey::Function(canonical_name.clone()));
 
             ReexportedFnEntry {
@@ -397,6 +398,7 @@ fn extract_exported_types(typed: &TypedModule) -> Vec<TypeSummary> {
         .exported_type_infos
         .iter()
         .filter_map(|(name, info)| {
+            // Unknown visibility defaults to Private (safe: won't be exported)
             let mut vis = typed
                 .type_visibility
                 .get(name)
@@ -454,6 +456,7 @@ fn extract_reexported_types(typed: &TypedModule) -> Vec<ReexportedTypeEntry> {
                 .type_origin(name)
                 .unwrap_or(&typed.module_path)
                 .to_string();
+            // Re-exported types are explicitly listed, so Pub is the expected visibility
             let vis = typed
                 .reexported_type_visibility
                 .get(name)

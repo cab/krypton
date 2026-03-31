@@ -2336,6 +2336,7 @@ impl ModuleInferenceState {
                 .get(&func.name)
                 .map(|s| s.constraints.as_slice())
                 .unwrap_or(&[]);
+            // Monomorphic functions have no type variables
             let func_var_names = fn_schemes
                 .get(&func.name)
                 .map(|s| &s.var_names)
@@ -3015,6 +3016,8 @@ fn register_local_traits(
                         continue;
                     }
                     if let Some(&tv) = method_type_param_map.get(&constraint.type_var) {
+                        // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                        // Validation deferred to instance resolution phase.
                         let tn = trait_registry
                             .lookup_trait_by_name(&constraint.trait_name)
                             .map(|ti| ti.trait_name())
@@ -3043,6 +3046,8 @@ fn register_local_traits(
                 });
             }
 
+            // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+            // Validation deferred to instance resolution phase.
             let superclass_names: Vec<TraitName> = superclasses
                 .iter()
                 .map(|sc| {
@@ -3167,6 +3172,8 @@ fn process_deriving(
                     _ => continue,
                 };
 
+                // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                // Validation deferred to instance resolution phase.
                 let derive_full_trait_name = trait_registry
                     .lookup_trait_by_name(trait_name)
                     .map(|ti| ti.trait_name())
@@ -3241,6 +3248,8 @@ fn process_deriving(
 
 /// Resolve parser `TypeConstraint`s (bare string trait names) to `ResolvedConstraint`s
 /// using the trait registry to look up the full `TraitName`.
+// TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+// Validation deferred to instance resolution phase.
 fn resolve_constraints(
     constraints: &[TypeConstraint],
     trait_registry: &TraitRegistry,
@@ -3483,6 +3492,8 @@ fn register_impl_instances(
             }
 
             let target_type_name = type_to_canonical_name(&resolved_target);
+            // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+            // Validation deferred to instance resolution phase.
             let impl_full_trait_name = trait_registry
                 .lookup_trait_by_name(trait_name)
                 .map(|ti| ti.trait_name())
@@ -3736,6 +3747,8 @@ fn infer_function_bodies<'a>(
                             .get(&constraint.type_var)
                             .copied()
                             .map(|type_var| {
+                                // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                                // Validation deferred to instance resolution phase.
                                 let tn = trait_registry
                                     .lookup_trait_by_name(&constraint.trait_name)
                                     .map(|ti| ti.trait_name())
@@ -3937,11 +3950,12 @@ fn infer_function_bodies<'a>(
             if fn_type_param_vars.is_empty() {
                 continue;
             }
+            // Functions without explicit constraints have no entry
             let declared = fn_constraint_requirements
                 .get(decl.name.as_str())
                 .cloned()
                 .unwrap_or_default();
-            // Build reverse map: TypeVarId → user-visible type param name
+            // Functions without explicit constraints have no entry
             let type_var_names: HashMap<TypeVarId, String> = saved_type_param_maps
                 .get(&idx)
                 .map(|tpm| tpm.iter().map(|(name, &id)| (id, name.clone())).collect())
@@ -3975,10 +3989,12 @@ fn infer_function_bodies<'a>(
     if !trait_method_map.is_empty() || has_constraints {
         for (body, scheme) in fn_bodies.iter().zip(result_schemes.iter()) {
             if let Some(body) = body {
+                // Monomorphic functions have no type variables
                 let fn_type_vars: HashSet<TypeVarId> = scheme
                     .as_ref()
                     .map(|s| s.vars.iter().copied().collect())
                     .unwrap_or_default();
+                // Monomorphic functions have no type variables
                 let scheme_var_names = scheme
                     .as_ref()
                     .map(|s| &s.var_names)
@@ -4082,6 +4098,8 @@ fn typecheck_impl_methods(
                         continue;
                     }
                     if let Some(&tv) = impl_method_tpm.get(&constraint.type_var) {
+                        // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                        // Validation deferred to instance resolution phase.
                         let tn = trait_registry
                             .lookup_trait_by_name(&constraint.trait_name)
                             .map(|ti| ti.trait_name())
@@ -4250,6 +4268,8 @@ fn typecheck_impl_methods(
                 });
             }
 
+            // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+            // Validation deferred to instance resolution phase.
             let inst_trait_name = trait_registry
                 .lookup_trait_by_name(trait_name)
                 .map(|ti| ti.trait_name())

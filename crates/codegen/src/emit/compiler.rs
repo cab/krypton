@@ -1216,11 +1216,12 @@ impl<'link> Compiler<'link> {
                                     Type::Named(n, _) => Some(n.clone()),
                                     _ => None,
                                 })
-                                .unwrap_or_else(|| {
-                                    // Fallback: look up the variable's debug name from the IR module
-                                    // trait_dict uses a Var whose name is the trait name
-                                    format!("ICE: trait_dict var {} has no type info", var_id.0)
-                                })
+                                .ok_or_else(|| {
+                                    CodegenError::TypeError(
+                                        format!("trait_dict var {} has no type info", var_id.0),
+                                        None,
+                                    )
+                                })?
                         }
                         _ => {
                             return Err(CodegenError::UnsupportedExpr(
@@ -1377,9 +1378,19 @@ impl<'link> Compiler<'link> {
                 // Determine arity from closure type
                 let closure_ty = match closure {
                     krypton_ir::Atom::Var(var_id) => {
-                        self.var_types.get(var_id).cloned().unwrap_or(Type::Unit)
+                        self.var_types.get(var_id).cloned().ok_or_else(|| {
+                            CodegenError::TypeError(
+                                format!("CallClosure: var {:?} has no type", var_id),
+                                None,
+                            )
+                        })?
                     }
-                    _ => Type::Unit,
+                    _ => {
+                        return Err(CodegenError::TypeError(
+                            "CallClosure: closure must be a Var atom".to_string(),
+                            None,
+                        ))
+                    }
                 };
                 let fn_type = match &closure_ty {
                     Type::Own(inner) => inner.as_ref().clone(),
@@ -1876,7 +1887,8 @@ impl<'link> Compiler<'link> {
                     self.builder.frame.pop_type();
                     Ok(JvmType::StructRef(pushed_class))
                 } else {
-                    // Fallback: try emit_dict_argument_for_type
+                    // Two-phase dict resolution: try parameterized instance first, then
+                    // fall back to emit_dict_argument_for_type for structural matching
                     self.emit_dict_argument_for_type(trait_name, ty, pushed_class)?;
                     Ok(JvmType::StructRef(pushed_class))
                 }
@@ -2247,7 +2259,8 @@ impl<'link> Compiler<'link> {
 
                 // Push phantom return type so the dead-code frame's stack matches
                 // the merge target's expected stack.
-                let return_type = self.builder.fn_return_type.unwrap_or(JvmType::Int);
+                let return_type = self.builder.fn_return_type
+                    .expect("ICE: fn_return_type must be set before body compilation");
                 self.builder.push_jvm_type(return_type);
                 let after_goto = self.builder.code.len() as u16;
                 self.builder.frame.record_frame(after_goto);
@@ -2438,6 +2451,7 @@ impl<'link> Compiler<'link> {
                             let f = &fields[j];
                             let field_ref = field_refs[j];
                             let actual_type = if f.is_erased {
+                                // Type-erased generics are represented as Object on the JVM
                                 self.type_to_jvm(var_ty)
                                     .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
                             } else {
@@ -2549,7 +2563,12 @@ impl<'link> Compiler<'link> {
                     self.builder.max_locals_hwm = max_next_local;
                 }
 
-                Ok(result_type.unwrap_or(JvmType::Int))
+                Ok(result_type.ok_or_else(|| {
+                    CodegenError::TypeError(
+                        "switch expression produced no result type".to_string(),
+                        None,
+                    )
+                })?)
             }
         }
     }
@@ -2656,7 +2675,8 @@ impl<'link> Compiler<'link> {
                     }
                 },
                 _ => {
-                    // Fallback: find sum type by matching all branch tags
+                    // Intentional: when var_types lacks type info, infer sum type from
+                    // branch tags. Errors on 0 or 2+ candidates.
                     let candidates: Vec<&String> = self
                         .variant_tags
                         .iter()
@@ -2708,6 +2728,7 @@ impl<'link> Compiler<'link> {
 
         let tc_types = self.types.fn_tc_types.get(&fn_def.name).cloned();
 
+        // Functions without trait constraints need no dict params
         let dict_requirements = self
             .traits
             .impl_dict_requirements

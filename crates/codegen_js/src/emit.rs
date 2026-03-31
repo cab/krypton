@@ -1819,7 +1819,12 @@ impl<'a> JsEmitter<'a> {
                             .variant_lookup
                             .get(&(type_name.clone(), branch.tag))
                             .cloned()
-                            .unwrap_or_else(|| format!("Tag{}", branch.tag));
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "ICE: variant name not found for ({}, tag={})",
+                                    type_name, branch.tag
+                                )
+                            });
 
                         if i == 0 {
                             self.writeln(&format!("if ({scrut} instanceof {variant_name}) {{"));

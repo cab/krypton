@@ -269,12 +269,12 @@ where
         ));
 
         // Or-pattern: A | B
-        atomic.clone().foldl(
+        atomic.clone().foldl_with(
             symbol(Token::Pipe).ignore_then(atomic).repeated(),
-            |_lhs, _rhs| {
-                // For now, or-patterns are not in the AST — just return the rhs
-                // TODO: Add OrPattern to AST
-                _rhs
+            |_lhs, rhs, e| {
+                let span = e.span();
+                e.emit(Rich::custom(span, "or-patterns are not yet supported"));
+                rhs
             },
         )
     })

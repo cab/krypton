@@ -146,6 +146,7 @@ pub(super) fn check_constrained_function_refs(
                 other => other,
             };
             if let Type::Fn(actual_param_types, _) = fn_type {
+                // Functions without constraints have no entry
                 let requirements = fn_schemes
                     .get(name)
                     .map(|s| s.constraints.clone())
@@ -538,7 +539,7 @@ fn walk_trait_method_calls(
                                 "Div" => "core/div",
                                 "Eq" => "core/eq",
                                 "Ord" => "core/ord",
-                                _ => "",
+                                _ => unreachable!("ICE: unknown numeric op trait: {tn}"),
                             };
                             callback(TraitName::new(module.into(), tn.into()), v);
                         }

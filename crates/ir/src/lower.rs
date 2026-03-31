@@ -895,7 +895,9 @@ impl LowerCtx {
                     .first()
                     .map(|b| b.body.ty.clone())
                     .or_else(|| new_default.as_ref().map(|d| d.ty.clone()))
-                    .unwrap_or(Type::Unit.into());
+                    .ok_or_else(|| LowerError::InternalError(
+                        "switch expression has no arms and no default".to_string(),
+                    ))?;
                 let span = new_branches
                     .first()
                     .map(|b| b.body.span)
@@ -1418,7 +1420,7 @@ impl LowerCtx {
                     let Some(fn_id) = self.lookup_callable(&qn) else {
                         return Err(LowerError::UnresolvedVar(name.to_string()));
                     };
-                    // Check if this function has trait constraints that need dict captures
+                    // Functions without trait constraints have no entry
                     let constraints = self.fn_constraints.get(&qn).cloned().unwrap_or_default();
                     if !constraints.is_empty() {
                         return self.lower_constrained_fn_as_value(
@@ -1471,6 +1473,7 @@ impl LowerCtx {
                     // Constrained function reference with explicit type args
                     let qn = callable_qualified_name(callable_ref, &self.module_path);
                     if let Some(fn_id) = self.lookup_callable(&qn) {
+                        // Functions without trait constraints have no entry
                         let constraints = self.fn_constraints.get(&qn).cloned().unwrap_or_default();
                         if !constraints.is_empty() {
                             return self.lower_constrained_fn_as_value(
@@ -1623,23 +1626,7 @@ impl LowerCtx {
                     bindings.extend(bs);
                     atoms.push(atom);
                 }
-                let element_type = if let Type::Named(_, args) = &expr.ty {
-                    args.first().cloned().unwrap_or_else(|| {
-                        eprintln!("ICE: Vec type Named has no type args: {:?}", expr.ty);
-                        Type::Unit
-                    })
-                } else if let Type::Own(inner) = &expr.ty {
-                    if let Type::Named(_, args) = inner.as_ref() {
-                        args.first().cloned().unwrap_or_else(|| {
-                            eprintln!("ICE: Vec type Own(Named) has no type args: {:?}", expr.ty);
-                            Type::Unit
-                        })
-                    } else {
-                        Type::Unit
-                    }
-                } else {
-                    Type::Unit
-                };
+                let element_type = extract_vec_element_type(&expr.ty)?;
                 Ok((
                     bindings,
                     simple_at(
@@ -2283,7 +2270,9 @@ impl LowerCtx {
                         // Option[T]: Some#0(T) | None#1
                         let t = match &inner_stripped_ty {
                             Type::Named(_, args) if !args.is_empty() => args[0].clone(),
-                            _ => Type::Unit,
+                            _ => return Err(LowerError::InternalError(format!(
+                                "? operator: expected Option/Own(Option) type, got {inner_stripped_ty:?}"
+                            ))),
                         };
                         let wrap_var = ctx.fresh_var();
                         let mut none_jump = expr_at(
@@ -2344,7 +2333,9 @@ impl LowerCtx {
                             Type::Named(_, args) if args.len() >= 2 => {
                                 (args[0].clone(), args[1].clone())
                             }
-                            _ => (Type::Unit, Type::Unit),
+                            _ => return Err(LowerError::InternalError(format!(
+                                "? operator: expected Result type with 2+ type args, got {inner_stripped_ty:?}"
+                            ))),
                         };
                         let err_var = ctx.fresh_var();
                         let wrap_var = ctx.fresh_var();
@@ -2407,26 +2398,7 @@ impl LowerCtx {
 
             TypedExprKind::VecLit(elems) => {
                 let result_ty = expr.ty.clone();
-                let element_type = if let Type::Named(_, args) = &expr.ty {
-                    args.first().cloned().unwrap_or_else(|| {
-                        eprintln!("ICE: VecLit type Named has no type args: {:?}", expr.ty);
-                        Type::Unit
-                    })
-                } else if let Type::Own(inner) = &expr.ty {
-                    if let Type::Named(_, args) = inner.as_ref() {
-                        args.first().cloned().unwrap_or_else(|| {
-                            eprintln!(
-                                "ICE: VecLit type Own(Named) has no type args: {:?}",
-                                expr.ty
-                            );
-                            Type::Unit
-                        })
-                    } else {
-                        Type::Unit
-                    }
-                } else {
-                    Type::Unit
-                };
+                let element_type = extract_vec_element_type(&expr.ty)?;
                 self.lower_atoms_then(elems, vec![], |ctx, atoms| {
                     let var = ctx.fresh_var();
                     let ty = result_ty;
@@ -3779,7 +3751,7 @@ impl LowerCtx {
             let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
             bindings.extend(dict_bindings);
 
-            // Resolve method-level constraint dicts (e.g., `where b: Default`)
+            // Methods without where-clause constraints have no entry
             let method_constraints = self
                 .trait_method_constraints
                 .get(trait_id)
@@ -4021,7 +3993,7 @@ impl LowerCtx {
                 self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
             let (mut dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_ty)?;
 
-            // Resolve method-level constraint dicts (e.g., `where b: Default`)
+            // Methods without where-clause constraints have no entry
             let mut method_dict_atoms = Vec::new();
             let method_constraints = self
                 .trait_method_constraints
@@ -4476,9 +4448,8 @@ impl LowerCtx {
                 if let Some(&var_id) = self.dict_params.get(&(trait_name.clone(), *id)) {
                     return Some(var_id);
                 }
-                // Fallback: the typechecker may have used a fresh instantiation TypeVarId
-                // that was unified with the enclosing function's constraint TypeVarId.
-                // If there's exactly one dict param for this trait, use it.
+                // Single-match heuristic: fresh instantiation TypeVarIds may differ from
+                // enclosing constraint's. Sound when exactly one dict param exists for this trait.
                 let matches: Vec<_> = self
                     .dict_params
                     .iter()
@@ -5092,7 +5063,9 @@ impl LowerCtx {
                 .iter()
                 .enumerate()
                 .map(|(i, &v)| {
-                    let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+                    let ty = param_types.get(i).cloned().unwrap_or_else(|| {
+                        panic!("ICE: recur join: param_types index {i} out of range (len={})", param_types.len())
+                    });
                     (v, ty.into())
                 })
                 .collect();
@@ -5216,7 +5189,9 @@ impl LowerCtx {
             let mut join_param_vars = vec![];
             for (i, param_name) in decl.params.iter().enumerate() {
                 let join_var = self.fresh_var();
-                let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+                let ty = param_types.get(i).cloned().unwrap_or_else(|| {
+                    panic!("ICE: recur join: param_types index {i} out of range (len={})", param_types.len())
+                });
                 self.var_types.insert(join_var, ty);
                 // Shadow the original param with the join param
                 self.push_var(param_name, join_var);
@@ -5311,7 +5286,9 @@ impl LowerCtx {
                 .iter()
                 .enumerate()
                 .map(|(i, &v)| {
-                    let ty = param_types.get(i).cloned().unwrap_or(Type::Unit);
+                    let ty = param_types.get(i).cloned().unwrap_or_else(|| {
+                        panic!("ICE: recur join: param_types index {i} out of range (len={})", param_types.len())
+                    });
                     (v, ty)
                 })
                 .collect();
@@ -5691,6 +5668,7 @@ pub fn lower_module(
                             decl.name.clone(),
                         ),
                     };
+                    // Struct with no fields has empty field list
                     let fields = ctx
                         .struct_fields
                         .get(&type_ref)
@@ -5699,6 +5677,7 @@ pub fn lower_module(
                     (info.type_param_vars.clone(), fields)
                 } else {
                     // Private type — reuse cached TypeVarIds from step 1
+                    // Types without type parameters have no entry
                     let type_params = ctx
                         .private_type_params
                         .get(&decl.name)
@@ -5707,6 +5686,7 @@ pub fn lower_module(
                     let type_ref = typed_ast::ResolvedTypeRef {
                         qualified_name: decl.qualified_name.clone(),
                     };
+                    // Struct with no fields has empty field list
                     let fields = ctx
                         .struct_fields
                         .get(&type_ref)
@@ -5731,7 +5711,7 @@ pub fn lower_module(
             let type_params = if let Some(info) = typed.exported_type_infos.get(&decl.name) {
                 info.type_param_vars.clone()
             } else {
-                // Reuse cached TypeVarIds from step 2
+                // Types without type parameters have no entry
                 ctx.private_type_params
                     .get(&decl.name)
                     .cloned()
@@ -5748,6 +5728,7 @@ pub fn lower_module(
                         },
                         variant_name: v.name.clone(),
                     };
+                    // Variant with no payload fields has empty field list
                     let fields = ctx
                         .sum_variants
                         .get(&variant_ref)
@@ -5911,20 +5892,22 @@ pub fn lower_module(
                     .method_tc_types
                     .get(method_name)
                     .cloned()
-                    .unwrap_or_else(|| (vec![], Type::Unit));
+                    .ok_or_else(|| LowerError::InternalError(format!(
+                        "trait method {method_name} has no type info in method_tc_types"
+                    )))?;
                 let method_constraint_count = trait_def
                     .method_constraints
                     .get(method_name)
                     .map(|c| c.len())
                     .unwrap_or(0);
-                TraitMethodDef {
+                Ok(TraitMethodDef {
                     name: method_name.clone(),
                     param_count: *param_count + method_constraint_count,
                     param_types: param_types.into_iter().map(Into::into).collect(),
                     return_type: return_type.into(),
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, LowerError>>()?;
         traits.push(TraitDef {
             name: trait_def.name.clone(),
             trait_name: trait_def.trait_id.clone(),
@@ -6223,6 +6206,29 @@ fn variant_ref_from_constructor(
     (constructor_ref.kind == typed_ast::ConstructorKind::Variant).then(|| ResolvedVariantRef {
         type_ref: constructor_ref.type_ref.clone(),
         variant_name: constructor_ref.constructor_name.clone(),
+    })
+}
+
+/// Extract the element type from a Vec type (Named or Own(Named)).
+fn extract_vec_element_type(ty: &Type) -> Result<Type, LowerError> {
+    let named = match ty {
+        Type::Named(_, args) => args,
+        Type::Own(inner) => match inner.as_ref() {
+            Type::Named(_, args) => args,
+            other => {
+                return Err(LowerError::InternalError(format!(
+                    "Vec element type: expected Own(Named), got Own({other:?})"
+                )))
+            }
+        },
+        other => {
+            return Err(LowerError::InternalError(format!(
+                "Vec element type: expected Named or Own(Named), got {other:?}"
+            )))
+        }
+    };
+    named.first().cloned().ok_or_else(|| {
+        LowerError::InternalError(format!("Vec type has no type args: {ty:?}"))
     })
 }
 

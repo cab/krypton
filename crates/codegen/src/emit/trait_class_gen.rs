@@ -206,12 +206,11 @@ pub(super) fn generate_instance_class(
 
         let concrete_params = param_jvm_types
             .get(iface_method_name)
-            .cloned()
-            .unwrap_or_default();
+            .expect("ICE: bridge method missing param_jvm_types");
         let concrete_ret = return_jvm_types
             .get(iface_method_name)
             .copied()
-            .unwrap_or(JvmType::Int);
+            .expect("ICE: bridge method missing return_jvm_type");
 
         let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
 
@@ -265,7 +264,7 @@ pub(super) fn generate_instance_class(
             JvmType::Int => {
                 bridge_code.push(Instruction::Invokestatic(bool_valueof));
             }
-            _ => {}
+            JvmType::StructRef(_) => { /* reference types: no boxing needed before Areturn */ }
         }
         bridge_code.push(Instruction::Areturn);
 
@@ -642,12 +641,11 @@ pub(super) fn generate_parameterized_instance_class(
 
         let concrete_params = param_jvm_types
             .get(iface_method_name)
-            .cloned()
-            .unwrap_or_default();
+            .expect("ICE: bridge method missing param_jvm_types");
         let concrete_ret = return_jvm_types
             .get(iface_method_name)
             .copied()
-            .unwrap_or(JvmType::Int);
+            .expect("ICE: bridge method missing return_jvm_type");
 
         let static_ref = cp.add_method_ref(main_class, static_method_name, static_desc)?;
         let method_name_idx = cp.add_utf8(iface_method_name)?;
@@ -698,7 +696,7 @@ pub(super) fn generate_parameterized_instance_class(
             JvmType::Long => bridge_code.push(Instruction::Invokestatic(long_valueof)),
             JvmType::Double => bridge_code.push(Instruction::Invokestatic(double_valueof)),
             JvmType::Int => bridge_code.push(Instruction::Invokestatic(bool_valueof)),
-            _ => {}
+            JvmType::StructRef(_) => { /* reference types: no boxing needed before Areturn */ }
         }
         bridge_code.push(Instruction::Areturn);
 

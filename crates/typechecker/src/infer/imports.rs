@@ -233,7 +233,10 @@ impl ModuleInferenceState {
                             .iter()
                             .find(|ts| ts.name == *parent_type)
                             .map(constructor_kind_from_summary)
-                            .unwrap_or(crate::types::ConstructorBindingKind::Variant);
+                            .unwrap_or_else(|| panic!(
+                                "ICE: constructor parent type '{}' not in exported_types",
+                                parent_type
+                            ));
                         self.imports.bind_imported_constructor(
                             &mut self.env,
                             effective_name.clone(),
@@ -322,7 +325,10 @@ impl ModuleInferenceState {
                                             .find(|ts| ts.name == *parent_type)
                                     })
                                     .map(constructor_kind_from_summary)
-                                    .unwrap_or(crate::types::ConstructorBindingKind::Variant)
+                                    .unwrap_or_else(|| panic!(
+                                        "ICE: constructor parent type '{}' not in exported_types for module {}",
+                                        parent_type, original_prov.0
+                                    ))
                                 {
                                     crate::types::ConstructorBindingKind::Record => {
                                         crate::typed_ast::ConstructorKind::Record
@@ -384,7 +390,10 @@ impl ModuleInferenceState {
                                     .find(|ts| ts.name == *parent_type)
                             })
                             .map(constructor_kind_from_summary)
-                            .unwrap_or(crate::types::ConstructorBindingKind::Variant);
+                            .unwrap_or_else(|| panic!(
+                                "ICE: constructor parent type '{}' not in exported_types for module {}",
+                                parent_type, original_prov.0
+                            ));
                         self.imports.bind_imported_constructor(
                             &mut self.env,
                             effective_name.clone(),
