@@ -1,0 +1,54 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module actors__async_closure
+
+type Msg = Ping#0(Int, Ref[Int])
+extern java "krypton.runtime.KryptonIO" println(v12): Unit
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[s8]): List[s8]
+import core/option/Some as Some(e): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+import core/actor/spawn as spawn((Mailbox[o11]) -> Unit): Ref[o11]
+import core/actor/send as send(Ref[r11], r11): Unit
+import core/actor/receive as receive(Mailbox[a12]): a12
+import core/actor/actor_ref as actor_ref(Mailbox[i12]): Ref[i12]
+import core/actor/mailbox as mailbox(): Mailbox[t12]
+declare actor_ref: (Mailbox[i12]) -> Ref[i12]
+declare mailbox: () -> Mailbox[t12]
+declare println: (v12) -> Unit
+declare receive: (Mailbox[a12]) -> a12
+declare send: (Ref[r11], r11) -> Unit
+declare spawn: ((Mailbox[o11]) -> Unit) -> Ref[o11]
+
+fn echo(v0: Mailbox[Msg]) -> Unit =
+  let v1: Msg = call receive(v0)
+  switch v1 {
+    0 (v2: Int, v3: Ref[Int]) ->
+      let v4: Unit = call send(v3, v2)
+      v4
+  }
+
+fn apply(v5: (Mailbox[Int]) -> Int, v6: Mailbox[Int]) -> Int =
+  let v7: Int = call_closure v5(v6)
+  v7
+
+fn main() -> Unit =
+  let v9: (Mailbox[Msg]) -> Unit = make_closure(echo, [])
+  let v8: Ref[Msg] = call spawn(v9)
+  let v10: Mailbox[Int] = call mailbox()
+  let v11: Ref[Int] = call actor_ref(v10)
+  let v12: ~Msg = construct Msg::Ping#0(99, v11)
+  let v13: Unit = call send(v8, v12)
+  let v15: (Mailbox[Int]) -> Int = make_closure(receive, [])
+  let v14: Int = call apply(v15, v10)
+  let v16: Unit = call println(v14)
+  v16
