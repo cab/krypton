@@ -150,7 +150,41 @@ function toCmDiagnostics(diagnostics) {
     }));
 }
 
+function createEditorState(doc, { readOnly = false, onRun } = {}) {
+  const extensions = [
+    basicSetup,
+    EditorState.tabSize.of(2),
+    indentUnit.of("  "),
+    kryptonLanguage,
+    kryptonTheme,
+  ];
+
+  if (readOnly) {
+    extensions.push(EditorState.readOnly.of(true));
+    extensions.push(EditorView.editable.of(false));
+  } else {
+    extensions.push(lintGutter());
+    extensions.push(
+      Prec.highest(keymap.of([
+        {
+          key: "Mod-Enter",
+          run: () => {
+            onRun?.();
+            return true;
+          },
+        },
+      ])),
+    );
+  }
+
+  return EditorState.create({
+    doc,
+    extensions,
+  });
+}
+
 document.querySelectorAll(".code-block").forEach((block) => {
+  const mode = block.dataset.codeMode ?? "runnable";
   const textarea = block.querySelector(".editor");
   const outputEl = block.querySelector(".output");
   const outputText = block.querySelector(".output-text");
@@ -164,7 +198,15 @@ document.querySelectorAll(".code-block").forEach((block) => {
   host.className = "editor-host";
   textarea.replaceWith(host);
 
-  let view;
+  let view = null;
+  if (mode === "static") {
+    view = new EditorView({
+      parent: host,
+      state: createEditorState(textarea.value, { readOnly: true }),
+    });
+    return;
+  }
+
   let isRunning = false;
   const run = async () => {
     if (!outputText || isRunning) {
@@ -208,26 +250,7 @@ document.querySelectorAll(".code-block").forEach((block) => {
 
   view = new EditorView({
     parent: host,
-    state: EditorState.create({
-      doc: textarea.value,
-      extensions: [
-        basicSetup,
-        EditorState.tabSize.of(2),
-        indentUnit.of("  "),
-        kryptonLanguage,
-        kryptonTheme,
-        lintGutter(),
-        Prec.highest(keymap.of([
-          {
-            key: "Mod-Enter",
-            run: () => {
-              run();
-              return true;
-            },
-          },
-        ])),
-      ],
-    }),
+    state: createEditorState(textarea.value, { onRun: run }),
   });
 
   runBtn?.addEventListener("click", run);

@@ -346,6 +346,19 @@ body {
   outline: none;
 }
 
+.code-block-static .cm-editor {
+  cursor: default;
+}
+
+.code-block-static .cm-activeLine,
+.code-block-static .cm-activeLineGutter {
+  background: transparent;
+}
+
+.code-block-static .cm-content {
+  caret-color: transparent;
+}
+
 .code-controls {
   display: flex;
   justify-content: flex-end;

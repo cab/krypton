@@ -8,7 +8,9 @@
 
 import argparse
 import functools
+import html
 import http.server
+import re
 import shutil
 import subprocess
 import threading
@@ -46,6 +48,10 @@ REQUIRED_FRONTEND_ASSETS = [
     GENERATED / "tour.js",
     GENERATED / "playground-worker.js",
 ]
+KRYPTON_FENCE_LANGUAGES = {"krypton", "kr"}
+SNIPPET_PLACEHOLDER_RE = re.compile(
+    r"<div class=\"krypton-snippet-placeholder\" data-snippet=\"(?P<index>\d+)\"></div>"
+)
 
 
 def resolved_path(path: Path) -> Path:
@@ -102,6 +108,85 @@ def title_from_dir(name: str) -> str:
     return rest.replace("_", " ").title()
 
 
+def classify_krypton_fence(info: str) -> str | None:
+    tokens = info.split()
+    if not tokens or tokens[0].lower() not in KRYPTON_FENCE_LANGUAGES:
+        return None
+    if any(token.lower() == "static" for token in tokens[1:]):
+        return "static"
+    return "runnable"
+
+
+def parse_lesson_markdown(source: str) -> tuple[str, list[dict[str, str]]]:
+    rendered_parts = []
+    snippets = []
+    lines = source.splitlines(keepends=True)
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        if not line.startswith("```"):
+            rendered_parts.append(line)
+            i += 1
+            continue
+
+        info = line[3:].strip()
+        mode = classify_krypton_fence(info)
+        if mode is None:
+            rendered_parts.append(line)
+            i += 1
+            continue
+
+        code_lines = []
+        i += 1
+        while i < len(lines) and not lines[i].startswith("```"):
+            code_lines.append(lines[i])
+            i += 1
+
+        if i >= len(lines):
+            rendered_parts.append(line)
+            rendered_parts.extend(code_lines)
+            break
+
+        snippet_index = len(snippets)
+        snippets.append({"mode": mode, "code": "".join(code_lines).rstrip("\n")})
+        rendered_parts.append(
+            f'<div class="krypton-snippet-placeholder" data-snippet="{snippet_index}"></div>\n'
+        )
+        i += 1
+
+    return "".join(rendered_parts), snippets
+
+
+def render_snippet_html(mode: str, code: str) -> str:
+    escaped_code = html.escape(code)
+    if mode == "static":
+        return (
+            '<div class="code-block code-block-static" data-code-mode="static">'
+            f'<textarea class="editor" aria-label="Static Krypton code">{escaped_code}</textarea>'
+            "</div>"
+        )
+
+    return (
+        '<div class="code-block code-block-runnable" data-code-mode="runnable">'
+        f'<textarea class="editor" aria-label="Runnable Krypton code">{escaped_code}</textarea>'
+        '<div class="code-controls"><button class="run-btn">Run</button></div>'
+        '<div class="output"><pre class="output-text"></pre></div>'
+        "</div>"
+    )
+
+
+def render_lesson_prose(source: str) -> str:
+    processed_markdown, snippets = parse_lesson_markdown(source)
+    rendered_html = markdown.markdown(processed_markdown, extensions=["fenced_code"])
+
+    def replace_placeholder(match: re.Match[str]) -> str:
+        snippet = snippets[int(match.group("index"))]
+        return render_snippet_html(snippet["mode"], snippet["code"])
+
+    return SNIPPET_PLACEHOLDER_RE.sub(replace_placeholder, rendered_html)
+
+
 def discover_content():
     """Walk content/ and return structured chapter/lesson data."""
     chapters = []
@@ -118,15 +203,13 @@ def discover_content():
             if not lesson_dir.is_dir():
                 continue
             lesson_md = lesson_dir / "lesson.md"
-            code_kr = lesson_dir / "code.kr"
             if not lesson_md.exists():
                 continue
             lesson = {
                 "dir_name": lesson_dir.name,
                 "title": title_from_dir(lesson_dir.name),
                 "slug": slug_from_dir(lesson_dir.name),
-                "prose": markdown.markdown(lesson_md.read_text()),
-                "code": code_kr.read_text() if code_kr.exists() else "",
+                "prose": render_lesson_prose(lesson_md.read_text()),
                 "chapter": chapter,
             }
             lesson["url"] = f"/guide/{chapter['slug']}/{lesson['slug']}/"

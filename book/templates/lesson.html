@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article class="lesson">
+  <h1>{{ lesson.title }}</h1>
+  {{ lesson.prose | safe }}
+
+  <nav class="lesson-nav">
+    {% if lesson.prev %}
+      <a href="{{ lesson.prev.url }}" class="nav-prev">← {{ lesson.prev.title }}</a>
+    {% else %}
+      <span></span>
+    {% endif %}
+    {% if lesson.next %}
+      <a href="{{ lesson.next.url }}" class="nav-next">{{ lesson.next.title }} →</a>
+    {% else %}
+      <span></span>
+    {% endif %}
+  </nav>
+</article>
+{% endblock %}
