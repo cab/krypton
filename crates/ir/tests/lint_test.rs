@@ -20,6 +20,7 @@ fn make_simple_module(functions: Vec<FnDef>, fn_identities: HashMap<FnId, FnIden
         fn_identities,
         extern_fns: vec![],
         extern_types: vec![],
+        extern_traits: vec![],
         imported_fns: vec![],
         traits: vec![],
         instances: vec![],

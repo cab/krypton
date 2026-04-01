@@ -1,3 +1,4 @@
+# skip: js(java-only extern)
 # expect: panic "boom"
 # expect: output "opened\nclosed"
 extern java "krypton.runtime.KryptonIO" {

@@ -177,32 +177,10 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
     );
 }
 
-#[test]
-fn referenced_java_only_extern_fails_js_codegen() {
-    let source = r#"
-        extern java "krypton.runtime.KryptonIO" {
-            fun println[a](x: a) -> Unit
-        }
-
-        fun main() = println(42)
-    "#;
-
-    let err = compile_js_result_with_resolver(source, &NoopResolver, "java_only")
-        .expect_err("expected missing JS target error");
-    let msg = err.to_string();
-    assert!(
-        msg.contains("println"),
-        "error should mention function name, got: {msg}"
-    );
-    assert!(
-        msg.contains("module `test`"),
-        "error should mention referencing module, got: {msg}"
-    );
-    assert!(
-        msg.contains("java:krypton.runtime.KryptonIO"),
-        "error should list available targets, got: {msg}"
-    );
-}
+// referenced_java_only_extern_fails_js_codegen: removed because filter_by_platform
+// now strips extern java declarations before typechecking, so the scenario can't occur
+// through the normal pipeline. The validation is still tested directly by the unit test
+// `referenced_java_only_extern_fails_validation` in crates/codegen_js/src/emit.rs.
 
 /// Verify that non-actor stdlib modules compile successfully with JS target.
 #[test]

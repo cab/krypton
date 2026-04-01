@@ -1,3 +1,4 @@
+# skip: js(expected output is jvm-specific)
 # expect: output "jvm hello"
 @platform([jvm])
 fun greet() -> String = "jvm hello"

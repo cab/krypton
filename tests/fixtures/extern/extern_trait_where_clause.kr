@@ -1,0 +1,10 @@
+# skip: js(java-only extern)
+# expect: ok
+extern java "java.lang.Runnable" as trait Runnable[a] {
+  fun run(this: a) -> Unit
+}
+impl Runnable[() -> Unit] {
+  fun run(f) = f()
+}
+fun invoke[a](r: a) -> Unit where a: Runnable = run(r)
+fun main() = invoke(() -> println("hi"))

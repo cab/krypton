@@ -1,3 +1,4 @@
+# skip: js(java-only extern)
 # expect: output 3
 
 extern java "krypton.runtime.KryptonConvert" {

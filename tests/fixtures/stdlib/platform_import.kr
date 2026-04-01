@@ -1,3 +1,4 @@
+# skip: js(references nonexistent test module)
 # expect: ok
 @platform([js])
 import nonexistent/js_only_module.{foo}

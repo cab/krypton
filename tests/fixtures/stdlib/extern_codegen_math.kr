@@ -1,3 +1,4 @@
+# skip: js(java-only extern)
 # expect: output "42"
 extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
