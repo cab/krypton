@@ -926,28 +926,46 @@ impl<'link> Compiler<'link> {
                 self.builder.emit(Instruction::Dneg);
                 Ok(JvmType::Double)
             }
-            // Integer comparison
+            // Integer comparison (handles both JVM long and int operands)
             PrimOp::EqInt
             | PrimOp::NeqInt
             | PrimOp::LtInt
             | PrimOp::LeInt
             | PrimOp::GtInt
             | PrimOp::GeInt => {
-                self.compile_ir_atom(&args[0])?;
+                let lhs_ty = self.compile_ir_atom(&args[0])?;
                 self.compile_ir_atom(&args[1])?;
-                self.builder.emit(Instruction::Lcmp);
-                self.builder.frame.pop_type_n(4);
-                self.builder.frame.push_type(VerificationType::Integer);
-                let branch_placeholder = self.builder.emit_placeholder(match op {
-                    PrimOp::EqInt => Instruction::Ifne(0),
-                    PrimOp::NeqInt => Instruction::Ifeq(0),
-                    PrimOp::LtInt => Instruction::Ifge(0),
-                    PrimOp::LeInt => Instruction::Ifgt(0),
-                    PrimOp::GtInt => Instruction::Ifle(0),
-                    PrimOp::GeInt => Instruction::Iflt(0),
-                    _ => unreachable!(),
-                });
-                self.builder.frame.pop_type(); // Ifxx consumes the int
+
+                // JVM int operands (Bool) use If_icmpXX directly;
+                // JVM long operands use Lcmp + IfXX.
+                let branch_placeholder = if lhs_ty == JvmType::Int {
+                    self.builder.frame.pop_type_n(2); // two ints
+                    self.builder.emit_placeholder(match op {
+                        PrimOp::EqInt => Instruction::If_icmpne(0),
+                        PrimOp::NeqInt => Instruction::If_icmpeq(0),
+                        PrimOp::LtInt => Instruction::If_icmpge(0),
+                        PrimOp::LeInt => Instruction::If_icmpgt(0),
+                        PrimOp::GtInt => Instruction::If_icmple(0),
+                        PrimOp::GeInt => Instruction::If_icmplt(0),
+                        _ => unreachable!(),
+                    })
+                } else {
+                    self.builder.emit(Instruction::Lcmp);
+                    self.builder.frame.pop_type_n(4);
+                    self.builder.frame.push_type(VerificationType::Integer);
+                    let p = self.builder.emit_placeholder(match op {
+                        PrimOp::EqInt => Instruction::Ifne(0),
+                        PrimOp::NeqInt => Instruction::Ifeq(0),
+                        PrimOp::LtInt => Instruction::Ifge(0),
+                        PrimOp::LeInt => Instruction::Ifgt(0),
+                        PrimOp::GtInt => Instruction::Ifle(0),
+                        PrimOp::GeInt => Instruction::Iflt(0),
+                        _ => unreachable!(),
+                    });
+                    self.builder.frame.pop_type(); // Ifxx consumes the int from Lcmp
+                    p
+                };
+
                 let stack_at_false = self.builder.frame.stack_types.clone();
                 self.builder.emit(Instruction::Iconst_1);
                 self.builder.frame.push_type(VerificationType::Integer);
@@ -959,18 +977,34 @@ impl<'link> Compiler<'link> {
                 self.builder.frame.push_type(VerificationType::Integer);
                 let end_target = self.builder.current_offset();
                 self.builder.frame.record_frame(end_target);
-                self.builder.patch(
-                    branch_placeholder,
-                    match op {
-                        PrimOp::EqInt => Instruction::Ifne(false_target),
-                        PrimOp::NeqInt => Instruction::Ifeq(false_target),
-                        PrimOp::LtInt => Instruction::Ifge(false_target),
-                        PrimOp::LeInt => Instruction::Ifgt(false_target),
-                        PrimOp::GtInt => Instruction::Ifle(false_target),
-                        PrimOp::GeInt => Instruction::Iflt(false_target),
-                        _ => unreachable!(),
-                    },
-                );
+
+                if lhs_ty == JvmType::Int {
+                    self.builder.patch(
+                        branch_placeholder,
+                        match op {
+                            PrimOp::EqInt => Instruction::If_icmpne(false_target),
+                            PrimOp::NeqInt => Instruction::If_icmpeq(false_target),
+                            PrimOp::LtInt => Instruction::If_icmpge(false_target),
+                            PrimOp::LeInt => Instruction::If_icmpgt(false_target),
+                            PrimOp::GtInt => Instruction::If_icmple(false_target),
+                            PrimOp::GeInt => Instruction::If_icmplt(false_target),
+                            _ => unreachable!(),
+                        },
+                    );
+                } else {
+                    self.builder.patch(
+                        branch_placeholder,
+                        match op {
+                            PrimOp::EqInt => Instruction::Ifne(false_target),
+                            PrimOp::NeqInt => Instruction::Ifeq(false_target),
+                            PrimOp::LtInt => Instruction::Ifge(false_target),
+                            PrimOp::LeInt => Instruction::Ifgt(false_target),
+                            PrimOp::GtInt => Instruction::Ifle(false_target),
+                            PrimOp::GeInt => Instruction::Iflt(false_target),
+                            _ => unreachable!(),
+                        },
+                    );
+                }
                 self.builder
                     .patch(goto_placeholder, Instruction::Goto(end_target));
                 Ok(JvmType::Int)
@@ -2458,9 +2492,15 @@ impl<'link> Compiler<'link> {
                         for (j, (var_id, var_ty)) in branch.bindings.iter().enumerate() {
                             let f = &fields[j];
                             let field_ref = field_refs[j];
+                            let resolved_ty_for_field = resolved_field_types
+                                .as_ref()
+                                .and_then(|rft| rft.get(j).cloned());
                             let actual_type = if f.is_erased {
-                                // Type-erased generics are represented as Object on the JVM
-                                self.type_to_jvm(var_ty)
+                                // Use the resolved concrete type when available so
+                                // primitives (Long/Double/Int) get unboxed correctly.
+                                let concrete_ty =
+                                    resolved_ty_for_field.as_ref().unwrap_or(var_ty);
+                                self.type_to_jvm(concrete_ty)
                                     .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
                             } else {
                                 f.jvm_type
