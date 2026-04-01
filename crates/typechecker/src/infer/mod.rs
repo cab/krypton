@@ -9,10 +9,11 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ConstructorKind, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTypeInfo,
-    InstanceDefInfo, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstraint,
-    ResolvedConstructorRef, ResolvedTraitMethodRef, ResolvedTypeRef, StructDecl, SumDecl,
-    TraitDefInfo, TraitName, TypedExpr, TypedFnDecl, TypedModule,
+    self, ConstructorKind, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTraitInfo,
+    ExternTraitMethodInfo, ExternTypeInfo, InstanceDefInfo, ResolvedBindingRef,
+    ResolvedCallableRef, ResolvedConstraint, ResolvedConstructorRef, ResolvedTraitMethodRef,
+    ResolvedTypeRef, StructDecl, SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedFnDecl,
+    TypedModule,
 };
 use crate::types::{
     type_to_canonical_name, BindingSource, ConstructorBindingKind, Substitution, Type, TypeEnv,
@@ -1131,6 +1132,16 @@ pub(super) struct ExternBindingInfo {
     pub(super) def_span: Span,
 }
 
+/// Extern trait declaration collected during extern processing,
+/// to be registered as a real trait in the trait registration phase.
+pub(super) struct PendingExternTrait {
+    pub(super) name: String,
+    pub(super) java_interface: String,
+    pub(super) type_params: Vec<String>,
+    pub(super) methods: Vec<ExternMethod>,
+    pub(super) span: Span,
+}
+
 /// Process extern methods from an `extern "class" { ... }` block, binding their
 /// types into the environment and returning `ExternFnInfo` entries for codegen.
 fn process_extern_methods(
@@ -1244,33 +1255,10 @@ fn process_extern_methods(
             }
         }
 
-        let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
-        let scheme = if scheme_vars.is_empty() {
-            TypeScheme::mono(fn_ty)
-        } else {
-            TypeScheme {
-                vars: scheme_vars,
-                constraints: Vec::new(),
-                ty: fn_ty,
-                var_names: HashMap::new(),
-            }
-        };
-        env.bind_top_level_function(
-            bind_name.clone(),
-            scheme.clone(),
-            module_path_str.to_string(),
-            bind_name.clone(),
-        );
-        bindings.push(ExternBindingInfo {
-            name: bind_name.clone(),
-            scheme,
-            visibility: method.visibility.clone(),
-            def_span: method.span,
-        });
-
-        // Register where clause dict requirements
+        // Build where clause dict requirements before TypeScheme construction
+        // so constraints are embedded in the scheme.
+        let mut requirements = Vec::new();
         if !method.where_clauses.is_empty() {
-            let mut requirements = Vec::new();
             for constraint in &method.where_clauses {
                 if constraint.trait_name == "shared" {
                     continue;
@@ -1289,9 +1277,33 @@ fn process_extern_methods(
                 }
             }
             if !requirements.is_empty() {
-                fn_constraints.insert(bind_name.clone(), requirements);
+                fn_constraints.insert(bind_name.clone(), requirements.clone());
             }
         }
+
+        let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
+        let scheme = if scheme_vars.is_empty() {
+            TypeScheme::mono(fn_ty)
+        } else {
+            TypeScheme {
+                vars: scheme_vars,
+                constraints: requirements.clone(),
+                ty: fn_ty,
+                var_names: HashMap::new(),
+            }
+        };
+        env.bind_top_level_function(
+            bind_name.clone(),
+            scheme.clone(),
+            module_path_str.to_string(),
+            bind_name.clone(),
+        );
+        bindings.push(ExternBindingInfo {
+            name: bind_name.clone(),
+            scheme,
+            visibility: method.visibility.clone(),
+            def_span: method.span,
+        });
 
         // Store concrete types for codegen — resolve with the type param map
         // so container types like Vec[a] resolve to Named("Vec", [Var(a)])
@@ -1330,6 +1342,7 @@ fn process_extern_methods(
             throws: method.throws,
             param_types: concrete_params,
             return_type: codegen_return,
+            constraints: requirements,
         });
     }
     Ok(ExternMethodsResult {
@@ -1844,6 +1857,7 @@ impl ModuleInferenceState {
             Vec<ExternTypeInfo>,
             Vec<ExternBindingInfo>,
             HashMap<String, Vec<(TraitName, TypeVarId)>>,
+            Vec<PendingExternTrait>,
         ),
         SpannedTypeError,
     > {
@@ -1852,6 +1866,7 @@ impl ModuleInferenceState {
         let mut extern_bindings: Vec<ExternBindingInfo> = Vec::new();
         let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> =
             HashMap::new();
+        let mut pending_extern_traits: Vec<PendingExternTrait> = Vec::new();
 
         // Build trait name lookup from imported trait defs
         let mut trait_name_lookup: HashMap<String, TraitName> = HashMap::new();
@@ -1871,12 +1886,35 @@ impl ModuleInferenceState {
                 target,
                 module_path,
                 alias,
+                is_trait,
                 type_params,
                 methods,
                 span,
                 ..
             } = decl
             {
+                // Extern traits are collected for registration in the trait phase
+                if *is_trait {
+                    if matches!(target, ExternTarget::Js) {
+                        return Err(spanned(
+                            TypeError::ExternTraitOnJsTarget {
+                                name: alias.clone().unwrap_or_default(),
+                            },
+                            *span,
+                        ));
+                    }
+                    if let Some(name) = alias {
+                        pending_extern_traits.push(PendingExternTrait {
+                            name: name.clone(),
+                            java_interface: module_path.clone(),
+                            type_params: type_params.clone(),
+                            methods: methods.clone(),
+                            span: *span,
+                        });
+                    }
+                    continue;
+                }
+
                 // Register type binding if `as Name[params]` is present
                 let mut tp_map: Option<HashMap<String, TypeVarId>> = None;
                 let mut tp_arity: Option<HashMap<String, usize>> = None;
@@ -1994,6 +2032,7 @@ impl ModuleInferenceState {
             extern_types,
             extern_bindings,
             extern_fn_constraints,
+            pending_extern_traits,
         ))
     }
 
@@ -2145,6 +2184,7 @@ impl ModuleInferenceState {
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
         extern_types: Vec<ExternTypeInfo>,
+        extern_traits: Vec<ExternTraitInfo>,
         extern_bindings: Vec<ExternBindingInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
         interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
@@ -2544,6 +2584,7 @@ impl ModuleInferenceState {
             if let Decl::Extern {
                 alias: Some(name),
                 alias_visibility,
+                is_trait: false,
                 ..
             } = decl
             {
@@ -2603,7 +2644,9 @@ impl ModuleInferenceState {
         // them uniformly via register_type_from_export.
         for decl in &module.decls {
             if let Decl::Extern {
-                alias: Some(name), ..
+                alias: Some(name),
+                is_trait: false,
+                ..
             } = decl
             {
                 if exported_type_infos.contains_key(name) {
@@ -2655,6 +2698,7 @@ impl ModuleInferenceState {
             instance_defs,
             extern_fns,
             extern_types,
+            extern_traits,
             struct_decls,
             sum_decls,
             type_visibility,
@@ -2681,10 +2725,12 @@ fn process_traits_and_deriving(
     interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
     module_path: &str,
     is_core_module: bool,
+    pending_extern_traits: Vec<PendingExternTrait>,
 ) -> Result<
     (
         TraitRegistry,
         Vec<ExportedTraitDef>,
+        Vec<ExternTraitInfo>,
         Vec<InstanceDefInfo>,
         Vec<InstanceDefInfo>,
         HashMap<String, TraitName>,
@@ -2714,9 +2760,18 @@ fn process_traits_and_deriving(
         trait_registry.register_trait_alias(alias.clone(), canonical.clone());
     }
 
+    // Phase 2c: Register extern traits (Java interfaces exposed as Krypton traits)
+    let (extern_trait_exported_defs, extern_trait_infos) = register_extern_traits(
+        state,
+        &mut trait_registry,
+        pending_extern_traits,
+        module_path,
+    )?;
+
     // Phase 3: Process local DefTrait declarations
-    let exported_trait_defs =
+    let mut exported_trait_defs =
         register_local_traits(state, &mut trait_registry, module, module_path)?;
+    exported_trait_defs.extend(extern_trait_exported_defs);
 
     // Phase 4: Deriving pass
     let derived_instance_defs =
@@ -2759,6 +2814,7 @@ fn process_traits_and_deriving(
     Ok((
         trait_registry,
         exported_trait_defs,
+        extern_trait_infos,
         derived_instance_defs,
         imported_instance_defs,
         trait_method_map,
@@ -2880,6 +2936,193 @@ fn register_imported_trait_defs(
             continue;
         }
     }
+}
+
+/// Phase 2c: Register extern traits (Java interfaces exposed as Krypton traits).
+///
+/// Each `extern java "..." as trait Name[a] { ... }` is registered as a real trait
+/// in the TraitRegistry. Methods are bound into the environment via `bind_trait_method`,
+/// making them callable like any other trait method.
+fn register_extern_traits(
+    state: &mut ModuleInferenceState,
+    trait_registry: &mut TraitRegistry,
+    pending: Vec<PendingExternTrait>,
+    module_path: &str,
+) -> Result<(Vec<ExportedTraitDef>, Vec<ExternTraitInfo>), SpannedTypeError> {
+    let mut exported_defs = Vec::new();
+    let mut extern_trait_infos = Vec::new();
+
+    let empty_tp_map: HashMap<String, TypeVarId> = HashMap::new();
+    let empty_tp_arity: HashMap<String, usize> = HashMap::new();
+
+    for ext in pending {
+        // Allocate fresh type var for the trait's type parameter
+        if ext.type_params.is_empty() {
+            return Err(spanned(
+                TypeError::WrongArity {
+                    expected: 1,
+                    actual: 0,
+                },
+                ext.span,
+            ));
+        }
+
+        let tv_id = state.gen.fresh();
+        let type_var_name = ext.type_params[0].clone();
+
+        // Build type param map for resolving method types
+        let mut tp_map = HashMap::new();
+        tp_map.insert(type_var_name.clone(), tv_id);
+        // Additional type params (rare but supported)
+        let mut all_tv_ids = vec![tv_id];
+        for tp in &ext.type_params[1..] {
+            let id = state.gen.fresh();
+            tp_map.insert(tp.clone(), id);
+            all_tv_ids.push(id);
+        }
+
+        let trait_name = TraitName::new(module_path.to_string(), ext.name.clone());
+        let mut trait_methods = Vec::new();
+        let mut exported_methods = Vec::new();
+        let mut extern_method_infos = Vec::new();
+
+        for method in &ext.methods {
+            // Validate: no @nullable or @throws on trait methods
+            if method.nullable {
+                return Err(spanned(
+                    TypeError::InvalidNullableReturn {
+                        name: method.name.clone(),
+                        actual_return_type: Type::Named("Unit".to_string(), vec![]),
+                    },
+                    method.span,
+                ));
+            }
+            if method.throws {
+                return Err(spanned(
+                    TypeError::InvalidThrowsReturn {
+                        name: method.name.clone(),
+                        actual_return_type: Type::Named("Unit".to_string(), vec![]),
+                    },
+                    method.span,
+                ));
+            }
+
+            // Resolve param types using the trait's type param map
+            let mut param_types = Vec::new();
+            for (_param_name, ty_expr) in &method.params {
+                let ty = type_registry::resolve_type_expr(
+                    ty_expr,
+                    &tp_map,
+                    &empty_tp_arity,
+                    &state.registry,
+                    ResolutionContext::UserAnnotation,
+                    None,
+                )
+                .map_err(|e| spanned(e, method.span))?;
+                param_types.push(ty);
+            }
+
+            let return_type = type_registry::resolve_type_expr(
+                &method.return_type,
+                &tp_map,
+                &empty_tp_arity,
+                &state.registry,
+                ResolutionContext::UserAnnotation,
+                None,
+            )
+            .map_err(|e| spanned(e, method.span))?;
+
+            // Build TypeScheme for the method: forall [tv_id]. param_types -> return_type
+            let fn_type = Type::Fn(
+                param_types.clone(),
+                Box::new(return_type.clone()),
+            );
+            let var_names: HashMap<TypeVarId, String> = all_tv_ids
+                .iter()
+                .zip(ext.type_params.iter())
+                .map(|(id, name)| (*id, name.clone()))
+                .collect();
+            let scheme = TypeScheme {
+                vars: all_tv_ids.clone(),
+                constraints: vec![],
+                ty: fn_type,
+                var_names,
+            };
+
+            // Bind the method into the type environment
+            state.env.bind_trait_method(
+                method.name.clone(),
+                scheme,
+                module_path.to_string(),
+                ext.name.clone(),
+                method.name.clone(),
+                false,
+            );
+
+            // Collect param types excluding self for the extern trait method info
+            // (all params are included for the trait interface — the first param
+            // typed as the trait's type var is the "self" param)
+            let non_self_param_types: Vec<Type> = param_types
+                .iter()
+                .filter(|t| !matches!(t, Type::Var(id) if *id == tv_id))
+                .cloned()
+                .collect();
+
+            trait_methods.push(TraitMethod {
+                name: method.name.clone(),
+                param_types: param_types.clone(),
+                return_type: return_type.clone(),
+                constraints: vec![],
+            });
+
+            exported_methods.push(ExportedTraitMethod {
+                name: method.name.clone(),
+                param_types: param_types.clone(),
+                return_type: return_type.clone(),
+                constraints: vec![],
+            });
+
+            extern_method_infos.push(ExternTraitMethodInfo {
+                name: method.name.clone(),
+                param_types: non_self_param_types,
+                return_type: return_type.clone(),
+            });
+        }
+
+        // Register in the trait registry
+        trait_registry
+            .register_trait(TraitInfo {
+                name: ext.name.clone(),
+                module_path: module_path.to_string(),
+                type_var: type_var_name.clone(),
+                type_var_id: tv_id,
+                type_var_arity: 0,
+                superclasses: vec![],
+                methods: trait_methods,
+                span: ext.span,
+                is_prelude: false,
+            })
+            .map_err(|e| spanned(e, ext.span))?;
+
+        exported_defs.push(ExportedTraitDef {
+            visibility: Visibility::Pub,
+            name: ext.name.clone(),
+            module_path: module_path.to_string(),
+            type_var: type_var_name,
+            type_var_id: tv_id,
+            type_var_arity: 0,
+            superclasses: vec![],
+            methods: exported_methods,
+        });
+
+        extern_trait_infos.push(ExternTraitInfo {
+            trait_name,
+            java_interface: ext.java_interface,
+            methods: extern_method_infos,
+        });
+    }
+
+    Ok((exported_defs, extern_trait_infos))
 }
 
 /// Phase 3: Process local DefTrait declarations.
@@ -3265,12 +3508,12 @@ fn register_impl_instances(
     let local_trait_names: HashSet<String> = module
         .decls
         .iter()
-        .filter_map(|d| {
-            if let Decl::DefTrait { name, .. } = d {
-                Some(name.clone())
-            } else {
-                None
-            }
+        .filter_map(|d| match d {
+            Decl::DefTrait { name, .. } => Some(name.clone()),
+            // Extern traits (`extern java "..." as trait Foo[a]`) are local trait definitions
+            // and should be treated as such for the orphan check.
+            Decl::Extern { is_trait: true, alias: Some(name), .. } => Some(name.clone()),
+            _ => None,
         })
         .collect();
 
@@ -4324,9 +4567,10 @@ pub(crate) fn infer_module_inner(
         .process_imports(module, interface_cache, synthetic_prelude_import.as_ref())
         .map_err(|e| vec![e])?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
-    let (extern_fns, extern_types, extern_bindings, extern_fn_constraints) = state
-        .process_local_externs(module, &module_path)
-        .map_err(|e| vec![e])?;
+    let (extern_fns, extern_types, extern_bindings, extern_fn_constraints, pending_extern_traits) =
+        state
+            .process_local_externs(module, &module_path)
+            .map_err(|e| vec![e])?;
     state.cleanup_prelude_shadows(module);
     state
         .check_explicit_import_shadows(module)
@@ -4343,6 +4587,7 @@ pub(crate) fn infer_module_inner(
     let (
         trait_registry,
         exported_trait_defs,
+        extern_traits,
         derived_instance_defs,
         imported_instance_defs,
         trait_method_map,
@@ -4352,6 +4597,7 @@ pub(crate) fn infer_module_inner(
         interface_cache,
         &module_path,
         is_core_module,
+        pending_extern_traits,
     )
     .map_err(|e| vec![e])?;
 
@@ -4398,6 +4644,7 @@ pub(crate) fn infer_module_inner(
         exported_trait_defs,
         extern_fns,
         extern_types,
+        extern_traits,
         extern_bindings,
         constructor_schemes,
         interface_cache,

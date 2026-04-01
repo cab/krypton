@@ -13,10 +13,11 @@ use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, Ty
 use crate::Type as IrType;
 use crate::pass::IrPass;
 use crate::{
-    Atom, CanonicalRef, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTypeDef, FinallyClose,
-    FnDef, FnId, FnIdentity, ImportedFnDef, InstanceDef, Literal, LocalSymbolKey, Module,
-    ModulePath, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, SwitchBranch, TraitDef,
-    TraitMethodDef, VarId, VariantDef,
+    Atom, CanonicalRef, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTraitBridge,
+    ExternTraitDef, ExternTraitMethodDef, ExternTypeDef, FinallyClose, FnDef, FnId, FnIdentity,
+    ImportedFnDef, InstanceDef, Literal, LocalSymbolKey, Module, ModulePath, PrimOp, SimpleExpr,
+    SimpleExprKind, StructDef, SumTypeDef, SwitchBranch, TraitDef, TraitMethodDef, VarId,
+    VariantDef,
 };
 
 // ---------------------------------------------------------------------------
@@ -5412,6 +5413,16 @@ pub fn lower_module(
         }
     }
 
+    // Include extern function constraints so dict-passing works for extern calls.
+    for ext in &typed.extern_fns {
+        if !ext.constraints.is_empty() {
+            fn_constraints.insert(
+                QualifiedName::new(typed.module_path.clone(), ext.name.clone()),
+                ext.constraints.clone(),
+            );
+        }
+    }
+
     // Add instance method constraints so lower_fn prepends dict params.
     // Combines impl-head constraints + method-level constraints per method.
     for inst in &typed.instance_defs {
@@ -5445,6 +5456,25 @@ pub fn lower_module(
     let mut fn_schemes: HashMap<QualifiedName, TypeScheme> = HashMap::new();
     for entry in &typed.fn_types {
         fn_schemes.insert(entry.qualified_name.clone(), entry.scheme.clone());
+    }
+    // Also add extern fn schemes so resolve_call_dicts can match type args.
+    for ext in &typed.extern_fns {
+        if !ext.constraints.is_empty() {
+            let vars: Vec<TypeVarId> = ext.constraints.iter().map(|(_, tv)| *tv).collect();
+            let fn_ty = krypton_typechecker::types::Type::Fn(
+                ext.param_types.clone(),
+                Box::new(ext.return_type.clone()),
+            );
+            fn_schemes.insert(
+                QualifiedName::new(typed.module_path.clone(), ext.name.clone()),
+                TypeScheme {
+                    vars,
+                    constraints: ext.constraints.clone(),
+                    ty: fn_ty,
+                    var_names: HashMap::new(),
+                },
+            );
+        }
     }
 
     let mut ctx = LowerCtx {
@@ -5851,6 +5881,21 @@ pub fn lower_module(
 
     // 8. Build extern_fns from local definitions only.
     //    Cross-module extern fns are in module.imported_extern_fns.
+    //    Build a lookup from trait_name → extern trait info for bridge params.
+    let extern_trait_lookup: HashMap<&krypton_typechecker::typed_ast::TraitName, &krypton_typechecker::typed_ast::ExternTraitInfo> =
+        typed.extern_traits.iter().map(|et| (&et.trait_name, et)).collect();
+    // Build a lookup from function name → constraints for bridge detection.
+    let mut fn_constraints_by_name: HashMap<&str, &[(krypton_typechecker::typed_ast::TraitName, krypton_typechecker::types::TypeVarId)]> =
+        typed.fn_types.iter()
+            .filter(|e| !e.scheme.constraints.is_empty())
+            .map(|e| (e.name.as_str(), e.scheme.constraints.as_slice()))
+            .collect();
+    // Also include extern function constraints so bridge_params is correctly populated.
+    for ext in &typed.extern_fns {
+        if !ext.constraints.is_empty() {
+            fn_constraints_by_name.entry(ext.name.as_str()).or_insert(ext.constraints.as_slice());
+        }
+    }
     let mut extern_fns = vec![];
     for ext in &typed.extern_fns {
         if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
@@ -5862,6 +5907,25 @@ pub fn lower_module(
                     module: ext.module_path.clone(),
                 },
             };
+            // Build bridge_params: for each parameter, check if it corresponds to
+            // a type variable constrained by an extern trait in this function's where-clause.
+            let fn_constraints = fn_constraints_by_name.get(ext.name.as_str()).copied().unwrap_or(&[]);
+            let bridge_params = ext.param_types.iter().map(|param_ty| {
+                if let krypton_typechecker::types::Type::Var(tv_id) = param_ty {
+                    // Check if this type var has an extern trait constraint
+                    for (trait_name, constrained_tv) in fn_constraints {
+                        if *constrained_tv == *tv_id {
+                            if let Some(et_info) = extern_trait_lookup.get(trait_name) {
+                                return Some(ExternTraitBridge {
+                                    trait_name: trait_name.clone(),
+                                    java_interface: et_info.java_interface.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+                None
+            }).collect();
             extern_fns.push(ExternFnDef {
                 id: fn_id,
                 name: ext.name.clone(),
@@ -5872,9 +5936,25 @@ pub fn lower_module(
                 throws: ext.throws,
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
+                bridge_params,
             });
         }
     }
+
+    // 9. Build extern_traits from local definitions.
+    let extern_traits: Vec<ExternTraitDef> = typed.extern_traits.iter().map(|et| {
+        ExternTraitDef {
+            trait_name: et.trait_name.clone(),
+            java_interface: et.java_interface.clone(),
+            methods: et.methods.iter().map(|m| {
+                ExternTraitMethodDef {
+                    name: m.name.clone(),
+                    param_types: m.param_types.iter().cloned().map(Into::into).collect(),
+                    return_type: m.return_type.clone().into(),
+                }
+            }).collect(),
+        }
+    }).collect();
 
     // 10. Build extern_types from local definitions only (JVM targets only).
     //     Cross-module extern types are in module.imported_extern_types.
@@ -6038,6 +6118,7 @@ pub fn lower_module(
         fn_identities,
         extern_fns,
         extern_types,
+        extern_traits,
         imported_fns,
         traits,
         instances,
@@ -6050,6 +6131,12 @@ pub fn lower_module(
             for entry in &typed.fn_types {
                 if !entry.scheme.constraints.is_empty() {
                     reqs.insert(entry.name.clone(), entry.scheme.constraints.clone());
+                }
+            }
+            // Also include extern function constraints.
+            for ext in &typed.extern_fns {
+                if !ext.constraints.is_empty() {
+                    reqs.entry(ext.name.clone()).or_insert_with(|| ext.constraints.clone());
                 }
             }
             for (qn, v) in &ctx.fn_constraints {

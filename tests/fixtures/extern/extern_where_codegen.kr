@@ -1,0 +1,6 @@
+# expect: output "42"
+# skip: js(java-only extern)
+extern java "java.lang.String" {
+    fun valueOf[a](x: a) -> String where a: Show
+}
+fun main() = println(valueOf(42))

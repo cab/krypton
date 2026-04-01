@@ -18,7 +18,8 @@ use super::data_class_gen::{
 use super::intrinsics;
 use super::trait_class_gen::{
     generate_builtin_show_instance_class, generate_builtin_trait_instance_class,
-    generate_instance_class, generate_parameterized_instance_class, generate_trait_interface_class,
+    generate_extern_trait_bridge_class, generate_instance_class,
+    generate_parameterized_instance_class, generate_trait_interface_class,
 };
 use super::{
     jvm_type_to_field_descriptor, qualify_ir, type_has_vars, type_references_var,
@@ -607,6 +608,53 @@ impl<'link> Compiler<'link> {
         Ok(result_classes)
     }
 
+    /// Register extern trait bridge classes for Java interface adaptation.
+    pub(super) fn register_extern_traits_ir(
+        &mut self,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
+        let mut result_classes = Vec::new();
+
+        for extern_trait in &ir_module.extern_traits {
+            let krypton_trait_name = extern_trait.trait_name.jvm_qualified();
+            let java_interface = extern_trait.java_interface.replace('.', "/");
+            let bridge_class_name = format!("{krypton_trait_name}$$Bridge");
+
+            // Build method list: (method_name, param_count_excluding_self)
+            let methods: Vec<(String, usize)> = extern_trait
+                .methods
+                .iter()
+                .map(|m| (m.name.clone(), m.param_types.len()))
+                .collect();
+
+            let bridge_bytes = generate_extern_trait_bridge_class(
+                &bridge_class_name,
+                &java_interface,
+                &krypton_trait_name,
+                &methods,
+            )?;
+            result_classes.push((bridge_class_name.clone(), bridge_bytes));
+
+            // Register bridge class and constructor in the constant pool
+            let bridge_class_idx = self.cp.add_class(&bridge_class_name)?;
+            let bridge_init = self.cp.add_method_ref(
+                bridge_class_idx,
+                "<init>",
+                "(Ljava/lang/Object;Ljava/lang/Object;)V",
+            )?;
+
+            self.traits.extern_trait_bridges.insert(
+                extern_trait.trait_name.clone(),
+                super::compiler::ExternTraitBridgeInfo {
+                    bridge_class: bridge_class_idx,
+                    bridge_init,
+                },
+            );
+        }
+
+        Ok(result_classes)
+    }
+
     pub(super) fn register_builtin_instances_ir(
         &mut self,
         ir_module: &krypton_ir::Module,
@@ -986,11 +1034,23 @@ impl<'link> Compiler<'link> {
             .iter()
             .filter(|ext| matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
         {
-            let wrapper_param_types: Vec<JvmType> = ext
+            let impl_dict_count = self
+                .traits
+                .impl_dict_requirements
+                .get(&ext.name)
+                .map(|r| r.len())
+                .unwrap_or(0);
+            let object_class = self.builder.refs.object_class;
+            let mut wrapper_param_types: Vec<JvmType> = Vec::new();
+            for _ in 0..impl_dict_count {
+                wrapper_param_types.push(JvmType::StructRef(object_class));
+            }
+            let user_param_types: Vec<JvmType> = ext
                 .param_types
                 .iter()
                 .map(|ty| self.type_to_jvm(ty))
                 .collect::<Result<_, _>>()?;
+            wrapper_param_types.extend(user_param_types);
             let wrapper_return_type = self.type_to_jvm(&ext.return_type)?;
             let wrapper_desc = self
                 .types
@@ -1020,10 +1080,19 @@ impl<'link> Compiler<'link> {
 
             let mut param_jvm_types = Vec::new();
             let mut param_desc = String::from("(");
-            for pt in &ext.param_types {
-                let (jvm, desc) = extern_param_info(self, pt)?;
-                param_jvm_types.push(jvm);
-                param_desc.push_str(&desc);
+            for (i, pt) in ext.param_types.iter().enumerate() {
+                let bridge = ext.bridge_params.get(i).and_then(|b| b.as_ref());
+                if let Some(bridge) = bridge {
+                    // Bridged param: use the Java interface type, not Object
+                    let iface_jvm = bridge.java_interface.replace('.', "/");
+                    let iface_class = self.cp.add_class(&iface_jvm)?;
+                    param_jvm_types.push(JvmType::StructRef(iface_class));
+                    param_desc.push_str(&format!("L{iface_jvm};"));
+                } else {
+                    let (jvm, desc) = extern_param_info(self, pt)?;
+                    param_jvm_types.push(jvm);
+                    param_desc.push_str(&desc);
+                }
             }
             param_desc.push(')');
 
@@ -1164,6 +1233,84 @@ impl<'link> Compiler<'link> {
         Ok(extra_methods)
     }
 
+    /// Emit the raw extern call parameters for the wrapper body.
+    ///
+    /// The wrapper has `dict_count` leading dict params followed by user params.
+    /// For non-bridged user params, we load them directly. For bridged params,
+    /// we construct a bridge class instance wrapping the user value and its dict.
+    fn emit_extern_call_params(
+        &mut self,
+        ext: &krypton_ir::ExternFnDef,
+        param_slots: &[(u16, JvmType)],
+        dict_count: usize,
+    ) -> Result<(), CodegenError> {
+        if dict_count == 0 {
+            // No dicts — load all params directly (the common case)
+            for (slot, jvm_ty) in param_slots {
+                self.builder.emit_load(*slot, *jvm_ty);
+            }
+            return Ok(());
+        }
+
+        // Build a mapping from trait_name → dict slot index for bridged params.
+        let dict_requirements = self
+            .traits
+            .impl_dict_requirements
+            .get(&ext.name)
+            .cloned()
+            .unwrap_or_default();
+
+        // Only load user params (skip dict params), constructing bridges where needed.
+        let user_param_slots = &param_slots[dict_count..];
+        for (user_idx, (slot, jvm_ty)) in user_param_slots.iter().enumerate() {
+            let bridge = ext.bridge_params.get(user_idx).and_then(|b| b.as_ref());
+            if let Some(bridge) = bridge {
+                // Find the dict slot for this bridge's trait
+                let dict_slot_idx = dict_requirements
+                    .iter()
+                    .position(|dr| dr.trait_name == bridge.trait_name)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "ICE: No dict requirement found for bridge trait {:?} on extern {}",
+                            bridge.trait_name, ext.name
+                        )
+                    });
+                let (dict_slot, _) = param_slots[dict_slot_idx];
+
+                // Look up bridge class info
+                let bridge_info = self
+                    .traits
+                    .extern_trait_bridges
+                    .get(&bridge.trait_name)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "ICE: No bridge class info for trait {:?}",
+                            bridge.trait_name
+                        )
+                    });
+                let bridge_class = bridge_info.bridge_class;
+                let bridge_init = bridge_info.bridge_init;
+
+                // new BridgeClass; dup; aload value; aload dict; invokespecial <init>
+                self.builder.emit_new_dup(bridge_class);
+                self.builder.emit_load(*slot, *jvm_ty);
+                self.builder.emit_load(dict_slot, JvmType::StructRef(self.builder.refs.object_class));
+                // Frame: [... Uninitialized Uninitialized value dict]
+                // invokespecial pops: dict, value, dup'd Uninitialized, new Uninitialized
+                // then pushes: initialized Object ref
+                self.builder.frame.pop_type(); // dict
+                self.builder.frame.pop_type(); // value
+                self.builder.frame.pop_type(); // dup'd Uninitialized
+                self.builder.frame.pop_type(); // new Uninitialized
+                self.builder.emit(Instruction::Invokespecial(bridge_init));
+                self.builder.push_jvm_type(JvmType::StructRef(bridge_class));
+            } else {
+                self.builder.emit_load(*slot, *jvm_ty);
+            }
+        }
+        Ok(())
+    }
+
     fn compile_nullable_extern_wrapper(
         &mut self,
         ext: &krypton_ir::ExternFnDef,
@@ -1203,9 +1350,13 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        for (slot, jvm_ty) in &param_slots {
-            self.builder.emit_load(*slot, *jvm_ty);
-        }
+        let dict_count = self
+            .traits
+            .impl_dict_requirements
+            .get(&ext.name)
+            .map(|r| r.len())
+            .unwrap_or(0);
+        self.emit_extern_call_params(ext, &param_slots, dict_count)?;
         for jvm_ty in raw_info.param_types.iter().rev() {
             self.builder.pop_jvm_type(*jvm_ty);
         }
@@ -1322,13 +1473,18 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
+        let dict_count = self
+            .traits
+            .impl_dict_requirements
+            .get(&ext.name)
+            .map(|r| r.len())
+            .unwrap_or(0);
+
         // try_start:
         let try_start = self.builder.current_offset();
 
         // Load params and invoke the raw extern
-        for (slot, jvm_ty) in &param_slots {
-            self.builder.emit_load(*slot, *jvm_ty);
-        }
+        self.emit_extern_call_params(ext, &param_slots, dict_count)?;
         for jvm_ty in raw_info.param_types.iter().rev() {
             self.builder.pop_jvm_type(*jvm_ty);
         }
@@ -1478,10 +1634,15 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
+        let dict_count = self
+            .traits
+            .impl_dict_requirements
+            .get(&ext.name)
+            .map(|r| r.len())
+            .unwrap_or(0);
+
         // Load params and invoke the raw extern
-        for (slot, jvm_ty) in &param_slots {
-            self.builder.emit_load(*slot, *jvm_ty);
-        }
+        self.emit_extern_call_params(ext, &param_slots, dict_count)?;
         for jvm_ty in raw_info.param_types.iter().rev() {
             self.builder.pop_jvm_type(*jvm_ty);
         }

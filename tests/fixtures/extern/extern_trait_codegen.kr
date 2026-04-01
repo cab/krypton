@@ -1,0 +1,15 @@
+# expect: ok
+extern java "java.lang.Runnable" as trait Runnable[a] {
+  fun run(this: a) -> Unit
+}
+impl Runnable[() -> Unit] {
+  fun run(f) = f()
+}
+extern java "java.lang.Thread" as JThread {
+  fun newThread[a](target: a) -> JThread where a: Runnable
+  fun startThread(thread: JThread) -> Unit
+}
+fun main() = {
+  let t = newThread(() -> println("hello from bridge"))
+  startThread(t)
+}

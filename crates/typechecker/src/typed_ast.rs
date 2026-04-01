@@ -406,6 +406,7 @@ pub struct ExternFnInfo {
     pub throws: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
+    pub constraints: Vec<(TraitName, TypeVarId)>,
 }
 
 #[derive(Debug, Clone)]
@@ -413,6 +414,20 @@ pub struct ExternTypeInfo {
     pub krypton_name: String,
     pub host_module: String,
     pub target: krypton_parser::ast::ExternTarget,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternTraitInfo {
+    pub trait_name: TraitName,
+    pub java_interface: String,
+    pub methods: Vec<ExternTraitMethodInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternTraitMethodInfo {
+    pub name: String,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
 }
 
 /// Pre-resolved type registration for an exported type.
@@ -483,6 +498,8 @@ pub struct TypedModule {
     pub extern_fns: Vec<ExternFnInfo>,
     /// Extern type bindings (krypton name, host module path, target).
     pub extern_types: Vec<ExternTypeInfo>,
+    /// Extern trait definitions (Java interfaces exposed as Krypton traits).
+    pub extern_traits: Vec<ExternTraitInfo>,
     pub struct_decls: Vec<StructDecl>,
     pub sum_decls: Vec<SumDecl>,
     /// Maps type_name → visibility for types declared in this module.

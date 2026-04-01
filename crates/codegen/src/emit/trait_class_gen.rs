@@ -111,6 +111,215 @@ pub(super) fn generate_trait_interface_class(
     Ok(buffer)
 }
 
+/// Generate a bridge class for an extern trait that adapts a Krypton (value, dict) pair
+/// into a Java interface implementation.
+///
+/// The bridge class has two `Object` fields (`value` and `dict`), a constructor that
+/// stores them, and bridge methods that delegate to the Krypton trait dict interface.
+///
+/// Example for `Runnable`:
+/// ```java
+/// public class module/Runnable$$Bridge implements java/lang/Runnable {
+///     Object value;
+///     Object dict;
+///     <init>(Object, Object)V { super(); this.value = arg0; this.dict = arg1; }
+///     void run() {
+///         this.dict.run(this.value);  // via invokeinterface on Krypton trait
+///     }
+/// }
+/// ```
+pub(super) fn generate_extern_trait_bridge_class(
+    bridge_class_name: &str,
+    java_interface: &str,
+    krypton_trait_interface: &str,
+    methods: &[(String, usize)], // (java_method_name, param_count excluding self)
+) -> Result<Vec<u8>, CodegenError> {
+    let mut cp = ConstantPool::default();
+
+    let this_class = cp.add_class(bridge_class_name)?;
+    let object_class = cp.add_class("java/lang/Object")?;
+    let java_iface_class = cp.add_class(java_interface)?;
+    let krypton_iface_class = cp.add_class(krypton_trait_interface)?;
+    let code_utf8 = cp.add_utf8("Code")?;
+
+    // Fields: value and dict, both Object
+    let object_desc = "Ljava/lang/Object;";
+    let value_field_name = cp.add_utf8("value")?;
+    let value_field_desc = cp.add_utf8(object_desc)?;
+    let dict_field_name = cp.add_utf8("dict")?;
+    let dict_field_desc = cp.add_utf8(object_desc)?;
+
+    let value_field_ref = cp.add_field_ref(this_class, "value", object_desc)?;
+    let dict_field_ref = cp.add_field_ref(this_class, "dict", object_desc)?;
+
+    // Object.<init>()V
+    let object_init = cp.add_method_ref(object_class, "<init>", "()V")?;
+
+    let fields = vec![
+        Field {
+            access_flags: FieldAccessFlags::PRIVATE,
+            name_index: value_field_name,
+            descriptor_index: value_field_desc,
+            field_type: FieldType::Object("java/lang/Object".to_string()),
+            attributes: vec![],
+        },
+        Field {
+            access_flags: FieldAccessFlags::PRIVATE,
+            name_index: dict_field_name,
+            descriptor_index: dict_field_desc,
+            field_type: FieldType::Object("java/lang/Object".to_string()),
+            attributes: vec![],
+        },
+    ];
+
+    let mut jvm_methods = Vec::new();
+
+    // Constructor: <init>(Object value, Object dict)V
+    {
+        let init_name = cp.add_utf8("<init>")?;
+        let init_desc = cp.add_utf8("(Ljava/lang/Object;Ljava/lang/Object;)V")?;
+
+        let code = vec![
+            Instruction::Aload_0,                          // this
+            Instruction::Invokespecial(object_init),       // super()
+            Instruction::Aload_0,                          // this
+            Instruction::Aload_1,                          // value
+            Instruction::Putfield(value_field_ref),        // this.value = value
+            Instruction::Aload_0,                          // this
+            Instruction::Aload_2,                          // dict
+            Instruction::Putfield(dict_field_ref),         // this.dict = dict
+            Instruction::Return,
+        ];
+
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: init_name,
+            descriptor_index: init_desc,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 2,
+                max_locals: 3, // this + value + dict
+                code,
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
+    // Bridge methods: each Java interface method delegates to the Krypton trait dict
+    for (method_name, param_count) in methods {
+        // Java method descriptor: all params are Object (from Java perspective,
+        // but actually the Java interface may use void return)
+        // For simplicity, the Java interface method typically takes no args (they're on the bridge)
+        // and returns void. We build the actual Java descriptor.
+        //
+        // The Java interface method descriptor. For something like Runnable.run(), it's "()V".
+        // For a more complex interface, it would have actual params.
+        // We use "()V" for zero-param void methods and "(L...;...)L...;" for others.
+        // Since all params are Object and return is Object/void, we build accordingly.
+        //
+        // Actually, we need to generate the *Java* method signature to match the interface.
+        // For now, extern trait methods map as: all non-self params → Object, return → void if Unit.
+        //
+        // The Krypton trait interface method takes (self_value, [other_params]) → Object (erased).
+        // The Java interface method takes ([other_params]) → void/Object.
+        //
+        // For Runnable.run(): Java descriptor is "()V", Krypton trait method is "run(Object)Object"
+
+        // Build Java method descriptor: param_count Object args, void return
+        // TODO: For non-void returns, this needs to return Object. For v0.1, assume void (Unit).
+        let java_desc = if *param_count == 0 {
+            "()V".to_string()
+        } else {
+            let mut d = String::from("(");
+            for _ in 0..*param_count {
+                d.push_str("Ljava/lang/Object;");
+            }
+            d.push_str(")V");
+            d
+        };
+
+        // Krypton trait interface method descriptor: (Object self, [Object params...]) -> Object
+        let krypton_param_count = param_count + 1; // self + other params
+        let mut krypton_desc = String::from("(");
+        for _ in 0..krypton_param_count {
+            krypton_desc.push_str("Ljava/lang/Object;");
+        }
+        krypton_desc.push_str(")Ljava/lang/Object;");
+
+        let krypton_method_ref = cp.add_interface_method_ref(
+            krypton_iface_class,
+            method_name,
+            &krypton_desc,
+        )?;
+
+        let method_name_idx = cp.add_utf8(method_name)?;
+        let method_desc_idx = cp.add_utf8(&java_desc)?;
+
+        // Bytecode:
+        //   aload_0; getfield dict; checkcast KryptonTraitInterface
+        //   aload_0; getfield value   // self param for Krypton method
+        //   [aload_1, aload_2, ...] // additional Java method params
+        //   invokeinterface KryptonTrait.method(Object, ...)Object
+        //   pop (discard Object result for void return) / areturn (for Object return)
+        //   return
+        let mut code = vec![
+            Instruction::Aload_0,
+            Instruction::Getfield(dict_field_ref),
+            Instruction::Checkcast(krypton_iface_class),
+            Instruction::Aload_0,
+            Instruction::Getfield(value_field_ref),
+        ];
+
+        // Load additional params from the Java method args (slots 1..param_count)
+        for i in 1..=(*param_count as u8) {
+            code.push(Instruction::Aload(i));
+        }
+
+        code.push(Instruction::Invokeinterface(
+            krypton_method_ref,
+            krypton_param_count as u8 + 1, // +1 for the dict reference (interface receiver)
+        ));
+
+        // For void methods, pop the Object result; for non-void, return it
+        code.push(Instruction::Pop);
+        code.push(Instruction::Return);
+
+        let max_stack = 2 + krypton_param_count as u16; // dict + value + params
+        let max_locals = 1 + *param_count as u16; // this + java method params
+
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: method_name_idx,
+            descriptor_index: method_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack,
+                max_locals,
+                code,
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
+    let class_file = ClassFile {
+        version: JAVA_21,
+        access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER,
+        constant_pool: cp,
+        this_class,
+        super_class: object_class,
+        interfaces: vec![java_iface_class],
+        fields,
+        methods: jvm_methods,
+        ..Default::default()
+    };
+
+    let mut buffer = Vec::new();
+    class_file.to_bytes(&mut buffer)?;
+    Ok(buffer)
+}
+
 /// Generate an instance singleton class (e.g., `Eq$Point.class`).
 /// Implements the trait interface, delegates to static methods on the main class.
 pub(super) fn generate_instance_class(
