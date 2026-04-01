@@ -1,4 +1,5 @@
 mod inspect;
+mod repl;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
@@ -119,6 +120,8 @@ enum Commands {
     },
     /// Inspect resource ownership: show close and move insertion points
     Inspect { file: String },
+    /// Launch the interactive REPL
+    Repl,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -781,6 +784,12 @@ fn main() {
             if timings {
                 print_timings(&phases);
             }
+        }
+        Commands::Repl => {
+            repl::run_repl().unwrap_or_else(|e| {
+                eprintln!("error: {}", e);
+                process::exit(1);
+            });
         }
         Commands::Inspect { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
