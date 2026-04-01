@@ -1,0 +1,13 @@
+# skip: js(java-only extern)
+# expect: ok
+extern java "okhttp3.Callback" as trait Callback[a] {
+  fun on_failure(this: a, msg: String) -> Unit
+  fun on_response(this: a, body: String) -> Unit
+}
+type MyHandler = { name: String }
+impl Callback[MyHandler] {
+  fun on_failure(h, msg) = println(msg)
+  fun on_response(h, body) = println(body)
+}
+fun handle[a](handler: a) -> Unit where a: Callback = on_failure(handler, "test")
+fun main() = handle(MyHandler { name = "h1" })
