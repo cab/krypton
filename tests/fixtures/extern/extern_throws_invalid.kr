@@ -1,0 +1,4 @@
+# expect: error E0603
+extern java "java.lang.Integer" {
+    @throws fun parseInt(s: String) -> String
+}

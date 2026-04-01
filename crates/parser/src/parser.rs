@@ -1411,11 +1411,16 @@ where
 
     let extern_where_clause = where_clause_parser();
 
-    let extern_nullable = symbol(Token::At)
-        .then(select! { Token::Ident(s) if s == "nullable" => () })
-        .or_not();
+    let extern_annotation = symbol(Token::At)
+        .then(select! {
+            Token::Ident(s) if s == "nullable" => (true, false),
+            Token::Ident(s) if s == "throws" => (false, true),
+        })
+        .map(|(_, flags)| flags)
+        .or_not()
+        .map(|opt| opt.unwrap_or((false, false)));
 
-    let extern_method = extern_nullable
+    let extern_method = extern_annotation
         .then(symbol(Token::Pub).or_not())
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1425,11 +1430,12 @@ where
         .then(extern_where_clause)
         .map_with(
             |(
-                (((((nullable_opt, pub_opt), name), method_type_params), params), return_type),
+                ((((((nullable, throws), pub_opt), name), method_type_params), params), return_type),
                 where_clauses,
             ),
              e| ExternMethod {
-                nullable: nullable_opt.is_some(),
+                nullable,
+                throws,
                 visibility: if pub_opt.is_some() {
                     Visibility::Pub
                 } else {

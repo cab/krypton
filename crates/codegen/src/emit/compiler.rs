@@ -624,6 +624,58 @@ impl<'link> Compiler<'link> {
         self.nullable_host_jvm_for_inner(self.nullable_inner_type(ty)?)
     }
 
+    pub(super) fn throws_inner_type<'a>(
+        &self,
+        ty: &'a Type,
+    ) -> Result<&'a Type, CodegenError> {
+        match ty {
+            Type::Named(name, args) if name == "Result" && args.len() == 2 => Ok(&args[1]),
+            other => Err(CodegenError::TypeError(
+                format!("@throws extern must return Result[String, T], found {other}"),
+                None,
+            )),
+        }
+    }
+
+    pub(super) fn throws_host_return_jvm(
+        &self,
+        ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let inner = self.throws_inner_type(ty)?;
+        self.type_to_jvm(inner)
+    }
+
+    pub(super) fn result_variant_construct_info(
+        &self,
+        result_type: &Type,
+        variant_name: &str,
+    ) -> Result<(u16, u16, u16, Vec<VariantField>), CodegenError> {
+        let sum_name = match result_type {
+            Type::Named(name, _) => name,
+            other => {
+                return Err(CodegenError::TypeError(
+                    format!("expected Result sum type, found {other}"),
+                    None,
+                ))
+            }
+        };
+        let sum_info = self.types.sum_type_info.get(sum_name).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown Result sum type: {sum_name}"), None)
+        })?;
+        let variant = sum_info.variants.get(variant_name).ok_or_else(|| {
+            CodegenError::TypeError(
+                format!("missing Result variant {variant_name} for {sum_name}"),
+                None,
+            )
+        })?;
+        Ok((
+            variant.class_index,
+            variant.constructor_ref,
+            sum_info.interface_class_index,
+            variant.fields.clone(),
+        ))
+    }
+
     fn nullable_host_jvm_for_inner(&self, inner: &Type) -> Result<JvmType, CodegenError> {
         Ok(match inner {
             Type::Int => JvmType::StructRef(self.builder.refs.long_box_class),

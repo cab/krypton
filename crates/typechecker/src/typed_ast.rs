@@ -403,6 +403,7 @@ pub struct ExternFnInfo {
     pub module_path: String,
     pub target: krypton_parser::ast::ExternTarget,
     pub nullable: bool,
+    pub throws: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
 }

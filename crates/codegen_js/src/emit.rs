@@ -2333,6 +2333,7 @@ mod tests {
                 module: "./runtime/js/string.mjs".to_string(),
             },
             nullable: true,
+            throws: false,
             param_types: vec![Type::String],
             return_type: Type::Named("Option".to_string(), vec![Type::Int]),
         });
@@ -2428,6 +2429,7 @@ mod tests {
                 module: "./runtime/js/string.mjs".to_string(),
             },
             nullable: false,
+            throws: false,
             param_types: vec![Type::String],
             return_type: Type::Int,
         });
@@ -2454,6 +2456,7 @@ mod tests {
                 class: "krypton.runtime.KryptonIO".to_string(),
             },
             nullable: false,
+            throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Unit,
         });
@@ -2498,6 +2501,7 @@ mod tests {
                 class: "krypton.runtime.KryptonIO".to_string(),
             },
             nullable: false,
+            throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Unit,
         });

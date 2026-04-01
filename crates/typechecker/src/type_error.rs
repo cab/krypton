@@ -62,6 +62,7 @@ pub enum TypeErrorCode {
     E0514, // Duplicate function definition
     E0316, // Cannot implement trait for owned type
     E0014, // Or-pattern binding mismatch
+    E0603, // Invalid @throws return type
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -276,6 +277,10 @@ pub enum TypeError {
         name: String,
         actual_return_type: Type,
     },
+    InvalidThrowsReturn {
+        name: String,
+        actual_return_type: Type,
+    },
     AmbiguousType {
         trait_name: String,
         method_name: String,
@@ -357,6 +362,7 @@ impl TypeError {
             TypeError::AmbiguousTraitName { .. } => TypeErrorCode::E0313,
             TypeError::ExternSignatureMismatch { .. } => TypeErrorCode::E0601,
             TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
+            TypeError::InvalidThrowsReturn { .. } => TypeErrorCode::E0603,
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
@@ -591,6 +597,9 @@ impl TypeError {
             }
             TypeError::InvalidNullableReturn { .. } => {
                 Some("@nullable functions must return Option[T] so the compiler can wrap null values".to_string())
+            }
+            TypeError::InvalidThrowsReturn { .. } => {
+                Some("@throws functions must return Result[String, T] so the compiler can wrap exceptions".to_string())
             }
             TypeError::AmbiguousType { .. } => {
                 Some("add a type annotation to constrain the type, e.g., `let x: Int = default()`".to_string())
@@ -1065,6 +1074,17 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "@nullable on extern function `{}` requires return type Option[T], found {}",
+                    name, actual
+                )
+            }
+            TypeError::InvalidThrowsReturn {
+                name,
+                actual_return_type,
+            } => {
+                let actual = actual_return_type.renumber_for_display();
+                write!(
+                    f,
+                    "@throws on extern function `{}` requires return type Result[String, T], found {}",
                     name, actual
                 )
             }

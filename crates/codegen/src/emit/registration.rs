@@ -77,9 +77,14 @@ fn extern_return_info(
     compiler: &Compiler,
     ty: &Type,
     nullable: bool,
+    throws: bool,
 ) -> Result<(JvmType, String, bool), CodegenError> {
     if nullable {
         let jvm = compiler.nullable_host_return_jvm(ty)?;
+        return Ok((jvm, jvm_descriptor(compiler, jvm), false));
+    }
+    if throws {
+        let jvm = compiler.throws_host_return_jvm(ty)?;
         return Ok((jvm, jvm_descriptor(compiler, jvm), false));
     }
     if matches!(ty, Type::Unit) {
@@ -1023,7 +1028,7 @@ impl<'link> Compiler<'link> {
             param_desc.push(')');
 
             let (return_type, ret_desc, is_void) =
-                extern_return_info(self, &ext.return_type, ext.nullable)?;
+                extern_return_info(self, &ext.return_type, ext.nullable, ext.throws)?;
 
             let descriptor = format!("{param_desc}{ret_desc}");
             let method_ref = self
@@ -1150,6 +1155,8 @@ impl<'link> Compiler<'link> {
         {
             if ext.nullable {
                 extra_methods.push(self.compile_nullable_extern_wrapper(ext)?);
+            } else if ext.throws {
+                extra_methods.push(self.compile_throws_extern_wrapper(ext)?);
             } else {
                 extra_methods.push(self.compile_nonnullable_extern_wrapper(ext)?);
             }
@@ -1260,6 +1267,157 @@ impl<'link> Compiler<'link> {
         self.emit_type_coercion(actual_jvm, expected);
         self.emit_variant_invokespecial(some_ctor, &some_fields, option_iface);
         self.builder.emit(Instruction::Areturn);
+
+        let descriptor = self
+            .types
+            .build_descriptor(&wrapper_info.param_types, wrapper_info.return_type);
+        let name_idx = self.cp.add_utf8(&ext.name)?;
+        let desc_idx = self.cp.add_utf8(&descriptor)?;
+
+        Ok(Method {
+            access_flags: ristretto_classfile::MethodAccessFlags::PUBLIC
+                | ristretto_classfile::MethodAccessFlags::STATIC,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            attributes: vec![self.builder.finish_method()],
+        })
+    }
+
+    fn compile_throws_extern_wrapper(
+        &mut self,
+        ext: &krypton_ir::ExternFnDef,
+    ) -> Result<Method, CodegenError> {
+        self.reset_method_state();
+
+        let wrapper_info = self
+            .types
+            .get_function(&ext.name)
+            .cloned()
+            .ok_or_else(|| CodegenError::UndefinedVariable(ext.name.clone(), None))?;
+        let raw_info = self
+            .raw_extern_functions
+            .get(&ext.name)
+            .cloned()
+            .ok_or_else(|| {
+                CodegenError::UndefinedVariable(
+                    format!("missing raw extern method info for {}", ext.name),
+                    None,
+                )
+            })?;
+
+        let mut param_slots = Vec::new();
+        for &jvm_ty in &wrapper_info.param_types {
+            let slot = self.builder.next_local;
+            let slot_size: u16 = match jvm_ty {
+                JvmType::Long | JvmType::Double => 2,
+                _ => 1,
+            };
+            self.builder.next_local += slot_size;
+            self.builder
+                .frame
+                .local_types
+                .extend(self.builder.jvm_type_to_vtypes(jvm_ty));
+            param_slots.push((slot, jvm_ty));
+        }
+        self.builder.fn_params = param_slots.clone();
+        self.builder.fn_return_type = Some(wrapper_info.return_type);
+
+        // try_start:
+        let try_start = self.builder.current_offset();
+
+        // Load params and invoke the raw extern
+        for (slot, jvm_ty) in &param_slots {
+            self.builder.emit_load(*slot, *jvm_ty);
+        }
+        for jvm_ty in raw_info.param_types.iter().rev() {
+            self.builder.pop_jvm_type(*jvm_ty);
+        }
+        self.builder
+            .emit(Instruction::Invokestatic(raw_info.method_ref));
+        self.builder.push_jvm_type(raw_info.return_type);
+
+        // Store raw result so we can emit new/dup before the value
+        let raw_slot = self.builder.alloc_anonymous_local(raw_info.return_type);
+        self.builder.emit_store(raw_slot, raw_info.return_type);
+
+        let (ok_class, ok_ctor, result_iface, ok_fields) =
+            self.result_variant_construct_info(&ext.return_type, "Ok")?;
+
+        // new Ok, dup, load raw result, [box if needed], invokespecial
+        self.builder.emit_new_dup(ok_class);
+        self.builder.emit_load(raw_slot, raw_info.return_type);
+
+        let actual_jvm = raw_info.return_type;
+        let expected = if ok_fields[0].is_erased {
+            JvmType::StructRef(self.builder.refs.object_class)
+        } else {
+            ok_fields[0].jvm_type
+        };
+        self.emit_type_coercion(actual_jvm, expected);
+        self.emit_variant_invokespecial(ok_ctor, &ok_fields, result_iface);
+        self.builder.emit(Instruction::Areturn);
+
+        // try_end (one past the last protected instruction):
+        let try_end = self.builder.current_offset();
+
+        // handler: catch java/lang/Exception
+        let handler = self.builder.current_offset();
+        // Record frame at handler — only params in locals (raw_slot not yet initialized)
+        let exception_class = self.cp.add_class("java/lang/Exception")?;
+        self.builder.frame.stack_types.clear();
+        self.builder.frame.local_types.clear();
+        for (_, jvm_ty) in &param_slots {
+            self.builder
+                .frame
+                .local_types
+                .extend(self.builder.jvm_type_to_vtypes(*jvm_ty));
+        }
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: exception_class,
+        });
+        self.builder.frame.record_frame(handler);
+
+        // Store exception, get message into a local
+        let exc_slot = self.builder.alloc_anonymous_local(JvmType::StructRef(exception_class));
+        self.builder.emit(Instruction::Astore(exc_slot as u8));
+        self.builder.frame.pop_type();
+
+        self.builder.emit(Instruction::Aload(exc_slot as u8));
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: exception_class,
+        });
+        let get_message = self.cp.add_method_ref(
+            exception_class,
+            "getMessage",
+            "()Ljava/lang/String;",
+        )?;
+        self.builder.emit(Instruction::Invokevirtual(get_message));
+        self.builder.frame.pop_type(); // pop exception
+        let string_jvm = JvmType::StructRef(self.builder.refs.string_class);
+        self.builder.push_jvm_type(string_jvm);
+
+        // Store message string, then new Err, dup, load message, invokespecial
+        let msg_slot = self.builder.alloc_anonymous_local(string_jvm);
+        self.builder.emit_store(msg_slot, string_jvm);
+
+        let (err_class, err_ctor, err_result_iface, err_fields) =
+            self.result_variant_construct_info(&ext.return_type, "Err")?;
+
+        self.builder.emit_new_dup(err_class);
+        self.builder.emit_load(msg_slot, string_jvm);
+
+        let err_expected = if err_fields[0].is_erased {
+            JvmType::StructRef(self.builder.refs.object_class)
+        } else {
+            err_fields[0].jvm_type
+        };
+        self.emit_type_coercion(string_jvm, err_expected);
+        self.emit_variant_invokespecial(err_ctor, &err_fields, err_result_iface);
+        self.builder.emit(Instruction::Areturn);
+
+        // Add exception table entry
+        self.builder
+            .add_exception_entry(try_start..try_end, handler, exception_class);
 
         let descriptor = self
             .types

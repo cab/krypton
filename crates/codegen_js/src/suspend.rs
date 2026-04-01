@@ -442,6 +442,7 @@ mod tests {
                 span: (0, 0),
                 target: js_target.clone(),
                 nullable,
+                throws: false,
                 param_types: vec![Type::Int],
                 return_type: Type::Int,
             });

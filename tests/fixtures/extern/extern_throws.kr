@@ -1,0 +1,15 @@
+# expect: output "Ok(42)\nErr(For input string: \"abc\")"
+# skip: js(java-only extern)
+extern java "java.lang.Long" {
+    @throws fun parseLong(s: String) -> Result[String, Int]
+}
+
+fun showResult(r: Result[String, Int]) -> String = match r {
+    Ok(n) => "Ok(" + show(n) + ")",
+    Err(e) => "Err(" + e + ")",
+}
+
+fun main() = {
+    println(showResult(parseLong("42")));
+    println(showResult(parseLong("abc")))
+}

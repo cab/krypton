@@ -1099,6 +1099,7 @@ mod tests {
                 module: "../runtime/js/actor.mjs".to_string(),
             },
             nullable: false,
+            throws: false,
             param_types: vec![Type::Named("Mailbox".into(), vec![])],
             return_type: Type::Int,
         });
@@ -1246,6 +1247,7 @@ mod tests {
                 module: "../runtime/js/actor.mjs".to_string(),
             },
             nullable: false,
+            throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Int,
         });
@@ -1402,6 +1404,7 @@ mod tests {
                 module: "../runtime/js/actor.mjs".to_string(),
             },
             nullable: false,
+            throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Int,
         });

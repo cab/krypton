@@ -1230,6 +1230,20 @@ fn process_extern_methods(
             }
         }
 
+        // Validate @throws: return type must be Result[String, T]
+        if method.throws {
+            let is_result_string = matches!(&ret, Type::Named(n, args) if n == "Result" && args.len() == 2 && args[0] == Type::String);
+            if !is_result_string {
+                return Err(spanned(
+                    TypeError::InvalidThrowsReturn {
+                        name: bind_name.clone(),
+                        actual_return_type: ret.clone(),
+                    },
+                    method.span,
+                ));
+            }
+        }
+
         let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
         let scheme = if scheme_vars.is_empty() {
             TypeScheme::mono(fn_ty)
@@ -1313,6 +1327,7 @@ fn process_extern_methods(
             module_path: class_name.to_string(),
             target: target.clone(),
             nullable: method.nullable,
+            throws: method.throws,
             param_types: concrete_params,
             return_type: codegen_return,
         });

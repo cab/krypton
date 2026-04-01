@@ -543,6 +543,7 @@ pub struct ExternFnDef {
     pub span: Span,
     pub target: ExternTarget,
     pub nullable: bool,
+    pub throws: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
 }

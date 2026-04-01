@@ -5869,6 +5869,7 @@ pub fn lower_module(
                 span: ext.span,
                 target: ir_target,
                 nullable: ext.nullable,
+                throws: ext.throws,
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
             });
