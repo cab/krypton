@@ -144,6 +144,21 @@ fn own_fn_capture_note_correct_name() {
 }
 
 #[test]
+fn guard_only_lambda_capture_note_e0104() {
+    let src = "type Option[a] = Some(a) | None\nfun consume(buf: ~String) -> Int = 1\nfun peek[a](x: a) -> a where a: shared = x\nfun bad(x: ~String) -> Int = peek(() -> match Some(0) { Some(n) if consume(x) > 0 => n, Some(n) => n, None => 0 })()";
+    let output = render_module_error(src);
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0104"),
+        "expected qualifier mismatch path in:\n{output}"
+    );
+    assert!(
+        output.contains("closure is single-use because it captures `~` value `x`"),
+        "expected own capture note in:\n{output}"
+    );
+}
+
+#[test]
 fn test_qualifier_mismatch_diagnostic() {
     let output = render_fixture_error("../../tests/fixtures/ownership/qualifier_dup_error.kr");
     insta::assert_snapshot!(output);

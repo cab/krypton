@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
-    Decl, Expr, ExternMethod, ExternTarget, Module, Span, TypeConstraint, TypeDecl, TypeDeclKind,
-    TypeExpr, TypeParam, Visibility,
+    Decl, Expr, ExternMethod, ExternTarget, Module, Pattern, Span, TypeConstraint, TypeDecl,
+    TypeDeclKind, TypeExpr, TypeParam, Visibility,
 };
 
 use crate::scc;
@@ -840,6 +840,39 @@ pub(super) fn instantiate_field_type(
 
 /// Return the name of the first free variable (not in `params`) whose type in
 /// `env` (after substitution) is `Own(...)`.
+pub(crate) fn collect_parser_pattern_bindings<'a>(pattern: &'a Pattern) -> Vec<&'a str> {
+    fn collect_inner<'a>(pattern: &'a Pattern, out: &mut Vec<&'a str>) {
+        match pattern {
+            Pattern::Var { name, .. } => out.push(name.as_str()),
+            Pattern::Constructor { args, .. } => {
+                for arg in args {
+                    collect_inner(arg, out);
+                }
+            }
+            Pattern::Tuple { elements, .. } => {
+                for element in elements {
+                    collect_inner(element, out);
+                }
+            }
+            Pattern::StructPat { fields, .. } => {
+                for (_, field_pattern) in fields {
+                    collect_inner(field_pattern, out);
+                }
+            }
+            Pattern::Or { alternatives, .. } => {
+                if let Some(first) = alternatives.first() {
+                    collect_inner(first, out);
+                }
+            }
+            Pattern::Wildcard { .. } | Pattern::Lit { .. } => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    collect_inner(pattern, &mut out);
+    out
+}
+
 pub(super) fn first_own_capture(
     body: &Expr,
     params: &HashSet<&str>,
@@ -879,11 +912,22 @@ pub(super) fn first_own_capture(
             }
             None
         }
-        Expr::LetPattern { value, body, .. } => first_own_capture(value, params, env, subst)
-            .or_else(|| {
-                body.as_ref()
-                    .and_then(|b| first_own_capture(b, params, env, subst))
-            }),
+        Expr::LetPattern {
+            pattern,
+            value,
+            body,
+            ..
+        } => {
+            first_own_capture(value, params, env, subst).or_else(|| {
+                body.as_ref().and_then(|b| {
+                    let mut inner = params.clone();
+                    for name in collect_parser_pattern_bindings(pattern) {
+                        inner.insert(name);
+                    }
+                    first_own_capture(b, &inner, env, subst)
+                })
+            })
+        }
         Expr::Do { exprs, .. } => exprs
             .iter()
             .find_map(|e| first_own_capture(e, params, env, subst)),
@@ -895,8 +939,16 @@ pub(super) fn first_own_capture(
         Expr::Match {
             scrutinee, arms, ..
         } => first_own_capture(scrutinee, params, env, subst).or_else(|| {
-            arms.iter()
-                .find_map(|a| first_own_capture(&a.body, params, env, subst))
+            arms.iter().find_map(|arm| {
+                let mut inner = params.clone();
+                for name in collect_parser_pattern_bindings(&arm.pattern) {
+                    inner.insert(name);
+                }
+                arm.guard
+                    .as_ref()
+                    .and_then(|guard| first_own_capture(guard, &inner, env, subst))
+                    .or_else(|| first_own_capture(&arm.body, &inner, env, subst))
+            })
         }),
         Expr::BinaryOp { lhs, rhs, .. } => first_own_capture(lhs, params, env, subst)
             .or_else(|| first_own_capture(rhs, params, env, subst)),

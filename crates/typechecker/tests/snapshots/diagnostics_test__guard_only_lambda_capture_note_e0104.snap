@@ -1,0 +1,16 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+assertion_line: 150
+expression: output
+---
+[E0104] Error: cannot pass `<lambda>` to `peek`: `peek` uses its argument multiple times, but `<lambda>` is single-use (`~`)
+   ╭─[ test.kr:4:35 ]
+   │
+ 4 │ fun bad(x: ~String) -> Int = peek(() -> match Some(0) { Some(n) if consume(x) > 0 => n, Some(n) => n, None => 0 })()
+   │                                   ───────────────────────────────────────┬───────────────────────────────────────  
+   │                                                                          ╰───────────────────────────────────────── E0104: cannot pass `<lambda>` to `peek`: `peek` uses its argument multiple times, but `<lambda>` is single-use (`~`)
+   │ 
+   │ Help: `peek` uses parameter `x` more than once, so it cannot accept `~` (owned) values. Consider cloning first, or use a function that consumes its argument at most once.
+   │ 
+   │ Note: closure is single-use because it captures `~` value `x`
+───╯

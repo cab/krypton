@@ -91,10 +91,19 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
             }
         }
 
-        Expr::LetPattern { value, body, .. } => {
+        Expr::LetPattern {
+            pattern,
+            value,
+            body,
+            ..
+        } => {
             let v = count_max_uses(value, name, bound);
             if let Some(body) = body {
-                v + count_max_uses(body, name, bound)
+                let mut inner_bound = bound.clone();
+                for binding in crate::infer::collect_parser_pattern_bindings(pattern) {
+                    inner_bound.insert(binding.to_string());
+                }
+                v + count_max_uses(body, name, &inner_bound)
             } else {
                 v
             }
@@ -118,8 +127,15 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
             let max_arm = arms
                 .iter()
                 .map(|arm| {
-                    let guard_uses = arm.guard.as_ref().map_or(0, |g| count_max_uses(g, name, bound));
-                    guard_uses + count_max_uses(&arm.body, name, bound)
+                    let mut inner_bound = bound.clone();
+                    for binding in crate::infer::collect_parser_pattern_bindings(&arm.pattern) {
+                        inner_bound.insert(binding.to_string());
+                    }
+                    let guard_uses = arm
+                        .guard
+                        .as_ref()
+                        .map_or(0, |g| count_max_uses(g, name, &inner_bound));
+                    guard_uses + count_max_uses(&arm.body, name, &inner_bound)
                 })
                 .max()
                 .unwrap_or(0);
@@ -712,6 +728,35 @@ impl<'a> OwnershipChecker<'a> {
         Ok((branch_consumed, branch_partial))
     }
 
+    fn check_match_arm_branch(
+        &mut self,
+        pattern: &TypedPattern,
+        guard: Option<&TypedExpr>,
+        body: &TypedExpr,
+    ) -> Result<(HashMap<String, Span>, HashMap<String, Span>), SpannedTypeError> {
+        let saved_owned = self.owned.clone();
+        let saved_consumed = self.consumed.clone();
+        let saved_partial = self.partially_consumed.clone();
+
+        for name in collect_owned_pattern_vars(pattern) {
+            self.owned.insert(name);
+        }
+
+        let result = (|| {
+            if let Some(guard) = guard {
+                self.check_expr(guard)?;
+            }
+            self.check_expr(body)
+        })();
+
+        let branch_consumed = std::mem::replace(&mut self.consumed, saved_consumed);
+        let branch_partial = std::mem::replace(&mut self.partially_consumed, saved_partial);
+        *self.owned = saved_owned;
+
+        result?;
+        Ok((branch_consumed, branch_partial))
+    }
+
     fn check_expr(&mut self, expr: &TypedExpr) -> Result<(), SpannedTypeError> {
         match &expr.kind {
             TypedExprKind::Var(name) => {
@@ -782,7 +827,20 @@ impl<'a> OwnershipChecker<'a> {
                                                     param: param_name.clone(),
                                                 },
                                                 span: arg.span,
-                                                note: Some("closure captures an owned (`~`) value, making it single-use".to_string()),
+                                                note: Some(
+                                                    self.lambda_own_captures
+                                                        .get(&arg.span)
+                                                        .map(|cap_name| {
+                                                            format!(
+                                                                "closure is single-use because it captures `~` value `{}`",
+                                                                cap_name
+                                                            )
+                                                        })
+                                                        .unwrap_or_else(|| {
+                                                            "closure captures an owned (`~`) value, making it single-use"
+                                                                .to_string()
+                                                        }),
+                                                ),
                                                 secondary_span: None,
                                                 source_file: None,
                                                 var_names: None,
@@ -952,22 +1010,12 @@ impl<'a> OwnershipChecker<'a> {
                 let mut merged_partial = self.partially_consumed.clone();
 
                 for arm in arms {
-                    // Track pattern-bound owned variables directly from TypedPattern
                     let pattern_owned = collect_owned_pattern_vars(&arm.pattern);
-                    for name in &pattern_owned {
-                        self.owned.insert(name.clone());
-                    }
-
-                    if let Some(guard) = &arm.guard {
-                        self.check_expr(guard)?;
-                    }
-                    let (arm_consumed, arm_partial) = self.check_branch(&arm.body)?;
-
-                    for name in &pattern_owned {
-                        self.owned.remove(name);
-                        self.consumed.remove(name);
-                        self.partially_consumed.remove(name);
-                    }
+                    let (arm_consumed, arm_partial) = self.check_match_arm_branch(
+                        &arm.pattern,
+                        arm.guard.as_deref(),
+                        &arm.body,
+                    )?;
 
                     let newly: HashMap<String, Span> = arm_consumed
                         .into_iter()

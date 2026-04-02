@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
 use krypton_typechecker::link_context::LinkContext;
@@ -86,14 +87,34 @@ struct InstanceSourceInfo {
 // Pattern match compilation types
 // ---------------------------------------------------------------------------
 
-/// A clause in the pattern matrix: a row of patterns + the RHS body.
-struct Clause {
-    patterns: Vec<TypedPattern>,
+#[derive(Clone)]
+struct ClausePayload {
     guard: Option<Box<TypedExpr>>,
     body: TypedExpr,
+}
+
+/// A clause in the pattern matrix: a structural row plus shared RHS payload.
+#[derive(Clone)]
+struct Clause {
+    patterns: Vec<TypedPattern>,
+    payload: Rc<ClausePayload>,
     /// Bindings accumulated during specialization for Var patterns that were
     /// expanded to wildcards. Each entry is (name, scrutinee_atom, type).
     extra_bindings: Vec<(String, Atom, Type)>,
+}
+
+impl Clause {
+    fn guard(&self) -> Option<&TypedExpr> {
+        self.payload.guard.as_deref()
+    }
+
+    fn body(&self) -> &TypedExpr {
+        &self.payload.body
+    }
+
+    fn span(&self) -> Span {
+        self.payload.body.span
+    }
 }
 
 /// What kind of head constructors appear in a column.
@@ -129,8 +150,7 @@ fn flatten_or_at_column(clauses: Vec<Clause>, col: usize) -> Vec<Clause> {
                     new_pats[col] = alt.clone();
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
@@ -2557,22 +2577,26 @@ impl LowerCtx {
         self.lower_to_atom_then(scrutinee, |ctx, scrut_atom| {
             let clauses: Vec<Clause> = arms
                 .iter()
-                .flat_map(|arm| match &arm.pattern {
-                    TypedPattern::Or { alternatives, .. } => alternatives
-                        .iter()
-                        .map(|alt| Clause {
-                            patterns: vec![alt.clone()],
-                            guard: arm.guard.clone(),
-                            body: arm.body.clone(),
-                            extra_bindings: vec![],
-                        })
-                        .collect::<Vec<_>>(),
-                    _ => vec![Clause {
-                        patterns: vec![arm.pattern.clone()],
+                .flat_map(|arm| {
+                    let payload = Rc::new(ClausePayload {
                         guard: arm.guard.clone(),
                         body: arm.body.clone(),
-                        extra_bindings: vec![],
-                    }],
+                    });
+                    match &arm.pattern {
+                        TypedPattern::Or { alternatives, .. } => alternatives
+                            .iter()
+                            .map(|alt| Clause {
+                                patterns: vec![alt.clone()],
+                                payload: Rc::clone(&payload),
+                                extra_bindings: vec![],
+                            })
+                            .collect::<Vec<_>>(),
+                        _ => vec![Clause {
+                            patterns: vec![arm.pattern.clone()],
+                            payload,
+                            extra_bindings: vec![],
+                        }],
+                    }
                 })
                 .collect();
             ctx.compile_clauses(vec![scrut_atom], clauses, &result_ty)
@@ -2603,8 +2627,10 @@ impl LowerCtx {
         self.lower_to_atom_then(value, |ctx, val_atom| {
             let clause = Clause {
                 patterns: vec![pattern],
-                guard: None,
-                body: body_expr,
+                payload: Rc::new(ClausePayload {
+                    guard: None,
+                    body: body_expr,
+                }),
                 extra_bindings: vec![],
             };
             ctx.compile_clauses(vec![val_atom], vec![clause], &result_ty)
@@ -2634,7 +2660,7 @@ impl LowerCtx {
 
         // Base case: first row is all wildcards/vars — it matches
         if clauses[0].patterns.iter().all(is_wildcard_or_var) {
-            if clauses[0].guard.is_some() {
+            if clauses[0].guard().is_some() {
                 return self.compile_guarded_clause(scrutinees, clauses, result_ty);
             }
             return self.bind_and_lower_body(&scrutinees, &clauses[0]);
@@ -2691,7 +2717,7 @@ impl LowerCtx {
                         bind: var,
                         ty: ty.clone().into(),
                         value: simple_at(
-                            clause.body.span,
+                            clause.span(),
                             SimpleExprKind::Atom(crate::Atom::Lit(lit.clone())),
                         ),
                     });
@@ -2717,7 +2743,7 @@ impl LowerCtx {
                             bind: var,
                             ty: ty.clone().into(),
                             value: simple_at(
-                                clause.body.span,
+                                clause.span(),
                                 SimpleExprKind::Atom(crate::Atom::Lit(lit.clone())),
                             ),
                         });
@@ -2726,7 +2752,7 @@ impl LowerCtx {
             }
         }
 
-        let body_expr = self.lower_expr(&clause.body)?;
+        let body_expr = self.lower_expr(clause.body())?;
 
         // Pop variable bindings
         for name in bound_names.iter().rev() {
@@ -2751,9 +2777,8 @@ impl LowerCtx {
         // Extract what we need from the first clause before splitting the vec
         let mut clauses = clauses;
         let first = clauses.remove(0);
-        let span = first.body.span;
-        let guard_typed = *first.guard.unwrap();
-        let body_typed = first.body;
+        let span = first.span();
+        let payload = Rc::clone(&first.payload);
         let extra_bindings = first.extra_bindings;
         let patterns = first.patterns;
         let remaining = clauses; // rest after removing first
@@ -2814,8 +2839,13 @@ impl LowerCtx {
 
         // Lower guard via lower_to_atom_then so complex guards get bound to a temp var
         let result_ty_clone = result_ty.clone();
-        let guard_and_branches = self.lower_to_atom_then(&guard_typed, |ctx, guard_atom| {
-            let body_expr = ctx.lower_expr(&body_typed)?;
+        let guard_typed = payload
+            .guard
+            .as_deref()
+            .expect("guarded clause must have a guard");
+        let payload_for_body = Rc::clone(&payload);
+        let guard_and_branches = self.lower_to_atom_then(guard_typed, move |ctx, guard_atom| {
+            let body_expr = ctx.lower_expr(&payload_for_body.body)?;
 
             // Pop variable bindings before compiling fallthrough
             for name in bound_names.iter().rev() {
@@ -2977,7 +3007,7 @@ impl LowerCtx {
         };
 
         Ok(expr_at(
-            clauses[0].body.span,
+            clauses[0].span(),
             result_ty.clone().into(),
             ExprKind::Switch {
                 scrutinee: scrut,
@@ -3105,7 +3135,7 @@ impl LowerCtx {
                 bind: v,
                 ty: elem_ty.into(),
                 value: simple_at(
-                    clauses[0].body.span,
+                    clauses[0].span(),
                     SimpleExprKind::TupleProject {
                         value: scrut.clone(),
                         index: i,
@@ -3172,7 +3202,7 @@ impl LowerCtx {
                 bind: v,
                 ty: fty.clone().into(),
                 value: simple_at(
-                    clauses[0].body.span,
+                    clauses[0].span(),
                     SimpleExprKind::Project {
                         value: scrut.clone(),
                         field_index: i,
@@ -3225,8 +3255,7 @@ impl LowerCtx {
                     }
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
@@ -3247,8 +3276,7 @@ impl LowerCtx {
                     }
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
@@ -3271,8 +3299,7 @@ impl LowerCtx {
                     extra.push((name.clone(), scrut_at_col.clone(), ty.clone()));
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: extra,
                     });
                 }
@@ -3306,8 +3333,7 @@ impl LowerCtx {
                         .collect();
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
@@ -3321,8 +3347,7 @@ impl LowerCtx {
                         .collect();
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: clause.extra_bindings.clone(),
                     });
                 }
@@ -3338,8 +3363,7 @@ impl LowerCtx {
                     extra.push((name.clone(), scrut_at_col.clone(), ty.clone()));
                     result.push(Clause {
                         patterns: new_pats,
-                        guard: clause.guard.clone(),
-                        body: clause.body.clone(),
+                        payload: Rc::clone(&clause.payload),
                         extra_bindings: extra,
                     });
                 }
@@ -3368,8 +3392,7 @@ impl LowerCtx {
                 }
                 result.push(Clause {
                     patterns: new_pats,
-                    guard: clause.guard.clone(),
-                    body: clause.body.clone(),
+                    payload: Rc::clone(&clause.payload),
                     extra_bindings: extra,
                 });
             }
@@ -3421,8 +3444,7 @@ impl LowerCtx {
         }
         Clause {
             patterns: new_pats,
-            guard: clause.guard,
-            body: clause.body,
+            payload: clause.payload,
             extra_bindings: extra,
         }
     }
@@ -3480,8 +3502,7 @@ impl LowerCtx {
         }
         Clause {
             patterns: new_pats,
-            guard: clause.guard,
-            body: clause.body,
+            payload: clause.payload,
             extra_bindings: extra,
         }
     }

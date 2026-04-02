@@ -1,0 +1,8 @@
+# expect: ok
+fun consume(buf: ~String) -> Int = 1
+
+fun test(tag: Int, x: ~String) -> Int = match tag {
+    0 if consume(x) > 0 => 10,
+    1 => consume(x),
+    _ => 0,
+}
