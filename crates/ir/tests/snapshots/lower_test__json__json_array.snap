@@ -4,26 +4,26 @@ expression: ir_module.to_string()
 ---
 module json__json_array
 
-import core/peek/peek as peek(h): h
-import core/list/last as last(List[u3]): Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
-import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
-import core/option/Some as Some(e): Option[e]
-import core/result/Ok as Ok(g): Result[f, g]
-import core/result/Err as Err(f): Result[f, g]
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/json/JNum as JNum(Float): Json
-import core/json/JArr as JArr(List[Json]): Json
-import core/json/json_to_string as json_to_string(Json): String
-import core/json/JBool as JBool(Bool): Json
-import core/json/JStr as JStr(String): Json
-import core/json/JObj as JObj(Map[String, Json]): Json
+import core/peek/peek as peek(h) -> h
+import core/list/last as last(List[u3]) -> Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
+import core/list/map as map(List[y], (y) -> a1) -> List[a1]
+import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
+import core/io/println as println(m) -> Unit
+import core/option/Some as Some(e) -> Option[e]
+import core/result/Ok as Ok(g) -> Result[f, g]
+import core/result/Err as Err(f) -> Result[f, g]
+import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/json/JNum as JNum(Float) -> Json
+import core/json/JArr as JArr(List[Json]) -> Json
+import core/json/json_to_string as json_to_string(Json) -> String
+import core/json/JBool as JBool(Bool) -> Json
+import core/json/JStr as JStr(String) -> Json
+import core/json/JObj as JObj(Map[String, Json]) -> Json
 declare json_to_string: (Json) -> String
-declare println: (o) -> Unit
+declare println: (m) -> Unit
 
 fn main() -> Unit =
   let v1: ~Json = construct Json::JNum#2(1.0)

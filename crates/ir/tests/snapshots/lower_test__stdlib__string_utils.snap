@@ -4,33 +4,33 @@ expression: ir_module.to_string()
 ---
 module stdlib__string_utils
 
-import core/peek/peek as peek(h): h
-import core/list/last as last(List[u3]): Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
-import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
-import core/option/Some as Some(e): Option[e]
-import core/result/Ok as Ok(g): Result[f, g]
-import core/result/Err as Err(f): Result[f, g]
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/string/contains as contains(String, String): Bool
-import core/string/starts_with as starts_with(String, String): Bool
-import core/string/ends_with as ends_with(String, String): Bool
-import core/string/index_of as index_of(String, String): Option[Int]
-import core/string/to_lower as to_lower(String): String
-import core/string/to_upper as to_upper(String): String
-import core/string/replace as replace(String, String, String): String
-import core/string/join as join(List[String], String): String
-import core/string/char_at as char_at(String, Int): Option[String]
+import core/peek/peek as peek(h) -> h
+import core/list/last as last(List[u3]) -> Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
+import core/list/map as map(List[y], (y) -> a1) -> List[a1]
+import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
+import core/io/println as println(m) -> Unit
+import core/option/Some as Some(e) -> Option[e]
+import core/result/Ok as Ok(g) -> Result[f, g]
+import core/result/Err as Err(f) -> Result[f, g]
+import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/string/contains as contains(String, String) -> Bool
+import core/string/starts_with as starts_with(String, String) -> Bool
+import core/string/ends_with as ends_with(String, String) -> Bool
+import core/string/index_of as index_of(String, String) -> Option[Int]
+import core/string/to_lower as to_lower(String) -> String
+import core/string/to_upper as to_upper(String) -> String
+import core/string/replace as replace(String, String, String) -> String
+import core/string/join as join(List[String], String) -> String
+import core/string/char_at as char_at(String, Int) -> Option[String]
 declare char_at: (String, Int) -> Option[String]
 declare contains: (String, String) -> Bool
 declare ends_with: (String, String) -> Bool
 declare index_of: (String, String) -> Option[Int]
 declare join: (List[String], String) -> String
-declare println: (o) -> Unit
+declare println: (m) -> Unit
 declare replace: (String, String, String) -> String
 declare starts_with: (String, String) -> Bool
 declare to_lower: (String) -> String

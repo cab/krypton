@@ -5,23 +5,23 @@ expression: ir_module.to_string()
 module actors__ask_timeout
 
 type Msg = Get#0(Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(t11): Unit
-import core/peek/peek as peek(h): h
-import core/list/last as last(List[u3]): Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
-import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/option/Some as Some(e): Option[e]
-import core/result/Ok as Ok(g): Result[f, g]
-import core/result/Err as Err(f): Result[f, g]
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/actor/spawn as spawn((Mailbox[o9]) -> Unit): Ref[o9]
-import core/actor/ask as ask(Ref[e11], (Ref[s11]) -> e11, Int): Result[Timeout, s11]
-declare ask: (Ref[e11], (Ref[s11]) -> e11, Int) -> Result[Timeout, s11]
-declare println: (t11) -> Unit
-declare spawn: ((Mailbox[o9]) -> Unit) -> Ref[o9]
+extern java "krypton.runtime.KryptonIO" println(i11) -> Unit
+import core/peek/peek as peek(h) -> h
+import core/list/last as last(List[u3]) -> Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
+import core/list/map as map(List[y], (y) -> a1) -> List[a1]
+import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
+import core/option/Some as Some(e) -> Option[e]
+import core/result/Ok as Ok(g) -> Result[f, g]
+import core/result/Err as Err(f) -> Result[f, g]
+import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/actor/spawn as spawn((Mailbox[d9]) -> Unit) -> Ref[d9]
+import core/actor/ask as ask(Ref[t10], (Ref[h11]) -> t10, Int) -> Result[Timeout, h11]
+declare ask: (Ref[t10], (Ref[h11]) -> t10, Int) -> Result[Timeout, h11]
+declare println: (i11) -> Unit
+declare spawn: ((Mailbox[d9]) -> Unit) -> Ref[d9]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()

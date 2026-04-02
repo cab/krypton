@@ -4,28 +4,28 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_immutable
 
-import core/peek/peek as peek(h): h
-import core/list/last as last(List[u3]): Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
-import core/list/map as map(List[y], (y) -> a1): List[a1]
-import core/vec/to_list as to_list(Vec[c8]): List[c8]
-import core/io/println as println(o): Unit
-import core/option/Some as Some(e): Option[e]
-import core/result/Ok as Ok(g): Result[f, g]
-import core/result/Err as Err(f): Result[f, g]
-import core/list/Cons as Cons(h, List[h]): List[h]
-import core/map/empty as empty(): Map[m10, n10]
-import core/map/put as put(Map[q10, r10], q10, r10): Map[q10, r10]
-import core/map/contains as contains(Map[d12, e12], d12): Bool
-declare contains: (Map[d12, e12], d12) -> Bool
-declare empty: () -> Map[m10, n10]
-declare println: (o) -> Unit
-declare put: (Map[q10, r10], q10, r10) -> Map[q10, r10]
+import core/peek/peek as peek(h) -> h
+import core/list/last as last(List[u3]) -> Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
+import core/list/map as map(List[y], (y) -> a1) -> List[a1]
+import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
+import core/io/println as println(m) -> Unit
+import core/option/Some as Some(e) -> Option[e]
+import core/result/Ok as Ok(g) -> Result[f, g]
+import core/result/Err as Err(f) -> Result[f, g]
+import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/map/empty as empty() -> Map[m9, n9]
+import core/map/put as put(Map[q9, r9], q9, r9) -> Map[q9, r9]
+import core/map/contains as contains(Map[d11, e11], d11) -> Bool
+declare contains: (Map[d11, e11], d11) -> Bool
+declare empty: () -> Map[m9, n9]
+declare println: (m) -> Unit
+declare put: (Map[q9, r9], q9, r9) -> Map[q9, r9]
 
 fn main() -> Unit =
-  let v0: Map[r12, s12] = call empty()
+  let v0: Map[r11, s11] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)
