@@ -316,6 +316,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 let mut branch_lives: Vec<Vec<LiveBinding>> = Vec::new();
                 for arm in arms {
                     let mut arm_live = live.clone();
+                    if let Some(guard) = &arm.guard {
+                        self.walk_expr(guard, &mut arm_live);
+                    }
                     self.walk_expr(&arm.body, &mut arm_live);
                     branch_lives.push(arm_live);
                 }

@@ -277,6 +277,9 @@ pub(super) fn check_constrained_function_refs(
             TypedExprKind::Match { scrutinee, arms } => {
                 work.push(scrutinee);
                 for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        work.push(guard);
+                    }
                     work.push(&arm.body);
                 }
             }
@@ -515,6 +518,9 @@ fn walk_trait_method_calls(
             TypedExprKind::Match { scrutinee, arms } => {
                 work.push(scrutinee);
                 for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        work.push(guard);
+                    }
                     work.push(&arm.body);
                 }
             }
@@ -854,6 +860,9 @@ pub(super) fn check_trait_instances(
             TypedExprKind::Match { scrutinee, arms } => {
                 work.push(scrutinee);
                 for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        work.push(guard);
+                    }
                     work.push(&arm.body);
                 }
             }

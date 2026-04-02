@@ -1,0 +1,53 @@
+---
+source: crates/ir/tests/lower_test.rs
+assertion_line: 75
+expression: ir_module.to_string()
+---
+module data_types__match_guard_basic
+
+type Option[a] = Some#0(a) | None#1
+import core/peek/peek as peek(h): h
+import core/list/last as last(List[u3]): Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5): List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool): List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1): y1
+import core/list/map as map(List[y], (y) -> a1): List[a1]
+import core/vec/to_list as to_list(Vec[c8]): List[c8]
+import core/io/println as println(m): Unit
+import core/option/Some as Some(e): Option[e]
+import core/result/Ok as Ok(g): Result[f, g]
+import core/result/Err as Err(f): Result[f, g]
+import core/list/Cons as Cons(h, List[h]): List[h]
+declare println: (m) -> Unit
+
+fn classify(v0: Option[Int]) -> String =
+  switch v0 {
+    0 (v1: Int) ->
+      let_join v5(v4: Bool) =
+        if v4 {
+          "positive"
+        } else {
+          "non-positive"
+        }
+      in
+      let v2: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+      let v3: Bool = trait_call core/ord.Ord.lt(v2, 0, v1)
+      jump v5(v3)
+    1 ->
+      "none"
+  }
+
+fn main() -> Unit =
+  let v6: ~Option[Int] = construct Option::Some#0(5)
+  let v7: String = call classify(v6)
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v9: Unit = call println(v8, v7)
+  let v10: ~Option[Int] = construct Option::Some#0(0)
+  let v11: String = call classify(v10)
+  let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v13: Unit = call println(v12, v11)
+  let v15: ~Option[Int] = construct Option::None#1()
+  let v16: String = call classify(v15)
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v17: Unit = call println(v14, v16)
+  v17

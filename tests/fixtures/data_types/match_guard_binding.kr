@@ -1,0 +1,13 @@
+# expect: output "3\n0\n0"
+type Pair = Pair(Int, Int)
+
+fun first_if_greater(p: Pair) -> Int = match p {
+    Pair(a, b) if a > b => a,
+    _ => 0,
+}
+
+fun main() = {
+    println(first_if_greater(Pair(3, 1)));
+    println(first_if_greater(Pair(1, 3)));
+    println(first_if_greater(Pair(2, 2)))
+}

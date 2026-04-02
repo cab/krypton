@@ -242,6 +242,7 @@ pub(super) fn synthesize_eq_body(
                                 if inner_variant.fields.is_empty() {
                                     TypedMatchArm {
                                         pattern: b_pattern,
+                                        guard: None,
                                         body: true_expr(),
                                     }
                                 } else {
@@ -282,6 +283,7 @@ pub(super) fn synthesize_eq_body(
                                     }
                                     TypedMatchArm {
                                         pattern: b_pattern,
+                                        guard: None,
                                         body: result,
                                     }
                                 }
@@ -292,6 +294,7 @@ pub(super) fn synthesize_eq_body(
                                         ty: target_type.clone(),
                                         span,
                                     },
+                                    guard: None,
                                     body: false_expr(),
                                 }
                             }
@@ -310,6 +313,7 @@ pub(super) fn synthesize_eq_body(
 
                     TypedMatchArm {
                         pattern: a_pattern,
+                        guard: None,
                         body: inner_match,
                     }
                 })
@@ -455,7 +459,7 @@ pub(super) fn synthesize_show_body(
                         str_concat(result, str_lit(")"))
                     };
 
-                    TypedMatchArm { pattern, body }
+                    TypedMatchArm { pattern, guard: None, body }
                 })
                 .collect();
 
@@ -613,6 +617,7 @@ pub(super) fn synthesize_hash_body(
 
                     TypedMatchArm {
                         pattern,
+                        guard: None,
                         body: result,
                     }
                 })

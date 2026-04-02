@@ -359,6 +359,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             arms: vec![
                 TypedMatchArm {
                     pattern: wrap_pattern,
+                    guard: None,
                     body: concat_expr(
                         string_lit("Wrap("),
                         concat_expr(render_inner, string_lit(")")),
@@ -366,6 +367,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 },
                 TypedMatchArm {
                     pattern: empty_pattern,
+                    guard: None,
                     body: string_lit("Empty"),
                 },
             ],
@@ -537,6 +539,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             constraints: vec![],
         }],
         extern_types: vec![],
+        extern_traits: vec![],
         struct_decls: vec![],
         sum_decls: vec![SumDecl {
             name: "Wrap".to_string(),

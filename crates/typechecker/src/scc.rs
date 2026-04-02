@@ -57,6 +57,9 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
         } => {
             collect_refs(scrutinee, names, refs);
             for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_refs(guard, names, refs);
+                }
                 collect_refs(&arm.body, names, refs);
             }
         }

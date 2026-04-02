@@ -511,60 +511,45 @@ pub fn check_exhaustiveness(
         None => return Ok(()),
     };
 
-    // Flatten or-patterns: each alternative becomes its own row in the matrix,
-    // sharing the same arm index for redundancy checking.
-    let mut pats: Vec<Vec<Pat>> = Vec::new();
-    let mut arm_indices: Vec<usize> = Vec::new();
-    for (i, arm) in arms.iter().enumerate() {
-        let converted = convert_or_expand(&arm.pattern);
-        for row in converted {
-            pats.push(vec![row]);
-            arm_indices.push(i);
-        }
-    }
     let types = vec![scrutinee_ty.clone()];
+    // Matrix of only unguarded rows — guarded arms don't contribute to coverage
+    // or make later arms redundant (since the guard might fail).
+    let mut unguarded_matrix: Vec<Vec<Pat>> = Vec::new();
 
-    // Redundancy: an arm is redundant if none of its expanded rows are useful
-    // against all prior rows.
     let mut checked_arms: HashSet<usize> = HashSet::new();
-    for i in 0..pats.len() {
-        let prior = &pats[..i];
-        let arm_idx = arm_indices[i];
-        if checked_arms.contains(&arm_idx) {
-            // Already reported or confirmed useful for this arm
-            continue;
+
+    for (arm_idx, arm) in arms.iter().enumerate() {
+        let converted = convert_or_expand(&arm.pattern);
+        let has_guard = arm.guard.is_some();
+
+        // Redundancy: check against unguarded prior rows only.
+        // A guarded arm can never make a later arm unreachable.
+        let any_useful = converted.iter().any(|row| {
+            is_useful(&unguarded_matrix, &[row.clone()], &types, registry, 0)
+        });
+        if !any_useful && !checked_arms.contains(&arm_idx) {
+            let arm_span = arm.pattern.span();
+            return Err(SpannedTypeError {
+                error: TypeError::RedundantPattern,
+                span: arm_span,
+                note: Some("this arm can never be reached".to_string()),
+                secondary_span: None,
+                source_file: None,
+                var_names: None,
+            });
         }
-        let useful = is_useful(prior, &pats[i], &types, registry, 0);
-        if useful {
-            checked_arms.insert(arm_idx);
-        } else {
-            // Check if any remaining row for this arm is useful
-            let mut any_useful = false;
-            for j in (i + 1)..pats.len() {
-                if arm_indices[j] == arm_idx {
-                    if is_useful(&pats[..j], &pats[j], &types, registry, 0) {
-                        any_useful = true;
-                        break;
-                    }
-                }
+        checked_arms.insert(arm_idx);
+
+        // Only unguarded rows count toward the matrix
+        if !has_guard {
+            for row in converted {
+                unguarded_matrix.push(vec![row]);
             }
-            if !any_useful {
-                let arm_span = arms[arm_idx].pattern.span();
-                return Err(SpannedTypeError {
-                    error: TypeError::RedundantPattern,
-                    span: arm_span,
-                    note: Some("this arm can never be reached".to_string()),
-                    secondary_span: None,
-                    source_file: None,
-                    var_names: None,
-                });
-            }
-            checked_arms.insert(arm_idx);
         }
     }
 
-    // Exhaustiveness: check if wildcard is useful against all arms
-    if let Some(w) = witness(&pats, &types, registry, 0) {
+    // Exhaustiveness: only unguarded arms count
+    if let Some(w) = witness(&unguarded_matrix, &types, registry, 0) {
         let missing = format_witness(&w);
         return Err(SpannedTypeError {
             error: TypeError::NonExhaustive { missing },

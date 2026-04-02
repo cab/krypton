@@ -308,6 +308,7 @@ pub enum TypedExprKind {
 #[derive(Debug, Clone)]
 pub struct TypedMatchArm {
     pub pattern: TypedPattern,
+    pub guard: Option<Box<TypedExpr>>,
     pub body: TypedExpr,
 }
 
@@ -610,6 +611,9 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
                 work.push(scrutinee);
                 for arm in arms {
                     apply_subst_pattern(&mut arm.pattern, subst);
+                    if let Some(guard) = &mut arm.guard {
+                        work.push(guard);
+                    }
                     work.push(&mut arm.body);
                 }
             }

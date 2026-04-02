@@ -1,0 +1,14 @@
+# expect: output "positive\nnon-positive\nnone"
+type Option[a] = Some(a) | None
+
+fun classify(opt: Option[Int]) -> String = match opt {
+    Some(x) if x > 0 => "positive",
+    Some(_) => "non-positive",
+    None => "none",
+}
+
+fun main() = {
+    println(classify(Some(5)));
+    println(classify(Some(0)));
+    println(classify(None))
+}

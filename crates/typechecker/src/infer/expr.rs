@@ -1112,6 +1112,13 @@ impl<'a> InferenceContext<'a> {
             self.env.push_scope();
             let typed_pattern =
                 self.check_pattern(&arm.pattern, &match_ty, span, scrutinee_is_owned)?;
+            let typed_guard = if let Some(guard_expr) = &arm.guard {
+                let guard_typed = self.infer_expr_inner(guard_expr, None)?;
+                self.unify_spanned(&guard_typed.ty, &Type::Bool, guard_typed.span)?;
+                Some(Box::new(guard_typed))
+            } else {
+                None
+            };
             let body_typed = self.infer_expr_inner(&arm.body, None)?;
             match &result_ty {
                 None => {
@@ -1127,6 +1134,7 @@ impl<'a> InferenceContext<'a> {
             self.env.pop_scope();
             typed_arms.push(TypedMatchArm {
                 pattern: typed_pattern,
+                guard: typed_guard,
                 body: body_typed,
             });
         }
@@ -1821,6 +1829,9 @@ fn collect_trait_constraints_on_vars(
             TypedExprKind::Match { scrutinee, arms } => {
                 stack.push(scrutinee);
                 for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        stack.push(guard);
+                    }
                     stack.push(&arm.body);
                 }
             }

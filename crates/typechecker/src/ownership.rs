@@ -117,7 +117,10 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
             let s = count_max_uses(scrutinee, name, bound);
             let max_arm = arms
                 .iter()
-                .map(|arm| count_max_uses(&arm.body, name, bound))
+                .map(|arm| {
+                    let guard_uses = arm.guard.as_ref().map_or(0, |g| count_max_uses(g, name, bound));
+                    guard_uses + count_max_uses(&arm.body, name, bound)
+                })
                 .max()
                 .unwrap_or(0);
             s + max_arm
@@ -449,6 +452,9 @@ fn collect_free_owned(
                 let mut inner_bound = bound.clone();
                 for name in collect_pattern_var_names(&arm.pattern) {
                     inner_bound.insert(name);
+                }
+                if let Some(guard) = &arm.guard {
+                    collect_free_owned(guard, owned, &inner_bound, acc);
                 }
                 collect_free_owned(&arm.body, owned, &inner_bound, acc);
             }
@@ -952,6 +958,9 @@ impl<'a> OwnershipChecker<'a> {
                         self.owned.insert(name.clone());
                     }
 
+                    if let Some(guard) = &arm.guard {
+                        self.check_expr(guard)?;
+                    }
                     let (arm_consumed, arm_partial) = self.check_branch(&arm.body)?;
 
                     for name in &pattern_owned {

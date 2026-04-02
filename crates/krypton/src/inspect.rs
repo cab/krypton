@@ -446,6 +446,10 @@ impl<'a> TypedFormatter<'a> {
                 for arm in arms {
                     self.indent();
                     self.fmt_typed_pattern(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.buf.push_str(" if ");
+                        self.fmt_expr(guard);
+                    }
                     self.buf.push_str(" => ");
                     self.fmt_expr(&arm.body);
                     self.buf.push_str(",\n");
