@@ -1,4 +1,4 @@
 # expect: ok
-extern js "./runtime/js/array.mjs" as JsArray[a] {
+extern js "./extern/js/array.mjs" as JsArray[a] {
     fun push(xs: JsArray[a], x: a) -> Unit
 }

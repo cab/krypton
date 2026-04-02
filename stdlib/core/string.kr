@@ -20,7 +20,7 @@ extern java "krypton.runtime.KryptonString" {
     fun charAt[a](s: String, index: Int) -> a
 }
 
-extern js "../runtime/js/string.mjs" {
+extern js "../extern/js/string.mjs" {
     pub fun split(s: String, delim: String) -> Vec[String]
     pub fun concat(a: String, b: String) -> String
     pub fun trim(s: String) -> String

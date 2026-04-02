@@ -8,7 +8,7 @@ use zip::ZipWriter;
 /// Locate the krypton-runtime.jar.
 ///
 /// Checks `KRYPTON_RUNTIME` env var first, then falls back to the
-/// workspace-relative path `../../runtime/build/libs/krypton-runtime.jar`.
+/// workspace-relative path `../../extern/jvm/runtime/build/libs/krypton-runtime.jar`.
 pub fn find_runtime_jar() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("KRYPTON_RUNTIME") {
         let p = PathBuf::from(path);
@@ -17,7 +17,7 @@ pub fn find_runtime_jar() -> Option<PathBuf> {
         }
     }
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../runtime/build/libs/krypton-runtime.jar");
+        .join("../../extern/jvm/runtime/build/libs/krypton-runtime.jar");
     if workspace_root.exists() {
         return Some(workspace_root);
     }

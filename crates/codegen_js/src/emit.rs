@@ -951,10 +951,10 @@ impl<'a> JsEmitter<'a> {
     /// Resolve an extern JS import path that is relative to the declaring module
     /// into a path relative to the current (emitting) module.
     ///
-    /// For example, `core/io` declares `extern js "../runtime/js/io.mjs"`.
+    /// For example, `core/io` declares `extern js "../extern/js/io.mjs"`.
     /// If the emitting module is `test` (at root), the resolved path is
-    /// `./runtime/js/io.mjs`. If the emitting module is `core/show`, the
-    /// resolved path remains `../runtime/js/io.mjs`.
+    /// `./extern/js/io.mjs`. If the emitting module is `core/show`, the
+    /// resolved path remains `../extern/js/io.mjs`.
     fn resolve_extern_js_path(&self, raw_path: &str, declaring_module: &str) -> String {
         // 1. Get the declaring module's directory segments
         let decl_parts: Vec<&str> = declaring_module.split('/').collect();
@@ -1277,7 +1277,7 @@ impl<'a> JsEmitter<'a> {
                 path.push_str("../");
             }
         }
-        path.push_str("runtime/js/");
+        path.push_str("extern/js/");
         path.push_str(filename);
         path
     }
@@ -2271,6 +2271,7 @@ mod tests {
             fn_identities: HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
+            extern_traits: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
@@ -2330,17 +2331,18 @@ mod tests {
             declaring_module_path: "test".to_string(),
             span: (0, 0),
             target: ExternTarget::Js {
-                module: "./runtime/js/string.mjs".to_string(),
+                module: "./extern/js/string.mjs".to_string(),
             },
             nullable: true,
             throws: false,
             param_types: vec![Type::String],
             return_type: Type::Named("Option".to_string(), vec![Type::Int]),
+            bridge_params: vec![],
         });
 
         let output = emit_test_module(&module);
         assert!(output.contains(
-            "import { parse_int as __krypton_nullable_raw$parse_int } from './runtime/js/string.mjs';"
+            "import { parse_int as __krypton_nullable_raw$parse_int } from './extern/js/string.mjs';"
         ));
         assert!(output.contains(
             "import { Some as __krypton_nullable_Some, None as __krypton_nullable_None } from './core/option.mjs';"
@@ -2414,7 +2416,7 @@ mod tests {
         );
         let output = emitter.emit();
         assert!(output.contains("import { parse_int } from '../stringlib.mjs';"));
-        assert!(!output.contains("runtime/js/string.mjs"));
+        assert!(!output.contains("extern/js/string.mjs"));
     }
 
     #[test]
@@ -2426,16 +2428,17 @@ mod tests {
             declaring_module_path: "test".to_string(),
             span: (0, 0),
             target: ExternTarget::Js {
-                module: "./runtime/js/string.mjs".to_string(),
+                module: "./extern/js/string.mjs".to_string(),
             },
             nullable: false,
             throws: false,
             param_types: vec![Type::String],
             return_type: Type::Int,
+            bridge_params: vec![],
         });
 
         let output = emit_test_module(&module);
-        assert!(output.contains("import { length as __krypton_raw$length } from './runtime/js/string.mjs';"));
+        assert!(output.contains("import { length as __krypton_raw$length } from './extern/js/string.mjs';"));
         assert!(output.contains("export function length(arg0) {"));
         assert!(output.contains("return __krypton_raw$length(arg0);"));
         assert!(!output.contains("__krypton_nullable_Some"));
@@ -2459,6 +2462,7 @@ mod tests {
             throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Unit,
+            bridge_params: vec![],
         });
         module.functions.push(FnDef {
             id: FnId(0),
@@ -2504,6 +2508,7 @@ mod tests {
             throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Unit,
+            bridge_params: vec![],
         });
         module.functions.push(FnDef {
             id: FnId(0),

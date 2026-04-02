@@ -31,6 +31,7 @@ mod tests {
             fn_identities: HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
+            extern_traits: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
@@ -1096,12 +1097,13 @@ mod tests {
             declaring_module_path: "core/actor".to_string(),
             span: (0, 0),
             target: ExternTarget::Js {
-                module: "../runtime/js/actor.mjs".to_string(),
+                module: "../extern/js/actor.mjs".to_string(),
             },
             nullable: false,
             throws: false,
             param_types: vec![Type::Named("Mailbox".into(), vec![])],
             return_type: Type::Int,
+            bridge_params: vec![],
         });
         actor_mod.fn_identities.insert(
             FnId(0),
@@ -1111,7 +1113,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".into()),
                 },
                 target: ExternTarget::Js {
-                    module: "../runtime/js/actor.mjs".to_string(),
+                    module: "../extern/js/actor.mjs".to_string(),
                 },
                 name: "raw_receive".to_string(),
             },
@@ -1244,12 +1246,13 @@ mod tests {
             declaring_module_path: "core/actor".to_string(),
             span: (0, 0),
             target: ExternTarget::Js {
-                module: "../runtime/js/actor.mjs".to_string(),
+                module: "../extern/js/actor.mjs".to_string(),
             },
             nullable: false,
             throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Int,
+            bridge_params: vec![],
         });
         actor_mod.fn_identities.insert(
             FnId(0),
@@ -1259,7 +1262,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".into()),
                 },
                 target: ExternTarget::Js {
-                    module: "../runtime/js/actor.mjs".to_string(),
+                    module: "../extern/js/actor.mjs".to_string(),
                 },
                 name: "raw_receive".to_string(),
             },
@@ -1401,12 +1404,13 @@ mod tests {
             declaring_module_path: "core/actor".to_string(),
             span: (0, 0),
             target: ExternTarget::Js {
-                module: "../runtime/js/actor.mjs".to_string(),
+                module: "../extern/js/actor.mjs".to_string(),
             },
             nullable: false,
             throws: false,
             param_types: vec![Type::Int],
             return_type: Type::Int,
+            bridge_params: vec![],
         });
         actor_mod.fn_identities.insert(
             FnId(0),
@@ -1416,7 +1420,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".into()),
                 },
                 target: ExternTarget::Js {
-                    module: "../runtime/js/actor.mjs".to_string(),
+                    module: "../extern/js/actor.mjs".to_string(),
                 },
                 name: "raw_receive".to_string(),
             },

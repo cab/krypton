@@ -3,6 +3,6 @@ extern java "krypton.runtime.KryptonIO" {
     fun foo(n: Int) -> String
 }
 
-extern js "./runtime/js/io.mjs" {
+extern js "./extern/js/io.mjs" {
     fun foo(s: String) -> String
 }

@@ -10,7 +10,7 @@ use krypton_typechecker::infer::infer_module;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-static JS_RUNTIME_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../runtime/js/dist");
+static JS_RUNTIME_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../extern/js/dist");
 
 const ROOT_MODULE_NAME: &str = "main";
 const ROOT_FILENAME: &str = "main.kr";
@@ -68,7 +68,7 @@ impl ModuleResolver for PlaygroundResolver {
 
 fn package_runtime_files(files: &mut Vec<CompiledJsFile>) {
     for runtime_file in RUNTIME_FILES {
-        let path = format!("runtime/js/{runtime_file}");
+        let path = format!("extern/js/{runtime_file}");
         let source = JS_RUNTIME_DIR
             .get_file(runtime_file)
             .unwrap_or_else(|| panic!("missing runtime file {runtime_file}"))
@@ -91,7 +91,12 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     let resolver = PlaygroundResolver {
         root_source: source.to_string(),
     };
-    let (typed_modules, interfaces) = match infer_module(&module, &resolver, ROOT_MODULE_NAME.to_string(), krypton_parser::ast::CompileTarget::Jvm) {
+    let (typed_modules, interfaces) = match infer_module(
+        &module,
+        &resolver,
+        ROOT_MODULE_NAME.to_string(),
+        krypton_parser::ast::CompileTarget::Js,
+    ) {
         Ok(result) => result,
         Err(errors) => {
             let (diags, _srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
@@ -173,7 +178,7 @@ mod tests {
             result
                 .files
                 .iter()
-                .any(|file| file.path == "runtime/js/io.mjs"),
+                .any(|file| file.path == "extern/js/io.mjs"),
             "runtime io module should be packaged"
         );
         assert!(

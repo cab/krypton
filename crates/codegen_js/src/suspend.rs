@@ -407,6 +407,7 @@ mod tests {
             fn_identities: HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
+            extern_traits: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
@@ -424,7 +425,7 @@ mod tests {
         let mut m = make_module("core/actor");
 
         let js_target = ExternTarget::Js {
-            module: "../runtime/js/actor.mjs".to_string(),
+            module: "../extern/js/actor.mjs".to_string(),
         };
 
         let seeds: &[(&str, FnId, bool)] = &[
@@ -445,6 +446,7 @@ mod tests {
                 throws: false,
                 param_types: vec![Type::Int],
                 return_type: Type::Int,
+                bridge_params: vec![],
             });
             m.fn_identities.insert(
                 id,

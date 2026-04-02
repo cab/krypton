@@ -22,7 +22,7 @@ const PRINTLN_EXTERN: &str =
 
 fn find_runtime_jar() -> Option<PathBuf> {
     let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../runtime/build/libs/krypton-runtime.jar");
+        .join("../../extern/jvm/runtime/build/libs/krypton-runtime.jar");
     if jar.exists() {
         Some(jar)
     } else {

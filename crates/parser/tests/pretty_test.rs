@@ -82,6 +82,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             module_path,
             alias,
             alias_visibility,
+            is_trait,
             type_params,
             methods,
             ..
@@ -91,6 +92,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             module_path: module_path.clone(),
             alias: alias.clone(),
             alias_visibility: alias_visibility.clone(),
+            is_trait: *is_trait,
             type_params: type_params.clone(),
             methods: methods
                 .iter()
@@ -600,7 +602,7 @@ fn roundtrip_extern() {
 
 #[test]
 fn roundtrip_extern_js() {
-    let src = r#"extern js "./runtime/js/io.mjs" {
+    let src = r#"extern js "./extern/js/io.mjs" {
     fun raw_println(s: String) -> Unit
 }"#;
     assert_surface_roundtrip(src);

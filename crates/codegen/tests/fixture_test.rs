@@ -15,7 +15,7 @@ use rstest::rstest;
 fn build_classpath(class_dir: &Path) -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
     let jar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../runtime/build/libs/krypton-runtime.jar");
+        .join("../../extern/jvm/runtime/build/libs/krypton-runtime.jar");
     if jar.exists() {
         format!("{}{}{}", class_dir.display(), sep, jar.display())
     } else {

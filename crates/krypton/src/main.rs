@@ -30,30 +30,30 @@ fn find_runtime_jar() -> Option<PathBuf> {
         }
     }
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../runtime/build/libs/krypton-runtime.jar");
+        .join("../../extern/jvm/runtime/build/libs/krypton-runtime.jar");
     if workspace_root.exists() {
         return Some(workspace_root);
     }
     None
 }
 
-/// Copy committed runtime/js/dist/*.mjs files into the output directory so that
+/// Copy committed extern/js/dist/*.mjs files into the output directory so that
 /// stdlib extern JS imports resolve at Node runtime.
 fn copy_js_runtime(dest: &std::path::Path) {
-    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js/dist");
-    if !runtime_src.exists() {
+    let extern_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extern/js/dist");
+    if !extern_src.exists() {
         return;
     }
-    let runtime_dest = dest.join("runtime/js");
-    std::fs::create_dir_all(&runtime_dest).unwrap_or_else(|e| {
+    let extern_dest = dest.join("extern/js");
+    std::fs::create_dir_all(&extern_dest).unwrap_or_else(|e| {
         eprintln!("Error creating runtime dir: {}", e);
         process::exit(1);
     });
-    if let Ok(entries) = std::fs::read_dir(&runtime_src) {
+    if let Ok(entries) = std::fs::read_dir(&extern_src) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("mjs") {
-                std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap())).unwrap_or_else(
+                std::fs::copy(&path, extern_dest.join(path.file_name().unwrap())).unwrap_or_else(
                     |e| {
                         eprintln!("Error copying runtime file: {}", e);
                         process::exit(1);

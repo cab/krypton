@@ -33,7 +33,7 @@ extern java "krypton.runtime.KryptonArray" {
     fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
-extern js "../runtime/js/json.mjs" {
+extern js "../extern/js/json.mjs" {
     fun staticParse[a](s: String) -> a
     fun staticSerialize[a](x: a) -> String
     fun staticRawType[a](x: a) -> Int
@@ -52,7 +52,7 @@ extern js "../runtime/js/json.mjs" {
     fun staticObjPut[a, b, c](obj: a, key: b, value: c) -> Unit
 }
 
-extern js "../runtime/js/array.mjs" {
+extern js "../extern/js/array.mjs" {
     fun staticLength[a](xs: Vec[a]) -> Int
     fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
@@ -143,7 +143,7 @@ extern java "krypton.runtime.KryptonConvert" {
     fun toInt(n: Float) -> Int
 }
 
-extern js "../runtime/js/json.mjs" {
+extern js "../extern/js/json.mjs" {
     fun toFloat(n: Int) -> Float
     fun toInt(n: Float) -> Int
 }

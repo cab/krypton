@@ -28,7 +28,7 @@ impl Show[Vec[a]] where a: Show {
     fun show(v) = combine(combine("[", join_elems(v, 0, "")), "]")
 }
 
-extern js "../runtime/js/array.mjs" as Vec[a] {
+extern js "../extern/js/array.mjs" as Vec[a] {
     fun staticLength(xs: Vec[a]) -> Int
     fun staticGet(xs: Vec[a], index: Int) -> a
     fun staticNew(size: Int) -> Vec[a]

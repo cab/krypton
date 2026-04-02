@@ -30,11 +30,11 @@ build-runtime: build-runtime-jvm build-runtime-js
 
 # Build the JVM runtime JAR
 build-runtime-jvm:
-    ./gradlew :runtime:build
+    ./extern/jvm/gradlew :runtime:build :repl:build
 
 # Build the JS runtime bundle
 build-runtime-js:
-    npm --prefix runtime/js run build
+    npm --prefix extern/js run build
 
 # Run all tests (Rust + Java + JS runtime)
 test: build-runtime
@@ -59,7 +59,7 @@ test-runtime: test-runtime-jvm test-runtime-js
 
 # Run JVM runtime tests only
 test-runtime-jvm:
-    ./gradlew :runtime:test
+    ./extern/jvm/gradlew :runtime:test :repl:test
 
 # Run JS target fixture tests only (codegen_js crate)
 test-js:
@@ -67,7 +67,7 @@ test-js:
 
 # Run JS runtime tests only
 test-runtime-js: build-runtime-js
-    npm --prefix runtime/js test
+    npm --prefix extern/js test
 
 # Backward-compatible alias for JS runtime tests
 test-js-runtime: test-runtime-js

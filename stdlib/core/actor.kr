@@ -17,10 +17,10 @@ extern java "krypton.runtime.KryptonActors" {
     @nullable fun raw_ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Option[r]
 }
 
-extern js "../runtime/js/actor.mjs" as Mailbox[m] {}
-extern js "../runtime/js/actor.mjs" as Ref[m] {}
+extern js "../extern/js/actor.mjs" as Mailbox[m] {}
+extern js "../extern/js/actor.mjs" as Ref[m] {}
 
-extern js "../runtime/js/actor.mjs" {
+extern js "../extern/js/actor.mjs" {
     fun raw_spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m]
     fun raw_send[m](target: Ref[m], msg: m) -> Unit
     fun raw_receive[m](mb: Mailbox[m]) -> m

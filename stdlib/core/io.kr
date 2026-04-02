@@ -10,7 +10,7 @@ extern java "krypton.runtime.KryptonIO" {
     pub fun write_file(path: String, content: String) -> Result[String, Unit]
 }
 
-extern js "../runtime/js/io.mjs" {
+extern js "../extern/js/io.mjs" {
     fun raw_println[a](x: a) -> Unit
     fun raw_print[a](x: a) -> Unit
     pub fun readLine() -> String

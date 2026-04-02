@@ -2,36 +2,14 @@ plugins {
     `java-library`
 }
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     api("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
 tasks.jar {
     archiveBaseName.set("krypton-runtime")
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory()) it else zipTree(it) })
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-testing {
-    suites {
-        val test by getting(JvmTestSuite::class) {
-            useJUnitJupiter("5.11.4")
-        }
-    }
-}
-
-tasks.withType<Test> {
-    jvmArgs("-Djdk.tracePinnedThreads=short")
 }
 
 val noSynchronized by tasks.registering {
@@ -43,10 +21,12 @@ val noSynchronized by tasks.registering {
         if (violations.isNotEmpty()) {
             throw GradleException(
                 "synchronized keyword found — use ReentrantLock instead:\n" +
-                violations.joinToString("\n") { "  ${it.relativeTo(projectDir)}" }
+                    violations.joinToString("\n") { "  ${it.relativeTo(projectDir)}" }
             )
         }
     }
 }
 
-tasks.named("check") { dependsOn(noSynchronized) }
+tasks.named("check") {
+    dependsOn(noSynchronized)
+}

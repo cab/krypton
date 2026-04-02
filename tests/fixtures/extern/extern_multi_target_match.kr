@@ -3,6 +3,6 @@ extern java "krypton.runtime.KryptonIO" {
     fun raw_println(s: String) -> Unit
 }
 
-extern js "./runtime/js/io.mjs" {
+extern js "./extern/js/io.mjs" {
     fun raw_println(s: String) -> Unit
 }

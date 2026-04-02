@@ -304,9 +304,9 @@ struct JvmProcess {
 impl JvmProcess {
     fn spawn() -> Result<Self, String> {
         let runtime_jar = find_runtime_jar()
-            .ok_or_else(|| "Cannot find krypton-runtime.jar. Build with: ./runtime/gradlew build".to_string())?;
+            .ok_or_else(|| "Cannot find krypton-runtime.jar. Build with: ./extern/jvm/gradlew :runtime:build".to_string())?;
         let repl_jar = find_repl_jar()
-            .ok_or_else(|| "Cannot find krypton-repl.jar. Build with: ./runtime/gradlew :repl:build".to_string())?;
+            .ok_or_else(|| "Cannot find krypton-repl.jar. Build with: ./extern/jvm/gradlew :repl:build".to_string())?;
 
         let sep = if cfg!(windows) { ";" } else { ":" };
         let classpath = format!("{}{}{}", repl_jar.display(), sep, runtime_jar.display());
@@ -449,7 +449,7 @@ pub fn find_runtime_jar() -> Option<PathBuf> {
         }
     }
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../runtime/build/libs/krypton-runtime.jar");
+        .join("../../extern/jvm/runtime/build/libs/krypton-runtime.jar");
     if workspace_root.exists() {
         return Some(workspace_root);
     }
@@ -464,7 +464,7 @@ fn find_repl_jar() -> Option<PathBuf> {
         }
     }
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../runtime/repl/build/libs/krypton-repl.jar");
+        .join("../../extern/jvm/repl/build/libs/krypton-repl.jar");
     if workspace_root.exists() {
         return Some(workspace_root);
     }

@@ -17,3 +17,8 @@ thoughts/
 # Snapshot pending files
 *.snap.new
 *.pending-snap
+
+
+out
+extern/js/node_modules/
+extern/jvm/.idea/

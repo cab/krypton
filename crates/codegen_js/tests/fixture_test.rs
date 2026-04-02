@@ -48,18 +48,18 @@ fn compile_js_result_with_resolver(
     compile_modules_js(&ir_modules, "test", false, &link_ctx, &js_module_sources)
 }
 
-/// Copy committed runtime/js/dist/*.mjs files into the temp output directory so that
-/// stdlib extern JS imports (e.g. `../runtime/js/io.mjs`) resolve at Node runtime.
+/// Copy committed extern/js/dist/*.mjs files into the temp output directory so that
+/// stdlib extern JS imports (e.g. `../extern/js/io.mjs`) resolve at Node runtime.
 fn copy_runtime_files(dest: &Path) {
-    let runtime_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime/js/dist");
-    let runtime_dest = dest.join("runtime/js");
-    std::fs::create_dir_all(&runtime_dest).unwrap();
+    let extern_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extern/js/dist");
+    let extern_dest = dest.join("extern/js");
+    std::fs::create_dir_all(&extern_dest).unwrap();
 
-    for entry in std::fs::read_dir(&runtime_src).unwrap() {
+    for entry in std::fs::read_dir(&extern_src).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("mjs") {
-            std::fs::copy(&path, runtime_dest.join(path.file_name().unwrap())).unwrap();
+            std::fs::copy(&path, extern_dest.join(path.file_name().unwrap())).unwrap();
         }
     }
 }
@@ -86,7 +86,7 @@ fn run_js_files(files: &[(String, String)], fixture_name: &str) -> String {
     std::fs::write(
         &bootstrap,
         format!(
-            "import {{ runMain }} from './runtime/js/actor.mjs';\nimport * as module from './{}';\nif (module.main) await runMain(module.main);\n",
+            "import {{ runMain }} from './extern/js/actor.mjs';\nimport * as module from './{}';\nif (module.main) await runMain(module.main);\n",
             entry.file_name().unwrap().to_string_lossy()
         ),
     )
