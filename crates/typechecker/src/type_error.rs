@@ -64,6 +64,7 @@ pub enum TypeErrorCode {
     E0014, // Or-pattern binding mismatch
     E0603, // Invalid @throws return type
     E0604, // Extern trait on JS target (Java-only feature)
+    E0107, // Owned value consumed in match guard
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -301,6 +302,9 @@ pub enum TypeError {
     ExternTraitOnJsTarget {
         name: String,
     },
+    MovedInGuard {
+        name: String,
+    },
 }
 
 impl TypeError {
@@ -372,6 +376,7 @@ impl TypeError {
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
+            TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
         }
     }
 
@@ -620,6 +625,9 @@ impl TypeError {
             }
             TypeError::ExternTraitOnJsTarget { .. } => {
                 Some("extern traits generate JVM bridge classes and are only supported with `extern java`".to_string())
+            }
+            TypeError::MovedInGuard { name } => {
+                Some(format!("`{name}` is consumed in a match guard; guards may fail and fall through, so they cannot move owned values"))
             }
         }
     }
@@ -1138,6 +1146,9 @@ impl fmt::Display for TypeError {
                     "extern trait `{}` is not supported on the JS target; extern traits are Java-only",
                     name
                 )
+            }
+            TypeError::MovedInGuard { name } => {
+                write!(f, "cannot consume owned value `{}` in match guard", name)
             }
         }
     }

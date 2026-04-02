@@ -1,8 +1,9 @@
 # expect: error E0107
-fun consume(buf: ~String) -> Int = 1
+# Two guards consuming same free owned variable
+fun consume(s: ~String) -> Int = 1
 
 fun test(tag: Int, x: ~String) -> Int = match tag {
     0 if consume(x) > 0 => 10,
-    1 => consume(x),
+    1 if consume(x) > 1 => 20,
     _ => 0,
 }

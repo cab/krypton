@@ -1,0 +1,9 @@
+# expect: error E0107
+# Pattern-bound owned value consumed in match guard
+type Box = { value: ~String }
+fun consume(s: ~String) -> Int = 1
+
+fun test(b: ~Box) -> Int = match b {
+    Box { value } if consume(value) > 0 => 10,
+    _ => 0,
+}

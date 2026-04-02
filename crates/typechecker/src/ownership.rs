@@ -745,6 +745,19 @@ impl<'a> OwnershipChecker<'a> {
         let result = (|| {
             if let Some(guard) = guard {
                 self.check_expr(guard)?;
+                // Guards cannot consume owned variables — fallthrough would cause use-after-move
+                for (name, span) in &self.consumed {
+                    if !saved_consumed.contains_key(name) && self.owned.contains(name) {
+                        return Err(SpannedTypeError {
+                            error: TypeError::MovedInGuard { name: name.clone() },
+                            span: *span,
+                            note: None,
+                            secondary_span: None,
+                            source_file: None,
+                            var_names: None,
+                        });
+                    }
+                }
             }
             self.check_expr(body)
         })();
