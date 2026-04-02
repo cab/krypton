@@ -117,7 +117,12 @@ impl fmt::Display for SimpleExpr {
                 write!(f, "make_closure({func}, [{}])", fmt_atoms(captures))
             }
             SimpleExprKind::Construct { type_ref, fields } => {
-                write!(f, "construct {}({})", crate::canonical_ref_type_name(type_ref), fmt_atoms(fields))
+                write!(
+                    f,
+                    "construct {}({})",
+                    crate::canonical_ref_type_name(type_ref),
+                    fmt_atoms(fields)
+                )
             }
             SimpleExprKind::ConstructVariant {
                 type_ref,
@@ -230,7 +235,12 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 )
             }
             SimpleExprKind::Construct { type_ref, fields } => {
-                write!(self.f, "construct {}({})", crate::canonical_ref_type_name(type_ref), fmt_atoms(fields))
+                write!(
+                    self.f,
+                    "construct {}({})",
+                    crate::canonical_ref_type_name(type_ref),
+                    fmt_atoms(fields)
+                )
             }
             SimpleExprKind::ConstructVariant {
                 type_ref,
@@ -539,7 +549,7 @@ impl fmt::Display for Module {
             let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
             writeln!(
                 f,
-                "extern {target} {}{}({}): {}",
+                "extern {target} {}{}({}) -> {}",
                 ext.name,
                 if ext.nullable { " [nullable]" } else { "" },
                 params.join(", "),
@@ -557,7 +567,7 @@ impl fmt::Display for Module {
             let params: Vec<String> = imp.param_types.iter().map(|t| format!("{t}")).collect();
             writeln!(
                 f,
-                "import {}/{} as {}({}): {}",
+                "import {}/{} as {}({}) -> {}",
                 imp.source_module,
                 imp.original_name,
                 imp.name,
@@ -989,6 +999,7 @@ mod tests {
             fn_identities: std::collections::HashMap::new(),
             extern_fns: vec![],
             extern_types: vec![],
+            extern_traits: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],
