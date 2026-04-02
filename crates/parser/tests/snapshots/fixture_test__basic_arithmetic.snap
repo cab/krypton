@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: add
       visibility: Private
       type_params: []
@@ -42,6 +44,7 @@ decls:
         - 13
         - 34
   - DefFn:
+      platform: ~
       name: sub
       visibility: Private
       type_params: []
@@ -80,6 +83,7 @@ decls:
         - 36
         - 57
   - DefFn:
+      platform: ~
       name: mul
       visibility: Private
       type_params: []
@@ -118,6 +122,7 @@ decls:
         - 59
         - 80
   - DefFn:
+      platform: ~
       name: div
       visibility: Private
       type_params: []
@@ -156,6 +161,7 @@ decls:
         - 82
         - 103
   - DefFn:
+      platform: ~
       name: eq
       visibility: Private
       type_params: []
@@ -194,6 +200,7 @@ decls:
         - 105
         - 126
   - DefFn:
+      platform: ~
       name: neq
       visibility: Private
       type_params: []
@@ -232,6 +239,7 @@ decls:
         - 128
         - 150
   - DefFn:
+      platform: ~
       name: lt
       visibility: Private
       type_params: []
@@ -270,6 +278,7 @@ decls:
         - 152
         - 172
   - DefFn:
+      platform: ~
       name: gt
       visibility: Private
       type_params: []
@@ -308,6 +317,7 @@ decls:
         - 174
         - 194
   - DefFn:
+      platform: ~
       name: le
       visibility: Private
       type_params: []
@@ -346,6 +356,7 @@ decls:
         - 196
         - 217
   - DefFn:
+      platform: ~
       name: ge
       visibility: Private
       type_params: []

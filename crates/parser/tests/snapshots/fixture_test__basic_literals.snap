@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: int_lit
       visibility: Private
       type_params: []
@@ -21,6 +23,7 @@ decls:
         - 13
         - 31
   - DefFn:
+      platform: ~
       name: neg_int
       visibility: Private
       type_params: []
@@ -51,6 +54,7 @@ decls:
         - 33
         - 54
   - DefFn:
+      platform: ~
       name: float_lit
       visibility: Private
       type_params: []
@@ -68,6 +72,7 @@ decls:
         - 56
         - 78
   - DefFn:
+      platform: ~
       name: bool_true
       visibility: Private
       type_params: []
@@ -85,6 +90,7 @@ decls:
         - 80
         - 102
   - DefFn:
+      platform: ~
       name: bool_false
       visibility: Private
       type_params: []
@@ -102,6 +108,7 @@ decls:
         - 104
         - 128
   - DefFn:
+      platform: ~
       name: string_lit
       visibility: Private
       type_params: []
@@ -119,6 +126,7 @@ decls:
         - 130
         - 162
   - DefFn:
+      platform: ~
       name: unit_lit
       visibility: Private
       type_params: []

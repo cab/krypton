@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: add
       visibility: Pub
       type_params: []
@@ -57,6 +59,7 @@ decls:
         - 13
         - 55
   - DefType:
+      platform: ~
       name: Point
       visibility: Pub
       type_params: []
@@ -80,6 +83,7 @@ decls:
         - 56
         - 91
   - DefType:
+      platform: ~
       name: Color
       visibility: Pub
       type_params: []

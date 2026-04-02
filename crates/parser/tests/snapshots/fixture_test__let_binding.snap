@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: simple
       visibility: Private
       type_params: []
@@ -44,6 +46,7 @@ decls:
         - 13
         - 57
   - DefFn:
+      platform: ~
       name: with_type
       visibility: Private
       type_params: []

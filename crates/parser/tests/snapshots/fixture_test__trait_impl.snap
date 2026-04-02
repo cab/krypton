@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefType:
+      platform: ~
       name: Point
       visibility: Private
       type_params: []
@@ -27,6 +29,7 @@ decls:
         - 13
         - 44
   - DefImpl:
+      platform: ~
       trait_name: Eq
       target_type:
         Named:
@@ -37,7 +40,8 @@ decls:
       type_params: []
       type_constraints: []
       methods:
-        - name: eq
+        - platform: ~
+          name: eq
           visibility: Private
           type_params: []
           params:

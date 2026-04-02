@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - Import:
+      platform: ~
       is_pub: false
       path: core/option
       names:
@@ -17,6 +19,7 @@ decls:
         - 13
         - 52
   - DefType:
+      platform: ~
       name: Point
       visibility: Private
       type_params: []
@@ -40,6 +43,7 @@ decls:
         - 54
         - 85
   - DefType:
+      platform: ~
       name: Color
       visibility: Private
       type_params: []
@@ -66,6 +70,7 @@ decls:
         - 87
         - 118
   - DefFn:
+      platform: ~
       name: origin
       visibility: Pub
       type_params: []
@@ -102,6 +107,7 @@ decls:
         - 120
         - 170
   - DefFn:
+      platform: ~
       name: distance
       visibility: Private
       type_params: []
@@ -193,6 +199,7 @@ decls:
         - 172
         - 225
   - DefFn:
+      platform: ~
       name: classify
       visibility: Private
       type_params: []
@@ -256,6 +263,7 @@ decls:
         - 227
         - 307
   - DefFn:
+      platform: ~
       name: safe_div
       visibility: Private
       type_params: []

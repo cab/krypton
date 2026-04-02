@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - Import:
+      platform: ~
       is_pub: true
       path: core/option
       names:
@@ -17,6 +19,7 @@ decls:
         - 13
         - 56
   - Import:
+      platform: ~
       is_pub: true
       path: core/result
       names:

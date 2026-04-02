@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: match_wildcard
       visibility: Private
       type_params: []
@@ -47,6 +49,7 @@ decls:
         - 13
         - 60
   - DefFn:
+      platform: ~
       name: match_literal
       visibility: Private
       type_params: []
@@ -126,6 +129,7 @@ decls:
         - 62
         - 146
   - DefFn:
+      platform: ~
       name: match_constructor
       visibility: Private
       type_params: []
@@ -193,6 +197,7 @@ decls:
         - 148
         - 223
   - DefFn:
+      platform: ~
       name: match_tuple
       visibility: Private
       type_params: []

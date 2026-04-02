@@ -1,9 +1,11 @@
 ---
 source: crates/parser/tests/fixture_test.rs
+assertion_line: 28
 expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: test_asi
       visibility: Private
       type_params: []
@@ -70,6 +72,7 @@ decls:
         - 55
         - 118
   - DefFn:
+      platform: ~
       name: test_if_else
       visibility: Private
       type_params: []
@@ -133,6 +136,7 @@ decls:
         - 161
         - 250
   - DefFn:
+      platform: ~
       name: test_explicit_semi
       visibility: Private
       type_params: []
@@ -199,6 +203,7 @@ decls:
         - 285
         - 362
   - DefFn:
+      platform: ~
       name: test_operator_continuation
       visibility: Private
       type_params: []
