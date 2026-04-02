@@ -1,5 +1,6 @@
 mod inspect;
 mod repl;
+mod repl_compile;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};

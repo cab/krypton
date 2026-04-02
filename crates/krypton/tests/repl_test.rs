@@ -41,23 +41,43 @@ fn test_banner_on_startup() {
 }
 
 #[test]
-fn test_single_line_echo() {
-    let (stdout, _, success) = run_repl_with_input("1 + 2\n");
-    assert!(success);
+fn test_eval_bare_int() {
+    let (stdout, stderr, success) = run_repl_with_input("42\n");
+    assert!(success, "REPL should exit cleanly. stderr: {stderr}");
     assert!(
-        stdout.contains("1 + 2"),
-        "Should echo back the input: {stdout}"
+        stdout.contains("42"),
+        "Should evaluate and print 42: {stdout}"
     );
 }
 
 #[test]
-fn test_multiline_continuation() {
-    let input = "let f = fun(x) {\nx + 1\n}\n";
-    let (stdout, _, success) = run_repl_with_input(input);
-    assert!(success);
+fn test_eval_bare_expr() {
+    let (stdout, stderr, success) = run_repl_with_input("1 + 2\n");
+    assert!(success, "REPL should exit cleanly. stderr: {stderr}");
     assert!(
-        stdout.contains("let f = fun(x) {\nx + 1\n}"),
-        "Should echo back the complete multi-line input: {stdout}"
+        stdout.contains("3"),
+        "Should evaluate 1 + 2 = 3: {stdout}"
+    );
+}
+
+#[test]
+fn test_let_binding_and_use() {
+    let (stdout, stderr, success) = run_repl_with_input("let x = 42\nx + 1\n");
+    assert!(success, "REPL should exit cleanly. stderr: {stderr}");
+    assert!(
+        stdout.contains("43"),
+        "Should evaluate x + 1 = 43: {stdout}"
+    );
+}
+
+#[test]
+fn test_fun_def_and_call() {
+    let (stdout, stderr, success) =
+        run_repl_with_input("fun inc(x: Int) -> Int = x + 1\ninc(5)\n");
+    assert!(success, "REPL should exit cleanly. stderr: {stderr}");
+    assert!(
+        stdout.contains("6"),
+        "Should evaluate inc(5) = 6: {stdout}"
     );
 }
 
@@ -87,14 +107,12 @@ fn test_help_output() {
 
 #[test]
 fn test_eof_exits_cleanly() {
-    // Empty input → immediate EOF
     let (_, _, success) = run_repl_with_input("");
     assert!(success, "REPL should exit cleanly on EOF");
 }
 
 #[test]
 fn test_history_file_created() {
-    // Use a temp dir as HOME so we don't pollute the real home
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let mut child = krypton_bin()
         .arg("repl")

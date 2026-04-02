@@ -7,6 +7,7 @@ mod data_class_gen;
 mod intrinsics;
 mod lambda;
 mod registration;
+pub mod repl;
 mod trait_class_gen;
 
 use std::collections::HashMap;
@@ -195,6 +196,7 @@ fn compile_module_inner(
     compiler.register_fun_interfaces_ir(ir_module)?;
     compiler.register_vec()?;
     result_classes.extend(compiler.register_traits_ir(ir_module)?);
+    result_classes.extend(compiler.register_extern_traits_ir(ir_module)?);
     result_classes.extend(compiler.register_builtin_instances_ir(ir_module)?);
 
     // Build instance map from local + imported instances

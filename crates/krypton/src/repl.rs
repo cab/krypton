@@ -1,3 +1,4 @@
+use crate::repl_compile::ReplSession;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -92,6 +93,7 @@ pub fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
         let _ = rl.load_history(path);
     }
 
+    let mut session = ReplSession::new();
     let mut bracket_depth: i32 = 0;
     let mut input_buffer = String::new();
 
@@ -120,8 +122,11 @@ pub fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
                         match cmd {
                             ReplCommand::Quit => break,
                             ReplCommand::Help => print_help(),
-                            ReplCommand::Reset => println!("Environment reset."),
-                            ReplCommand::Env => println!("(no bindings)"),
+                            ReplCommand::Reset => {
+                                session.reset();
+                                println!("Environment reset.");
+                            }
+                            ReplCommand::Env => println!("{}", session.format_env()),
                             ReplCommand::Type(expr) => {
                                 println!("(type of: {})", expr);
                             }
@@ -137,8 +142,14 @@ pub fn run_repl() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     } else {
-                        // Stub eval: echo raw input
-                        println!("{}", input);
+                        match session.eval_input(&input) {
+                            Ok(result) => {
+                                if !result.is_empty() {
+                                    println!("{}", result);
+                                }
+                            }
+                            Err(err) => eprintln!("error: {}", err),
+                        }
                     }
                 }
             }
