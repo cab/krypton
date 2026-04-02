@@ -360,10 +360,7 @@ pub(super) fn validate_trait_constraints(
                 .iter()
                 .any(|(t, v)| t.local_name == trait_name.local_name && *v == var);
             if !is_declared {
-                let type_var_display = type_var_names
-                    .get(&var)
-                    .cloned()
-                    .unwrap_or_else(|| format!("?{}", var.0));
+                let type_var_display = type_var_names.get(&var).cloned();
                 first_error = Some(super::spanned(
                     TypeError::MissingTraitBound {
                         fn_name: fn_name.to_string(),

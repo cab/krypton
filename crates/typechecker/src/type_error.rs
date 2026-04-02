@@ -261,7 +261,7 @@ pub enum TypeError {
     MissingTraitBound {
         fn_name: String,
         trait_name: String,
-        type_var: String,
+        type_var: Option<String>,
     },
     AmbiguousTraitName {
         name: String,
@@ -596,8 +596,11 @@ impl TypeError {
             TypeError::TraitMethodCollision { trait1, trait2, method_name } => {
                 Some(format!("traits `{}` and `{}` both define method `{}`; use qualified imports or rename to disambiguate", trait1, trait2, method_name))
             }
-            TypeError::MissingTraitBound { type_var, trait_name, .. } => {
-                Some(format!("add `where {}: {}` to the function signature", type_var, trait_name))
+            TypeError::MissingTraitBound { type_var, trait_name, fn_name } => {
+                match type_var {
+                    Some(name) => Some(format!("add `where {}: {}` to the function signature", name, trait_name)),
+                    None => Some(format!("add type parameters with a constraint, e.g. `fun {}[t](...) -> t where t: {}`", fn_name, trait_name)),
+                }
             }
             TypeError::AmbiguousTraitName { name, .. } => {
                 Some(format!("use `import module.{{{}  as Alias}}` to disambiguate", name))
@@ -1052,11 +1055,18 @@ impl fmt::Display for TypeError {
                 trait_name,
                 type_var,
             } => {
-                write!(
-                    f,
-                    "function `{}` uses trait method from `{}` on type variable `{}` without a corresponding bound",
-                    fn_name, trait_name, type_var
-                )
+                match type_var {
+                    Some(name) => write!(
+                        f,
+                        "function `{}` uses trait method from `{}` on type variable `{}` without a corresponding bound",
+                        fn_name, trait_name, name
+                    ),
+                    None => write!(
+                        f,
+                        "function `{}` requires trait `{}` but has no declared type parameters",
+                        fn_name, trait_name
+                    ),
+                }
             }
             TypeError::AmbiguousTraitName {
                 name,

@@ -1,0 +1,6 @@
+# expect: error
+# expect: E0312
+
+fun a(x, y) = x + y
+
+fun main() = println(show(a(1, 2)))
