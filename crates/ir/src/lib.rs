@@ -469,6 +469,8 @@ pub struct Module {
     pub extern_fns: Vec<ExternFnDef>,
     /// Extern type registrations (opaque types backed by host types).
     pub extern_types: Vec<ExternTypeDef>,
+    /// Extern trait definitions (Java interfaces exposed as Krypton traits).
+    pub extern_traits: Vec<ExternTraitDef>,
     /// Functions imported from other Krypton modules.
     pub imported_fns: Vec<ImportedFnDef>,
     /// Trait declarations (codegen metadata for dispatch infrastructure).
@@ -546,6 +548,9 @@ pub struct ExternFnDef {
     pub throws: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
+    /// Per-parameter bridge info: `Some(bridge)` when the parameter needs wrapping
+    /// in a bridge class before passing to Java (extern trait constraint).
+    pub bridge_params: Vec<Option<ExternTraitBridge>>,
 }
 
 /// An opaque extern type backed by a host type.
@@ -553,6 +558,29 @@ pub struct ExternFnDef {
 pub struct ExternTypeDef {
     pub name: String,
     pub target: ExternTarget,
+}
+
+/// An extern trait definition — a Java interface exposed as a Krypton trait.
+#[derive(Debug, Clone)]
+pub struct ExternTraitDef {
+    pub trait_name: TraitName,
+    pub java_interface: String,
+    pub methods: Vec<ExternTraitMethodDef>,
+}
+
+/// A method in an extern trait (for bridge class generation).
+#[derive(Debug, Clone)]
+pub struct ExternTraitMethodDef {
+    pub name: String,
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
+}
+
+/// Info for wrapping a parameter in a bridge class before passing to Java.
+#[derive(Debug, Clone)]
+pub struct ExternTraitBridge {
+    pub trait_name: TraitName,
+    pub java_interface: String,
 }
 
 /// A function imported from another Krypton module.
@@ -808,6 +836,7 @@ mod tests {
             }],
             extern_fns: vec![],
             extern_types: vec![],
+            extern_traits: vec![],
             imported_fns: vec![],
             traits: vec![],
             instances: vec![],

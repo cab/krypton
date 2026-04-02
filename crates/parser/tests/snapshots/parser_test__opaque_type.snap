@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefType:
+      platform: ~
       name: Opaque
       visibility: Opaque
       type_params: []

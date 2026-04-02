@@ -131,6 +131,7 @@ impl<'a> Formatter<'a> {
                 module_path,
                 alias,
                 alias_visibility,
+                is_trait,
                 type_params,
                 methods,
                 ..
@@ -141,6 +142,7 @@ impl<'a> Formatter<'a> {
                     module_path,
                     alias.as_deref(),
                     alias_visibility.as_ref(),
+                    *is_trait,
                     type_params,
                     methods,
                 );
@@ -500,6 +502,7 @@ impl<'a> Formatter<'a> {
         module_path: &str,
         alias: Option<&str>,
         alias_visibility: Option<&Visibility>,
+        is_trait: bool,
         type_params: &[String],
         methods: &[ExternMethod],
     ) {
@@ -513,7 +516,9 @@ impl<'a> Formatter<'a> {
         self.buf.push('"');
         if let Some(name) = alias {
             self.buf.push_str(" as ");
-            if matches!(alias_visibility, Some(Visibility::Pub)) {
+            if is_trait {
+                self.buf.push_str("trait ");
+            } else if matches!(alias_visibility, Some(Visibility::Pub)) {
                 self.buf.push_str("pub ");
             }
             self.buf.push_str(name);

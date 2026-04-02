@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - Import:
+      platform: ~
       is_pub: false
       path: core/list
       names:

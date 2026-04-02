@@ -4,13 +4,16 @@ expression: module
 ---
 decls:
   - Extern:
+      platform: ~
       target: Java
       module_path: java.lang.Math
       alias: ~
       alias_visibility: ~
+      is_trait: false
       type_params: []
       methods:
         - nullable: false
+          throws: false
           visibility: Private
           name: abs
           type_params: []
@@ -32,6 +35,7 @@ decls:
             - 36
             - 58
         - nullable: false
+          throws: false
           visibility: Private
           name: max
           type_params: []

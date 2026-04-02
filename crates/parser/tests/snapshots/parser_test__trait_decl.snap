@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefTrait:
+      platform: ~
       visibility: Private
       name: Eq
       type_param:
@@ -14,7 +15,8 @@ decls:
           - 11
       superclasses: []
       methods:
-        - name: eq
+        - platform: ~
+          name: eq
           visibility: Private
           type_params: []
           params:

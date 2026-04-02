@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: compare
       visibility: Private
       type_params: []

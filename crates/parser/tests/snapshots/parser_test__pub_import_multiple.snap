@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - Import:
+      platform: ~
       is_pub: true
       path: core/option
       names:
@@ -17,6 +18,7 @@ decls:
         - 0
         - 43
   - Import:
+      platform: ~
       is_pub: true
       path: core/result
       names:

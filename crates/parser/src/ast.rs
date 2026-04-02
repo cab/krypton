@@ -50,6 +50,7 @@ pub enum Decl {
         module_path: String,
         alias: Option<String>,
         alias_visibility: Option<Visibility>,
+        is_trait: bool,
         type_params: Vec<String>,
         methods: Vec<ExternMethod>,
         span: Span,

@@ -240,6 +240,12 @@ pub(super) struct InstanceSingletonInfo {
     pub(super) instance_field_ref: u16, // field_ref for INSTANCE field (for getstatic)
 }
 
+/// Info for constructing a bridge class at call sites.
+pub(super) struct ExternTraitBridgeInfo {
+    pub(super) bridge_class: u16,      // class index for the bridge class
+    pub(super) bridge_init: u16,       // method_ref for <init>(Object, Object)V
+}
+
 /// Trait dispatch state for codegen.
 pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<TraitName, TraitDispatchInfo>,
@@ -247,6 +253,7 @@ pub(super) struct TraitState {
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
     pub(super) dict_locals: HashMap<(TraitName, TypeVarId), u16>,
     pub(super) parameterized_instances: HashMap<TraitName, Vec<ParameterizedInstanceInfo>>,
+    pub(super) extern_trait_bridges: HashMap<TraitName, ExternTraitBridgeInfo>,
 }
 
 impl TraitState {
@@ -479,6 +486,7 @@ impl<'link> Compiler<'link> {
                 impl_dict_requirements: HashMap::new(),
                 dict_locals: HashMap::new(),
                 parameterized_instances: HashMap::new(),
+                extern_trait_bridges: HashMap::new(),
             },
             vec_info: None,
             var_locals: HashMap::new(),

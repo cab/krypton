@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefFn:
+      platform: ~
       name: add
       visibility: Pub
       type_params: []

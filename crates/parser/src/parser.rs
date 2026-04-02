@@ -1455,16 +1455,27 @@ where
         Token::Ident(s) if s == "js" => ExternTarget::Js,
     };
 
+    let extern_type_params = select! { Token::Ident(s) => s.to_string() }
+        .separated_by(symbol(Token::Comma))
+        .collect::<Vec<_>>()
+        .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+        .or_not()
+        .map(|opt| opt.unwrap_or_default());
+
     let extern_as_clause = symbol(Token::As)
-        .ignore_then(symbol(Token::Pub).or_not())
-        .then(select! { Token::Ident(s) => s.to_string() })
-        .then(
-            select! { Token::Ident(s) => s.to_string() }
-                .separated_by(symbol(Token::Comma))
-                .collect::<Vec<_>>()
-                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
-                .or_not()
-                .map(|opt| opt.unwrap_or_default()),
+        .ignore_then(
+            // as trait Name[params]
+            symbol(Token::Trait)
+                .ignore_then(select! { Token::Ident(s) => s.to_string() })
+                .then(extern_type_params.clone())
+                .map(|(name, params)| (true, false, name, params))
+            .or(
+                // as [pub] Name[params] (existing extern type)
+                symbol(Token::Pub).or_not()
+                    .then(select! { Token::Ident(s) => s.to_string() })
+                    .then(extern_type_params)
+                    .map(|((pub_opt, name), params)| (false, pub_opt.is_some(), name, params))
+            )
         )
         .or_not();
 
@@ -1482,16 +1493,16 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(|((((platform, target), module_path), as_clause), methods), e| {
-            let (alias, alias_visibility, type_params) = match as_clause {
-                Some(((is_pub, name), params)) => {
-                    let vis = if is_pub.is_some() {
+            let (is_trait, alias, alias_visibility, type_params) = match as_clause {
+                Some((is_trait, is_pub, name, params)) => {
+                    let vis = if !is_trait && is_pub {
                         Visibility::Pub
                     } else {
                         Visibility::Private
                     };
-                    (Some(name), Some(vis), params)
+                    (is_trait, Some(name), Some(vis), params)
                 }
-                None => (None, None, vec![]),
+                None => (false, None, None, vec![]),
             };
             Decl::Extern {
                 platform,
@@ -1499,6 +1510,7 @@ where
                 module_path,
                 alias,
                 alias_visibility,
+                is_trait,
                 type_params,
                 methods,
                 span: to_span(e.span()),

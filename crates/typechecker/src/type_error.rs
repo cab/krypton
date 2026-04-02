@@ -63,6 +63,7 @@ pub enum TypeErrorCode {
     E0316, // Cannot implement trait for owned type
     E0014, // Or-pattern binding mismatch
     E0603, // Invalid @throws return type
+    E0604, // Extern trait on JS target (Java-only feature)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -297,6 +298,9 @@ pub enum TypeError {
         expected_names: Vec<String>,
         actual_names: Vec<String>,
     },
+    ExternTraitOnJsTarget {
+        name: String,
+    },
 }
 
 impl TypeError {
@@ -367,6 +371,7 @@ impl TypeError {
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
+            TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
         }
     }
 
@@ -612,6 +617,9 @@ impl TypeError {
             }
             TypeError::OrPatternBindingMismatch { .. } => {
                 Some("all alternatives in an or-pattern must bind the same set of variables".to_string())
+            }
+            TypeError::ExternTraitOnJsTarget { .. } => {
+                Some("extern traits generate JVM bridge classes and are only supported with `extern java`".to_string())
             }
         }
     }
@@ -1122,6 +1130,13 @@ impl fmt::Display for TypeError {
                     alt_index,
                     expected_names.join(", "),
                     actual_names.join(", ")
+                )
+            }
+            TypeError::ExternTraitOnJsTarget { name } => {
+                write!(
+                    f,
+                    "extern trait `{}` is not supported on the JS target; extern traits are Java-only",
+                    name
                 )
             }
         }

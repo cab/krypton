@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefType:
+      platform: ~
       name: P
       visibility: Private
       type_params: []
@@ -21,6 +22,7 @@ decls:
         - 0
         - 19
   - DefFn:
+      platform: ~
       name: f
       visibility: Private
       type_params: []

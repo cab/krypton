@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefType:
+      platform: ~
       name: Point
       visibility: Private
       type_params: []

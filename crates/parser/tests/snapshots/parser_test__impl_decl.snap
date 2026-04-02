@@ -4,6 +4,7 @@ expression: module
 ---
 decls:
   - DefType:
+      platform: ~
       name: Point
       visibility: Private
       type_params: []
@@ -27,6 +28,7 @@ decls:
         - 1
         - 32
   - DefImpl:
+      platform: ~
       trait_name: Eq
       target_type:
         Named:
@@ -37,7 +39,8 @@ decls:
       type_params: []
       type_constraints: []
       methods:
-        - name: eq
+        - platform: ~
+          name: eq
           visibility: Private
           type_params: []
           params:
