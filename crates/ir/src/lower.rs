@@ -2019,10 +2019,13 @@ impl LowerCtx {
 
                 let bind = self.fresh_var();
                 self.var_types.insert(bind, value.ty.clone());
-                self.push_var(name, bind);
 
-                // Try to lower value as a SimpleExpr directly
+                // Lower value BEFORE pushing the new binding into scope,
+                // so that shadowed references (e.g. `let x = x + 1`) resolve
+                // to the *old* VarId, not the freshly allocated one.
                 let lowered_value = self.try_lower_as_simple(value)?;
+
+                self.push_var(name, bind);
                 let mut body_expr = if let Some(body) = body {
                     self.lower_expr(body)?
                 } else {
@@ -3454,9 +3457,13 @@ impl LowerCtx {
 
             let bind = self.fresh_var();
             self.var_types.insert(bind, value.ty.clone());
-            self.push_var(name, bind);
 
+            // Lower value BEFORE pushing the new binding into scope,
+            // so that shadowed references (e.g. `let x = x + 1`) resolve
+            // to the *old* VarId, not the freshly allocated one.
             let lowered_value = self.try_lower_as_simple(value)?;
+
+            self.push_var(name, bind);
             let mut body_expr = self.lower_do_slice(rest)?;
 
             // Emit close for the shadowed binding
