@@ -1,9 +1,0 @@
-fun total() -> Int = {
-  let base = 10
-  let bonus = 2
-  base + bonus
-}
-
-fun main() {
-  println(total())
-}

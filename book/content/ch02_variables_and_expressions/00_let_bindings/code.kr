@@ -1,5 +1,0 @@
-fun main() {
-  let score = 10
-  let score = score + 5
-  println(score)
-}

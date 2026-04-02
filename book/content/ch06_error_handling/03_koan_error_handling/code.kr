@@ -1,8 +1,0 @@
-fun read_name(flag: Bool) -> Result[String, String] =
-  if flag { Ok("Ada") } else { Err("missing") }
-
-fun main() -> Result[String, Unit] = {
-  let name = read_name(???)?
-  # TODO: make this program produce Ok(()) after printing Ada.
-  Ok(println(name))
-}

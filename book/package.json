@@ -1,7 +1,8 @@
 {
   "scripts": {
     "build:frontend": "esbuild frontend/tour.js frontend/playground-worker.js --bundle --format=esm --sourcemap --outdir=generated --external:/static/compiler/*",
-    "build:playground-wasm": "wasm-pack build ../crates/playground --target web --release --out-dir ../../book/generated/compiler --out-name krypton_playground"
+    "build:playground-wasm": "wasm-pack build ../crates/playground --target web --dev --out-dir ../../book/generated/compiler --out-name krypton_playground",
+    "build:playground-wasm:release": "wasm-pack build ../crates/playground --target web --release  --out-dir ../../book/generated/compiler --out-name krypton_playground"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

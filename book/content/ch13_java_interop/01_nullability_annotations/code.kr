@@ -1,8 +1,0 @@
-extern java "java.lang.Integer" {
-  @nullable fun parse_int(s: String) -> Option[Int]
-}
-
-fun main() {
-  println(parse_int("42"))
-  println(parse_int("oops"))
-}

@@ -1,8 +1,0 @@
-# Planned interop shape:
-# extern java "java.nio.file.Files" {
-#   @throws(IOException) fun read_string(path: Path) -> Result[IOException, String]
-# }
-
-fun main() {
-  println("exception-handling interop scaffold")
-}

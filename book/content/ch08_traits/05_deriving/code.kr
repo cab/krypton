@@ -1,6 +1,0 @@
-type Status = Ready | Waiting deriving (Show, Eq)
-
-fun main() {
-  println(show(Ready))
-  println(eq(Ready, Waiting))
-}

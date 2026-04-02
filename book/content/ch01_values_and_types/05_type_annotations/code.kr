@@ -1,8 +1,0 @@
-fun main() {
-  let count: Int = 3
-  let name: String = "Ada"
-  let ready: Bool = true
-  println(count)
-  println(name)
-  println(ready)
-}

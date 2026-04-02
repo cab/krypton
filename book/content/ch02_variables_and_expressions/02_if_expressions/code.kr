@@ -1,7 +1,0 @@
-fun sign_name(n: Int) -> String =
-  if n < 0 { "negative" } else { "zero or positive" }
-
-fun main() {
-  println(sign_name(-4))
-  println(sign_name(0))
-}

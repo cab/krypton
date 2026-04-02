@@ -1,7 +1,0 @@
-fun consume(token: ~String) -> String = token
-
-fun main() {
-  let token: ~String = ???
-  # TODO: pass token exactly once to consume.
-  println(consume(token))
-}

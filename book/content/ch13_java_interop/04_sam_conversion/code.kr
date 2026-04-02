@@ -1,8 +1,0 @@
-# Planned interop shape:
-# extern java "java.lang.Thread" {
-#   @sam fun start(task: () -> Unit) -> Unit
-# }
-
-fun main() {
-  println("sam-conversion scaffold")
-}

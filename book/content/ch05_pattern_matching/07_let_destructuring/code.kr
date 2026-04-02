@@ -1,9 +1,0 @@
-type Point = { x: Int, y: Int }
-
-fun main() {
-  let pair = (2, 3)
-  let (a, b) = pair
-  let point = Point { x = 4, y = 5 }
-  let Point { x, y } = point
-  println(a + b + x + y)
-}

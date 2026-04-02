@@ -1,9 +1,0 @@
-import core/vec.{len, nth, map, sort_by}
-
-fun main() {
-  let xs: Vec[Int] = [3, 1, 2]
-  println(len(xs))
-  println(map(xs, x -> x * 2))
-  println(sort_by(xs, x -> x))
-  println(nth(xs, 1))
-}

@@ -1,7 +1,0 @@
-type Point = { x: Int, y: Int }
-
-fun main() {
-  let origin = Point { x = 0, y = 0 }
-  println(origin.x)
-  println(origin.y)
-}

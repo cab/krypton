@@ -1,9 +1,0 @@
-fun describe(xs: List[Int]) -> String = match xs {
-  Cons(head, _) => "first: " + show(head),
-  Nil => "empty",
-}
-
-fun main() {
-  let xs: List[Int] = [1, 2, 3]
-  println(describe(xs))
-}

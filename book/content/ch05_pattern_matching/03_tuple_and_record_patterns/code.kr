@@ -1,9 +1,0 @@
-type Point = { x: Int, y: Int }
-
-fun show_pair(data: ((Int, Int), Point)) -> String = match data {
-  ((a, b), Point { x, y }) => show(a + b + x + y),
-}
-
-fun main() {
-  println(show_pair(((1, 2), Point { x = 3, y = 4 })))
-}

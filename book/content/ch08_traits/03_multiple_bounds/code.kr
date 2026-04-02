@@ -1,7 +1,0 @@
-fun announce_if_equal[a](left: a, right: a) -> String where a: Show + Eq =
-  if eq(left, right) { "same: " + show(left) } else { "different" }
-
-fun main() {
-  println(announce_if_equal(3, 3))
-  println(announce_if_equal("Ada", "Bob"))
-}

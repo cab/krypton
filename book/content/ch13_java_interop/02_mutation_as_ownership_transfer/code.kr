@@ -1,8 +1,0 @@
-# Planned interop shape:
-# extern java "demo.Buffer" {
-#   fun append(self: ~Buffer, part: String) -> ~Buffer
-# }
-
-fun main() {
-  println("ownership-transfer interop scaffold")
-}
