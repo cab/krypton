@@ -10,6 +10,19 @@ use super::compiler::{CodegenError, JvmType};
 use super::intrinsics::IntrinsicEntry;
 use super::JAVA_21;
 
+/// Pre-resolved type information for a single method in an extern trait bridge class.
+pub(super) struct BridgeMethodInfo {
+    pub name: String,
+    /// Java param descriptors, e.g. `["J", "Ljava/lang/String;"]`
+    pub java_param_descs: Vec<String>,
+    /// Java return descriptor, e.g. `"V"`, `"J"`, `"Ljava/lang/Object;"`
+    pub java_return_desc: String,
+    /// True when the Krypton return type is Unit (Java void).
+    pub is_void_return: bool,
+    /// Total Krypton param count including self (for `invokeinterface` on the trait dict).
+    pub krypton_param_count: usize,
+}
+
 /// Generate a trait interface class file (e.g., `Eq.class`).
 /// All methods take and return Object (type erasure).
 /// Single-method traits also extend FunN so dict singletons can be used as lambdas.
@@ -132,7 +145,7 @@ pub(super) fn generate_extern_trait_bridge_class(
     bridge_class_name: &str,
     java_interface: &str,
     krypton_trait_interface: &str,
-    methods: &[(String, usize)], // (java_method_name, param_count excluding self)
+    methods: &[BridgeMethodInfo],
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
 
@@ -206,63 +219,48 @@ pub(super) fn generate_extern_trait_bridge_class(
         });
     }
 
+    // Boxing/unboxing constant pool entries (added lazily)
+    let long_box_class = cp.add_class("java/lang/Long")?;
+    let long_valueof = cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
+    let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
+    let double_box_class = cp.add_class("java/lang/Double")?;
+    let double_valueof =
+        cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
+    let double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
+    let bool_box_class = cp.add_class("java/lang/Boolean")?;
+    let bool_valueof =
+        cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+    let bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
+
     // Bridge methods: each Java interface method delegates to the Krypton trait dict
-    for (method_name, param_count) in methods {
-        // Java method descriptor: all params are Object (from Java perspective,
-        // but actually the Java interface may use void return)
-        // For simplicity, the Java interface method typically takes no args (they're on the bridge)
-        // and returns void. We build the actual Java descriptor.
-        //
-        // The Java interface method descriptor. For something like Runnable.run(), it's "()V".
-        // For a more complex interface, it would have actual params.
-        // We use "()V" for zero-param void methods and "(L...;...)L...;" for others.
-        // Since all params are Object and return is Object/void, we build accordingly.
-        //
-        // Actually, we need to generate the *Java* method signature to match the interface.
-        // For now, extern trait methods map as: all non-self params → Object, return → void if Unit.
-        //
-        // The Krypton trait interface method takes (self_value, [other_params]) → Object (erased).
-        // The Java interface method takes ([other_params]) → void/Object.
-        //
-        // For Runnable.run(): Java descriptor is "()V", Krypton trait method is "run(Object)Object"
+    for info in methods {
+        // Build Java method descriptor from resolved types
+        let mut java_desc = String::from("(");
+        for pd in &info.java_param_descs {
+            java_desc.push_str(pd);
+        }
+        java_desc.push(')');
+        java_desc.push_str(&info.java_return_desc);
 
-        // Build Java method descriptor: param_count Object args, void return
-        // TODO: For non-void returns, this needs to return Object. For v0.1, assume void (Unit).
-        let java_desc = if *param_count == 0 {
-            "()V".to_string()
-        } else {
-            let mut d = String::from("(");
-            for _ in 0..*param_count {
-                d.push_str("Ljava/lang/Object;");
-            }
-            d.push_str(")V");
-            d
-        };
-
-        // Krypton trait interface method descriptor: (Object self, [Object params...]) -> Object
-        let krypton_param_count = param_count + 1; // self + other params
+        // Krypton trait interface method descriptor: all Object (type-erased)
         let mut krypton_desc = String::from("(");
-        for _ in 0..krypton_param_count {
+        for _ in 0..info.krypton_param_count {
             krypton_desc.push_str("Ljava/lang/Object;");
         }
         krypton_desc.push_str(")Ljava/lang/Object;");
 
-        let krypton_method_ref = cp.add_interface_method_ref(
-            krypton_iface_class,
-            method_name,
-            &krypton_desc,
-        )?;
+        let krypton_method_ref =
+            cp.add_interface_method_ref(krypton_iface_class, &info.name, &krypton_desc)?;
 
-        let method_name_idx = cp.add_utf8(method_name)?;
+        let method_name_idx = cp.add_utf8(&info.name)?;
         let method_desc_idx = cp.add_utf8(&java_desc)?;
 
         // Bytecode:
         //   aload_0; getfield dict; checkcast KryptonTraitInterface
         //   aload_0; getfield value   // self param for Krypton method
-        //   [aload_1, aload_2, ...] // additional Java method params
+        //   [load + box each Java param]
         //   invokeinterface KryptonTrait.method(Object, ...)Object
-        //   pop (discard Object result for void return) / areturn (for Object return)
-        //   return
+        //   [unbox/convert result for Java return type]
         let mut code = vec![
             Instruction::Aload_0,
             Instruction::Getfield(dict_field_ref),
@@ -271,22 +269,72 @@ pub(super) fn generate_extern_trait_bridge_class(
             Instruction::Getfield(value_field_ref),
         ];
 
-        // Load additional params from the Java method args (slots 1..param_count)
-        for i in 1..=(*param_count as u8) {
-            code.push(Instruction::Aload(i));
+        // Load and box Java method params for the Krypton (all-Object) interface.
+        // Primitives must be boxed; reference types widen to Object naturally.
+        let mut slot: u16 = 1; // slot 0 = this
+        for pd in &info.java_param_descs {
+            match pd.as_str() {
+                "J" => {
+                    code.push(Instruction::Lload(slot as u8));
+                    code.push(Instruction::Invokestatic(long_valueof));
+                    slot += 2;
+                }
+                "D" => {
+                    code.push(Instruction::Dload(slot as u8));
+                    code.push(Instruction::Invokestatic(double_valueof));
+                    slot += 2;
+                }
+                "Z" => {
+                    code.push(Instruction::Iload(slot as u8));
+                    code.push(Instruction::Invokestatic(bool_valueof));
+                    slot += 1;
+                }
+                _ => {
+                    // Reference type — loads as Object directly
+                    code.push(Instruction::Aload(slot as u8));
+                    slot += 1;
+                }
+            }
         }
 
         code.push(Instruction::Invokeinterface(
             krypton_method_ref,
-            krypton_param_count as u8 + 1, // +1 for the dict reference (interface receiver)
+            info.krypton_param_count as u8 + 1, // +1 for the dict reference (interface receiver)
         ));
 
-        // For void methods, pop the Object result; for non-void, return it
-        code.push(Instruction::Pop);
-        code.push(Instruction::Return);
+        // Convert the Object result from the Krypton invokeinterface to the Java return type
+        if info.is_void_return {
+            code.push(Instruction::Pop);
+            code.push(Instruction::Return);
+        } else {
+            match info.java_return_desc.as_str() {
+                "J" => {
+                    code.push(Instruction::Checkcast(long_box_class));
+                    code.push(Instruction::Invokevirtual(long_unbox));
+                    code.push(Instruction::Lreturn);
+                }
+                "D" => {
+                    code.push(Instruction::Checkcast(double_box_class));
+                    code.push(Instruction::Invokevirtual(double_unbox));
+                    code.push(Instruction::Dreturn);
+                }
+                "Z" => {
+                    code.push(Instruction::Checkcast(bool_box_class));
+                    code.push(Instruction::Invokevirtual(bool_unbox));
+                    code.push(Instruction::Ireturn);
+                }
+                desc => {
+                    // Reference type — checkcast to the concrete class
+                    let class_name = &desc[1..desc.len() - 1]; // strip L...; wrapper
+                    let cast_class = cp.add_class(class_name)?;
+                    code.push(Instruction::Checkcast(cast_class));
+                    code.push(Instruction::Areturn);
+                }
+            }
+        }
 
-        let max_stack = 2 + krypton_param_count as u16; // dict + value + params
-        let max_locals = 1 + *param_count as u16; // this + java method params
+        let max_stack = 2 + info.krypton_param_count as u16; // dict + value + params
+        let max_locals = slot; // this + java method param slots
 
         jvm_methods.push(Method {
             access_flags: MethodAccessFlags::PUBLIC,

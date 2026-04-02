@@ -3059,13 +3059,17 @@ fn register_extern_traits(
                 false,
             );
 
-            // Collect param types excluding self for the extern trait method info
-            // (all params are included for the trait interface — the first param
-            // typed as the trait's type var is the "self" param)
+            // Collect param types excluding self for the extern trait method info.
+            // Only remove the *first* param matching the trait type var (the self
+            // param) — later params with the same type should be kept.
+            let self_index = param_types
+                .iter()
+                .position(|t| matches!(t, Type::Var(id) if *id == tv_id));
             let non_self_param_types: Vec<Type> = param_types
                 .iter()
-                .filter(|t| !matches!(t, Type::Var(id) if *id == tv_id))
-                .cloned()
+                .enumerate()
+                .filter(|(i, _)| Some(*i) != self_index)
+                .map(|(_, t)| t.clone())
                 .collect();
 
             trait_methods.push(TraitMethod {

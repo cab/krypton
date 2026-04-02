@@ -96,6 +96,15 @@ fn extern_return_info(
 }
 
 impl<'link> Compiler<'link> {
+    /// Number of dictionary parameters prepended to a function by where-clause dict passing.
+    fn dict_count_for(&self, name: &str) -> usize {
+        self.traits
+            .impl_dict_requirements
+            .get(name)
+            .map(|r| r.len())
+            .unwrap_or(0)
+    }
+
     // -----------------------------------------------------------------------
     // Phase 1: Types
     // -----------------------------------------------------------------------
@@ -620,12 +629,37 @@ impl<'link> Compiler<'link> {
             let java_interface = extern_trait.java_interface.replace('.', "/");
             let bridge_class_name = format!("{krypton_trait_name}$$Bridge");
 
-            // Build method list: (method_name, param_count_excluding_self)
-            let methods: Vec<(String, usize)> = extern_trait
+            // Resolve Java types for each bridge method
+            let methods: Vec<super::trait_class_gen::BridgeMethodInfo> = extern_trait
                 .methods
                 .iter()
-                .map(|m| (m.name.clone(), m.param_types.len()))
-                .collect();
+                .map(|m| {
+                    let java_param_descs: Vec<String> = m
+                        .param_types
+                        .iter()
+                        .map(|ty| {
+                            let jvm = extern_type_to_jvm(self, ty)?;
+                            Ok(jvm_descriptor(self, jvm))
+                        })
+                        .collect::<Result<_, CodegenError>>()?;
+                    let is_void_return = matches!(m.return_type, krypton_ir::Type::Unit);
+                    let java_return_desc = if is_void_return {
+                        "V".to_string()
+                    } else {
+                        let jvm = extern_type_to_jvm(self, &m.return_type)?;
+                        jvm_descriptor(self, jvm)
+                    };
+                    // krypton_param_count = self + non-self params
+                    let krypton_param_count = m.param_types.len() + 1;
+                    Ok(super::trait_class_gen::BridgeMethodInfo {
+                        name: m.name.clone(),
+                        java_param_descs,
+                        java_return_desc,
+                        is_void_return,
+                        krypton_param_count,
+                    })
+                })
+                .collect::<Result<_, CodegenError>>()?;
 
             let bridge_bytes = generate_extern_trait_bridge_class(
                 &bridge_class_name,
@@ -980,12 +1014,7 @@ impl<'link> Compiler<'link> {
             {
                 continue;
             }
-            let impl_dict_count = self
-                .traits
-                .impl_dict_requirements
-                .get(name)
-                .map(|r| r.len())
-                .unwrap_or(0);
+            let impl_dict_count = self.dict_count_for(name);
 
             // FnDef params already include dict params prepended by the lowerer.
             // We need to build the JVM descriptor from all params.
@@ -1034,12 +1063,7 @@ impl<'link> Compiler<'link> {
             .iter()
             .filter(|ext| matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
         {
-            let impl_dict_count = self
-                .traits
-                .impl_dict_requirements
-                .get(&ext.name)
-                .map(|r| r.len())
-                .unwrap_or(0);
+            let impl_dict_count = self.dict_count_for(&ext.name);
             let object_class = self.builder.refs.object_class;
             let mut wrapper_param_types: Vec<JvmType> = Vec::new();
             for _ in 0..impl_dict_count {
@@ -1124,12 +1148,7 @@ impl<'link> Compiler<'link> {
             }
             let target_class = self.cp.add_class(&imp.source_module)?;
 
-            let impl_dict_count = self
-                .traits
-                .impl_dict_requirements
-                .get(&imp.name)
-                .map(|r| r.len())
-                .unwrap_or(0);
+            let impl_dict_count = self.dict_count_for(&imp.name);
             let mut all_param_types: Vec<JvmType> = Vec::new();
             for _ in 0..impl_dict_count {
                 all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
@@ -1350,12 +1369,7 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        let dict_count = self
-            .traits
-            .impl_dict_requirements
-            .get(&ext.name)
-            .map(|r| r.len())
-            .unwrap_or(0);
+        let dict_count = self.dict_count_for(&ext.name);
         self.emit_extern_call_params(ext, &param_slots, dict_count)?;
         for jvm_ty in raw_info.param_types.iter().rev() {
             self.builder.pop_jvm_type(*jvm_ty);
@@ -1473,12 +1487,7 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        let dict_count = self
-            .traits
-            .impl_dict_requirements
-            .get(&ext.name)
-            .map(|r| r.len())
-            .unwrap_or(0);
+        let dict_count = self.dict_count_for(&ext.name);
 
         // try_start:
         let try_start = self.builder.current_offset();
@@ -1634,12 +1643,7 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        let dict_count = self
-            .traits
-            .impl_dict_requirements
-            .get(&ext.name)
-            .map(|r| r.len())
-            .unwrap_or(0);
+        let dict_count = self.dict_count_for(&ext.name);
 
         // Load params and invoke the raw extern
         self.emit_extern_call_params(ext, &param_slots, dict_count)?;
