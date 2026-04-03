@@ -47,6 +47,8 @@ ROOT_WATCH_FILES = {
 REQUIRED_FRONTEND_ASSETS = [
     GENERATED / "tour.js",
     GENERATED / "playground-worker.js",
+    GENERATED / "repl.js",
+    GENERATED / "repl-worker.js",
 ]
 KRYPTON_FENCE_LANGUAGES = {"krypton", "kr"}
 SNIPPET_PLACEHOLDER_RE = re.compile(
@@ -249,6 +251,14 @@ def render_site():
             title="Home",
             chapters=chapters,
         )
+    )
+
+    # Render REPL page
+    repl_tmpl = env.get_template("repl.html")
+    repl_dir = DIST / "repl"
+    repl_dir.mkdir(parents=True, exist_ok=True)
+    (repl_dir / "index.html").write_text(
+        repl_tmpl.render(title="REPL", chapters=chapters)
     )
 
     # Render lesson pages

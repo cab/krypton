@@ -16,12 +16,14 @@
     </div>
     <div class="nav-links">
       <a href="/">docs</a>
-      <a href="/">try</a>
+      <a href="/repl/">repl</a>
       <a href="https://github.com/conner/krypton">github</a>
     </div>
   </nav>
   {% block content %}{% endblock %}
+  {% block scripts %}
   <script type="module" src="/static/tour.js"></script>
+  {% endblock %}
   <script type="module">
     import { initGalaxy } from "/static/shader2.js";
     initGalaxy(document.getElementById("shader-bg"), {

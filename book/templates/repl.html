@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="repl-page">
+  <div class="repl-container">
+    <div class="repl-output"></div>
+    <div class="repl-input-area">
+      <span class="repl-prompt">&gt; </span>
+      <div class="repl-editor"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/repl.js"></script>
+{% endblock %}

@@ -466,6 +466,93 @@ body {
   text-decoration: underline;
 }
 
+/* ── REPL ─────────────────────────────────────────── */
+
+.repl-page {
+  height: calc(100vh - 3.5rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.repl-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 56rem;
+  width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.repl-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1rem 0;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--code-fg);
+}
+
+.repl-banner {
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.repl-entry {
+  margin-bottom: 0.25rem;
+}
+
+.repl-echo {
+  margin: 0;
+  color: var(--code-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.repl-result {
+  margin: 0 0 0.25rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.repl-result.repl-error {
+  color: var(--danger, #e06c75);
+}
+
+.repl-input-area {
+  display: flex;
+  align-items: flex-start;
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  background: var(--code-bg);
+}
+
+.repl-prompt {
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  user-select: none;
+  flex-shrink: 0;
+  padding-top: 0;
+}
+
+.repl-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.repl-editor .cm-editor {
+  border: none;
+  background: transparent;
+}
+
+.repl-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .lesson {
