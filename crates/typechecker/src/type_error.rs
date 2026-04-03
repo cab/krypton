@@ -4,6 +4,17 @@ use crate::types::{format_type_with_var_map, renumber_types_for_display, Type, T
 use std::collections::HashMap;
 use std::fmt;
 
+/// Check if the infinite type is just an ownership wrapper around the variable itself,
+/// e.g. `a` vs `~a`. This is not a genuine recursive type — it's an ownership mismatch.
+fn is_own_wrapper_of(var: TypeVarId, ty: &Type) -> bool {
+    match ty {
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => {
+            matches!(inner.as_ref(), Type::Var(v) if *v == var)
+        }
+        _ => false,
+    }
+}
+
 /// Error codes for type errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeErrorCode {
@@ -420,8 +431,12 @@ impl TypeError {
             TypeError::WrongArity { expected, .. } => {
                 Some(format!("this function expects {} argument(s)", expected))
             }
-            TypeError::InfiniteType { .. } => {
-                Some("this creates a type that contains itself".to_string())
+            TypeError::InfiniteType { var, ty } => {
+                if is_own_wrapper_of(*var, ty) {
+                    Some("`~` makes a distinct type — consider removing `~` from the annotation".to_string())
+                } else {
+                    Some("this creates a type that contains itself".to_string())
+                }
             }
             TypeError::UnknownField { type_name, field_name } => {
                 Some(format!("type `{}` has no field `{}`", type_name, field_name))
@@ -642,11 +657,13 @@ impl TypeError {
                 )
             }
             TypeError::InfiniteType { var, ty } => {
-                format!(
-                    "infinite type: variable {} occurs in {}",
-                    format_type_with_var_map(&Type::Var(*var), names),
-                    format_type_with_var_map(ty, names),
-                )
+                let var_name = format_type_with_var_map(&Type::Var(*var), names);
+                let ty_name = format_type_with_var_map(ty, names);
+                if is_own_wrapper_of(*var, ty) {
+                    format!("type mismatch: expected `{}`, found `{}`", var_name, ty_name)
+                } else {
+                    format!("infinite type: variable {} occurs in {}", var_name, ty_name)
+                }
             }
             TypeError::NotAFunction { actual } => {
                 format!(
@@ -763,11 +780,11 @@ impl fmt::Display for TypeError {
             }
             TypeError::InfiniteType { var, ty } => {
                 let renamed = renumber_types_for_display(&[&Type::Var(*var), ty]);
-                write!(
-                    f,
-                    "infinite type: variable {} occurs in {}",
-                    renamed[0], renamed[1]
-                )
+                if is_own_wrapper_of(*var, ty) {
+                    write!(f, "type mismatch: expected `{}`, found `{}`", renamed[0], renamed[1])
+                } else {
+                    write!(f, "infinite type: variable {} occurs in {}", renamed[0], renamed[1])
+                }
             }
             TypeError::WrongArity { expected, actual } => {
                 write!(
