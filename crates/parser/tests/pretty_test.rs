@@ -99,6 +99,8 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                 .map(|m| ExternMethod {
                     nullable: m.nullable,
                     throws: m.throws,
+                    instance: m.instance,
+                    constructor: m.constructor,
                     visibility: m.visibility.clone(),
                     name: m.name.clone(),
                     type_params: m.type_params.clone(),

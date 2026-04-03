@@ -2,10 +2,10 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module extern__extern_trait_codegen
+module extern__extern_instance_constructor
 
 trait Runnable[o8] { run(o8): Unit }
-instance extern__extern_trait_codegen.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
+instance extern__extern_instance_constructor.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
 extern java "java.lang.Thread" new(d8) -> ~JThread
 extern java "java.lang.Thread" start(JThread) -> Unit
 extern type java "java.lang.Thread" JThread
@@ -27,7 +27,7 @@ declare start: (JThread) -> Unit
 
 fn main() -> Unit =
   let v3: () -> Unit = make_closure(lambda$29, [])
-  let v4: Dict[extern__extern_trait_codegen.Runnable, () -> Unit] = get_dict extern__extern_trait_codegen.Runnable[() -> Unit]
+  let v4: Dict[extern__extern_instance_constructor.Runnable, () -> Unit] = get_dict extern__extern_instance_constructor.Runnable[() -> Unit]
   let v0: ~JThread = call new(v4, v3)
   let v5: Unit = call start(v0)
   v5

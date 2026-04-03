@@ -74,6 +74,11 @@ pub enum TypeErrorCode {
     E0014, // Or-pattern binding mismatch
     E0603, // Invalid @throws return type
     E0604, // Extern trait on JS target (Java-only feature)
+    E0605, // Invalid @instance first param
+    E0606, // Invalid @constructor return type
+    E0607, // @instance + @constructor conflict
+    E0608, // @constructor with self param
+    E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
 }
 
@@ -305,6 +310,24 @@ pub enum TypeError {
     ExternTraitOnJsTarget {
         name: String,
     },
+    InvalidInstanceFirstParam {
+        name: String,
+        expected_type: String,
+    },
+    InvalidConstructorReturn {
+        name: String,
+        expected_type: String,
+        actual_return_type: Type,
+    },
+    InstanceConstructorConflict {
+        name: String,
+    },
+    ConstructorWithSelf {
+        name: String,
+    },
+    InstanceConstructorOnJsTarget {
+        name: String,
+    },
     MovedInGuard {
         name: String,
     },
@@ -382,6 +405,11 @@ impl TypeError {
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
+            TypeError::InvalidInstanceFirstParam { .. } => TypeErrorCode::E0605,
+            TypeError::InvalidConstructorReturn { .. } => TypeErrorCode::E0606,
+            TypeError::InstanceConstructorConflict { .. } => TypeErrorCode::E0607,
+            TypeError::ConstructorWithSelf { .. } => TypeErrorCode::E0608,
+            TypeError::InstanceConstructorOnJsTarget { .. } => TypeErrorCode::E0609,
             TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
             TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
         }
@@ -636,6 +664,21 @@ impl TypeError {
             }
             TypeError::ExternTraitOnJsTarget { .. } => {
                 Some("extern traits generate JVM bridge classes and are only supported with `extern java`".to_string())
+            }
+            TypeError::InvalidInstanceFirstParam { expected_type, .. } => {
+                Some(format!("@instance methods must take the extern type `{expected_type}` as their first parameter"))
+            }
+            TypeError::InvalidConstructorReturn { expected_type, .. } => {
+                Some(format!("@constructor methods must return `~{expected_type}`"))
+            }
+            TypeError::InstanceConstructorConflict { .. } => {
+                Some("a method cannot be both @instance and @constructor".to_string())
+            }
+            TypeError::ConstructorWithSelf { .. } => {
+                Some("@constructor methods create new instances and should not take the extern type as a parameter".to_string())
+            }
+            TypeError::InstanceConstructorOnJsTarget { .. } => {
+                Some("@instance and @constructor use JVM invocation instructions and are only supported with `extern java`".to_string())
             }
             TypeError::MovedInGuard { name } => {
                 Some(format!("`{name}` is consumed in a match guard; guards may fail and fall through, so they cannot move owned values"))
@@ -1154,6 +1197,42 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "extern trait `{}` is not supported on the JS target; extern traits are Java-only",
+                    name
+                )
+            }
+            TypeError::InvalidInstanceFirstParam { name, expected_type } => {
+                write!(
+                    f,
+                    "@instance extern function `{}` must have first parameter of type `{}`",
+                    name, expected_type
+                )
+            }
+            TypeError::InvalidConstructorReturn { name, expected_type, actual_return_type } => {
+                let actual = actual_return_type.renumber_for_display();
+                write!(
+                    f,
+                    "@constructor extern function `{}` must return `~{}`, found {}",
+                    name, expected_type, actual
+                )
+            }
+            TypeError::InstanceConstructorConflict { name } => {
+                write!(
+                    f,
+                    "extern function `{}` cannot have both @instance and @constructor",
+                    name
+                )
+            }
+            TypeError::ConstructorWithSelf { name } => {
+                write!(
+                    f,
+                    "@constructor extern function `{}` must not take the extern type as a parameter",
+                    name
+                )
+            }
+            TypeError::InstanceConstructorOnJsTarget { name } => {
+                write!(
+                    f,
+                    "@instance/@constructor on extern function `{}` is not supported on the JS target",
                     name
                 )
             }

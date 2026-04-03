@@ -405,6 +405,8 @@ pub struct ExternFnInfo {
     pub target: krypton_parser::ast::ExternTarget,
     pub nullable: bool,
     pub throws: bool,
+    pub instance: bool,
+    pub constructor: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
     pub constraints: Vec<(TraitName, TypeVarId)>,

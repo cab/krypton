@@ -74,6 +74,8 @@ pub enum Visibility {
 pub struct ExternMethod {
     pub nullable: bool,
     pub throws: bool,
+    pub instance: bool,
+    pub constructor: bool,
     pub visibility: Visibility,
     pub name: String,
     pub type_params: Vec<String>,

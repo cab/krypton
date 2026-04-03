@@ -14,7 +14,7 @@ use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, Ty
 use crate::Type as IrType;
 use crate::pass::IrPass;
 use crate::{
-    Atom, CanonicalRef, Expr, ExprKind, ExternFnDef, ExternTarget, ExternTraitBridge,
+    Atom, CanonicalRef, Expr, ExprKind, ExternCallKind, ExternFnDef, ExternTarget, ExternTraitBridge,
     ExternTraitDef, ExternTraitMethodDef, ExternTypeDef, FinallyClose, FnDef, FnId, FnIdentity,
     ImportedFnDef, InstanceDef, Literal, LocalSymbolKey, Module, ModulePath, PrimOp, SimpleExpr,
     SimpleExprKind, StructDef, SumTypeDef, SwitchBranch, TraitDef, TraitMethodDef, VarId,
@@ -6075,6 +6075,13 @@ pub fn lower_module(
                 }
                 None
             }).collect();
+            let call_kind = if ext.constructor {
+                ExternCallKind::Constructor
+            } else if ext.instance {
+                ExternCallKind::Instance
+            } else {
+                ExternCallKind::Static
+            };
             extern_fns.push(ExternFnDef {
                 id: fn_id,
                 name: ext.name.clone(),
@@ -6083,6 +6090,7 @@ pub fn lower_module(
                 target: ir_target,
                 nullable: ext.nullable,
                 throws: ext.throws,
+                call_kind,
                 param_types: ext.param_types.iter().cloned().map(Into::into).collect(),
                 return_type: ext.return_type.clone().into(),
                 bridge_params,

@@ -1,0 +1,9 @@
+# skip: js(java-only extern)
+# expect: output "caught error"
+extern java "java.io.FileInputStream" as JFileInputStream {
+  @constructor @throws fun new(path: String) -> Result[String, ~JFileInputStream]
+}
+fun main() = match new("/nonexistent") {
+  Ok(_) => println("ok"),
+  Err(_) => println("caught error"),
+}

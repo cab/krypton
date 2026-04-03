@@ -539,6 +539,14 @@ pub enum ExternTarget {
     },
 }
 
+/// The kind of JVM invocation for an extern function.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExternCallKind {
+    Static,
+    Instance,
+    Constructor,
+}
+
 /// An extern FFI function binding (Java/JS).
 #[derive(Debug, Clone)]
 pub struct ExternFnDef {
@@ -549,6 +557,7 @@ pub struct ExternFnDef {
     pub target: ExternTarget,
     pub nullable: bool,
     pub throws: bool,
+    pub call_kind: ExternCallKind,
     pub param_types: Vec<Type>,
     pub return_type: Type,
     /// Per-parameter bridge info: `Some(bridge)` when the parameter needs wrapping

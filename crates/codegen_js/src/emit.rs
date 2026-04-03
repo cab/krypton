@@ -2246,7 +2246,7 @@ fn js_intrinsic_dicts() -> Vec<(
 mod tests {
     use super::*;
     use krypton_ir::{
-        CanonicalRef, ExternFnDef, ExternTarget, FnDef, ImportedFnDef, LocalSymbolKey, Module,
+        CanonicalRef, ExternCallKind, ExternFnDef, ExternTarget, FnDef, ImportedFnDef, LocalSymbolKey, Module,
         ModulePath,
     };
     use krypton_typechecker::link_context::LinkContext;
@@ -2335,6 +2335,7 @@ mod tests {
             },
             nullable: true,
             throws: false,
+            call_kind: ExternCallKind::Static,
             param_types: vec![Type::String],
             return_type: Type::Named("Option".to_string(), vec![Type::Int]),
             bridge_params: vec![],
@@ -2432,6 +2433,7 @@ mod tests {
             },
             nullable: false,
             throws: false,
+            call_kind: ExternCallKind::Static,
             param_types: vec![Type::String],
             return_type: Type::Int,
             bridge_params: vec![],
@@ -2460,6 +2462,7 @@ mod tests {
             },
             nullable: false,
             throws: false,
+            call_kind: ExternCallKind::Static,
             param_types: vec![Type::Int],
             return_type: Type::Unit,
             bridge_params: vec![],
@@ -2506,6 +2509,7 @@ mod tests {
             },
             nullable: false,
             throws: false,
+            call_kind: ExternCallKind::Static,
             param_types: vec![Type::Int],
             return_type: Type::Unit,
             bridge_params: vec![],

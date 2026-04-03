@@ -1,0 +1,5 @@
+# expect: error E0607
+extern java "java.lang.Thread" as JThread {
+  @instance @constructor fun start(self: JThread) -> Unit
+}
+fun main() = start(start)

@@ -1127,6 +1127,7 @@ fn process_extern_methods(
     type_param_map: Option<&HashMap<String, TypeVarId>>,
     type_param_arity: Option<&HashMap<String, usize>>,
     type_param_names: Option<&[String]>,
+    alias_name: Option<&str>,
 ) -> Result<ExternMethodsResult, SpannedTypeError> {
     let empty_map = HashMap::new();
     let empty_arity = HashMap::new();
@@ -1219,6 +1220,93 @@ fn process_extern_methods(
             }
         }
 
+        // Validate @instance / @constructor
+        if method.instance && method.constructor {
+            return Err(spanned(
+                TypeError::InstanceConstructorConflict {
+                    name: bind_name.clone(),
+                },
+                method.span,
+            ));
+        }
+
+        if (method.instance || method.constructor) && matches!(target, ExternTarget::Js) {
+            return Err(spanned(
+                TypeError::InstanceConstructorOnJsTarget {
+                    name: bind_name.clone(),
+                },
+                method.span,
+            ));
+        }
+
+        if method.constructor {
+            if let Some(alias) = alias_name {
+                // Return type must be Own(Named(alias, _)), possibly wrapped in
+                // Result[String, _] for @throws or Option[_] for @nullable.
+                let inner_ret = if method.throws {
+                    // Result[String, ~Alias] → check the second type arg
+                    match &ret {
+                        Type::Named(n, args) if n == "Result" && args.len() == 2 => &args[1],
+                        _ => &ret,
+                    }
+                } else if method.nullable {
+                    // Option[~Alias] → check the inner type
+                    match &ret {
+                        Type::Named(n, args) if n == "Option" && args.len() == 1 => &args[0],
+                        _ => &ret,
+                    }
+                } else {
+                    &ret
+                };
+                let is_own_alias = matches!(inner_ret, Type::Own(inner) if matches!(inner.as_ref(), Type::Named(n, _) if n == alias));
+                if !is_own_alias {
+                    return Err(spanned(
+                        TypeError::InvalidConstructorReturn {
+                            name: bind_name.clone(),
+                            expected_type: alias.to_string(),
+                            actual_return_type: ret.clone(),
+                        },
+                        method.span,
+                    ));
+                }
+                // First param must NOT be the extern type
+                if let Some((_, _first_ty)) = method.params.first() {
+                    let first_resolved = &param_types[0];
+                    let matches_alias = matches!(first_resolved, Type::Named(n, _) if n == alias)
+                        || matches!(first_resolved, Type::Own(inner) if matches!(inner.as_ref(), Type::Named(n, _) if n == alias));
+                    if matches_alias {
+                        return Err(spanned(
+                            TypeError::ConstructorWithSelf {
+                                name: bind_name.clone(),
+                            },
+                            method.span,
+                        ));
+                    }
+                }
+            }
+        }
+
+        if method.instance {
+            if let Some(alias) = alias_name {
+                // First param must be the extern type
+                let first_matches = if let Some(first_resolved) = param_types.first() {
+                    matches!(first_resolved, Type::Named(n, _) if n == alias)
+                        || matches!(first_resolved, Type::Own(inner) if matches!(inner.as_ref(), Type::Named(n, _) if n == alias))
+                } else {
+                    false
+                };
+                if !first_matches {
+                    return Err(spanned(
+                        TypeError::InvalidInstanceFirstParam {
+                            name: bind_name.clone(),
+                            expected_type: alias.to_string(),
+                        },
+                        method.span,
+                    ));
+                }
+            }
+        }
+
         // Build where clause dict requirements before TypeScheme construction
         // so constraints are embedded in the scheme.
         let mut requirements = Vec::new();
@@ -1304,6 +1392,8 @@ fn process_extern_methods(
             target: target.clone(),
             nullable: method.nullable,
             throws: method.throws,
+            instance: method.instance,
+            constructor: method.constructor,
             param_types: concrete_params,
             return_type: codegen_return,
             constraints: requirements,
@@ -1930,6 +2020,7 @@ impl ModuleInferenceState {
                         } else {
                             None
                         },
+                        alias.as_deref(),
                     )?;
 
                     for (name, reqs) in result.fn_constraints {

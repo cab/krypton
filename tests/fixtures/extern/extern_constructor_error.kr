@@ -1,0 +1,5 @@
+# expect: error E0606
+extern java "java.lang.Thread" as JThread {
+  @constructor fun new() -> JThread
+}
+fun main() = new()

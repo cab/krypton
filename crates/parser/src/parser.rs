@@ -1393,7 +1393,10 @@ where
     // --- Extern declaration ---
     // extern java "class.Name" { fun method(params) -> Ret }
     // extern js "./path.mjs" { fun method(params) -> Ret }
-    let extern_param = select! { Token::Ident(s) => s.to_string() }
+    let extern_param = select! {
+        Token::Ident(s) => s.to_string(),
+        Token::Self_ => "self".to_string(),
+    }
         .then_ignore(symbol(Token::Colon))
         .then(ty.clone());
 
@@ -1411,16 +1414,34 @@ where
 
     let extern_where_clause = where_clause_parser();
 
-    let extern_annotation = symbol(Token::At)
+    let extern_annotations = symbol(Token::At)
         .then(select! {
-            Token::Ident(s) if s == "nullable" => (true, false),
-            Token::Ident(s) if s == "throws" => (false, true),
+            Token::Ident(s) if s == "nullable" => s.to_string(),
+            Token::Ident(s) if s == "throws" => s.to_string(),
+            Token::Ident(s) if s == "instance" => s.to_string(),
+            Token::Ident(s) if s == "constructor" => s.to_string(),
         })
-        .map(|(_, flags)| flags)
-        .or_not()
-        .map(|opt| opt.unwrap_or((false, false)));
+        .map(|(_, name)| name)
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|names| {
+            let mut nullable = false;
+            let mut throws = false;
+            let mut instance = false;
+            let mut constructor = false;
+            for name in names {
+                match name.as_str() {
+                    "nullable" => nullable = true,
+                    "throws" => throws = true,
+                    "instance" => instance = true,
+                    "constructor" => constructor = true,
+                    _ => {}
+                }
+            }
+            (nullable, throws, instance, constructor)
+        });
 
-    let extern_method = extern_annotation
+    let extern_method = extern_annotations
         .then(symbol(Token::Pub).or_not())
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1430,12 +1451,14 @@ where
         .then(extern_where_clause)
         .map_with(
             |(
-                ((((((nullable, throws), pub_opt), name), method_type_params), params), return_type),
+                ((((((nullable, throws, instance, constructor), pub_opt), name), method_type_params), params), return_type),
                 where_clauses,
             ),
              e| ExternMethod {
                 nullable,
                 throws,
+                instance,
+                constructor,
                 visibility: if pub_opt.is_some() {
                     Visibility::Pub
                 } else {

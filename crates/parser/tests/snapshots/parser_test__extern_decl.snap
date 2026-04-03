@@ -14,6 +14,8 @@ decls:
       methods:
         - nullable: false
           throws: false
+          instance: false
+          constructor: false
           visibility: Private
           name: abs
           type_params: []
@@ -36,6 +38,8 @@ decls:
             - 58
         - nullable: false
           throws: false
+          instance: false
+          constructor: false
           visibility: Private
           name: max
           type_params: []

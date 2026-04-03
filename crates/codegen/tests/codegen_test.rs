@@ -533,6 +533,8 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             target: krypton_parser::ast::ExternTarget::Java,
             nullable: false,
             throws: false,
+            instance: false,
+            constructor: false,
             param_types: vec![Type::Var(println_var)],
             return_type: Type::Unit,
             span: (0, 0),

@@ -1,0 +1,5 @@
+# expect: error E0605
+extern java "java.lang.Thread" as JThread {
+  @instance fun start(self: String) -> Unit
+}
+fun main() = start("hello")

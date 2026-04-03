@@ -444,6 +444,7 @@ mod tests {
                 target: js_target.clone(),
                 nullable,
                 throws: false,
+                call_kind: ExternCallKind::Static,
                 param_types: vec![Type::Int],
                 return_type: Type::Int,
                 bridge_params: vec![],

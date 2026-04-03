@@ -345,6 +345,7 @@ pub(super) struct Compiler<'link> {
     /// variant_name → field types (from IR SumTypeDef) for resolving generic bindings.
     pub(super) variant_field_types: HashMap<String, Vec<Type>>,
     pub(super) raw_extern_functions: HashMap<String, FunctionInfo>,
+    pub(super) raw_extern_classes: HashMap<String, u16>,
 }
 
 impl<'link> Compiler<'link> {
@@ -498,6 +499,7 @@ impl<'link> Compiler<'link> {
             sum_type_params: HashMap::new(),
             variant_field_types: HashMap::new(),
             raw_extern_functions: HashMap::new(),
+            raw_extern_classes: HashMap::new(),
         };
 
         Ok(compiler)

@@ -1102,9 +1102,17 @@ impl<'link> Compiler<'link> {
                 krypton_ir::ExternTarget::Js { .. } => continue,
             };
 
+            // Store extern class index for constructor codegen
+            self.raw_extern_classes.insert(ext.name.clone(), extern_class);
+
+            let skip_first = ext.call_kind == krypton_ir::ExternCallKind::Instance;
+
             let mut param_jvm_types = Vec::new();
             let mut param_desc = String::from("(");
             for (i, pt) in ext.param_types.iter().enumerate() {
+                if skip_first && i == 0 {
+                    continue; // self param not part of JVM descriptor
+                }
                 let bridge = ext.bridge_params.get(i).and_then(|b| b.as_ref());
                 if let Some(bridge) = bridge {
                     // Bridged param: use the Java interface type, not Object
@@ -1120,22 +1128,37 @@ impl<'link> Compiler<'link> {
             }
             param_desc.push(')');
 
-            let (return_type, ret_desc, is_void) =
-                extern_return_info(self, &ext.return_type, ext.nullable, ext.throws)?;
-
-            let descriptor = format!("{param_desc}{ret_desc}");
-            let method_ref = self
-                .cp
-                .add_method_ref(extern_class, &ext.name, &descriptor)?;
-
-            let info = FunctionInfo {
-                method_ref,
-                param_types: param_jvm_types,
-                return_type,
-                is_void,
-            };
-
-            self.raw_extern_functions.insert(ext.name.clone(), info);
+            match ext.call_kind {
+                krypton_ir::ExternCallKind::Constructor => {
+                    // Java <init> always returns void; wrapper produces the new'd object
+                    let descriptor = format!("{param_desc}V");
+                    let method_ref = self
+                        .cp
+                        .add_method_ref(extern_class, "<init>", &descriptor)?;
+                    let info = FunctionInfo {
+                        method_ref,
+                        param_types: param_jvm_types,
+                        return_type: JvmType::StructRef(extern_class),
+                        is_void: false,
+                    };
+                    self.raw_extern_functions.insert(ext.name.clone(), info);
+                }
+                _ => {
+                    let (return_type, ret_desc, is_void) =
+                        extern_return_info(self, &ext.return_type, ext.nullable, ext.throws)?;
+                    let descriptor = format!("{param_desc}{ret_desc}");
+                    let method_ref = self
+                        .cp
+                        .add_method_ref(extern_class, &ext.name, &descriptor)?;
+                    let info = FunctionInfo {
+                        method_ref,
+                        param_types: param_jvm_types,
+                        return_type,
+                        is_void,
+                    };
+                    self.raw_extern_functions.insert(ext.name.clone(), info);
+                }
+            }
         }
 
         // Imported functions
@@ -1330,6 +1353,65 @@ impl<'link> Compiler<'link> {
         Ok(())
     }
 
+    /// Emit the raw Java invoke for an extern function. Handles static, instance,
+    /// and constructor call kinds. Returns `Some(jvm_type)` for the result on the
+    /// stack, or `None` if the call is void.
+    fn emit_extern_invoke(
+        &mut self,
+        ext: &krypton_ir::ExternFnDef,
+        raw_info: &FunctionInfo,
+        param_slots: &[(u16, JvmType)],
+        dict_count: usize,
+    ) -> Result<Option<JvmType>, CodegenError> {
+        match ext.call_kind {
+            krypton_ir::ExternCallKind::Static => {
+                self.emit_extern_call_params(ext, param_slots, dict_count)?;
+                for jvm_ty in raw_info.param_types.iter().rev() {
+                    self.builder.pop_jvm_type(*jvm_ty);
+                }
+                self.builder.emit(Instruction::Invokestatic(raw_info.method_ref));
+                if raw_info.is_void {
+                    Ok(None)
+                } else {
+                    self.builder.push_jvm_type(raw_info.return_type);
+                    Ok(Some(raw_info.return_type))
+                }
+            }
+            krypton_ir::ExternCallKind::Instance => {
+                self.emit_extern_call_params(ext, param_slots, dict_count)?;
+                // Pop non-self params (raw_info.param_types excludes self)
+                for jvm_ty in raw_info.param_types.iter().rev() {
+                    self.builder.pop_jvm_type(*jvm_ty);
+                }
+                // Pop self (objectref) — first param in ext.param_types
+                let self_jvm = extern_type_to_jvm(self, &ext.param_types[0])?;
+                self.builder.pop_jvm_type(self_jvm);
+                self.builder.emit(Instruction::Invokevirtual(raw_info.method_ref));
+                if raw_info.is_void {
+                    Ok(None)
+                } else {
+                    self.builder.push_jvm_type(raw_info.return_type);
+                    Ok(Some(raw_info.return_type))
+                }
+            }
+            krypton_ir::ExternCallKind::Constructor => {
+                let extern_class = *self.raw_extern_classes.get(&ext.name)
+                    .expect("ICE: no extern class for constructor");
+                self.builder.emit_new_dup(extern_class);
+                self.emit_extern_call_params(ext, param_slots, dict_count)?;
+                for jvm_ty in raw_info.param_types.iter().rev() {
+                    self.builder.pop_jvm_type(*jvm_ty);
+                }
+                self.builder.frame.pop_type(); // pop dup'd Uninitialized
+                self.builder.frame.pop_type(); // pop new Uninitialized
+                self.builder.emit(Instruction::Invokespecial(raw_info.method_ref));
+                let result = JvmType::StructRef(extern_class);
+                self.builder.push_jvm_type(result);
+                Ok(Some(result))
+            }
+        }
+    }
+
     fn compile_nullable_extern_wrapper(
         &mut self,
         ext: &krypton_ir::ExternFnDef,
@@ -1370,19 +1452,15 @@ impl<'link> Compiler<'link> {
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
         let dict_count = self.dict_count_for(&ext.name);
-        self.emit_extern_call_params(ext, &param_slots, dict_count)?;
-        for jvm_ty in raw_info.param_types.iter().rev() {
-            self.builder.pop_jvm_type(*jvm_ty);
-        }
-        self.builder.emit(Instruction::Invokestatic(raw_info.method_ref));
-        self.builder.push_jvm_type(raw_info.return_type);
+        let invoke_result = self.emit_extern_invoke(ext, &raw_info, &param_slots, dict_count)?;
+        let result_jvm = invoke_result.expect("ICE: @nullable extern must not return void");
 
-        let raw_slot = self.builder.alloc_anonymous_local(raw_info.return_type);
+        let raw_slot = self.builder.alloc_anonymous_local(result_jvm);
         self.builder.emit(Instruction::Astore(raw_slot as u8));
         self.builder.frame.pop_type();
 
         self.builder.emit(Instruction::Aload(raw_slot as u8));
-        self.builder.push_jvm_type(raw_info.return_type);
+        self.builder.push_jvm_type(result_jvm);
         let some_path = self.builder.emit_placeholder(Instruction::Ifnonnull(0));
         self.builder.frame.pop_type();
         let stack_at_some = self.builder.frame.stack_types.clone();
@@ -1405,7 +1483,7 @@ impl<'link> Compiler<'link> {
             self.option_variant_construct_info(&ext.return_type, "Some")?;
         self.builder.emit_new_dup(some_class);
         self.builder.emit(Instruction::Aload(raw_slot as u8));
-        self.builder.push_jvm_type(raw_info.return_type);
+        self.builder.push_jvm_type(result_jvm);
 
         let inner_type = self.nullable_inner_type(&ext.return_type)?;
         let actual_jvm = match inner_type {
@@ -1421,7 +1499,7 @@ impl<'link> Compiler<'link> {
                 self.builder.unbox_if_needed(JvmType::Int);
                 JvmType::Int
             }
-            _ => raw_info.return_type,
+            _ => result_jvm,
         };
 
         let expected = if some_fields[0].is_erased {
@@ -1493,26 +1571,21 @@ impl<'link> Compiler<'link> {
         let try_start = self.builder.current_offset();
 
         // Load params and invoke the raw extern
-        self.emit_extern_call_params(ext, &param_slots, dict_count)?;
-        for jvm_ty in raw_info.param_types.iter().rev() {
-            self.builder.pop_jvm_type(*jvm_ty);
-        }
-        self.builder
-            .emit(Instruction::Invokestatic(raw_info.method_ref));
-        self.builder.push_jvm_type(raw_info.return_type);
+        let invoke_result = self.emit_extern_invoke(ext, &raw_info, &param_slots, dict_count)?;
+        let result_jvm = invoke_result.expect("ICE: @throws extern must not return void");
 
         // Store raw result so we can emit new/dup before the value
-        let raw_slot = self.builder.alloc_anonymous_local(raw_info.return_type);
-        self.builder.emit_store(raw_slot, raw_info.return_type);
+        let raw_slot = self.builder.alloc_anonymous_local(result_jvm);
+        self.builder.emit_store(raw_slot, result_jvm);
 
         let (ok_class, ok_ctor, result_iface, ok_fields) =
             self.result_variant_construct_info(&ext.return_type, "Ok")?;
 
         // new Ok, dup, load raw result, [box if needed], invokespecial
         self.builder.emit_new_dup(ok_class);
-        self.builder.emit_load(raw_slot, raw_info.return_type);
+        self.builder.emit_load(raw_slot, result_jvm);
 
-        let actual_jvm = raw_info.return_type;
+        let actual_jvm = result_jvm;
         let expected = if ok_fields[0].is_erased {
             JvmType::StructRef(self.builder.refs.object_class)
         } else {
@@ -1646,19 +1719,16 @@ impl<'link> Compiler<'link> {
         let dict_count = self.dict_count_for(&ext.name);
 
         // Load params and invoke the raw extern
-        self.emit_extern_call_params(ext, &param_slots, dict_count)?;
-        for jvm_ty in raw_info.param_types.iter().rev() {
-            self.builder.pop_jvm_type(*jvm_ty);
-        }
-        self.builder.emit(Instruction::Invokestatic(raw_info.method_ref));
-
-        if raw_info.is_void {
-            // Void externs (e.g. println): push Unit value (0) and return
-            self.builder.emit(Instruction::Iconst_0);
-            self.builder.push_jvm_type(JvmType::Int);
-        } else {
-            self.builder.push_jvm_type(raw_info.return_type);
-            self.emit_type_coercion(raw_info.return_type, wrapper_info.return_type);
+        let invoke_result = self.emit_extern_invoke(ext, &raw_info, &param_slots, dict_count)?;
+        match invoke_result {
+            None => {
+                // Void → push Unit (Iconst_0)
+                self.builder.emit(Instruction::Iconst_0);
+                self.builder.push_jvm_type(JvmType::Int);
+            }
+            Some(actual) => {
+                self.emit_type_coercion(actual, wrapper_info.return_type);
+            }
         }
 
         let ret_instr = match wrapper_info.return_type {
