@@ -246,12 +246,27 @@ fn build_type_param_maps(
     (ids, arities)
 }
 
-/// Strip `Own` wrapper from non-function types.
+/// Strip `Own` and `MaybeOwn` wrappers from non-function types.
 /// Used at consumption sites (binary ops, if conditions, etc.) where
 /// the ownership wrapper is not meaningful.
 pub(super) fn strip_own(ty: &Type) -> Type {
     match ty {
         Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => *inner.clone(),
+        Type::MaybeOwn(_, inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => *inner.clone(),
+        other => other.clone(),
+    }
+}
+
+/// Convert `Own(T)` to `MaybeOwn(fresh_q, T)` — defers the ownership decision
+/// rather than discarding it. Used when fabricating expected function types
+/// for unresolved callees.
+pub(super) fn defer_own(ty: &Type, subst: &mut Substitution) -> Type {
+    match ty {
+        Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => {
+            let q = subst.fresh_qual();
+            Type::MaybeOwn(q, inner.clone())
+        }
+        Type::MaybeOwn(_, _) => ty.clone(), // preserve existing MaybeOwn
         other => other.clone(),
     }
 }
@@ -282,6 +297,9 @@ pub(super) fn match_type_with_bindings(
         | (Type::String, Type::String)
         | (Type::Unit, Type::Unit) => true,
         (Type::Own(lhs), Type::Own(rhs)) => match_type_with_bindings(lhs, rhs, bindings),
+        (Type::MaybeOwn(_, inner), other) | (other, Type::MaybeOwn(_, inner)) => {
+            match_type_with_bindings(inner, other, bindings)
+        }
         (Type::Fn(lhs_params, lhs_ret), Type::Fn(rhs_params, rhs_ret)) => {
             lhs_params.len() == rhs_params.len()
                 && lhs_params
@@ -325,7 +343,7 @@ fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
                 free_vars_into(a, out);
             }
         }
-        Type::Own(inner) => free_vars_into(inner, out),
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => free_vars_into(inner, out),
         Type::Tuple(elems) => {
             for e in elems {
                 free_vars_into(e, out);
@@ -752,7 +770,7 @@ pub(super) fn is_concrete_non_function(ty: &Type, subst: &Substitution) -> bool 
     let walked = subst.apply(ty);
     match &walked {
         Type::Var(_) | Type::Fn(_, _) => false,
-        Type::Own(inner) => is_concrete_non_function(inner, subst),
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => is_concrete_non_function(inner, subst),
         _ => true,
     }
 }
@@ -1030,6 +1048,10 @@ fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type
             crate::types::normalize_app(new_ctor, new_args)
         }
         Type::Own(inner) => Type::Own(Box::new(substitute_type_var(inner, var_id, replacement))),
+        Type::MaybeOwn(q, inner) => Type::MaybeOwn(
+            *q,
+            Box::new(substitute_type_var(inner, var_id, replacement)),
+        ),
         Type::Tuple(elems) => {
             let new_elems = elems
                 .iter()
@@ -1044,7 +1066,7 @@ pub(super) fn leading_type_var(ty: &Type) -> Option<TypeVarId> {
     match ty {
         Type::Var(v) => Some(*v),
         Type::App(ctor, _) => leading_type_var(ctor),
-        Type::Own(inner) => leading_type_var(inner),
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => leading_type_var(inner),
         _ => None,
     }
 }
@@ -3985,6 +4007,7 @@ fn infer_function_bodies<'a>(
             pre_bound.push((idx, tv));
         }
 
+        state.subst.push_qual_scope();
         for &(idx, ref tv) in &pre_bound {
             let decl = fn_decls[idx];
             state.env.push_scope();
@@ -4061,6 +4084,13 @@ fn infer_function_bodies<'a>(
                 }
             }
             if !shared_tv_names.is_empty() {
+                // Mark shared type vars on the substitution so unify/coerce_unify
+                // can strip Own when binding these vars.
+                for name in &shared_tv_names {
+                    if let Some(&var_id) = type_param_map.get(name.as_str()) {
+                        state.subst.mark_shared_var(var_id);
+                    }
+                }
                 shared_type_vars.insert(decl.name.clone(), shared_tv_names);
             }
 
@@ -4168,6 +4198,9 @@ fn infer_function_bodies<'a>(
 
             fn_bodies[idx] = Some(body_typed);
         }
+
+        // Resolve pending qualifiers at this SCC scope before generalization.
+        state.subst.pop_qual_scope_and_resolve();
 
         // Generalize against an empty env: all env bindings are either fully-quantified
         // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
@@ -4493,6 +4526,7 @@ fn typecheck_impl_methods(
                     substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
                 state.env.fn_return_type = Some(concrete_ret_type);
 
+                state.subst.push_qual_scope();
                 let body_typed = {
                     let empty_efn = HashSet::new();
                     let mut ctx = InferenceContext {
@@ -4517,6 +4551,7 @@ fn typecheck_impl_methods(
                 };
                 state.env.fn_return_type = prev_fn_return_type;
                 state.env.pop_scope();
+                state.subst.pop_qual_scope_and_resolve();
 
                 let mut body_typed = body_typed;
                 typed_ast::apply_subst(&mut body_typed, &state.subst);

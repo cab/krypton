@@ -1,0 +1,4 @@
+# expect: ok
+# shared bound strips ownership: passing ~String to shared-bounded param yields String
+fun inspect[a](x: a) -> a where a: shared = x
+fun test(s: ~String) -> String = inspect(s)

@@ -168,13 +168,33 @@ fn unify_transitive_vars() {
 // --- coerce_unify tests ---
 
 #[test]
-fn coerce_own_to_var_strips_own() {
+fn coerce_own_to_var_defers_then_defaults_shared() {
     let mut gen = TypeVarGen::new();
     let a = fresh_var(&mut gen);
     let mut subst = Substitution::new();
-    // coerce_unify(Own(Int), Var(a)) → a = Int (strips Own)
+    // coerce_unify(Own(Int), Var(a)) in bare position → a = MaybeOwn(q, Int) (deferred)
+    subst.push_qual_scope();
     assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst).is_ok());
+    // Before scope resolution: still MaybeOwn
+    let before = subst.apply(&a);
+    assert!(matches!(&before, Type::MaybeOwn(_, inner) if **inner == Type::Int));
+    // After scope resolution: qualifier defaults to Shared → bare Int
+    subst.pop_qual_scope_and_resolve();
     assert_eq!(subst.apply(&a), Type::Int);
+}
+
+#[test]
+fn coerce_own_to_var_confirms_affine_when_expected_own() {
+    let mut gen = TypeVarGen::new();
+    let a = fresh_var(&mut gen);
+    let mut subst = Substitution::new();
+    subst.push_qual_scope();
+    // coerce_unify(Own(Int), Var(a)) → a = MaybeOwn(q, Int)
+    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst).is_ok());
+    // Now coerce MaybeOwn(q, Int) against Own(Int) → confirms q = Affine
+    assert!(coerce_unify(&a, &Type::Own(Box::new(Type::Int)), &mut subst).is_ok());
+    subst.pop_qual_scope_and_resolve();
+    assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
 }
 
 #[test]

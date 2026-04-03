@@ -649,6 +649,7 @@ fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
         ),
         Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| remap_vars(e, mapping)).collect()),
         Type::Own(inner) => Type::Own(Box::new(remap_vars(inner, mapping))),
+        Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(remap_vars(inner, mapping))),
         Type::App(base, args) => Type::App(
             Box::new(remap_vars(base, mapping)),
             args.iter().map(|a| remap_vars(a, mapping)).collect(),

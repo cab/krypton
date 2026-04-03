@@ -7,6 +7,21 @@ use crate::typed_ast::TraitName;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVarId(pub(crate) u32);
 
+/// Qualifier variable identifier for deferred ownership resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct QualVarId(pub(crate) u32);
+
+/// State of a qualifier variable during inference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QualifierState {
+    /// Not yet decided — may become Affine or Shared.
+    Pending,
+    /// Confirmed as owned (~T).
+    Affine,
+    /// Resolved as shared (plain T).
+    Shared,
+}
+
 impl fmt::Display for TypeVarId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.display_name())
@@ -46,6 +61,10 @@ pub enum Type {
     /// e.g., `f[a]` when `f` is a higher-kinded type variable.
     App(Box<Type>, Vec<Type>),
     Own(Box<Type>),
+    /// Deferred ownership: either `~T` or `T` depending on qualifier resolution.
+    /// Created when `~T` meets an unbound type variable in a bare (non-constructor) position.
+    /// Resolved by `Substitution::apply` once the qualifier state is decided.
+    MaybeOwn(QualVarId, Box<Type>),
     Tuple(Vec<Type>),
     /// Sentinel for unfilled return positions in partially-applied function type
     /// constructors. Used by HKT machinery — never appears in user-facing types.
@@ -148,6 +167,9 @@ impl Type {
                     .collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.renumber_inner(mapping, next_id))),
+            Type::MaybeOwn(q, inner) => {
+                Type::MaybeOwn(*q, Box::new(inner.renumber_inner(mapping, next_id)))
+            }
             Type::Tuple(elems) => Type::Tuple(
                 elems
                     .iter()
@@ -177,6 +199,9 @@ impl Type {
                 args.iter().map(|a| a.remap_vars(mapping)).collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.remap_vars(mapping))),
+            Type::MaybeOwn(q, inner) => {
+                Type::MaybeOwn(*q, Box::new(inner.remap_vars(mapping)))
+            }
             Type::Tuple(elems) => {
                 Type::Tuple(elems.iter().map(|e| e.remap_vars(mapping)).collect())
             }
@@ -247,6 +272,7 @@ impl fmt::Display for Type {
                 Ok(())
             }
             Type::Own(inner) => write!(f, "~{}", inner),
+            Type::MaybeOwn(_, inner) => write!(f, "{}", inner),
             Type::Tuple(elems) => {
                 write!(f, "(")?;
                 for (i, e) in elems.iter().enumerate() {
@@ -450,6 +476,7 @@ fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
             }
         }
         Type::Own(inner) => format!("~{}", format_type_impl(inner, names)),
+        Type::MaybeOwn(_, inner) => format_type_impl(inner, names),
         Type::Tuple(elems) => {
             let es: Vec<String> = elems.iter().map(|e| format_type_impl(e, names)).collect();
             format!("({})", es.join(", "))
@@ -502,6 +529,7 @@ fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSe
             }
         }
         Type::Own(inner) => free_vars_ordered_into(inner, out, seen),
+        Type::MaybeOwn(_, inner) => free_vars_ordered_into(inner, out, seen),
         _ => {}
     }
 }
@@ -575,24 +603,49 @@ impl fmt::Display for TypeScheme {
     }
 }
 
-/// A substitution mapping type variables to types.
-#[derive(Debug, Clone, Default)]
+/// A substitution mapping type variables to types, extended with qualifier
+/// variables for deferred ownership resolution.
+#[derive(Debug, Clone)]
 pub struct Substitution {
     map: HashMap<TypeVarId, Type>,
+    /// Qualifier variable states (Pending, Affine, or Shared).
+    qualifiers: HashMap<QualVarId, QualifierState>,
+    /// Union-find for qualifier unification: child → parent.
+    qualifier_aliases: HashMap<QualVarId, QualVarId>,
+    /// Scope depth at which each qualifier was created.
+    qualifier_scope_depth: HashMap<QualVarId, u32>,
+    /// Counter for fresh qualifier variable IDs.
+    next_qual: u32,
+    /// Current qualifier scope nesting depth.
+    current_scope_depth: u32,
+    /// Type variables bound by a `shared` constraint — prevents Own binding.
+    shared_type_vars: HashSet<TypeVarId>,
+}
+
+impl Default for Substitution {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Substitution {
     pub fn new() -> Self {
         Substitution {
             map: HashMap::new(),
+            qualifiers: HashMap::new(),
+            qualifier_aliases: HashMap::new(),
+            qualifier_scope_depth: HashMap::new(),
+            next_qual: 0,
+            current_scope_depth: 0,
+            shared_type_vars: HashSet::new(),
         }
     }
 
     /// Create a substitution with a single binding.
     pub fn bind(var: TypeVarId, ty: Type) -> Self {
-        let mut map = HashMap::new();
-        map.insert(var, ty);
-        Substitution { map }
+        let mut s = Self::new();
+        s.map.insert(var, ty);
+        s
     }
 
     /// Recursively apply this substitution to a type.
@@ -647,7 +700,27 @@ impl Substitution {
                     .collect();
                 normalize_app(applied_ctor, applied_args)
             }
-            Type::Own(inner) => Type::Own(Box::new(self.apply_inner(inner, visiting, chain))),
+            Type::Own(inner) => {
+                let resolved_inner = self.apply_inner(inner, visiting, chain);
+                match &resolved_inner {
+                    Type::Own(_) => resolved_inner, // collapse Own(Own(T))
+                    _ => Type::Own(Box::new(resolved_inner)),
+                }
+            }
+            Type::MaybeOwn(q, inner) => {
+                let resolved_q = self.resolve_qual(*q);
+                let resolved_inner = self.apply_inner(inner, visiting, chain);
+                match self.qualifiers.get(&resolved_q) {
+                    Some(QualifierState::Affine) => {
+                        match &resolved_inner {
+                            Type::Own(_) => resolved_inner, // collapse Own(Own(T))
+                            _ => Type::Own(Box::new(resolved_inner)),
+                        }
+                    }
+                    Some(QualifierState::Shared) => resolved_inner,
+                    _ => Type::MaybeOwn(resolved_q, Box::new(resolved_inner)),
+                }
+            }
             Type::Tuple(elems) => Type::Tuple(
                 elems
                     .iter()
@@ -676,16 +749,35 @@ impl Substitution {
     /// Compose two substitutions: applying the result is equivalent to applying
     /// `other` first, then `self`.
     pub fn compose(&self, other: &Substitution) -> Substitution {
-        let mut result = HashMap::new();
+        let mut result_map = HashMap::new();
         // Apply self to each binding in other
         for (&var, ty) in &other.map {
-            result.insert(var, self.apply(ty));
+            result_map.insert(var, self.apply(ty));
         }
         // Add bindings from self that aren't in other
         for (&var, ty) in &self.map {
-            result.entry(var).or_insert_with(|| ty.clone());
+            result_map.entry(var).or_insert_with(|| ty.clone());
         }
-        Substitution { map: result }
+        // Merge qualifier maps: self takes precedence
+        let mut qualifiers = other.qualifiers.clone();
+        for (&q, state) in &self.qualifiers {
+            qualifiers.insert(q, state.clone());
+        }
+        let mut qualifier_aliases = other.qualifier_aliases.clone();
+        qualifier_aliases.extend(self.qualifier_aliases.iter());
+        let mut qualifier_scope_depth = other.qualifier_scope_depth.clone();
+        qualifier_scope_depth.extend(self.qualifier_scope_depth.iter());
+        let mut shared_type_vars = other.shared_type_vars.clone();
+        shared_type_vars.extend(self.shared_type_vars.iter());
+        Substitution {
+            map: result_map,
+            qualifiers,
+            qualifier_aliases,
+            qualifier_scope_depth,
+            next_qual: self.next_qual.max(other.next_qual),
+            current_scope_depth: self.current_scope_depth.max(other.current_scope_depth),
+            shared_type_vars,
+        }
     }
 
     /// Look up a variable in the substitution.
@@ -696,6 +788,125 @@ impl Substitution {
     /// Insert a binding into the substitution.
     pub fn insert(&mut self, var: TypeVarId, ty: Type) {
         self.map.insert(var, ty);
+    }
+
+    // ── Qualifier variable methods ──────────────────────────────────────
+
+    /// Create a fresh qualifier variable at the current scope depth.
+    pub fn fresh_qual(&mut self) -> QualVarId {
+        let id = QualVarId(self.next_qual);
+        self.next_qual += 1;
+        self.qualifiers.insert(id, QualifierState::Pending);
+        self.qualifier_scope_depth
+            .insert(id, self.current_scope_depth);
+        id
+    }
+
+    /// Follow alias chain to root qualifier.
+    pub fn resolve_qual(&self, q: QualVarId) -> QualVarId {
+        let mut current = q;
+        while let Some(&next) = self.qualifier_aliases.get(&current) {
+            current = next;
+        }
+        current
+    }
+
+    /// Get qualifier state, following aliases.
+    pub fn get_qualifier(&self, q: QualVarId) -> Option<&QualifierState> {
+        self.qualifiers.get(&self.resolve_qual(q))
+    }
+
+    /// Confirm qualifier as Affine if still Pending.
+    pub fn confirm_affine(&mut self, q: QualVarId) {
+        let root = self.resolve_qual(q);
+        if matches!(
+            self.qualifiers.get(&root),
+            Some(QualifierState::Pending) | None
+        ) {
+            self.qualifiers.insert(root, QualifierState::Affine);
+        }
+    }
+
+    /// Alias two qualifiers. Root keeps minimum (outermost) scope depth.
+    /// Propagates decided state: if either is Affine, the root becomes Affine.
+    pub fn unify_qualifiers(&mut self, q1: QualVarId, q2: QualVarId) {
+        let r1 = self.resolve_qual(q1);
+        let r2 = self.resolve_qual(q2);
+        if r1 == r2 {
+            return;
+        }
+
+        let s1 = self.qualifiers.get(&r1).cloned();
+        let s2 = self.qualifiers.get(&r2).cloned();
+
+        // Choose root: prefer the one that's Affine, else r1
+        let (root, child) = match (&s1, &s2) {
+            (_, Some(QualifierState::Affine)) => (r2, r1),
+            _ => (r1, r2),
+        };
+        self.qualifier_aliases.insert(child, root);
+
+        // Root keeps minimum scope depth (outermost scope)
+        let d1 = self.qualifier_scope_depth.get(&r1).copied().unwrap_or(0);
+        let d2 = self.qualifier_scope_depth.get(&r2).copied().unwrap_or(0);
+        self.qualifier_scope_depth.insert(root, d1.min(d2));
+    }
+
+    /// Push a qualifier scope.
+    pub fn push_qual_scope(&mut self) {
+        self.current_scope_depth += 1;
+    }
+
+    /// Pop a qualifier scope, defaulting all Pending qualifiers whose
+    /// equivalence-class root belongs to this scope depth to Shared.
+    pub fn pop_qual_scope_and_resolve(&mut self) {
+        let depth = self.current_scope_depth;
+        let to_resolve: Vec<QualVarId> = self
+            .qualifiers
+            .keys()
+            .copied()
+            .filter(|q| {
+                let root = self.resolve_qual(*q);
+                root == *q // only process roots
+                    && matches!(self.qualifiers.get(&root), Some(QualifierState::Pending))
+                    && self
+                        .qualifier_scope_depth
+                        .get(&root)
+                        .copied()
+                        .unwrap_or(0)
+                        == depth
+            })
+            .collect();
+        for q in to_resolve {
+            self.qualifiers.insert(q, QualifierState::Shared);
+        }
+        self.current_scope_depth = self.current_scope_depth.saturating_sub(1);
+    }
+
+    /// Force a qualifier to Shared (used when shared-bounded var meets MaybeOwn).
+    pub fn force_shared(&mut self, q: QualVarId) {
+        let root = self.resolve_qual(q);
+        self.qualifiers.insert(root, QualifierState::Shared);
+    }
+
+    /// Read-only access to the qualifier map (for resolve_maybe_own helper).
+    pub fn qualifiers_ref(&self) -> &HashMap<QualVarId, QualifierState> {
+        &self.qualifiers
+    }
+
+    /// Current qualifier scope depth (for debugging).
+    pub fn current_scope_depth(&self) -> u32 {
+        self.current_scope_depth
+    }
+
+    /// Mark a type variable as shared-bounded.
+    pub fn mark_shared_var(&mut self, var: TypeVarId) {
+        self.shared_type_vars.insert(var);
+    }
+
+    /// Check if a type variable has a shared bound.
+    pub fn is_shared_var(&self, var: TypeVarId) -> bool {
+        self.shared_type_vars.contains(&var)
     }
 }
 
@@ -988,14 +1199,31 @@ impl Default for TypeVarGen {
 }
 
 impl Type {
-    /// Strip `Own` wrappers recursively, including inside `Named` type args.
+    /// Strip `Own` and `MaybeOwn` wrappers recursively, including inside `Named` type args.
     pub fn strip_own(&self) -> Type {
         match self {
             Type::Own(inner) => inner.strip_own(),
+            Type::MaybeOwn(_, inner) => inner.strip_own(),
             Type::Named(name, args) => {
                 Type::Named(name.clone(), args.iter().map(|a| a.strip_own()).collect())
             }
             other => other.clone(),
+        }
+    }
+
+    /// Returns true if this type (or any nested type) contains a MaybeOwn node.
+    pub fn contains_maybe_own(&self) -> bool {
+        match self {
+            Type::MaybeOwn(_, _) => true,
+            Type::Own(inner) => inner.contains_maybe_own(),
+            Type::Fn(params, ret) => {
+                params.iter().any(|p| p.contains_maybe_own()) || ret.contains_maybe_own()
+            }
+            Type::Named(_, args) | Type::App(_, args) => {
+                args.iter().any(|a| a.contains_maybe_own())
+            }
+            Type::Tuple(elems) => elems.iter().any(|e| e.contains_maybe_own()),
+            _ => false,
         }
     }
 }
@@ -1004,7 +1232,7 @@ impl Type {
 /// Returns the outermost constructor as a unique identifier.
 pub fn head_type_name(ty: &Type) -> String {
     match ty {
-        Type::Own(inner) => head_type_name(inner),
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => head_type_name(inner),
         Type::Named(name, _) => name.clone(),
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -1047,7 +1275,7 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
             parts.push(canonical_name_inner(ret, var_map));
             format!("$Fun{}${}", params.len(), parts.join("$"))
         }
-        Type::Own(inner) => canonical_name_inner(inner, var_map),
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => canonical_name_inner(inner, var_map),
         Type::Var(id) => {
             let next = var_map.len();
             let idx = *var_map.entry(*id).or_insert(next);

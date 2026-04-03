@@ -1,0 +1,4 @@
+# expect: ok
+# identity with owned arg, result used as bare — MaybeOwn defaults to Shared
+fun identity[a](x: a) -> a = x
+fun test(s: ~String) -> String = identity(s)

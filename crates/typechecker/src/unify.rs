@@ -19,7 +19,7 @@ use std::collections::HashSet;
 
 pub use crate::type_error::{SecondaryLabel, SpannedTypeError, TypeError, TypeErrorCode};
 use crate::types;
-use crate::types::{Substitution, Type, TypeVarId};
+use crate::types::{QualifierState, Substitution, Type, TypeVarId};
 
 /// Resolve type variable chains through the substitution.
 fn walk(ty: &Type, subst: &Substitution) -> Type {
@@ -69,8 +69,41 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
             occurs_in(var, ctor, subst) || args.iter().any(|a| occurs_in(var, a, subst))
         }
         Type::Own(inner) => occurs_in(var, inner, subst),
+        Type::MaybeOwn(_, inner) => occurs_in(var, inner, subst),
         Type::Tuple(elems) => elems.iter().any(|e| occurs_in(var, e, subst)),
         _ => false,
+    }
+}
+
+/// Prepare a type for binding to a shared-bounded var in `unify`.
+/// - MaybeOwn(q, T): force q = Shared, return T (defer_own artifact)
+/// - Own(T): error — structural ownership can't be silently stripped
+/// - other: return unchanged
+fn prepare_rhs_for_shared_binding(
+    var: TypeVarId,
+    rhs: &Type,
+    subst: &mut Substitution,
+) -> Result<Type, TypeError> {
+    match rhs {
+        Type::MaybeOwn(q, inner) => {
+            let root = subst.resolve_qual(*q);
+            if matches!(
+                subst.get_qualifier(*q),
+                Some(QualifierState::Pending) | None
+            ) {
+                subst.force_shared(root);
+            }
+            Ok(*inner.clone())
+        }
+        Type::Own(_) => {
+            // Structural Own meeting a shared var is a type mismatch.
+            // This preserves Option[~String] vs Option[String] distinction.
+            Err(TypeError::Mismatch {
+                expected: Type::Var(var),
+                actual: rhs.clone(),
+            })
+        }
+        _ => Ok(rhs.clone()),
     }
 }
 
@@ -84,19 +117,29 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         // Same type variables
         (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
 
-        // Bind type variable
+        // Bind type variable — with shared + MaybeOwn/Own awareness
         (Type::Var(a), _) => {
-            if occurs_in(*a, &t2, subst) {
-                return Err(TypeError::InfiniteType { var: *a, ty: t2 });
+            let rhs = if subst.is_shared_var(*a) {
+                prepare_rhs_for_shared_binding(*a, &t2, subst)?
+            } else {
+                t2.clone()
+            };
+            if occurs_in(*a, &rhs, subst) {
+                return Err(TypeError::InfiniteType { var: *a, ty: rhs });
             }
-            subst.insert(*a, t2);
+            subst.insert(*a, rhs);
             Ok(())
         }
         (_, Type::Var(b)) => {
-            if occurs_in(*b, &t1, subst) {
-                return Err(TypeError::InfiniteType { var: *b, ty: t1 });
+            let rhs = if subst.is_shared_var(*b) {
+                prepare_rhs_for_shared_binding(*b, &t1, subst)?
+            } else {
+                t1.clone()
+            };
+            if occurs_in(*b, &rhs, subst) {
+                return Err(TypeError::InfiniteType { var: *b, ty: rhs });
             }
-            subst.insert(*b, t1);
+            subst.insert(*b, rhs);
             Ok(())
         }
 
@@ -143,6 +186,20 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
 
         // Own types
         (Type::Own(a), Type::Own(b)) => unify(a, b, subst),
+
+        // MaybeOwn structural cases
+        (Type::MaybeOwn(q1, inner1), Type::MaybeOwn(q2, inner2)) => {
+            subst.unify_qualifiers(*q1, *q2);
+            unify(inner1, inner2, subst)
+        }
+        (Type::MaybeOwn(q, inner), Type::Own(other))
+        | (Type::Own(other), Type::MaybeOwn(q, inner)) => {
+            subst.confirm_affine(*q);
+            unify(inner, other, subst)
+        }
+        (Type::MaybeOwn(_, inner), other) | (other, Type::MaybeOwn(_, inner)) => {
+            unify(inner, other, subst)
+        }
 
         // Type constructor application (HKT)
         (Type::App(ctor1, args1), Type::App(ctor2, args2)) => {
@@ -217,16 +274,41 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
     }
 }
 
+/// Resolve a MaybeOwn type if its qualifier is decided.
+fn resolve_maybe_own(ty: Type, subst: &Substitution) -> Type {
+    match &ty {
+        Type::MaybeOwn(q, inner) => {
+            let resolved_q = subst.resolve_qual(*q);
+            match subst.qualifiers_ref().get(&resolved_q) {
+                Some(QualifierState::Affine) => Type::Own(inner.clone()),
+                Some(QualifierState::Shared) => *inner.clone(),
+                _ => ty,
+            }
+        }
+        _ => ty,
+    }
+}
+
 /// Directional coercion: allows Own(T) → T (drop ownership) but not T → Own(T) (fabrication).
 /// Used at value-flow sites: arg→param, value→annotation, body→return.
 ///
-/// Key rule: when expected is an unbound Var, strip Own before binding.
-/// This means `fold(list, 0, f)` works (B = Int, not Own(Int)), but
-/// `identity(owned_val)` returns T not ~T. Use explicit type app for the latter.
+/// When expected is an unbound Var and actual is Own(T):
+/// - If the var is shared-bounded: strip Own, bind var = T
+/// - If in_constructor position: absorb Own directly, bind var = ~T
+/// - Otherwise: defer via MaybeOwn(fresh_q, T)
 pub fn coerce_unify(
     actual: &Type,
     expected: &Type,
     subst: &mut Substitution,
+) -> Result<(), TypeError> {
+    coerce_unify_inner(actual, expected, subst, false)
+}
+
+fn coerce_unify_inner(
+    actual: &Type,
+    expected: &Type,
+    subst: &mut Substitution,
+    in_constructor: bool,
 ) -> Result<(), TypeError> {
     let actual = walk(actual, subst);
     let expected = walk(expected, subst);
@@ -238,25 +320,70 @@ pub fn coerce_unify(
         }
     }
 
-    // Var on expected side: strip Own, then bind.
-    // This prevents literals from poisoning type variables with Own.
+    // Var on expected side: handle Own/MaybeOwn binding with shared/constructor awareness.
     if let Type::Var(b) = &expected {
         if subst.get(*b).is_none() {
-            let stripped = strip_own_shallow(&actual);
-            // After stripping, if the result is the same var, it's identity (e.g., ~T → T)
-            if let Type::Var(s) = &stripped {
-                if s == b {
+            match &actual {
+                Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => {
+                    if subst.is_shared_var(*b) {
+                        // shared bound: strip Own, bind bare type T (not ~T)
+                        let base = *inner.clone();
+                        if let Type::Var(s) = &base {
+                            if s == b {
+                                return Ok(());
+                            }
+                        }
+                        if occurs_in(*b, &base, subst) {
+                            return Err(TypeError::InfiniteType {
+                                var: *b,
+                                ty: base,
+                            });
+                        }
+                        subst.insert(*b, base);
+                    } else if in_constructor {
+                        // Inside constructor: absorb ~T directly (no MaybeOwn)
+                        if occurs_in(*b, &actual, subst) {
+                            return Err(TypeError::InfiniteType {
+                                var: *b,
+                                ty: actual,
+                            });
+                        }
+                        subst.insert(*b, actual.clone());
+                    } else {
+                        // Bare position: defer via MaybeOwn
+                        let q = subst.fresh_qual();
+                        let base = *inner.clone();
+                        if let Type::Var(s) = &base {
+                            if s == b {
+                                return Ok(());
+                            }
+                        }
+                        if occurs_in(*b, &base, subst) {
+                            return Err(TypeError::InfiniteType {
+                                var: *b,
+                                ty: base,
+                            });
+                        }
+                        subst.insert(*b, Type::MaybeOwn(q, Box::new(base)));
+                    }
+                    return Ok(());
+                }
+                _ => {
+                    if let Type::Var(s) = &actual {
+                        if s == b {
+                            return Ok(());
+                        }
+                    }
+                    if occurs_in(*b, &actual, subst) {
+                        return Err(TypeError::InfiniteType {
+                            var: *b,
+                            ty: actual,
+                        });
+                    }
+                    subst.insert(*b, actual.clone());
                     return Ok(());
                 }
             }
-            if occurs_in(*b, &stripped, subst) {
-                return Err(TypeError::InfiniteType {
-                    var: *b,
-                    ty: stripped,
-                });
-            }
-            subst.insert(*b, stripped);
-            return Ok(());
         }
         // b is bound — walk resolved it above, fall through to structural cases
     }
@@ -275,15 +402,58 @@ pub fn coerce_unify(
         }
     }
 
+    // Pending MaybeOwn on actual side
+    if let Type::MaybeOwn(q, inner) = &actual {
+        if matches!(
+            subst.get_qualifier(*q),
+            Some(QualifierState::Pending) | None
+        ) {
+            match &expected {
+                Type::Own(_exp_inner) => {
+                    subst.confirm_affine(*q);
+                    let resolved_actual = resolve_maybe_own(actual.clone(), subst);
+                    let resolved_expected = resolve_maybe_own(expected.clone(), subst);
+                    return coerce_unify_inner(
+                        &resolved_actual,
+                        &resolved_expected,
+                        subst,
+                        in_constructor,
+                    );
+                }
+                Type::MaybeOwn(q2, exp_inner) => {
+                    subst.unify_qualifiers(*q, *q2);
+                    return coerce_unify_inner(inner, exp_inner, subst, in_constructor);
+                }
+                _ => {
+                    // Plain context: do NOT set Shared. Coerce inner against expected.
+                    return coerce_unify_inner(inner, &expected, subst, in_constructor);
+                }
+            }
+        }
+    }
+
+    // Pending MaybeOwn on expected side: coerce actual against the inner type.
+    // Own(actual) is compatible with both Affine and Shared outcomes of q
+    // (coerce_unify allows ~T → T), so we must NOT confirm q here.
+    // Note: defer_own never wraps Fn, so ~fn rejection is unreachable here.
+    if let Type::MaybeOwn(q, inner) = &expected {
+        if matches!(
+            subst.get_qualifier(*q),
+            Some(QualifierState::Pending) | None
+        ) {
+            return coerce_unify_inner(&actual, inner, subst, in_constructor);
+        }
+    }
+
     // Both Own: recurse on inner
     if let (Type::Own(a_inner), Type::Own(e_inner)) = (&actual, &expected) {
-        return coerce_unify(a_inner, e_inner, subst);
+        return coerce_unify_inner(a_inner, e_inner, subst, in_constructor);
     }
 
     // Own(T) → T: drop ownership (data types only, not fn)
     if let Type::Own(inner) = &actual {
         if !matches!(inner.as_ref(), Type::Fn(_, _)) {
-            return coerce_unify(inner, &expected, subst);
+            return coerce_unify_inner(inner, &expected, subst, in_constructor);
         }
     }
 
@@ -291,12 +461,12 @@ pub fn coerce_unify(
     if let Type::Fn(..) = &actual {
         if let Type::Own(inner) = &expected {
             if let Type::Fn(..) = inner.as_ref() {
-                return coerce_unify(&actual, inner, subst);
+                return coerce_unify_inner(&actual, inner, subst, in_constructor);
             }
         }
     }
 
-    // Fn: contravariant params, covariant return
+    // Fn: contravariant params, covariant return — stays in_constructor: false
     if let (Type::Fn(params_a, ret_a), Type::Fn(params_b, ret_b)) = (&actual, &expected) {
         if params_a.len() != params_b.len() {
             return Err(TypeError::WrongArity {
@@ -305,12 +475,12 @@ pub fn coerce_unify(
             });
         }
         for (pa, pb) in params_a.iter().zip(params_b.iter()) {
-            coerce_unify(pb, pa, subst)?; // FLIP: contravariant
+            coerce_unify_inner(pb, pa, subst, false)?; // FLIP: contravariant; fn positions are not constructor
         }
-        return coerce_unify(ret_a, ret_b, subst); // covariant
+        return coerce_unify_inner(ret_a, ret_b, subst, false); // covariant
     }
 
-    // Named types: covariant (functional language, no mutation)
+    // Named types: covariant — recurse with in_constructor: true
     if let (Type::Named(n1, args1), Type::Named(n2, args2)) = (&actual, &expected) {
         if n1 == n2 {
             if args1.len() != args2.len() {
@@ -320,13 +490,13 @@ pub fn coerce_unify(
                 });
             }
             for (a, e) in args1.iter().zip(args2.iter()) {
-                coerce_unify(a, e, subst)?;
+                coerce_unify_inner(a, e, subst, true)?; // inside constructor
             }
             return Ok(());
         }
     }
 
-    // Tuple: covariant
+    // Tuple: covariant — recurse with in_constructor: true
     if let (Type::Tuple(elems_a), Type::Tuple(elems_b)) = (&actual, &expected) {
         if elems_a.len() != elems_b.len() {
             return Err(TypeError::WrongArity {
@@ -335,7 +505,7 @@ pub fn coerce_unify(
             });
         }
         for (a, b) in elems_a.iter().zip(elems_b.iter()) {
-            coerce_unify(a, b, subst)?;
+            coerce_unify_inner(a, b, subst, true)?; // inside constructor
         }
         return Ok(());
     }
@@ -377,6 +547,18 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
         }
     }
     if let Type::Own(b_inner) = &b {
+        if !matches!(b_inner.as_ref(), Type::Fn(_, _)) {
+            return join_types(&a, b_inner, subst);
+        }
+    }
+
+    // MaybeOwn stripping — same as Own at join points
+    if let Type::MaybeOwn(_, a_inner) = &a {
+        if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
+            return join_types(a_inner, &b, subst);
+        }
+    }
+    if let Type::MaybeOwn(_, b_inner) = &b {
         if !matches!(b_inner.as_ref(), Type::Fn(_, _)) {
             return join_types(&a, b_inner, subst);
         }
@@ -430,10 +612,3 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
     unify(&a, &b, subst)
 }
 
-/// Strip one level of Own for non-function types. Used by coerce_unify's Var rule.
-fn strip_own_shallow(ty: &Type) -> Type {
-    match ty {
-        Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => *inner.clone(),
-        other => other.clone(),
-    }
-}

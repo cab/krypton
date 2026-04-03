@@ -243,12 +243,11 @@ impl<'a> InferenceContext<'a> {
                     let actual = self.subst.apply(func_ty);
                     return Err(super::spanned(TypeError::NotAFunction { actual }, span));
                 }
-                // Function type not yet resolved — fall back to building expected Fn and unifying.
-                // Strip Own from arg types to avoid baking ownership into the function's type
-                // variable (ownership is handled by coerce_unify at resolved call sites).
-                let stripped_args: Vec<Type> =
-                    arg_types.iter().map(|t| super::strip_own(t)).collect();
-                let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
+                // Function type not yet resolved — defer ownership on args rather than stripping.
+                // MaybeOwn preserves the possibility of ~T being needed once the callee resolves.
+                let deferred_args: Vec<Type> =
+                    arg_types.iter().map(|t| super::defer_own(t, self.subst)).collect();
+                let expected_fn = Type::Fn(deferred_args, Box::new(ret_var.clone()));
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
@@ -695,12 +694,11 @@ impl<'a> InferenceContext<'a> {
                     let actual = self.subst.apply(&func_typed.ty);
                     return Err(super::spanned(TypeError::NotAFunction { actual }, span));
                 }
-                // Function type not yet resolved — fall back to building expected Fn and unifying.
-                // Strip Own from arg types to avoid baking ownership into the function's type
-                // variable (ownership is handled by coerce_unify at resolved call sites).
-                let stripped_args: Vec<Type> =
-                    arg_types.iter().map(|t| super::strip_own(t)).collect();
-                let expected_fn = Type::Fn(stripped_args, Box::new(ret_var.clone()));
+                // Function type not yet resolved — defer ownership on args rather than stripping.
+                // MaybeOwn preserves the possibility of ~T being needed once the callee resolves.
+                let deferred_args: Vec<Type> =
+                    arg_types.iter().map(|t| super::defer_own(t, self.subst)).collect();
+                let expected_fn = Type::Fn(deferred_args, Box::new(ret_var.clone()));
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
@@ -893,6 +891,7 @@ impl<'a> InferenceContext<'a> {
         body: Option<&Expr>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
+        self.subst.push_qual_scope();
         let val_typed = self.infer_expr_inner(value, None)?;
 
         // If there's a type annotation, resolve and unify. Use the annotation
@@ -915,6 +914,9 @@ impl<'a> InferenceContext<'a> {
                 los.insert(span);
             }
         }
+        // Resolve pending qualifiers before generalization.
+        self.subst.pop_qual_scope_and_resolve();
+
         // Monomorphism restriction: don't generalize let bindings whose
         // generalized type variables are constrained by traits (e.g. Mul, Add).
         // Without this, IR lowering receives unresolved dict references.

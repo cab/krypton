@@ -538,6 +538,14 @@ pub fn check_ownership(
     shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
 ) -> (OwnershipResult, Vec<SpannedTypeError>) {
+    // MaybeOwn must be fully resolved before ownership checking.
+    debug_assert!(
+        !typed_fns
+            .iter()
+            .any(|f| f.body.ty.contains_maybe_own()),
+        "MaybeOwn leaked past qualifier resolution into ownership checking"
+    );
+
     // Build map: fn_name -> vec of is_own for each param
     let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
     for decl in &module.decls {
