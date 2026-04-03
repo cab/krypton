@@ -55,6 +55,9 @@ fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
             format!("({})", es.join(", "))
         }
         Type::FnHole => "_".to_string(),
+        Type::MaybeOwn(_, _) => {
+            unreachable!("ICE: MaybeOwn leaked past qualifier resolution into inspect")
+        }
     }
 }
 

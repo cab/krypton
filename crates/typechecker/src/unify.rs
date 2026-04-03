@@ -91,7 +91,7 @@ fn prepare_rhs_for_shared_binding(
                 subst.get_qualifier(*q),
                 Some(QualifierState::Pending) | None
             ) {
-                subst.force_shared(root);
+                subst.force_shared(root)?;
             }
             Ok(*inner.clone())
         }
@@ -189,12 +189,12 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
 
         // MaybeOwn structural cases
         (Type::MaybeOwn(q1, inner1), Type::MaybeOwn(q2, inner2)) => {
-            subst.unify_qualifiers(*q1, *q2);
+            subst.unify_qualifiers(*q1, *q2)?;
             unify(inner1, inner2, subst)
         }
         (Type::MaybeOwn(q, inner), Type::Own(other))
         | (Type::Own(other), Type::MaybeOwn(q, inner)) => {
-            subst.confirm_affine(*q);
+            subst.confirm_affine(*q)?;
             unify(inner, other, subst)
         }
         (Type::MaybeOwn(_, inner), other) | (other, Type::MaybeOwn(_, inner)) => {
@@ -410,7 +410,7 @@ fn coerce_unify_inner(
         ) {
             match &expected {
                 Type::Own(_exp_inner) => {
-                    subst.confirm_affine(*q);
+                    subst.confirm_affine(*q)?;
                     let resolved_actual = resolve_maybe_own(actual.clone(), subst);
                     let resolved_expected = resolve_maybe_own(expected.clone(), subst);
                     return coerce_unify_inner(
@@ -421,7 +421,7 @@ fn coerce_unify_inner(
                     );
                 }
                 Type::MaybeOwn(q2, exp_inner) => {
-                    subst.unify_qualifiers(*q, *q2);
+                    subst.unify_qualifiers(*q, *q2)?;
                     return coerce_unify_inner(inner, exp_inner, subst, in_constructor);
                 }
                 _ => {

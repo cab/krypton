@@ -273,7 +273,7 @@ fn extract_interface_opaque_type() {
 
 #[test]
 fn extract_interface_extern_alias_is_opaque() {
-    let iface = typecheck_and_extract(r#"extern js "./ffi.mjs" as pub Blob[a] {}"#);
+    let iface = typecheck_and_extract(r#"extern java "com.example.Blob" as pub Blob[a] {}"#);
     let t = iface
         .exported_types
         .iter()

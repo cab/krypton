@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use crate::type_error::TypeError;
 use crate::typed_ast::TraitName;
 
 /// Type variable identifier (newtype wrapper for type safety).
@@ -20,6 +21,13 @@ pub enum QualifierState {
     Affine,
     /// Resolved as shared (plain T).
     Shared,
+}
+
+/// Token returned by `push_qual_scope`. Must be consumed by either
+/// `commit_qual_scope` or `rollback_qual_scope`.
+pub struct QualScopeSnapshot {
+    next_qual_at_push: u32,
+    depth: u32,
 }
 
 impl fmt::Display for TypeVarId {
@@ -816,32 +824,55 @@ impl Substitution {
         self.qualifiers.get(&self.resolve_qual(q))
     }
 
-    /// Confirm qualifier as Affine if still Pending.
-    pub fn confirm_affine(&mut self, q: QualVarId) {
+    /// Confirm qualifier as Affine if still Pending. Returns error if already Shared.
+    pub fn confirm_affine(&mut self, q: QualVarId) -> Result<(), TypeError> {
         let root = self.resolve_qual(q);
-        if matches!(
-            self.qualifiers.get(&root),
-            Some(QualifierState::Pending) | None
-        ) {
-            self.qualifiers.insert(root, QualifierState::Affine);
+        match self.qualifiers.get(&root) {
+            Some(QualifierState::Pending) | None => {
+                self.qualifiers.insert(root, QualifierState::Affine);
+                Ok(())
+            }
+            Some(QualifierState::Affine) => Ok(()),
+            Some(QualifierState::Shared) => Err(TypeError::QualifierConflict {
+                existing: "shared".into(),
+                incoming: "owned".into(),
+            }),
         }
     }
 
     /// Alias two qualifiers. Root keeps minimum (outermost) scope depth.
-    /// Propagates decided state: if either is Affine, the root becomes Affine.
-    pub fn unify_qualifiers(&mut self, q1: QualVarId, q2: QualVarId) {
+    /// Propagates decided state. Returns error on Shared+Affine conflict.
+    pub fn unify_qualifiers(&mut self, q1: QualVarId, q2: QualVarId) -> Result<(), TypeError> {
         let r1 = self.resolve_qual(q1);
         let r2 = self.resolve_qual(q2);
         if r1 == r2 {
-            return;
+            return Ok(());
         }
 
         let s1 = self.qualifiers.get(&r1).cloned();
         let s2 = self.qualifiers.get(&r2).cloned();
 
-        // Choose root: prefer the one that's Affine, else r1
+        // Detect conflicts
+        match (&s1, &s2) {
+            (Some(QualifierState::Affine), Some(QualifierState::Shared)) => {
+                return Err(TypeError::QualifierConflict {
+                    existing: "owned".into(),
+                    incoming: "shared".into(),
+                });
+            }
+            (Some(QualifierState::Shared), Some(QualifierState::Affine)) => {
+                return Err(TypeError::QualifierConflict {
+                    existing: "shared".into(),
+                    incoming: "owned".into(),
+                });
+            }
+            _ => {}
+        }
+
+        // Choose root: prefer the one that's decided (Affine or Shared), else r1
         let (root, child) = match (&s1, &s2) {
-            (_, Some(QualifierState::Affine)) => (r2, r1),
+            (_, Some(QualifierState::Affine)) | (_, Some(QualifierState::Shared)) => (r2, r1),
+            (Some(QualifierState::Affine), _) | (Some(QualifierState::Shared), _) => (r1, r2),
             _ => (r1, r2),
         };
         self.qualifier_aliases.insert(child, root);
@@ -850,16 +881,22 @@ impl Substitution {
         let d1 = self.qualifier_scope_depth.get(&r1).copied().unwrap_or(0);
         let d2 = self.qualifier_scope_depth.get(&r2).copied().unwrap_or(0);
         self.qualifier_scope_depth.insert(root, d1.min(d2));
+        Ok(())
     }
 
-    /// Push a qualifier scope.
-    pub fn push_qual_scope(&mut self) {
+    /// Push a qualifier scope, returning a snapshot token for commit/rollback.
+    pub fn push_qual_scope(&mut self) -> QualScopeSnapshot {
         self.current_scope_depth += 1;
+        QualScopeSnapshot {
+            next_qual_at_push: self.next_qual,
+            depth: self.current_scope_depth,
+        }
     }
 
-    /// Pop a qualifier scope, defaulting all Pending qualifiers whose
-    /// equivalence-class root belongs to this scope depth to Shared.
-    pub fn pop_qual_scope_and_resolve(&mut self) {
+    /// Commit a qualifier scope: default all Pending qualifiers at this
+    /// scope depth to Shared, then decrement depth.
+    pub fn commit_qual_scope(&mut self, snap: QualScopeSnapshot) {
+        debug_assert_eq!(self.current_scope_depth, snap.depth);
         let depth = self.current_scope_depth;
         let to_resolve: Vec<QualVarId> = self
             .qualifiers
@@ -880,13 +917,36 @@ impl Substitution {
         for q in to_resolve {
             self.qualifiers.insert(q, QualifierState::Shared);
         }
-        self.current_scope_depth = self.current_scope_depth.saturating_sub(1);
+        self.current_scope_depth -= 1;
     }
 
-    /// Force a qualifier to Shared (used when shared-bounded var meets MaybeOwn).
-    pub fn force_shared(&mut self, q: QualVarId) {
+    /// Rollback a qualifier scope: remove all qualifier state created since
+    /// the snapshot, then decrement depth.
+    pub fn rollback_qual_scope(&mut self, snap: QualScopeSnapshot) {
+        debug_assert_eq!(self.current_scope_depth, snap.depth);
+        let cutoff = snap.next_qual_at_push;
+        self.qualifiers.retain(|q, _| q.0 < cutoff);
+        self.qualifier_scope_depth.retain(|q, _| q.0 < cutoff);
+        self.qualifier_aliases
+            .retain(|child, parent| child.0 < cutoff && parent.0 < cutoff);
+        self.next_qual = cutoff;
+        self.current_scope_depth -= 1;
+    }
+
+    /// Force a qualifier to Shared. Returns error if already Affine.
+    pub fn force_shared(&mut self, q: QualVarId) -> Result<(), TypeError> {
         let root = self.resolve_qual(q);
-        self.qualifiers.insert(root, QualifierState::Shared);
+        match self.qualifiers.get(&root) {
+            Some(QualifierState::Pending) | None => {
+                self.qualifiers.insert(root, QualifierState::Shared);
+                Ok(())
+            }
+            Some(QualifierState::Shared) => Ok(()),
+            Some(QualifierState::Affine) => Err(TypeError::QualifierConflict {
+                existing: "owned".into(),
+                incoming: "shared".into(),
+            }),
+        }
     }
 
     /// Read-only access to the qualifier map (for resolve_maybe_own helper).

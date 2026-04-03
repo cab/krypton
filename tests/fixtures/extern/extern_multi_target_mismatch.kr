@@ -1,4 +1,6 @@
-# expect: error E0601
+# expect: ok
+# Cross-target externs may have different signatures since each target
+# is compiled independently (filter_by_platform removes non-matching targets).
 extern java "krypton.runtime.KryptonIO" {
     fun foo(n: Int) -> String
 }

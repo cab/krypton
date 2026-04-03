@@ -1086,110 +1086,6 @@ fn build_type_param_map(
     (map, arity)
 }
 
-/// Format an ExternMethod signature for error messages, e.g. "fun foo(Int, String) -> Bool".
-fn fmt_extern_method_sig(m: &ExternMethod) -> String {
-    fn fmt_te(ty: &TypeExpr) -> String {
-        match ty {
-            TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => name.clone(),
-            TypeExpr::Qualified { module, name, .. } => format!("{}.{}", module, name),
-            TypeExpr::App { name, args, .. } => {
-                let args_str: Vec<_> = args.iter().map(|a| fmt_te(a)).collect();
-                format!("{}[{}]", name, args_str.join(", "))
-            }
-            TypeExpr::Fn { params, ret, .. } => {
-                let ps: Vec<_> = params.iter().map(|p| fmt_te(p)).collect();
-                format!("({}) -> {}", ps.join(", "), fmt_te(ret))
-            }
-            TypeExpr::Own { inner, .. } => format!("~{}", fmt_te(inner)),
-            TypeExpr::Tuple { elements, .. } => {
-                let es: Vec<_> = elements.iter().map(|e| fmt_te(e)).collect();
-                format!("({})", es.join(", "))
-            }
-            TypeExpr::Wildcard { .. } => "_".to_string(),
-        }
-    }
-    let params: Vec<_> = m
-        .params
-        .iter()
-        .map(|(name, ty)| format!("{}: {}", name, fmt_te(ty)))
-        .collect();
-    format!(
-        "fun {}({}) -> {}",
-        m.name,
-        params.join(", "),
-        fmt_te(&m.return_type)
-    )
-}
-
-/// Compare two TypeExpr values ignoring span information.
-fn type_expr_eq(a: &TypeExpr, b: &TypeExpr) -> bool {
-    match (a, b) {
-        (TypeExpr::Named { name: n1, .. }, TypeExpr::Named { name: n2, .. }) => n1 == n2,
-        (TypeExpr::Var { name: n1, .. }, TypeExpr::Var { name: n2, .. }) => n1 == n2,
-        (
-            TypeExpr::Qualified {
-                module: m1,
-                name: n1,
-                ..
-            },
-            TypeExpr::Qualified {
-                module: m2,
-                name: n2,
-                ..
-            },
-        ) => m1 == m2 && n1 == n2,
-        (
-            TypeExpr::App {
-                name: n1, args: a1, ..
-            },
-            TypeExpr::App {
-                name: n2, args: a2, ..
-            },
-        ) => n1 == n2 && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| type_expr_eq(x, y)),
-        (
-            TypeExpr::Fn {
-                params: p1,
-                ret: r1,
-                ..
-            },
-            TypeExpr::Fn {
-                params: p2,
-                ret: r2,
-                ..
-            },
-        ) => {
-            p1.len() == p2.len()
-                && p1.iter().zip(p2).all(|(x, y)| type_expr_eq(x, y))
-                && type_expr_eq(r1, r2)
-        }
-        (TypeExpr::Own { inner: i1, .. }, TypeExpr::Own { inner: i2, .. }) => type_expr_eq(i1, i2),
-        (TypeExpr::Tuple { elements: e1, .. }, TypeExpr::Tuple { elements: e2, .. }) => {
-            e1.len() == e2.len() && e1.iter().zip(e2).all(|(x, y)| type_expr_eq(x, y))
-        }
-        (TypeExpr::Wildcard { .. }, TypeExpr::Wildcard { .. }) => true,
-        _ => false,
-    }
-}
-
-/// Compare two ExternMethod signatures for cross-target matching.
-/// Compares all semantically relevant fields (nullable, type_params, param_types,
-/// return_type, where_clauses) but ignores span and visibility.
-fn extern_method_sig_eq(a: &ExternMethod, b: &ExternMethod) -> bool {
-    a.nullable == b.nullable
-        && a.type_params == b.type_params
-        && a.params.len() == b.params.len()
-        && a.params
-            .iter()
-            .zip(&b.params)
-            .all(|((n1, t1), (n2, t2))| n1 == n2 && type_expr_eq(t1, t2))
-        && type_expr_eq(&a.return_type, &b.return_type)
-        && a.where_clauses.len() == b.where_clauses.len()
-        && a.where_clauses
-            .iter()
-            .zip(&b.where_clauses)
-            .all(|(x, y)| x.type_var == y.type_var && x.trait_name == y.trait_name)
-}
-
 /// Result of processing extern methods: function info for codegen + dict requirements.
 pub(super) struct ExternMethodsResult {
     pub(super) extern_fns: Vec<ExternFnInfo>,
@@ -1228,7 +1124,6 @@ fn process_extern_methods(
     trait_name_lookup: &HashMap<String, TraitName>,
     module_path_str: &str,
     span: Span,
-    name_filter: Option<&HashSet<&str>>,
     type_param_map: Option<&HashMap<String, TypeVarId>>,
     type_param_arity: Option<&HashMap<String, usize>>,
     type_param_names: Option<&[String]>,
@@ -1247,11 +1142,6 @@ fn process_extern_methods(
     let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
     for method in methods {
         let bind_name = &method.name;
-        if let Some(filter) = name_filter {
-            if !filter.contains(method.name.as_str()) && !filter.contains(bind_name.as_str()) {
-                continue;
-            }
-        }
 
         let mut scheme_vars = base_scheme_vars.clone();
 
@@ -1951,10 +1841,6 @@ impl ModuleInferenceState {
             );
         }
 
-        // Track extern method ASTs for cross-target validation and per-target deduplication.
-        // Maps fn name -> [(target_name, &ExternMethod)].
-        let mut seen_extern_methods: HashMap<String, Vec<(&str, &ExternMethod)>> = HashMap::new();
-
         for decl in &module.decls {
             if let Decl::Extern {
                 target,
@@ -2025,46 +1911,7 @@ impl ModuleInferenceState {
                     }
                 }
 
-                let target_name = match target {
-                    ExternTarget::Java => "java",
-                    ExternTarget::Js => "js",
-                };
-
-                // Cross-target validation: signatures must match across targets.
-                // Build a filter of methods that are new for this target so codegen retains
-                // one extern entry per target without duplicating same-target declarations.
-                let mut new_method_names: HashSet<&str> = HashSet::new();
-                for method in methods {
-                    let seen_for_name = seen_extern_methods.entry(method.name.clone()).or_default();
-                    for (prev_target, prev_method) in seen_for_name.iter() {
-                        if *prev_target != target_name && !extern_method_sig_eq(prev_method, method)
-                        {
-                            return Err(spanned(
-                                TypeError::ExternSignatureMismatch {
-                                    name: method.name.clone(),
-                                    target1: prev_target.to_string(),
-                                    target2: target_name.to_string(),
-                                    sig1: fmt_extern_method_sig(prev_method),
-                                    sig2: fmt_extern_method_sig(method),
-                                },
-                                method.span,
-                            ));
-                        }
-                    }
-
-                    if seen_for_name
-                        .iter()
-                        .any(|(seen_target, _)| *seen_target == target_name)
-                    {
-                        continue;
-                    }
-
-                    seen_for_name.push((target_name, method));
-                    new_method_names.insert(&method.name);
-                }
-
-                // Only process methods not already seen from another target
-                if !new_method_names.is_empty() {
+                {
                     let tp_names = type_params.as_slice();
                     let result = process_extern_methods(
                         module_path,
@@ -2076,7 +1923,6 @@ impl ModuleInferenceState {
                         &trait_name_lookup,
                         mod_path,
                         *span,
-                        Some(&new_method_names),
                         tp_map.as_ref(),
                         tp_arity.as_ref(),
                         if tp_map.is_some() {
@@ -2089,14 +1935,7 @@ impl ModuleInferenceState {
                     for (name, reqs) in result.fn_constraints {
                         extern_fn_constraints.insert(name, reqs);
                     }
-                    // Deduplicate bindings by name: cross-target extern methods
-                    // share one callable binding but produce separate ExternFnInfo
-                    // entries per backend target.
-                    for binding in result.bindings {
-                        if !extern_bindings.iter().any(|b| b.name == binding.name) {
-                            extern_bindings.push(binding);
-                        }
-                    }
+                    extern_bindings.extend(result.bindings);
                     extern_fns.extend(result.extern_fns);
                 }
             }
@@ -4007,7 +3846,8 @@ fn infer_function_bodies<'a>(
             pre_bound.push((idx, tv));
         }
 
-        state.subst.push_qual_scope();
+        let qual_snap = state.subst.push_qual_scope();
+        let scc_result: Result<(), SpannedTypeError> = (|| {
         for &(idx, ref tv) in &pre_bound {
             let decl = fn_decls[idx];
             state.env.push_scope();
@@ -4198,9 +4038,13 @@ fn infer_function_bodies<'a>(
 
             fn_bodies[idx] = Some(body_typed);
         }
-
-        // Resolve pending qualifiers at this SCC scope before generalization.
-        state.subst.pop_qual_scope_and_resolve();
+        Ok(())
+        })();
+        match &scc_result {
+            Ok(()) => state.subst.commit_qual_scope(qual_snap),
+            Err(_) => state.subst.rollback_qual_scope(qual_snap),
+        }
+        scc_result?;
 
         // Generalize against an empty env: all env bindings are either fully-quantified
         // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
@@ -4526,8 +4370,8 @@ fn typecheck_impl_methods(
                     substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
                 state.env.fn_return_type = Some(concrete_ret_type);
 
-                state.subst.push_qual_scope();
-                let body_typed = {
+                let impl_qual_snap = state.subst.push_qual_scope();
+                let body_result = {
                     let empty_efn = HashSet::new();
                     let mut ctx = InferenceContext {
                         env: &mut state.env,
@@ -4547,11 +4391,15 @@ fn typecheck_impl_methods(
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                         self_type: Some(resolved_target.clone()),
                     };
-                    ctx.infer_expr_inner(&method.body, None)?
+                    ctx.infer_expr_inner(&method.body, None)
                 };
                 state.env.fn_return_type = prev_fn_return_type;
                 state.env.pop_scope();
-                state.subst.pop_qual_scope_and_resolve();
+                match &body_result {
+                    Ok(_) => state.subst.commit_qual_scope(impl_qual_snap),
+                    Err(_) => state.subst.rollback_qual_scope(impl_qual_snap),
+                }
+                let body_typed = body_result?;
 
                 let mut body_typed = body_typed;
                 typed_ast::apply_subst(&mut body_typed, &state.subst);

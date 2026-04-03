@@ -132,7 +132,7 @@ impl<'a> InferenceContext<'a> {
     pub(super) fn resolved_type_ref_for_type(&self, ty: &Type) -> Option<ResolvedTypeRef> {
         match ty {
             Type::Named(name, _) => self.resolved_type_ref_for_name(name),
-            Type::Own(inner) => self.resolved_type_ref_for_type(inner),
+            Type::Own(inner) | Type::MaybeOwn(_, inner) => self.resolved_type_ref_for_type(inner),
             _ => None,
         }
     }
@@ -891,83 +891,94 @@ impl<'a> InferenceContext<'a> {
         body: Option<&Expr>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
-        self.subst.push_qual_scope();
-        let val_typed = self.infer_expr_inner(value, None)?;
+        let snap = self.subst.push_qual_scope();
 
-        // If there's a type annotation, resolve and unify. Use the annotation
-        // type for the binding so that `: Int` (no ~) drops ownership.
-        let binding_ty = if let Some(ty_expr) = ty_ann {
-            if self.registry.is_some() {
-                let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
-                self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, span)?;
-                annotated_ty
+        let result: Result<(TypedExpr, Type), SpannedTypeError> = (|| {
+            let val_typed = self.infer_expr_inner(value, None)?;
+
+            // If there's a type annotation, resolve and unify. Use the annotation
+            // type for the binding so that `: Int` (no ~) drops ownership.
+            let binding_ty = if let Some(ty_expr) = ty_ann {
+                if self.registry.is_some() {
+                    let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
+                    self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, span)?;
+                    annotated_ty
+                } else {
+                    val_typed.ty.clone()
+                }
             } else {
                 val_typed.ty.clone()
-            }
-        } else {
-            val_typed.ty.clone()
-        };
+            };
 
+            // Monomorphism restriction: don't generalize let bindings whose
+            // generalized type variables are constrained by traits (e.g. Mul, Add).
+            // Without this, IR lowering receives unresolved dict references.
+            let scheme = {
+                let tentative = super::generalize(&binding_ty, self.env, self.subst);
+                if tentative.vars.is_empty() {
+                    tentative
+                } else {
+                    let gen_vars: HashSet<TypeVarId> = tentative.vars.iter().copied().collect();
+                    let has_trait_constraints =
+                        collect_trait_constraints_on_vars(&val_typed, self.subst, &gen_vars);
+                    if has_trait_constraints {
+                        TypeScheme::mono(self.subst.apply(&binding_ty))
+                    } else {
+                        tentative
+                    }
+                }
+            };
+
+            let typed_expr = match body {
+                Some(body) => {
+                    self.env.push_scope();
+                    self.env.bind(name.to_string(), scheme);
+                    let body_result = self.infer_expr_inner(body, None);
+                    self.env.pop_scope(); // always pops, even on error
+                    let body_typed = body_result?;
+                    let ty = body_typed.ty.clone();
+                    TypedExpr {
+                        kind: TypedExprKind::Let {
+                            name: name.to_string(),
+                            value: Box::new(val_typed),
+                            body: Some(Box::new(body_typed)),
+                        },
+                        ty,
+                        span,
+                        resolved_ref: None,
+                    }
+                }
+                None => {
+                    self.env.bind(name.to_string(), scheme);
+                    TypedExpr {
+                        kind: TypedExprKind::Let {
+                            name: name.to_string(),
+                            value: Box::new(val_typed),
+                            body: None,
+                        },
+                        ty: Type::Unit,
+                        span,
+                        resolved_ref: None,
+                    }
+                }
+            };
+            Ok((typed_expr, binding_ty))
+        })();
+
+        match &result {
+            Ok(_) => self.subst.commit_qual_scope(snap),
+            Err(_) => self.subst.rollback_qual_scope(snap),
+        }
+        let (typed_expr, binding_ty) = result?;
+
+        // Post-commit: qualifiers are resolved, check for Own types
         let resolved_val = self.subst.apply(&binding_ty);
         if matches!(&resolved_val, Type::Own(_)) {
             if let Some(ref mut los) = self.let_own_spans {
                 los.insert(span);
             }
         }
-        // Resolve pending qualifiers before generalization.
-        self.subst.pop_qual_scope_and_resolve();
-
-        // Monomorphism restriction: don't generalize let bindings whose
-        // generalized type variables are constrained by traits (e.g. Mul, Add).
-        // Without this, IR lowering receives unresolved dict references.
-        let scheme = {
-            let tentative = super::generalize(&binding_ty, self.env, self.subst);
-            if tentative.vars.is_empty() {
-                tentative
-            } else {
-                let gen_vars: HashSet<TypeVarId> = tentative.vars.iter().copied().collect();
-                let has_trait_constraints =
-                    collect_trait_constraints_on_vars(&val_typed, self.subst, &gen_vars);
-                if has_trait_constraints {
-                    TypeScheme::mono(self.subst.apply(&binding_ty))
-                } else {
-                    tentative
-                }
-            }
-        };
-
-        match body {
-            Some(body) => {
-                self.env.push_scope();
-                self.env.bind(name.to_string(), scheme);
-                let body_typed = self.infer_expr_inner(body, None)?;
-                self.env.pop_scope();
-                let ty = body_typed.ty.clone();
-                Ok(TypedExpr {
-                    kind: TypedExprKind::Let {
-                        name: name.to_string(),
-                        value: Box::new(val_typed),
-                        body: Some(Box::new(body_typed)),
-                    },
-                    ty,
-                    span,
-                    resolved_ref: None,
-                })
-            }
-            None => {
-                self.env.bind(name.to_string(), scheme);
-                Ok(TypedExpr {
-                    kind: TypedExprKind::Let {
-                        name: name.to_string(),
-                        value: Box::new(val_typed),
-                        body: None,
-                    },
-                    ty: Type::Unit,
-                    span,
-                    resolved_ref: None,
-                })
-            }
-        }
+        Ok(typed_expr)
     }
 
     fn infer_binary_op(
@@ -1051,10 +1062,10 @@ impl<'a> InferenceContext<'a> {
         }
         let target_typed = self.infer_expr_inner(target, None)?;
         let resolved = self.subst.apply(&target_typed.ty);
-        let base_is_owned = matches!(&resolved, Type::Own(_));
-        // Unwrap Own wrapper — field access works on the inner type
+        let base_is_owned = matches!(&resolved, Type::Own(_) | Type::MaybeOwn(_, _));
+        // Unwrap Own/MaybeOwn wrapper — field access works on the inner type
         let inner_resolved = match &resolved {
-            Type::Own(inner) => inner.as_ref(),
+            Type::Own(inner) | Type::MaybeOwn(_, inner) => inner.as_ref(),
             other => other,
         };
         let field_ty = self.resolve_field_access(inner_resolved, field, span)?;
@@ -1101,10 +1112,10 @@ impl<'a> InferenceContext<'a> {
     ) -> Result<TypedExpr, SpannedTypeError> {
         let scrutinee_typed = self.infer_expr_inner(scrutinee, None)?;
         let scrutinee_ty = self.subst.apply(&scrutinee_typed.ty);
-        let scrutinee_is_owned = matches!(&scrutinee_ty, Type::Own(_));
-        // Unwrap Own wrapper — match works on the inner type
+        let scrutinee_is_owned = matches!(&scrutinee_ty, Type::Own(_) | Type::MaybeOwn(_, _));
+        // Unwrap Own/MaybeOwn wrapper — match works on the inner type
         let match_ty = match &scrutinee_ty {
-            Type::Own(inner) => inner.as_ref().clone(),
+            Type::Own(inner) | Type::MaybeOwn(_, inner) => inner.as_ref().clone(),
             other => other.clone(),
         };
         let mut result_ty: Option<Type> = None;
@@ -1697,9 +1708,9 @@ impl<'a> InferenceContext<'a> {
             Expr::StructUpdate { base, fields, span } => {
                 let base_typed = self.infer_expr_inner(base, None)?;
                 let resolved = self.subst.apply(&base_typed.ty);
-                // Unwrap Own wrapper — struct update works on the inner type
+                // Unwrap Own/MaybeOwn wrapper — struct update works on the inner type
                 let inner_resolved = match &resolved {
-                    Type::Own(inner) => inner.as_ref().clone(),
+                    Type::Own(inner) | Type::MaybeOwn(_, inner) => inner.as_ref().clone(),
                     other => other.clone(),
                 };
                 let typed_fields = self.resolve_struct_update(&inner_resolved, fields, *span)?;

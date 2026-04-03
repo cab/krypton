@@ -56,7 +56,6 @@ pub enum TypeErrorCode {
     E0313, // Ambiguous trait name
     E0314, // Ambiguous type (could not infer trait dispatch type)
     E0315, // Missing return type annotation on trait method
-    E0601, // Extern signature mismatch across targets
     E0602, // Invalid @nullable return type
     E0513, // Definition conflicts with explicit import
     E0514, // Duplicate function definition
@@ -268,13 +267,6 @@ pub enum TypeError {
         existing_module: String,
         new_module: String,
     },
-    ExternSignatureMismatch {
-        name: String,
-        target1: String,
-        target2: String,
-        sig1: String,
-        sig2: String,
-    },
     InvalidNullableReturn {
         name: String,
         actual_return_type: Type,
@@ -304,6 +296,10 @@ pub enum TypeError {
     },
     MovedInGuard {
         name: String,
+    },
+    QualifierConflict {
+        existing: String,
+        incoming: String,
     },
 }
 
@@ -368,7 +364,6 @@ impl TypeError {
             TypeError::TraitMethodCollision { .. } => TypeErrorCode::E0311,
             TypeError::MissingTraitBound { .. } => TypeErrorCode::E0312,
             TypeError::AmbiguousTraitName { .. } => TypeErrorCode::E0313,
-            TypeError::ExternSignatureMismatch { .. } => TypeErrorCode::E0601,
             TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
             TypeError::InvalidThrowsReturn { .. } => TypeErrorCode::E0603,
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
@@ -377,6 +372,7 @@ impl TypeError {
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
             TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
+            TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
         }
     }
 
@@ -605,9 +601,6 @@ impl TypeError {
             TypeError::AmbiguousTraitName { name, .. } => {
                 Some(format!("use `import module.{{{}  as Alias}}` to disambiguate", name))
             }
-            TypeError::ExternSignatureMismatch { .. } => {
-                Some("extern blocks for different targets must declare identical Krypton-level signatures for the same function".to_string())
-            }
             TypeError::InvalidNullableReturn { .. } => {
                 Some("@nullable functions must return Option[T] so the compiler can wrap null values".to_string())
             }
@@ -631,6 +624,9 @@ impl TypeError {
             }
             TypeError::MovedInGuard { name } => {
                 Some(format!("`{name}` is consumed in a match guard; guards may fail and fall through, so they cannot move owned values"))
+            }
+            TypeError::QualifierConflict { .. } => {
+                Some("a value cannot be both owned (~) and shared in the same position".to_string())
             }
         }
     }
@@ -1079,19 +1075,6 @@ impl fmt::Display for TypeError {
                     name, existing_module, new_module
                 )
             }
-            TypeError::ExternSignatureMismatch {
-                name,
-                target1,
-                target2,
-                sig1,
-                sig2,
-            } => {
-                write!(
-                    f,
-                    "extern signature mismatch for `{}`: `extern {}` declares `{}` but `extern {}` declares `{}`",
-                    name, target1, sig1, target2, sig2
-                )
-            }
             TypeError::InvalidNullableReturn {
                 name,
                 actual_return_type,
@@ -1159,6 +1142,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::MovedInGuard { name } => {
                 write!(f, "cannot consume owned value `{}` in match guard", name)
+            }
+            TypeError::QualifierConflict { existing, incoming } => {
+                write!(
+                    f,
+                    "conflicting ownership requirements: already constrained to {existing}, but also required to be {incoming}"
+                )
             }
         }
     }

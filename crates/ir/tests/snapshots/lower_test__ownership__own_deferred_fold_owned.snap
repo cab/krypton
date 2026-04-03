@@ -1,0 +1,39 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module ownership__own_deferred_fold_owned
+
+import core/peek/peek as peek(h) -> h
+import core/list/last as last(List[u3]) -> Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
+import core/list/map as map(List[y], (y) -> a1) -> List[a1]
+import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
+import core/io/println as println(m) -> Unit
+import core/option/Some as Some(e) -> Option[e]
+import core/result/Ok as Ok(g) -> Result[f, g]
+import core/result/Err as Err(f) -> Result[f, g]
+import core/list/Cons as Cons(h, List[h]) -> List[h]
+fn fold(v0: List[u8], v1: w8, v2: (w8, u8) -> w8) -> w8 =
+  switch v0 {
+    1 ->
+      v1
+    0 (v3: u8, v4: List[u8]) ->
+      let v5: w8 = call_closure v2(v1, v3)
+      let v6: w8 = call fold(v4, v5, v2)
+      v6
+  }
+
+fn test() -> ~Int =
+  let v7: ~List[Int] = construct List::Nil#1()
+  let v8: ~List[Int] = construct List::Cons#0(3, v7)
+  let v9: ~List[Int] = construct List::Cons#0(2, v8)
+  let v10: ~List[Int] = construct List::Cons#0(1, v9)
+  let v14: (~Int, Int) -> Int = make_closure(lambda$26, [])
+  let v15: ~Int = call fold(v10, 0, v14)
+  v15
+
+fn lambda$26(v11: ~Int, v12: Int) -> Int =
+  let v13: Int = add_int(v11, v12)
+  v13
