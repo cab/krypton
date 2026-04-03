@@ -351,6 +351,21 @@ pub enum TypeExpr {
     },
 }
 
+impl TypeExpr {
+    pub fn span(&self) -> Span {
+        match self {
+            TypeExpr::Named { span, .. }
+            | TypeExpr::Var { span, .. }
+            | TypeExpr::Qualified { span, .. }
+            | TypeExpr::App { span, .. }
+            | TypeExpr::Fn { span, .. }
+            | TypeExpr::Own { span, .. }
+            | TypeExpr::Tuple { span, .. }
+            | TypeExpr::Wildcard { span } => *span,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Lit {
     Int(i64),

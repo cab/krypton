@@ -19,7 +19,7 @@ use crate::types::{
     type_to_canonical_name, BindingSource, ConstructorBindingKind, Substitution, Type, TypeEnv,
     TypeScheme, TypeVarGen, TypeVarId,
 };
-use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
+use crate::unify::{coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
 /// Error from `infer_module`, bundling the error with enough context
 /// to render diagnostics against the correct file.
@@ -4023,7 +4023,35 @@ fn infer_function_bodies<'a>(
                 .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                 .map_err(|e| spanned(e, decl.span))?;
                 coerce_unify(&body_ty, &annotated_ret, &mut state.subst)
-                    .map_err(|e| spanned(e, decl.span))?;
+                    .map_err(|e| {
+                        if let TypeError::InfiniteType { ref var, ref ty } = e {
+                            if crate::type_error::is_own_wrapper_of(*var, ty) {
+                                let var_names: Vec<(TypeVarId, String)> = type_param_map
+                                    .iter()
+                                    .map(|(name, &id)| (id, name.clone()))
+                                    .collect();
+                                let body_span = match &body_typed.kind {
+                                    crate::typed_ast::TypedExprKind::Do(exprs) => {
+                                        exprs.last().map_or(body_typed.span, |e| e.span)
+                                    }
+                                    _ => body_typed.span,
+                                };
+                                return SpannedTypeError {
+                                    error: e,
+                                    span: body_span,
+                                    note: None,
+                                    secondary_span: Some(SecondaryLabel {
+                                        span: ret_ty_expr.span(),
+                                        message: "return type declared here".to_string(),
+                                        source_file: None,
+                                    }),
+                                    source_file: None,
+                                    var_names: Some(var_names),
+                                };
+                            }
+                        }
+                        spanned(e, decl.span)
+                    })?;
                 state.subst.apply(&annotated_ret)
             } else {
                 strip_own(&body_ty)

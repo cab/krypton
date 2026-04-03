@@ -51,6 +51,13 @@ fn own_wrapper_infinite_type_diagnostic() {
 }
 
 #[test]
+fn own_wrapper_block_body_diagnostic() {
+    insta::assert_snapshot!(parse_and_infer_module_error(
+        "fun fabricate[a](x: a, y: a) -> ~a where a: Semigroup = {\n    let z = x + y;\n    z\n}"
+    ));
+}
+
+#[test]
 fn unknown_var_diagnostic() {
     insta::assert_snapshot!(render_error("x + 1"));
 }

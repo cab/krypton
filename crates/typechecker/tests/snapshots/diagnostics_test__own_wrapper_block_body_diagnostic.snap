@@ -1,0 +1,17 @@
+---
+source: crates/typechecker/tests/diagnostics_test.rs
+expression: "parse_and_infer_module_error(\"fun fabricate[a](x: a, y: a) -> ~a where a: Semigroup = {\\n    let z = x + y;\\n    z\\n}\")"
+---
+[E0007] Error: type mismatch: expected `a`, found `~a`
+   ╭─[ test.kr:3:5 ]
+   │
+ 1 │ fun fabricate[a](x: a, y: a) -> ~a where a: Semigroup = {
+   │                                 ─┬  
+   │                                  ╰── return type declared here
+   │ 
+ 3 │     z
+   │     ┬  
+   │     ╰── E0007: type mismatch: expected `a`, found `~a`
+   │ 
+   │ Help: `~` makes a distinct type — consider removing `~` from the annotation
+───╯

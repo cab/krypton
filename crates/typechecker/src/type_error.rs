@@ -6,7 +6,7 @@ use std::fmt;
 
 /// Check if the infinite type is just an ownership wrapper around the variable itself,
 /// e.g. `a` vs `~a`. This is not a genuine recursive type — it's an ownership mismatch.
-fn is_own_wrapper_of(var: TypeVarId, ty: &Type) -> bool {
+pub(crate) fn is_own_wrapper_of(var: TypeVarId, ty: &Type) -> bool {
     match ty {
         Type::Own(inner) | Type::MaybeOwn(_, inner) => {
             matches!(inner.as_ref(), Type::Var(v) if *v == var)
