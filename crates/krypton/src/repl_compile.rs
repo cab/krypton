@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -6,6 +7,7 @@ use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_ir::Type;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::ast::CompileTarget;
+use krypton_typechecker::types::{format_type_with_var_names, TypeScheme, TypeVarId};
 
 /// Information about a prior REPL binding.
 #[derive(Clone, Debug)]
@@ -27,6 +29,9 @@ pub enum ReplInputKind {
 /// Persistent state across REPL inputs.
 pub struct ReplSession {
     pub bindings: Vec<(String, BindingInfo)>,
+    /// Function definitions stored as (name, source, type_display_str).
+    /// Re-emitted in each synthetic module so they're available as top-level functions.
+    pub fun_defs: Vec<(String, String, String)>,
     input_counter: u32,
     jvm: Option<JvmProcess>,
 }
@@ -35,6 +40,7 @@ impl ReplSession {
     pub fn new() -> Self {
         Self {
             bindings: Vec::new(),
+            fun_defs: Vec::new(),
             input_counter: 0,
             jvm: None,
         }
@@ -55,7 +61,7 @@ impl ReplSession {
     pub fn eval_input(&mut self, input: &str) -> Result<String, String> {
         let kind = classify_input(input);
         let class_name = self.next_class_name();
-        let synthetic = build_synthetic_source(&kind, &self.bindings);
+        let synthetic = build_synthetic_source(&kind, &self.bindings, &self.fun_defs);
 
         // Parse
         let (module, parse_errors) = krypton_parser::parser::parse(&synthetic);
@@ -91,7 +97,7 @@ impl ReplSession {
 
         // Infer the return type of __eval for binding tracking
         let root_typed = &typed_modules[0];
-        let eval_type_entry = root_typed
+        let _eval_type_entry = root_typed
             .fn_types
             .iter()
             .find(|e| e.name == "__eval")
@@ -115,16 +121,26 @@ impl ReplSession {
             .ok_or_else(|| "ICE: __eval not found in IR module".to_string())?;
         let eval_return_type = eval_fn.return_type.clone();
 
+        // For FunDef, extract the function's type scheme for display
+        let fun_def_type_display = if let ReplInputKind::FunDef { ref name, .. } = kind {
+            root_typed
+                .fn_types_by_name
+                .get(name.as_str())
+                .and_then(|&idx| root_typed.fn_types.get(idx))
+                .map(|entry| format_scheme_for_repl(&entry.scheme))
+        } else {
+            None
+        };
+
         // Determine store_var and the type string for the binding
         let (store_var, binding_name, binding_type_str) = match &kind {
             ReplInputKind::LetBinding { name, .. } => {
                 let type_str = ir_type_to_krypton_str(&eval_return_type);
                 (Some(name.clone()), Some(name.clone()), Some(type_str))
             }
-            ReplInputKind::FunDef { name, .. } => {
-                // For function defs, store the function itself
-                let type_str = ir_type_to_krypton_str(&eval_return_type);
-                (Some(name.clone()), Some(name.clone()), Some(type_str))
+            ReplInputKind::FunDef { .. } => {
+                // Function defs are re-emitted as source; don't store in JVM Registry
+                (None, None, None)
             }
             ReplInputKind::BareExpr { .. } => (None, None, None),
         };
@@ -151,9 +167,8 @@ impl ReplSession {
         let jvm = self.ensure_jvm()?;
         let result = jvm.load_and_eval(&class_name, &classes, store_var.as_deref())?;
 
-        // Update bindings
+        // Update bindings (let-bindings only)
         if let (Some(name), Some(type_str)) = (binding_name, binding_type_str) {
-            // Remove old binding with same name if it exists
             self.bindings.retain(|(n, _)| n != &name);
             self.bindings.push((
                 name,
@@ -164,25 +179,47 @@ impl ReplSession {
             ));
         }
 
-        Ok(result)
+        // Update fun_defs for function definitions
+        if let ReplInputKind::FunDef { ref name, ref source } = kind {
+            let type_display = fun_def_type_display
+                .clone()
+                .unwrap_or_else(|| "?".to_string());
+            self.fun_defs.retain(|(n, _, _)| n != name);
+            self.fun_defs
+                .push((name.clone(), source.clone(), type_display));
+        }
+
+        // Return appropriate result
+        match &kind {
+            ReplInputKind::FunDef { ref name, .. } => {
+                let type_display = fun_def_type_display.unwrap_or_else(|| "?".to_string());
+                Ok(format!("{}: {}", name, type_display))
+            }
+            _ => Ok(result),
+        }
     }
 
     pub fn reset(&mut self) {
         self.bindings.clear();
+        self.fun_defs.clear();
         if let Some(ref mut jvm) = self.jvm {
             let _ = jvm.reset();
         }
     }
 
     pub fn format_env(&self) -> String {
-        if self.bindings.is_empty() {
+        if self.bindings.is_empty() && self.fun_defs.is_empty() {
             return "(no bindings)".to_string();
         }
-        self.bindings
+        let mut lines: Vec<String> = self
+            .bindings
             .iter()
             .map(|(name, info)| format!("{} : {}", name, info.type_str))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect();
+        for (name, _, type_display) in &self.fun_defs {
+            lines.push(format!("{} : {}", name, type_display));
+        }
+        lines.join("\n")
     }
 }
 
@@ -235,10 +272,20 @@ pub fn classify_input(input: &str) -> ReplInputKind {
 }
 
 /// Build synthetic module source that wraps user input for compilation.
-pub fn build_synthetic_source(kind: &ReplInputKind, bindings: &[(String, BindingInfo)]) -> String {
+pub fn build_synthetic_source(
+    kind: &ReplInputKind,
+    bindings: &[(String, BindingInfo)],
+    fun_defs: &[(String, String, String)],
+) -> String {
     let mut source = String::new();
 
-    // Build parameter list from prior bindings
+    // Emit all prior function definitions as top-level functions
+    for (_name, fsrc, _type_display) in fun_defs {
+        source.push_str(fsrc);
+        source.push('\n');
+    }
+
+    // Build parameter list from prior let-bindings
     let params: Vec<String> = bindings
         .iter()
         .map(|(name, info)| format!("{}: {}", name, info.type_str))
@@ -247,22 +294,50 @@ pub fn build_synthetic_source(kind: &ReplInputKind, bindings: &[(String, Binding
 
     match kind {
         ReplInputKind::LetBinding { name: _, rhs } => {
-            // let x = 42 -> fun __eval(prior_bindings...) = 42
             source.push_str(&format!("fun __eval({}) = {}\n", param_str, rhs));
         }
-        ReplInputKind::FunDef { name, source: fsrc } => {
-            // fun f(x) = x + 1 -> fun f(x) = x + 1\nfun __eval(prior_bindings...) = f
+        ReplInputKind::FunDef { name: _, source: fsrc } => {
+            // Emit the new function definition, __eval returns Unit
             source.push_str(fsrc);
             source.push('\n');
-            source.push_str(&format!("fun __eval({}) = {}\n", param_str, name));
+            source.push_str(&format!("fun __eval({}) -> Unit = ()\n", param_str));
         }
         ReplInputKind::BareExpr { source: expr } => {
-            // 42 -> fun __eval(prior_bindings...) = 42
             source.push_str(&format!("fun __eval({}) = {}\n", param_str, expr));
         }
     }
 
     source
+}
+
+/// Format a `TypeScheme` for REPL display: `(params) -> ret where constraints`.
+/// Unlike `TypeScheme::Display`, this omits the `forall vars.` prefix.
+fn format_scheme_for_repl(scheme: &TypeScheme) -> String {
+    if scheme.vars.is_empty() {
+        return format!("{}", scheme.ty);
+    }
+    let (renamed_ty, names) = scheme.display_var_names();
+    let type_part = format_type_with_var_names(&renamed_ty, &names);
+
+    if scheme.constraints.is_empty() {
+        return type_part;
+    }
+
+    let id_mapping: HashMap<TypeVarId, usize> = scheme
+        .vars
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (v, i))
+        .collect();
+    let mut where_parts: Vec<String> = Vec::new();
+    for (trait_name, var) in &scheme.constraints {
+        let var_name = id_mapping
+            .get(var)
+            .map(|&i| names[i].clone())
+            .unwrap_or_else(|| var.display_name());
+        where_parts.push(format!("{}: {}", var_name, trait_name.local_name));
+    }
+    format!("{} where {}", type_part, where_parts.join(", "))
 }
 
 /// Convert an IR type to a Krypton type annotation string.
@@ -512,7 +587,7 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "1 + 2".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[]);
+        let source = build_synthetic_source(&kind, &[], &[]);
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -523,7 +598,7 @@ mod tests {
             name: "x".to_string(),
             rhs: "42".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[]);
+        let source = build_synthetic_source(&kind, &[], &[]);
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -534,7 +609,8 @@ mod tests {
             name: "f".to_string(),
             source: "fun f(x: Int) -> Int = x + 1".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[]);
+        let source = build_synthetic_source(&kind, &[], &[]);
+        assert!(source.contains("fun __eval() -> Unit = ()"));
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -551,8 +627,39 @@ mod tests {
                 ir_type: Type::Int,
             },
         )];
-        let source = build_synthetic_source(&kind, &bindings);
+        let source = build_synthetic_source(&kind, &bindings, &[]);
         assert!(source.contains("fun __eval(x: Int) = x + 1"));
+        let (_, errors) = krypton_parser::parser::parse(&source);
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+    }
+
+    #[test]
+    fn wrap_bare_expr_with_prior_fun_defs() {
+        let kind = ReplInputKind::BareExpr {
+            source: "add(1, 2)".to_string(),
+        };
+        let fun_defs = vec![(
+            "add".to_string(),
+            "fun add(a: Int, b: Int) -> Int = a + b".to_string(),
+            "(Int, Int) -> Int".to_string(),
+        )];
+        let source = build_synthetic_source(&kind, &[], &fun_defs);
+        assert!(source.contains("fun add(a: Int, b: Int) -> Int = a + b"));
+        assert!(source.contains("fun __eval() = add(1, 2)"));
+        let (_, errors) = krypton_parser::parser::parse(&source);
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+    }
+
+    #[test]
+    fn wrap_fun_def_does_not_return_function_name() {
+        let kind = ReplInputKind::FunDef {
+            name: "a".to_string(),
+            source: "fun a(x: Int, y: Int) -> Int = x + y".to_string(),
+        };
+        let source = build_synthetic_source(&kind, &[], &[]);
+        // Should NOT try to return `a` as a value
+        assert!(!source.contains("= a\n"));
+        assert!(source.contains("fun __eval() -> Unit = ()"));
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
