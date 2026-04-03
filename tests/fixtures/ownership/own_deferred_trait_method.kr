@@ -1,0 +1,14 @@
+# expect: ok
+# trait method with owned return type — is_owned_expr must recognize non-constructor calls
+trait Default[a] {
+    fun default() -> ~a
+}
+
+impl Default[Int] {
+    fun default() -> ~Int = 0
+}
+
+fun test() -> ~Int {
+    let x = default[Int]()
+    x
+}

@@ -656,10 +656,11 @@ impl<'a> OwnershipChecker<'a> {
             | TypedExprKind::VecLit(_) => true,
             TypedExprKind::App { func, .. } => {
                 if let Some(name) = callee_var_name(func) {
-                    self.registry.is_constructor(name)
-                } else {
-                    false
+                    if self.registry.is_constructor(name) {
+                        return true;
+                    }
                 }
+                matches!(&expr.ty, Type::Own(_))
             }
             TypedExprKind::Lambda { .. } => true,
             TypedExprKind::If { then_, else_, .. } => {
