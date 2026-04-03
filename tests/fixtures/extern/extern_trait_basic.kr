@@ -1,0 +1,4 @@
+# expect: ok
+extern java "java.lang.Runnable" as trait Runnable[a] {
+  fun run(this: a) -> Unit
+}

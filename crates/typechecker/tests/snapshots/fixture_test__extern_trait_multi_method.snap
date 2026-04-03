@@ -29,3 +29,8 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+MyHandler: (String) -> MyHandler
+handle: forall a. (a) -> Unit where a: Callback
+main: () -> Unit
+Callback$$MyHandler$$on_failure: (MyHandler, String) -> Unit
+Callback$$MyHandler$$on_response: (MyHandler, String) -> Unit

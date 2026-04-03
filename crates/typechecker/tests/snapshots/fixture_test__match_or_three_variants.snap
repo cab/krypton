@@ -29,3 +29,8 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+A: Four
+B: Four
+C: Four
+D: Four
+test: (Four) -> Int

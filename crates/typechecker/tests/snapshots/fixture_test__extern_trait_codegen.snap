@@ -29,3 +29,7 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
+newThread: forall a. (a) -> JThread where a: Runnable
+startThread: (JThread) -> Unit
+main: () -> Unit
+Runnable$$$Fun0$Unit$$run: (() -> Unit) -> Unit
