@@ -1,0 +1,11 @@
+These webfont files were sourced from the Ioskeley Mono project:
+https://github.com/ahatem/IoskeleyMono
+
+Upstream repository metadata identifies the project license as OFL-1.1
+and the README states that Ioskeley Mono is licensed under the SIL Open
+Font License 1.1.
+
+The official OFL 1.1 text is included in OFL-1.1.txt in this directory.
+
+If these font files are updated, prefer copying the upstream LICENSE file
+verbatim alongside them.

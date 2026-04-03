@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="home home-layout">
+  <div class="home-copy">
+    <div class="home-header">
+      <h1>the krypton tour</h1>
+      <p>An interactive tour of the Krypton programming language. Edit the code, hit Run, and learn by doing.</p>
+
+      <div class="code-block">
+        <textarea class="editor">fun main() =
+  println("hello, krypton!")</textarea>
+        <div class="code-controls">
+          <button class="run-btn">run</button>
+        </div>
+        <div class="output">
+          <pre class="output-text"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="home-shader">
+    <canvas id="shader-bg-home" style="width:100%;height:300px;display:block"></canvas>
+  </div>
+</div>
+<div id="shader-ui" class="shader-ui">
+  <button data-mode="0" style="background:rgba(100,140,255,0.3);border:1px solid #8ab4ff;color:#fff;padding:4px 10px;font-family:monospace;font-size:11px;cursor:pointer;border-radius:3px">Blocks</button>
+  <button data-mode="1" style="background:rgba(100,140,255,0.12);border:1px solid rgba(130,170,255,0.3);color:#8ab4ff;padding:4px 10px;font-family:monospace;font-size:11px;cursor:pointer;border-radius:3px">.:-=+*#@</button>
+  <button data-mode="2" style="background:rgba(100,140,255,0.12);border:1px solid rgba(130,170,255,0.3);color:#8ab4ff;padding:4px 10px;font-family:monospace;font-size:11px;cursor:pointer;border-radius:3px">Sparse</button>
+  <button data-mode="3" style="background:rgba(100,140,255,0.12);border:1px solid rgba(130,170,255,0.3);color:#8ab4ff;padding:4px 10px;font-family:monospace;font-size:11px;cursor:pointer;border-radius:3px">/\ Slashes</button>
+</div>
+<script type="module">
+  import { initGalaxy } from "/static/shader2.js";
+  initGalaxy(document.getElementById("shader-bg"));
+  const galaxy = initGalaxy(document.getElementById("shader-bg-home"), {
+    tiltYScale: 2,
+    rotationSpeed: 1,
+    initMode: 3,
+    
+  });
+  document.querySelectorAll("#shader-ui button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const m = parseInt(btn.dataset.mode);
+      galaxy.setMode(m);
+      document.querySelectorAll("#shader-ui button").forEach((b, i) => {
+        const active = i === m;
+        b.style.background = active ? "rgba(100,140,255,0.3)" : "rgba(100,140,255,0.12)";
+        b.style.borderColor = active ? "#8ab4ff" : "rgba(130,170,255,0.3)";
+        b.style.color = active ? "#fff" : "#8ab4ff";
+      });
+    });
+  });
+</script>
+
+
+<div class="">
+  {% set first = chapters[0].lessons[0] if chapters else None %}
+      {% if first %}
+        <a href="{{ first.url }}" class="start-btn">start the tour →</a>
+      {% endif %}
+    </div>
+    <div class="toc">
+      {% for chapter in chapters %}
+      <div class="toc-chapter">
+        <h2>{{ chapter.title }}</h2>
+        <ol>
+          {% for lesson in chapter.lessons %}
+          <li><a href="{{ lesson.url }}">{{ lesson.title }}</a></li>
+          {% endfor %}
+        </ol>
+      </div>
+      {% endfor %}
+</div>
+
+{% endblock %}
