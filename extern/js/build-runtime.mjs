@@ -15,6 +15,7 @@ const entryPoints = {
   map: path.join(rootDir, 'src/map.mts'),
   panic: path.join(rootDir, 'src/panic.mts'),
   prelude: path.join(rootDir, 'src/prelude.mts'),
+  'repl-registry': path.join(rootDir, 'src/repl-registry.mts'),
   string: path.join(rootDir, 'src/string.mts'),
 };
 

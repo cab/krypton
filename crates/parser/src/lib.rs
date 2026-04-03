@@ -4,3 +4,4 @@ pub mod lexer;
 pub mod parser;
 pub mod platform;
 pub mod pretty;
+pub mod repl;

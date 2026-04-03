@@ -1,4 +1,5 @@
 import initPlayground, { compile_to_js } from "/static/compiler/krypton_playground.js";
+import { createModuleLoader } from "./module-loader.js";
 
 let initPromise;
 
@@ -7,85 +8,6 @@ function ensureCompiler() {
     initPromise = initPlayground();
   }
   return initPromise;
-}
-
-function normalizePath(path) {
-  return path.replace(/\\/g, "/").replace(/^\.\//, "");
-}
-
-function resolveRelativePath(fromPath, specifier) {
-  const fromSegments = normalizePath(fromPath).split("/");
-  fromSegments.pop();
-
-  for (const segment of specifier.split("/")) {
-    if (!segment || segment === ".") {
-      continue;
-    }
-    if (segment === "..") {
-      fromSegments.pop();
-      continue;
-    }
-    fromSegments.push(segment);
-  }
-
-  return fromSegments.join("/");
-}
-
-function rewriteModuleSpecifiers(source, filePath, resolveImport) {
-  return source.replace(
-    /(import\s+(?:[^'"]+?\s+from\s+)?|export\s+[^'"]+?\s+from\s+|import\s*\()\s*(['"])([^'"]+)\2/g,
-    (match, prefix, quote, specifier) => {
-      if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
-        return match;
-      }
-      const resolved = resolveRelativePath(filePath, specifier);
-      return `${prefix}${quote}${resolveImport(resolved)}${quote}`;
-    },
-  );
-}
-
-function encodeModuleSource(source) {
-  // Use base64 so nested data: imports cannot break quoted module specifiers.
-  const bytes = new TextEncoder().encode(source);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return `data:text/javascript;base64,${btoa(binary)}`;
-}
-
-function createModuleLoader(files) {
-  const fileMap = new Map(
-    files.map((file) => [normalizePath(file.path), file.source]),
-  );
-  const moduleCache = new Map();
-  const inProgress = new Set();
-
-  function moduleUrl(path) {
-    const normalizedPath = normalizePath(path);
-    if (moduleCache.has(normalizedPath)) {
-      return moduleCache.get(normalizedPath);
-    }
-    if (inProgress.has(normalizedPath)) {
-      throw new Error(`cyclic JS module graph is not supported in playground loader: ${normalizedPath}`);
-    }
-    const source = fileMap.get(normalizedPath);
-    if (source == null) {
-      throw new Error(`missing compiled JS module: ${normalizedPath}`);
-    }
-
-    inProgress.add(normalizedPath);
-    try {
-      const rewritten = rewriteModuleSpecifiers(source, normalizedPath, moduleUrl);
-      const url = encodeModuleSource(rewritten);
-      moduleCache.set(normalizedPath, url);
-      return url;
-    } finally {
-      inProgress.delete(normalizedPath);
-    }
-  }
-
-  return { moduleUrl };
 }
 
 function formatResultSections(result) {

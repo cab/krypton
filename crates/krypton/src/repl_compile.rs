@@ -7,23 +7,14 @@ use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_ir::Type;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::ast::CompileTarget;
+pub use krypton_parser::repl::{classify_input, build_synthetic_source, ReplInputKind};
 use krypton_typechecker::types::{format_type_with_var_names, TypeScheme, TypeVarId};
 
-/// Information about a prior REPL binding.
+/// Information about a prior REPL binding (session-level, holds IR type for codegen).
 #[derive(Clone, Debug)]
 pub struct BindingInfo {
-    /// Krypton type annotation string (for re-synthesis into source).
     pub type_str: String,
-    /// IR type (for codegen).
     pub ir_type: Type,
-}
-
-/// Classification of a REPL input line.
-#[derive(Debug, PartialEq)]
-pub enum ReplInputKind {
-    LetBinding { name: String, rhs: String },
-    FunDef { name: String, source: String },
-    BareExpr { source: String },
 }
 
 /// Persistent state across REPL inputs.
@@ -61,7 +52,12 @@ impl ReplSession {
     pub fn eval_input(&mut self, input: &str) -> Result<String, String> {
         let kind = classify_input(input);
         let class_name = self.next_class_name();
-        let synthetic = build_synthetic_source(&kind, &self.bindings, &self.fun_defs);
+        let binding_strs: Vec<(String, String)> = self
+            .bindings
+            .iter()
+            .map(|(n, info)| (n.clone(), info.type_str.clone()))
+            .collect();
+        let synthetic = build_synthetic_source(&kind, &binding_strs, &self.fun_defs);
 
         // Parse
         let (module, parse_errors) = krypton_parser::parser::parse(&synthetic);
@@ -135,7 +131,7 @@ impl ReplSession {
         // Determine store_var and the type string for the binding
         let (store_var, binding_name, binding_type_str) = match &kind {
             ReplInputKind::LetBinding { name, .. } => {
-                let type_str = ir_type_to_krypton_str(&eval_return_type);
+                let type_str = eval_return_type.to_string();
                 (Some(name.clone()), Some(name.clone()), Some(type_str))
             }
             ReplInputKind::FunDef { .. } => {
@@ -231,85 +227,6 @@ impl Drop for ReplSession {
     }
 }
 
-/// Classify REPL input into its kind.
-pub fn classify_input(input: &str) -> ReplInputKind {
-    let trimmed = input.trim();
-
-    // Check for let binding: "let <name> = <rhs>"
-    if trimmed.starts_with("let ") {
-        let rest = trimmed[4..].trim_start();
-        if let Some(eq_pos) = rest.find('=') {
-            let name = rest[..eq_pos].trim();
-            // Make sure name is a simple identifier (no type annotations, etc.)
-            if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                let rhs = rest[eq_pos + 1..].trim();
-                return ReplInputKind::LetBinding {
-                    name: name.to_string(),
-                    rhs: rhs.to_string(),
-                };
-            }
-        }
-    }
-
-    // Check for function def: "fun <name>..."
-    if trimmed.starts_with("fun ") {
-        let rest = trimmed[4..].trim_start();
-        let name_end = rest
-            .find(|c: char| !c.is_alphanumeric() && c != '_')
-            .unwrap_or(rest.len());
-        let name = &rest[..name_end];
-        if !name.is_empty() {
-            return ReplInputKind::FunDef {
-                name: name.to_string(),
-                source: trimmed.to_string(),
-            };
-        }
-    }
-
-    ReplInputKind::BareExpr {
-        source: trimmed.to_string(),
-    }
-}
-
-/// Build synthetic module source that wraps user input for compilation.
-pub fn build_synthetic_source(
-    kind: &ReplInputKind,
-    bindings: &[(String, BindingInfo)],
-    fun_defs: &[(String, String, String)],
-) -> String {
-    let mut source = String::new();
-
-    // Emit all prior function definitions as top-level functions
-    for (_name, fsrc, _type_display) in fun_defs {
-        source.push_str(fsrc);
-        source.push('\n');
-    }
-
-    // Build parameter list from prior let-bindings
-    let params: Vec<String> = bindings
-        .iter()
-        .map(|(name, info)| format!("{}: {}", name, info.type_str))
-        .collect();
-    let param_str = params.join(", ");
-
-    match kind {
-        ReplInputKind::LetBinding { name: _, rhs } => {
-            source.push_str(&format!("fun __eval({}) = {}\n", param_str, rhs));
-        }
-        ReplInputKind::FunDef { name: _, source: fsrc } => {
-            // Emit the new function definition, __eval returns Unit
-            source.push_str(fsrc);
-            source.push('\n');
-            source.push_str(&format!("fun __eval({}) -> Unit = ()\n", param_str));
-        }
-        ReplInputKind::BareExpr { source: expr } => {
-            source.push_str(&format!("fun __eval({}) = {}\n", param_str, expr));
-        }
-    }
-
-    source
-}
-
 /// Format a `TypeScheme` for REPL display: `(params) -> ret where constraints`.
 /// Unlike `TypeScheme::Display`, this omits the `forall vars.` prefix.
 fn format_scheme_for_repl(scheme: &TypeScheme) -> String {
@@ -340,33 +257,6 @@ fn format_scheme_for_repl(scheme: &TypeScheme) -> String {
     format!("{} where {}", type_part, where_parts.join(", "))
 }
 
-/// Convert an IR type to a Krypton type annotation string.
-fn ir_type_to_krypton_str(ty: &Type) -> String {
-    match ty {
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::String => "String".to_string(),
-        Type::Unit => "Unit".to_string(),
-        Type::Fn(params, ret) => {
-            let param_strs: Vec<String> = params.iter().map(ir_type_to_krypton_str).collect();
-            format!("({}) -> {}", param_strs.join(", "), ir_type_to_krypton_str(ret))
-        }
-        Type::Tuple(elems) => {
-            let elem_strs: Vec<String> = elems.iter().map(ir_type_to_krypton_str).collect();
-            format!("({})", elem_strs.join(", "))
-        }
-        Type::Named(name, args) => {
-            if args.is_empty() {
-                name.clone()
-            } else {
-                let arg_strs: Vec<String> = args.iter().map(ir_type_to_krypton_str).collect();
-                format!("{}[{}]", name, arg_strs.join(", "))
-            }
-        }
-        _ => "Any".to_string(),
-    }
-}
 
 // --- JVM Process Management ---
 
@@ -620,13 +510,7 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "x + 1".to_string(),
         };
-        let bindings = vec![(
-            "x".to_string(),
-            BindingInfo {
-                type_str: "Int".to_string(),
-                ir_type: Type::Int,
-            },
-        )];
+        let bindings = vec![("x".to_string(), "Int".to_string())];
         let source = build_synthetic_source(&kind, &bindings, &[]);
         assert!(source.contains("fun __eval(x: Int) = x + 1"));
         let (_, errors) = krypton_parser::parser::parse(&source);
