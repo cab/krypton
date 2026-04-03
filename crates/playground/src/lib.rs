@@ -1,3 +1,6 @@
+mod repl;
+pub use repl::*;
+
 use std::collections::HashMap;
 
 use include_dir::{include_dir, Dir};
@@ -23,6 +26,7 @@ const RUNTIME_FILES: &[&str] = &[
     "map.mjs",
     "panic.mjs",
     "prelude.mjs",
+    "repl-registry.mjs",
     "string.mjs",
 ];
 

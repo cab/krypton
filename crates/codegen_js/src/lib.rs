@@ -1,8 +1,10 @@
 pub mod diagnostics;
 pub mod emit;
+pub mod repl;
 pub mod suspend;
 
 pub use emit::{compile_modules_js, JsCodegenError};
+pub use repl::compile_repl_js;
 
 #[cfg(test)]
 mod tests {
