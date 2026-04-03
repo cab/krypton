@@ -1,0 +1,1 @@
+pub fun x() -> Int = 1
