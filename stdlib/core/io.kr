@@ -1,18 +1,18 @@
 import core/result.{Result, Ok, Err}
 import core/show.{Show, show}
 
-# core/io — I/O functions
+# core/io — @throws, concrete String params
 extern java "krypton.runtime.KryptonIO" {
-    fun raw_println[a](x: a) -> Unit
-    fun raw_print[a](x: a) -> Unit
+    fun raw_println(x: String) -> Unit
+    fun raw_print(x: String) -> Unit
     pub fun readLine() -> String
-    pub fun read_file(path: String) -> Result[String, String]
-    pub fun write_file(path: String, content: String) -> Result[String, Unit]
+    @throws pub fun read_file(path: String) -> Result[String, String]
+    @throws pub fun write_file(path: String, content: String) -> Result[String, Unit]
 }
 
 extern js "../extern/js/io.mjs" {
-    fun raw_println[a](x: a) -> Unit
-    fun raw_print[a](x: a) -> Unit
+    fun raw_println(x: String) -> Unit
+    fun raw_print(x: String) -> Unit
     pub fun readLine() -> String
     pub fun read_file(path: String) -> Result[String, String]
     pub fun write_file(path: String, content: String) -> Result[String, Unit]

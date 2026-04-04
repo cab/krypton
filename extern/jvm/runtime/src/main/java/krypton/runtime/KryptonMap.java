@@ -62,15 +62,16 @@ public class KryptonMap {
         return new KryptonMap();
     }
 
-    public static KryptonMap staticPut(KryptonMap map, Object key, Object value, Object eqFn, Object hashFn) {
+    public static KryptonMap staticPut(KryptonMap map, Object key, Object value, Object eqDict, Object hashDict) {
         KryptonMap m = map.copy();
-        m.eqFn = (Fun2) eqFn;
-        m.hashFn = (Fun1) hashFn;
+        m.eqFn = (Fun2) eqDict;
+        m.hashFn = (Fun1) hashDict;
         m.data.put(m.wrap(key), value);
         return m;
     }
 
-    public static Object staticGetUnsafe(KryptonMap map, Object key) {
+    public static Object staticGet(KryptonMap map, Object key) {
+        if (map.eqFn == null) return null; // empty map, never put-to
         return map.data.get(map.wrap(key));
     }
 
@@ -100,17 +101,6 @@ public class KryptonMap {
         int i = 0;
         for (Object v : map.data.values()) {
             arr.set(i++, v);
-        }
-        arr.freeze();
-        return arr;
-    }
-
-    public static Object staticEntries(KryptonMap map) {
-        KryptonArray arr = new KryptonArray(map.data.size() * 2);
-        int i = 0;
-        for (var e : map.data.entrySet()) {
-            arr.set(i++, e.getKey().key);
-            arr.set(i++, e.getValue());
         }
         arr.freeze();
         return arr;

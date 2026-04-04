@@ -14,7 +14,8 @@ export function staticPut<K, V>(
   return copy;
 }
 
-export function staticGetUnsafe<K, V>(m: Map<K, V>, key: K) {
+export function staticGet<K, V>(m: Map<K, V>, key: K) {
+  if (!m.has(key)) return null;
   return m.get(key);
 }
 
@@ -34,14 +35,6 @@ export function staticKeys<K, V>(m: Map<K, V>) {
 
 export function staticValues<K, V>(m: Map<K, V>) {
   return [...m.values()];
-}
-
-export function staticEntries<K, V>(m: Map<K, V>) {
-  const result: Array<K | V> = [];
-  for (const [k, v] of m) {
-    result.push(k, v);
-  }
-  return result;
 }
 
 export function staticSize(m: Map<unknown, unknown>) {

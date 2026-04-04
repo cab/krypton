@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.Scanner;
 
 public final class KryptonIO {
+    // Used by codegen tests' direct println[a] extern
     public static void println(Object value) {
         System.out.println(value);
     }
@@ -13,11 +14,11 @@ public final class KryptonIO {
         System.out.print(value);
     }
 
-    public static void raw_println(Object value) {
+    public static void raw_println(String value) {
         System.out.println(value);
     }
 
-    public static void raw_print(Object value) {
+    public static void raw_print(String value) {
         System.out.print(value);
     }
 
@@ -25,40 +26,12 @@ public final class KryptonIO {
         return new Scanner(System.in).nextLine();
     }
 
-    public static Object read_file(String path) {
-        try {
-            String content = Files.readString(Path.of(path));
-            return wrapOk(content);
-        } catch (Exception e) {
-            return wrapErr(e.getMessage());
-        }
+    public static String read_file(String path) throws Exception {
+        return Files.readString(Path.of(path));
     }
 
-    public static Object write_file(String path, String content) {
-        try {
-            Files.writeString(Path.of(path), content);
-            return wrapOk(Integer.valueOf(0));
-        } catch (Exception e) {
-            return wrapErr(e.getMessage());
-        }
-    }
-
-    private static Object wrapOk(Object value) {
-        try {
-            Class<?> okClass = Class.forName("core.result.Result$Ok");
-            return okClass.getDeclaredConstructor(Object.class).newInstance(value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct Ok: " + e.getMessage(), e);
-        }
-    }
-
-    private static Object wrapErr(Object value) {
-        try {
-            Class<?> errClass = Class.forName("core.result.Result$Err");
-            return errClass.getDeclaredConstructor(Object.class).newInstance(value);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to construct Err: " + e.getMessage(), e);
-        }
+    public static void write_file(String path, String content) throws Exception {
+        Files.writeString(Path.of(path), content);
     }
 
     private KryptonIO() {}

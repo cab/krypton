@@ -1,4 +1,4 @@
-# core/string — String utility functions
+# core/string — @nullable with autoboxing
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
 
@@ -8,8 +8,8 @@ extern java "krypton.runtime.KryptonString" {
     pub fun trim(s: String) -> String
     pub fun substring(s: String, start: Int, end: Int) -> String
     pub fun length(s: String) -> Int
-    fun parseIntSafe[a](s: String) -> a
-    fun parseFloatSafe[a](s: String) -> a
+    @nullable fun parseIntSafe(s: String) -> Option[Int]
+    @nullable fun parseFloatSafe(s: String) -> Option[Float]
     fun containsStr(s: String, substr: String) -> Bool
     fun startsWith(s: String, prefix: String) -> Bool
     fun endsWith(s: String, suffix: String) -> Bool
@@ -17,7 +17,7 @@ extern java "krypton.runtime.KryptonString" {
     fun toLower(s: String) -> String
     fun toUpper(s: String) -> String
     fun replaceStr(s: String, from: String, to: String) -> String
-    fun charAt[a](s: String, index: Int) -> a
+    @nullable fun charAt(s: String, index: Int) -> Option[String]
 }
 
 extern js "../extern/js/string.mjs" {
@@ -26,8 +26,8 @@ extern js "../extern/js/string.mjs" {
     pub fun trim(s: String) -> String
     pub fun substring(s: String, start: Int, end: Int) -> String
     pub fun length(s: String) -> Int
-    fun parseIntSafe[a](s: String) -> a
-    fun parseFloatSafe[a](s: String) -> a
+    @nullable fun parseIntSafe(s: String) -> Option[Int]
+    @nullable fun parseFloatSafe(s: String) -> Option[Float]
     fun containsStr(s: String, substr: String) -> Bool
     fun startsWith(s: String, prefix: String) -> Bool
     fun endsWith(s: String, suffix: String) -> Bool
@@ -35,18 +35,11 @@ extern js "../extern/js/string.mjs" {
     fun toLower(s: String) -> String
     fun toUpper(s: String) -> String
     fun replaceStr(s: String, from: String, to: String) -> String
-    fun charAt[a](s: String, index: Int) -> a
+    @nullable fun charAt(s: String, index: Int) -> Option[String]
 }
 
-pub fun parse_int(s: String) -> Option[Int] = {
-    let result = parseIntSafe(s)
-    if is_null(result) { None } else { Some(result) }
-}
-
-pub fun parse_float(s: String) -> Option[Float] = {
-    let result = parseFloatSafe(s)
-    if is_null(result) { None } else { Some(result) }
-}
+pub fun parse_int(s: String) -> Option[Int] = parseIntSafe(s)
+pub fun parse_float(s: String) -> Option[Float] = parseFloatSafe(s)
 
 pub fun contains(s: String, substr: String) -> Bool = containsStr(s, substr)
 pub fun starts_with(s: String, prefix: String) -> Bool = startsWith(s, prefix)
@@ -67,7 +60,4 @@ pub fun join(parts: List[String], sep: String) -> String =
         Cons(first, rest) => fold(rest, first, (acc, s) -> concat(concat(acc, sep), s)),
     }
 
-pub fun char_at(s: String, index: Int) -> Option[String] = {
-    let result = charAt(s, index)
-    if is_null(result) { None } else { Some(result) }
-}
+pub fun char_at(s: String, index: Int) -> Option[String] = charAt(s, index)

@@ -1,3 +1,4 @@
+# core/map — extern where clauses (dict passing), @nullable
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
 import core/vec.{to_list as vec_to_list}
@@ -10,40 +11,28 @@ extern java "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 
 extern java "krypton.runtime.KryptonMap" {
     fun staticEmpty[k, v]() -> Map[k, v]
-    fun staticPut[k, v, d1, d2](m: Map[k, v], key: k, value: v, eq_dict: d1, hash_dict: d2) -> Map[k, v]
-    fun staticGetUnsafe[k, v](m: Map[k, v], key: k) -> v
+    fun staticPut[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash
+    @nullable fun staticGet[k, v](m: Map[k, v], key: k) -> Option[v]
     fun staticContainsKey[k, v](m: Map[k, v], key: k) -> Bool
     fun staticDelete[k, v](m: Map[k, v], key: k) -> Map[k, v]
     fun staticKeys[k, v](m: Map[k, v]) -> Vec[k]
     fun staticValues[k, v](m: Map[k, v]) -> Vec[v]
-    fun staticEntries[k, v, a](m: Map[k, v]) -> a
     fun staticSize[k, v](m: Map[k, v]) -> Int
     fun staticMerge[k, v](m1: Map[k, v], m2: Map[k, v]) -> Map[k, v]
-}
-
-extern java "krypton.runtime.KryptonArray" {
-    fun staticLength[a](xs: Vec[a]) -> Int
-    fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
 extern js "../extern/js/map.mjs" as pub Map[k, v] {}
 
 extern js "../extern/js/map.mjs" {
     fun staticEmpty[k, v]() -> Map[k, v]
-    fun staticPut[k, v, d1, d2](m: Map[k, v], key: k, value: v, eq_dict: d1, hash_dict: d2) -> Map[k, v]
-    fun staticGetUnsafe[k, v](m: Map[k, v], key: k) -> v
+    fun staticPut[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash
+    @nullable fun staticGet[k, v](m: Map[k, v], key: k) -> Option[v]
     fun staticContainsKey[k, v](m: Map[k, v], key: k) -> Bool
     fun staticDelete[k, v](m: Map[k, v], key: k) -> Map[k, v]
     fun staticKeys[k, v](m: Map[k, v]) -> Vec[k]
     fun staticValues[k, v](m: Map[k, v]) -> Vec[v]
-    fun staticEntries[k, v, a](m: Map[k, v]) -> a
     fun staticSize[k, v](m: Map[k, v]) -> Int
     fun staticMerge[k, v](m1: Map[k, v], m2: Map[k, v]) -> Map[k, v]
-}
-
-extern js "../extern/js/array.mjs" {
-    fun staticLength[a](xs: Vec[a]) -> Int
-    fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
 # empty() intentionally has no `where k: Eq + Hash` constraint.
@@ -52,10 +41,10 @@ extern js "../extern/js/array.mjs" {
 pub fun empty[k, v]() -> Map[k, v] = staticEmpty()
 
 pub fun put[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash =
-    staticPut(m, key, value, trait_dict(Eq), trait_dict(Hash))
+    staticPut(m, key, value)
 
 pub fun get[k, v](m: Map[k, v], key: k) -> Option[v] where k: Eq + Hash =
-    if staticContainsKey(m, key) { Some(staticGetUnsafe(m, key)) } else { None }
+    staticGet(m, key)
 
 pub fun delete[k, v](m: Map[k, v], key: k) -> Map[k, v] where k: Eq + Hash =
     staticDelete(m, key)
@@ -67,13 +56,14 @@ pub fun keys[k, v](m: Map[k, v]) -> List[k] = vec_to_list(staticKeys(m))
 
 pub fun values[k, v](m: Map[k, v]) -> List[v] = vec_to_list(staticValues(m))
 
-fun entries_go[k, v, a](arr: a, i: Int, acc: List[(k, v)]) -> List[(k, v)] =
-    if i < 0 { acc } else { entries_go(arr, i - 2, Cons((staticGet(arr, i - 1), staticGet(arr, i)), acc)) }
+fun zip_vecs[a, b](ks: List[a], vs: List[b]) -> List[(a, b)] =
+    match (ks, vs) {
+        (Cons(k, kr), Cons(v, vr)) => Cons((k, v), zip_vecs(kr, vr)),
+        _ => Nil,
+    }
 
-pub fun entries[k, v](m: Map[k, v]) -> List[(k, v)] = {
-    let arr = staticEntries(m)
-    entries_go(arr, staticLength(arr) - 1, Nil)
-}
+pub fun entries[k, v](m: Map[k, v]) -> List[(k, v)] =
+    zip_vecs(vec_to_list(staticKeys(m)), vec_to_list(staticValues(m)))
 
 pub fun from_list[k, v](pairs: List[(k, v)]) -> Map[k, v] where k: Eq + Hash =
     fold(pairs, empty(), (acc, pair) -> { let (k, v) = pair; put(acc, k, v) })

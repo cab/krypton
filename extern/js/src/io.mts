@@ -1,8 +1,8 @@
-export function raw_println(x: unknown) {
+export function raw_println(x: string) {
   console.log(x);
 }
 
-export function raw_print(x: unknown) {
+export function raw_print(x: string) {
   const maybeProcess = globalThis as {
     process?: {
       stdout?: {

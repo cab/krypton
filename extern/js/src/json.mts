@@ -45,12 +45,12 @@ export function staticRawArr<T>(x: T[]) {
   return x;
 }
 
-export function staticRawEntries(x: Record<string, unknown>) {
-  const result: unknown[] = [];
-  for (const [k, v] of Object.entries(x)) {
-    result.push(k, v);
-  }
-  return result;
+export function staticRawEntryKeys(x: Record<string, unknown>) {
+  return Object.keys(x);
+}
+
+export function staticRawEntryValues(x: Record<string, unknown>) {
+  return Object.values(x);
 }
 
 export function staticMkNull() {

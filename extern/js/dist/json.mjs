@@ -39,12 +39,11 @@ function staticRawStr(x) {
 function staticRawArr(x) {
   return x;
 }
-function staticRawEntries(x) {
-  const result = [];
-  for (const [k, v] of Object.entries(x)) {
-    result.push(k, v);
-  }
-  return result;
+function staticRawEntryKeys(x) {
+  return Object.keys(x);
+}
+function staticRawEntryValues(x) {
+  return Object.values(x);
 }
 function staticMkNull() {
   return null;
@@ -88,7 +87,8 @@ export {
   staticParse,
   staticRawArr,
   staticRawBool,
-  staticRawEntries,
+  staticRawEntryKeys,
+  staticRawEntryValues,
   staticRawNum,
   staticRawStr,
   staticRawType,

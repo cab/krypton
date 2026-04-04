@@ -1,31 +1,35 @@
-# core/json — JSON parsing and serialization
+# core/json — phantom extern types
 import core/result.{Result, Ok, Err}
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold, map as list_map, reverse}
 import core/map.{Map, empty, put, get as map_get, entries, from_list}
+import core/vec.{to_list as vec_to_list}
 import core/eq.{Eq}
 import core/hash.{Hash}
 
 pub type Json = JNull | JBool(Bool) | JNum(Float) | JStr(String)
               | JArr(List[Json]) | JObj(Map[String, Json])
 
+extern java "krypton.runtime.JsonRuntime$JavaJson" as JavaJson {}
+
 extern java "krypton.runtime.JsonRuntime" {
     fun staticParse[a](s: String) -> a
-    fun staticSerialize[a](x: a) -> String
-    fun staticRawType[a](x: a) -> Int
-    fun staticRawBool[a](x: a) -> Bool
-    fun staticRawNum[a](x: a) -> Float
-    fun staticRawStr[a](x: a) -> String
-    fun staticRawArr[a, b](x: a) -> b
-    fun staticRawEntries[a, b](x: a) -> b
-    fun staticMkNull[a]() -> a
-    fun staticMkBool[a](v: Bool) -> a
-    fun staticMkNum[a](v: Float) -> a
-    fun staticMkStr[a](v: String) -> a
-    fun staticNewArr[a]() -> a
-    fun staticArrPush[a, b](arr: a, item: b) -> Unit
-    fun staticNewObj[a]() -> a
-    fun staticObjPut[a, b, c](obj: a, key: b, value: c) -> Unit
+    fun staticSerialize(x: JavaJson) -> String
+    fun staticRawType(x: JavaJson) -> Int
+    fun staticRawBool(x: JavaJson) -> Bool
+    fun staticRawNum(x: JavaJson) -> Float
+    fun staticRawStr(x: JavaJson) -> String
+    fun staticRawArr(x: JavaJson) -> Vec[JavaJson]
+    fun staticRawEntryKeys(x: JavaJson) -> Vec[String]
+    fun staticRawEntryValues(x: JavaJson) -> Vec[JavaJson]
+    fun staticMkNull() -> JavaJson
+    fun staticMkBool(v: Bool) -> JavaJson
+    fun staticMkNum(v: Float) -> JavaJson
+    fun staticMkStr(v: String) -> JavaJson
+    fun staticNewArr() -> JavaJson
+    fun staticArrPush(arr: JavaJson, item: JavaJson) -> Unit
+    fun staticNewObj() -> JavaJson
+    fun staticObjPut(obj: JavaJson, key: String, value: JavaJson) -> Unit
 }
 
 extern java "krypton.runtime.KryptonArray" {
@@ -33,23 +37,26 @@ extern java "krypton.runtime.KryptonArray" {
     fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
+extern js "../extern/js/json.mjs" as JavaJson {}
+
 extern js "../extern/js/json.mjs" {
     fun staticParse[a](s: String) -> a
-    fun staticSerialize[a](x: a) -> String
-    fun staticRawType[a](x: a) -> Int
-    fun staticRawBool[a](x: a) -> Bool
-    fun staticRawNum[a](x: a) -> Float
-    fun staticRawStr[a](x: a) -> String
-    fun staticRawArr[a, b](x: a) -> b
-    fun staticRawEntries[a, b](x: a) -> b
-    fun staticMkNull[a]() -> a
-    fun staticMkBool[a](v: Bool) -> a
-    fun staticMkNum[a](v: Float) -> a
-    fun staticMkStr[a](v: String) -> a
-    fun staticNewArr[a]() -> a
-    fun staticArrPush[a, b](arr: a, item: b) -> Unit
-    fun staticNewObj[a]() -> a
-    fun staticObjPut[a, b, c](obj: a, key: b, value: c) -> Unit
+    fun staticSerialize(x: JavaJson) -> String
+    fun staticRawType(x: JavaJson) -> Int
+    fun staticRawBool(x: JavaJson) -> Bool
+    fun staticRawNum(x: JavaJson) -> Float
+    fun staticRawStr(x: JavaJson) -> String
+    fun staticRawArr(x: JavaJson) -> Vec[JavaJson]
+    fun staticRawEntryKeys(x: JavaJson) -> Vec[String]
+    fun staticRawEntryValues(x: JavaJson) -> Vec[JavaJson]
+    fun staticMkNull() -> JavaJson
+    fun staticMkBool(v: Bool) -> JavaJson
+    fun staticMkNum(v: Float) -> JavaJson
+    fun staticMkStr(v: String) -> JavaJson
+    fun staticNewArr() -> JavaJson
+    fun staticArrPush(arr: JavaJson, item: JavaJson) -> Unit
+    fun staticNewObj() -> JavaJson
+    fun staticObjPut(obj: JavaJson, key: String, value: JavaJson) -> Unit
 }
 
 extern js "../extern/js/array.mjs" {
@@ -57,35 +64,33 @@ extern js "../extern/js/array.mjs" {
     fun staticGet[a, b](xs: Vec[a], index: Int) -> b
 }
 
-# ── Parse direction: JavaJson → Krypton Json ──────────────────────
+# ── Parse direction: JavaJson → Krypton Json ────────────────��─────
 
-fun arr_to_list[a](arr: a, i: Int, n: Int) -> List[Json] =
-    if i >= n { Nil }
-    else { Cons(from_java(staticGet(arr, i)), arr_to_list(arr, i + 1, n)) }
-
-fun entries_to_map[a](arr: a, i: Int, n: Int) -> Map[String, Json] =
-    if i >= n { empty() }
-    else { put(entries_to_map(arr, i + 2, n), staticGet(arr, i), from_java(staticGet(arr, i + 1))) }
-
-fun from_java[a](raw: a) -> Json = {
+fun from_java(raw: JavaJson) -> Json = {
     let t = staticRawType(raw)
     if t == 0 { JNull }
     else if t == 1 { JBool(staticRawBool(raw)) }
     else if t == 2 { JNum(staticRawNum(raw)) }
     else if t == 3 { JStr(staticRawStr(raw)) }
     else if t == 4 {
-        let arr = staticRawArr(raw)
-        JArr(arr_to_list(arr, 0, staticLength(arr)))
+        JArr(list_map(vec_to_list(staticRawArr(raw)), (item) -> from_java(item)))
     }
     else {
-        let es = staticRawEntries(raw)
-        JObj(entries_to_map(es, 0, staticLength(es)))
+        let ks = vec_to_list(staticRawEntryKeys(raw))
+        let vs = vec_to_list(staticRawEntryValues(raw))
+        JObj(entries_to_map(ks, vs, empty()))
     }
 }
 
+fun entries_to_map(keys: List[String], values: List[JavaJson], acc: Map[String, Json]) -> Map[String, Json] =
+    match (keys, values) {
+        (Cons(k, kr), Cons(v, vr)) => entries_to_map(kr, vr, put(acc, k, from_java(v))),
+        _ => acc,
+    }
+
 # ── Serialize direction: Krypton Json → JavaJson ──────────────────
 
-fun build_arr[a](items: List[Json], arr: a) -> a =
+fun build_arr(items: List[Json], arr: JavaJson) -> JavaJson =
     match items {
         Nil => arr,
         Cons(h, rest) => {
@@ -94,7 +99,7 @@ fun build_arr[a](items: List[Json], arr: a) -> a =
         },
     }
 
-fun build_obj[a](es: List[(String, Json)], obj: a) -> a =
+fun build_obj(es: List[(String, Json)], obj: JavaJson) -> JavaJson =
     match es {
         Nil => obj,
         Cons(pair, rest) => {
@@ -104,7 +109,7 @@ fun build_obj[a](es: List[(String, Json)], obj: a) -> a =
         },
     }
 
-fun to_java[a](j: Json) -> a = match j {
+fun to_java(j: Json) -> JavaJson = match j {
     JNull => staticMkNull(),
     JBool(b) => staticMkBool(b),
     JNum(n) => staticMkNum(n),
@@ -136,7 +141,7 @@ pub fun json_get(j: Json, key: String) -> Option[Json] =
         _ => None,
     }
 
-# ── Int↔Float conversion ────────────────────────────────────────
+# ── Int↔Float conversion ─────────────��──────────────────────────
 
 extern java "krypton.runtime.KryptonConvert" {
     fun toFloat(n: Int) -> Float
@@ -148,7 +153,7 @@ extern js "../extern/js/json.mjs" {
     fun toInt(n: Float) -> Int
 }
 
-# ── ToJson trait ─────────────────────────────────────────────────
+# ── ToJson trait ───────────────────────────────────────────────��─
 
 pub trait ToJson[a] {
     fun to_json(x: a) -> Json
@@ -186,7 +191,7 @@ impl ToJson[Map[String, a]] where a: ToJson {
         JObj(from_list(list_map(entries(m), (pair) -> { let (k, v) = pair; (k, to_json(v)) })))
 }
 
-# ── FromJson trait ───────────────────────────────────────────────
+# ── FromJson trait ──────────────────���────────────────────────────
 
 pub trait FromJson[a] {
     fun from_json(j: Json) -> Result[String, a]

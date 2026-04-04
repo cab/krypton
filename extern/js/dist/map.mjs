@@ -7,7 +7,8 @@ function staticPut(m, key, value, _eqDict, _hashDict) {
   copy.set(key, value);
   return copy;
 }
-function staticGetUnsafe(m, key) {
+function staticGet(m, key) {
+  if (!m.has(key)) return null;
   return m.get(key);
 }
 function staticContainsKey(m, key) {
@@ -24,13 +25,6 @@ function staticKeys(m) {
 function staticValues(m) {
   return [...m.values()];
 }
-function staticEntries(m) {
-  const result = [];
-  for (const [k, v] of m) {
-    result.push(k, v);
-  }
-  return result;
-}
 function staticSize(m) {
   return m.size;
 }
@@ -41,8 +35,7 @@ export {
   staticContainsKey,
   staticDelete,
   staticEmpty,
-  staticEntries,
-  staticGetUnsafe,
+  staticGet,
   staticKeys,
   staticMerge,
   staticPut,
