@@ -53,10 +53,13 @@ pub fn classify_input(input: &str) -> ReplInputKind {
 ///
 /// `bindings` is `(name, type_annotation_str)` for each prior let-binding.
 /// `fun_defs` is `(name, source, type_display)` for each prior function def.
+/// `show_bare_expr`: when `true` and input is `BareExpr`, wraps the expression
+/// to return `(__r, show(__r))` so the REPL can display via the Show trait.
 pub fn build_synthetic_source(
     kind: &ReplInputKind,
     bindings: &[(String, String)],
     fun_defs: &[(String, String, String)],
+    show_bare_expr: bool,
 ) -> String {
     let mut source = String::new();
 
@@ -83,7 +86,14 @@ pub fn build_synthetic_source(
             source.push_str(&format!("fun __eval({}) -> Unit = ()\n", param_str));
         }
         ReplInputKind::BareExpr { source: expr } => {
-            source.push_str(&format!("fun __eval({}) = {}\n", param_str, expr));
+            if show_bare_expr {
+                source.push_str(&format!(
+                    "fun __eval({}) = {{\n  let __r = {}\n  (__r, show(__r))\n}}\n",
+                    param_str, expr
+                ));
+            } else {
+                source.push_str(&format!("fun __eval({}) = {}\n", param_str, expr));
+            }
         }
     }
 
@@ -131,7 +141,7 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "1 + 2".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         let (_, errors) = crate::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -142,7 +152,7 @@ mod tests {
             name: "x".to_string(),
             rhs: "42".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         let (_, errors) = crate::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -153,7 +163,7 @@ mod tests {
             name: "f".to_string(),
             source: "fun f(x: Int) -> Int = x + 1".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         assert!(source.contains("fun __eval() -> Unit = ()"));
         let (_, errors) = crate::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -165,7 +175,7 @@ mod tests {
             source: "x + 1".to_string(),
         };
         let bindings = vec![("x".to_string(), "Int".to_string())];
-        let source = build_synthetic_source(&kind, &bindings, &[]);
+        let source = build_synthetic_source(&kind, &bindings, &[], false);
         assert!(source.contains("fun __eval(x: Int) = x + 1"));
         let (_, errors) = crate::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -181,9 +191,35 @@ mod tests {
             "fun add(a: Int, b: Int) -> Int = a + b".to_string(),
             "(Int, Int) -> Int".to_string(),
         )];
-        let source = build_synthetic_source(&kind, &[], &fun_defs);
+        let source = build_synthetic_source(&kind, &[], &fun_defs, false);
         assert!(source.contains("fun add(a: Int, b: Int) -> Int = a + b"));
         assert!(source.contains("fun __eval() = add(1, 2)"));
+        let (_, errors) = crate::parser::parse(&source);
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+    }
+
+    #[test]
+    fn wrap_bare_expr_show() {
+        let kind = ReplInputKind::BareExpr {
+            source: "1 + 2".to_string(),
+        };
+        let source = build_synthetic_source(&kind, &[], &[], true);
+        assert!(source.contains("let __r = 1 + 2"));
+        assert!(source.contains("(__r, show(__r))"));
+        let (_, errors) = crate::parser::parse(&source);
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+    }
+
+    #[test]
+    fn wrap_bare_expr_show_with_bindings() {
+        let kind = ReplInputKind::BareExpr {
+            source: "x + 1".to_string(),
+        };
+        let bindings = vec![("x".to_string(), "Int".to_string())];
+        let source = build_synthetic_source(&kind, &bindings, &[], true);
+        assert!(source.contains("fun __eval(x: Int)"));
+        assert!(source.contains("let __r = x + 1"));
+        assert!(source.contains("(__r, show(__r))"));
         let (_, errors) = crate::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -194,7 +230,7 @@ mod tests {
             name: "a".to_string(),
             source: "fun a(x: Int, y: Int) -> Int = x + y".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         assert!(!source.contains("= a\n"));
         assert!(source.contains("fun __eval() -> Unit = ()"));
         let (_, errors) = crate::parser::parse(&source);

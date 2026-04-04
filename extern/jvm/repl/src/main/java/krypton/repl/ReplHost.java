@@ -58,13 +58,24 @@ public final class ReplHost {
         try {
             Class<?> cls = loader.loadClass(Objects.requireNonNull(evalClassName));
             Method eval = cls.getMethod("eval");
-            Object result = eval.invoke(null);
+            Object[] resultArr = (Object[]) eval.invoke(null);
+            Object value = resultArr[0];
+            String display = (String) resultArr[1];
 
-            if (varName != null && result != null) {
-                Registry.intern(varName).set(result);
+            if (varName != null && value != null) {
+                Registry.intern(varName).set(value);
             }
 
-            String resultStr = result == null ? "()" : result.toString();
+            String resultStr;
+            if (display != null) {
+                resultStr = display;
+            } else if (value == null) {
+                resultStr = "()";
+            } else if (value.getClass().getName().startsWith("krypton.runtime.Fun")) {
+                resultStr = "<function>";
+            } else {
+                resultStr = value.toString();
+            }
             out.writeByte(RESP_OK);
             out.writeUTF(resultStr);
             out.flush();

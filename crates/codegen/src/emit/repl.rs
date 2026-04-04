@@ -28,6 +28,7 @@ pub fn compile_repl_input(
     module_sources: &HashMap<String, String>,
     repl_vars: &[(String, Type)],
     store_var: Option<&str>,
+    show_wrapped: bool,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut all_classes = Vec::new();
 
@@ -54,7 +55,7 @@ pub fn compile_repl_input(
 
         if is_entry {
             let classes =
-                compile_repl_module(ir_module, class_name, &view, repl_vars, store_var)
+                compile_repl_module(ir_module, class_name, &view, repl_vars, store_var, show_wrapped)
                     .map_err(|e| {
                         if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
                             return e.with_source(
@@ -91,6 +92,7 @@ fn compile_repl_module(
     link_view: &ModuleLinkView<'_>,
     repl_vars: &[(String, Type)],
     store_var: Option<&str>,
+    show_wrapped: bool,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut compiler = Compiler::new(class_name, link_view)?;
     compiler.types.class_descriptors.insert(
@@ -132,7 +134,7 @@ fn compile_repl_module(
     let extra_methods = compiler.compile_function_bodies_ir(ir_module)?;
 
     // Instead of emit_main_wrapper, emit eval() wrapper
-    emit_eval_wrapper(&mut compiler, repl_vars, store_var)?;
+    emit_eval_wrapper(&mut compiler, repl_vars, store_var, show_wrapped)?;
 
     let class_bytes = compiler.build_class(extra_methods, false)?;
     result_classes.push((class_name.to_string(), class_bytes));
@@ -140,17 +142,17 @@ fn compile_repl_module(
     Ok(result_classes)
 }
 
-/// Emit the `public static Object eval()` method body into the compiler's builder.
+/// Emit the `public static Object[] eval()` method body into the compiler's builder.
 /// This method:
 /// 1. For each repl_var, calls Registry.lookup(name).get() and unboxes to the right type
 /// 2. Calls __eval with those loaded values
-/// 3. Boxes the return value
-/// 4. Optionally stores in a Var
-/// 5. Returns Object
+/// 3. When `show_wrapped`: destructures tuple, stores raw value, returns `[value, displayString]`
+/// 4. When `!show_wrapped`: boxes return value, optionally stores, returns `[value, null]`
 fn emit_eval_wrapper(
     compiler: &mut Compiler<'_>,
     repl_vars: &[(String, Type)],
     store_var: Option<&str>,
+    show_wrapped: bool,
 ) -> Result<(), CodegenError> {
     // Find __eval's method info
     let eval_info = compiler
@@ -264,88 +266,86 @@ fn emit_eval_wrapper(
     }
     compiler.builder.push_jvm_type(eval_return_type);
 
-    // Box return value
-    let boxed_type = compiler.builder.box_if_needed(eval_return_type);
+    let object_class = compiler.builder.refs.object_class;
 
-    // If store_var, store result in registry
-    if let Some(var_name) = store_var {
-        let registry_intern = compiler.cp.add_method_ref(
-            registry_class,
-            "intern",
-            "(Ljava/lang/String;)Lkrypton/repl/Var;",
-        )?;
-        let var_set = compiler.cp.add_method_ref(
-            var_class,
-            "set",
-            "(Ljava/lang/Object;)V",
-        )?;
+    if show_wrapped {
+        // __eval returned a Tuple2(rawValue, showString).
+        // Store tuple in a local, then extract elements.
+        let tuple_slot = compiler.builder.next_local;
+        compiler.builder.next_local += 1;
+        compiler.builder.emit(Instruction::Astore(tuple_slot as u8));
+        compiler.builder.frame.pop_type(); // pop tuple from stack
 
-        // Dup the result
-        compiler.builder.emit(Instruction::Dup);
-        compiler
-            .builder
-            .frame
-            .push_type(VerificationType::Object {
-                cpool_index: match boxed_type {
-                    JvmType::StructRef(idx) => idx,
-                    _ => compiler.builder.refs.object_class,
-                },
-            });
+        // Get the Tuple2 accessor method refs
+        let tuple_info = compiler.types.tuple_info.get(&2).ok_or_else(|| {
+            CodegenError::TypeError("ICE: Tuple2 not registered for show_wrapped".to_string(), None)
+        })?;
+        let tuple_class = tuple_info.class_index;
+        let field_0_ref = tuple_info.field_refs[0]; // _0()
+        let field_1_ref = tuple_info.field_refs[1]; // _1()
 
-        // Registry.intern(name)
-        let name_idx = compiler.cp.add_string(var_name)?;
-        compiler.builder.emit(Instruction::Ldc_w(name_idx));
-        compiler
-            .builder
-            .frame
-            .push_type(VerificationType::Object {
-                cpool_index: compiler.builder.refs.string_class,
-            });
-        compiler
-            .builder
-            .emit(Instruction::Invokestatic(registry_intern));
-        compiler.builder.frame.pop_type(); // pop String
-        compiler
-            .builder
-            .frame
-            .push_type(VerificationType::Object {
-                cpool_index: var_class,
-            });
+        // Extract _0 (raw value) into local
+        compiler.builder.emit(Instruction::Aload(tuple_slot as u8));
+        compiler.builder.frame.push_type(VerificationType::Object {
+            cpool_index: tuple_class,
+        });
+        compiler.builder.emit(Instruction::Invokevirtual(field_0_ref));
+        compiler.builder.frame.pop_type(); // pop tuple
+        compiler.builder.frame.push_type(VerificationType::Object {
+            cpool_index: object_class,
+        });
+        let value_slot = compiler.builder.next_local;
+        compiler.builder.next_local += 1;
+        compiler.builder.emit(Instruction::Astore(value_slot as u8));
+        compiler.builder.frame.pop_type();
 
-        // Swap: Var, result -> result already below on stack
-        // Stack is now: [boxed_result, boxed_result_dup, var]
-        // We need: [boxed_result, var, boxed_result_dup]
-        compiler.builder.emit(Instruction::Swap);
-        // The frame doesn't change meaningfully for swap of two refs
+        // Store raw value in registry if needed
+        if let Some(var_name) = store_var {
+            emit_registry_store(compiler, registry_class, var_class, var_name, value_slot)?;
+        }
 
-        // Var.set(Object)
-        compiler
-            .builder
-            .emit(Instruction::Invokevirtual(var_set));
-        compiler.builder.frame.pop_type(); // pop value
-        compiler.builder.frame.pop_type(); // pop Var
+        // Extract _1 (display string) into local
+        compiler.builder.emit(Instruction::Aload(tuple_slot as u8));
+        compiler.builder.frame.push_type(VerificationType::Object {
+            cpool_index: tuple_class,
+        });
+        compiler.builder.emit(Instruction::Invokevirtual(field_1_ref));
+        compiler.builder.frame.pop_type(); // pop tuple
+        compiler.builder.frame.push_type(VerificationType::Object {
+            cpool_index: object_class,
+        });
+        let display_slot = compiler.builder.next_local;
+        compiler.builder.next_local += 1;
+        compiler.builder.emit(Instruction::Astore(display_slot as u8));
+        compiler.builder.frame.pop_type();
+
+        // Build Object[2] = [value, display]
+        emit_result_array(compiler, value_slot, display_slot)?;
+    } else {
+        // Box return value
+        compiler.builder.box_if_needed(eval_return_type);
+
+        // Store boxed value in local
+        let value_slot = compiler.builder.next_local;
+        compiler.builder.next_local += 1;
+        compiler.builder.emit(Instruction::Astore(value_slot as u8));
+        compiler.builder.frame.pop_type();
+
+        // Store in registry if needed
+        if let Some(var_name) = store_var {
+            emit_registry_store(compiler, registry_class, var_class, var_name, value_slot)?;
+        }
+
+        // Build Object[2] = [value, null]
+        emit_result_array_with_null(compiler, value_slot)?;
     }
 
-    // areturn (return Object)
+    // areturn (return Object[])
     compiler.builder.emit(Instruction::Areturn);
 
-    // Now we need to create the eval Method and add it to the builder
-    // The builder has the instructions; we'll finalize in a custom way
-    // Actually, build_class expects the builder to have the "main" method if is_main=true.
-    // Since is_main=false, we need to create the eval method ourselves and
-    // include it in extra_methods. But we've already called compile_function_bodies_ir
-    // and gotten extra_methods. So we need to build the eval method here and
-    // add it differently.
-
-    // We'll handle this by using finish_method to create the eval Code attribute,
-    // then we need to add it. But build_class consumes self...
-    // The approach: we emit eval() into the builder, then before build_class
-    // we extract it as a Method. But build_class only finalizes from builder
-    // when is_main=true.
-
-    // Alternative: add the eval method to lambda_methods (they get included automatically)
+    // Add eval method to class
     let eval_name_idx = compiler.cp.add_utf8("eval")?;
-    let eval_desc_idx = compiler.cp.add_utf8("()Ljava/lang/Object;")?;
+    let eval_desc_idx = compiler.cp.add_utf8("()[Ljava/lang/Object;")?;
     let eval_code = compiler.builder.finish_method();
     let eval_method = Method {
         access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::STATIC,
@@ -355,5 +355,144 @@ fn emit_eval_wrapper(
     };
     compiler.lambda.lambda_methods.push(eval_method);
 
+    Ok(())
+}
+
+/// Emit bytecode to store a value from a local slot into the Registry.
+fn emit_registry_store(
+    compiler: &mut Compiler<'_>,
+    registry_class: u16,
+    var_class: u16,
+    var_name: &str,
+    value_slot: u16,
+) -> Result<(), CodegenError> {
+    let registry_intern = compiler.cp.add_method_ref(
+        registry_class,
+        "intern",
+        "(Ljava/lang/String;)Lkrypton/repl/Var;",
+    )?;
+    let var_set = compiler.cp.add_method_ref(
+        var_class,
+        "set",
+        "(Ljava/lang/Object;)V",
+    )?;
+
+    // Registry.intern(name)
+    let name_idx = compiler.cp.add_string(var_name)?;
+    compiler.builder.emit(Instruction::Ldc_w(name_idx));
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: compiler.builder.refs.string_class,
+    });
+    compiler
+        .builder
+        .emit(Instruction::Invokestatic(registry_intern));
+    compiler.builder.frame.pop_type(); // pop String
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: var_class,
+    });
+
+    // Load value
+    compiler.builder.emit(Instruction::Aload(value_slot as u8));
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: compiler.builder.refs.object_class,
+    });
+
+    // Var.set(Object)
+    compiler
+        .builder
+        .emit(Instruction::Invokevirtual(var_set));
+    compiler.builder.frame.pop_type(); // pop value
+    compiler.builder.frame.pop_type(); // pop Var
+
+    Ok(())
+}
+
+/// Emit bytecode to create Object[2] = [value, display] and leave it on the stack.
+fn emit_result_array(
+    compiler: &mut Compiler<'_>,
+    value_slot: u16,
+    display_slot: u16,
+) -> Result<(), CodegenError> {
+    let object_class = compiler.builder.refs.object_class;
+
+    // iconst_2; anewarray Object
+    compiler.builder.emit(Instruction::Iconst_2);
+    compiler.builder.frame.push_type(VerificationType::Integer);
+    compiler.builder.emit(Instruction::Anewarray(object_class));
+    compiler.builder.frame.pop_type(); // pop int
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+
+    // dup; iconst_0; aload value; aastore
+    compiler.builder.emit(Instruction::Dup);
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+    compiler.builder.emit(Instruction::Iconst_0);
+    compiler.builder.frame.push_type(VerificationType::Integer);
+    compiler.builder.emit(Instruction::Aload(value_slot as u8));
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+    compiler.builder.emit(Instruction::Aastore);
+    compiler.builder.frame.pop_type(); // pop value
+    compiler.builder.frame.pop_type(); // pop index
+    compiler.builder.frame.pop_type(); // pop array ref (dup)
+
+    // dup; iconst_1; aload display; aastore
+    compiler.builder.emit(Instruction::Dup);
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+    compiler.builder.emit(Instruction::Iconst_1);
+    compiler.builder.frame.push_type(VerificationType::Integer);
+    compiler.builder.emit(Instruction::Aload(display_slot as u8));
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+    compiler.builder.emit(Instruction::Aastore);
+    compiler.builder.frame.pop_type(); // pop value
+    compiler.builder.frame.pop_type(); // pop index
+    compiler.builder.frame.pop_type(); // pop array ref (dup)
+
+    // Stack now has: [Object[] array]
+    Ok(())
+}
+
+/// Emit bytecode to create Object[2] = [value, null] and leave it on the stack.
+fn emit_result_array_with_null(
+    compiler: &mut Compiler<'_>,
+    value_slot: u16,
+) -> Result<(), CodegenError> {
+    let object_class = compiler.builder.refs.object_class;
+
+    // iconst_2; anewarray Object
+    compiler.builder.emit(Instruction::Iconst_2);
+    compiler.builder.frame.push_type(VerificationType::Integer);
+    compiler.builder.emit(Instruction::Anewarray(object_class));
+    compiler.builder.frame.pop_type(); // pop int
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+
+    // dup; iconst_0; aload value; aastore
+    compiler.builder.emit(Instruction::Dup);
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+    compiler.builder.emit(Instruction::Iconst_0);
+    compiler.builder.frame.push_type(VerificationType::Integer);
+    compiler.builder.emit(Instruction::Aload(value_slot as u8));
+    compiler.builder.frame.push_type(VerificationType::Object {
+        cpool_index: object_class,
+    });
+    compiler.builder.emit(Instruction::Aastore);
+    compiler.builder.frame.pop_type(); // pop value
+    compiler.builder.frame.pop_type(); // pop index
+    compiler.builder.frame.pop_type(); // pop array ref (dup)
+
+    // index 1 stays null (default for Object arrays)
+    // Stack now has: [Object[] array]
     Ok(())
 }

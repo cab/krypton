@@ -206,8 +206,34 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
     let repl_filename = format!("{}.kr", module_name);
     let include_runtime = !session.runtime_sent;
 
-    // Build synthetic source
-    let synthetic = build_synthetic_source(&kind, &session.bindings, &session.fun_defs);
+    // For bare expressions, try show-wrapping first, fall back if typecheck fails
+    let is_bare_expr = matches!(kind, ReplInputKind::BareExpr { .. });
+    let (synthetic, show_wrapped) = if is_bare_expr {
+        let show_source = build_synthetic_source(&kind, &session.bindings, &session.fun_defs, true);
+        let (show_module, show_parse_errors) = krypton_parser::parser::parse(&show_source);
+        if show_parse_errors.is_empty() {
+            let show_resolver = ReplResolver {
+                module_name: module_name.clone(),
+                source: show_source.clone(),
+            };
+            match krypton_typechecker::infer::infer_module(
+                &show_module,
+                &show_resolver,
+                module_name.clone(),
+                krypton_parser::ast::CompileTarget::Js,
+            ) {
+                Ok(_) => (show_source, true),
+                Err(_) => {
+                    // Show wrapping failed (e.g. no Show instance), fall back
+                    (build_synthetic_source(&kind, &session.bindings, &session.fun_defs, false), false)
+                }
+            }
+        } else {
+            (build_synthetic_source(&kind, &session.bindings, &session.fun_defs, false), false)
+        }
+    } else {
+        (build_synthetic_source(&kind, &session.bindings, &session.fun_defs, false), false)
+    };
 
     // Parse
     let (module, parse_errors) = krypton_parser::parser::parse(&synthetic);
@@ -325,6 +351,7 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
         &js_module_sources,
         &repl_vars,
         store_var.as_deref(),
+        show_wrapped,
     )
     .map_err(|e| format!("JS codegen error: {}", e))?;
 

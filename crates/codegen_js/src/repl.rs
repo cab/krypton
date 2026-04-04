@@ -25,6 +25,7 @@ pub fn compile_repl_js(
     module_sources: &HashMap<String, Option<String>>,
     repl_vars: &[(String, String)],
     store_var: Option<&str>,
+    show_wrapped: bool,
 ) -> Result<Vec<(String, String)>, JsCodegenError> {
     let mut files = compile_modules_js(ir_modules, module_name, false, link_ctx, module_sources)?;
 
@@ -66,10 +67,21 @@ pub fn compile_repl_js(
         .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
-    patched.push_str(&format!(
-        "  const __result = await __eval({});\n",
-        args
-    ));
+
+    if show_wrapped {
+        // __eval returns a tuple [rawValue, showString]
+        patched.push_str(&format!(
+            "  const __tuple = await __eval({});\n",
+            args
+        ));
+        patched.push_str("  const __result = __tuple[0];\n");
+        patched.push_str("  const __display = __tuple[1];\n");
+    } else {
+        patched.push_str(&format!(
+            "  const __result = await __eval({});\n",
+            args
+        ));
+    }
 
     // Store result if needed
     if let Some(key) = store_var {
@@ -79,7 +91,11 @@ pub fn compile_repl_js(
         ));
     }
 
-    patched.push_str("  return __result;\n");
+    if show_wrapped {
+        patched.push_str("  return { value: __result, display: __display };\n");
+    } else {
+        patched.push_str("  return { value: __result, display: null };\n");
+    }
     patched.push_str("}\n");
 
     entry.1 = patched;
@@ -162,13 +178,13 @@ mod tests {
         let link_ctx = make_link_ctx("repl_1");
         let sources: HashMap<String, Option<String>> = HashMap::new();
 
-        let files = compile_repl_js(&modules, "repl_1", &link_ctx, &sources, &[], None).unwrap();
+        let files = compile_repl_js(&modules, "repl_1", &link_ctx, &sources, &[], None, false).unwrap();
         let entry = files.iter().find(|(p, _)| p == "repl_1.mjs").unwrap();
 
         assert!(entry.1.contains("import { lookup as __repl_lookup, intern as __repl_intern }"));
         assert!(entry.1.contains("export async function __repl_eval()"));
         assert!(entry.1.contains("const __result = await __eval()"));
-        assert!(entry.1.contains("return __result;"));
+        assert!(entry.1.contains("return { value: __result, display: null };"));
         // The import line contains __repl_intern but no .set() call should be present
         assert!(!entry.1.contains(".set(__result)"));
     }
@@ -191,6 +207,7 @@ mod tests {
             &sources,
             &repl_vars,
             Some("res0"),
+            false,
         )
         .unwrap();
         let entry = files.iter().find(|(p, _)| p == "repl_1.mjs").unwrap();
@@ -199,6 +216,7 @@ mod tests {
         assert!(entry.1.contains("const y = __repl_lookup(\"y\").get();"));
         assert!(entry.1.contains("const __result = await __eval(x, y)"));
         assert!(entry.1.contains("__repl_intern(\"res0\").set(__result)"));
+        assert!(entry.1.contains("return { value: __result, display: null };"));
     }
 
     /// End-to-end test: compile real Krypton source through the full REPL pipeline.
@@ -235,7 +253,7 @@ mod tests {
 
         let files = compile_repl_js(
             &ir_modules, module_name, &link_ctx, &js_sources,
-            &[], Some("res0"),
+            &[], Some("res0"), false,
         ).unwrap();
 
         let entry = files.iter().find(|(p, _)| p == "repl_1.mjs").unwrap();
@@ -249,6 +267,8 @@ mod tests {
         assert!(js.contains("const __result = await __eval()"));
         // Result stored in registry
         assert!(js.contains("__repl_intern(\"res0\").set(__result)"));
+        // Returns { value, display } object
+        assert!(js.contains("return { value: __result, display: null };"));
     }
 
     /// End-to-end: compile with prior bindings passed through.
@@ -286,7 +306,7 @@ mod tests {
         let repl_vars = vec![("x".to_string(), "x".to_string())];
         let files = compile_repl_js(
             &ir_modules, module_name, &link_ctx, &js_sources,
-            &repl_vars, Some("res1"),
+            &repl_vars, Some("res1"), false,
         ).unwrap();
 
         let entry = files.iter().find(|(p, _)| p == "repl_2.mjs").unwrap();
@@ -334,7 +354,7 @@ mod tests {
 
         let files = compile_repl_js(
             &ir_modules, module_name, &link_ctx, &js_sources,
-            &[], None,  // no store_var for fun defs
+            &[], None, false,  // no store_var for fun defs
         ).unwrap();
 
         let entry = files.iter().find(|(p, _)| p == "repl_3.mjs").unwrap();

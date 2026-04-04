@@ -64,6 +64,7 @@ function buildEvalLoader(evalFiles) {
 
 function formatValue(v) {
   if (v === undefined || v === null) return "()";
+  if (typeof v === "function") return "<function>";
   if (typeof v === "string") return JSON.stringify(v);
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return String(v);
@@ -120,7 +121,8 @@ self.onmessage = async (event) => {
     // Build loader and execute
     const loader = buildEvalLoader(result.files ?? []);
     const mod = await import(loader.moduleUrl(result.entry_module));
-    const value = await mod.__repl_eval();
+    const evalResult = await mod.__repl_eval();
+    const { value, display: showDisplay } = evalResult;
 
     // Execution succeeded — commit state
     repl_commit(sessionId);
@@ -130,8 +132,11 @@ self.onmessage = async (event) => {
     if (result.display) {
       // let binding ("x: Int") or fun def ("f: (Int) -> Int")
       output = result.display;
+    } else if (showDisplay != null) {
+      // show string from tuple (bare expr with Show instance)
+      output = showDisplay;
     } else {
-      // bare expr — just show the value
+      // bare expr without Show — fallback formatting
       output = formatValue(value);
     }
 

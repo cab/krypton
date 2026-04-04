@@ -57,7 +57,31 @@ impl ReplSession {
             .iter()
             .map(|(n, info)| (n.clone(), info.type_str.clone()))
             .collect();
-        let synthetic = build_synthetic_source(&kind, &binding_strs, &self.fun_defs);
+
+        // For bare expressions, try show-wrapping first, fall back if typecheck fails
+        let is_bare_expr = matches!(kind, ReplInputKind::BareExpr { .. });
+        let (synthetic, show_wrapped) = if is_bare_expr {
+            let show_source = build_synthetic_source(&kind, &binding_strs, &self.fun_defs, true);
+            let (show_module, show_parse_errors) = krypton_parser::parser::parse(&show_source);
+            if show_parse_errors.is_empty() {
+                let show_resolver = CompositeResolver::stdlib_only();
+                match krypton_typechecker::infer::infer_module(
+                    &show_module,
+                    &show_resolver,
+                    "repl".to_string(),
+                    CompileTarget::Jvm,
+                ) {
+                    Ok(_) => (show_source, true),
+                    Err(_) => {
+                        (build_synthetic_source(&kind, &binding_strs, &self.fun_defs, false), false)
+                    }
+                }
+            } else {
+                (build_synthetic_source(&kind, &binding_strs, &self.fun_defs, false), false)
+            }
+        } else {
+            (build_synthetic_source(&kind, &binding_strs, &self.fun_defs, false), false)
+        };
 
         // Parse
         let (module, parse_errors) = krypton_parser::parser::parse(&synthetic);
@@ -156,6 +180,7 @@ impl ReplSession {
             &module_sources,
             &repl_vars,
             store_var.as_deref(),
+            show_wrapped,
         )
         .map_err(|e| format!("codegen error: {}", e))?;
 
@@ -477,7 +502,7 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "1 + 2".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -488,7 +513,7 @@ mod tests {
             name: "x".to_string(),
             rhs: "42".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -499,7 +524,7 @@ mod tests {
             name: "f".to_string(),
             source: "fun f(x: Int) -> Int = x + 1".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         assert!(source.contains("fun __eval() -> Unit = ()"));
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -511,7 +536,7 @@ mod tests {
             source: "x + 1".to_string(),
         };
         let bindings = vec![("x".to_string(), "Int".to_string())];
-        let source = build_synthetic_source(&kind, &bindings, &[]);
+        let source = build_synthetic_source(&kind, &bindings, &[], false);
         assert!(source.contains("fun __eval(x: Int) = x + 1"));
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -527,7 +552,7 @@ mod tests {
             "fun add(a: Int, b: Int) -> Int = a + b".to_string(),
             "(Int, Int) -> Int".to_string(),
         )];
-        let source = build_synthetic_source(&kind, &[], &fun_defs);
+        let source = build_synthetic_source(&kind, &[], &fun_defs, false);
         assert!(source.contains("fun add(a: Int, b: Int) -> Int = a + b"));
         assert!(source.contains("fun __eval() = add(1, 2)"));
         let (_, errors) = krypton_parser::parser::parse(&source);
@@ -540,7 +565,7 @@ mod tests {
             name: "a".to_string(),
             source: "fun a(x: Int, y: Int) -> Int = x + y".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[]);
+        let source = build_synthetic_source(&kind, &[], &[], false);
         // Should NOT try to return `a` as a value
         assert!(!source.contains("= a\n"));
         assert!(source.contains("fun __eval() -> Unit = ()"));
