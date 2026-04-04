@@ -85,7 +85,12 @@ fn extern_return_info(
         return Ok((jvm, jvm_descriptor(compiler, jvm), false));
     }
     if throws {
-        let jvm = compiler.throws_host_return_jvm(ty)?;
+        let inner = compiler.throws_inner_type(ty)?;
+        if matches!(inner, Type::Unit) {
+            // @throws with Unit inner type: raw Java method returns void
+            return Ok((JvmType::Int, "V".to_string(), true));
+        }
+        let jvm = compiler.type_to_jvm(inner)?;
         return Ok((jvm, jvm_descriptor(compiler, jvm), false));
     }
     if matches!(ty, Type::Unit) {
@@ -1126,6 +1131,24 @@ impl<'link> Compiler<'link> {
                     param_desc.push_str(&desc);
                 }
             }
+
+            // Append non-bridged dict params to the raw descriptor.
+            // When an extern has `where k: Eq + Hash` and Eq/Hash are not extern traits
+            // (no bridge class), we pass the dict objects directly to the Java host method.
+            let dict_requirements = self
+                .traits
+                .impl_dict_requirements
+                .get(&ext.name)
+                .cloned()
+                .unwrap_or_default();
+            for dr in &dict_requirements {
+                if !self.traits.extern_trait_bridges.contains_key(&dr.trait_name) {
+                    let object_class = self.builder.refs.object_class;
+                    param_jvm_types.push(JvmType::StructRef(object_class));
+                    param_desc.push_str("Ljava/lang/Object;");
+                }
+            }
+
             param_desc.push(')');
 
             match ext.call_kind {
@@ -1350,6 +1373,16 @@ impl<'link> Compiler<'link> {
                 self.builder.emit_load(*slot, *jvm_ty);
             }
         }
+
+        // Load non-bridged dict params after user params.
+        // These are dicts for where-clause constraints on traits that don't have
+        // extern trait bridges (e.g., Eq, Hash on map operations).
+        for (dict_idx, dr) in dict_requirements.iter().enumerate() {
+            if !self.traits.extern_trait_bridges.contains_key(&dr.trait_name) {
+                let (dict_slot, dict_jvm) = param_slots[dict_idx];
+                self.builder.emit_load(dict_slot, dict_jvm);
+            }
+        }
         Ok(())
     }
 
@@ -1572,27 +1605,41 @@ impl<'link> Compiler<'link> {
 
         // Load params and invoke the raw extern
         let invoke_result = self.emit_extern_invoke(ext, &raw_info, &param_slots, dict_count)?;
-        let result_jvm = invoke_result.expect("ICE: @throws extern must not return void");
-
-        // Store raw result so we can emit new/dup before the value
-        let raw_slot = self.builder.alloc_anonymous_local(result_jvm);
-        self.builder.emit_store(raw_slot, result_jvm);
 
         let (ok_class, ok_ctor, result_iface, ok_fields) =
             self.result_variant_construct_info(&ext.return_type, "Ok")?;
 
-        // new Ok, dup, load raw result, [box if needed], invokespecial
-        self.builder.emit_new_dup(ok_class);
-        self.builder.emit_load(raw_slot, result_jvm);
+        match invoke_result {
+            Some(result_jvm) => {
+                // Non-void: store raw result so we can emit new/dup before the value
+                let raw_slot = self.builder.alloc_anonymous_local(result_jvm);
+                self.builder.emit_store(raw_slot, result_jvm);
 
-        let actual_jvm = result_jvm;
-        let expected = if ok_fields[0].is_erased {
-            JvmType::StructRef(self.builder.refs.object_class)
-        } else {
-            ok_fields[0].jvm_type
-        };
-        self.emit_type_coercion(actual_jvm, expected);
-        self.emit_variant_invokespecial(ok_ctor, &ok_fields, result_iface);
+                self.builder.emit_new_dup(ok_class);
+                self.builder.emit_load(raw_slot, result_jvm);
+
+                let expected = if ok_fields[0].is_erased {
+                    JvmType::StructRef(self.builder.refs.object_class)
+                } else {
+                    ok_fields[0].jvm_type
+                };
+                self.emit_type_coercion(result_jvm, expected);
+                self.emit_variant_invokespecial(ok_ctor, &ok_fields, result_iface);
+            }
+            None => {
+                // Void return (e.g., Result[String, Unit]): wrap Unit in Ok
+                self.builder.emit_new_dup(ok_class);
+                self.builder.emit(Instruction::Iconst_0); // Unit value
+                self.builder.push_jvm_type(JvmType::Int);
+                let expected = if ok_fields[0].is_erased {
+                    JvmType::StructRef(self.builder.refs.object_class)
+                } else {
+                    ok_fields[0].jvm_type
+                };
+                self.emit_type_coercion(JvmType::Int, expected);
+                self.emit_variant_invokespecial(ok_ctor, &ok_fields, result_iface);
+            }
+        }
         self.builder.emit(Instruction::Areturn);
 
         // try_end (one past the last protected instruction):

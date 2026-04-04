@@ -647,14 +647,6 @@ impl<'link> Compiler<'link> {
         }
     }
 
-    pub(super) fn throws_host_return_jvm(
-        &self,
-        ty: &Type,
-    ) -> Result<JvmType, CodegenError> {
-        let inner = self.throws_inner_type(ty)?;
-        self.type_to_jvm(inner)
-    }
-
     pub(super) fn result_variant_construct_info(
         &self,
         result_type: &Type,

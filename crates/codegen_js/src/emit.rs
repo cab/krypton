@@ -1495,10 +1495,21 @@ impl<'a> JsEmitter<'a> {
     }
 
     fn emit_nonnullable_extern_wrapper(&mut self, ext: &krypton_ir::ExternFnDef) {
-        let params: Vec<String> = (0..ext.param_types.len())
+        let dict_count = self
+            .module
+            .fn_dict_requirements
+            .get(&ext.name)
+            .map(|r| r.len())
+            .unwrap_or(0);
+        let dict_params: Vec<String> = (0..dict_count).map(|i| format!("dict{i}")).collect();
+        let user_params: Vec<String> = (0..ext.param_types.len())
             .map(|i| format!("arg{i}"))
             .collect();
-        let args = params.join(", ");
+        let all_params: Vec<String> = dict_params.iter().chain(user_params.iter()).cloned().collect();
+        let wrapper_args = all_params.join(", ");
+        // Raw call: user params first, dicts appended
+        let raw_args: Vec<String> = user_params.iter().chain(dict_params.iter()).cloned().collect();
+        let raw_call_args = raw_args.join(", ");
         let is_async = self.fn_suspends(ext.id);
         let async_prefix = if is_async { "async " } else { "" };
         let await_prefix = if is_async { "await " } else { "" };
@@ -1506,23 +1517,34 @@ impl<'a> JsEmitter<'a> {
         self.writeln(&format!(
             "export {async_prefix}function {}({}) {{",
             js_safe_name(&ext.name),
-            args
+            wrapper_args
         ));
         self.indent += 1;
         self.writeln(&format!(
             "return {await_prefix}{}({});",
             Self::raw_extern_alias(&ext.name),
-            args
+            raw_call_args
         ));
         self.indent -= 1;
         self.writeln("}");
     }
 
     fn emit_nullable_extern_wrapper(&mut self, ext: &krypton_ir::ExternFnDef) {
-        let params: Vec<String> = (0..ext.param_types.len())
+        let dict_count = self
+            .module
+            .fn_dict_requirements
+            .get(&ext.name)
+            .map(|r| r.len())
+            .unwrap_or(0);
+        let dict_params: Vec<String> = (0..dict_count).map(|i| format!("dict{i}")).collect();
+        let user_params: Vec<String> = (0..ext.param_types.len())
             .map(|i| format!("arg{i}"))
             .collect();
-        let args = params.join(", ");
+        let all_params: Vec<String> = dict_params.iter().chain(user_params.iter()).cloned().collect();
+        let wrapper_args = all_params.join(", ");
+        // Raw call: user params first, dicts appended
+        let raw_args: Vec<String> = user_params.iter().chain(dict_params.iter()).cloned().collect();
+        let raw_call_args = raw_args.join(", ");
         let is_async = self.fn_suspends(ext.id);
         let async_prefix = if is_async { "async " } else { "" };
         let await_prefix = if is_async { "await " } else { "" };
@@ -1530,13 +1552,13 @@ impl<'a> JsEmitter<'a> {
         self.writeln(&format!(
             "export {async_prefix}function {}({}) {{",
             js_safe_name(&ext.name),
-            args
+            wrapper_args
         ));
         self.indent += 1;
         self.writeln(&format!(
             "const value = {await_prefix}{}({});",
             Self::raw_nullable_extern_alias(&ext.name),
-            args
+            raw_call_args
         ));
         self.writeln(&format!(
             "return value == null ? {}.INSTANCE : new {}(value);",
