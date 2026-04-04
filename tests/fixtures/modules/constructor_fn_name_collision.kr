@@ -1,0 +1,5 @@
+# expect: output 7
+import core/io.{println}
+import constructor_fn_name_collision_lib.{Wrapper, Wrap, Wrap_value}
+
+fun main() = println(Wrap_value(Wrap(7)))

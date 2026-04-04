@@ -1,0 +1,1 @@
+pub type Value = Num(Float) | Flag(Bool)

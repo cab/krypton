@@ -1,0 +1,10 @@
+# expect: output 42
+import core/io.{println}
+import cross_module_same_variant_a.{Value, Num, Str}
+
+fun extract(v: Value) -> Int = match v {
+  Num(n) => n,
+  Str(_) => 0,
+}
+
+fun main() = println(extract(Num(42)))

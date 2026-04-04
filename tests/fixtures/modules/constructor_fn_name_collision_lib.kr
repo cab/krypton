@@ -1,0 +1,5 @@
+pub type Wrapper = Wrap(Int)
+
+pub fun Wrap_value(w: Wrapper) -> Int = match w {
+  Wrap(n) => n,
+}

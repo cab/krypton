@@ -76,7 +76,6 @@ mod tests {
     ) -> String {
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = std::collections::HashSet::new();
-        let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[module]);
         let link_ctx = test_link_ctx(module.module_path.as_str());
         let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
@@ -85,7 +84,6 @@ mod tests {
             false,
             &variant_lookup,
             &qualified_sum_type_names,
-            &bare_sum_type_names,
             &registry,
             &view,
             module_index,
@@ -408,7 +406,6 @@ mod tests {
         let module = make_module("hello");
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = std::collections::HashSet::new();
-        let bare_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[&module]);
         let suspend = crate::suspend::SuspendSummary::empty();
         let link_ctx = test_link_ctx(module.module_path.as_str());
@@ -418,7 +415,6 @@ mod tests {
             false,
             &variant_lookup,
             &qualified_sum_type_names,
-            &bare_sum_type_names,
             &registry,
             &view,
             0,

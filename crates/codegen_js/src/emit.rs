@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use krypton_ir::{
-    bind_type_vars, canonical_type_name, has_type_vars, head_type_name, Atom, Expr, ExprKind, FnId,
-    Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
+    bind_type_vars, canonical_type_name, has_type_vars, head_type_name, Atom, CanonicalRef, Expr,
+    ExprKind, FnId, FnIdentity, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind, StructDef,
+    SumTypeDef, Type, VarId,
 };
 use krypton_parser::ast::Span;
 use krypton_typechecker::link_context::ModuleLinkView;
@@ -146,6 +147,83 @@ fn compute_dict_js_name_from_summary(
 /// Strip Own wrappers from a type for registry key normalization.
 fn strip_own_type(ty: &Type) -> Type {
     ty.strip_own()
+}
+
+/// Convert a module path to a JS-safe slug by replacing `/` with `$`.
+fn module_slug(path: &str) -> String {
+    path.replace('/', "$")
+}
+
+/// Tracks allocated JS binding names across all import categories to prevent
+/// duplicate bindings. When two imports want the same bare name, the second
+/// gets a module-qualified mangled name.
+struct BindingAllocator {
+    /// All allocated JS binding names (prevents duplicates).
+    allocated: HashSet<String>,
+    /// (source_module, exported_name) → JS binding name.
+    bindings: HashMap<(String, String), String>,
+}
+
+impl BindingAllocator {
+    /// Create an allocator pre-seeded with local names that imports must not shadow.
+    fn new(local_names: HashSet<String>) -> Self {
+        BindingAllocator {
+            allocated: local_names,
+            bindings: HashMap::new(),
+        }
+    }
+
+    /// Allocate a JS binding name for an imported symbol. Returns the bare name
+    /// if available, otherwise a module-qualified mangled name.
+    fn allocate(&mut self, source_module: &str, exported_name: &str) -> String {
+        self.allocate_preferred(source_module, exported_name, &js_safe_name(exported_name))
+    }
+
+    /// Allocate a JS binding name with a preferred name (e.g. user alias).
+    /// Falls back to module-qualified mangling if the preferred name collides.
+    fn allocate_preferred(
+        &mut self,
+        source_module: &str,
+        exported_name: &str,
+        preferred: &str,
+    ) -> String {
+        if self.allocated.insert(preferred.to_string()) {
+            self.bindings
+                .insert((source_module.into(), exported_name.into()), preferred.to_string());
+            return preferred.to_string();
+        }
+        // preferred collides — mangle with module path
+        let bare = js_safe_name(exported_name);
+        let mangled = format!("{}${}", module_slug(source_module), bare);
+        let final_name = if self.allocated.insert(mangled.clone()) {
+            mangled
+        } else {
+            let mut counter = 2;
+            loop {
+                let candidate = format!("{}${}", mangled, counter);
+                if self.allocated.insert(candidate.clone()) {
+                    break candidate;
+                }
+                counter += 1;
+            }
+        };
+        self.bindings
+            .insert((source_module.into(), exported_name.into()), final_name.clone());
+        final_name
+    }
+
+    /// Look up the allocated JS binding name for a previously allocated import.
+    fn resolve(&self, source_module: &str, exported_name: &str) -> &str {
+        self.bindings
+            .get(&(source_module.to_string(), exported_name.to_string()))
+            .map(|s| s.as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "ICE: no binding allocated for ({}, {})",
+                    source_module, exported_name
+                )
+            })
+    }
 }
 
 /// Build an InstanceRegistry from a set of IR modules (for unit tests).
@@ -460,7 +538,6 @@ pub fn compile_modules_js(
     // Local sum types come from ir_modules, imported from link view.
     let mut variant_lookup: HashMap<(String, u32), String> = HashMap::new();
     let mut qualified_sum_type_names: HashSet<String> = HashSet::new();
-    let mut bare_sum_type_names: HashSet<String> = HashSet::new();
 
     // Local sum types from IR modules
     for ir_module in ir_modules {
@@ -470,14 +547,6 @@ pub fn compile_modules_js(
             for v in &st.variants {
                 let qkey = (qualified.clone(), v.tag);
                 variant_lookup.insert(qkey, v.name.clone());
-                let bare_key = (st.name.clone(), v.tag);
-                if variant_lookup
-                    .entry(bare_key)
-                    .or_insert_with(|| v.name.clone())
-                    == &v.name
-                {
-                    bare_sum_type_names.insert(st.name.clone());
-                }
             }
         }
     }
@@ -498,14 +567,6 @@ pub fn compile_modules_js(
             let tag = tag as u32;
             let qkey = (qualified.clone(), tag);
             variant_lookup.insert(qkey, v.name.clone());
-            let bare_key = (ts.name.clone(), tag);
-            if variant_lookup
-                .entry(bare_key)
-                .or_insert_with(|| v.name.clone())
-                == &v.name
-            {
-                bare_sum_type_names.insert(ts.name.clone());
-            }
         }
     }
 
@@ -532,7 +593,6 @@ pub fn compile_modules_js(
             is_main && emit_main_call,
             &variant_lookup,
             &qualified_sum_type_names,
-            &bare_sum_type_names,
             &registry,
             &view,
             module_index,
@@ -814,7 +874,8 @@ pub(crate) struct JsEmitter<'a> {
     /// Maps (sum_type_name, tag) → variant_class_name for instanceof emission.
     variant_lookup: &'a HashMap<(String, u32), String>,
     qualified_sum_type_names: &'a HashSet<String>,
-    bare_sum_type_names: &'a HashSet<String>,
+    /// Binding allocator for collision-free JS import names.
+    binding_alloc: BindingAllocator,
     /// Active recur join points for while(true) + continue emission.
     recur_joins: HashMap<VarId, RecurJoinInfo>,
     /// Non-recur joins inside a recur context that must be inlined to avoid `continue` in nested functions.
@@ -840,7 +901,6 @@ impl<'a> JsEmitter<'a> {
         is_main: bool,
         variant_lookup: &'a HashMap<(String, u32), String>,
         qualified_sum_type_names: &'a HashSet<String>,
-        bare_sum_type_names: &'a HashSet<String>,
         registry: &'a InstanceRegistry,
         link_view: &'a ModuleLinkView<'a>,
         module_index: usize,
@@ -856,7 +916,7 @@ impl<'a> JsEmitter<'a> {
             var_counter: 0,
             variant_lookup,
             qualified_sum_type_names,
-            bare_sum_type_names,
+            binding_alloc: BindingAllocator::new(HashSet::new()),
             recur_joins: HashMap::new(),
             inline_joins: HashMap::new(),
             registry,
@@ -1041,10 +1101,38 @@ impl<'a> JsEmitter<'a> {
     }
 
     fn fn_name(&self, id: FnId) -> String {
-        self.module
-            .fn_name(id)
-            .map(|n| js_safe_name(n))
-            .unwrap_or_else(|| format!("fn_{}", id.0))
+        match self.module.fn_identities.get(&id) {
+            Some(FnIdentity::Imported {
+                canonical,
+                local_alias: _,
+            }) => {
+                let source_module = canonical.module.as_str();
+                let original = canonical.symbol.local_name();
+                // Look up the binding allocated during import emission.
+                self.binding_alloc
+                    .bindings
+                    .get(&(source_module.to_string(), original.clone()))
+                    .cloned()
+                    .unwrap_or_else(|| js_safe_name(&original))
+            }
+            Some(identity) => js_safe_name(identity.name()),
+            None => format!("fn_{}", id.0),
+        }
+    }
+
+    /// Resolve the JS binding for a type/variant reference. For imported types,
+    /// consults the binding allocator; for local types, uses bare name.
+    fn resolve_type_binding(&self, type_ref: &CanonicalRef, name: &str) -> String {
+        let source_module = type_ref.module.as_str();
+        if source_module == self.module.module_path.as_str() {
+            js_safe_name(name)
+        } else {
+            self.binding_alloc
+                .bindings
+                .get(&(source_module.to_string(), name.to_string()))
+                .cloned()
+                .unwrap_or_else(|| js_safe_name(name))
+        }
     }
 
     fn raw_nullable_extern_alias(name: &str) -> String {
@@ -1056,22 +1144,14 @@ impl<'a> JsEmitter<'a> {
     }
 
     /// Extract the sum type name from an IR type, if it names a known sum type.
-    /// Returns the key used in variant_lookup: prefers the full qualified name,
-    /// falls back to bare name for backward compat.
+    /// Returns the qualified key used in variant_lookup (e.g. "core/option/Option").
     fn sum_type_name_from_type(&self, ty: &krypton_ir::Type) -> Option<String> {
         match ty {
             krypton_ir::Type::Named(name, _) => {
-                // Try full qualified name first (e.g. "core/option/Option")
                 if self.qualified_sum_type_names.contains(name) {
                     Some(name.clone())
                 } else {
-                    // Fallback to bare name
-                    let bare = name.rsplit('/').next().unwrap_or(name);
-                    if self.bare_sum_type_names.contains(bare) {
-                        Some(bare.to_string())
-                    } else {
-                        None
-                    }
+                    None
                 }
             }
             krypton_ir::Type::Own(inner) => self.sum_type_name_from_type(inner),
@@ -1082,94 +1162,154 @@ impl<'a> JsEmitter<'a> {
     // ── Imports ──────────────────────────────────────────────
 
     fn emit_imports(&mut self) {
-        use std::collections::HashSet;
-
-        // Collect locally-defined names to detect shadowing.
-        let mut local_names: HashSet<&str> = HashSet::new();
+        // ── 1. Collect locally-defined names to seed the allocator ──
+        let mut local_names: HashSet<String> = HashSet::new();
         for f in &self.module.functions {
-            local_names.insert(&f.name);
+            local_names.insert(f.name.clone());
         }
         for ext in &self.module.extern_fns {
             if matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
-                local_names.insert(&ext.name);
+                local_names.insert(ext.name.clone());
             }
         }
         for s in &self.module.structs {
-            local_names.insert(&s.name);
+            local_names.insert(s.name.clone());
         }
         for st in &self.module.sum_types {
-            local_names.insert(&st.name);
+            local_names.insert(st.name.clone());
             for v in &st.variants {
-                local_names.insert(&v.name);
+                local_names.insert(v.name.clone());
             }
         }
+        // Reserve fixed runtime names
+        local_names.insert("KryptonPanic".to_string());
+        local_names.insert("runMain".to_string());
+        local_names.insert(Self::NULLABLE_SOME_ALIAS.to_string());
+        local_names.insert(Self::NULLABLE_NONE_ALIAS.to_string());
+
+        self.binding_alloc = BindingAllocator::new(local_names);
+
+        // ── 2. Gather all import entries for allocation ──
+
+        // 2a. Krypton function imports (sorted by source_module, then original_name)
+        let mut fn_imports: Vec<(&str, &str, &str)> = Vec::new(); // (source_module, original, local_alias)
+        for imp in &self.module.imported_fns {
+            fn_imports.push((&imp.source_module, &imp.original_name, &imp.name));
+        }
+        fn_imports.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        fn_imports.dedup();
+
+        // 2b. Constructor imports (sorted by source_module, then name)
+        let ctor_refs =
+            collect_constructor_imports(self.link_view, self.module.module_path.as_str());
+        let mut ctor_imports: Vec<(&str, &str)> = ctor_refs
+            .iter()
+            .map(|(m, n)| (m.as_str(), n.as_str()))
+            .collect();
+        ctor_imports.sort();
+        ctor_imports.dedup();
+
+        // 2c. Dict imports (sorted by source_module, then dict_name)
+        let dict_refs = collect_dict_refs(self.module);
+        let mut dict_imports: Vec<(String, String)> = Vec::new(); // (source_module, dict_js_name)
+        for (trait_name, ty) in &dict_refs {
+            let js_name = self.resolve_dict_js_name(trait_name, ty);
+            if let Some(source) = self.registry.find_source_module(trait_name, ty) {
+                if source == &self.module.name || source == self.module.module_path.as_str() {
+                    continue;
+                }
+                let is_local = self.module.instances.iter().any(|inst| {
+                    self.resolve_dict_js_name(&inst.trait_name, &inst.target_type) == js_name
+                });
+                if is_local {
+                    continue;
+                }
+                dict_imports.push((source.to_string(), js_name));
+            }
+        }
+        dict_imports.sort();
+        dict_imports.dedup();
+
+        // ── 3. Allocate bindings in deterministic order ──
+
+        // 3a. Function imports — use user alias as preferred name when present
+        for &(source_module, original, local_alias) in &fn_imports {
+            let preferred = js_safe_name(local_alias);
+            self.binding_alloc
+                .allocate_preferred(source_module, original, &preferred);
+        }
+
+        // 3b. Constructor imports
+        for &(source_module, name) in &ctor_imports {
+            // Skip if already allocated by fn imports
+            if self
+                .binding_alloc
+                .bindings
+                .contains_key(&(source_module.to_string(), name.to_string()))
+            {
+                continue;
+            }
+            self.binding_alloc.allocate(source_module, name);
+        }
+
+        // 3c. Dict imports
+        for (source_module, dict_name) in &dict_imports {
+            self.binding_alloc.allocate(source_module, dict_name);
+        }
+
+        // ── 4. Emit import statements ──
 
         let mut emitted_any = false;
 
-        // ── Krypton-to-Krypton imports ──
-        // The defining module now wraps all externs (nullable and non-nullable),
-        // so consumers import them as regular functions through the Krypton module path.
-        let mut by_module: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
-        for imp in &self.module.imported_fns {
-            by_module
-                .entry(&imp.source_module)
-                .or_default()
-                .push((&imp.original_name, &imp.name));
-        }
-
-        // ── Constructor imports ──
-        // Import struct names and sum type variant names from dependency modules.
-        // This covers construction (new Foo(...), Nil.INSTANCE) and pattern
-        // matching (instanceof Nil). Merged into the same by_module map so
-        // deduplication with function imports happens automatically.
-        let ctor_refs =
-            collect_constructor_imports(self.link_view, self.module.module_path.as_str());
-        for (mod_path, name) in &ctor_refs {
-            by_module
-                .entry(mod_path.as_str())
-                .or_default()
-                .push((name.as_str(), name.as_str()));
-        }
-
-        let mut modules: Vec<&&str> = by_module.keys().collect();
-        modules.sort();
-        for module_path in modules {
-            let entries = by_module.get(*module_path).unwrap();
-            let mut seen = HashSet::new();
-            let mut specifiers: Vec<String> = Vec::new();
-            for &(original, local) in entries {
-                if !seen.insert((original, local)) {
-                    continue;
-                }
-                if local_names.contains(local) {
-                    continue;
-                }
-                let safe_original = js_safe_name(original);
-                let safe_local = js_safe_name(local);
-                if safe_original == safe_local {
-                    specifiers.push(safe_original);
-                } else {
-                    specifiers.push(format!("{safe_original} as {safe_local}"));
-                }
+        // 4a. Krypton function + constructor imports grouped by module
+        {
+            let mut by_module: HashMap<&str, Vec<(String, String)>> = HashMap::new(); // module → [(original, binding)]
+            for &(source_module, original, _) in &fn_imports {
+                let binding = self.binding_alloc.resolve(source_module, original).to_string();
+                by_module
+                    .entry(source_module)
+                    .or_default()
+                    .push((js_safe_name(original), binding));
             }
-            specifiers.sort();
-            specifiers.dedup();
-            if !specifiers.is_empty() {
-                let rel_path = self.relative_import_path(module_path);
-                self.writeln(&format!(
-                    "import {{ {} }} from '{}';",
-                    specifiers.join(", "),
-                    rel_path
-                ));
-                emitted_any = true;
+            for &(source_module, name) in &ctor_imports {
+                let binding = self.binding_alloc.resolve(source_module, name).to_string();
+                by_module
+                    .entry(source_module)
+                    .or_default()
+                    .push((js_safe_name(name), binding));
+            }
+
+            let mut modules: Vec<&&str> = by_module.keys().collect();
+            modules.sort();
+            for module_path in modules {
+                let entries = by_module.get(*module_path).unwrap();
+                let mut specifiers: Vec<String> = Vec::new();
+                let mut seen = HashSet::new();
+                for (original, binding) in entries {
+                    if !seen.insert((original.clone(), binding.clone())) {
+                        continue;
+                    }
+                    if original == binding {
+                        specifiers.push(original.clone());
+                    } else {
+                        specifiers.push(format!("{original} as {binding}"));
+                    }
+                }
+                specifiers.sort();
+                specifiers.dedup();
+                if !specifiers.is_empty() {
+                    let rel_path = self.relative_import_path(module_path);
+                    self.writeln(&format!(
+                        "import {{ {} }} from '{}';",
+                        specifiers.join(", "),
+                        rel_path
+                    ));
+                    emitted_any = true;
+                }
             }
         }
 
-        // ── Extern JS imports ──
-        // Group by resolved path (relative to output root), collecting function names.
-        // Include local extern fns and imported extern fns, but skip imported extern fns
-        // whose name collides with a local function (they are accessed via cross-module
-        // imports instead).
+        // 4b. Extern JS imports (keep existing __krypton_raw$ scheme — already namespaced)
         let mut extern_by_resolved: HashMap<String, Vec<String>> = HashMap::new();
         for ext in &self.module.extern_fns {
             if let krypton_ir::ExternTarget::Js { module } = &ext.target {
@@ -1207,6 +1347,7 @@ impl<'a> JsEmitter<'a> {
             emitted_any = true;
         }
 
+        // 4c. Nullable extern Option imports
         if self
             .module
             .extern_fns
@@ -1223,33 +1364,26 @@ impl<'a> JsEmitter<'a> {
             emitted_any = true;
         }
 
-        // ── Cross-module dict imports ──
-        // Collect dict refs by walking IR function bodies for GetDict/MakeDict nodes.
+        // 4d. Cross-module dict imports
         {
-            let dict_refs = collect_dict_refs(self.module);
-            let mut dict_by_module: HashMap<String, Vec<String>> = HashMap::new();
-            for (trait_name, ty) in &dict_refs {
-                let js_name = self.resolve_dict_js_name(trait_name, ty);
-                if let Some(source) = self.registry.find_source_module(trait_name, ty) {
-                    // Skip instances that are locally defined — they're emitted, not imported.
-                    if source == &self.module.name || source == self.module.module_path.as_str() {
-                        continue;
-                    }
-                    // Also skip if the dict is locally emitted (another module may
-                    // shadow the same instance name in the registry).
-                    let is_local = self.module.instances.iter().any(|inst| {
-                        self.resolve_dict_js_name(&inst.trait_name, &inst.target_type) == js_name
-                    });
-                    if is_local {
-                        continue;
-                    }
-                    dict_by_module
-                        .entry(source.to_string())
-                        .or_default()
-                        .push(js_name);
-                }
+            let mut dict_by_module: HashMap<&str, Vec<String>> = HashMap::new();
+            for (source_module, dict_name) in &dict_imports {
+                let binding = self
+                    .binding_alloc
+                    .resolve(source_module, dict_name)
+                    .to_string();
+                let original = js_safe_name(dict_name);
+                let specifier = if original == binding {
+                    original
+                } else {
+                    format!("{original} as {binding}")
+                };
+                dict_by_module
+                    .entry(source_module.as_str())
+                    .or_default()
+                    .push(specifier);
             }
-            let mut modules: Vec<&String> = dict_by_module.keys().collect();
+            let mut modules: Vec<&&str> = dict_by_module.keys().collect();
             modules.sort();
             for module_path in modules {
                 let mut names = dict_by_module[module_path].clone();
@@ -1265,7 +1399,7 @@ impl<'a> JsEmitter<'a> {
             }
         }
 
-        // ── KryptonPanic import ──
+        // 4e. Runtime imports
         {
             let runtime_path = self.runtime_import_path("panic.mjs");
             self.writeln(&format!(
@@ -1275,7 +1409,6 @@ impl<'a> JsEmitter<'a> {
             emitted_any = true;
         }
 
-        // ── runMain import (main entry only) ──
         if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
             let runtime_path = self.runtime_import_path("actor.mjs");
             self.writeln(&format!("import {{ runMain }} from '{}';", runtime_path));
@@ -1887,8 +2020,11 @@ impl<'a> JsEmitter<'a> {
 
                 if let Some(type_name) = sum_type_name {
                     // instanceof chain
+                    // Derive source module from qualified type name (e.g. "core/option/Option" → "core/option")
+                    let source_module = type_name.rsplit_once('/').map(|(m, _)| m);
+
                     for (i, branch) in branches.iter().enumerate() {
-                        let variant_name = self
+                        let bare_variant_name = self
                             .variant_lookup
                             .get(&(type_name.clone(), branch.tag))
                             .cloned()
@@ -1898,6 +2034,21 @@ impl<'a> JsEmitter<'a> {
                                     type_name, branch.tag
                                 )
                             });
+
+                        // Resolve through binding allocator for imported variants
+                        let variant_name = if let Some(src_mod) = source_module {
+                            if src_mod == self.module.module_path.as_str() {
+                                bare_variant_name.clone()
+                            } else {
+                                self.binding_alloc
+                                    .bindings
+                                    .get(&(src_mod.to_string(), bare_variant_name.clone()))
+                                    .cloned()
+                                    .unwrap_or(bare_variant_name)
+                            }
+                        } else {
+                            bare_variant_name
+                        };
 
                         if i == 0 {
                             self.writeln(&format!("if ({scrut} instanceof {variant_name}) {{"));
@@ -2024,17 +2175,21 @@ impl<'a> JsEmitter<'a> {
             }
             SimpleExprKind::Construct { type_ref, fields } => {
                 let arg_strs: Vec<String> = fields.iter().map(|a| self.emit_atom(a)).collect();
-                let bare_name = type_ref.symbol.local_name();
-                self.write(&format!("new {bare_name}({})", arg_strs.join(", ")));
+                let name = self.resolve_type_binding(type_ref, &type_ref.symbol.local_name());
+                self.write(&format!("new {name}({})", arg_strs.join(", ")));
             }
             SimpleExprKind::ConstructVariant {
-                variant, fields, ..
+                type_ref,
+                variant,
+                fields,
+                ..
             } => {
+                let name = self.resolve_type_binding(type_ref, variant);
                 if fields.is_empty() {
-                    self.write(&format!("{variant}.INSTANCE"));
+                    self.write(&format!("{name}.INSTANCE"));
                 } else {
                     let arg_strs: Vec<String> = fields.iter().map(|a| self.emit_atom(a)).collect();
-                    self.write(&format!("new {variant}({})", arg_strs.join(", ")));
+                    self.write(&format!("new {name}({})", arg_strs.join(", ")));
                 }
             }
             SimpleExprKind::Project { value, field_index } => {
@@ -2398,7 +2553,6 @@ mod tests {
         let registry = build_registry_for_modules(&[module]);
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = HashSet::new();
-        let bare_sum_type_names = HashSet::new();
         let suspend = SuspendSummary::empty();
         let link_ctx = test_link_ctx(module.module_path.as_str());
         let view = link_ctx
@@ -2409,7 +2563,6 @@ mod tests {
             false,
             &variant_lookup,
             &qualified_sum_type_names,
-            &bare_sum_type_names,
             &registry,
             &view,
             0,
@@ -2440,7 +2593,6 @@ mod tests {
         let registry = build_registry_for_modules(&[&module]);
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = HashSet::new();
-        let bare_sum_type_names = HashSet::new();
         let suspend = SuspendSummary::empty();
         let view = link_ctx
             .view_for(&LinkModulePath::new(module_name))
@@ -2450,7 +2602,6 @@ mod tests {
             false,
             &variant_lookup,
             &qualified_sum_type_names,
-            &bare_sum_type_names,
             &registry,
             &view,
             0,
@@ -2539,14 +2690,12 @@ mod tests {
         let registry = build_registry_for_modules(&[&module]);
         let variant_lookup = HashMap::new();
         let qualified_sum_type_names = HashSet::new();
-        let bare_sum_type_names = HashSet::new();
         let suspend = SuspendSummary::empty();
         let mut emitter = JsEmitter::new(
             &module,
             false,
             &variant_lookup,
             &qualified_sum_type_names,
-            &bare_sum_type_names,
             &registry,
             &view,
             0,
@@ -2692,5 +2841,189 @@ fun main() = render_key[String]("hi")
         let module_sources = HashMap::from([("test".to_string(), None)]);
         validate_js_extern_targets(&[module], &view, &module_sources)
             .expect("unreferenced Java-only extern should pass");
+    }
+
+    // ── BindingAllocator unit tests ──
+
+    #[test]
+    fn binding_allocator_bare_name_when_no_collision() {
+        let mut alloc = BindingAllocator::new(HashSet::new());
+        assert_eq!(alloc.allocate("mod_a", "foo"), "foo");
+        assert_eq!(alloc.resolve("mod_a", "foo"), "foo");
+    }
+
+    #[test]
+    fn binding_allocator_mangles_on_collision() {
+        let mut alloc = BindingAllocator::new(HashSet::new());
+        assert_eq!(alloc.allocate("mod_a", "compute"), "compute");
+        assert_eq!(alloc.allocate("mod_b", "compute"), "mod_b$compute");
+        assert_eq!(alloc.resolve("mod_a", "compute"), "compute");
+        assert_eq!(alloc.resolve("mod_b", "compute"), "mod_b$compute");
+    }
+
+    #[test]
+    fn binding_allocator_local_names_block_bare() {
+        let locals = HashSet::from(["filter".to_string()]);
+        let mut alloc = BindingAllocator::new(locals);
+        // "filter" is taken by local, so imported filter must be mangled
+        assert_eq!(alloc.allocate("core/list", "filter"), "core$list$filter");
+    }
+
+    #[test]
+    fn binding_allocator_preferred_name_used_when_available() {
+        let mut alloc = BindingAllocator::new(HashSet::new());
+        assert_eq!(
+            alloc.allocate_preferred("core/list", "filter", "list_filter"),
+            "list_filter"
+        );
+        assert_eq!(alloc.resolve("core/list", "filter"), "list_filter");
+    }
+
+    #[test]
+    fn same_name_imports_get_module_qualified_alias() {
+        // Two ImportedFnDefs with same original_name from different modules
+        let mut module = test_module("app/main");
+        module.module_path = ModulePath::new("app/main");
+        module.imported_fns.push(ImportedFnDef {
+            id: FnId(1),
+            name: "compute".to_string(),
+            source_module: "helpers_a".to_string(),
+            original_name: "compute".to_string(),
+            param_types: vec![],
+            return_type: Type::Int,
+        });
+        module.imported_fns.push(ImportedFnDef {
+            id: FnId(2),
+            name: "compute_2".to_string(),
+            source_module: "helpers_b".to_string(),
+            original_name: "compute".to_string(),
+            param_types: vec![],
+            return_type: Type::Int,
+        });
+
+        let helpers_a_iface = ModuleInterface {
+            module_path: LinkModulePath::new("helpers_a"),
+            direct_deps: vec![],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        let helpers_b_iface = ModuleInterface {
+            module_path: LinkModulePath::new("helpers_b"),
+            direct_deps: vec![],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        let main_iface = ModuleInterface {
+            module_path: LinkModulePath::new("app/main"),
+            direct_deps: vec![
+                LinkModulePath::new("helpers_a"),
+                LinkModulePath::new("helpers_b"),
+            ],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_types: vec![],
+            exported_fn_qualifiers: HashMap::new(),
+            type_visibility: HashMap::new(),
+            private_names: HashSet::new(),
+        };
+        let link_ctx = LinkContext::build(vec![main_iface, helpers_a_iface, helpers_b_iface]);
+        let view = link_ctx
+            .view_for(&LinkModulePath::new("app/main"))
+            .unwrap();
+
+        let registry = build_registry_for_modules(&[&module]);
+        let variant_lookup = HashMap::new();
+        let qualified_sum_type_names = HashSet::new();
+        let suspend = SuspendSummary::empty();
+        let mut emitter = JsEmitter::new(
+            &module,
+            false,
+            &variant_lookup,
+            &qualified_sum_type_names,
+            &registry,
+            &view,
+            0,
+            &suspend,
+        );
+        let output = emitter.emit();
+
+        // First import gets bare name, second gets alias
+        assert!(
+            output.contains("import { compute } from '../helpers_a.mjs';"),
+            "first compute should be bare, got: {output}"
+        );
+        assert!(
+            output.contains("import { compute as compute_2 } from '../helpers_b.mjs';"),
+            "second compute should use user alias, got: {output}"
+        );
+    }
+
+    #[test]
+    fn constructor_import_does_not_collide_with_fn_import() {
+        // Test at the allocator level: a function import "Foo" from one module
+        // should not collide with constructor import "Foo" from another.
+        let mut alloc = BindingAllocator::new(HashSet::new());
+        // Function import allocated first
+        let fn_binding = alloc.allocate("fn_mod", "Foo");
+        assert_eq!(fn_binding, "Foo");
+        // Constructor import of same name from different module gets mangled
+        let ctor_binding = alloc.allocate("ctor_mod", "Foo");
+        assert_eq!(ctor_binding, "ctor_mod$Foo");
+        // Both resolve correctly
+        assert_eq!(alloc.resolve("fn_mod", "Foo"), "Foo");
+        assert_eq!(alloc.resolve("ctor_mod", "Foo"), "ctor_mod$Foo");
+    }
+
+    #[test]
+    fn variant_lookup_uses_qualified_keys_only() {
+        // variant_lookup only has qualified keys; there are no bare fallback entries
+        let mut variant_lookup: HashMap<(String, u32), String> = HashMap::new();
+        let mut qualified_sum_type_names: HashSet<String> = HashSet::new();
+
+        // Insert only qualified key
+        qualified_sum_type_names.insert("core/option/Option".to_string());
+        variant_lookup.insert(("core/option/Option".to_string(), 0), "Some".to_string());
+        variant_lookup.insert(("core/option/Option".to_string(), 1), "None".to_string());
+
+        // Ensure there is no bare "Option" key
+        assert!(variant_lookup.get(&("Option".to_string(), 0)).is_none());
+        assert!(variant_lookup.get(&("Option".to_string(), 1)).is_none());
+
+        // Qualified keys work
+        assert_eq!(
+            variant_lookup.get(&("core/option/Option".to_string(), 0)),
+            Some(&"Some".to_string())
+        );
+        assert_eq!(
+            variant_lookup.get(&("core/option/Option".to_string(), 1)),
+            Some(&"None".to_string())
+        );
+    }
+
+    #[test]
+    fn module_slug_replaces_slashes() {
+        assert_eq!(module_slug("core/option"), "core$option");
+        assert_eq!(module_slug("helpers_a"), "helpers_a");
+        assert_eq!(module_slug("a/b/c"), "a$b$c");
     }
 }
