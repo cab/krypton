@@ -238,12 +238,19 @@ fn build_registry_from_link_view(
             }
             let js_name = compute_dict_js_name(inst);
             let source_module = Some(ir_module.name.clone());
-            register_instance(&mut registry, js_name, inst.target_type.clone(), &inst.trait_name, source_module);
+            register_instance(
+                &mut registry,
+                js_name,
+                inst.target_type.clone(),
+                &inst.trait_name,
+                source_module,
+            );
         }
     }
 
     // Imported instances from link view
-    let local_module_paths: HashSet<&str> = ir_modules.iter().map(|m| m.module_path.as_str()).collect();
+    let local_module_paths: HashSet<&str> =
+        ir_modules.iter().map(|m| m.module_path.as_str()).collect();
     for (path, inst) in root_view.all_instances() {
         if local_module_paths.contains(path.as_str()) {
             continue;
@@ -254,7 +261,13 @@ fn build_registry_from_link_view(
         let js_name = compute_dict_js_name_from_summary(inst);
         let source_module = Some(path.as_str().to_string());
         let ir_type: Type = inst.target_type.clone().into();
-        register_instance(&mut registry, js_name, ir_type, &inst.trait_name, source_module);
+        register_instance(
+            &mut registry,
+            js_name,
+            ir_type,
+            &inst.trait_name,
+            source_module,
+        );
     }
 
     registry
@@ -303,7 +316,7 @@ fn register_instance(
 }
 
 /// JS reserved words that cannot be used as identifiers.
-const JS_RESERVED: &[&str] = &[
+pub(crate) const JS_RESERVED: &[&str] = &[
     "break",
     "case",
     "catch",
@@ -356,7 +369,7 @@ const JS_RESERVED: &[&str] = &[
 ];
 
 /// Return a JS-safe version of a Krypton name: prefix with `$` if it's a reserved word.
-fn js_safe_name(name: &str) -> String {
+pub(crate) fn js_safe_name(name: &str) -> String {
     if JS_RESERVED.contains(&name) {
         format!("${name}")
     } else {
@@ -437,7 +450,10 @@ pub fn compile_modules_js(
     let root_view = link_ctx
         .view_for(&LinkModulePath::new(root_module_path))
         .unwrap_or_else(|| {
-            panic!("ICE: no LinkContext view for root module '{}'", root_module_path)
+            panic!(
+                "ICE: no LinkContext view for root module '{}'",
+                root_module_path
+            )
         });
 
     // Build variant lookup: (type_name, tag) → variant_name
@@ -467,7 +483,8 @@ pub fn compile_modules_js(
     }
 
     // Imported sum types from link view
-    let local_module_paths: HashSet<&str> = ir_modules.iter().map(|m| m.module_path.as_str()).collect();
+    let local_module_paths: HashSet<&str> =
+        ir_modules.iter().map(|m| m.module_path.as_str()).collect();
     for (path, ts) in root_view.all_exported_types() {
         if local_module_paths.contains(path.as_str()) {
             continue;
@@ -505,7 +522,10 @@ pub fn compile_modules_js(
         let view = link_ctx
             .view_for(&LinkModulePath::new(ir_module.module_path.as_str()))
             .unwrap_or_else(|| {
-                panic!("ICE: no LinkContext view for module '{}'", ir_module.module_path)
+                panic!(
+                    "ICE: no LinkContext view for module '{}'",
+                    ir_module.module_path
+                )
             });
         let mut emitter = JsEmitter::new(
             ir_module,
@@ -1102,7 +1122,8 @@ impl<'a> JsEmitter<'a> {
         // This covers construction (new Foo(...), Nil.INSTANCE) and pattern
         // matching (instanceof Nil). Merged into the same by_module map so
         // deduplication with function imports happens automatically.
-        let ctor_refs = collect_constructor_imports(self.link_view, self.module.module_path.as_str());
+        let ctor_refs =
+            collect_constructor_imports(self.link_view, self.module.module_path.as_str());
         for (mod_path, name) in &ctor_refs {
             by_module
                 .entry(mod_path.as_str())
@@ -1505,10 +1526,18 @@ impl<'a> JsEmitter<'a> {
         let user_params: Vec<String> = (0..ext.param_types.len())
             .map(|i| format!("arg{i}"))
             .collect();
-        let all_params: Vec<String> = dict_params.iter().chain(user_params.iter()).cloned().collect();
+        let all_params: Vec<String> = dict_params
+            .iter()
+            .chain(user_params.iter())
+            .cloned()
+            .collect();
         let wrapper_args = all_params.join(", ");
         // Raw call: user params first, dicts appended
-        let raw_args: Vec<String> = user_params.iter().chain(dict_params.iter()).cloned().collect();
+        let raw_args: Vec<String> = user_params
+            .iter()
+            .chain(dict_params.iter())
+            .cloned()
+            .collect();
         let raw_call_args = raw_args.join(", ");
         let is_async = self.fn_suspends(ext.id);
         let async_prefix = if is_async { "async " } else { "" };
@@ -1540,10 +1569,18 @@ impl<'a> JsEmitter<'a> {
         let user_params: Vec<String> = (0..ext.param_types.len())
             .map(|i| format!("arg{i}"))
             .collect();
-        let all_params: Vec<String> = dict_params.iter().chain(user_params.iter()).cloned().collect();
+        let all_params: Vec<String> = dict_params
+            .iter()
+            .chain(user_params.iter())
+            .cloned()
+            .collect();
         let wrapper_args = all_params.join(", ");
         // Raw call: user params first, dicts appended
-        let raw_args: Vec<String> = user_params.iter().chain(dict_params.iter()).cloned().collect();
+        let raw_args: Vec<String> = user_params
+            .iter()
+            .chain(dict_params.iter())
+            .cloned()
+            .collect();
         let raw_call_args = raw_args.join(", ");
         let is_async = self.fn_suspends(ext.id);
         let async_prefix = if is_async { "async " } else { "" };
@@ -1742,7 +1779,11 @@ impl<'a> JsEmitter<'a> {
                         })
                         .collect();
 
-                    let async_prefix = if self.current_fn_is_async { "async " } else { "" };
+                    let async_prefix = if self.current_fn_is_async {
+                        "async "
+                    } else {
+                        ""
+                    };
                     self.writeln(&format!(
                         "{async_prefix}function {join_name}({}) {{",
                         param_names.join(", ")
@@ -1794,11 +1835,21 @@ impl<'a> JsEmitter<'a> {
                 } else {
                     let target_name = self.var_name(*target);
                     let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
-                    let await_prefix = if self.current_fn_is_async { "await " } else { "" };
-                    if tail {
-                        self.writeln(&format!("return {await_prefix}{target_name}({});", arg_strs.join(", ")));
+                    let await_prefix = if self.current_fn_is_async {
+                        "await "
                     } else {
-                        self.writeln(&format!("{await_prefix}{target_name}({});", arg_strs.join(", ")));
+                        ""
+                    };
+                    if tail {
+                        self.writeln(&format!(
+                            "return {await_prefix}{target_name}({});",
+                            arg_strs.join(", ")
+                        ));
+                    } else {
+                        self.writeln(&format!(
+                            "{await_prefix}{target_name}({});",
+                            arg_strs.join(", ")
+                        ));
                     }
                 }
             }
@@ -1935,8 +1986,15 @@ impl<'a> JsEmitter<'a> {
             SimpleExprKind::CallClosure { closure, args } => {
                 let closure_str = self.emit_atom(closure);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
-                let await_prefix = if self.current_fn_is_async { "await " } else { "" };
-                self.write(&format!("{await_prefix}{closure_str}({})", arg_strs.join(", ")));
+                let await_prefix = if self.current_fn_is_async {
+                    "await "
+                } else {
+                    ""
+                };
+                self.write(&format!(
+                    "{await_prefix}{closure_str}({})",
+                    arg_strs.join(", ")
+                ));
             }
             SimpleExprKind::MakeClosure { func, captures } => {
                 let fn_name = self.fn_name(*func);
@@ -2023,8 +2081,15 @@ impl<'a> JsEmitter<'a> {
                     } else {
                         let dict = &arg_strs[0];
                         let user_args = &arg_strs[1..];
-                        let await_prefix = if self.current_fn_is_async { "await " } else { "" };
-                        self.write(&format!("{await_prefix}{dict}.{method_name}({})", user_args.join(", ")));
+                        let await_prefix = if self.current_fn_is_async {
+                            "await "
+                        } else {
+                            ""
+                        };
+                        self.write(&format!(
+                            "{await_prefix}{dict}.{method_name}({})",
+                            user_args.join(", ")
+                        ));
                     }
                 }
             }
@@ -2152,7 +2217,8 @@ impl<'a> JsEmitter<'a> {
                     if let Some((module_path, type_name)) = named.rsplit_once('/') {
                         // Qualified name: look up from link view
                         let link_path = LinkModulePath::new(module_path);
-                        if let Some(ts) = self.link_view.lookup_type_summary(&link_path, type_name) {
+                        if let Some(ts) = self.link_view.lookup_type_summary(&link_path, type_name)
+                        {
                             if let TypeSummaryKind::Record { fields } = &ts.kind {
                                 if field_index < fields.len() {
                                     return fields[field_index].0.clone();
@@ -2167,7 +2233,9 @@ impl<'a> JsEmitter<'a> {
                             }
                         }
                         // Then try imported types from link view
-                        let matches: Vec<_> = self.link_view.all_exported_types()
+                        let matches: Vec<_> = self
+                            .link_view
+                            .all_exported_types()
                             .into_iter()
                             .filter(|(path, ts)| {
                                 path.as_str() != self.module.module_path.as_str()
@@ -2267,16 +2335,16 @@ fn js_intrinsic_dicts() -> Vec<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use krypton_ir::{
-        CanonicalRef, ExternCallKind, ExternFnDef, ExternTarget, FnDef, ImportedFnDef, LocalSymbolKey, Module,
-        ModulePath,
-    };
     use krypton_ir::lower::lower_all;
+    use krypton_ir::{
+        CanonicalRef, ExternCallKind, ExternFnDef, ExternTarget, FnDef, ImportedFnDef,
+        LocalSymbolKey, Module, ModulePath,
+    };
     use krypton_modules::module_resolver::CompositeResolver;
     use krypton_parser::parser::parse;
+    use krypton_typechecker::infer::infer_module;
     use krypton_typechecker::link_context::LinkContext;
     use krypton_typechecker::module_interface::ModuleInterface;
-    use krypton_typechecker::infer::infer_module;
     use krypton_typechecker::typed_ast::ParamQualifier;
     use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -2333,7 +2401,9 @@ mod tests {
         let bare_sum_type_names = HashSet::new();
         let suspend = SuspendSummary::empty();
         let link_ctx = test_link_ctx(module.module_path.as_str());
-        let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
+        let view = link_ctx
+            .view_for(&LinkModulePath::new(module.module_path.as_str()))
+            .unwrap();
         let mut emitter = JsEmitter::new(
             module,
             false,
@@ -2360,8 +2430,8 @@ mod tests {
         )
         .expect("type check should succeed");
         let link_ctx = LinkContext::build(interfaces);
-        let (ir_modules, _) = lower_all(&typed_modules, module_name, &link_ctx)
-            .expect("lowering should succeed");
+        let (ir_modules, _) =
+            lower_all(&typed_modules, module_name, &link_ctx).expect("lowering should succeed");
         let module = ir_modules
             .into_iter()
             .find(|m| m.name == module_name)
@@ -2372,7 +2442,9 @@ mod tests {
         let qualified_sum_type_names = HashSet::new();
         let bare_sum_type_names = HashSet::new();
         let suspend = SuspendSummary::empty();
-        let view = link_ctx.view_for(&LinkModulePath::new(module_name)).unwrap();
+        let view = link_ctx
+            .view_for(&LinkModulePath::new(module_name))
+            .unwrap();
         let mut emitter = JsEmitter::new(
             &module,
             false,
@@ -2505,7 +2577,8 @@ mod tests {
         });
 
         let output = emit_test_module(&module);
-        assert!(output.contains("import { length as __krypton_raw$length } from './extern/js/string.mjs';"));
+        assert!(output
+            .contains("import { length as __krypton_raw$length } from './extern/js/string.mjs';"));
         assert!(output.contains("export function length(arg0) {"));
         assert!(output.contains("return __krypton_raw$length(arg0);"));
         assert!(!output.contains("__krypton_nullable_Some"));
@@ -2533,7 +2606,12 @@ fun main() = render_key[String]("hi")
         let mut module = test_module("test");
         let bind = VarId(0);
         let extern_fn = FnId(1);
-        module.fn_identities.insert(extern_fn, krypton_ir::FnIdentity::Local { name: "println".to_string() });
+        module.fn_identities.insert(
+            extern_fn,
+            krypton_ir::FnIdentity::Local {
+                name: "println".to_string(),
+            },
+        );
         module.extern_fns.push(ExternFnDef {
             id: extern_fn,
             name: "println".to_string(),
@@ -2580,7 +2658,12 @@ fun main() = render_key[String]("hi")
     fn unreferenced_java_only_extern_passes_validation() {
         let mut module = test_module("test");
         let extern_fn = FnId(1);
-        module.fn_identities.insert(extern_fn, krypton_ir::FnIdentity::Local { name: "println".to_string() });
+        module.fn_identities.insert(
+            extern_fn,
+            krypton_ir::FnIdentity::Local {
+                name: "println".to_string(),
+            },
+        );
         module.extern_fns.push(ExternFnDef {
             id: extern_fn,
             name: "println".to_string(),

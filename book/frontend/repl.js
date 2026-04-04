@@ -131,6 +131,9 @@ async function submit() {
       renderDiagnosticsDom(diagnostics, resultEl);
     } else if (result.output) {
       resultEl.textContent = result.output;
+      if (!result.ok) {
+        resultEl.classList.add("repl-error");
+      }
     } else if (!result.ok) {
       resultEl.textContent = result.output || "Error";
       resultEl.classList.add("repl-error");

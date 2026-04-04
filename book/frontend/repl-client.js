@@ -1,4 +1,4 @@
-const TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 30000;
 const LINES_PER_FRAME = 5;
 
 export function createReplClient() {
@@ -40,7 +40,10 @@ export function createReplClient() {
 
       clearTimeout(handlers.timer);
       pending.delete(id);
-      handlers.resolve(payload);
+      handlers.resolve({
+        sessionReset: false,
+        ...payload,
+      });
     };
 
     worker.onerror = (event) => {
@@ -83,7 +86,8 @@ export function createReplClient() {
         worker = null;
         resolve({
           ok: false,
-          output: "Execution timed out (10s limit)",
+          sessionReset: true,
+          output: "Execution timed out (30s limit). REPL session was reset.",
           diagnostics: [],
           display: "",
         });

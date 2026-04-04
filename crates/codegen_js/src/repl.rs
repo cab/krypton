@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use krypton_ir::Module;
 use krypton_typechecker::link_context::LinkContext;
 
-use crate::emit::{compile_modules_js, JsCodegenError};
+use crate::emit::{compile_modules_js, js_safe_name, JsCodegenError};
 
 /// Compile IR modules for a REPL eval, producing JS files with a `__repl_eval()` wrapper.
 ///
@@ -55,40 +55,32 @@ pub fn compile_repl_js(
 
     // Load prior bindings from Registry
     for (name, key) in repl_vars {
+        let safe_name = js_safe_name(name);
         patched.push_str(&format!(
             "  const {} = __repl_lookup(\"{}\").get();\n",
-            name, key
+            safe_name, key
         ));
     }
 
     // Call __eval
     let args = repl_vars
         .iter()
-        .map(|(name, _)| name.as_str())
+        .map(|(name, _)| js_safe_name(name))
         .collect::<Vec<_>>()
         .join(", ");
 
     if show_wrapped {
         // __eval returns a tuple [rawValue, showString]
-        patched.push_str(&format!(
-            "  const __tuple = await __eval({});\n",
-            args
-        ));
+        patched.push_str(&format!("  const __tuple = await __eval({});\n", args));
         patched.push_str("  const __result = __tuple[0];\n");
         patched.push_str("  const __display = __tuple[1];\n");
     } else {
-        patched.push_str(&format!(
-            "  const __result = await __eval({});\n",
-            args
-        ));
+        patched.push_str(&format!("  const __result = await __eval({});\n", args));
     }
 
     // Store result if needed
     if let Some(key) = store_var {
-        patched.push_str(&format!(
-            "  __repl_intern(\"{}\").set(__result);\n",
-            key
-        ));
+        patched.push_str(&format!("  __repl_intern(\"{}\").set(__result);\n", key));
     }
 
     if show_wrapped {
@@ -111,9 +103,7 @@ mod tests {
 
     use krypton_ir::*;
     use krypton_typechecker::link_context::LinkContext;
-    use krypton_typechecker::module_interface::{
-        ModuleInterface, ModulePath as LinkModulePath,
-    };
+    use krypton_typechecker::module_interface::{ModuleInterface, ModulePath as LinkModulePath};
 
     fn make_eval_module(return_type: Type) -> Module {
         Module {
@@ -178,13 +168,18 @@ mod tests {
         let link_ctx = make_link_ctx("repl_1");
         let sources: HashMap<String, Option<String>> = HashMap::new();
 
-        let files = compile_repl_js(&modules, "repl_1", &link_ctx, &sources, &[], None, false).unwrap();
+        let files =
+            compile_repl_js(&modules, "repl_1", &link_ctx, &sources, &[], None, false).unwrap();
         let entry = files.iter().find(|(p, _)| p == "repl_1.mjs").unwrap();
 
-        assert!(entry.1.contains("import { lookup as __repl_lookup, intern as __repl_intern }"));
+        assert!(entry
+            .1
+            .contains("import { lookup as __repl_lookup, intern as __repl_intern }"));
         assert!(entry.1.contains("export async function __repl_eval()"));
         assert!(entry.1.contains("const __result = await __eval()"));
-        assert!(entry.1.contains("return { value: __result, display: null };"));
+        assert!(entry
+            .1
+            .contains("return { value: __result, display: null };"));
         // The import line contains __repl_intern but no .set() call should be present
         assert!(!entry.1.contains(".set(__result)"));
     }
@@ -216,7 +211,41 @@ mod tests {
         assert!(entry.1.contains("const y = __repl_lookup(\"y\").get();"));
         assert!(entry.1.contains("const __result = await __eval(x, y)"));
         assert!(entry.1.contains("__repl_intern(\"res0\").set(__result)"));
-        assert!(entry.1.contains("return { value: __result, display: null };"));
+        assert!(entry
+            .1
+            .contains("return { value: __result, display: null };"));
+    }
+
+    #[test]
+    fn repl_wrapper_mangles_reserved_binding_names() {
+        let modules = vec![make_eval_module(Type::Int)];
+        let link_ctx = make_link_ctx("repl_1");
+        let sources: HashMap<String, Option<String>> = HashMap::new();
+
+        let repl_vars = vec![
+            ("default".to_string(), "default".to_string()),
+            ("await".to_string(), "await".to_string()),
+            ("class".to_string(), "class".to_string()),
+        ];
+
+        let files = compile_repl_js(
+            &modules, "repl_1", &link_ctx, &sources, &repl_vars, None, false,
+        )
+        .unwrap();
+        let entry = files.iter().find(|(p, _)| p == "repl_1.mjs").unwrap();
+
+        assert!(entry
+            .1
+            .contains("const $default = __repl_lookup(\"default\").get();"));
+        assert!(entry
+            .1
+            .contains("const $await = __repl_lookup(\"await\").get();"));
+        assert!(entry
+            .1
+            .contains("const $class = __repl_lookup(\"class\").get();"));
+        assert!(entry
+            .1
+            .contains("const __result = await __eval($default, $await, $class)"));
     }
 
     /// End-to-end test: compile real Krypton source through the full REPL pipeline.
@@ -227,8 +256,11 @@ mod tests {
         struct TestResolver(String, String);
         impl ModuleResolver for TestResolver {
             fn resolve(&self, path: &str) -> Option<String> {
-                if path == self.0 { Some(self.1.clone()) }
-                else { StdlibLoader::get_source(path).map(str::to_owned) }
+                if path == self.0 {
+                    Some(self.1.clone())
+                } else {
+                    StdlibLoader::get_source(path).map(str::to_owned)
+                }
             }
         }
 
@@ -240,21 +272,32 @@ mod tests {
 
         let resolver = TestResolver(module_name.into(), source.into());
         let (typed, interfaces) = krypton_typechecker::infer::infer_module(
-            &parsed, &resolver, module_name.into(),
+            &parsed,
+            &resolver,
+            module_name.into(),
             krypton_parser::ast::CompileTarget::Js,
-        ).unwrap();
+        )
+        .unwrap();
 
         let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
         let (ir_modules, module_sources) =
             krypton_ir::lower::lower_all(&typed, module_name, &link_ctx).unwrap();
 
-        let js_sources: HashMap<String, Option<String>> =
-            module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        let js_sources: HashMap<String, Option<String>> = module_sources
+            .into_iter()
+            .map(|(k, v)| (k, Some(v)))
+            .collect();
 
         let files = compile_repl_js(
-            &ir_modules, module_name, &link_ctx, &js_sources,
-            &[], Some("res0"), false,
-        ).unwrap();
+            &ir_modules,
+            module_name,
+            &link_ctx,
+            &js_sources,
+            &[],
+            Some("res0"),
+            false,
+        )
+        .unwrap();
 
         let entry = files.iter().find(|(p, _)| p == "repl_1.mjs").unwrap();
         let js = &entry.1;
@@ -279,8 +322,11 @@ mod tests {
         struct TestResolver(String, String);
         impl ModuleResolver for TestResolver {
             fn resolve(&self, path: &str) -> Option<String> {
-                if path == self.0 { Some(self.1.clone()) }
-                else { StdlibLoader::get_source(path).map(str::to_owned) }
+                if path == self.0 {
+                    Some(self.1.clone())
+                } else {
+                    StdlibLoader::get_source(path).map(str::to_owned)
+                }
             }
         }
 
@@ -292,22 +338,33 @@ mod tests {
 
         let resolver = TestResolver(module_name.into(), source.into());
         let (typed, interfaces) = krypton_typechecker::infer::infer_module(
-            &parsed, &resolver, module_name.into(),
+            &parsed,
+            &resolver,
+            module_name.into(),
             krypton_parser::ast::CompileTarget::Js,
-        ).unwrap();
+        )
+        .unwrap();
 
         let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
         let (ir_modules, module_sources) =
             krypton_ir::lower::lower_all(&typed, module_name, &link_ctx).unwrap();
 
-        let js_sources: HashMap<String, Option<String>> =
-            module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        let js_sources: HashMap<String, Option<String>> = module_sources
+            .into_iter()
+            .map(|(k, v)| (k, Some(v)))
+            .collect();
 
         let repl_vars = vec![("x".to_string(), "x".to_string())];
         let files = compile_repl_js(
-            &ir_modules, module_name, &link_ctx, &js_sources,
-            &repl_vars, Some("res1"), false,
-        ).unwrap();
+            &ir_modules,
+            module_name,
+            &link_ctx,
+            &js_sources,
+            &repl_vars,
+            Some("res1"),
+            false,
+        )
+        .unwrap();
 
         let entry = files.iter().find(|(p, _)| p == "repl_2.mjs").unwrap();
         let js = &entry.1;
@@ -320,6 +377,71 @@ mod tests {
         assert!(js.contains("__repl_intern(\"res1\").set(__result)"));
     }
 
+    #[test]
+    fn repl_end_to_end_with_reserved_prior_binding() {
+        use krypton_modules::{module_resolver::ModuleResolver, stdlib_loader::StdlibLoader};
+
+        struct TestResolver(String, String);
+        impl ModuleResolver for TestResolver {
+            fn resolve(&self, path: &str) -> Option<String> {
+                if path == self.0 {
+                    Some(self.1.clone())
+                } else {
+                    StdlibLoader::get_source(path).map(str::to_owned)
+                }
+            }
+        }
+
+        let source = "fun __eval(default: Int, await: Int) = default + await\n";
+        let module_name = "repl_reserved";
+        let (parsed, errors) = krypton_parser::parser::parse(source);
+        assert!(errors.is_empty());
+
+        let resolver = TestResolver(module_name.into(), source.into());
+        let (typed, interfaces) = krypton_typechecker::infer::infer_module(
+            &parsed,
+            &resolver,
+            module_name.into(),
+            krypton_parser::ast::CompileTarget::Js,
+        )
+        .unwrap();
+
+        let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+        let (ir_modules, module_sources) =
+            krypton_ir::lower::lower_all(&typed, module_name, &link_ctx).unwrap();
+
+        let js_sources: HashMap<String, Option<String>> = module_sources
+            .into_iter()
+            .map(|(k, v)| (k, Some(v)))
+            .collect();
+
+        let repl_vars = vec![
+            ("default".to_string(), "default".to_string()),
+            ("await".to_string(), "await".to_string()),
+        ];
+        let files = compile_repl_js(
+            &ir_modules,
+            module_name,
+            &link_ctx,
+            &js_sources,
+            &repl_vars,
+            Some("res_reserved"),
+            false,
+        )
+        .unwrap();
+
+        let entry = files
+            .iter()
+            .find(|(p, _)| p == "repl_reserved.mjs")
+            .unwrap();
+        let js = &entry.1;
+
+        assert!(js.contains("function __eval("));
+        assert!(js.contains("const $default = __repl_lookup(\"default\").get()"));
+        assert!(js.contains("const $await = __repl_lookup(\"await\").get()"));
+        assert!(js.contains("const __result = await __eval($default, $await)"));
+    }
+
     /// End-to-end: fun def produces no store call.
     #[test]
     fn repl_end_to_end_fun_def() {
@@ -328,8 +450,11 @@ mod tests {
         struct TestResolver(String, String);
         impl ModuleResolver for TestResolver {
             fn resolve(&self, path: &str) -> Option<String> {
-                if path == self.0 { Some(self.1.clone()) }
-                else { StdlibLoader::get_source(path).map(str::to_owned) }
+                if path == self.0 {
+                    Some(self.1.clone())
+                } else {
+                    StdlibLoader::get_source(path).map(str::to_owned)
+                }
             }
         }
 
@@ -341,21 +466,32 @@ mod tests {
 
         let resolver = TestResolver(module_name.into(), source.into());
         let (typed, interfaces) = krypton_typechecker::infer::infer_module(
-            &parsed, &resolver, module_name.into(),
+            &parsed,
+            &resolver,
+            module_name.into(),
             krypton_parser::ast::CompileTarget::Js,
-        ).unwrap();
+        )
+        .unwrap();
 
         let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
         let (ir_modules, module_sources) =
             krypton_ir::lower::lower_all(&typed, module_name, &link_ctx).unwrap();
 
-        let js_sources: HashMap<String, Option<String>> =
-            module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        let js_sources: HashMap<String, Option<String>> = module_sources
+            .into_iter()
+            .map(|(k, v)| (k, Some(v)))
+            .collect();
 
         let files = compile_repl_js(
-            &ir_modules, module_name, &link_ctx, &js_sources,
-            &[], None, false,  // no store_var for fun defs
-        ).unwrap();
+            &ir_modules,
+            module_name,
+            &link_ctx,
+            &js_sources,
+            &[],
+            None,
+            false, // no store_var for fun defs
+        )
+        .unwrap();
 
         let entry = files.iter().find(|(p, _)| p == "repl_3.mjs").unwrap();
         let js = &entry.1;
