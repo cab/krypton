@@ -5,31 +5,31 @@ expression: ir_module.to_string()
 module traits__hkt_multi_trait
 
 type Box[a] = Box#0(a)
-trait Container[r8] { wrap(s8): r8[s8] }
-trait Functor[o8] { fmap(o8[p8], (p8) -> q8): o8[q8] }
+trait Container[o8] { wrap(p8): o8[p8] }
+trait Functor[l8] { fmap(l8[m8], (m8) -> n8): l8[n8] }
 instance traits__hkt_multi_trait.Functor[Box] { fmap=Functor$$Box$$fmap }
 instance traits__hkt_multi_trait.Container[Box] { wrap=Container$$Box$$wrap }
-import core/peek/peek as peek(h) -> h
-import core/list/last as last(List[u3]) -> Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
-import core/list/map as map(List[y], (y) -> a1) -> List[a1]
-import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
-import core/io/println as println(k) -> Unit
-import core/option/Some as Some(e) -> Option[e]
-import core/result/Ok as Ok(g) -> Result[f, g]
-import core/result/Err as Err(f) -> Result[f, g]
-import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn Functor$$Box$$fmap(v0: Box[x8], v1: (x8) -> z8) -> ~Box[z8] =
+fn Functor$$Box$$fmap(v0: Box[u8], v1: (u8) -> w8) -> ~Box[w8] =
   switch v0 {
-    0 (v2: x8) ->
-      let v3: z8 = call_closure v1(v2)
-      let v4: ~Box[z8] = construct Box::Box#0(v3)
+    0 (v2: u8) ->
+      let v3: w8 = call_closure v1(v2)
+      let v4: ~Box[w8] = construct Box::Box#0(v3)
       v4
   }
 
-fn Container$$Box$$wrap(v5: s8) -> ~Box[s8] =
-  let v6: ~Box[s8] = construct Box::Box#0(v5)
+fn Container$$Box$$wrap(v5: p8) -> ~Box[p8] =
+  let v6: ~Box[p8] = construct Box::Box#0(v5)
   v6

@@ -5,23 +5,23 @@ expression: ir_module.to_string()
 module extern__extern_trait_multi_method
 
 struct MyHandler { name: String }
-trait Callback[n8] { on_failure(n8, String): Unit; on_response(n8, String): Unit }
+trait Callback[k8] { on_failure(k8, String): Unit; on_response(k8, String): Unit }
 instance extern__extern_trait_multi_method.Callback[MyHandler] { on_failure=Callback$$MyHandler$$on_failure, on_response=Callback$$MyHandler$$on_response }
-import core/peek/peek as peek(h) -> h
-import core/list/last as last(List[u3]) -> Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
-import core/list/map as map(List[y], (y) -> a1) -> List[a1]
-import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
-import core/io/println as println(k) -> Unit
-import core/option/Some as Some(e) -> Option[e]
-import core/result/Ok as Ok(g) -> Result[f, g]
-import core/result/Err as Err(f) -> Result[f, g]
-import core/list/Cons as Cons(h, List[h]) -> List[h]
-declare println: (k) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
 
-fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, p8], v1: p8) -> Unit =
+fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, m8], v1: m8) -> Unit =
   let v2: Unit = trait_call extern__extern_trait_multi_method.Callback.on_failure(v0, v1, "test")
   v2
 

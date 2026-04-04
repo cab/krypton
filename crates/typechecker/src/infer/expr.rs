@@ -4,7 +4,7 @@ use krypton_parser::ast::Visibility;
 use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
-use crate::typed_ast::{ResolvedTypeRef, TraitName, TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{ResolvedTypeRef, TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
@@ -23,8 +23,6 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
     pub(super) imported_type_info: &'a HashMap<String, (String, Visibility)>,
     pub(super) module_path: &'a str,
-    pub(super) extern_fn_names: &'a HashSet<String>,
-    pub(super) enclosing_fn_constraints: &'a [(TraitName, TypeVarId)],
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
     pub(super) self_type: Option<Type>,
 }
@@ -274,95 +272,7 @@ impl<'a> InferenceContext<'a> {
 
     // ── Expr::App dispatch paths ─────────────────────────────────────────
 
-    /// Path 1: Intercept `trait_dict(TraitName)` intrinsic calls.
-    fn infer_trait_dict_call(
-        &mut self,
-        func: &Expr,
-        args: &[Expr],
-        span: Span,
-    ) -> Option<Result<TypedExpr, SpannedTypeError>> {
-        let Expr::Var { name, .. } = func else {
-            return None;
-        };
-        if name != "trait_dict" {
-            return None;
-        }
-        Some(self.infer_trait_dict_call_inner(args, span))
-    }
-
-    fn infer_trait_dict_call_inner(
-        &mut self,
-        args: &[Expr],
-        span: Span,
-    ) -> Result<TypedExpr, SpannedTypeError> {
-        if args.len() != 1 {
-            return Err(super::spanned(
-                TypeError::UnsupportedExpr {
-                    description: "trait_dict requires exactly one argument".to_string(),
-                },
-                span,
-            ));
-        }
-        let trait_name = match &args[0] {
-            Expr::Var { name, .. } => name.clone(),
-            _ => {
-                return Err(super::spanned(
-                    TypeError::UnsupportedExpr {
-                        description: "trait_dict argument must be a trait name".to_string(),
-                    },
-                    span,
-                ));
-            }
-        };
-        // Validate the trait exists
-        if let Some(reg) = self.registry {
-            if reg.lookup_type(&trait_name).is_none() {
-                // Check if it's a known trait via env lookup
-                // (trait names are bound as types in the registry or as functions)
-            }
-        }
-        // Validate enclosing function has a where constraint for this trait
-        let has_constraint = self
-            .enclosing_fn_constraints
-            .iter()
-            .any(|(t, _)| t.local_name == trait_name);
-        if !has_constraint {
-            return Err(super::spanned(
-                TypeError::UnsupportedExpr {
-                    description: format!(
-                        "trait_dict({trait_name}) requires a `where` constraint for {trait_name} on the enclosing function"
-                    ),
-                },
-                span,
-            ));
-        }
-        // Type it as Object (opaque dict reference)
-        let ret_var = Type::Var(self.fresh());
-        let func_typed = TypedExpr {
-            kind: TypedExprKind::Var("trait_dict".to_string()),
-            ty: Type::Fn(vec![ret_var.clone()], Box::new(Type::Var(self.fresh()))),
-            span,
-            resolved_ref: None,
-        };
-        let arg_typed = TypedExpr {
-            kind: TypedExprKind::Var(trait_name),
-            ty: ret_var,
-            span,
-            resolved_ref: None,
-        };
-        let result_ty = Type::Var(self.fresh());
-        Ok(TypedExpr {
-            kind: TypedExprKind::App {
-                func: Box::new(func_typed),
-                args: vec![arg_typed],
-            },
-            ty: result_ty,
-            span,
-            resolved_ref: None,
-        })
-    }
-
-    /// Path 2: Qualified module call via Var syntax — `receiver.fn(args...)` where
+    /// Path 1: Qualified module call via Var syntax — `receiver.fn(args...)` where
     /// `receiver` is a module qualifier not bound in the local env.
     fn infer_qualified_var_call(
         &mut self,
@@ -709,34 +619,6 @@ impl<'a> InferenceContext<'a> {
         } else {
             ty
         };
-
-        // Enforce: trait_dict(...) can only appear as an argument to extern functions
-        if let Expr::Var {
-            name: call_name, ..
-        } = func
-        {
-            if !self.extern_fn_names.contains(call_name) {
-                for arg in &args_typed {
-                    if let TypedExprKind::App {
-                        func: inner_func, ..
-                    } = &arg.kind
-                    {
-                        if let TypedExprKind::Var(fn_name) = &inner_func.kind {
-                            if fn_name == "trait_dict" {
-                                return Err(super::spanned(
-                                    TypeError::UnsupportedExpr {
-                                        description: format!(
-                                            "trait_dict(...) can only be used as an argument to extern functions, not `{call_name}`"
-                                        ),
-                                    },
-                                    span,
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         Ok(TypedExpr {
             kind: TypedExprKind::App {
@@ -1568,11 +1450,8 @@ impl<'a> InferenceContext<'a> {
                 span,
                 ..
             } => {
-                // Dispatch: trait_dict intrinsic → qualified Mod.fn → qualified field access
+                // Dispatch: qualified Mod.fn → qualified field access
                 //         → UFCS overload resolution → general HM application
-                if let Some(result) = self.infer_trait_dict_call(func, args, *span) {
-                    return result;
-                }
                 if let Some(result) = self.infer_qualified_var_call(func, args, *span) {
                     return result;
                 }

@@ -1,0 +1,3 @@
+# expect: error E0003
+
+fun test_is_null(x: Int) -> Bool = is_null(x)

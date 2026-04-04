@@ -4,28 +4,28 @@ expression: ir_module.to_string()
 ---
 module extern__extern_trait_where_clause
 
-trait Runnable[n8] { run(n8): Unit }
+trait Runnable[k8] { run(k8): Unit }
 instance extern__extern_trait_where_clause.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
-import core/peek/peek as peek(h) -> h
-import core/list/last as last(List[u3]) -> Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
-import core/list/map as map(List[y], (y) -> a1) -> List[a1]
-import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
-import core/io/println as println(k) -> Unit
-import core/option/Some as Some(e) -> Option[e]
-import core/result/Ok as Ok(g) -> Result[f, g]
-import core/result/Err as Err(f) -> Result[f, g]
-import core/list/Cons as Cons(h, List[h]) -> List[h]
-declare println: (k) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
 
-fn invoke(v0: Dict[extern__extern_trait_where_clause.Runnable, p8], v1: p8) -> Unit =
+fn invoke(v0: Dict[extern__extern_trait_where_clause.Runnable, m8], v1: m8) -> Unit =
   let v2: Unit = trait_call extern__extern_trait_where_clause.Runnable.run(v0, v1)
   v2
 
 fn main() -> Unit =
-  let v6: () -> Unit = make_closure(lambda$28, [])
+  let v6: () -> Unit = make_closure(lambda$26, [])
   let v3: Dict[extern__extern_trait_where_clause.Runnable, () -> Unit] = get_dict extern__extern_trait_where_clause.Runnable[() -> Unit]
   let v7: Unit = call invoke(v3, v6)
   v7
@@ -34,7 +34,7 @@ fn Runnable$$$Fun0$Unit$$run(v8: () -> Unit) -> Unit =
   let v9: Unit = call_closure v8()
   v9
 
-fn lambda$28() -> Unit =
+fn lambda$26() -> Unit =
   let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v5: Unit = call println(v4, "hi")
   v5

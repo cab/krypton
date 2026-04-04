@@ -5,29 +5,29 @@ expression: ir_module.to_string()
 module ownership__own_fn_pattern_owned_ok
 
 struct Wrapper { action: ~() -> String }
-import core/peek/peek as peek(h) -> h
-import core/list/last as last(List[u3]) -> Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
-import core/list/map as map(List[y], (y) -> a1) -> List[a1]
-import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
-import core/io/println as println(k) -> Unit
-import core/option/Some as Some(e) -> Option[e]
-import core/result/Ok as Ok(g) -> Result[f, g]
-import core/result/Err as Err(f) -> Result[f, g]
-import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
 
 fn consume(v0: ~String) -> String =
   v0
 
 fn test(v1: ~String) -> String =
-  let v5: ~() -> String = make_closure(lambda$28, [v1])
+  let v5: ~() -> String = make_closure(lambda$26, [v1])
   let v2: ~Wrapper = construct Wrapper(v5)
   let v6: ~() -> String = project v2.0
   let v7: String = call_closure v6()
   v7
 
-fn lambda$28(v3: ~String) -> String =
+fn lambda$26(v3: ~String) -> String =
   let v4: String = call consume(v3)
   v4

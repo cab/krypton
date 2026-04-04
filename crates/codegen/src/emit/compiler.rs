@@ -271,14 +271,6 @@ impl TraitState {
             .map(|(_, &slot)| slot)
     }
 
-    /// Look up a dict local by bare trait name (matches TraitName.name field).
-    /// Used for legacy trait_dict lookups where only the bare name is available.
-    pub(super) fn get_dict_local_by_bare_name(&self, bare_name: &str) -> Option<u16> {
-        self.dict_locals
-            .iter()
-            .find(|((tn, _), _)| tn.local_name == bare_name)
-            .map(|(_, &slot)| slot)
-    }
 }
 
 #[derive(Clone)]
@@ -1268,65 +1260,6 @@ impl<'link> Compiler<'link> {
                     self.builder.frame.record_frame(after_athrow);
                     return Ok(jvm_ret);
                 }
-                if name == "is_null" {
-                    self.compile_ir_atom(&args[0])?;
-                    let false_label = self.builder.emit_placeholder(Instruction::Ifnonnull(0));
-                    self.builder.frame.pop_type();
-                    self.builder.emit(Instruction::Iconst_1);
-                    self.builder.frame.push_type(VerificationType::Integer);
-                    let end_label = self.builder.emit_placeholder(Instruction::Goto(0));
-                    self.builder.frame.pop_type();
-                    let false_pos = self.builder.code.len();
-                    self.builder.frame.record_frame(false_pos as u16);
-                    self.builder.emit(Instruction::Iconst_0);
-                    self.builder.frame.push_type(VerificationType::Integer);
-                    let end_pos = self.builder.code.len();
-                    self.builder.frame.record_frame(end_pos as u16);
-                    self.builder
-                        .patch(false_label, Instruction::Ifnonnull(false_pos as u16));
-                    self.builder
-                        .patch(end_label, Instruction::Goto(end_pos as u16));
-                    return Ok(JvmType::Int);
-                }
-                if name == "trait_dict" {
-                    // trait_dict arg is a VarId whose debug name is the trait name.
-                    // Look up the var's type to find the trait name.
-                    let trait_name = match &args[0] {
-                        krypton_ir::Atom::Var(var_id) => {
-                            // The var name is the trait name. Look up var_types to find it,
-                            // or use fn_names if the var was a trait name placeholder.
-                            self.var_types
-                                .get(var_id)
-                                .and_then(|ty| match ty {
-                                    Type::Named(n, _) => Some(n.clone()),
-                                    _ => None,
-                                })
-                                .ok_or_else(|| {
-                                    CodegenError::TypeError(
-                                        format!("trait_dict var {} has no type info", var_id.0),
-                                        None,
-                                    )
-                                })?
-                        }
-                        _ => {
-                            return Err(CodegenError::UnsupportedExpr(
-                                "trait_dict argument must be a var".to_string(),
-                                None,
-                            ))
-                        }
-                    };
-                    let object_class = self.builder.refs.object_class;
-                    if let Some(dict_slot) = self.traits.get_dict_local_by_bare_name(&trait_name) {
-                        self.builder
-                            .emit_load(dict_slot, JvmType::StructRef(object_class));
-                        return Ok(JvmType::StructRef(object_class));
-                    }
-                    return Err(CodegenError::UndefinedVariable(
-                        format!("no dict local for trait_dict({trait_name})"),
-                        None,
-                    ));
-                }
-
                 // Struct constructor
                 if let Some(si) = self.types.struct_info.get(&name) {
                     let class_index = si.class_index;

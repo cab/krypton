@@ -5,23 +5,23 @@ expression: ir_module.to_string()
 module actors__ask_timeout
 
 type Msg = Get#0(Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(i11) -> Unit
-import core/peek/peek as peek(h) -> h
-import core/list/last as last(List[u3]) -> Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
-import core/list/map as map(List[y], (y) -> a1) -> List[a1]
-import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
-import core/option/Some as Some(e) -> Option[e]
-import core/result/Ok as Ok(g) -> Result[f, g]
-import core/result/Err as Err(f) -> Result[f, g]
-import core/list/Cons as Cons(h, List[h]) -> List[h]
-import core/actor/spawn as spawn((Mailbox[d9]) -> Unit) -> Ref[d9]
-import core/actor/ask as ask(Ref[t10], (Ref[h11]) -> t10, Int) -> Result[Timeout, h11]
-declare ask: (Ref[t10], (Ref[h11]) -> t10, Int) -> Result[Timeout, h11]
-declare println: (i11) -> Unit
-declare spawn: ((Mailbox[d9]) -> Unit) -> Ref[d9]
+extern java "krypton.runtime.KryptonIO" println(f11) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/actor/spawn as spawn((Mailbox[a9]) -> Unit) -> Ref[a9]
+import core/actor/ask as ask(Ref[q10], (Ref[e11]) -> q10, Int) -> Result[Timeout, e11]
+declare ask: (Ref[q10], (Ref[e11]) -> q10, Int) -> Result[Timeout, e11]
+declare println: (f11) -> Unit
+declare spawn: ((Mailbox[a9]) -> Unit) -> Ref[a9]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()
@@ -29,13 +29,13 @@ fn dead_actor(v0: Mailbox[Msg]) -> Unit =
 fn main() -> Unit =
   let v2: (Mailbox[Msg]) -> Unit = make_closure(dead_actor, [])
   let v1: Ref[Msg] = call spawn(v2)
-  let v5: (Ref[Int]) -> Msg = make_closure(ctor$Get$30, [])
+  let v5: (Ref[Int]) -> Msg = make_closure(ctor$Get$28, [])
   let v6: Result[Timeout, Int] = call ask(v1, v5, 100)
   switch v6 {
     0 (v7: Int) ->
       let v8: Unit = call println(v7)
       v8
-    1 (v9: g) ->
+    1 (v9: d) ->
       switch v9 {
         0 ->
           let v10: Unit = call println("timeout")
@@ -43,6 +43,6 @@ fn main() -> Unit =
       }
   }
 
-fn ctor$Get$30(v3: Ref[Int]) -> Msg =
+fn ctor$Get$28(v3: Ref[Int]) -> Msg =
   let v4: Msg = construct Msg::Get#0(v3)
   v4

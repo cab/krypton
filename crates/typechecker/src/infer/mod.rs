@@ -816,7 +816,6 @@ pub fn infer_expr(
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
     let empty_imported_types = HashMap::new();
-    let empty_efn = HashSet::new();
     let mut ctx = InferenceContext {
         env,
         subst,
@@ -830,8 +829,6 @@ pub fn infer_expr(
         qualified_modules: &empty_qm,
         imported_type_info: &empty_imported_types,
         module_path: "__expr__",
-        extern_fn_names: &empty_efn,
-        enclosing_fn_constraints: &[],
         shadowed_prelude_fns: &[],
         self_type: None,
     };
@@ -3863,7 +3860,7 @@ fn check_trait_name_conflicts(
 fn infer_function_bodies<'a>(
     state: &mut ModuleInferenceState,
     module: &'a Module,
-    extern_fns: &[ExternFnInfo],
+    _extern_fns: &[ExternFnInfo],
     trait_registry: &TraitRegistry,
     trait_method_map: &HashMap<String, TraitName>,
     mod_path: &str,
@@ -3912,10 +3909,6 @@ fn infer_function_bodies<'a>(
 
     let adj = scc::build_dependency_graph(&fn_decls);
     let sccs = scc::tarjan_scc(&adj);
-
-    // TODO: include imported extern fn names once extern fns
-    // are unified with regular fn_types in the typechecker.
-    let extern_fn_names: HashSet<String> = extern_fns.iter().map(|ef| ef.name.clone()).collect();
 
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
@@ -4073,10 +4066,6 @@ fn infer_function_bodies<'a>(
             }
 
             let body_typed = {
-                let empty_constraints = Vec::new();
-                let enclosing_constraints = fn_constraint_requirements
-                    .get(&decl.name)
-                    .unwrap_or(&empty_constraints);
                 let mut ctx = InferenceContext {
                     env: &mut state.env,
                     subst: &mut state.subst,
@@ -4090,8 +4079,6 @@ fn infer_function_bodies<'a>(
                     qualified_modules: &state.qualified_modules,
                     imported_type_info: &state.imports.imported_type_info,
                     module_path: mod_path,
-                    extern_fn_names: &extern_fn_names,
-                    enclosing_fn_constraints: enclosing_constraints,
                     shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                     self_type: None,
                 };
@@ -4413,19 +4400,6 @@ fn typecheck_impl_methods(
                     }
                 }
 
-                // Build combined constraints: impl-head + method-level
-                let mut combined_constraints: Vec<(TraitName, TypeVarId)> = instance
-                    .constraints
-                    .iter()
-                    .filter_map(|c| {
-                        instance
-                            .type_var_ids
-                            .get(&c.type_var)
-                            .map(|&tv| (c.trait_name.clone(), tv))
-                    })
-                    .collect();
-                combined_constraints.extend(method_constraint_pairs.iter().cloned());
-
                 if method.params.len() != concrete_param_types.len() {
                     return Err(spanned(
                         TypeError::WrongArity {
@@ -4501,7 +4475,6 @@ fn typecheck_impl_methods(
 
                 let impl_qual_snap = state.subst.push_qual_scope();
                 let body_result = {
-                    let empty_efn = HashSet::new();
                     let mut ctx = InferenceContext {
                         env: &mut state.env,
                         subst: &mut state.subst,
@@ -4515,8 +4488,6 @@ fn typecheck_impl_methods(
                         qualified_modules: &state.qualified_modules,
                         imported_type_info: &state.imports.imported_type_info,
                         module_path,
-                        extern_fn_names: &empty_efn,
-                        enclosing_fn_constraints: &combined_constraints,
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                         self_type: Some(resolved_target.clone()),
                     };

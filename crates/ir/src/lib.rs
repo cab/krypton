@@ -397,7 +397,7 @@ pub fn bind_type_vars(
 /// Function names that are compiler intrinsics — they produce inline bytecode
 /// rather than static method calls. Both the IR lowerer and JVM codegen reference
 /// this list to ensure consistency.
-pub const COMPILER_INTRINSICS: &[&str] = &["panic", "is_null", "trait_dict"];
+pub const COMPILER_INTRINSICS: &[&str] = &["panic"];
 
 /// Unique function identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -434,7 +434,7 @@ pub enum FnIdentity {
         target: ExternTarget,
         name: String,
     },
-    /// Compiler intrinsic (panic, is_null, trait_dict).
+    /// Compiler intrinsic (panic).
     Intrinsic { name: String },
 }
 

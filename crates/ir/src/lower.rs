@@ -3892,18 +3892,6 @@ impl LowerCtx {
         Ok(Self::wrap_bindings(dict_bindings, inner))
     }
 
-    /// Look up the dict param VarId for a given trait name (bare name match).
-    fn lookup_dict_param(&self, trait_name: &str) -> Result<VarId, LowerError> {
-        for ((t, _), var_id) in &self.dict_params {
-            if t.local_name == trait_name {
-                return Ok(*var_id);
-            }
-        }
-        Err(LowerError::UnresolvedVar(format!(
-            "trait_dict: no dict param for trait {trait_name}"
-        )))
-    }
-
     /// Lower a function application.
     fn lower_app(
         &mut self,
@@ -3912,20 +3900,6 @@ impl LowerCtx {
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         // Peel TypeApp to get the function name, resolved binding ref, and type args
         let (func_name, resolved_ref, type_args) = extract_call_info(func);
-
-        // Intercept trait_dict(TraitName) intrinsic: resolve to the dict param
-        // for the named trait from the enclosing function's where-constraints.
-        if func_name.as_deref() == Some("trait_dict") {
-            if let Some(arg) = args.first() {
-                if let TypedExprKind::Var(trait_name) = &arg.kind {
-                    let var_id = self.lookup_dict_param(trait_name)?;
-                    return Ok((
-                        vec![],
-                        simple_at(arg.span, SimpleExprKind::Atom(Atom::Var(var_id))),
-                    ));
-                }
-            }
-        }
 
         // ANF-normalize all arguments
         let mut bindings = vec![];
@@ -4162,20 +4136,6 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         // Peel TypeApp to get function name, resolved binding ref, and type args
         let (func_name, resolved_ref, type_args) = extract_call_info(func);
-
-        // Intercept trait_dict(TraitName) intrinsic
-        if func_name.as_deref() == Some("trait_dict") {
-            if let Some(arg) = args.first() {
-                if let TypedExprKind::Var(trait_name) = &arg.kind {
-                    let var_id = self.lookup_dict_param(trait_name)?;
-                    return Ok(atom_expr_at(
-                        arg.span,
-                        result_ty.clone().into(),
-                        Atom::Var(var_id),
-                    ));
-                }
-            }
-        }
 
         let result_ty = result_ty.clone();
 

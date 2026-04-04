@@ -4,29 +4,29 @@ expression: ir_module.to_string()
 ---
 module stdlib__map_operations
 
-import core/peek/peek as peek(h) -> h
-import core/list/last as last(List[u3]) -> Option[u3]
-import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
-import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
-import core/list/map as map(List[y], (y) -> a1) -> List[a1]
-import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
-import core/io/println as println(k) -> Unit
-import core/option/Some as Some(e) -> Option[e]
-import core/result/Ok as Ok(g) -> Result[f, g]
-import core/result/Err as Err(f) -> Result[f, g]
-import core/list/Cons as Cons(h, List[h]) -> List[h]
-import core/map/empty as empty() -> Map[e9, f9]
-import core/map/put as put(Map[i9, j9], i9, j9) -> Map[i9, j9]
-import core/map/delete as delete(Map[f10, g10], f10) -> Map[f10, g10]
-import core/map/contains as contains(Map[n10, o10], n10) -> Bool
-import core/map/size as size(Map[j13, k13]) -> Int
-declare contains: (Map[n10, o10], n10) -> Bool
-declare delete: (Map[f10, g10], f10) -> Map[f10, g10]
-declare empty: () -> Map[e9, f9]
-declare println: (k) -> Unit
-declare put: (Map[i9, j9], i9, j9) -> Map[i9, j9]
-declare size: (Map[j13, k13]) -> Int
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/map/empty as empty() -> Map[b9, c9]
+import core/map/put as put(Map[f9, g9], f9, g9) -> Map[f9, g9]
+import core/map/delete as delete(Map[c10, d10], c10) -> Map[c10, d10]
+import core/map/contains as contains(Map[k10, l10], k10) -> Bool
+import core/map/size as size(Map[g13, h13]) -> Int
+declare contains: (Map[k10, l10], k10) -> Bool
+declare delete: (Map[c10, d10], c10) -> Map[c10, d10]
+declare empty: () -> Map[b9, c9]
+declare println: (h) -> Unit
+declare put: (Map[f9, g9], f9, g9) -> Map[f9, g9]
+declare size: (Map[g13, h13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

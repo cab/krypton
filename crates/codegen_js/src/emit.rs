@@ -2123,8 +2123,6 @@ impl<'a> JsEmitter<'a> {
                         "(() => {{ throw new KryptonPanic({}); }})()",
                         arg_strs.join(", ")
                     ));
-                } else if fn_name == "is_null" {
-                    self.write(&format!("({} == null)", arg_strs[0]));
                 } else {
                     let await_prefix = if self.current_fn_is_async && self.fn_suspends(*func) {
                         "await "
