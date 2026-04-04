@@ -4025,6 +4025,16 @@ fn infer_function_bodies<'a>(
                 shared_type_vars.insert(decl.name.clone(), shared_tv_names);
             }
 
+            let mut seen_params = HashSet::new();
+            for p in &decl.params {
+                if !seen_params.insert(&p.name) {
+                    return Err(spanned(
+                        TypeError::DuplicateParam { name: p.name.clone() },
+                        p.span,
+                    ));
+                }
+            }
+
             let mut param_types = Vec::new();
             for p in &decl.params {
                 let ptv = Type::Var(state.gen.fresh());

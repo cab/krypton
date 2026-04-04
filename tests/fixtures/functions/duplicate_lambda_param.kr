@@ -1,0 +1,5 @@
+# expect: error E0610
+fun main() {
+    let f = (x, x) -> x;
+    f(1, 2)
+}

@@ -1,0 +1,2 @@
+# expect: error E0610
+fun f(x, y, x) = x

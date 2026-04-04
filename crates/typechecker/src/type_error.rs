@@ -80,6 +80,7 @@ pub enum TypeErrorCode {
     E0608, // @constructor with self param
     E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
+    E0610, // Duplicate parameter name
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -302,6 +303,9 @@ pub enum TypeError {
     DuplicateFunction {
         name: String,
     },
+    DuplicateParam {
+        name: String,
+    },
     OrPatternBindingMismatch {
         alt_index: usize,
         expected_names: Vec<String>,
@@ -403,6 +407,7 @@ impl TypeError {
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
+            TypeError::DuplicateParam { .. } => TypeErrorCode::E0610,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
             TypeError::InvalidInstanceFirstParam { .. } => TypeErrorCode::E0605,
@@ -658,6 +663,9 @@ impl TypeError {
             }
             TypeError::DuplicateFunction { name } => {
                 Some(format!("function `{name}` is already defined in this module; use a trait for type-based dispatch"))
+            }
+            TypeError::DuplicateParam { name } => {
+                Some(format!("parameter `{name}` is already defined in this function"))
             }
             TypeError::OrPatternBindingMismatch { .. } => {
                 Some("all alternatives in an or-pattern must bind the same set of variables".to_string())
@@ -1179,6 +1187,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::DuplicateFunction { name } => {
                 write!(f, "duplicate function definition: {}", name)
+            }
+            TypeError::DuplicateParam { name } => {
+                write!(f, "duplicate parameter name: {}", name)
             }
             TypeError::OrPatternBindingMismatch {
                 alt_index,

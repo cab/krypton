@@ -769,6 +769,16 @@ impl<'a> InferenceContext<'a> {
                 _ => None,
             }
         });
+        let mut seen_params = HashSet::new();
+        for p in params.iter() {
+            if !seen_params.insert(&p.name) {
+                return Err(super::spanned(
+                    TypeError::DuplicateParam { name: p.name.clone() },
+                    p.span,
+                ));
+            }
+        }
+
         let mut param_types = Vec::new();
         self.env.push_scope();
         for (i, p) in params.iter().enumerate() {
