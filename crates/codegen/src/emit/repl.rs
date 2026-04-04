@@ -137,7 +137,9 @@ fn compile_repl_module(
     emit_eval_wrapper(&mut compiler, repl_vars, store_var, show_wrapped)?;
 
     let class_bytes = compiler.build_class(extra_methods, false)?;
-    result_classes.push((class_name.to_string(), class_bytes));
+    // The main REPL class (containing eval()) must be first — the JVM host
+    // uses the first class in the list as the eval entry point.
+    result_classes.insert(0, (class_name.to_string(), class_bytes));
 
     Ok(result_classes)
 }

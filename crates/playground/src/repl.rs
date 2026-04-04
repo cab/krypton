@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use krypton_codegen_js::compile_repl_js;
 use krypton_diagnostics::Diagnostic;
 use krypton_modules::{module_resolver::ModuleResolver, stdlib_loader::StdlibLoader};
-use krypton_parser::repl::{build_synthetic_source, classify_input, ReplInputKind};
+use krypton_parser::repl::{build_synthetic_source, classify_input, ReplDeclarations, ReplInputKind};
 use krypton_typechecker::types::{format_type_with_var_names, TypeScheme};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -21,6 +21,11 @@ struct WasmReplSession {
     /// Prior let-bindings: (name, type_annotation_str).
     bindings: Vec<(String, String)>,
     fun_defs: Vec<(String, String, String)>,
+    type_defs: Vec<(String, String)>,
+    trait_defs: Vec<(String, String)>,
+    impl_defs: Vec<(String, String)>,
+    imports: Vec<String>,
+    extern_defs: Vec<String>,
     input_counter: u32,
     runtime_sent: bool,
     pending: Option<PendingUpdate>,
@@ -37,6 +42,24 @@ enum PendingUpdate {
         source: String,
         type_display: String,
     },
+    TypeDef {
+        name: String,
+        source: String,
+    },
+    TraitDef {
+        name: String,
+        source: String,
+    },
+    ImplDef {
+        key: String,
+        source: String,
+    },
+    Import {
+        source: String,
+    },
+    ExternDef {
+        source: String,
+    },
 }
 
 impl WasmReplSession {
@@ -44,6 +67,11 @@ impl WasmReplSession {
         Self {
             bindings: Vec::new(),
             fun_defs: Vec::new(),
+            type_defs: Vec::new(),
+            trait_defs: Vec::new(),
+            impl_defs: Vec::new(),
+            imports: Vec::new(),
+            extern_defs: Vec::new(),
             input_counter: 0,
             runtime_sent: false,
             pending: None,
@@ -53,6 +81,18 @@ impl WasmReplSession {
     fn next_module_name(&mut self) -> String {
         self.input_counter += 1;
         format!("repl_{}", self.input_counter)
+    }
+
+    fn build_decls(&self) -> ReplDeclarations {
+        ReplDeclarations {
+            imports: self.imports.clone(),
+            type_defs: self.type_defs.clone(),
+            trait_defs: self.trait_defs.clone(),
+            impl_defs: self.impl_defs.clone(),
+            extern_defs: self.extern_defs.clone(),
+            fun_defs: self.fun_defs.clone(),
+            bindings: self.bindings.clone(),
+        }
     }
 }
 
@@ -167,6 +207,26 @@ pub fn repl_commit(session_id: u32) -> Result<(), JsValue> {
                     session.fun_defs.retain(|(n, _, _)| n != &name);
                     session.fun_defs.push((name, source, type_display));
                 }
+                PendingUpdate::TypeDef { name, source } => {
+                    session.type_defs.retain(|(n, _)| n != &name);
+                    session.type_defs.push((name, source));
+                }
+                PendingUpdate::TraitDef { name, source } => {
+                    session.trait_defs.retain(|(n, _)| n != &name);
+                    session.trait_defs.push((name, source));
+                }
+                PendingUpdate::ImplDef { key, source } => {
+                    session.impl_defs.retain(|(k, _)| k != &key);
+                    session.impl_defs.push((key, source));
+                }
+                PendingUpdate::Import { source } => {
+                    if !session.imports.contains(&source) {
+                        session.imports.push(source);
+                    }
+                }
+                PendingUpdate::ExternDef { source } => {
+                    session.extern_defs.push(source);
+                }
             }
         }
         Ok(())
@@ -182,6 +242,11 @@ pub fn repl_reset(session_id: u32) -> Result<(), JsValue> {
             .ok_or_else(|| JsValue::from_str(&format!("Invalid REPL session ID: {}", session_id)))?;
         session.bindings.clear();
         session.fun_defs.clear();
+        session.type_defs.clear();
+        session.trait_defs.clear();
+        session.impl_defs.clear();
+        session.imports.clear();
+        session.extern_defs.clear();
         session.pending = None;
         session.input_counter = 0;
         session.runtime_sent = false;
@@ -205,11 +270,12 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
     let module_name = session.next_module_name();
     let repl_filename = format!("{}.kr", module_name);
     let include_runtime = !session.runtime_sent;
+    let decls = session.build_decls();
 
     // For bare expressions, try show-wrapping first, fall back if typecheck fails
     let is_bare_expr = matches!(kind, ReplInputKind::BareExpr { .. });
     let (synthetic, show_wrapped) = if is_bare_expr {
-        let show_source = build_synthetic_source(&kind, &session.bindings, &session.fun_defs, true);
+        let show_source = build_synthetic_source(&kind, &decls, true);
         let (show_module, show_parse_errors) = krypton_parser::parser::parse(&show_source);
         if show_parse_errors.is_empty() {
             let show_resolver = ReplResolver {
@@ -225,14 +291,14 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
                 Ok(_) => (show_source, true),
                 Err(_) => {
                     // Show wrapping failed (e.g. no Show instance), fall back
-                    (build_synthetic_source(&kind, &session.bindings, &session.fun_defs, false), false)
+                    (build_synthetic_source(&kind, &decls, false), false)
                 }
             }
         } else {
-            (build_synthetic_source(&kind, &session.bindings, &session.fun_defs, false), false)
+            (build_synthetic_source(&kind, &decls, false), false)
         }
     } else {
-        (build_synthetic_source(&kind, &session.bindings, &session.fun_defs, false), false)
+        (build_synthetic_source(&kind, &decls, false), false)
     };
 
     // Parse
@@ -315,9 +381,6 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
             (Some(name.clone()), display, pending)
         }
         ReplInputKind::BareExpr { .. } => {
-            // Don't store bare exprs as bindings — matches JVM REPL behavior.
-            // Storing polymorphic results would require type var normalization
-            // in the annotation string (to be solved for both backends).
             (None, String::new(), PendingUpdate::None)
         }
         ReplInputKind::FunDef { name, source } => {
@@ -329,6 +392,44 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
                 name: name.clone(),
                 source: source.clone(),
                 type_display,
+            };
+            (None, display, pending)
+        }
+        ReplInputKind::TypeDef { name, source } => {
+            let display = format!("type {}", name);
+            let pending = PendingUpdate::TypeDef {
+                name: name.clone(),
+                source: source.clone(),
+            };
+            (None, display, pending)
+        }
+        ReplInputKind::TraitDef { name, source } => {
+            let display = format!("trait {}", name);
+            let pending = PendingUpdate::TraitDef {
+                name: name.clone(),
+                source: source.clone(),
+            };
+            (None, display, pending)
+        }
+        ReplInputKind::ImplDef { key, source } => {
+            let display = format!("impl {}", key);
+            let pending = PendingUpdate::ImplDef {
+                key: key.clone(),
+                source: source.clone(),
+            };
+            (None, display, pending)
+        }
+        ReplInputKind::Import { source } => {
+            let display = source.clone();
+            let pending = PendingUpdate::Import {
+                source: source.clone(),
+            };
+            (None, display, pending)
+        }
+        ReplInputKind::ExternDef { source } => {
+            let display = "extern defined".to_string();
+            let pending = PendingUpdate::ExternDef {
+                source: source.clone(),
             };
             (None, display, pending)
         }

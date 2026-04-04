@@ -7,7 +7,7 @@ use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_ir::Type;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::ast::CompileTarget;
-pub use krypton_parser::repl::{classify_input, build_synthetic_source, ReplInputKind};
+pub use krypton_parser::repl::{classify_input, build_synthetic_source, ReplDeclarations, ReplInputKind};
 use krypton_typechecker::types::{format_type_with_var_names, TypeScheme, TypeVarId};
 
 /// Information about a prior REPL binding (session-level, holds IR type for codegen).
@@ -21,8 +21,12 @@ pub struct BindingInfo {
 pub struct ReplSession {
     pub bindings: Vec<(String, BindingInfo)>,
     /// Function definitions stored as (name, source, type_display_str).
-    /// Re-emitted in each synthetic module so they're available as top-level functions.
     pub fun_defs: Vec<(String, String, String)>,
+    pub type_defs: Vec<(String, String)>,
+    pub trait_defs: Vec<(String, String)>,
+    pub impl_defs: Vec<(String, String)>,
+    pub imports: Vec<String>,
+    pub extern_defs: Vec<String>,
     input_counter: u32,
     jvm: Option<JvmProcess>,
 }
@@ -32,6 +36,11 @@ impl ReplSession {
         Self {
             bindings: Vec::new(),
             fun_defs: Vec::new(),
+            type_defs: Vec::new(),
+            trait_defs: Vec::new(),
+            impl_defs: Vec::new(),
+            imports: Vec::new(),
+            extern_defs: Vec::new(),
             input_counter: 0,
             jvm: None,
         }
@@ -52,16 +61,12 @@ impl ReplSession {
     pub fn eval_input(&mut self, input: &str) -> Result<String, String> {
         let kind = classify_input(input);
         let class_name = self.next_class_name();
-        let binding_strs: Vec<(String, String)> = self
-            .bindings
-            .iter()
-            .map(|(n, info)| (n.clone(), info.type_str.clone()))
-            .collect();
+        let decls = self.build_decls();
 
         // For bare expressions, try show-wrapping first, fall back if typecheck fails
         let is_bare_expr = matches!(kind, ReplInputKind::BareExpr { .. });
         let (synthetic, show_wrapped) = if is_bare_expr {
-            let show_source = build_synthetic_source(&kind, &binding_strs, &self.fun_defs, true);
+            let show_source = build_synthetic_source(&kind, &decls, true);
             let (show_module, show_parse_errors) = krypton_parser::parser::parse(&show_source);
             if show_parse_errors.is_empty() {
                 let show_resolver = CompositeResolver::stdlib_only();
@@ -73,14 +78,14 @@ impl ReplSession {
                 ) {
                     Ok(_) => (show_source, true),
                     Err(_) => {
-                        (build_synthetic_source(&kind, &binding_strs, &self.fun_defs, false), false)
+                        (build_synthetic_source(&kind, &decls, false), false)
                     }
                 }
             } else {
-                (build_synthetic_source(&kind, &binding_strs, &self.fun_defs, false), false)
+                (build_synthetic_source(&kind, &decls, false), false)
             }
         } else {
-            (build_synthetic_source(&kind, &binding_strs, &self.fun_defs, false), false)
+            (build_synthetic_source(&kind, &decls, false), false)
         };
 
         // Parse
@@ -158,11 +163,7 @@ impl ReplSession {
                 let type_str = eval_return_type.to_string();
                 (Some(name.clone()), Some(name.clone()), Some(type_str))
             }
-            ReplInputKind::FunDef { .. } => {
-                // Function defs are re-emitted as source; don't store in JVM Registry
-                (None, None, None)
-            }
-            ReplInputKind::BareExpr { .. } => (None, None, None),
+            _ => (None, None, None),
         };
 
         // Gather repl_vars for codegen
@@ -200,21 +201,41 @@ impl ReplSession {
             ));
         }
 
-        // Update fun_defs for function definitions
-        if let ReplInputKind::FunDef { ref name, ref source } = kind {
-            let type_display = fun_def_type_display
-                .clone()
-                .unwrap_or_else(|| "?".to_string());
-            self.fun_defs.retain(|(n, _, _)| n != name);
-            self.fun_defs
-                .push((name.clone(), source.clone(), type_display));
-        }
-
-        // Return appropriate result
+        // Commit declaration to session state and return display string
         match &kind {
-            ReplInputKind::FunDef { ref name, .. } => {
-                let type_display = fun_def_type_display.unwrap_or_else(|| "?".to_string());
+            ReplInputKind::FunDef { ref name, ref source } => {
+                let type_display = fun_def_type_display
+                    .clone()
+                    .unwrap_or_else(|| "?".to_string());
+                self.fun_defs.retain(|(n, _, _)| n != name);
+                self.fun_defs
+                    .push((name.clone(), source.clone(), type_display.clone()));
                 Ok(format!("{}: {}", name, type_display))
+            }
+            ReplInputKind::TypeDef { ref name, ref source } => {
+                self.type_defs.retain(|(n, _)| n != name);
+                self.type_defs.push((name.clone(), source.clone()));
+                Ok(format!("type {}", name))
+            }
+            ReplInputKind::TraitDef { ref name, ref source } => {
+                self.trait_defs.retain(|(n, _)| n != name);
+                self.trait_defs.push((name.clone(), source.clone()));
+                Ok(format!("trait {}", name))
+            }
+            ReplInputKind::ImplDef { ref key, ref source } => {
+                self.impl_defs.retain(|(k, _)| k != key);
+                self.impl_defs.push((key.clone(), source.clone()));
+                Ok(format!("impl {}", key))
+            }
+            ReplInputKind::Import { ref source } => {
+                if !self.imports.contains(source) {
+                    self.imports.push(source.clone());
+                }
+                Ok(source.clone())
+            }
+            ReplInputKind::ExternDef { ref source } => {
+                self.extern_defs.push(source.clone());
+                Ok("extern defined".to_string())
             }
             _ => Ok(result),
         }
@@ -223,22 +244,64 @@ impl ReplSession {
     pub fn reset(&mut self) {
         self.bindings.clear();
         self.fun_defs.clear();
+        self.type_defs.clear();
+        self.trait_defs.clear();
+        self.impl_defs.clear();
+        self.imports.clear();
+        self.extern_defs.clear();
         if let Some(ref mut jvm) = self.jvm {
             let _ = jvm.reset();
         }
     }
 
+    fn build_decls(&self) -> ReplDeclarations {
+        ReplDeclarations {
+            imports: self.imports.clone(),
+            type_defs: self.type_defs.clone(),
+            trait_defs: self.trait_defs.clone(),
+            impl_defs: self.impl_defs.clone(),
+            extern_defs: self.extern_defs.clone(),
+            fun_defs: self.fun_defs.clone(),
+            bindings: self
+                .bindings
+                .iter()
+                .map(|(n, info)| (n.clone(), info.type_str.clone()))
+                .collect(),
+        }
+    }
+
     pub fn format_env(&self) -> String {
-        if self.bindings.is_empty() && self.fun_defs.is_empty() {
+        let has_anything = !self.bindings.is_empty()
+            || !self.fun_defs.is_empty()
+            || !self.type_defs.is_empty()
+            || !self.trait_defs.is_empty()
+            || !self.impl_defs.is_empty()
+            || !self.imports.is_empty()
+            || !self.extern_defs.is_empty();
+        if !has_anything {
             return "(no bindings)".to_string();
         }
-        let mut lines: Vec<String> = self
-            .bindings
-            .iter()
-            .map(|(name, info)| format!("{} : {}", name, info.type_str))
-            .collect();
+        let mut lines: Vec<String> = Vec::new();
+        for src in &self.imports {
+            lines.push(src.clone());
+        }
+        for (name, _) in &self.type_defs {
+            lines.push(format!("type {}", name));
+        }
+        for (name, _) in &self.trait_defs {
+            lines.push(format!("trait {}", name));
+        }
+        for (key, _) in &self.impl_defs {
+            lines.push(format!("impl {}", key));
+        }
+        for _ in &self.extern_defs {
+            lines.push("extern".to_string());
+        }
         for (name, _, type_display) in &self.fun_defs {
             lines.push(format!("{} : {}", name, type_display));
+        }
+        for (name, info) in &self.bindings {
+            lines.push(format!("{} : {}", name, info.type_str));
         }
         lines.join("\n")
     }
@@ -502,7 +565,7 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "1 + 2".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[], false);
+        let source = build_synthetic_source(&kind, &ReplDeclarations::default(), false);
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -513,7 +576,7 @@ mod tests {
             name: "x".to_string(),
             rhs: "42".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[], false);
+        let source = build_synthetic_source(&kind, &ReplDeclarations::default(), false);
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
     }
@@ -524,7 +587,7 @@ mod tests {
             name: "f".to_string(),
             source: "fun f(x: Int) -> Int = x + 1".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[], false);
+        let source = build_synthetic_source(&kind, &ReplDeclarations::default(), false);
         assert!(source.contains("fun __eval() -> Unit = ()"));
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -535,8 +598,11 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "x + 1".to_string(),
         };
-        let bindings = vec![("x".to_string(), "Int".to_string())];
-        let source = build_synthetic_source(&kind, &bindings, &[], false);
+        let decls = ReplDeclarations {
+            bindings: vec![("x".to_string(), "Int".to_string())],
+            ..Default::default()
+        };
+        let source = build_synthetic_source(&kind, &decls, false);
         assert!(source.contains("fun __eval(x: Int) = x + 1"));
         let (_, errors) = krypton_parser::parser::parse(&source);
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
@@ -547,12 +613,15 @@ mod tests {
         let kind = ReplInputKind::BareExpr {
             source: "add(1, 2)".to_string(),
         };
-        let fun_defs = vec![(
-            "add".to_string(),
-            "fun add(a: Int, b: Int) -> Int = a + b".to_string(),
-            "(Int, Int) -> Int".to_string(),
-        )];
-        let source = build_synthetic_source(&kind, &[], &fun_defs, false);
+        let decls = ReplDeclarations {
+            fun_defs: vec![(
+                "add".to_string(),
+                "fun add(a: Int, b: Int) -> Int = a + b".to_string(),
+                "(Int, Int) -> Int".to_string(),
+            )],
+            ..Default::default()
+        };
+        let source = build_synthetic_source(&kind, &decls, false);
         assert!(source.contains("fun add(a: Int, b: Int) -> Int = a + b"));
         assert!(source.contains("fun __eval() = add(1, 2)"));
         let (_, errors) = krypton_parser::parser::parse(&source);
@@ -565,7 +634,7 @@ mod tests {
             name: "a".to_string(),
             source: "fun a(x: Int, y: Int) -> Int = x + y".to_string(),
         };
-        let source = build_synthetic_source(&kind, &[], &[], false);
+        let source = build_synthetic_source(&kind, &ReplDeclarations::default(), false);
         // Should NOT try to return `a` as a value
         assert!(!source.contains("= a\n"));
         assert!(source.contains("fun __eval() -> Unit = ()"));
