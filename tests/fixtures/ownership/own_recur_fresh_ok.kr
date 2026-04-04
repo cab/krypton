@@ -1,0 +1,7 @@
+# expect: ok
+fun consume(buf: ~String) -> String = buf
+fun make() -> ~String = "hello"
+
+fun loop(x: ~String, n: Int) -> String =
+    if n == 0 { consume(x) }
+    else { consume(x); recur(make(), n - 1) }

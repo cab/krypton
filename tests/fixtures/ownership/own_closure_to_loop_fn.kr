@@ -1,0 +1,9 @@
+# expect: error E0001
+# Owned closure passed to recur-based loop: f is used twice per iteration (RequiresU)
+fun repeat(f, n: Int) -> String =
+    if n == 0 { "done" }
+    else { f(n); recur(f, n - 1) }
+
+fun consume(buf: ~String) -> String = buf
+
+fun test(s: ~String) -> String = repeat(x -> consume(s), 3)

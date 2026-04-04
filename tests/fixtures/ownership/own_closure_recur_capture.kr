@@ -1,0 +1,4 @@
+# expect: error E0101
+fun loop(x: ~String, n: Int) -> Int =
+    if n == 0 { 0 }
+    else { let f = () -> x; recur(x, n - 1) }

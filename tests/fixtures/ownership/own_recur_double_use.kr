@@ -1,0 +1,6 @@
+# expect: error E0101
+fun consume(buf: ~String) -> String = buf
+
+fun loop(x: ~String, n: Int) -> String =
+    if n == 0 { consume(x) }
+    else { consume(x); recur(x, n - 1) }
