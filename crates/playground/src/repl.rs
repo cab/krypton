@@ -22,16 +22,13 @@ struct WasmReplSession {
     bindings: Vec<(String, String)>,
     fun_defs: Vec<(String, String, String)>,
     input_counter: u32,
-    res_counter: u32,
+    runtime_sent: bool,
     pending: Option<PendingUpdate>,
 }
 
 enum PendingUpdate {
+    None,
     LetBinding {
-        name: String,
-        type_str: String,
-    },
-    BareExpr {
         name: String,
         type_str: String,
     },
@@ -48,7 +45,7 @@ impl WasmReplSession {
             bindings: Vec::new(),
             fun_defs: Vec::new(),
             input_counter: 0,
-            res_counter: 0,
+            runtime_sent: false,
             pending: None,
         }
     }
@@ -157,11 +154,9 @@ pub fn repl_commit(session_id: u32) -> Result<(), JsValue> {
 
         if let Some(update) = session.pending.take() {
             match update {
+                PendingUpdate::None => {}
                 PendingUpdate::LetBinding { name, type_str } => {
                     session.bindings.retain(|(n, _)| n != &name);
-                    session.bindings.push((name, type_str));
-                }
-                PendingUpdate::BareExpr { name, type_str } => {
                     session.bindings.push((name, type_str));
                 }
                 PendingUpdate::FunDef {
@@ -189,7 +184,7 @@ pub fn repl_reset(session_id: u32) -> Result<(), JsValue> {
         session.fun_defs.clear();
         session.pending = None;
         session.input_counter = 0;
-        session.res_counter = 0;
+        session.runtime_sent = false;
         Ok(())
     })
 }
@@ -209,16 +204,7 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
     let kind = classify_input(input);
     let module_name = session.next_module_name();
     let repl_filename = format!("{}.kr", module_name);
-    let is_first_eval = session.input_counter == 1;
-
-    // For bare exprs, assign a resN name
-    let res_name = if matches!(kind, ReplInputKind::BareExpr { .. }) {
-        let name = format!("res{}", session.res_counter);
-        session.res_counter += 1;
-        Some(name)
-    } else {
-        None
-    };
+    let include_runtime = !session.runtime_sent;
 
     // Build synthetic source
     let synthetic = build_synthetic_source(&kind, &session.bindings, &session.fun_defs);
@@ -303,14 +289,10 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
             (Some(name.clone()), display, pending)
         }
         ReplInputKind::BareExpr { .. } => {
-            let res = res_name.as_ref().unwrap();
-            let type_str = eval_return_type.to_string();
-            let display = format!("{}: {}", res, type_str);
-            let pending = PendingUpdate::BareExpr {
-                name: res.clone(),
-                type_str,
-            };
-            (Some(res.clone()), display, pending)
+            // Don't store bare exprs as bindings — matches JVM REPL behavior.
+            // Storing polymorphic results would require type var normalization
+            // in the annotation string (to be solved for both backends).
+            (None, String::new(), PendingUpdate::None)
         }
         ReplInputKind::FunDef { name, source } => {
             let type_display = fun_def_type_display
@@ -351,10 +333,11 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
         .map(|(path, source)| CompiledJsFile { path, source })
         .collect();
 
-    // Package runtime files on first eval
+    // Package runtime files if not yet sent
     let mut runtime_files = Vec::new();
-    if is_first_eval {
+    if include_runtime {
         package_runtime_files(&mut runtime_files);
+        session.runtime_sent = true;
     }
 
     // Store pending update (do NOT apply yet — wait for repl_commit)
@@ -367,7 +350,7 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
         store_binding: store_var,
         display,
         diagnostics: Vec::new(),
-        include_runtime: is_first_eval,
+        include_runtime,
         runtime_files,
     })
 }
@@ -409,7 +392,7 @@ mod tests {
     fn repl_session_lifecycle() {
         let id = repl_create();
 
-        // Eval a bare expr
+        // Eval a bare expr — value shown but not stored as binding
         let result = SESSIONS.with(|cell| {
             let mut sessions = cell.borrow_mut();
             let session = sessions.get_mut(&id).unwrap();
@@ -417,11 +400,9 @@ mod tests {
         });
         let result = result.unwrap();
         assert!(result.success, "eval failed: {:?}", result.diagnostics);
-        assert_eq!(result.display, "res0: Int");
-        assert_eq!(result.store_binding, Some("res0".to_string()));
+        assert_eq!(result.store_binding, None);
         assert!(result.include_runtime);
 
-        // Commit
         repl_commit(id).unwrap();
 
         // Eval a let binding
@@ -445,16 +426,14 @@ mod tests {
         });
         let result = result.unwrap();
         assert!(result.success, "eval failed: {:?}", result.diagnostics);
-        assert_eq!(result.display, "res1: Int");
 
-        // Verify the entry module has the repl wrapper
+        // Verify the entry module has the repl wrapper with prior let binding
         let entry = result
             .files
             .iter()
             .find(|f| f.path == result.entry_module)
             .unwrap();
         assert!(entry.source.contains("__repl_eval"));
-        assert!(entry.source.contains("__repl_lookup(\"res0\")"));
         assert!(entry.source.contains("__repl_lookup(\"x\")"));
 
         repl_commit(id).unwrap();
@@ -489,7 +468,7 @@ mod tests {
         // Reset
         repl_reset(id).unwrap();
 
-        // res counter should be reset
+        // Bare expr after reset
         let result = SESSIONS.with(|cell| {
             let mut sessions = cell.borrow_mut();
             let session = sessions.get_mut(&id).unwrap();
@@ -497,7 +476,6 @@ mod tests {
         });
         let result = result.unwrap();
         assert!(result.success);
-        assert_eq!(result.display, "res0: Int");
 
         repl_destroy(id);
     }
@@ -514,6 +492,33 @@ mod tests {
         let result = result.unwrap();
         assert!(!result.success);
         assert!(!result.diagnostics.is_empty());
+
+        repl_destroy(id);
+    }
+
+    #[test]
+    fn repl_runtime_sent_after_failed_first_eval() {
+        let id = repl_create();
+
+        // First eval fails (type error)
+        let result = SESSIONS.with(|cell| {
+            let mut sessions = cell.borrow_mut();
+            let session = sessions.get_mut(&id).unwrap();
+            eval_impl(session, "hi")
+        });
+        let result = result.unwrap();
+        assert!(!result.success);
+
+        // Second eval succeeds — should still include runtime
+        let result = SESSIONS.with(|cell| {
+            let mut sessions = cell.borrow_mut();
+            let session = sessions.get_mut(&id).unwrap();
+            eval_impl(session, "42")
+        });
+        let result = result.unwrap();
+        assert!(result.success, "eval failed: {:?}", result.diagnostics);
+        assert!(result.include_runtime, "runtime should be included after failed first eval");
+        assert!(!result.runtime_files.is_empty());
 
         repl_destroy(id);
     }

@@ -127,24 +127,12 @@ self.onmessage = async (event) => {
 
     // Format output
     let output = "";
-    if (result.store_binding != null) {
-      // bare expr or let binding
-      if (result.display.includes("=")) {
-        // shouldn't happen, display is "name: Type"
-        output = `${result.display} = ${formatValue(value)}`;
-      } else {
-        // For bare exprs, show "res0: Int = 3"
-        // For let bindings, show "x: Int" (value not shown per spec)
-        const isBareExpr = result.store_binding.startsWith("res");
-        if (isBareExpr) {
-          output = `${result.display} = ${formatValue(value)}`;
-        } else {
-          output = result.display;
-        }
-      }
-    } else {
-      // fun def
+    if (result.display) {
+      // let binding ("x: Int") or fun def ("f: (Int) -> Int")
       output = result.display;
+    } else {
+      // bare expr — just show the value
+      output = formatValue(value);
     }
 
     if (logged) {
