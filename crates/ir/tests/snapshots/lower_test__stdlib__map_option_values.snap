@@ -1,0 +1,58 @@
+---
+source: crates/ir/tests/lower_test.rs
+expression: ir_module.to_string()
+---
+module stdlib__map_option_values
+
+import core/peek/peek as peek(h) -> h
+import core/list/last as last(List[u3]) -> Option[u3]
+import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
+import core/list/filter as filter(List[j1], (j1) -> Bool) -> List[j1]
+import core/list/fold as fold(List[w1], y1, (y1, w1) -> y1) -> y1
+import core/list/map as map(List[y], (y) -> a1) -> List[a1]
+import core/vec/to_list as to_list(Vec[c8]) -> List[c8]
+import core/io/println as println(k) -> Unit
+import core/option/Some as Some(e) -> Option[e]
+import core/result/Ok as Ok(g) -> Result[f, g]
+import core/result/Err as Err(f) -> Result[f, g]
+import core/list/Cons as Cons(h, List[h]) -> List[h]
+import core/map/empty as empty() -> Map[e9, f9]
+import core/map/put as put(Map[i9, j9], i9, j9) -> Map[i9, j9]
+import core/map/get as get(Map[r9, d10], r9) -> Option[d10]
+declare empty: () -> Map[e9, f9]
+declare get: (Map[r9, d10], r9) -> Option[d10]
+declare println: (k) -> Unit
+declare put: (Map[i9, j9], i9, j9) -> Map[i9, j9]
+
+fn main() -> Unit =
+  let v1: Map[String, Option[Int]] = call empty()
+  let v2: ~Option[Int] = construct Option::Some#0(42)
+  let v3: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v4: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v5: Map[String, Option[Int]] = call put(v3, v4, v1, "some", v2)
+  let v6: ~Option[Int] = construct Option::None#1()
+  let v7: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v8: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v0: Map[String, Option[Int]] = call put(v7, v8, v5, "none", v6)
+  let v9: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v10: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v11: Option[Option[Int]] = call get(v9, v10, v0, "some")
+  let v12: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v13: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v12)
+  let v14: Dict[core/show.Show, Option[Option[Int]]] = make_dict core/show.Show[Option[Option[Int]]](v13)
+  let v15: Unit = call println(v14, v11)
+  let v16: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v17: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v18: Option[Option[Int]] = call get(v16, v17, v0, "none")
+  let v19: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v20: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v19)
+  let v21: Dict[core/show.Show, Option[Option[Int]]] = make_dict core/show.Show[Option[Option[Int]]](v20)
+  let v22: Unit = call println(v21, v18)
+  let v26: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v27: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v28: Option[Option[Int]] = call get(v26, v27, v0, "missing")
+  let v23: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v24: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v23)
+  let v25: Dict[core/show.Show, Option[Option[Int]]] = make_dict core/show.Show[Option[Option[Int]]](v24)
+  let v29: Unit = call println(v25, v28)
+  v29

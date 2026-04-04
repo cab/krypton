@@ -1,4 +1,4 @@
-# core/map — extern where clauses (dict passing), @nullable
+# core/map — extern where clauses (dict passing)
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
 import core/vec.{to_list as vec_to_list}
@@ -12,7 +12,7 @@ extern java "krypton.runtime.KryptonMap" as pub Map[k, v] {}
 extern java "krypton.runtime.KryptonMap" {
     fun staticEmpty[k, v]() -> Map[k, v]
     fun staticPut[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash
-    @nullable fun staticGet[k, v](m: Map[k, v], key: k) -> Option[v]
+    fun staticGetUnsafe[k, v](m: Map[k, v], key: k) -> v
     fun staticContainsKey[k, v](m: Map[k, v], key: k) -> Bool
     fun staticDelete[k, v](m: Map[k, v], key: k) -> Map[k, v]
     fun staticKeys[k, v](m: Map[k, v]) -> Vec[k]
@@ -26,7 +26,7 @@ extern js "../extern/js/map.mjs" as pub Map[k, v] {}
 extern js "../extern/js/map.mjs" {
     fun staticEmpty[k, v]() -> Map[k, v]
     fun staticPut[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash
-    @nullable fun staticGet[k, v](m: Map[k, v], key: k) -> Option[v]
+    fun staticGetUnsafe[k, v](m: Map[k, v], key: k) -> v
     fun staticContainsKey[k, v](m: Map[k, v], key: k) -> Bool
     fun staticDelete[k, v](m: Map[k, v], key: k) -> Map[k, v]
     fun staticKeys[k, v](m: Map[k, v]) -> Vec[k]
@@ -44,7 +44,7 @@ pub fun put[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Has
     staticPut(m, key, value)
 
 pub fun get[k, v](m: Map[k, v], key: k) -> Option[v] where k: Eq + Hash =
-    staticGet(m, key)
+    if staticContainsKey(m, key) { Some(staticGetUnsafe(m, key)) } else { None }
 
 pub fun delete[k, v](m: Map[k, v], key: k) -> Map[k, v] where k: Eq + Hash =
     staticDelete(m, key)

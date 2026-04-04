@@ -7,8 +7,7 @@ function staticPut(m, key, value, _eqDict, _hashDict) {
   copy.set(key, value);
   return copy;
 }
-function staticGet(m, key) {
-  if (!m.has(key)) return null;
+function staticGetUnsafe(m, key) {
   return m.get(key);
 }
 function staticContainsKey(m, key) {
@@ -35,7 +34,7 @@ export {
   staticContainsKey,
   staticDelete,
   staticEmpty,
-  staticGet,
+  staticGetUnsafe,
   staticKeys,
   staticMerge,
   staticPut,

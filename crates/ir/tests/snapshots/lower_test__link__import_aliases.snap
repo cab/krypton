@@ -528,7 +528,7 @@ module core/map
 
 extern java "krypton.runtime.KryptonMap" staticEmpty() -> Map[f8, g8]
 extern java "krypton.runtime.KryptonMap" staticPut(Map[h8, i8], h8, i8) -> Map[h8, i8]
-extern java "krypton.runtime.KryptonMap" staticGet [nullable](Map[j8, k8], j8) -> Option[k8]
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Map[j8, k8], j8) -> k8
 extern java "krypton.runtime.KryptonMap" staticContainsKey(Map[l8, m8], l8) -> Bool
 extern java "krypton.runtime.KryptonMap" staticDelete(Map[n8, o8], n8) -> Map[n8, o8]
 extern java "krypton.runtime.KryptonMap" staticKeys(Map[p8, q8]) -> Vec[p8]
@@ -544,7 +544,7 @@ declare fold: (List[w1], y1, (y1, w1) -> y1) -> y1
 declare staticContainsKey: (Map[l8, m8], l8) -> Bool
 declare staticDelete: (Map[n8, o8], n8) -> Map[n8, o8]
 declare staticEmpty: () -> Map[f8, g8]
-declare staticGet: (Map[j8, k8], j8) -> Option[k8]
+declare staticGetUnsafe: (Map[j8, k8], j8) -> k8
 declare staticKeys: (Map[p8, q8]) -> Vec[p8]
 declare staticMerge: (Map[v8, w8], Map[v8, w8]) -> Map[v8, w8]
 declare staticPut: (Map[h8, i8], h8, i8) -> Map[h8, i8]
@@ -560,76 +560,83 @@ fn put(v1: Dict[core/eq.Eq, i9], v2: Dict[core/hash.Hash, i9], v3: Map[i9, j9], 
   let v6: Map[i9, j9] = call staticPut(v1, v2, v3, v4, v5)
   v6
 
-fn get(v7: Dict[core/eq.Eq, r9], v8: Dict[core/hash.Hash, r9], v9: Map[r9, s9], v10: r9) -> Option[s9] =
-  let v11: Option[s9] = call staticGet(v9, v10)
-  v11
-
-fn delete(v12: Dict[core/eq.Eq, z9], v13: Dict[core/hash.Hash, z9], v14: Map[z9, a10], v15: z9) -> Map[z9, a10] =
-  let v16: Map[z9, a10] = call staticDelete(v14, v15)
-  v16
-
-fn contains(v17: Dict[core/eq.Eq, h10], v18: Dict[core/hash.Hash, h10], v19: Map[h10, i10], v20: h10) -> Bool =
-  let v21: Bool = call staticContainsKey(v19, v20)
-  v21
-
-fn keys(v22: Map[p10, q10]) -> List[p10] =
-  let v23: Vec[p10] = call staticKeys(v22)
-  let v24: List[p10] = call vec_to_list(v23)
-  v24
-
-fn values(v25: Map[y10, z10]) -> List[z10] =
-  let v26: Vec[z10] = call staticValues(v25)
-  let v27: List[z10] = call vec_to_list(v26)
-  v27
-
-fn zip_vecs(v28: List[n11], v29: List[o11]) -> List[(n11, o11)] =
-  let v30: (List[n11], List[o11]) = tuple(v28, v29)
-  let v31: List[n11] = tuple_project v30.0
-  let v32: List[o11] = tuple_project v30.1
-  switch v31 {
-    0 (v33: n11, v34: List[n11]) ->
-      switch v32 {
-        0 (v35: o11, v36: List[o11]) ->
-          let v37: (n11, o11) = tuple(v33, v35)
-          let v38: List[(n11, o11)] = call zip_vecs(v34, v36)
-          let v39: ~List[(n11, o11)] = construct List::Cons#0(v37, v38)
-          v39
-        _ ->
-          let v40: ~List[(n11, o11)] = construct List::Nil#1()
-          v40
-      }
-    _ ->
-      let v41: ~List[(n11, o11)] = construct List::Nil#1()
-      v41
+fn get(v7: Dict[core/eq.Eq, r9], v8: Dict[core/hash.Hash, r9], v9: Map[r9, d10], v10: r9) -> Option[d10] =
+  let v11: Bool = call staticContainsKey(v9, v10)
+  if v11 {
+    let v12: d10 = call staticGetUnsafe(v9, v10)
+    let v13: ~Option[d10] = construct Option::Some#0(v12)
+    v13
+  } else {
+    let v14: ~Option[d10] = construct Option::None#1()
+    v14
   }
 
-fn entries(v42: Map[u11, v11]) -> List[(u11, v11)] =
-  let v43: Vec[u11] = call staticKeys(v42)
-  let v44: List[u11] = call vec_to_list(v43)
-  let v45: Vec[v11] = call staticValues(v42)
-  let v46: List[v11] = call vec_to_list(v45)
-  let v47: List[(u11, v11)] = call zip_vecs(v44, v46)
-  v47
+fn delete(v15: Dict[core/eq.Eq, f10], v16: Dict[core/hash.Hash, f10], v17: Map[f10, g10], v18: f10) -> Map[f10, g10] =
+  let v19: Map[f10, g10] = call staticDelete(v17, v18)
+  v19
 
-fn from_list(v48: Dict[core/eq.Eq, w12], v49: Dict[core/hash.Hash, w12], v50: List[(w12, x12)]) -> Map[w12, x12] =
-  let v51: Map[w12, x12] = call empty()
-  let v59: (Map[w12, x12], (w12, x12)) -> Map[w12, x12] = make_closure(lambda$28, [v48, v49])
-  let v60: Map[w12, x12] = call fold(v50, v51, v59)
-  v60
+fn contains(v20: Dict[core/eq.Eq, n10], v21: Dict[core/hash.Hash, n10], v22: Map[n10, o10], v23: n10) -> Bool =
+  let v24: Bool = call staticContainsKey(v22, v23)
+  v24
 
-fn size(v61: Map[d13, e13]) -> Int =
-  let v62: Int = call staticSize(v61)
-  v62
+fn keys(v25: Map[v10, w10]) -> List[v10] =
+  let v26: Vec[v10] = call staticKeys(v25)
+  let v27: List[v10] = call vec_to_list(v26)
+  v27
 
-fn merge(v63: Dict[core/eq.Eq, k13], v64: Dict[core/hash.Hash, k13], v65: Map[k13, l13], v66: Map[k13, l13]) -> Map[k13, l13] =
-  let v67: Map[k13, l13] = call staticMerge(v65, v66)
-  v67
+fn values(v28: Map[e11, f11]) -> List[f11] =
+  let v29: Vec[f11] = call staticValues(v28)
+  let v30: List[f11] = call vec_to_list(v29)
+  v30
 
-fn lambda$28(v52: Dict[core/eq.Eq, w12], v53: Dict[core/hash.Hash, w12], v54: Map[w12, x12], v55: (w12, x12)) -> Map[w12, x12] =
-  let v56: w12 = tuple_project v55.0
-  let v57: x12 = tuple_project v55.1
-  let v58: Map[w12, x12] = call put(v52, v53, v54, v56, v57)
-  v58
+fn zip_vecs(v31: List[t11], v32: List[u11]) -> List[(t11, u11)] =
+  let v33: (List[t11], List[u11]) = tuple(v31, v32)
+  let v34: List[t11] = tuple_project v33.0
+  let v35: List[u11] = tuple_project v33.1
+  switch v34 {
+    0 (v36: t11, v37: List[t11]) ->
+      switch v35 {
+        0 (v38: u11, v39: List[u11]) ->
+          let v40: (t11, u11) = tuple(v36, v38)
+          let v41: List[(t11, u11)] = call zip_vecs(v37, v39)
+          let v42: ~List[(t11, u11)] = construct List::Cons#0(v40, v41)
+          v42
+        _ ->
+          let v43: ~List[(t11, u11)] = construct List::Nil#1()
+          v43
+      }
+    _ ->
+      let v44: ~List[(t11, u11)] = construct List::Nil#1()
+      v44
+  }
+
+fn entries(v45: Map[a12, b12]) -> List[(a12, b12)] =
+  let v46: Vec[a12] = call staticKeys(v45)
+  let v47: List[a12] = call vec_to_list(v46)
+  let v48: Vec[b12] = call staticValues(v45)
+  let v49: List[b12] = call vec_to_list(v48)
+  let v50: List[(a12, b12)] = call zip_vecs(v47, v49)
+  v50
+
+fn from_list(v51: Dict[core/eq.Eq, c13], v52: Dict[core/hash.Hash, c13], v53: List[(c13, d13)]) -> Map[c13, d13] =
+  let v54: Map[c13, d13] = call empty()
+  let v62: (Map[c13, d13], (c13, d13)) -> Map[c13, d13] = make_closure(lambda$28, [v51, v52])
+  let v63: Map[c13, d13] = call fold(v53, v54, v62)
+  v63
+
+fn size(v64: Map[j13, k13]) -> Int =
+  let v65: Int = call staticSize(v64)
+  v65
+
+fn merge(v66: Dict[core/eq.Eq, q13], v67: Dict[core/hash.Hash, q13], v68: Map[q13, r13], v69: Map[q13, r13]) -> Map[q13, r13] =
+  let v70: Map[q13, r13] = call staticMerge(v68, v69)
+  v70
+
+fn lambda$28(v55: Dict[core/eq.Eq, c13], v56: Dict[core/hash.Hash, c13], v57: Map[c13, d13], v58: (c13, d13)) -> Map[c13, d13] =
+  let v59: c13 = tuple_project v58.0
+  let v60: d13 = tuple_project v58.1
+  let v61: Map[c13, d13] = call put(v55, v56, v57, v59, v60)
+  v61
 module core/io
 
 extern java "krypton.runtime.KryptonIO" raw_println(String) -> Unit

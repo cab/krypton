@@ -14,8 +14,7 @@ export function staticPut<K, V>(
   return copy;
 }
 
-export function staticGet<K, V>(m: Map<K, V>, key: K) {
-  if (!m.has(key)) return null;
+export function staticGetUnsafe<K, V>(m: Map<K, V>, key: K) {
   return m.get(key);
 }
 

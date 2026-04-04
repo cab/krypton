@@ -1,0 +1,11 @@
+# expect: ok
+# expect: output "Some(Some(42))\nSome(None)\nNone"
+import core/map.{empty, put, get}
+import core/option.{Some, None}
+
+fun main() = {
+  let m = put(put(empty(), "some", Some(42)), "none", None);
+  println(get(m, "some"));
+  println(get(m, "none"));
+  println(get(m, "missing"));
+}

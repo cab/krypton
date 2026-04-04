@@ -70,7 +70,7 @@ public class KryptonMap {
         return m;
     }
 
-    public static Object staticGet(KryptonMap map, Object key) {
+    public static Object staticGetUnsafe(KryptonMap map, Object key) {
         if (map.eqFn == null) return null; // empty map, never put-to
         return map.data.get(map.wrap(key));
     }

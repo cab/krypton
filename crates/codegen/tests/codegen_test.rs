@@ -214,6 +214,17 @@ public final class NullableHost {
 }
 "#;
 
+const CONSTRAINED_HOST_JAVA: &str = r#"
+public final class ConstrainedHost {
+    public static String render_key(String x, Object eqDict, Object hashDict) {
+        if (eqDict == null || hashDict == null) {
+            throw new RuntimeException("missing dict");
+        }
+        return x.toUpperCase();
+    }
+}
+"#;
+
 fn string_lit(value: &str) -> TypedExpr {
     TypedExpr {
         kind: TypedExprKind::Lit(Lit::String(value.to_string())),
@@ -720,6 +731,43 @@ fun main() = {
     assert!(javap_out.contains("java/lang/Long.longValue:()J"));
     assert!(javap_out.contains("java/lang/Double.doubleValue:()D"));
     assert!(javap_out.contains("Field core/option/Option$None.INSTANCE:Lcore/option/Option$None;"));
+}
+
+#[test]
+fn constrained_java_extern_appends_nonbridged_dict_args() {
+    let source = r#"
+extern java "ConstrainedHost" {
+    fun render_key[a](x: String) -> String where a: Eq + Hash
+}
+
+fun main() = println(render_key[String]("hi"))
+"#;
+
+    let (typed_modules, interfaces) = infer_typed_modules(source, &CompositeResolver::stdlib_only());
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let output = run_typed_modules_with_java_sources(
+        &typed_modules,
+        &[("ConstrainedHost", CONSTRAINED_HOST_JAVA)],
+        &link_ctx,
+    );
+    assert_eq!(output, "HI");
+
+    let dir = compile_typed_modules_with_java_sources(
+        &typed_modules,
+        &[("ConstrainedHost", CONSTRAINED_HOST_JAVA)],
+        &link_ctx,
+    );
+    let wrapper_output = javap_output(&dir.path().join("Test.class"), false);
+    assert!(
+        wrapper_output.contains("public static java.lang.String render_key(java.lang.Object, java.lang.Object, java.lang.String);"),
+        "expected wrapper signature with leading dict params, got:\n{wrapper_output}"
+    );
+
+    let verbose_output = javap_output(&dir.path().join("Test.class"), true);
+    assert!(
+        verbose_output.contains("Method ConstrainedHost.render_key:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/String;"),
+        "expected raw host call to append dict args after user args, got:\n{verbose_output}"
+    );
 }
 
 #[test]

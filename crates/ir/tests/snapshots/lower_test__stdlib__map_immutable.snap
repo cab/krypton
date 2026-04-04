@@ -18,14 +18,14 @@ import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
 import core/map/empty as empty() -> Map[e9, f9]
 import core/map/put as put(Map[i9, j9], i9, j9) -> Map[i9, j9]
-import core/map/contains as contains(Map[h10, i10], h10) -> Bool
-declare contains: (Map[h10, i10], h10) -> Bool
+import core/map/contains as contains(Map[n10, o10], n10) -> Bool
+declare contains: (Map[n10, o10], n10) -> Bool
 declare empty: () -> Map[e9, f9]
 declare println: (k) -> Unit
 declare put: (Map[i9, j9], i9, j9) -> Map[i9, j9]
 
 fn main() -> Unit =
-  let v0: Map[v10, w10] = call empty()
+  let v0: Map[b11, c11] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

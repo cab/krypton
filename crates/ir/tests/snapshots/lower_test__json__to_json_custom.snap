@@ -25,7 +25,7 @@ import core/json/JBool as JBool(Bool) -> Json
 import core/json/JStr as JStr(String) -> Json
 import core/json/JArr as JArr(List[Json]) -> Json
 import core/json/JObj as JObj(Map[String, Json]) -> Json
-import core/map/from_list as from_list(List[(w12, x12)]) -> Map[w12, x12]
+import core/map/from_list as from_list(List[(c13, d13)]) -> Map[c13, d13]
 declare json_object: (List[(String, Json)]) -> Json
 declare json_to_string: (Json) -> String
 declare println: (k) -> Unit

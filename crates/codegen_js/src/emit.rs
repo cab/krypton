@@ -2271,8 +2271,12 @@ mod tests {
         CanonicalRef, ExternCallKind, ExternFnDef, ExternTarget, FnDef, ImportedFnDef, LocalSymbolKey, Module,
         ModulePath,
     };
+    use krypton_ir::lower::lower_all;
+    use krypton_modules::module_resolver::CompositeResolver;
+    use krypton_parser::parser::parse;
     use krypton_typechecker::link_context::LinkContext;
     use krypton_typechecker::module_interface::ModuleInterface;
+    use krypton_typechecker::infer::infer_module;
     use krypton_typechecker::typed_ast::ParamQualifier;
     use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -2332,6 +2336,45 @@ mod tests {
         let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
         let mut emitter = JsEmitter::new(
             module,
+            false,
+            &variant_lookup,
+            &qualified_sum_type_names,
+            &bare_sum_type_names,
+            &registry,
+            &view,
+            0,
+            &suspend,
+        );
+        emitter.emit()
+    }
+
+    fn emit_lowered_source_module(source: &str, module_name: &str) -> String {
+        let (parsed, errors) = parse(source);
+        assert!(errors.is_empty(), "parse errors: {errors:?}");
+
+        let (typed_modules, interfaces) = infer_module(
+            &parsed,
+            &CompositeResolver::stdlib_only(),
+            module_name.to_string(),
+            krypton_parser::ast::CompileTarget::Js,
+        )
+        .expect("type check should succeed");
+        let link_ctx = LinkContext::build(interfaces);
+        let (ir_modules, _) = lower_all(&typed_modules, module_name, &link_ctx)
+            .expect("lowering should succeed");
+        let module = ir_modules
+            .into_iter()
+            .find(|m| m.name == module_name)
+            .expect("root IR module should exist");
+
+        let registry = build_registry_for_modules(&[&module]);
+        let variant_lookup = HashMap::new();
+        let qualified_sum_type_names = HashSet::new();
+        let bare_sum_type_names = HashSet::new();
+        let suspend = SuspendSummary::empty();
+        let view = link_ctx.view_for(&LinkModulePath::new(module_name)).unwrap();
+        let mut emitter = JsEmitter::new(
+            &module,
             false,
             &variant_lookup,
             &qualified_sum_type_names,
@@ -2466,6 +2509,23 @@ mod tests {
         assert!(output.contains("export function length(arg0) {"));
         assert!(output.contains("return __krypton_raw$length(arg0);"));
         assert!(!output.contains("__krypton_nullable_Some"));
+    }
+
+    #[test]
+    fn constrained_nonnullable_js_extern_forwards_user_args_before_dicts() {
+        let output = emit_lowered_source_module(
+            r#"
+extern js "./extern/js/host.mjs" {
+    fun render_key[a](x: String) -> String where a: Eq + Hash
+}
+
+fun main() = render_key[String]("hi")
+"#,
+            "test",
+        );
+
+        assert!(output.contains("export function render_key(dict0, dict1, arg0) {"));
+        assert!(output.contains("return __krypton_raw$render_key(arg0, dict0, dict1);"));
     }
 
     #[test]

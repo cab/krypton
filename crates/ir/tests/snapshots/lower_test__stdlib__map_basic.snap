@@ -18,9 +18,9 @@ import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
 import core/map/empty as empty() -> Map[e9, f9]
 import core/map/put as put(Map[i9, j9], i9, j9) -> Map[i9, j9]
-import core/map/get as get(Map[r9, s9], r9) -> Option[s9]
+import core/map/get as get(Map[r9, d10], r9) -> Option[d10]
 declare empty: () -> Map[e9, f9]
-declare get: (Map[r9, s9], r9) -> Option[s9]
+declare get: (Map[r9, d10], r9) -> Option[d10]
 declare println: (k) -> Unit
 declare put: (Map[i9, j9], i9, j9) -> Map[i9, j9]
 

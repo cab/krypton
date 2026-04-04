@@ -18,15 +18,15 @@ import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
 import core/map/empty as empty() -> Map[e9, f9]
 import core/map/put as put(Map[i9, j9], i9, j9) -> Map[i9, j9]
-import core/map/delete as delete(Map[z9, a10], z9) -> Map[z9, a10]
-import core/map/contains as contains(Map[h10, i10], h10) -> Bool
-import core/map/size as size(Map[d13, e13]) -> Int
-declare contains: (Map[h10, i10], h10) -> Bool
-declare delete: (Map[z9, a10], z9) -> Map[z9, a10]
+import core/map/delete as delete(Map[f10, g10], f10) -> Map[f10, g10]
+import core/map/contains as contains(Map[n10, o10], n10) -> Bool
+import core/map/size as size(Map[j13, k13]) -> Int
+declare contains: (Map[n10, o10], n10) -> Bool
+declare delete: (Map[f10, g10], f10) -> Map[f10, g10]
 declare empty: () -> Map[e9, f9]
 declare println: (k) -> Unit
 declare put: (Map[i9, j9], i9, j9) -> Map[i9, j9]
-declare size: (Map[d13, e13]) -> Int
+declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

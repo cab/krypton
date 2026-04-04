@@ -46,7 +46,8 @@ import {
   staticParse,
   staticRawArr,
   staticRawBool,
-  staticRawEntries,
+  staticRawEntryKeys,
+  staticRawEntryValues,
   staticRawNum,
   staticRawStr,
   staticRawType,
@@ -58,7 +59,6 @@ import {
   staticContainsKey,
   staticDelete,
   staticEmpty,
-  staticEntries,
   staticGetUnsafe,
   staticKeys,
   staticMerge,
@@ -97,6 +97,7 @@ const stableDistFiles = [
   'map.mjs',
   'panic.mjs',
   'prelude.mjs',
+  'repl-registry.mjs',
   'string.mjs',
 ];
 
@@ -232,7 +233,8 @@ describe('json', () => {
     expect(staticRawNum(4)).toBe(4);
     expect(staticRawStr('x')).toBe('x');
     expect(staticRawArr([1, 2])).toEqual([1, 2]);
-    expect(staticRawEntries({ a: 1, b: 2 })).toEqual(['a', 1, 'b', 2]);
+    expect(staticRawEntryKeys({ a: 1, b: 2 })).toEqual(['a', 'b']);
+    expect(staticRawEntryValues({ a: 1, b: 2 })).toEqual([1, 2]);
   });
 
   it('builds raw values', () => {
@@ -262,7 +264,6 @@ describe('map', () => {
     expect(staticDelete(m3, 'a')).toEqual(new Map([['b', 2]]));
     expect(staticKeys(m3)).toEqual(['a', 'b']);
     expect(staticValues(m3)).toEqual([1, 2]);
-    expect(staticEntries(m3)).toEqual(['a', 1, 'b', 2]);
     expect(staticSize(m3)).toBe(2);
     expect(staticMerge(m2, new Map([['c', 3]]))).toEqual(
       new Map([
@@ -270,6 +271,18 @@ describe('map', () => {
         ['c', 3],
       ]),
     );
+  });
+
+  it('distinguishes missing keys from present nullish values via containsKey', () => {
+    const m1 = staticEmpty();
+    const m2 = staticPut(m1, 'undefined', undefined, null, null);
+    const m3 = staticPut(m2, 'null', null, null, null);
+    expect(staticContainsKey(m3, 'undefined')).toBe(true);
+    expect(staticGetUnsafe(m3, 'undefined')).toBeUndefined();
+    expect(staticContainsKey(m3, 'null')).toBe(true);
+    expect(staticGetUnsafe(m3, 'null')).toBeNull();
+    expect(staticContainsKey(m3, 'missing')).toBe(false);
+    expect(staticGetUnsafe(m3, 'missing')).toBeUndefined();
   });
 });
 

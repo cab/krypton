@@ -18,15 +18,15 @@ import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
 import core/map/empty as empty() -> Map[e9, f9]
 import core/map/put as put(Map[i9, j9], i9, j9) -> Map[i9, j9]
-import core/map/from_list as from_list(List[(w12, x12)]) -> Map[w12, x12]
-import core/map/size as size(Map[d13, e13]) -> Int
-import core/map/merge as merge(Map[k13, l13], Map[k13, l13]) -> Map[k13, l13]
+import core/map/from_list as from_list(List[(c13, d13)]) -> Map[c13, d13]
+import core/map/size as size(Map[j13, k13]) -> Int
+import core/map/merge as merge(Map[q13, r13], Map[q13, r13]) -> Map[q13, r13]
 declare empty: () -> Map[e9, f9]
-declare from_list: (List[(w12, x12)]) -> Map[w12, x12]
-declare merge: (Map[k13, l13], Map[k13, l13]) -> Map[k13, l13]
+declare from_list: (List[(c13, d13)]) -> Map[c13, d13]
+declare merge: (Map[q13, r13], Map[q13, r13]) -> Map[q13, r13]
 declare println: (k) -> Unit
 declare put: (Map[i9, j9], i9, j9) -> Map[i9, j9]
-declare size: (Map[d13, e13]) -> Int
+declare size: (Map[j13, k13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
