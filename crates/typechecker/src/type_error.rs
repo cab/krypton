@@ -148,6 +148,10 @@ pub enum TypeError {
     UnsupportedExpr {
         description: String,
     },
+    ConstrainedFunctionRef {
+        name: String,
+        constraints: Vec<(String, String)>, // (trait_name, type_param_name)
+    },
     NoInstance {
         trait_name: String,
         ty: String,
@@ -361,6 +365,7 @@ impl TypeError {
             TypeError::QualifierMismatch { .. } => TypeErrorCode::E0104,
             TypeError::OwnershipMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
+            TypeError::ConstrainedFunctionRef { .. } => TypeErrorCode::E0001,
             TypeError::NoInstance {
                 required_by: None, ..
             } => TypeErrorCode::E0301,
@@ -504,6 +509,9 @@ impl TypeError {
                 }
             }
             TypeError::UnsupportedExpr { .. } => None,
+            TypeError::ConstrainedFunctionRef { name, .. } => {
+                Some(format!("call `{name}` directly with arguments, or pass it where the type can be inferred"))
+            }
             TypeError::NoInstance { required_by: Some(bound), .. } => {
                 Some(format!("required by a bound in `{}`", bound))
             }
@@ -896,6 +904,17 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnsupportedExpr { description } => {
                 write!(f, "not yet implemented: {}", description)
+            }
+            TypeError::ConstrainedFunctionRef { name, constraints } => {
+                let constraint_list = constraints
+                    .iter()
+                    .map(|(trait_name, type_param)| format!("`{type_param}: {trait_name}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "`{name}` has trait constraints that can't be resolved here: {constraint_list}"
+                )
             }
             TypeError::NoInstance { trait_name, ty, .. } => {
                 write!(

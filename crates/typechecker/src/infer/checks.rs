@@ -181,6 +181,8 @@ pub(super) fn check_constrained_function_refs(
                         }
                     };
 
+                    let mut unsatisfied_constraints: Vec<(String, String)> = Vec::new();
+
                     for (req_trait_name, req_type_var) in &requirements {
                         let requirement_ty = resolve_function_ref_requirement_type(
                             &req_trait_name.local_name,
@@ -238,11 +240,20 @@ pub(super) fn check_constrained_function_refs(
                             continue;
                         }
 
+                        let type_param_name = scheme
+                            .var_names
+                            .get(req_type_var)
+                            .cloned()
+                            .unwrap_or_else(|| format!("?{}", req_type_var.0));
+                        unsatisfied_constraints
+                            .push((req_trait_name.local_name.clone(), type_param_name));
+                    }
+
+                    if !unsatisfied_constraints.is_empty() {
                         return Err(spanned(
-                            TypeError::UnsupportedExpr {
-                                description: format!(
-                                    "Krypton does not support first-class constrained polymorphic function values like `{name}`; instantiate the function or wrap the call in a lambda"
-                                ),
+                            TypeError::ConstrainedFunctionRef {
+                                name: name.to_string(),
+                                constraints: unsatisfied_constraints,
                             },
                             expr.span,
                         ));

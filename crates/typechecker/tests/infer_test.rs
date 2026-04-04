@@ -1397,12 +1397,12 @@ fn constrained_polymorphic_function_reference_is_rejected() {
     );
     let message = err.type_error().unwrap().error.to_string();
     assert!(
-        message.contains("first-class constrained polymorphic function values"),
+        message.contains("has trait constraints that can't be resolved here"),
         "unexpected error message: {message}"
     );
     assert!(
-        message.contains("lambda"),
-        "expected lambda guidance in error message: {message}"
+        message.contains("`a: Show`"),
+        "expected constraint details in error message: {message}"
     );
 }
 
