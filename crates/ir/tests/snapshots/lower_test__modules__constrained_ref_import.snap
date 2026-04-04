@@ -15,9 +15,9 @@ import core/option/Some as Some(e) -> Option[e]
 import core/result/Ok as Ok(g) -> Result[f, g]
 import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
-import core/io/println as println(m) -> Unit
+import core/io/println as println(k) -> Unit
 import constrained_ref_lib/render_it as render_it(o8) -> String
-declare println: (m) -> Unit
+declare println: (k) -> Unit
 declare render_it: (o8) -> String
 
 fn main() -> Unit =

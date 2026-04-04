@@ -15,8 +15,8 @@ import core/option/Some as Some(e) -> Option[e]
 import core/result/Ok as Ok(g) -> Result[f, g]
 import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
-import core/io/println as println(m) -> Unit
-declare println: (m) -> Unit
+import core/io/println as println(k) -> Unit
+declare println: (k) -> Unit
 
 fn both_less(v0: Dict[core/ord.Ord, o8], v1: Dict[core/ord.Ord, p8], v2: o8, v3: o8, v4: p8, v5: p8) -> Bool =
   let_join v13(v6: Bool) =

@@ -15,9 +15,9 @@ import core/option/Some as Some(e) -> Option[e]
 import core/result/Ok as Ok(g) -> Result[f, g]
 import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
-import core/io/println as println(m) -> Unit
+import core/io/println as println(k) -> Unit
 import resolved_ref_record_lib/Point as Point(Int, Int) -> Point
-declare println: (m) -> Unit
+declare println: (k) -> Unit
 
 fn mk() -> Point =
   let v0: ~Point = construct Point(5, 7)

@@ -16,8 +16,8 @@ import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
 import core/list/length as length(List[p]) -> Int
 import core/list/sort_by as sort_by(List[z5], (z5) -> o5) -> List[z5]
-import core/io/println as println(m) -> Unit
-declare println: (m) -> Unit
+import core/io/println as println(k) -> Unit
+declare println: (k) -> Unit
 declare sort_by: (List[z5], (z5) -> o5) -> List[z5]
 
 fn main() -> Unit =

@@ -15,10 +15,10 @@ import core/option/Some as Some(e) -> Option[e]
 import core/result/Ok as Ok(g) -> Result[f, g]
 import core/result/Err as Err(f) -> Result[f, g]
 import core/list/Cons as Cons(h, List[h]) -> List[h]
-import core/io/println as println(m) -> Unit
+import core/io/println as println(k) -> Unit
 import prelude_eq_in_lib/are_equal as are_equal(Int, Int) -> Bool
 declare are_equal: (Int, Int) -> Bool
-declare println: (m) -> Unit
+declare println: (k) -> Unit
 
 fn main() -> Unit =
   let v1: Bool = call are_equal(1, 1)
