@@ -343,6 +343,14 @@ trait Eq[a] {
 }
 
 #[test]
+fn test_trait_decl_with_superclass() {
+    let src = "trait Ord[a] where a: Eq { fun compare(x: a, y: a) -> Ordering }";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert_yaml_snapshot!(module);
+}
+
+#[test]
 fn test_impl_decl() {
     let src = r#"
 type Point = { x: Int, y: Int }

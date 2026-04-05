@@ -31,7 +31,14 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                 arity: type_param.arity,
                 span: (0, 0),
             },
-            superclasses: superclasses.clone(),
+            superclasses: superclasses
+                .iter()
+                .map(|sc| TypeConstraint {
+                    type_var: sc.type_var.clone(),
+                    trait_name: sc.trait_name.clone(),
+                    span: (0, 0),
+                })
+                .collect(),
             methods: methods.iter().map(zero_spans_fn_decl).collect(),
             span: (0, 0),
         },
@@ -830,4 +837,22 @@ fn roundtrip_let_type_annotation() {
 #[test]
 fn roundtrip_let_pattern_type_annotation() {
     assert_surface_roundtrip("fun f() { let (a, b): (Int, String) = pair; a }");
+}
+
+#[test]
+fn roundtrip_trait_with_multiple_superclasses() {
+    assert_surface_roundtrip(
+        r#"trait C[a] where a: A, a: B {
+    fun method_c(x: a) -> Int
+}"#,
+    );
+}
+
+#[test]
+fn roundtrip_trait_with_plus_superclasses() {
+    assert_surface_roundtrip(
+        r#"trait C[a] where a: A + B {
+    fun method_c(x: a) -> Int
+}"#,
+    );
 }

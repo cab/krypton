@@ -1206,18 +1206,17 @@ where
             },
         );
 
-    let trait_superclasses = symbol(Token::Where)
+    let old_superclass_syntax = symbol(Token::Colon)
         .ignore_then(
             select! { Token::Ident(s) => s.to_string() }
-                .then_ignore(symbol(Token::Colon))
-                .ignore_then(
-                    select! { Token::Ident(s) => s.to_string() }
-                        .separated_by(symbol(Token::Plus).or(symbol(Token::Comma)))
-                        .collect::<Vec<_>>(),
-                ),
+                .separated_by(symbol(Token::Plus).or(symbol(Token::Comma)))
+                .at_least(1)
+                .collect::<Vec<_>>(),
         )
-        .or_not()
-        .map(|s| s.unwrap_or_default());
+        .map_with(|names, e| (names, to_span(e.span())));
+
+    let trait_superclasses = where_clause_parser()
+        .then(old_superclass_syntax.or_not());
 
     let trait_decl = platform_attr
         .clone()
@@ -1235,13 +1234,32 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |(((((platform, visibility), name), type_param), superclasses), method_pairs), e| {
+            |(((((platform, visibility), name), type_param), (where_constraints, old_syntax)), method_pairs), e| {
                 let mut methods = Vec::with_capacity(method_pairs.len());
                 let mut warnings = Vec::new();
                 for (method, warning) in method_pairs {
                     methods.push(method);
                     if let Some(w) = warning {
                         warnings.push(w);
+                    }
+                }
+                let mut superclasses = where_constraints;
+                if let Some((names, span)) = old_syntax {
+                    let joined = names.join(", ");
+                    warnings.push(ParseError {
+                        code: ErrorCode::P0005,
+                        message: format!(
+                            "use 'where {}: {}' instead of ': {}' for superclass constraints",
+                            type_param.name, joined, joined,
+                        ),
+                        span,
+                    });
+                    for trait_name in names {
+                        superclasses.push(TypeConstraint {
+                            type_var: type_param.name.clone(),
+                            trait_name,
+                            span,
+                        });
                     }
                 }
                 (

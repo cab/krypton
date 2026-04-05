@@ -346,7 +346,7 @@ impl<'a> Formatter<'a> {
         &mut self,
         name: &str,
         type_param: &TypeParam,
-        superclasses: &[String],
+        superclasses: &[TypeConstraint],
         methods: &[FnDecl],
     ) {
         self.buf.push_str("trait ");
@@ -354,9 +354,23 @@ impl<'a> Formatter<'a> {
         self.fmt_type_params(std::slice::from_ref(type_param));
         if !superclasses.is_empty() {
             self.buf.push_str(" where ");
-            self.buf.push_str(&type_param.name);
-            self.buf.push_str(": ");
-            self.buf.push_str(&superclasses.join(", "));
+            // Group constraints by type_var, preserving order
+            let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+            for sc in superclasses {
+                if let Some(group) = groups.iter_mut().find(|(tv, _)| *tv == sc.type_var) {
+                    group.1.push(&sc.trait_name);
+                } else {
+                    groups.push((&sc.type_var, vec![&sc.trait_name]));
+                }
+            }
+            for (i, (type_var, bounds)) in groups.iter().enumerate() {
+                if i > 0 {
+                    self.buf.push_str(", ");
+                }
+                self.buf.push_str(type_var);
+                self.buf.push_str(": ");
+                self.buf.push_str(&bounds.join(" + "));
+            }
         }
         self.buf.push_str(" {");
         self.indent_level += 1;

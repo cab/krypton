@@ -106,3 +106,20 @@ fn test_pub_opaque_on_type_still_works() {
         "pub opaque on type should still work, got: {errors:?}"
     );
 }
+
+#[test]
+fn test_p0005_old_superclass_syntax() {
+    let source = "trait Foo[a] : Bar { fun foo(x: a) -> a }";
+    let (_module, errors) = parse(source);
+    assert!(!errors.is_empty(), "expected at least one error");
+    assert!(
+        errors.iter().any(|e| e.code == ErrorCode::P0005),
+        "expected P0005 error, got: {errors:?}"
+    );
+    let (diags, srcs) = diagnostics::lower_parse_errors("test.kr", source, &errors);
+    let plain: String = diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect();
+    insta::assert_snapshot!(plain);
+}

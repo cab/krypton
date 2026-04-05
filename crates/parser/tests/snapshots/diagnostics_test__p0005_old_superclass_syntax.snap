@@ -1,0 +1,11 @@
+---
+source: crates/parser/tests/diagnostics_test.rs
+expression: plain
+---
+[P0005] Error: use 'where a: Bar' instead of ': Bar' for superclass constraints
+   ╭─[ test.kr:1:14 ]
+   │
+ 1 │ trait Foo[a] : Bar { fun foo(x: a) -> a }
+   │              ──┬──  
+   │                ╰──── P0005: use 'where a: Bar' instead of ': Bar' for superclass constraints
+───╯

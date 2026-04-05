@@ -1,0 +1,4 @@
+# expect: error P0005
+trait Foo[a] : Bar {
+    fun foo(x: a) -> a
+}

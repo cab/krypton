@@ -3428,9 +3428,11 @@ fn register_local_traits(
                 .iter()
                 .map(|sc| {
                     trait_registry
-                        .lookup_trait_by_name(sc)
+                        .lookup_trait_by_name(&sc.trait_name)
                         .map(|ti| ti.trait_name())
-                        .unwrap_or_else(|| TraitName::new(module_path.to_string(), sc.clone()))
+                        .unwrap_or_else(|| {
+                            TraitName::new(module_path.to_string(), sc.trait_name.clone())
+                        })
                 })
                 .collect();
             trait_registry

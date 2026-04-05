@@ -24,7 +24,7 @@ pub enum Decl {
         visibility: Visibility,
         name: String,
         type_param: TypeParam,
-        superclasses: Vec<String>,
+        superclasses: Vec<TypeConstraint>,
         methods: Vec<FnDecl>,
         span: Span,
     },

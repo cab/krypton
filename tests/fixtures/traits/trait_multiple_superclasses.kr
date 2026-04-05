@@ -1,0 +1,19 @@
+# expect: error E0303
+trait A[a] {
+    fun method_a(x: a) -> Int
+}
+
+trait B[a] {
+    fun method_b(x: a) -> Int
+}
+
+trait C[a] where a: A, a: B {
+    fun method_c(x: a) -> Int
+}
+
+type Foo = { val: Int }
+
+impl A[Foo] { fun method_a(x) = x.val }
+
+# Missing B[Foo] impl — should trigger E0303
+impl C[Foo] { fun method_c(x) = x.val }
