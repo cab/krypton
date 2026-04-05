@@ -1,0 +1,2 @@
+# expect: error E0507
+fun test() -> Int[String] = 1

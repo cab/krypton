@@ -1,0 +1,3 @@
+# expect: error E0507
+type Pair = { x: Int, y: Int }
+fun test() -> Pair[String] = Pair { x = 1, y = 2 }

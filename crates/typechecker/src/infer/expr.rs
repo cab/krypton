@@ -513,6 +513,9 @@ impl<'a> InferenceContext<'a> {
             if !matches!(a, Expr::Lambda { .. }) {
                 if let Some(ref fparams) = func_param_types {
                     if let Some(expected_param_ty) = fparams.get(i) {
+                        // Best-effort early resolution to help subsequent lambda args
+                        // infer correctly. The formal per-arg coerce_unify below catches
+                        // any actual type mismatch with full error context.
                         let _ = coerce_unify(&a_ty, expected_param_ty, self.subst);
                     }
                 }
@@ -667,7 +670,8 @@ impl<'a> InferenceContext<'a> {
             let tv = Type::Var(self.fresh());
             if let Some(expected) = expected_params {
                 if let Some(expected_ty) = expected.get(i) {
-                    let _ = unify(&tv, expected_ty, self.subst);
+                    unify(&tv, expected_ty, self.subst)
+                        .map_err(|e| super::spanned(e, p.span))?;
                 }
             }
             param_types.push(tv.clone());

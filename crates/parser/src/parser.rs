@@ -126,12 +126,8 @@ where
             span: to_span(e.span()),
         });
 
-        // Base type (without generic application)
-        let base_type = choice((own_type, paren_type, wildcard_type, named_or_var));
-
-        // Generic application: Name[args]
-        base_type
-            .clone()
+        // Named/Var/Qualified with optional generic application
+        let named_with_app = named_or_var
             .then(
                 ty.clone()
                     .separated_by(symbol(Token::Comma))
@@ -142,21 +138,23 @@ where
             )
             .map_with(|(base, args), e| match args {
                 Some(args) => {
-                    if let TypeExpr::Named { name, .. }
-                    | TypeExpr::Var { name, .. }
-                    | TypeExpr::Qualified { name, .. } = base
-                    {
-                        TypeExpr::App {
-                            name,
-                            args,
-                            span: to_span(e.span()),
-                        }
-                    } else {
-                        base
+                    let name = match base {
+                        TypeExpr::Named { name, .. }
+                        | TypeExpr::Var { name, .. }
+                        | TypeExpr::Qualified { name, .. } => name,
+                        _ => unreachable!("named_or_var always produces Named/Var/Qualified"),
+                    };
+                    TypeExpr::App {
+                        name,
+                        args,
+                        span: to_span(e.span()),
                     }
                 }
                 None => base,
-            })
+            });
+
+        // Base types — own, paren/fn, wildcard don't accept [args]
+        choice((own_type, paren_type, wildcard_type, named_with_app))
     })
 }
 
