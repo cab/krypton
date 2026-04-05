@@ -689,7 +689,7 @@ impl<'a> InferenceContext<'a> {
         let fn_ty = Type::Fn(param_types, Box::new(body_ty));
         let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
         let ty = if let Some(cap_name) =
-            super::first_own_capture(body, &param_names, self.env, self.subst)
+            super::first_own_capture(body, &param_names, self.env, self.subst, &body_typed)
         {
             if let Some(ref mut captures) = self.lambda_own_captures {
                 captures.insert(span, cap_name);

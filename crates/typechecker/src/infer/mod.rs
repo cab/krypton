@@ -888,11 +888,149 @@ pub(crate) fn collect_parser_pattern_bindings<'a>(pattern: &'a Pattern) -> Vec<&
     out
 }
 
+/// Check whether `capture_name` is used in an own-requiring position
+/// in the typed body. A capture demands own unless ALL of its occurrences
+/// are in known-shared positions: binary-op operands, unary-op operands,
+/// field-access bases, or function args where the param type is not `~T`.
+fn capture_demands_own(
+    body: &TypedExpr,
+    capture_name: &str,
+    subst: &Substitution,
+) -> bool {
+    use crate::typed_ast::TypedExprKind;
+
+    /// Returns true if `expr` is `Var(capture_name)`.
+    fn is_capture(expr: &TypedExpr, capture_name: &str) -> bool {
+        matches!(&expr.kind, TypedExprKind::Var(name) if name == capture_name)
+    }
+
+    match &body.kind {
+        // A bare capture var in a non-shared position demands own
+        // (e.g. return position, let-binding value, etc.)
+        TypedExprKind::Var(name) if name == capture_name => true,
+        TypedExprKind::Var(_) | TypedExprKind::Lit(_) => false,
+
+        // Binary-op operands are shared: coerces ~T → T
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            // If the capture is a direct operand, it's shared — skip it.
+            // Only recurse into non-capture sub-expressions.
+            (!is_capture(lhs, capture_name)
+                && capture_demands_own(lhs, capture_name, subst))
+                || (!is_capture(rhs, capture_name)
+                    && capture_demands_own(rhs, capture_name, subst))
+        }
+        // Unary-op operand is shared
+        TypedExprKind::UnaryOp { operand, .. } => {
+            !is_capture(operand, capture_name)
+                && capture_demands_own(operand, capture_name, subst)
+        }
+        // Field-access base is shared
+        TypedExprKind::FieldAccess { expr, .. } => {
+            !is_capture(expr, capture_name)
+                && capture_demands_own(expr, capture_name, subst)
+        }
+
+        // Function application: check param types to decide shared vs own
+        TypedExprKind::App { func, args } => {
+            let func_ty = subst.apply(&func.ty);
+            let fn_params = match &func_ty {
+                Type::Fn(p, _) => Some(p.as_slice()),
+                Type::Own(inner) => match inner.as_ref() {
+                    Type::Fn(p, _) => Some(p.as_slice()),
+                    _ => None,
+                },
+                _ => None,
+            };
+
+            for (i, arg) in args.iter().enumerate() {
+                if is_capture(arg, capture_name) {
+                    // Determine if this arg position demands own
+                    let demands = if let Some(params) = fn_params {
+                        if let Some(pty) = params.get(i) {
+                            let resolved = subst.apply(pty);
+                            matches!(resolved, Type::Own(_) | Type::Var(_) | Type::MaybeOwn(_, _))
+                        } else {
+                            true // conservative: can't determine param type
+                        }
+                    } else {
+                        true // conservative: can't resolve func type
+                    };
+                    if demands {
+                        return true;
+                    }
+                    // Shared arg position — don't recurse into this arg
+                } else if capture_demands_own(arg, capture_name, subst) {
+                    return true;
+                }
+            }
+            capture_demands_own(func, capture_name, subst)
+        }
+
+        // Nodes that just recurse into children
+        TypedExprKind::If { cond, then_, else_ } => {
+            capture_demands_own(cond, capture_name, subst)
+                || capture_demands_own(then_, capture_name, subst)
+                || capture_demands_own(else_, capture_name, subst)
+        }
+        TypedExprKind::Let { value, body, .. } => {
+            capture_demands_own(value, capture_name, subst)
+                || body
+                    .as_ref()
+                    .is_some_and(|b| capture_demands_own(b, capture_name, subst))
+        }
+        TypedExprKind::Do(exprs) => {
+            exprs.iter().any(|e| capture_demands_own(e, capture_name, subst))
+        }
+        TypedExprKind::Match { scrutinee, arms } => {
+            capture_demands_own(scrutinee, capture_name, subst)
+                || arms.iter().any(|arm| {
+                    arm.guard
+                        .as_ref()
+                        .is_some_and(|g| capture_demands_own(g, capture_name, subst))
+                        || capture_demands_own(&arm.body, capture_name, subst)
+                })
+        }
+        TypedExprKind::Lambda { body, .. } => {
+            capture_demands_own(body, capture_name, subst)
+        }
+        TypedExprKind::TypeApp { expr, .. } => {
+            capture_demands_own(expr, capture_name, subst)
+        }
+        // Conservative: struct fields, tuple elements, vec/recur elements
+        // all treated as own-requiring when the capture appears directly
+        TypedExprKind::StructLit { fields, .. } => fields.iter().any(|(_, val)| {
+            is_capture(val, capture_name) || capture_demands_own(val, capture_name, subst)
+        }),
+        TypedExprKind::StructUpdate { base, fields } => {
+            capture_demands_own(base, capture_name, subst)
+                || fields.iter().any(|(_, val)| {
+                    is_capture(val, capture_name)
+                        || capture_demands_own(val, capture_name, subst)
+                })
+        }
+        TypedExprKind::Tuple(elements)
+        | TypedExprKind::VecLit(elements)
+        | TypedExprKind::Recur(elements) => elements.iter().any(|elem| {
+            is_capture(elem, capture_name) || capture_demands_own(elem, capture_name, subst)
+        }),
+        TypedExprKind::LetPattern { value, body, .. } => {
+            capture_demands_own(value, capture_name, subst)
+                || body
+                    .as_ref()
+                    .is_some_and(|b| capture_demands_own(b, capture_name, subst))
+        }
+        TypedExprKind::QuestionMark { expr, .. } => {
+            capture_demands_own(expr, capture_name, subst)
+        }
+    }
+}
+
 pub(super) fn first_own_capture(
     body: &Expr,
     params: &HashSet<&str>,
     env: &TypeEnv,
     subst: &Substitution,
+    typed_body: &TypedExpr,
 ) -> Option<String> {
     match body {
         Expr::Var { name, .. } => {
@@ -900,30 +1038,32 @@ pub(super) fn first_own_capture(
                 if let Some(scheme) = env.lookup(name) {
                     let ty = subst.apply(&scheme.ty);
                     if matches!(ty, Type::Own(_)) {
-                        return Some(name.clone());
+                        if capture_demands_own(typed_body, name, subst) {
+                            return Some(name.clone());
+                        }
                     }
                 }
             }
             None
         }
-        Expr::App { func, args, .. } => first_own_capture(func, params, env, subst).or_else(|| {
+        Expr::App { func, args, .. } => first_own_capture(func, params, env, subst, typed_body).or_else(|| {
             args.iter()
-                .find_map(|a| first_own_capture(a, params, env, subst))
+                .find_map(|a| first_own_capture(a, params, env, subst, typed_body))
         }),
-        Expr::TypeApp { expr, .. } => first_own_capture(expr, params, env, subst),
+        Expr::TypeApp { expr, .. } => first_own_capture(expr, params, env, subst, typed_body),
         Expr::Let {
             name,
             value,
             body: let_body,
             ..
         } => {
-            if let Some(found) = first_own_capture(value, params, env, subst) {
+            if let Some(found) = first_own_capture(value, params, env, subst, typed_body) {
                 return Some(found);
             }
             if let Some(b) = let_body {
                 let mut inner = params.clone();
                 inner.insert(name.as_str());
-                return first_own_capture(b, &inner, env, subst);
+                return first_own_capture(b, &inner, env, subst, typed_body);
             }
             None
         }
@@ -933,27 +1073,27 @@ pub(super) fn first_own_capture(
             body,
             ..
         } => {
-            first_own_capture(value, params, env, subst).or_else(|| {
+            first_own_capture(value, params, env, subst, typed_body).or_else(|| {
                 body.as_ref().and_then(|b| {
                     let mut inner = params.clone();
                     for name in collect_parser_pattern_bindings(pattern) {
                         inner.insert(name);
                     }
-                    first_own_capture(b, &inner, env, subst)
+                    first_own_capture(b, &inner, env, subst, typed_body)
                 })
             })
         }
         Expr::Do { exprs, .. } => exprs
             .iter()
-            .find_map(|e| first_own_capture(e, params, env, subst)),
+            .find_map(|e| first_own_capture(e, params, env, subst, typed_body)),
         Expr::If {
             cond, then_, else_, ..
-        } => first_own_capture(cond, params, env, subst)
-            .or_else(|| first_own_capture(then_, params, env, subst))
-            .or_else(|| first_own_capture(else_, params, env, subst)),
+        } => first_own_capture(cond, params, env, subst, typed_body)
+            .or_else(|| first_own_capture(then_, params, env, subst, typed_body))
+            .or_else(|| first_own_capture(else_, params, env, subst, typed_body)),
         Expr::Match {
             scrutinee, arms, ..
-        } => first_own_capture(scrutinee, params, env, subst).or_else(|| {
+        } => first_own_capture(scrutinee, params, env, subst, typed_body).or_else(|| {
             arms.iter().find_map(|arm| {
                 let mut inner = params.clone();
                 for name in collect_parser_pattern_bindings(&arm.pattern) {
@@ -961,13 +1101,13 @@ pub(super) fn first_own_capture(
                 }
                 arm.guard
                     .as_ref()
-                    .and_then(|guard| first_own_capture(guard, &inner, env, subst))
-                    .or_else(|| first_own_capture(&arm.body, &inner, env, subst))
+                    .and_then(|guard| first_own_capture(guard, &inner, env, subst, typed_body))
+                    .or_else(|| first_own_capture(&arm.body, &inner, env, subst, typed_body))
             })
         }),
-        Expr::BinaryOp { lhs, rhs, .. } => first_own_capture(lhs, params, env, subst)
-            .or_else(|| first_own_capture(rhs, params, env, subst)),
-        Expr::UnaryOp { operand, .. } => first_own_capture(operand, params, env, subst),
+        Expr::BinaryOp { lhs, rhs, .. } => first_own_capture(lhs, params, env, subst, typed_body)
+            .or_else(|| first_own_capture(rhs, params, env, subst, typed_body)),
+        Expr::UnaryOp { operand, .. } => first_own_capture(operand, params, env, subst, typed_body),
         Expr::Lambda {
             params: inner_params,
             body,
@@ -977,28 +1117,28 @@ pub(super) fn first_own_capture(
             for p in inner_params {
                 inner.insert(p.name.as_str());
             }
-            first_own_capture(body, &inner, env, subst)
+            first_own_capture(body, &inner, env, subst, typed_body)
         }
-        Expr::FieldAccess { expr, .. } => first_own_capture(expr, params, env, subst),
+        Expr::FieldAccess { expr, .. } => first_own_capture(expr, params, env, subst, typed_body),
         Expr::StructLit { fields, .. } => fields
             .iter()
-            .find_map(|(_, e)| first_own_capture(e, params, env, subst)),
-        Expr::StructUpdate { base, fields, .. } => first_own_capture(base, params, env, subst)
+            .find_map(|(_, e)| first_own_capture(e, params, env, subst, typed_body)),
+        Expr::StructUpdate { base, fields, .. } => first_own_capture(base, params, env, subst, typed_body)
             .or_else(|| {
                 fields
                     .iter()
-                    .find_map(|(_, e)| first_own_capture(e, params, env, subst))
+                    .find_map(|(_, e)| first_own_capture(e, params, env, subst, typed_body))
             }),
         Expr::Tuple { elements, .. } => elements
             .iter()
-            .find_map(|e| first_own_capture(e, params, env, subst)),
+            .find_map(|e| first_own_capture(e, params, env, subst, typed_body)),
         Expr::Recur { args, .. } => args
             .iter()
-            .find_map(|a| first_own_capture(a, params, env, subst)),
-        Expr::QuestionMark { expr, .. } => first_own_capture(expr, params, env, subst),
+            .find_map(|a| first_own_capture(a, params, env, subst, typed_body)),
+        Expr::QuestionMark { expr, .. } => first_own_capture(expr, params, env, subst, typed_body),
         Expr::List { elements, .. } => elements
             .iter()
-            .find_map(|e| first_own_capture(e, params, env, subst)),
+            .find_map(|e| first_own_capture(e, params, env, subst, typed_body)),
         Expr::Lit { .. } => None,
     }
 }

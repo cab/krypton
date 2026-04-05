@@ -2,8 +2,9 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module closures__closure_capture
+module closures__lazy_own_field_access
 
+struct Point { x: Int, y: Int }
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
@@ -16,16 +17,19 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare println: (h) -> Unit
 
-fn main() -> Unit =
-  let v0: ~Int = 10
-  let v1: (Int) -> Int = make_closure(lambda$24, [v0])
-  let v6: Int = call_closure v1(5)
-  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v7: Unit = call println(v5, v6)
+fn use_twice(v0: () -> Int) -> Int =
+  let v1: Int = call_closure v0()
+  let v2: Int = call_closure v0()
+  let v3: Int = add_int(v1, v2)
+  v3
+
+fn test() -> Int =
+  let v4: ~Point = construct Point(1, 2)
+  let v5: () -> Int = make_closure(lambda$26, [v4])
+  let v8: Int = call use_twice(v5)
+  v8
+
+fn lambda$26(v6: ~Point) -> Int =
+  let v7: Int = project v6.0
   v7
-
-fn lambda$24(v2: ~Int, v3: Int) -> Int =
-  let v4: Int = add_int(v3, v2)
-  v4

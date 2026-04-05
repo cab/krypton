@@ -1,0 +1,11 @@
+# expect: ok
+# Captured Own(T) used only in field access → fn, not ~fn
+type Point = { x: Int, y: Int }
+
+fun use_twice(f: () -> Int) -> Int = f() + f()
+
+fun test() -> Int {
+    let p = Point { x = 1, y = 2 }
+    let f = () -> p.x
+    use_twice(f)
+}

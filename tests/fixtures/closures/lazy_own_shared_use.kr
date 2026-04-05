@@ -1,0 +1,9 @@
+# expect: ok
+# Captured Own(Int) used only in shared position (binary op) → fn, not ~fn
+fun use_twice(f: (Int) -> Int) -> Int = f(1) + f(2)
+
+fun test() -> Int {
+    let r = 2
+    let f = (x) -> x + r
+    use_twice(f)
+}

@@ -2,7 +2,7 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module closures__closure_capture
+module ownership__own_recur_fresh_ok
 
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
@@ -16,16 +16,27 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare println: (h) -> Unit
+fn consume(v0: ~String) -> String =
+  v0
 
-fn main() -> Unit =
-  let v0: ~Int = 10
-  let v1: (Int) -> Int = make_closure(lambda$24, [v0])
-  let v6: Int = call_closure v1(5)
-  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v7: Unit = call println(v5, v6)
-  v7
+fn make() -> ~String =
+  "hello"
 
-fn lambda$24(v2: ~Int, v3: Int) -> Int =
-  let v4: Int = add_int(v3, v2)
-  v4
+fn loop(v1: ~String, v2: Int) -> String =
+  let_join [recur] v3(v4: ~String, v5: Int) =
+    let_join v13(v8: Bool) =
+      if v8 {
+        let v9: String = call consume(v4)
+        v9
+      } else {
+        let v10: String = call consume(v4)
+        let v11: ~String = call make()
+        let v12: Int = sub_int(v5, 1)
+        jump v3(v11, v12)
+      }
+    in
+    let v6: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v7: Bool = trait_call core/eq.Eq.eq(v6, v5, 0)
+    jump v13(v7)
+  in
+  jump v3(v1, v2)

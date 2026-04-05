@@ -1,0 +1,9 @@
+# expect: ok
+# Manual downcast still works as escape hatch
+fun use_twice(f: (Int) -> Int) -> Int = f(1) + f(2)
+
+fun test() -> Int {
+    let r: Int = 2
+    let f = (x) -> x + r
+    use_twice(f)
+}

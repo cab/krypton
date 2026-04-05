@@ -1,0 +1,9 @@
+# expect: ok
+# Captured Own(T) passed to ~T parameter → ~fn, called once = ok
+fun consume(buf: ~String) -> String = buf
+
+fun test() -> String {
+    let buf = "hello"
+    let f = () -> consume(buf)
+    f()
+}

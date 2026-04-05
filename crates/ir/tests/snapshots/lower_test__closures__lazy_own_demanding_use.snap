@@ -2,7 +2,7 @@
 source: crates/ir/tests/lower_test.rs
 expression: ir_module.to_string()
 ---
-module closures__closure_capture
+module closures__lazy_own_demanding_use
 
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
@@ -16,16 +16,15 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare println: (h) -> Unit
+fn consume(v0: ~String) -> String =
+  v0
 
-fn main() -> Unit =
-  let v0: ~Int = 10
-  let v1: (Int) -> Int = make_closure(lambda$24, [v0])
-  let v6: Int = call_closure v1(5)
-  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v7: Unit = call println(v5, v6)
-  v7
+fn test() -> String =
+  let v1: ~String = "hello"
+  let v2: ~() -> String = make_closure(lambda$25, [v1])
+  let v5: String = call_closure v2()
+  v5
 
-fn lambda$24(v2: ~Int, v3: Int) -> Int =
-  let v4: Int = add_int(v3, v2)
+fn lambda$25(v3: ~String) -> String =
+  let v4: String = call consume(v3)
   v4
