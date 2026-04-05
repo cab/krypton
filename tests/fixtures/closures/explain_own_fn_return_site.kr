@@ -1,0 +1,4 @@
+# expect: error E0001
+fun bad(r: ~String) -> () -> String {
+    () -> r
+}

@@ -173,6 +173,24 @@ fn guard_only_lambda_capture_note_e0104() {
 }
 
 #[test]
+fn own_fn_capture_note_return_site() {
+    let output = render_fixture_error("../../tests/fixtures/closures/explain_own_fn_return_site.kr");
+    assert!(
+        output.contains("captures `~` value `r`"),
+        "expected own capture note in:\n{output}"
+    );
+}
+
+#[test]
+fn own_fn_capture_note_let_site() {
+    let output = render_fixture_error("../../tests/fixtures/closures/explain_own_fn_let_site.kr");
+    assert!(
+        output.contains("captures `~` value `r`"),
+        "expected own capture note in:\n{output}"
+    );
+}
+
+#[test]
 fn test_qualifier_mismatch_diagnostic() {
     let output = render_fixture_error("../../tests/fixtures/ownership/qualifier_dup_error.kr");
     insta::assert_snapshot!(output);

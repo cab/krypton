@@ -793,7 +793,22 @@ impl<'a> InferenceContext<'a> {
             let binding_ty = if let Some(ty_expr) = ty_ann {
                 if self.registry.is_some() {
                     let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
-                    self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, span)?;
+                    coerce_unify(&val_typed.ty, &annotated_ty, self.subst).map_err(|e| {
+                        let mut err = super::spanned(e, span);
+                        if matches!(&err.error, TypeError::Mismatch { .. }) {
+                            if let Expr::Lambda { span: lspan, .. } = value {
+                                if let Some(ref captures) = self.lambda_own_captures {
+                                    if let Some(cap_name) = captures.get(lspan) {
+                                        err.note = Some(format!(
+                                            "closure is single-use because it captures `~` value `{}`",
+                                            cap_name
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        err
+                    })?;
                     annotated_ty
                 } else {
                     val_typed.ty.clone()

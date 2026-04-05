@@ -4278,7 +4278,26 @@ fn infer_function_bodies<'a>(
                                 };
                             }
                         }
-                        spanned(e, decl.span)
+                        let mut err = spanned(e, decl.span);
+                        if matches!(&err.error, TypeError::Mismatch { .. }) {
+                            let terminal = match &body_typed.kind {
+                                crate::typed_ast::TypedExprKind::Do(exprs) => {
+                                    exprs.last().unwrap_or(&body_typed)
+                                }
+                                _ => &body_typed,
+                            };
+                            if let crate::typed_ast::TypedExprKind::Lambda { .. } = &terminal.kind {
+                                if let Some(cap_name) =
+                                    state.lambda_own_captures.get(&terminal.span)
+                                {
+                                    err.note = Some(format!(
+                                        "closure is single-use because it captures `~` value `{}`",
+                                        cap_name
+                                    ));
+                                }
+                            }
+                        }
+                        err
                     })?;
                 state.subst.apply(&annotated_ret)
             } else {

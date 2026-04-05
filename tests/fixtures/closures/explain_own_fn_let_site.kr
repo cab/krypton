@@ -1,0 +1,5 @@
+# expect: error E0001
+fun bad(r: ~String) -> Int {
+    let f: () -> String = () -> r;
+    0
+}
