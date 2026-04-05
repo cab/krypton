@@ -1,4 +1,4 @@
-# expect: ok
+# expect: output ok
 
 trait Describe[a] {
     fun describe(x: a) -> String
@@ -8,4 +8,4 @@ impl Describe[(Int, String)] {
     fun describe(_x) = "ok"
 }
 
-fun use_it(pair: (Int, String)) -> String = describe(pair)
+fun main() = println(describe((1, "hi")))

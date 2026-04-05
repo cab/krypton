@@ -118,6 +118,7 @@ fn compile_repl_module(
     )?;
     compiler.register_fun_interfaces_ir(ir_module)?;
     compiler.register_vec()?;
+    compiler.register_tuples_ir(ir_module)?;
     result_classes.extend(compiler.register_traits_ir(ir_module)?);
     result_classes.extend(compiler.register_extern_traits_ir(ir_module)?);
     result_classes.extend(compiler.register_builtin_instances_ir(ir_module)?);
@@ -126,8 +127,7 @@ fn compile_repl_module(
     compiler.register_imported_instances(&instance_class_map)?;
     result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name)?);
 
-    // Phase 3: Register tuples and functions
-    compiler.register_tuples_ir(ir_module)?;
+    // Phase 3: Register functions
     compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies

@@ -1340,7 +1340,7 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
                 .iter()
                 .map(|e| canonical_name_inner(e, var_map))
                 .collect();
-            format!("$Tup{}${}", elems.len(), elem_strs.join("$"))
+            format!("$Tuple{}${}", elems.len(), elem_strs.join("$"))
         }
         Type::Own(inner) | Type::MaybeOwn(_, inner) => canonical_name_inner(inner, var_map),
         Type::Var(id) => {

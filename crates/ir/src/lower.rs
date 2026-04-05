@@ -6226,6 +6226,9 @@ pub fn lower_module(
     for func in &functions {
         collect_tuple_arities_from_fn(func, &mut tuple_arities);
     }
+    for inst in &instances {
+        collect_tuple_arities_from_type(&inst.target_type, &mut tuple_arities);
+    }
 
     let module = Module {
         name: module_name.to_string(),

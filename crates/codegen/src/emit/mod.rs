@@ -188,13 +188,14 @@ fn compile_module_inner(
     result_classes.extend(compiler.register_structs_ir(ir_module)?);
     result_classes.extend(compiler.register_sum_types_ir(ir_module)?);
 
-    // Phase 2: Register FunN interfaces, Vec, traits, and instances
+    // Phase 2: Register FunN interfaces, Vec, tuples, traits, and instances
     compiler.lambda.preregister_fun_interfaces(
         &mut compiler.cp,
         &mut compiler.types.class_descriptors,
     )?;
     compiler.register_fun_interfaces_ir(ir_module)?;
     compiler.register_vec()?;
+    compiler.register_tuples_ir(ir_module)?;
     result_classes.extend(compiler.register_traits_ir(ir_module)?);
     result_classes.extend(compiler.register_extern_traits_ir(ir_module)?);
     result_classes.extend(compiler.register_builtin_instances_ir(ir_module)?);
@@ -204,8 +205,7 @@ fn compile_module_inner(
     compiler.register_imported_instances(&instance_class_map)?;
     result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name)?);
 
-    // Phase 3: Register tuples and functions
-    compiler.register_tuples_ir(ir_module)?;
+    // Phase 3: Register functions
     compiler.register_functions_ir(ir_module, compiler.this_class)?;
 
     // Phase 4: Compile function bodies from IR

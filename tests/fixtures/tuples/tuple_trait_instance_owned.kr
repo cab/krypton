@@ -1,0 +1,13 @@
+# expect: output ok
+
+trait Summarize[a] {
+    fun summarize(x: a) -> String
+}
+
+impl Summarize[(Int, String)] {
+    fun summarize(_x) = "ok"
+}
+
+fun make_pair(s: ~String) -> (Int, String) = (1, s)
+
+fun main() = println(summarize(make_pair("hi")))

@@ -98,6 +98,15 @@ impl Type {
             Type::Named(name, args) => {
                 Type::Named(name.clone(), args.iter().map(|a| a.strip_own()).collect())
             }
+            Type::Tuple(elems) => {
+                Type::Tuple(elems.iter().map(|e| e.strip_own()).collect())
+            }
+            Type::Fn(params, ret) => {
+                Type::Fn(
+                    params.iter().map(|p| p.strip_own()).collect(),
+                    Box::new(ret.strip_own()),
+                )
+            }
             other => other.clone(),
         }
     }
@@ -811,6 +820,27 @@ mod tests {
             )],
             body: Box::new(body),
         };
+    }
+
+    #[test]
+    fn strip_own_recurses_into_tuple() {
+        let ty = Type::Tuple(vec![
+            Type::Own(Box::new(Type::Int)),
+            Type::Own(Box::new(Type::String)),
+        ]);
+        assert_eq!(ty.strip_own(), Type::Tuple(vec![Type::Int, Type::String]));
+    }
+
+    #[test]
+    fn strip_own_recurses_into_fn() {
+        let ty = Type::Fn(
+            vec![Type::Own(Box::new(Type::Int))],
+            Box::new(Type::Own(Box::new(Type::String))),
+        );
+        assert_eq!(
+            ty.strip_own(),
+            Type::Fn(vec![Type::Int], Box::new(Type::String))
+        );
     }
 
     #[test]
