@@ -585,6 +585,12 @@ fn types_match_with_bindings(
                     .all(|(a, b)| types_match_with_bindings(a, b, bindings))
                 && types_match_with_bindings(ret1, ret2, bindings)
         }
+        (Type::Tuple(a), Type::Tuple(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b)
+                    .all(|(x, y)| types_match_with_bindings(x, y, bindings))
+        }
         _ => false,
     }
 }
@@ -1163,5 +1169,50 @@ mod tests {
             }
             other => panic!("expected AmbiguousTraitName, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn types_overlap_tuple_matching() {
+        let a = Type::Tuple(vec![Type::Int, Type::String]);
+        let b = Type::Tuple(vec![Type::Int, Type::String]);
+        assert!(super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_overlap_tuple_different() {
+        let a = Type::Tuple(vec![Type::Int, Type::String]);
+        let b = Type::Tuple(vec![Type::Int, Type::Bool]);
+        assert!(!super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_overlap_tuple_parametric() {
+        let mut gen = TypeVarGen::new();
+        let a = Type::Tuple(vec![Type::Var(gen.fresh()), Type::String]);
+        let b = Type::Tuple(vec![Type::Int, Type::String]);
+        assert!(super::types_overlap(&a, &b));
+    }
+
+    #[test]
+    fn types_match_with_bindings_tuple() {
+        let mut gen = TypeVarGen::new();
+        let var_a = gen.fresh();
+        let pattern = Type::Tuple(vec![Type::Var(var_a), Type::String]);
+        let actual = Type::Tuple(vec![Type::Int, Type::String]);
+        let mut bindings = HashMap::new();
+        assert!(super::types_match_with_bindings(
+            &pattern, &actual, &mut bindings
+        ));
+        assert_eq!(bindings.get(&var_a), Some(&Type::Int));
+    }
+
+    #[test]
+    fn types_match_with_bindings_tuple_no_match() {
+        let pattern = Type::Tuple(vec![Type::Int, Type::String]);
+        let actual = Type::Tuple(vec![Type::Int, Type::Bool]);
+        let mut bindings = HashMap::new();
+        assert!(!super::types_match_with_bindings(
+            &pattern, &actual, &mut bindings
+        ));
     }
 }

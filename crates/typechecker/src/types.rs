@@ -1335,6 +1335,13 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
             parts.push(canonical_name_inner(ret, var_map));
             format!("$Fun{}${}", params.len(), parts.join("$"))
         }
+        Type::Tuple(elems) => {
+            let elem_strs: Vec<String> = elems
+                .iter()
+                .map(|e| canonical_name_inner(e, var_map))
+                .collect();
+            format!("$Tup{}${}", elems.len(), elem_strs.join("$"))
+        }
         Type::Own(inner) | Type::MaybeOwn(_, inner) => canonical_name_inner(inner, var_map),
         Type::Var(id) => {
             let next = var_map.len();

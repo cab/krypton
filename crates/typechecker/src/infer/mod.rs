@@ -3009,7 +3009,9 @@ fn import_cached_instances(
                         Err((TypeError::DuplicateInstance { .. }, _)) => {
                             // Expected: same instance imported via multiple transitive paths
                         }
-                        Err(_) => {}
+                        Err((e, span)) => {
+                            panic!("ICE: unexpected error registering imported instance: {e:?} at {span:?}")
+                        }
                     }
                     imported_instance_defs.push(
                         crate::module_interface::instance_summary_to_def_info(inst_summary),
@@ -3748,7 +3750,7 @@ fn register_impl_instances(
                 Type::Bool => "Bool".to_string(),
                 Type::String => "String".to_string(),
                 Type::Unit => "Unit".to_string(),
-                Type::Fn(_params, _) => {
+                Type::Fn(_, _) | Type::Tuple(_) => {
                     if !local_trait_names.contains(trait_name) {
                         return Err(spanned(
                             TypeError::OrphanInstance {

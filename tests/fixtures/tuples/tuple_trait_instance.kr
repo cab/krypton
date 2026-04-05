@@ -1,0 +1,11 @@
+# expect: ok
+
+trait Describe[a] {
+    fun describe(x: a) -> String
+}
+
+impl Describe[(Int, String)] {
+    fun describe(_x) = "ok"
+}
+
+fun use_it(pair: (Int, String)) -> String = describe(pair)

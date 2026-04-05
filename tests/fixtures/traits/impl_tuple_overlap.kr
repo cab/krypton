@@ -1,0 +1,11 @@
+# expect: error E0309
+trait Test[a] {
+    fun test(x: a) -> String
+}
+impl[a] Test[(a, Int)] {
+    fun test(x) = "first"
+}
+impl[b] Test[(String, b)] {
+    fun test(x) = "second"
+}
+fun main() = 0
