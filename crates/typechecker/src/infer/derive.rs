@@ -81,7 +81,7 @@ pub(super) fn collect_derived_constraints_for_type(
     }
 
     let mut bindings = HashMap::new();
-    if !match_type_with_bindings(&instance.target_type, field_type, &mut bindings) {
+    if !match_type_with_bindings(&instance.target_types[0], field_type, &mut bindings) {
         return false;
     }
 

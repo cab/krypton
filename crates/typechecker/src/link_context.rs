@@ -513,7 +513,7 @@ mod tests {
             },
             trait_name: TraitName::new(trait_module.to_string(), trait_name.to_string()),
             target_type_name: target.to_string(),
-            target_type: Type::Named(target.to_string(), vec![]),
+            target_types: vec![Type::Named(target.to_string(), vec![])],
             type_var_ids: HashMap::new(),
             constraints: vec![],
             method_summaries: vec![],

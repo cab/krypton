@@ -30,11 +30,11 @@ fn main() -> Int =
       v6
   }
 
-fn Functor$$Box$$fmap(v7: Box[c9], v8: (c9) -> e9) -> ~Box[e9] =
+fn Functor$$Box$$fmap(v7: Box[e9], v8: (e9) -> g9) -> ~Box[g9] =
   switch v7 {
-    0 (v9: c9) ->
-      let v10: e9 = call_closure v8(v9)
-      let v11: ~Box[e9] = construct Box::Box#0(v10)
+    0 (v9: e9) ->
+      let v10: g9 = call_closure v8(v9)
+      let v11: ~Box[g9] = construct Box::Box#0(v10)
       v11
   }
 

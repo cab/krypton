@@ -29,5 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Pair: forall a b. (a, b) -> Pair[a, b]
-Bifunctor$$Pair$$bimap: (Pair[c9, d9], (c9) -> g9, (d9) -> h9) -> ~Pair[g9, h9]
+main: () -> Unit
+Shown$$Int$$shown: (Int) -> ~String

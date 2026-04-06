@@ -22,14 +22,14 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn Functor$$Box$$fmap(v0: Box[u8], v1: (u8) -> w8) -> ~Box[w8] =
+fn Functor$$Box$$fmap(v0: Box[w8], v1: (w8) -> y8) -> ~Box[y8] =
   switch v0 {
-    0 (v2: u8) ->
-      let v3: w8 = call_closure v1(v2)
-      let v4: ~Box[w8] = construct Box::Box#0(v3)
+    0 (v2: w8) ->
+      let v3: y8 = call_closure v1(v2)
+      let v4: ~Box[y8] = construct Box::Box#0(v3)
       v4
   }
 
-fn Container$$Box$$wrap(v5: p8) -> ~Box[p8] =
-  let v6: ~Box[p8] = construct Box::Box#0(v5)
+fn Container$$Box$$wrap(v5: a9) -> ~Box[a9] =
+  let v6: ~Box[a9] = construct Box::Box#0(v5)
   v6

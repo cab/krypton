@@ -161,6 +161,10 @@ pub enum TypeError {
     OrphanInstance {
         trait_name: String,
         ty: String,
+        /// Modules that were consulted during the orphan check (trait module +
+        /// each type argument's defining module). Empty when the check wasn't
+        /// performed (e.g. well-formedness failure before orphan resolution).
+        modules_checked: Vec<String>,
     },
     OwnedTypeImpl {
         trait_name: String,
@@ -522,8 +526,12 @@ impl TypeError {
                 Some(format!("required by a bound in `{}`", bound))
             }
             TypeError::NoInstance { .. } => None,
-            TypeError::OrphanInstance { trait_name, ty } => {
-                Some(format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty))
+            TypeError::OrphanInstance { trait_name, ty, modules_checked } => {
+                let mut msg = format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty);
+                if !modules_checked.is_empty() {
+                    msg.push_str(&format!(" (checked modules: {})", modules_checked.join(", ")));
+                }
+                Some(msg)
             }
             TypeError::OwnedTypeImpl { trait_name, ty } => {
                 Some(format!("implement `{}` for `{}` instead; the `~` ownership qualifier is erased for trait resolution", trait_name, ty))
@@ -930,12 +938,22 @@ impl fmt::Display for TypeError {
                     trait_name, ty
                 )
             }
-            TypeError::OrphanInstance { trait_name, ty } => {
-                write!(
-                    f,
-                    "orphan instance: cannot implement `{}` for `{}`",
-                    trait_name, ty
-                )
+            TypeError::OrphanInstance { trait_name, ty, modules_checked } => {
+                if modules_checked.is_empty() {
+                    write!(
+                        f,
+                        "orphan instance: cannot implement `{}` for `{}`",
+                        trait_name, ty
+                    )
+                } else {
+                    write!(
+                        f,
+                        "orphan instance: cannot implement `{}` for `{}` \u{2014} neither the trait nor any of its type arguments is defined in this module (checked: {})",
+                        trait_name,
+                        ty,
+                        modules_checked.join(", ")
+                    )
+                }
             }
             TypeError::OwnedTypeImpl { trait_name, ty } => {
                 write!(

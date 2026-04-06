@@ -2,11 +2,10 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module traits__hkt_functor
+module modules__multi_param_orphan_arg_local
 
-type Box[a] = Box#0(a)
-trait Functor[l8] { fmap(l8[m8], (m8) -> n8): l8[n8] }
-instance traits__hkt_functor.Functor[Box] { fmap=Functor$$Box$$fmap }
+type Bar = Bar#0(Int)
+instance multi_param_convert_lib.Convert[Bar$$String] { convert=Convert$$Bar$$String$$convert }
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
@@ -20,10 +19,8 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn Functor$$Box$$fmap(v0: Box[u8], v1: (u8) -> w8) -> ~Box[w8] =
-  switch v0 {
-    0 (v2: u8) ->
-      let v3: w8 = call_closure v1(v2)
-      let v4: ~Box[w8] = construct Box::Box#0(v3)
-      v4
-  }
+fn main() -> Unit =
+  ()
+
+fn Convert$$Bar$$String$$convert(v0: Bar) -> ~String =
+  "bar"

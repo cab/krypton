@@ -1,0 +1,14 @@
+# expect: error E0309
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl[a] Convert[Vec[a], String] {
+    fun convert(x: Vec[a]) -> String = "array"
+}
+
+impl Convert[Vec[Int], String] {
+    fun convert(x: Vec[Int]) -> String = "array-int"
+}
+
+fun main() = ()

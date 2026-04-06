@@ -517,7 +517,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             InstanceDefInfo {
                 trait_name: TraitName::new("test".to_string(), "Render".to_string()),
                 target_type_name: "Int".to_string(),
-                target_type: Type::Int,
+                target_types: vec![Type::Int],
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
                 methods: vec![render_int_method],
@@ -526,7 +526,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             InstanceDefInfo {
                 trait_name: TraitName::new("test".to_string(), "Render".to_string()),
                 target_type_name: "Wrap".to_string(),
-                target_type: wrap_a_ty.clone(),
+                target_types: vec![wrap_a_ty.clone()],
                 type_var_ids: HashMap::from([("a".to_string(), var_a)]),
                 constraints: vec![ResolvedConstraint {
                     trait_name: TraitName::new("test".to_string(), "Render".to_string()),

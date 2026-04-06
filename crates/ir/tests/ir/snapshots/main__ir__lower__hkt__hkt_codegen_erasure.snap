@@ -47,11 +47,11 @@ fn main() -> Unit =
       v22
   }
 
-fn Functor$$Box$$fmap(v23: Box[u9], v24: (u9) -> w9) -> ~Box[w9] =
+fn Functor$$Box$$fmap(v23: Box[w9], v24: (w9) -> y9) -> ~Box[y9] =
   switch v23 {
-    0 (v25: u9) ->
-      let v26: w9 = call_closure v24(v25)
-      let v27: ~Box[w9] = construct Box::Box#0(v26)
+    0 (v25: w9) ->
+      let v26: y9 = call_closure v24(v25)
+      let v27: ~Box[y9] = construct Box::Box#0(v26)
       v27
   }
 

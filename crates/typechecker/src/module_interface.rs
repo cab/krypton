@@ -206,8 +206,10 @@ pub struct TraitMethodSummary {
 pub struct InstanceSummary {
     pub key: LocalSymbolKey,
     pub trait_name: TraitName,
+    /// Joined display form of the type arguments (e.g., `"Int, String"`).
     pub target_type_name: String,
-    pub target_type: Type,
+    /// Type arguments. Length 1 for single-parameter traits.
+    pub target_types: Vec<Type>,
     pub type_var_ids: HashMap<String, TypeVarId>,
     pub constraints: Vec<crate::typed_ast::ResolvedConstraint>,
     pub method_summaries: Vec<InstanceMethodSummary>,
@@ -512,7 +514,7 @@ fn extract_instances(instances: &[InstanceDefInfo]) -> Vec<InstanceSummary> {
             },
             trait_name: inst.trait_name.clone(),
             target_type_name: inst.target_type_name.clone(),
-            target_type: inst.target_type.clone(),
+            target_types: inst.target_types.clone(),
             type_var_ids: inst.type_var_ids.clone(),
             constraints: inst.constraints.clone(),
             method_summaries: inst
@@ -801,7 +803,7 @@ pub fn instance_summary_to_def_info(is: &InstanceSummary) -> InstanceDefInfo {
     InstanceDefInfo {
         trait_name: is.trait_name.clone(),
         target_type_name: is.target_type_name.clone(),
-        target_type: is.target_type.clone(),
+        target_types: is.target_types.clone(),
         type_var_ids: is.type_var_ids.clone(),
         constraints: is.constraints.clone(),
         methods: is

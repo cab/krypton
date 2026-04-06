@@ -5607,7 +5607,9 @@ pub fn lower_module(
                 .filter(|inst| !inst.constraints.is_empty())
                 .map(|inst| ParamInstanceInfo {
                     trait_name: inst.trait_name.clone(),
-                    target_type: inst.target_type.clone(),
+                    // M30-T4: IR consumes only the first type arg until
+                    // multi-parameter resolution lands in M30-T5.
+                    target_type: inst.target_types[0].clone(),
                     type_var_ids: inst.type_var_ids.clone(),
                     constraints: inst
                         .constraints
@@ -5624,7 +5626,7 @@ pub fn lower_module(
                 .filter(|(_, inst)| !inst.constraints.is_empty())
                 .map(|(path, inst)| ParamInstanceInfo {
                     trait_name: inst.trait_name.clone(),
-                    target_type: inst.target_type.clone(),
+                    target_type: inst.target_types[0].clone(),
                     type_var_ids: inst.type_var_ids.clone(),
                     constraints: inst
                         .constraints
@@ -5666,7 +5668,7 @@ pub fn lower_module(
             for inst in &typed.instance_defs {
                 infos.push(InstanceSourceInfo {
                     trait_name: inst.trait_name.clone(),
-                    target_type: inst.target_type.clone(),
+                    target_type: inst.target_types[0].clone(),
                     target_type_name: inst.target_type_name.clone(),
                     source_module: typed.module_path.clone(),
                 });
@@ -5675,7 +5677,7 @@ pub fn lower_module(
                 if path.as_str() != typed.module_path {
                     infos.push(InstanceSourceInfo {
                         trait_name: inst.trait_name.clone(),
-                        target_type: inst.target_type.clone(),
+                        target_type: inst.target_types[0].clone(),
                         target_type_name: inst.target_type_name.clone(),
                         source_module: path.as_str().to_string(),
                     });
@@ -6210,7 +6212,7 @@ pub fn lower_module(
             .collect();
         InstanceDef {
             trait_name: inst.trait_name.clone(),
-            target_type: inst.target_type.clone().into(),
+            target_type: inst.target_types[0].clone().into(),
             target_type_name: inst.target_type_name.clone(),
             method_fn_ids,
             sub_dict_requirements,

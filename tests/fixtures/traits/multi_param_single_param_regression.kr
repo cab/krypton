@@ -1,0 +1,10 @@
+# expect: ok
+trait Shown[a] {
+    fun shown(x: a) -> String
+}
+
+impl Shown[Int] {
+    fun shown(x: Int) -> String = "int"
+}
+
+fun main() = ()

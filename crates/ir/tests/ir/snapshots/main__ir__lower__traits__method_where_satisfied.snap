@@ -36,7 +36,7 @@ fn main() -> Unit =
 fn Default$$Int$$default() -> ~Int =
   0
 
-fn R$$List$$lol(v8: Dict[traits__method_where_satisfied.Default, m8], v9: List[m8]) -> ~List[m8] =
-  let v10: m8 = trait_call traits__method_where_satisfied.Default.default(v8)
-  let v11: ~List[m8] = construct List::Cons#0(v10, v9)
+fn R$$List$$lol(v8: Dict[traits__method_where_satisfied.Default, y8], v9: List[y8]) -> ~List[y8] =
+  let v10: y8 = trait_call traits__method_where_satisfied.Default.default(v8)
+  let v11: ~List[y8] = construct List::Cons#0(v10, v9)
   v11

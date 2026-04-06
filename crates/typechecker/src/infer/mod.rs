@@ -3004,18 +3004,18 @@ fn import_cached_instances(
     // so always include its defining module for instance resolution.
     source_modules.insert("core/vec");
 
-    let mut seen_instances: HashSet<(TraitName, Type)> = HashSet::new();
+    let mut seen_instances: HashSet<(TraitName, Vec<Type>)> = HashSet::new();
     for mod_path in &source_modules {
         if let Some(iface) = interface_cache.get(*mod_path) {
             for inst_summary in &iface.exported_instances {
                 let key = (
                     inst_summary.trait_name.clone(),
-                    inst_summary.target_type.clone(),
+                    inst_summary.target_types.clone(),
                 );
                 if seen_instances.insert(key) {
                     let instance = InstanceInfo {
                         trait_name: inst_summary.trait_name.clone(),
-                        target_type: inst_summary.target_type.clone(),
+                        target_types: inst_summary.target_types.clone(),
                         target_type_name: inst_summary.target_type_name.clone(),
                         type_var_ids: inst_summary.type_var_ids.clone(),
                         constraints: inst_summary.constraints.clone(),
@@ -3316,6 +3316,10 @@ fn register_local_traits(
                     *span,
                 ));
             }
+            // M30-T4: index the first trait type parameter for arity/InstanceInfo
+            // but register ALL trait type parameters in the method resolution
+            // environment so multi-parameter trait method bodies can reference
+            // `b`, `c`, etc. (Resolution of multi-param instances is M30-T5.)
             let type_param = &trait_type_params[0];
             let tv_id = state.gen.fresh();
             let type_var_arity = type_param.arity;
@@ -3323,6 +3327,11 @@ fn register_local_traits(
             let mut type_param_arity = HashMap::new();
             type_param_map.insert(type_param.name.clone(), tv_id);
             type_param_arity.insert(type_param.name.clone(), type_param.arity);
+            for extra in trait_type_params.iter().skip(1) {
+                let extra_id = state.gen.fresh();
+                type_param_map.insert(extra.name.clone(), extra_id);
+                type_param_arity.insert(extra.name.clone(), extra.arity);
+            }
 
             // Check that all trait methods have explicit return type annotations
             for method in methods {
@@ -3581,7 +3590,7 @@ fn process_deriving(
                     .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
                 let instance = InstanceInfo {
                     trait_name: derive_full_trait_name.clone(),
-                    target_type: target_type.clone(),
+                    target_types: vec![target_type.clone()],
                     target_type_name: target_type_name.clone(),
                     type_var_ids: derived_type_var_ids.clone(),
                     constraints: derived_constraints.clone(),
@@ -3629,7 +3638,7 @@ fn process_deriving(
                 derived_instance_defs.push(InstanceDefInfo {
                     trait_name: derive_full_trait_name.clone(),
                     target_type_name,
-                    target_type,
+                    target_types: vec![target_type],
                     type_var_ids: derived_type_var_ids.clone(),
                     constraints: derived_constraints.clone(),
                     methods: vec![typed_ast::InstanceMethod {
@@ -3706,9 +3715,11 @@ fn register_impl_instances(
             ..
         } = decl
         {
-            let target_type = &type_args[0];
-            let wildcard_count =
-                validate_impl_wildcards(target_type).map_err(|e| spanned(e, *span))?;
+            // Compute total wildcard count across all type args.
+            let mut wildcard_count = 0usize;
+            for arg in type_args {
+                wildcard_count += validate_impl_wildcards(arg).map_err(|e| spanned(e, *span))?;
+            }
 
             let type_param_map: HashMap<String, TypeVarId> = if !type_params.is_empty() {
                 type_params
@@ -3717,7 +3728,9 @@ fn register_impl_instances(
                     .collect()
             } else {
                 let mut impl_type_param_names = HashSet::new();
-                collect_type_expr_var_names(target_type, &mut impl_type_param_names);
+                for arg in type_args {
+                    collect_type_expr_var_names(arg, &mut impl_type_param_names);
+                }
                 for constraint in type_constraints {
                     let tv_name = require_single_param_var(constraint)?;
                     impl_type_param_names.insert(tv_name.to_string());
@@ -3731,108 +3744,144 @@ fn register_impl_instances(
             };
             let type_param_arity: HashMap<String, usize> = HashMap::new();
 
-            let resolved_target = if wildcard_count > 0 {
-                resolve_impl_target(
-                    target_type,
-                    &type_param_map,
-                    &type_param_arity,
-                    &state.registry,
-                    &mut state.gen,
-                )
-                .map_err(|e| spanned(e, *span))?
-            } else {
-                type_registry::resolve_type_expr(
-                    target_type,
-                    &type_param_map,
-                    &type_param_arity,
-                    &state.registry,
-                    ResolutionContext::UserAnnotation,
-                    None,
-                )
-                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
-                .map_err(|e| spanned(e, *span))?
-            };
+            // Resolve each type argument into a concrete `Type`.
+            let mut resolved_targets: Vec<Type> = Vec::with_capacity(type_args.len());
+            for arg in type_args {
+                let arg_wildcards =
+                    validate_impl_wildcards(arg).map_err(|e| spanned(e, *span))?;
+                let resolved = if arg_wildcards > 0 {
+                    resolve_impl_target(
+                        arg,
+                        &type_param_map,
+                        &type_param_arity,
+                        &state.registry,
+                        &mut state.gen,
+                    )
+                    .map_err(|e| spanned(e, *span))?
+                } else {
+                    type_registry::resolve_type_expr(
+                        arg,
+                        &type_param_map,
+                        &type_param_arity,
+                        &state.registry,
+                        ResolutionContext::UserAnnotation,
+                        None,
+                    )
+                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
+                    .map_err(|e| spanned(e, *span))?
+                };
+                resolved_targets.push(resolved);
+            }
 
-            let target_name = match &resolved_target {
-                Type::Named(name, _) => {
-                    if state.registry.lookup_type(name).is_none() {
+            // Classify each arg for orphan checking: determine whether the arg's
+            // head-type is locally defined, and collect a list of modules that
+            // were consulted so we can report them in a helpful error message.
+            let trait_is_local = local_trait_names.contains(trait_name);
+            let mut any_arg_is_local = false;
+            let mut modules_checked: Vec<String> = Vec::new();
+            if trait_is_local {
+                modules_checked.push(module_path.to_string());
+                any_arg_is_local = true; // trait locality alone satisfies the rule
+            }
+            // Also validate well-formedness per arg (unknown type, owned type).
+            for rt in &resolved_targets {
+                match rt {
+                    Type::Named(name, _) => {
+                        if state.registry.lookup_type(name).is_none() {
+                            return Err(spanned(
+                                TypeError::OrphanInstance {
+                                    trait_name: trait_name.clone(),
+                                    ty: name.clone(),
+                                    modules_checked: modules_checked.clone(),
+                                },
+                                *span,
+                            ));
+                        }
+                        if let Some((src, _)) =
+                            state.imports.imported_type_info.get(name)
+                        {
+                            modules_checked.push(src.clone());
+                        } else {
+                            modules_checked.push(module_path.to_string());
+                            any_arg_is_local = true;
+                        }
+                    }
+                    Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit => {
+                        modules_checked.push("<builtin>".to_string());
+                    }
+                    Type::Fn(_, _) | Type::Tuple(_) => {
+                        // Fn / Tuple types are structural — they have no defining
+                        // module and cannot satisfy the orphan rule on their own.
+                        modules_checked.push("<structural>".to_string());
+                    }
+                    Type::Var(_) => {
+                        // Type parameters carry no locality information.
+                    }
+                    Type::Own(inner) => {
                         return Err(spanned(
-                            TypeError::OrphanInstance {
+                            TypeError::OwnedTypeImpl {
                                 trait_name: trait_name.clone(),
-                                ty: name.clone(),
+                                ty: format!("{}", inner),
                             },
                             *span,
                         ));
                     }
-                    let trait_is_local = local_trait_names.contains(trait_name);
-                    let type_is_local = !state.imports.imported_type_info.contains_key(name);
-                    if !type_is_local && !trait_is_local {
+                    other => {
                         return Err(spanned(
                             TypeError::OrphanInstance {
                                 trait_name: trait_name.clone(),
-                                ty: name.clone(),
+                                ty: format!("{}", other),
+                                modules_checked: modules_checked.clone(),
                             },
                             *span,
                         ));
                     }
-                    name.clone()
                 }
-                Type::Int => "Int".to_string(),
-                Type::Float => "Float".to_string(),
-                Type::Bool => "Bool".to_string(),
-                Type::String => "String".to_string(),
-                Type::Unit => "Unit".to_string(),
-                Type::Fn(_, _) | Type::Tuple(_) => {
-                    if !local_trait_names.contains(trait_name) {
-                        return Err(spanned(
-                            TypeError::OrphanInstance {
-                                trait_name: trait_name.clone(),
-                                ty: format!("{}", resolved_target),
-                            },
-                            *span,
-                        ));
-                    }
-                    if type_param_map.is_empty() {
-                        format!("{}", resolved_target.renumber_for_display())
-                    } else {
-                        let names: std::collections::HashMap<crate::types::TypeVarId, &str> =
-                            type_param_map
-                                .iter()
-                                .map(|(n, &id)| (id, n.as_str()))
-                                .collect();
-                        crate::types::format_type_with_var_map(&resolved_target, &names)
-                    }
-                }
-                Type::Own(inner) => {
-                    return Err(spanned(
-                        TypeError::OwnedTypeImpl {
-                            trait_name: trait_name.clone(),
-                            ty: format!("{}", inner),
-                        },
-                        *span,
-                    ));
-                }
-                other => {
-                    return Err(spanned(
-                        TypeError::OrphanInstance {
-                            trait_name: trait_name.clone(),
-                            ty: format!("{}", other),
-                        },
-                        *span,
-                    ));
-                }
-            };
+            }
 
-            let target_display_name = if type_param_map.is_empty() {
-                format!("{}", resolved_target.renumber_for_display())
-            } else {
+            // Final orphan check: either the trait is local, or at least one type
+            // argument has its head type defined locally.
+            let joined_display = {
                 let names: std::collections::HashMap<crate::types::TypeVarId, &str> =
                     type_param_map
                         .iter()
                         .map(|(n, &id)| (id, n.as_str()))
                         .collect();
-                crate::types::format_type_with_var_map(&resolved_target, &names)
+                resolved_targets
+                    .iter()
+                    .map(|rt| {
+                        if type_param_map.is_empty() {
+                            format!("{}", rt.renumber_for_display())
+                        } else {
+                            crate::types::format_type_with_var_map(rt, &names)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
             };
+            if !trait_is_local && !any_arg_is_local {
+                return Err(spanned(
+                    TypeError::OrphanInstance {
+                        trait_name: trait_name.clone(),
+                        ty: joined_display.clone(),
+                        modules_checked: modules_checked.clone(),
+                    },
+                    *span,
+                ));
+            }
+
+            // Compute `target_name` for KindMismatch and InvalidImpl error messages
+            // (still keyed on the first type argument for single-HK traits).
+            let target_name = match &resolved_targets[0] {
+                Type::Named(name, _) => name.clone(),
+                Type::Int => "Int".to_string(),
+                Type::Float => "Float".to_string(),
+                Type::Bool => "Bool".to_string(),
+                Type::String => "String".to_string(),
+                Type::Unit => "Unit".to_string(),
+                _ => format!("{}", resolved_targets[0]),
+            };
+            let target_display_name = joined_display.clone();
 
             for constraint in type_constraints {
                 if constraint.trait_name != "shared" {
@@ -3908,7 +3957,11 @@ fn register_impl_instances(
                 }
             }
 
-            let target_type_name = type_to_canonical_name(&resolved_target);
+            let target_type_name = resolved_targets
+                .iter()
+                .map(type_to_canonical_name)
+                .collect::<Vec<_>>()
+                .join("$$");
             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
             // Validation deferred to instance resolution phase.
             let impl_full_trait_name = trait_registry
@@ -3919,7 +3972,7 @@ fn register_impl_instances(
                 resolve_constraints(type_constraints, trait_registry, module_path)?;
             let instance = InstanceInfo {
                 trait_name: impl_full_trait_name,
-                target_type: resolved_target,
+                target_types: resolved_targets,
                 target_type_name,
                 type_var_ids: type_param_map.clone(),
                 constraints: resolved_constraints,
@@ -4535,10 +4588,13 @@ fn typecheck_impl_methods(
             // For HKT partial application, strip anonymous type var args from the
             // target type so it acts as a partial constructor for substitution.
             // e.g., Named("Result", [Var(e), Var(anon)]) → Named("Result", [Var(e)])
+            // For HK partial application + single-parameter substitution, we still
+            // only use the first type arg. Multi-parameter trait method resolution
+            // is deferred to M30-T5.
             let resolved_target = if trait_info.type_var_arity > 0 {
-                strip_anon_type_args(&instance.target_type, &instance.type_var_ids)
+                strip_anon_type_args(&instance.target_types[0], &instance.type_var_ids)
             } else {
-                instance.target_type.clone()
+                instance.target_types[0].clone()
             };
             let target_type_name = instance.target_type_name.clone();
 
@@ -4556,13 +4612,47 @@ fn typecheck_impl_methods(
                     .find(|m| m.name == method.name)
                     .unwrap();
 
+                // Freshen any trait type vars other than the primary one (`tv_id`)
+                // before substitution. For multi-parameter traits the method types
+                // reference additional trait type vars (e.g. `b` in
+                // `trait Convert[a, b] { fun convert(x: a) -> b }`); these must be
+                // freshened per-impl so that unifications from one impl do not
+                // leak into the shared substitution and pollute the next impl.
+                let mut extra_subst: HashMap<TypeVarId, Type> = HashMap::new();
+                for pt in &trait_method.param_types {
+                    for v in free_vars(pt) {
+                        if v != tv_id {
+                            extra_subst
+                                .entry(v)
+                                .or_insert_with(|| Type::Var(state.gen.fresh()));
+                        }
+                    }
+                }
+                for v in free_vars(&trait_method.return_type) {
+                    if v != tv_id {
+                        extra_subst
+                            .entry(v)
+                            .or_insert_with(|| Type::Var(state.gen.fresh()));
+                    }
+                }
+                let freshen_extras = |ty: &Type| -> Type {
+                    let mut out = ty.clone();
+                    for (old_id, new_ty) in &extra_subst {
+                        out = substitute_type_var(&out, *old_id, new_ty);
+                    }
+                    out
+                };
+
                 let concrete_param_types: Vec<Type> = trait_method
                     .param_types
                     .iter()
-                    .map(|t| substitute_type_var(t, tv_id, &resolved_target))
+                    .map(|t| substitute_type_var(&freshen_extras(t), tv_id, &resolved_target))
                     .collect();
-                let _concrete_ret_type =
-                    substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
+                let _concrete_ret_type = substitute_type_var(
+                    &freshen_extras(&trait_method.return_type),
+                    tv_id,
+                    &resolved_target,
+                );
 
                 let mut impl_method_tpm: HashMap<String, TypeVarId> = instance.type_var_ids.clone();
                 let mut impl_method_tpa = HashMap::new();
@@ -4625,8 +4715,11 @@ fn typecheck_impl_methods(
                     }
                 }
                 if let Some(ref ret_ty_expr) = method.return_type {
-                    let concrete_ret =
-                        substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
+                    let concrete_ret = substitute_type_var(
+                        &freshen_extras(&trait_method.return_type),
+                        tv_id,
+                        &resolved_target,
+                    );
                     let annotated_ret = type_registry::resolve_type_expr(
                         ret_ty_expr,
                         &impl_method_tpm,
@@ -4665,8 +4758,11 @@ fn typecheck_impl_methods(
                     state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
                 }
                 let prev_fn_return_type = state.env.fn_return_type.take();
-                let concrete_ret_type =
-                    substitute_type_var(&trait_method.return_type, tv_id, &resolved_target);
+                let concrete_ret_type = substitute_type_var(
+                    &freshen_extras(&trait_method.return_type),
+                    tv_id,
+                    &resolved_target,
+                );
                 state.env.fn_return_type = Some(concrete_ret_type);
 
                 let impl_qual_snap = state.subst.push_qual_scope();
@@ -4707,7 +4803,7 @@ fn typecheck_impl_methods(
                 let final_ret_type = state.subst.apply(&body_typed.ty);
 
                 let expected_ret_type = state.subst.apply(&substitute_type_var(
-                    &trait_method.return_type,
+                    &freshen_extras(&trait_method.return_type),
                     tv_id,
                     &resolved_target,
                 ));
@@ -4747,10 +4843,13 @@ fn typecheck_impl_methods(
                 .lookup_trait_by_name(trait_name)
                 .map(|ti| ti.trait_name())
                 .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
+            // Preserve the full multi-param tuple; only the first is used for
+            // resolution today, but downstream IR must see the real shape.
+            let full_target_types = instance.target_types.clone();
             instance_defs.push(InstanceDefInfo {
                 trait_name: inst_trait_name,
                 target_type_name,
-                target_type: resolved_target,
+                target_types: full_target_types,
                 type_var_ids: instance.type_var_ids.clone(),
                 constraints: instance.constraints.clone(),
                 methods: instance_methods,

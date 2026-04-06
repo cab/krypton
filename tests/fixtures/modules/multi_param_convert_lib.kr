@@ -1,0 +1,5 @@
+pub trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+pub type Foo = Foo(Int)

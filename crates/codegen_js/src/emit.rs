@@ -135,7 +135,8 @@ fn compute_dict_js_name(inst: &krypton_ir::InstanceDef) -> String {
 fn compute_dict_js_name_from_summary(
     inst: &krypton_typechecker::module_interface::InstanceSummary,
 ) -> String {
-    let ir_type: Type = inst.target_type.clone().into();
+    // M30-T4: codegen uses only the first type argument until M30-T5 lands.
+    let ir_type: Type = inst.target_types[0].clone().into();
     let type_key = if has_type_vars(&ir_type) {
         canonical_type_name(&ir_type)
     } else {
@@ -338,7 +339,7 @@ fn build_registry_from_link_view(
         }
         let js_name = compute_dict_js_name_from_summary(inst);
         let source_module = Some(path.as_str().to_string());
-        let ir_type: Type = inst.target_type.clone().into();
+        let ir_type: Type = inst.target_types[0].clone().into();
         register_instance(
             &mut registry,
             js_name,

@@ -1,0 +1,10 @@
+# expect: ok
+trait MyConvert[a, b] {
+    fun my_convert(x: a) -> b
+}
+
+impl MyConvert[Int, String] {
+    fun my_convert(x: Int) -> String = "ok"
+}
+
+fun main() = ()

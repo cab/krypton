@@ -388,8 +388,10 @@ pub struct ResolvedConstraint {
 #[derive(Clone)]
 pub struct InstanceDefInfo {
     pub trait_name: TraitName,
+    /// Joined display form of the type arguments (e.g., `"Int, String"`).
     pub target_type_name: String,
-    pub target_type: Type,
+    /// Type arguments. Length 1 for single-parameter traits, N for multi-parameter.
+    pub target_types: Vec<Type>,
     pub type_var_ids: HashMap<String, TypeVarId>,
     pub constraints: Vec<ResolvedConstraint>,
     pub methods: Vec<InstanceMethod>,

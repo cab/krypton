@@ -39,7 +39,10 @@ pub struct TraitMethod {
 
 pub struct InstanceInfo {
     pub trait_name: TraitName,
-    pub target_type: Type,
+    /// Type arguments of the instance. Length 1 for single-parameter traits,
+    /// N for multi-parameter traits like `impl Convert[Int, String]`.
+    pub target_types: Vec<Type>,
+    /// Display form, joining multiple arguments with ", " for multi-param traits.
     pub target_type_name: String,
     pub type_var_ids: HashMap<String, TypeVarId>,
     pub constraints: Vec<ResolvedConstraint>,
@@ -80,6 +83,7 @@ impl TraitRegistry {
             return Err(TypeError::OrphanInstance {
                 trait_name: info.name.clone(),
                 ty: info.name.clone(),
+                modules_checked: vec![],
             });
         }
         // Check bare-name collision with a trait from a different module
@@ -99,7 +103,8 @@ impl TraitRegistry {
     }
 
     pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), (TypeError, Span)> {
-        // Check for overlapping (trait, type) pairs via unification (only same-trait instances)
+        // Check for overlapping (trait, type tuple) pairs via positionwise unification
+        // (only same-trait instances)
         let trait_indices = self
             .instances_by_trait
             .get(&info.trait_name)
@@ -107,7 +112,7 @@ impl TraitRegistry {
             .unwrap_or_default();
         for &idx in &trait_indices {
             let existing = &self.instances[idx];
-            if types_overlap(&existing.target_type, &info.target_type) {
+            if instances_overlap(&existing.target_types, &info.target_types) {
                 let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info
                     .type_var_ids
                     .iter()
@@ -122,9 +127,9 @@ impl TraitRegistry {
                 return Err((
                     TypeError::DuplicateInstance {
                         trait_name: info.trait_name.local_name.clone(),
-                        ty: crate::types::format_type_with_var_map(&info.target_type, &names),
-                        existing_ty: crate::types::format_type_with_var_map(
-                            &existing.target_type,
+                        ty: format_type_tuple_with_var_map(&info.target_types, &names),
+                        existing_ty: format_type_tuple_with_var_map(
+                            &existing.target_types,
                             &existing_names,
                         ),
                     },
@@ -162,6 +167,35 @@ impl TraitRegistry {
         self.find_instance_inner(trait_name, ty, &mut resolution_stack)
     }
 
+    /// Look up an instance by trait name and a tuple of type arguments.
+    ///
+    /// This is the multi-parameter analogue of `find_instance`. Matching is
+    /// positionwise using a shared bindings map, so type variables consistently
+    /// resolve across all positions. For single-parameter traits, passing a
+    /// 1-element slice is equivalent to `find_instance`.
+    ///
+    /// Constraint resolution for multi-parameter instances is deferred to
+    /// M30-T5 — this method only handles the structural matching path.
+    pub fn find_instance_multi(
+        &self,
+        trait_name: &TraitName,
+        tys: &[Type],
+    ) -> Option<&InstanceInfo> {
+        let indices = self.instances_by_trait.get(trait_name)?;
+        indices.iter().map(|&i| &self.instances[i]).find(|inst| {
+            if inst.target_types.len() != tys.len() {
+                return false;
+            }
+            let mut bindings = HashMap::new();
+            inst.target_types
+                .iter()
+                .zip(tys.iter())
+                .all(|(pattern, actual)| {
+                    types_match_with_bindings(pattern, actual, &mut bindings)
+                })
+        })
+    }
+
     fn find_instance_inner<'a>(
         &'a self,
         trait_name: &TraitName,
@@ -186,7 +220,7 @@ impl TraitRegistry {
                             return false;
                         };
                         let Some((inst_ctor, inst_bound_args)) =
-                            split_instance_type_constructor(&inst.target_type)
+                            split_instance_type_constructor(&inst.target_types[0])
                         else {
                             return false;
                         };
@@ -237,7 +271,7 @@ impl TraitRegistry {
         let matched = indices.and_then(|idxs| {
             idxs.iter().map(|&i| &self.instances[i]).find(|inst| {
                 let mut bindings = HashMap::new();
-                if !types_match_with_bindings(&inst.target_type, ty, &mut bindings) {
+                if !types_match_with_bindings(&inst.target_types[0], ty, &mut bindings) {
                     return false;
                 }
 
@@ -262,9 +296,13 @@ impl TraitRegistry {
             Some(t) => t,
             None => return Ok(()),
         };
+        debug_assert!(
+            instance.target_types.len() == 1 || trait_info.superclasses.is_empty(),
+            "multi-parameter traits with superclasses are not supported yet (M30-T5)"
+        );
         for superclass in &trait_info.superclasses {
             if self
-                .find_instance(superclass, &instance.target_type)
+                .find_instance(superclass, &instance.target_types[0])
                 .is_none()
             {
                 return Err(TypeError::NoInstance {
@@ -340,7 +378,7 @@ impl TraitRegistry {
                         continue;
                     };
                     let Some((inst_ctor, inst_bound_args)) =
-                        split_instance_type_constructor(&inst.target_type)
+                        split_instance_type_constructor(&inst.target_types[0])
                     else {
                         continue;
                     };
@@ -407,7 +445,7 @@ impl TraitRegistry {
             }
 
             let mut bindings = HashMap::new();
-            if !types_match_with_bindings(&inst.target_type, ty, &mut bindings) {
+            if !types_match_with_bindings(&inst.target_types[0], ty, &mut bindings) {
                 continue;
             }
 
@@ -484,7 +522,11 @@ fn instance_type_display(inst: &InstanceInfo) -> String {
         .iter()
         .map(|(name, id)| (*id, name.as_str()))
         .collect();
-    format_type_with_names(&inst.target_type, &id_to_name)
+    inst.target_types
+        .iter()
+        .map(|t| format_type_with_names(t, &id_to_name))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Describes why a conditional instance failed to match.
@@ -655,6 +697,10 @@ fn split_instance_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
 /// aliasing, then attempts trial unification. The substitution is discarded —
 /// only the success/failure result matters. Because the substitution is local,
 /// starting TypeVarGen at 0 is safe (no external ID collision possible).
+///
+/// Kept for unit-test coverage; the production path uses `instances_overlap`
+/// which handles multi-parameter instance tuples with a shared substitution.
+#[cfg(test)]
 fn types_overlap(a: &Type, b: &Type) -> bool {
     let mut gen = TypeVarGen::new();
     let a_fresh = freshen_type_vars(a, &mut gen);
@@ -663,6 +709,53 @@ fn types_overlap(a: &Type, b: &Type) -> bool {
     unify(&a_fresh, &b_fresh, &mut subst).is_ok()
 }
 
+/// Check whether two instance type-argument tuples overlap.
+///
+/// Two tuples overlap iff they have the same arity and each pair of positions
+/// unifies **in a single shared substitution** — meaning type variables at
+/// different positions within the same instance must resolve consistently.
+/// Without a shared substitution, `impl[a] Convert[Array[a], a]` and
+/// `impl[b] Convert[Array[Int], String]` would falsely report non-overlap
+/// because the `a` in position 0 and `a` in position 1 would be treated as
+/// independent free variables.
+fn instances_overlap(a: &[Type], b: &[Type]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut gen = TypeVarGen::new();
+    // Freshen a's vars together (shared var_map) and b's vars together (own var_map),
+    // into a common generator namespace.
+    let mut a_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    let mut b_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    let a_fresh: Vec<Type> = a
+        .iter()
+        .map(|t| freshen_inner(t, &mut a_map, &mut gen))
+        .collect();
+    let b_fresh: Vec<Type> = b
+        .iter()
+        .map(|t| freshen_inner(t, &mut b_map, &mut gen))
+        .collect();
+    let mut subst = Substitution::new();
+    for (x, y) in a_fresh.iter().zip(b_fresh.iter()) {
+        if unify(x, y, &mut subst).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+fn format_type_tuple_with_var_map(
+    types: &[Type],
+    names: &HashMap<TypeVarId, &str>,
+) -> String {
+    types
+        .iter()
+        .map(|t| crate::types::format_type_with_var_map(t, names))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(test)]
 fn freshen_type_vars(ty: &Type, gen: &mut TypeVarGen) -> Type {
     let mut var_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
     freshen_inner(ty, &mut var_map, gen)
@@ -761,11 +854,32 @@ mod tests {
         let var_a = TypeVarGen::new().fresh();
         InstanceInfo {
             trait_name: tn(trait_name),
-            target_type,
+            target_types: vec![target_type],
             target_type_name: target_type_name.to_string(),
             type_var_ids: HashMap::from([(String::from("a"), var_a)]),
             constraints,
 
+            span: (0, 0),
+            is_builtin: false,
+        }
+    }
+
+    fn instance_multi(
+        trait_name: &str,
+        target_types: Vec<Type>,
+        type_var_ids: HashMap<String, crate::types::TypeVarId>,
+    ) -> InstanceInfo {
+        let joined = target_types
+            .iter()
+            .map(|t| format!("{t}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        InstanceInfo {
+            trait_name: tn(trait_name),
+            target_types,
+            target_type_name: joined,
+            type_var_ids,
+            constraints: vec![],
             span: (0, 0),
             is_builtin: false,
         }
@@ -824,7 +938,7 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("Functor"),
-                target_type: Type::Named("List".to_string(), vec![]),
+                target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
@@ -854,7 +968,7 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("Functor"),
-                target_type: Type::Named("List".to_string(), vec![]),
+                target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
@@ -866,7 +980,7 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("Foldable"),
-                target_type: Type::Named("List".to_string(), vec![]),
+                target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::new(),
                 constraints: vec![],
@@ -878,7 +992,7 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("Traversable"),
-                target_type: Type::Named("List".to_string(), vec![]),
+                target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
                 type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
                 constraints: vec![rc("Functor", "f"), rc("Foldable", "f")],
@@ -909,7 +1023,7 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("Functor"),
-                target_type: Type::Named("Result".to_string(), vec![Type::Var(var_e)]),
+                target_types: vec![Type::Named("Result".to_string(), vec![Type::Var(var_e)])],
                 target_type_name: "Result".to_string(),
                 type_var_ids: HashMap::from([(String::from("e"), var_e)]),
                 constraints: vec![rc("Show", "e")],
@@ -1005,10 +1119,10 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("Show"),
-                target_type: Type::Named(
+                target_types: vec![Type::Named(
                     "Map".to_string(),
                     vec![Type::Var(var_k), Type::Var(var_v)],
-                ),
+                )],
                 target_type_name: "Map".to_string(),
                 type_var_ids: HashMap::from([
                     (String::from("k"), var_k),
@@ -1214,5 +1328,208 @@ mod tests {
         assert!(!super::types_match_with_bindings(
             &pattern, &actual, &mut bindings
         ));
+    }
+
+    // ---- M30-T4: multi-parameter instance registration, overlap, lookup ----
+
+    #[test]
+    fn register_multi_param_instance_stores_target_types() {
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info_with_arity("Convert", 0))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        assert_eq!(registry.instances()[0].target_types, vec![Type::Int, Type::String]);
+    }
+
+    #[test]
+    fn multi_param_exact_overlap_rejected() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        let result = registry.register_instance(instance_multi(
+            "Convert",
+            vec![Type::Int, Type::String],
+            HashMap::new(),
+        ));
+        assert!(matches!(
+            result,
+            Err((TypeError::DuplicateInstance { .. }, _))
+        ));
+    }
+
+    #[test]
+    fn multi_param_parametric_overlap_rejected() {
+        let mut gen = TypeVarGen::new();
+        let var_a = gen.fresh();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        // impl[a] Convert[Array[a], String]
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![
+                    Type::Named("Array".into(), vec![Type::Var(var_a)]),
+                    Type::String,
+                ],
+                HashMap::from([(String::from("a"), var_a)]),
+            ))
+            .unwrap();
+        // impl Convert[Array[Int], String] overlaps
+        let result = registry.register_instance(instance_multi(
+            "Convert",
+            vec![
+                Type::Named("Array".into(), vec![Type::Int]),
+                Type::String,
+            ],
+            HashMap::new(),
+        ));
+        assert!(matches!(
+            result,
+            Err((TypeError::DuplicateInstance { .. }, _))
+        ));
+    }
+
+    #[test]
+    fn multi_param_non_overlap_accepted() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::Float],
+                HashMap::new(),
+            ))
+            .unwrap();
+        assert_eq!(registry.instances().len(), 2);
+    }
+
+    #[test]
+    fn multi_param_length_mismatch_does_not_overlap() {
+        // A length-1 and a length-2 instance under the same trait name must
+        // not be reported as overlapping. This is a safety test; the frontend
+        // enforces arity separately, but the registry must be robust.
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int],
+                HashMap::new(),
+            ))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        assert_eq!(registry.instances().len(), 2);
+    }
+
+    #[test]
+    fn multi_param_shared_var_overlap_rejected() {
+        // impl[a] Convert[Array[a], a]  vs  impl Convert[Array[Int], Int]
+        // The `a` must be shared across positions in the first instance,
+        // so the second must overlap (position 1 is consistently Int).
+        let mut gen = TypeVarGen::new();
+        let var_a = gen.fresh();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![
+                    Type::Named("Array".into(), vec![Type::Var(var_a)]),
+                    Type::Var(var_a),
+                ],
+                HashMap::from([(String::from("a"), var_a)]),
+            ))
+            .unwrap();
+        let result = registry.register_instance(instance_multi(
+            "Convert",
+            vec![
+                Type::Named("Array".into(), vec![Type::Int]),
+                Type::Int,
+            ],
+            HashMap::new(),
+        ));
+        assert!(matches!(
+            result,
+            Err((TypeError::DuplicateInstance { .. }, _))
+        ));
+    }
+
+    #[test]
+    fn multi_param_shared_var_non_overlap_accepted() {
+        // impl[a] Convert[Array[a], a]  vs  impl Convert[Array[Int], String]
+        // Position 1 disagrees (a must be Int per pos 0 but is String), so no overlap.
+        let mut gen = TypeVarGen::new();
+        let var_a = gen.fresh();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![
+                    Type::Named("Array".into(), vec![Type::Var(var_a)]),
+                    Type::Var(var_a),
+                ],
+                HashMap::from([(String::from("a"), var_a)]),
+            ))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![
+                    Type::Named("Array".into(), vec![Type::Int]),
+                    Type::String,
+                ],
+                HashMap::new(),
+            ))
+            .unwrap();
+        assert_eq!(registry.instances().len(), 2);
+    }
+
+    #[test]
+    fn find_instance_multi_positionwise_match() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        assert!(registry
+            .find_instance_multi(&tn("Convert"), &[Type::Int, Type::String])
+            .is_some());
+        assert!(registry
+            .find_instance_multi(&tn("Convert"), &[Type::Int, Type::Float])
+            .is_none());
+        assert!(registry
+            .find_instance_multi(&tn("Convert"), &[Type::Int])
+            .is_none());
     }
 }

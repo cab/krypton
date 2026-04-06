@@ -1,0 +1,14 @@
+# expect: ok
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "str"
+}
+
+impl Convert[Int, Float] {
+    fun convert(x: Int) -> Float = 1.0
+}
+
+fun main() = ()

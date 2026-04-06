@@ -1,0 +1,8 @@
+# expect: error E0302
+import multi_param_convert_lib.{Convert}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "foreign"
+}
+
+fun main() = ()

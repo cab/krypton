@@ -32,16 +32,16 @@ fn main(v6: Box[Int]) -> Box[Int] =
   let v8: Box[Int] = call apply(v7, v6)
   v8
 
-fn Functor$$Box$$fmap(v9: Box[k9], v10: (k9) -> m9) -> ~Box[m9] =
+fn Functor$$Box$$fmap(v9: Box[m9], v10: (m9) -> o9) -> ~Box[o9] =
   switch v9 {
-    0 (v11: k9) ->
-      let v12: m9 = call_closure v10(v11)
-      let v13: ~Box[m9] = construct Box::Box#0(v12)
+    0 (v11: m9) ->
+      let v12: o9 = call_closure v10(v11)
+      let v13: ~Box[o9] = construct Box::Box#0(v12)
       v13
   }
 
-fn Hoist$$Int$$hoist(v14: p8[Int], v15: (p8[Int]) -> q8[Int]) -> q8[Int] =
-  let v16: q8[Int] = call_closure v15(v14)
+fn Hoist$$Int$$hoist(v14: q9[Int], v15: (q9[Int]) -> r9[Int]) -> r9[Int] =
+  let v16: r9[Int] = call_closure v15(v14)
   v16
 
 fn lambda$28(v3: t8) -> t8 =

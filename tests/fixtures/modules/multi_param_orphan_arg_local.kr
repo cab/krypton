@@ -1,0 +1,10 @@
+# expect: ok
+import multi_param_convert_lib.{Convert}
+
+type Bar = Bar(Int)
+
+impl Convert[Bar, String] {
+    fun convert(x: Bar) -> String = "bar"
+}
+
+fun main() = ()

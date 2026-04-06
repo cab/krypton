@@ -20,13 +20,13 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[v8, v8], v1: (v8) -> v8) -> ~Predicate[v8, v8] =
-  let v8: (v8) -> v8 = make_closure(lambda$25, [v0, v1])
-  let v9: ~Predicate[v8, v8] = construct Predicate(v8)
+fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[x8, x8], v1: (x8) -> x8) -> ~Predicate[x8, x8] =
+  let v8: (x8) -> x8 = make_closure(lambda$25, [v0, v1])
+  let v9: ~Predicate[x8, x8] = construct Predicate(v8)
   v9
 
-fn lambda$25(v2: Predicate[v8, v8], v3: (v8) -> v8, v4: v8) -> v8 =
-  let v5: (v8) -> v8 = project v2.0
-  let v6: v8 = call_closure v3(v4)
-  let v7: v8 = call_closure v5(v6)
+fn lambda$25(v2: Predicate[x8, x8], v3: (x8) -> x8, v4: x8) -> x8 =
+  let v5: (x8) -> x8 = project v2.0
+  let v6: x8 = call_closure v3(v4)
+  let v7: x8 = call_closure v5(v6)
   v7

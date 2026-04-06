@@ -277,7 +277,9 @@ fn build_instance_class_map(
             "{}/{}$${}",
             path.as_str(), inst.trait_name.local_name, inst.target_type_name
         );
-        let target_type: krypton_ir::Type = inst.target_type.clone().into();
+        // M30-T4: Until multi-param resolution lands in M30-T5, codegen only
+        // consumes the first type argument.
+        let target_type: krypton_ir::Type = inst.target_types[0].clone().into();
         let requirements: Vec<DictRequirement> = inst
             .constraints
             .iter()
