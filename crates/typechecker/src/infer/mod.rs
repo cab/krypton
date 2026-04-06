@@ -120,6 +120,7 @@ mod derive;
 mod expr;
 mod imports;
 mod pattern;
+mod resolve_multi;
 
 #[derive(Clone)]
 pub(super) struct QualifiedExport {
@@ -748,36 +749,26 @@ pub(super) fn no_instance_error(
     err
 }
 
-/// Recursively replace Type::Var(old_id) with Type::Var(new_id) in a type tree.
-fn remap_type_var(ty: &Type, old_id: TypeVarId, new_id: TypeVarId) -> Type {
+/// Recursively rewrite type variables according to a remap table. Variables
+/// not in the table are left unchanged.
+fn remap_type_vars(ty: &Type, remap: &HashMap<TypeVarId, TypeVarId>) -> Type {
     match ty {
-        Type::Var(id) if *id == old_id => Type::Var(new_id),
+        Type::Var(id) => Type::Var(remap.get(id).copied().unwrap_or(*id)),
         Type::Fn(params, ret) => Type::Fn(
-            params
-                .iter()
-                .map(|p| remap_type_var(p, old_id, new_id))
-                .collect(),
-            Box::new(remap_type_var(ret, old_id, new_id)),
+            params.iter().map(|p| remap_type_vars(p, remap)).collect(),
+            Box::new(remap_type_vars(ret, remap)),
         ),
         Type::Named(name, args) => Type::Named(
             name.clone(),
-            args.iter()
-                .map(|a| remap_type_var(a, old_id, new_id))
-                .collect(),
+            args.iter().map(|a| remap_type_vars(a, remap)).collect(),
         ),
         Type::App(ctor, args) => Type::App(
-            Box::new(remap_type_var(ctor, old_id, new_id)),
-            args.iter()
-                .map(|a| remap_type_var(a, old_id, new_id))
-                .collect(),
+            Box::new(remap_type_vars(ctor, remap)),
+            args.iter().map(|a| remap_type_vars(a, remap)).collect(),
         ),
-        Type::Tuple(elems) => Type::Tuple(
-            elems
-                .iter()
-                .map(|e| remap_type_var(e, old_id, new_id))
-                .collect(),
-        ),
-        Type::Own(inner) => Type::Own(Box::new(remap_type_var(inner, old_id, new_id))),
+        Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| remap_type_vars(e, remap)).collect()),
+        Type::Own(inner) => Type::Own(Box::new(remap_type_vars(inner, remap))),
+        Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(remap_type_vars(inner, remap))),
         _ => ty.clone(),
     }
 }
@@ -3083,17 +3074,32 @@ fn register_imported_trait_defs(
             continue;
         }
 
+        // Build remap table covering primary + all secondary trait type vars.
+        // The source module uses its own TypeVarId namespace; we allocate fresh
+        // ids in the local namespace so that imported method types unify cleanly.
         let new_tv_id = gen.fresh();
-        let old_tv_id = trait_def.type_var_id;
+        let mut new_type_var_ids: Vec<TypeVarId> = Vec::with_capacity(trait_def.type_var_ids.len());
+        new_type_var_ids.push(new_tv_id);
+        let mut remap: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+        if let Some(&primary_old) = trait_def.type_var_ids.first() {
+            remap.insert(primary_old, new_tv_id);
+        } else {
+            remap.insert(trait_def.type_var_id, new_tv_id);
+        }
+        for &old_id in trait_def.type_var_ids.iter().skip(1) {
+            let new_id = gen.fresh();
+            remap.insert(old_id, new_id);
+            new_type_var_ids.push(new_id);
+        }
 
         let mut trait_methods = Vec::new();
         for method in &trait_def.methods {
             let param_types: Vec<Type> = method
                 .param_types
                 .iter()
-                .map(|t| remap_type_var(t, old_tv_id, new_tv_id))
+                .map(|t| remap_type_vars(t, &remap))
                 .collect();
-            let return_type = remap_type_var(&method.return_type, old_tv_id, new_tv_id);
+            let return_type = remap_type_vars(&method.return_type, &remap);
 
             // Method constraints use the method's own type vars (not the trait's),
             // so they don't need remapping.
@@ -3114,6 +3120,8 @@ fn register_imported_trait_defs(
             module_path: trait_def.module_path.clone(),
             type_var: trait_def.type_var.clone(),
             type_var_id: new_tv_id,
+            type_var_ids: new_type_var_ids,
+            type_var_names: trait_def.type_var_names.clone(),
             type_var_arity: trait_def.type_var_arity,
             superclasses: superclass_names,
             methods: trait_methods,
@@ -3288,6 +3296,8 @@ fn register_extern_traits(
                 module_path: module_path.to_string(),
                 type_var: type_var_name.clone(),
                 type_var_id: tv_id,
+                type_var_ids: all_tv_ids.clone(),
+                type_var_names: ext.type_params.clone(),
                 type_var_arity: 0,
                 superclasses: vec![],
                 methods: trait_methods,
@@ -3302,6 +3312,8 @@ fn register_extern_traits(
             module_path: module_path.to_string(),
             type_var: type_var_name,
             type_var_id: tv_id,
+            type_var_ids: all_tv_ids,
+            type_var_names: ext.type_params.clone(),
             type_var_arity: 0,
             superclasses: vec![],
             methods: exported_methods,
@@ -3368,10 +3380,16 @@ fn register_local_traits(
             let mut type_param_arity = HashMap::new();
             type_param_map.insert(type_param.name.clone(), tv_id);
             type_param_arity.insert(type_param.name.clone(), type_param.arity);
+            // Track ALL trait type parameter ids in declaration order so the
+            // multi-param resolution pass can freshen each one at call sites.
+            let mut trait_all_tv_ids: Vec<TypeVarId> = vec![tv_id];
+            let mut trait_all_tv_names: Vec<String> = vec![type_param.name.clone()];
             for extra in trait_type_params.iter().skip(1) {
                 let extra_id = state.gen.fresh();
                 type_param_map.insert(extra.name.clone(), extra_id);
                 type_param_arity.insert(extra.name.clone(), extra.arity);
+                trait_all_tv_ids.push(extra_id);
+                trait_all_tv_names.push(extra.name.clone());
             }
 
             // Check that all trait methods have explicit return type annotations
@@ -3437,7 +3455,11 @@ fn register_local_traits(
                 };
 
                 let fn_ty = Type::Fn(param_types.clone(), Box::new(return_type.clone()));
-                let mut all_vars = vec![tv_id];
+                // Include ALL trait type parameter ids (not just the primary) so
+                // `scheme.instantiate()` freshens secondary trait params at every
+                // call site. Without this, `b` in `Convert[a, b]` would leak across
+                // call sites and the multi-param solver would never see fresh ids.
+                let mut all_vars = trait_all_tv_ids.clone();
                 all_vars.extend_from_slice(&method_tv_ids);
                 let scheme = TypeScheme {
                     vars: all_vars,
@@ -3514,6 +3536,8 @@ fn register_local_traits(
                     module_path: module_path.to_string(),
                     type_var: type_param.name.clone(),
                     type_var_id: tv_id,
+                    type_var_ids: trait_all_tv_ids.clone(),
+                    type_var_names: trait_all_tv_names.clone(),
                     type_var_arity,
                     superclasses: superclass_names.clone(),
                     methods: trait_methods,
@@ -3528,6 +3552,8 @@ fn register_local_traits(
                 module_path: module_path.to_string(),
                 type_var: type_param.name.clone(),
                 type_var_id: tv_id,
+                type_var_ids: trait_all_tv_ids,
+                type_var_names: trait_all_tv_names,
                 type_var_arity,
                 superclasses: superclass_names,
                 methods: exported_methods,
@@ -4450,6 +4476,16 @@ fn infer_function_bodies<'a>(
             Err(_) => state.subst.rollback_qual_scope(qual_snap),
         }
         scc_result?;
+
+        // Eagerly resolve multi-parameter trait method calls before
+        // generalization. Pinning secondary trait params (e.g. `?b = String`)
+        // here ensures they don't get quantified into a function's scheme.
+        resolve_multi::resolve_multi_param_constraints(
+            &fn_bodies,
+            trait_registry,
+            &mut state.subst,
+            &mut state.gen,
+        );
 
         // Generalize against an empty env: all env bindings are either fully-quantified
         // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be

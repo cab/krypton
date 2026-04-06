@@ -1,0 +1,15 @@
+# expect: ok
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "n"
+}
+
+# No return-type annotation: the solver must pin `b = String` from the
+# fact that there is exactly one matching instance for `Convert[Int, _]`.
+fun main() = {
+    let x = convert(42)
+    ()
+}

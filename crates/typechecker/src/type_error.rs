@@ -319,6 +319,13 @@ pub enum TypeError {
         trait_name: String,
         method_name: String,
     },
+    /// A multi-parameter trait method call left one or more trait type
+    /// parameters unresolved after the deferral solver finished. Reported
+    /// under E0301 (NoInstance / unresolved instance).
+    UnresolvedMultiParamConstraint {
+        trait_name: String,
+        params: Vec<String>,
+    },
     DefinitionConflictsWithImport {
         def_name: String,
         source_module: String,
@@ -436,6 +443,7 @@ impl TypeError {
             TypeError::InvalidNullableReturn { .. } => TypeErrorCode::E0602,
             TypeError::InvalidThrowsReturn { .. } => TypeErrorCode::E0603,
             TypeError::AmbiguousType { .. } => TypeErrorCode::E0314,
+            TypeError::UnresolvedMultiParamConstraint { .. } => TypeErrorCode::E0301,
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
             TypeError::DuplicateParam { .. } => TypeErrorCode::E0610,
@@ -709,6 +717,13 @@ impl TypeError {
             }
             TypeError::AmbiguousType { .. } => {
                 Some("add a type annotation to constrain the type, e.g., `let x: Int = default()`".to_string())
+            }
+            TypeError::UnresolvedMultiParamConstraint { trait_name, params } => {
+                Some(format!(
+                    "add a type annotation that pins parameter(s) {} of trait `{}`",
+                    params.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", "),
+                    trait_name,
+                ))
             }
             TypeError::DefinitionConflictsWithImport { def_name, source_module } => {
                 Some(format!("use `import {source_module}.{{{def_name} as alias}}` to import under a different name"))
@@ -1259,6 +1274,17 @@ impl fmt::Display for TypeError {
                     f,
                     "ambiguous type: could not infer the type for trait `{}` in call to `{}`",
                     trait_name, method_name
+                )
+            }
+            TypeError::UnresolvedMultiParamConstraint { trait_name, params } => {
+                let joined = params
+                    .iter()
+                    .map(|p| format!("`{p}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "unresolved trait `{trait_name}`: could not determine type parameter(s) {joined}",
                 )
             }
             TypeError::DefinitionConflictsWithImport {

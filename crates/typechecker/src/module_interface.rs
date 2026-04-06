@@ -188,6 +188,9 @@ pub struct TraitSummary {
     pub module_path: ModulePath,
     pub type_var: String,
     pub type_var_id: TypeVarId,
+    /// All trait type parameter ids in declaration order; `type_var_ids[0] == type_var_id`.
+    pub type_var_ids: Vec<TypeVarId>,
+    pub type_var_names: Vec<String>,
     pub type_var_arity: usize,
     pub superclasses: Vec<TraitName>,
     pub methods: Vec<TraitMethodSummary>,
@@ -488,6 +491,8 @@ fn extract_exported_traits(typed: &TypedModule) -> Vec<TraitSummary> {
             module_path: ModulePath::new(&td.module_path),
             type_var: td.type_var.clone(),
             type_var_id: td.type_var_id,
+            type_var_ids: td.type_var_ids.clone(),
+            type_var_names: td.type_var_names.clone(),
             type_var_arity: td.type_var_arity,
             superclasses: td.superclasses.clone(),
             methods: td
@@ -773,6 +778,8 @@ pub fn trait_summary_to_exported_def(ts: &TraitSummary) -> ExportedTraitDef {
         module_path: ts.module_path.0.clone(),
         type_var: ts.type_var.clone(),
         type_var_id: ts.type_var_id,
+        type_var_ids: ts.type_var_ids.clone(),
+        type_var_names: ts.type_var_names.clone(),
         type_var_arity: ts.type_var_arity,
         superclasses: ts.superclasses.clone(),
         methods: ts

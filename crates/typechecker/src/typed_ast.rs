@@ -350,6 +350,11 @@ pub struct ExportedTraitDef {
     pub module_path: String,
     pub type_var: String,
     pub type_var_id: TypeVarId,
+    /// All trait type parameter ids in declaration order. `type_var_ids[0] == type_var_id`.
+    /// Length 1 for single-parameter traits, N for multi-parameter traits.
+    pub type_var_ids: Vec<TypeVarId>,
+    /// Names parallel to `type_var_ids`.
+    pub type_var_names: Vec<String>,
     /// 0 = kind *, 1 = * -> *, etc.
     pub type_var_arity: usize,
     pub superclasses: Vec<TraitName>,

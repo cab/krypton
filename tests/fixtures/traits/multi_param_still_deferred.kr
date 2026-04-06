@@ -1,0 +1,22 @@
+# expect: error E0301
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "n"
+}
+
+impl Convert[Int, Float] {
+    fun convert(x: Int) -> Float = 0.0
+}
+
+# `a = Int` is pinned by the argument, but `b` is ambiguous between
+# String and Float and there is no return-type context to choose one.
+# The solver leaves the call deferred; the validator reports E0301.
+fun discard[t](x: t) = ()
+
+fun main() = {
+    discard(convert(42))
+    ()
+}

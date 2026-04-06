@@ -63,7 +63,7 @@ fn typed_callee_resolved_ref(expr: &TypedExpr) -> Option<&ResolvedBindingRef> {
 
 /// Collect type variable bindings while enforcing consistency for repeated vars.
 /// Fixed non-variable structure that does not bind anything is ignored.
-fn collect_type_var_bindings_strict(
+pub(super) fn collect_type_var_bindings_strict(
     pattern: &Type,
     actual: &Type,
     bindings: &mut HashMap<TypeVarId, Type>,
@@ -656,35 +656,92 @@ pub(super) fn check_trait_instances(
                                     .or_insert_with(|| type_args[0].clone());
                             }
                         }
-                        // Check dispatch type var — must always be bindable from the
-                        // method signature (params, return type, or explicit type args)
-                        let dispatch_ty = bindings
-                            .get(&info.type_var_id)
-                            .cloned()
-                            .or_else(|| args.first().map(|arg| subst.apply(&arg.ty)))
-                            .unwrap_or(actual_ret);
-                        let concrete_ty = strip_own(&dispatch_ty);
-                        if let Some(v) = leading_type_var(&concrete_ty) {
-                            if !fn_type_vars.contains(&v) {
+                        // Multi-parameter trait method validation.
+                        // The single-param dispatch logic below assumes a single
+                        // dispatch type variable; for multi-param traits we instead
+                        // build the full position tuple and look up via
+                        // `find_instance_multi`.
+                        if info.type_var_ids.len() > 1 {
+                            let mut tys: Vec<Type> = Vec::with_capacity(info.type_var_ids.len());
+                            let mut any_unresolved = false;
+                            let mut unresolved_names: Vec<String> = Vec::new();
+                            for (i, tv_id) in info.type_var_ids.iter().enumerate() {
+                                let raw = bindings
+                                    .get(tv_id)
+                                    .cloned()
+                                    .map(|t| subst.apply(&t))
+                                    .unwrap_or_else(|| Type::Var(*tv_id));
+                                let stripped = strip_own(&raw);
+                                if let Some(v) = leading_type_var(&stripped) {
+                                    if !fn_type_vars.contains(&v) {
+                                        any_unresolved = true;
+                                        let name = info
+                                            .type_var_names
+                                            .get(i)
+                                            .cloned()
+                                            .unwrap_or_else(|| format!("?{}", tv_id.0));
+                                        unresolved_names.push(name);
+                                    }
+                                }
+                                tys.push(stripped);
+                            }
+                            if any_unresolved {
                                 return Err(spanned(
-                                    TypeError::AmbiguousType {
+                                    TypeError::UnresolvedMultiParamConstraint {
                                         trait_name: trait_id.local_name.clone(),
-                                        method_name: method_name.to_string(),
+                                        params: unresolved_names,
                                     },
                                     expr.span,
                                 ));
                             }
-                        } else if trait_registry
-                            .find_instance(trait_id, &concrete_ty)
-                            .is_none()
-                        {
-                            return Err(no_instance_error(
-                                trait_registry,
-                                trait_id,
-                                &concrete_ty,
-                                expr.span,
-                                var_names,
-                            ));
+                            if trait_registry.find_instance_multi(trait_id, &tys).is_none() {
+                                // Reuse the single-param error path for the
+                                // first concrete position; the joined display
+                                // form is handled inside the registry.
+                                let display = tys
+                                    .iter()
+                                    .map(|t| format!("{t}"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                return Err(spanned(
+                                    TypeError::NoInstance {
+                                        trait_name: trait_id.local_name.clone(),
+                                        ty: display,
+                                        required_by: None,
+                                    },
+                                    expr.span,
+                                ));
+                            }
+                        } else {
+                            // Single-parameter dispatch (existing path).
+                            let dispatch_ty = bindings
+                                .get(&info.type_var_id)
+                                .cloned()
+                                .or_else(|| args.first().map(|arg| subst.apply(&arg.ty)))
+                                .unwrap_or(actual_ret);
+                            let concrete_ty = strip_own(&dispatch_ty);
+                            if let Some(v) = leading_type_var(&concrete_ty) {
+                                if !fn_type_vars.contains(&v) {
+                                    return Err(spanned(
+                                        TypeError::AmbiguousType {
+                                            trait_name: trait_id.local_name.clone(),
+                                            method_name: method_name.to_string(),
+                                        },
+                                        expr.span,
+                                    ));
+                                }
+                            } else if trait_registry
+                                .find_instance(trait_id, &concrete_ty)
+                                .is_none()
+                            {
+                                return Err(no_instance_error(
+                                    trait_registry,
+                                    trait_id,
+                                    &concrete_ty,
+                                    expr.span,
+                                    var_names,
+                                ));
+                            }
                         }
                         // Check method-level where constraints
                         for (req_trait, req_var) in &method.constraints {

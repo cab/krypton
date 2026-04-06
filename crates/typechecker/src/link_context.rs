@@ -499,6 +499,8 @@ mod tests {
             module_path: ModulePath::new(module_path),
             type_var: "a".to_string(),
             type_var_id: crate::types::TypeVarId(0),
+            type_var_ids: vec![crate::types::TypeVarId(0)],
+            type_var_names: vec!["a".to_string()],
             type_var_arity: 0,
             superclasses: vec![],
             methods: vec![],

@@ -1,0 +1,29 @@
+# expect: ok
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+# Only Convert[Bool, _] is Bool → Int. Two String-returning instances
+# share `b = String`, so the outer call below is ambiguous (Multiple)
+# until the inner call pins `?b_inner = Int`.
+impl Convert[Bool, Int] {
+    fun convert(x: Bool) -> Int = 0
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "i"
+}
+
+impl Convert[Float, String] {
+    fun convert(x: Float) -> String = "f"
+}
+
+# Walker collects two entries:
+#   outer: [?b_inner, String]    -- pass 1: Multiple → defer
+#   inner: [Bool, ?b_inner]      -- pass 1: Unique → pins ?b_inner = Int
+# Pass 2 re-walks the outer entry; the substitution now makes its
+# positions concrete (`[Int, String]`) and validation succeeds.
+fun main() = {
+    let s: String = convert(convert(true))
+    ()
+}

@@ -1,0 +1,14 @@
+# expect: error E0301
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "n"
+}
+
+# Both positions concrete (`a = Bool`, `b = String`) but no impl exists.
+fun main() = {
+    let s: String = convert(true)
+    ()
+}

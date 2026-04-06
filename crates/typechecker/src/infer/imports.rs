@@ -738,8 +738,12 @@ impl ModuleInferenceState {
                             method.param_types.clone(),
                             Box::new(method.return_type.clone()),
                         );
+                        // Include all trait type parameter ids so secondary
+                        // params (e.g. `b` in `Convert[a, b]`) are freshened on
+                        // every call instantiation. Required for multi-parameter
+                        // trait resolution.
                         let scheme = TypeScheme {
-                            vars: vec![trait_def.type_var_id],
+                            vars: trait_def.type_var_ids.clone(),
                             constraints: Vec::new(),
                             ty: fn_ty,
                             var_names: HashMap::new(),

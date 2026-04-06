@@ -1,0 +1,13 @@
+# expect: ok
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "n"
+}
+
+fun main() = {
+    let s: String = convert(42)
+    ()
+}

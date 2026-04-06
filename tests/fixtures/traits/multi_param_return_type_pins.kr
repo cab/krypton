@@ -1,0 +1,19 @@
+# expect: ok
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+    fun convert(x: Int) -> String = "n"
+}
+
+impl Convert[Int, Float] {
+    fun convert(x: Int) -> Float = 0.0
+}
+
+# Return-type annotation drives the pick: with two impls, only the
+# annotation makes the call non-ambiguous.
+fun main() = {
+    let s: String = convert(42)
+    ()
+}

@@ -7,11 +7,25 @@ use crate::unify::{unify, TypeError};
 
 use crate::typed_ast::{ResolvedConstraint, TraitName};
 
+/// Result of a partial multi-parameter instance lookup.
+pub enum PartialMatch<'a> {
+    Unique(&'a InstanceInfo),
+    Multiple,
+    None_,
+}
+
 pub struct TraitInfo {
     pub name: String,
     pub module_path: String,
     pub type_var: String,
     pub type_var_id: TypeVarId,
+    /// All trait type parameter ids in declaration order (`type_var_ids[0] == type_var_id`).
+    /// For single-parameter traits this has length 1; for multi-parameter traits like
+    /// `trait Convert[a, b]` it carries `[a_id, b_id]`. Used by the multi-param
+    /// resolution pass to freshen and unify all trait params at call sites.
+    pub type_var_ids: Vec<TypeVarId>,
+    /// Names of all trait type parameters in declaration order, parallel to `type_var_ids`.
+    pub type_var_names: Vec<String>,
     /// 0 = kind *, 1 = * -> *, 2 = * -> * -> *, etc.
     pub type_var_arity: usize,
     pub superclasses: Vec<TraitName>,
@@ -167,15 +181,76 @@ impl TraitRegistry {
         self.find_instance_inner(trait_name, ty, &mut resolution_stack)
     }
 
+    /// Partial-match lookup for multi-parameter trait instances.
+    ///
+    /// Unlike `find_instance_multi` which requires every position to match concretely,
+    /// this allows positions whose resolved type is `Type::Var(_)` to act as wildcards.
+    /// Returns `Unique` only when exactly one instance passes; `Multiple` if more than
+    /// one passes; `None_` if zero pass. Where-clause constraints on candidate instances
+    /// are only enforced when *all* positions in the query are concrete — otherwise the
+    /// candidate is left "potentially valid" for a later resolver pass.
+    pub fn find_instance_multi_partial(
+        &self,
+        trait_name: &TraitName,
+        tys: &[Type],
+    ) -> PartialMatch<'_> {
+        let Some(indices) = self.instances_by_trait.get(trait_name) else {
+            return PartialMatch::None_;
+        };
+        let all_concrete = tys.iter().all(|t| !contains_type_var(t));
+        let mut found: Option<&InstanceInfo> = None;
+        for &idx in indices {
+            let inst = &self.instances[idx];
+            if inst.target_types.len() != tys.len() {
+                continue;
+            }
+            let mut bindings = HashMap::new();
+            let positions_match =
+                inst.target_types
+                    .iter()
+                    .zip(tys.iter())
+                    .all(|(pattern, actual)| {
+                        // Wildcard: actual is a free type var → matches anything
+                        if matches!(actual, Type::Var(_)) {
+                            return true;
+                        }
+                        types_match_with_bindings(pattern, actual, &mut bindings)
+                    });
+            if !positions_match {
+                continue;
+            }
+            // Where-clause constraints only enforced when all positions are concrete.
+            if all_concrete && !inst.constraints.is_empty() {
+                let constraints_ok = inst.constraints.iter().all(|c| {
+                    let Some(type_var_id) = inst.type_var_ids.get(&c.type_var) else {
+                        return false;
+                    };
+                    let Some(bound_ty) = bindings.get(type_var_id) else {
+                        return false;
+                    };
+                    self.find_instance(&c.trait_name, bound_ty).is_some()
+                });
+                if !constraints_ok {
+                    continue;
+                }
+            }
+            if found.is_some() {
+                return PartialMatch::Multiple;
+            }
+            found = Some(inst);
+        }
+        match found {
+            Some(inst) => PartialMatch::Unique(inst),
+            None => PartialMatch::None_,
+        }
+    }
+
     /// Look up an instance by trait name and a tuple of type arguments.
     ///
     /// This is the multi-parameter analogue of `find_instance`. Matching is
     /// positionwise using a shared bindings map, so type variables consistently
     /// resolve across all positions. For single-parameter traits, passing a
     /// 1-element slice is equivalent to `find_instance`.
-    ///
-    /// Constraint resolution for multi-parameter instances is deferred to
-    /// M30-T5 — this method only handles the structural matching path.
     pub fn find_instance_multi(
         &self,
         trait_name: &TraitName,
@@ -761,6 +836,29 @@ fn freshen_type_vars(ty: &Type, gen: &mut TypeVarGen) -> Type {
     freshen_inner(ty, &mut var_map, gen)
 }
 
+/// Returns true if `ty` contains any `Type::Var`.
+fn contains_type_var(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Fn(params, ret) => params.iter().any(contains_type_var) || contains_type_var(ret),
+        Type::Named(_, args) => args.iter().any(contains_type_var),
+        Type::App(ctor, args) => contains_type_var(ctor) || args.iter().any(contains_type_var),
+        Type::Tuple(elems) => elems.iter().any(contains_type_var),
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => contains_type_var(inner),
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => false,
+    }
+}
+
+/// Freshen all free type vars in `ty` using a fresh substitution map.
+/// Wrapper around `freshen_inner`, exposed for the multi-param solver.
+pub(crate) fn freshen_type(
+    ty: &Type,
+    var_map: &mut HashMap<TypeVarId, TypeVarId>,
+    gen: &mut TypeVarGen,
+) -> Type {
+    freshen_inner(ty, var_map, gen)
+}
+
 fn freshen_inner(
     ty: &Type,
     var_map: &mut HashMap<TypeVarId, TypeVarId>,
@@ -837,6 +935,8 @@ mod tests {
             module_path: "test".to_string(),
             type_var: "a".to_string(),
             type_var_id: var_a,
+            type_var_ids: vec![var_a],
+            type_var_names: vec!["a".to_string()],
             type_var_arity,
             superclasses: vec![],
             methods: Vec::<TraitMethod>::new(),
@@ -1216,12 +1316,15 @@ mod tests {
     fn trait_alias_lookup() {
         let mut registry = TraitRegistry::new();
         let trait_name = TraitName::new("other/module".to_string(), "Eq".to_string());
+        let var_a = TypeVarGen::new().fresh();
         registry
             .register_trait(TraitInfo {
                 name: "Eq".to_string(),
                 module_path: "other/module".to_string(),
                 type_var: "a".to_string(),
-                type_var_id: TypeVarGen::new().fresh(),
+                type_var_id: var_a,
+                type_var_ids: vec![var_a],
+                type_var_names: vec!["a".to_string()],
                 type_var_arity: 0,
                 superclasses: vec![],
                 methods: Vec::<TraitMethod>::new(),
@@ -1244,12 +1347,15 @@ mod tests {
     #[test]
     fn bare_name_collision_detected() {
         let mut registry = TraitRegistry::new();
+        let var_a = TypeVarGen::new().fresh();
         registry
             .register_trait(TraitInfo {
                 name: "Eq".to_string(),
                 module_path: "module_a".to_string(),
                 type_var: "a".to_string(),
-                type_var_id: TypeVarGen::new().fresh(),
+                type_var_id: var_a,
+                type_var_ids: vec![var_a],
+                type_var_names: vec!["a".to_string()],
                 type_var_arity: 0,
                 superclasses: vec![],
                 methods: Vec::<TraitMethod>::new(),
@@ -1259,11 +1365,14 @@ mod tests {
             .unwrap();
 
         // Registering a trait with the same bare name from a different module should error
+        let var_a2 = TypeVarGen::new().fresh();
         let result = registry.register_trait(TraitInfo {
             name: "Eq".to_string(),
             module_path: "module_b".to_string(),
             type_var: "a".to_string(),
-            type_var_id: TypeVarGen::new().fresh(),
+            type_var_id: var_a2,
+            type_var_ids: vec![var_a2],
+            type_var_names: vec!["a".to_string()],
             type_var_arity: 0,
             superclasses: vec![],
             methods: Vec::<TraitMethod>::new(),
@@ -1509,6 +1618,75 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(registry.instances().len(), 2);
+    }
+
+    #[test]
+    fn find_instance_multi_partial_unique() {
+        use super::PartialMatch;
+        let mut gen = TypeVarGen::new();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        // Query: position 0 = Int, position 1 = unknown (var) → unique match
+        let var_b = gen.fresh();
+        match registry.find_instance_multi_partial(&tn("Convert"), &[Type::Int, Type::Var(var_b)]) {
+            PartialMatch::Unique(_) => {}
+            _ => panic!("expected unique match"),
+        }
+    }
+
+    #[test]
+    fn find_instance_multi_partial_ambiguous() {
+        use super::PartialMatch;
+        let mut gen = TypeVarGen::new();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::Float],
+                HashMap::new(),
+            ))
+            .unwrap();
+        let var_b = gen.fresh();
+        match registry.find_instance_multi_partial(&tn("Convert"), &[Type::Int, Type::Var(var_b)]) {
+            PartialMatch::Multiple => {}
+            _ => panic!("expected multiple"),
+        }
+    }
+
+    #[test]
+    fn find_instance_multi_partial_zero() {
+        use super::PartialMatch;
+        let mut gen = TypeVarGen::new();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Convert")).unwrap();
+        registry
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int, Type::String],
+                HashMap::new(),
+            ))
+            .unwrap();
+        let var_b = gen.fresh();
+        match registry.find_instance_multi_partial(&tn("Convert"), &[Type::Bool, Type::Var(var_b)])
+        {
+            PartialMatch::None_ => {}
+            _ => panic!("expected none"),
+        }
     }
 
     #[test]
