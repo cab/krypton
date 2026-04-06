@@ -527,7 +527,7 @@ impl[a] Convert[Array[a], String] where a: Show {
             assert_eq!(type_params.len(), 1);
             assert_eq!(type_params[0].name, "a");
             assert_eq!(type_constraints.len(), 1);
-            assert_eq!(type_constraints[0].type_var, "a");
+            assert_eq!(type_constraints[0].as_single_param_var(), Some("a"));
             assert_eq!(type_constraints[0].trait_name, "Show");
         }
         other => panic!("expected DefImpl, got {:?}", other),

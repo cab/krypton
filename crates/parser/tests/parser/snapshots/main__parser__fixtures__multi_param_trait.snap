@@ -1,5 +1,5 @@
 ---
-source: crates/parser/tests/fixture_test.rs
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
@@ -144,8 +144,13 @@ decls:
             - 141
             - 142
       type_constraints:
-        - type_var: a
-          trait_name: Show
+        - trait_name: Show
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 176
+                  - 177
           span:
             - 176
             - 183

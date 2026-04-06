@@ -81,6 +81,7 @@ pub enum TypeErrorCode {
     E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
     E0610, // Duplicate parameter name
+    E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -343,6 +344,10 @@ pub enum TypeError {
         existing: String,
         incoming: String,
     },
+    UnsupportedConstraint {
+        trait_name: String,
+        reason: &'static str,
+    },
 }
 
 impl TypeError {
@@ -422,6 +427,7 @@ impl TypeError {
             TypeError::InstanceConstructorOnJsTarget { .. } => TypeErrorCode::E0609,
             TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
             TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
+            TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
         }
     }
 
@@ -702,6 +708,7 @@ impl TypeError {
             TypeError::QualifierConflict { .. } => {
                 Some("a value cannot be both owned (~) and shared in the same position".to_string())
             }
+            TypeError::UnsupportedConstraint { reason, .. } => Some((*reason).to_string()),
         }
     }
 
@@ -1273,6 +1280,13 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "conflicting ownership requirements: already constrained to {existing}, but also required to be {incoming}"
+                )
+            }
+            TypeError::UnsupportedConstraint { trait_name, .. } => {
+                write!(
+                    f,
+                    "unsupported trait constraint shape for `{}`",
+                    trait_name
                 )
             }
         }

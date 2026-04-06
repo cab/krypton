@@ -877,33 +877,79 @@ fn where_clause_parser<'tokens, 'src: 'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
+    let ty = type_expr_parser();
+
+    // bound := TraitName ('[' TypeExpr (',' TypeExpr)* ']')?
+    // Accepts `shared` as a bare bound name (no brackets).
     let bound_name = select! {
         Token::Ident(s) => s.to_string(),
         Token::Shared => "shared".to_string(),
     };
-    let type_constraint_group = select! { Token::Ident(s) => s.to_string() }
+    let bound = bound_name.then(
+        ty.clone()
+            .separated_by(symbol(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket))
+            .or_not(),
+    );
+
+    // Sugar form: IDENT ':' bound ('+' bound)*
+    // Expands to one `TypeConstraint` per bound, with the subject var as the
+    // first type argument.
+    let sugar_form = select! { Token::Ident(s) => s.to_string() }
+        .map_with(|name, e| (name, to_span(e.span())))
         .then_ignore(symbol(Token::Colon))
         .then(
-            bound_name
+            bound
+                .clone()
                 .separated_by(symbol(Token::Plus))
                 .at_least(1)
                 .collect::<Vec<_>>(),
         )
-        .map_with(|(type_var, bounds), e| {
+        .map_with(|((subject, subject_span), bounds), e| {
             let span = to_span(e.span());
             bounds
                 .into_iter()
-                .map(|trait_name| TypeConstraint {
-                    type_var: type_var.clone(),
-                    trait_name,
-                    span,
+                .map(|(trait_name, extra_args)| {
+                    let mut type_args = vec![TypeExpr::Var {
+                        name: subject.clone(),
+                        span: subject_span,
+                    }];
+                    if let Some(extra) = extra_args {
+                        type_args.extend(extra);
+                    }
+                    TypeConstraint {
+                        trait_name,
+                        type_args,
+                        span,
+                    }
                 })
                 .collect::<Vec<_>>()
         });
 
+    // Explicit form: TraitName '[' TypeExpr (',' TypeExpr)* ']'
+    let explicit_form = select! { Token::Ident(s) => s.to_string() }
+        .then(
+            ty.clone()
+                .separated_by(symbol(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
+        )
+        .map_with(|(trait_name, type_args), e| {
+            vec![TypeConstraint {
+                trait_name,
+                type_args,
+                span: to_span(e.span()),
+            }]
+        });
+
+    let constraint = choice((sugar_form, explicit_form));
+
     symbol(Token::Where)
         .ignore_then(
-            type_constraint_group
+            constraint
                 .separated_by(symbol(Token::Comma))
                 .collect::<Vec<Vec<_>>>(),
         )
@@ -1260,8 +1306,11 @@ where
                     });
                     for trait_name in names {
                         superclasses.push(TypeConstraint {
-                            type_var: type_params[0].name.clone(),
                             trait_name,
+                            type_args: vec![TypeExpr::Var {
+                                name: type_params[0].name.clone(),
+                                span,
+                            }],
                             span,
                         });
                     }

@@ -177,23 +177,7 @@ impl<'a> Formatter<'a> {
         }
         if !f.constraints.is_empty() {
             self.buf.push_str(" where ");
-            // Group constraints by type_var, preserving order
-            let mut groups: Vec<(String, Vec<String>)> = Vec::new();
-            for c in &f.constraints {
-                if let Some(group) = groups.iter_mut().find(|(tv, _)| tv == &c.type_var) {
-                    group.1.push(c.trait_name.clone());
-                } else {
-                    groups.push((c.type_var.clone(), vec![c.trait_name.clone()]));
-                }
-            }
-            for (i, (type_var, bounds)) in groups.iter().enumerate() {
-                if i > 0 {
-                    self.buf.push_str(", ");
-                }
-                self.buf.push_str(type_var);
-                self.buf.push_str(": ");
-                self.buf.push_str(&bounds.join(" + "));
-            }
+            self.fmt_where_constraints(&f.constraints);
         }
         // Determine body style: block body (Do) vs expression body
         match &*f.body {
@@ -265,6 +249,95 @@ impl<'a> Formatter<'a> {
             }
             TypeExpr::Wildcard { .. } => {
                 self.buf.push('_');
+            }
+        }
+    }
+
+    /// Print a list of `where`-clause constraints (without the leading `where `).
+    /// Sugar-form constraints (first arg is a type variable) with the same subject
+    /// group together with `+`. Explicit-form constraints print standalone.
+    fn fmt_where_constraints(&mut self, constraints: &[TypeConstraint]) {
+        #[derive(Clone)]
+        enum Entry<'a> {
+            /// Sugar form: subject var + list of (trait_name, extra_args).
+            Sugar {
+                subject: &'a str,
+                bounds: Vec<(&'a str, &'a [TypeExpr])>,
+            },
+            /// Explicit form: trait_name + all type args.
+            Explicit {
+                trait_name: &'a str,
+                type_args: &'a [TypeExpr],
+            },
+        }
+
+        // Build the entry list, merging consecutive sugar-form constraints that
+        // share the same subject into a single Entry::Sugar.
+        let mut entries: Vec<Entry> = Vec::new();
+        for c in constraints {
+            let subject = match c.type_args.first() {
+                Some(TypeExpr::Var { name, .. }) => Some(name.as_str()),
+                _ => None,
+            };
+            if let Some(subject) = subject {
+                let extra = &c.type_args[1..];
+                if let Some(Entry::Sugar { subject: prev, bounds }) = entries.last_mut() {
+                    if *prev == subject {
+                        bounds.push((c.trait_name.as_str(), extra));
+                        continue;
+                    }
+                }
+                entries.push(Entry::Sugar {
+                    subject,
+                    bounds: vec![(c.trait_name.as_str(), extra)],
+                });
+            } else {
+                entries.push(Entry::Explicit {
+                    trait_name: c.trait_name.as_str(),
+                    type_args: c.type_args.as_slice(),
+                });
+            }
+        }
+
+        for (i, entry) in entries.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            match entry {
+                Entry::Sugar { subject, bounds } => {
+                    self.buf.push_str(subject);
+                    self.buf.push_str(": ");
+                    for (j, (trait_name, extra)) in bounds.iter().enumerate() {
+                        if j > 0 {
+                            self.buf.push_str(" + ");
+                        }
+                        self.buf.push_str(trait_name);
+                        if !extra.is_empty() {
+                            self.buf.push('[');
+                            for (k, arg) in extra.iter().enumerate() {
+                                if k > 0 {
+                                    self.buf.push_str(", ");
+                                }
+                                self.fmt_type_expr(arg);
+                            }
+                            self.buf.push(']');
+                        }
+                    }
+                }
+                Entry::Explicit {
+                    trait_name,
+                    type_args,
+                } => {
+                    self.buf.push_str(trait_name);
+                    self.buf.push('[');
+                    for (k, arg) in type_args.iter().enumerate() {
+                        if k > 0 {
+                            self.buf.push_str(", ");
+                        }
+                        self.fmt_type_expr(arg);
+                    }
+                    self.buf.push(']');
+                }
             }
         }
     }
@@ -354,23 +427,7 @@ impl<'a> Formatter<'a> {
         self.fmt_type_params(type_params);
         if !superclasses.is_empty() {
             self.buf.push_str(" where ");
-            // Group constraints by type_var, preserving order
-            let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
-            for sc in superclasses {
-                if let Some(group) = groups.iter_mut().find(|(tv, _)| *tv == sc.type_var) {
-                    group.1.push(&sc.trait_name);
-                } else {
-                    groups.push((&sc.type_var, vec![&sc.trait_name]));
-                }
-            }
-            for (i, (type_var, bounds)) in groups.iter().enumerate() {
-                if i > 0 {
-                    self.buf.push_str(", ");
-                }
-                self.buf.push_str(type_var);
-                self.buf.push_str(": ");
-                self.buf.push_str(&bounds.join(" + "));
-            }
+            self.fmt_where_constraints(superclasses);
         }
         self.buf.push_str(" {");
         self.indent_level += 1;
@@ -447,14 +504,7 @@ impl<'a> Formatter<'a> {
         self.buf.push(']');
         if !constraints.is_empty() {
             self.buf.push_str(" where ");
-            for (i, c) in constraints.iter().enumerate() {
-                if i > 0 {
-                    self.buf.push_str(", ");
-                }
-                self.buf.push_str(&c.type_var);
-                self.buf.push_str(": ");
-                self.buf.push_str(&c.trait_name);
-            }
+            self.fmt_where_constraints(constraints);
         }
         self.buf.push_str(" {");
         self.indent_level += 1;
@@ -579,22 +629,7 @@ impl<'a> Formatter<'a> {
             self.fmt_type_expr(&m.return_type);
             if !m.where_clauses.is_empty() {
                 self.buf.push_str(" where ");
-                let mut groups: Vec<(String, Vec<String>)> = Vec::new();
-                for c in &m.where_clauses {
-                    if let Some(group) = groups.iter_mut().find(|(tv, _)| tv == &c.type_var) {
-                        group.1.push(c.trait_name.clone());
-                    } else {
-                        groups.push((c.type_var.clone(), vec![c.trait_name.clone()]));
-                    }
-                }
-                for (i, (type_var, bounds)) in groups.iter().enumerate() {
-                    if i > 0 {
-                        self.buf.push_str(", ");
-                    }
-                    self.buf.push_str(type_var);
-                    self.buf.push_str(": ");
-                    self.buf.push_str(&bounds.join(" + "));
-                }
+                self.fmt_where_constraints(&m.where_clauses);
             }
         }
         self.indent_level -= 1;

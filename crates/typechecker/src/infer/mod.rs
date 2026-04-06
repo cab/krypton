@@ -50,6 +50,23 @@ impl InferError {
     }
 }
 
+/// Extract the single type variable name from a parser `TypeConstraint`, or
+/// return an `UnsupportedConstraint` error for multi-parameter / explicit-form
+/// constraints. Used pre-M30-T4 to gate single-parameter-only code paths.
+fn require_single_param_var(
+    tc: &TypeConstraint,
+) -> Result<&str, SpannedTypeError> {
+    tc.as_single_param_var().ok_or_else(|| {
+        spanned(
+            TypeError::UnsupportedConstraint {
+                trait_name: tc.trait_name.clone(),
+                reason: "multi-parameter trait constraints require M30-T4",
+            },
+            tc.span,
+        )
+    })
+}
+
 fn constructor_names(td: &TypeDecl) -> Vec<String> {
     match &td.kind {
         TypeDeclKind::Sum { variants } => variants.iter().map(|v| v.name.clone()).collect(),
@@ -1452,7 +1469,8 @@ fn process_extern_methods(
                 if constraint.trait_name == "shared" {
                     continue;
                 }
-                if let Some(&type_var) = effective_resolve_map.get(&constraint.type_var) {
+                let tv_name = require_single_param_var(constraint)?;
+                if let Some(&type_var) = effective_resolve_map.get(tv_name) {
                     let tn = trait_name_lookup
                         .get(&constraint.trait_name)
                         .cloned()
@@ -3392,7 +3410,8 @@ fn register_local_traits(
                     if constraint.trait_name == "shared" {
                         continue;
                     }
-                    if let Some(&tv) = method_type_param_map.get(&constraint.type_var) {
+                    let tv_name = require_single_param_var(constraint)?;
+                    if let Some(&tv) = method_type_param_map.get(tv_name) {
                         // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                         // Validation deferred to instance resolution phase.
                         let tn = trait_registry
@@ -3425,6 +3444,9 @@ fn register_local_traits(
 
             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
             // Validation deferred to instance resolution phase.
+            for sc in superclasses {
+                require_single_param_var(sc)?;
+            }
             let superclass_names: Vec<TraitName> = superclasses
                 .iter()
                 .map(|sc| {
@@ -3633,16 +3655,21 @@ fn resolve_constraints(
     constraints: &[TypeConstraint],
     trait_registry: &TraitRegistry,
     module_path: &str,
-) -> Vec<ResolvedConstraint> {
+) -> Result<Vec<ResolvedConstraint>, SpannedTypeError> {
     constraints
         .iter()
-        .map(|tc| ResolvedConstraint {
-            trait_name: trait_registry
-                .lookup_trait_by_name(&tc.trait_name)
-                .map(|ti| ti.trait_name())
-                .unwrap_or_else(|| TraitName::new(module_path.to_string(), tc.trait_name.clone())),
-            type_var: tc.type_var.clone(),
-            span: tc.span,
+        .map(|tc| {
+            let tv_name = require_single_param_var(tc)?;
+            Ok(ResolvedConstraint {
+                trait_name: trait_registry
+                    .lookup_trait_by_name(&tc.trait_name)
+                    .map(|ti| ti.trait_name())
+                    .unwrap_or_else(|| {
+                        TraitName::new(module_path.to_string(), tc.trait_name.clone())
+                    }),
+                type_var: tv_name.to_string(),
+                span: tc.span,
+            })
         })
         .collect()
 }
@@ -3692,7 +3719,8 @@ fn register_impl_instances(
                 let mut impl_type_param_names = HashSet::new();
                 collect_type_expr_var_names(target_type, &mut impl_type_param_names);
                 for constraint in type_constraints {
-                    impl_type_param_names.insert(constraint.type_var.clone());
+                    let tv_name = require_single_param_var(constraint)?;
+                    impl_type_param_names.insert(tv_name.to_string());
                 }
                 let mut sorted_names: Vec<_> = impl_type_param_names.into_iter().collect();
                 sorted_names.sort();
@@ -3888,7 +3916,7 @@ fn register_impl_instances(
                 .map(|ti| ti.trait_name())
                 .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
             let resolved_constraints =
-                resolve_constraints(type_constraints, trait_registry, module_path);
+                resolve_constraints(type_constraints, trait_registry, module_path)?;
             let instance = InstanceInfo {
                 trait_name: impl_full_trait_name,
                 target_type: resolved_target,
@@ -4089,7 +4117,8 @@ fn infer_function_bodies<'a>(
             if !decl.constraints.is_empty() {
                 for constraint in &decl.constraints {
                     if constraint.trait_name == "shared" {
-                        shared_tv_names.insert(constraint.type_var.clone());
+                        let tv_name = require_single_param_var(constraint)?;
+                        shared_tv_names.insert(tv_name.to_string());
                     }
                 }
 
@@ -4129,25 +4158,26 @@ fn infer_function_bodies<'a>(
                     .constraints
                     .iter()
                     .filter(|c| c.trait_name != "shared")
-                    .filter_map(|constraint| {
-                        type_param_map
-                            .get(&constraint.type_var)
-                            .copied()
-                            .map(|type_var| {
-                                // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
-                                // Validation deferred to instance resolution phase.
-                                let tn = trait_registry
-                                    .lookup_trait_by_name(&constraint.trait_name)
-                                    .map(|ti| ti.trait_name())
-                                    .unwrap_or_else(|| {
-                                        TraitName::new(
-                                            mod_path.to_string(),
-                                            constraint.trait_name.clone(),
-                                        )
-                                    });
-                                (tn, type_var)
-                            })
+                    .map(|constraint| {
+                        let tv_name = require_single_param_var(constraint)?;
+                        Ok(type_param_map.get(tv_name).copied().map(|type_var| {
+                            // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                            // Validation deferred to instance resolution phase.
+                            let tn = trait_registry
+                                .lookup_trait_by_name(&constraint.trait_name)
+                                .map(|ti| ti.trait_name())
+                                .unwrap_or_else(|| {
+                                    TraitName::new(
+                                        mod_path.to_string(),
+                                        constraint.trait_name.clone(),
+                                    )
+                                });
+                            (tn, type_var)
+                        }))
                     })
+                    .collect::<Result<Vec<Option<_>>, SpannedTypeError>>()?
+                    .into_iter()
+                    .flatten()
                     .collect();
                 if !requirements.is_empty() {
                     fn_constraint_requirements.insert(decl.name.clone(), requirements);
@@ -4549,7 +4579,8 @@ fn typecheck_impl_methods(
                     if constraint.trait_name == "shared" {
                         continue;
                     }
-                    if let Some(&tv) = impl_method_tpm.get(&constraint.type_var) {
+                    let tv_name = require_single_param_var(constraint)?;
+                    if let Some(&tv) = impl_method_tpm.get(tv_name) {
                         // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                         // Validation deferred to instance resolution phase.
                         let tn = trait_registry

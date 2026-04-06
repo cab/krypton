@@ -1,0 +1,39 @@
+# expect: ok
+
+# (1) Sugar form single extra arg
+fun convert_first[a, b](x: a) -> b where a: Convert[b] =
+  convert(x)
+
+# (2) Explicit form with two type variables
+fun convert_second[a, b](x: a) -> b where Convert[a, b] =
+  convert(x)
+
+# (2b) Explicit form with concrete first argument
+fun convert_concrete[b](x: Int) -> b where Convert[Int, b] =
+  convert(x)
+
+# (3) Mixed bounds: single-param + multi-param in a `+` list, plus a
+#     second constraint on a different type var
+fun process[a, b](x: a) -> String
+  where a: Eq + Convert[b], b: Show + Ord =
+  show(convert(x))
+
+# (4) Superclass `where` on multi-param trait — sugar form
+trait Codec[a, b] where a: Convert[b] {
+  fun decode(x: b) -> a
+}
+
+# (5) Constraint on non-first parameter
+trait Codec2[a, b] where a: Convert[b], b: Monoid {
+  fun decode(x: b) -> a
+}
+
+# (6) Explicit-form superclass with three parameters
+trait Tern[a, b, c] where Convert[a, b] {
+  fun tern(x: a, y: b) -> c
+}
+
+# (7) impl-level where with multi-param constraint
+impl[a, b] Convert[Pair[a, b], String] where a: Show + Convert[b] {
+  fun convert(x: Pair[a, b]) -> String = show(x)
+}

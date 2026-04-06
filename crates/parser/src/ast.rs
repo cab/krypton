@@ -147,9 +147,23 @@ pub struct TypeParam {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeConstraint {
-    pub type_var: String,
     pub trait_name: String,
+    /// All type arguments to the trait, in order. Length >= 1. Single-parameter
+    /// constraints (`a: Show`) have `type_args = [Var("a")]`.
+    pub type_args: Vec<TypeExpr>,
     pub span: Span,
+}
+
+impl TypeConstraint {
+    /// Returns the single type variable name bound by this constraint, if it
+    /// is single-parameter and the type argument is a bare identifier.
+    /// Pre-M30-T4 callers use this to detect unsupported multi-param shapes.
+    pub fn as_single_param_var(&self) -> Option<&str> {
+        match self.type_args.as_slice() {
+            [TypeExpr::Var { name, .. }] => Some(name.as_str()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

@@ -37,8 +37,8 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             superclasses: superclasses
                 .iter()
                 .map(|sc| TypeConstraint {
-                    type_var: sc.type_var.clone(),
                     trait_name: sc.trait_name.clone(),
+                    type_args: sc.type_args.iter().map(zero_spans_type_expr).collect(),
                     span: (0, 0),
                 })
                 .collect(),
@@ -68,7 +68,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                 .iter()
                 .map(|c| TypeConstraint {
                     trait_name: c.trait_name.clone(),
-                    type_var: c.type_var.clone(),
+                    type_args: c.type_args.iter().map(zero_spans_type_expr).collect(),
                     span: (0, 0),
                 })
                 .collect(),
@@ -125,7 +125,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                         .iter()
                         .map(|c| TypeConstraint {
                             trait_name: c.trait_name.clone(),
-                            type_var: c.type_var.clone(),
+                            type_args: c.type_args.iter().map(zero_spans_type_expr).collect(),
                             span: (0, 0),
                         })
                         .collect(),
@@ -157,7 +157,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
             .iter()
             .map(|c| TypeConstraint {
                 trait_name: c.trait_name.clone(),
-                type_var: c.type_var.clone(),
+                type_args: c.type_args.iter().map(zero_spans_type_expr).collect(),
                 span: (0, 0),
             })
             .collect(),
@@ -756,6 +756,50 @@ fn roundtrip_struct_update() {
 #[test]
 fn roundtrip_where_clause() {
     assert_surface_roundtrip("fun compare(a: a, b: a) -> Bool where a: Ord = a < b");
+}
+
+#[test]
+fn roundtrip_where_multi_param_sugar() {
+    assert_surface_roundtrip(
+        "fun f[a, b](x: a) -> b where a: Convert[b] = convert(x)",
+    );
+}
+
+#[test]
+fn roundtrip_where_multi_param_explicit() {
+    assert_surface_roundtrip(
+        "fun f[a, b](x: a) -> b where Convert[a, b] = convert(x)",
+    );
+}
+
+#[test]
+fn roundtrip_where_multi_param_explicit_concrete() {
+    assert_surface_roundtrip(
+        "fun f[b](x: Int) -> b where Convert[Int, b] = convert(x)",
+    );
+}
+
+#[test]
+fn roundtrip_where_mixed_plus_and_multi_param() {
+    assert_surface_roundtrip(
+        "fun f[a, b](x: a) -> String where a: Eq + Convert[b], b: Show + Ord = show(convert(x))",
+    );
+}
+
+#[test]
+fn roundtrip_trait_with_multi_param_superclass_sugar() {
+    let src = r#"trait Codec[a, b] where a: Convert[b] {
+    fun decode(x: b) -> a
+}"#;
+    assert_surface_roundtrip(src);
+}
+
+#[test]
+fn roundtrip_trait_with_multi_param_superclass_explicit() {
+    let src = r#"trait Tern[a, b, c] where Convert[a, b] {
+    fun tern(x: a, y: b) -> c
+}"#;
+    assert_surface_roundtrip(src);
 }
 
 #[test]

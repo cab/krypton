@@ -1,0 +1,661 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefFn:
+      platform: ~
+      name: convert_first
+      visibility: Private
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 66
+            - 67
+        - name: b
+          arity: 0
+          span:
+            - 69
+            - 70
+      params:
+        - name: x
+          ty:
+            Var:
+              name: a
+              span:
+                - 75
+                - 76
+          span:
+            - 72
+            - 76
+      constraints:
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 89
+                  - 90
+            - Var:
+                name: b
+                span:
+                  - 100
+                  - 101
+          span:
+            - 89
+            - 102
+      return_type:
+        Var:
+          name: b
+          span:
+            - 81
+            - 82
+      body:
+        App:
+          func:
+            Var:
+              name: convert
+              span:
+                - 107
+                - 114
+          args:
+            - Var:
+                name: x
+                span:
+                  - 115
+                  - 116
+          is_ufcs: false
+          span:
+            - 107
+            - 117
+      span:
+        - 48
+        - 117
+  - DefFn:
+      platform: ~
+      name: convert_second
+      visibility: Private
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 182
+            - 183
+        - name: b
+          arity: 0
+          span:
+            - 185
+            - 186
+      params:
+        - name: x
+          ty:
+            Var:
+              name: a
+              span:
+                - 191
+                - 192
+          span:
+            - 188
+            - 192
+      constraints:
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 213
+                  - 214
+            - Var:
+                name: b
+                span:
+                  - 216
+                  - 217
+          span:
+            - 205
+            - 218
+      return_type:
+        Var:
+          name: b
+          span:
+            - 197
+            - 198
+      body:
+        App:
+          func:
+            Var:
+              name: convert
+              span:
+                - 223
+                - 230
+          args:
+            - Var:
+                name: x
+                span:
+                  - 231
+                  - 232
+          is_ufcs: false
+          span:
+            - 223
+            - 233
+      span:
+        - 163
+        - 233
+  - DefFn:
+      platform: ~
+      name: convert_concrete
+      visibility: Private
+      type_params:
+        - name: b
+          arity: 0
+          span:
+            - 306
+            - 307
+      params:
+        - name: x
+          ty:
+            Named:
+              name: Int
+              span:
+                - 312
+                - 315
+          span:
+            - 309
+            - 315
+      constraints:
+        - trait_name: Convert
+          type_args:
+            - Named:
+                name: Int
+                span:
+                  - 336
+                  - 339
+            - Var:
+                name: b
+                span:
+                  - 341
+                  - 342
+          span:
+            - 328
+            - 343
+      return_type:
+        Var:
+          name: b
+          span:
+            - 320
+            - 321
+      body:
+        App:
+          func:
+            Var:
+              name: convert
+              span:
+                - 348
+                - 355
+          args:
+            - Var:
+                name: x
+                span:
+                  - 356
+                  - 357
+          is_ufcs: false
+          span:
+            - 348
+            - 358
+      span:
+        - 285
+        - 358
+  - DefFn:
+      platform: ~
+      name: process
+      visibility: Private
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 489
+            - 490
+        - name: b
+          arity: 0
+          span:
+            - 492
+            - 493
+      params:
+        - name: x
+          ty:
+            Var:
+              name: a
+              span:
+                - 498
+                - 499
+          span:
+            - 495
+            - 499
+      constraints:
+        - trait_name: Eq
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 519
+                  - 520
+          span:
+            - 519
+            - 537
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 519
+                  - 520
+            - Var:
+                name: b
+                span:
+                  - 535
+                  - 536
+          span:
+            - 519
+            - 537
+        - trait_name: Show
+          type_args:
+            - Var:
+                name: b
+                span:
+                  - 539
+                  - 540
+          span:
+            - 539
+            - 552
+        - trait_name: Ord
+          type_args:
+            - Var:
+                name: b
+                span:
+                  - 539
+                  - 540
+          span:
+            - 539
+            - 552
+      return_type:
+        Named:
+          name: String
+          span:
+            - 504
+            - 510
+      body:
+        App:
+          func:
+            Var:
+              name: show
+              span:
+                - 557
+                - 561
+          args:
+            - App:
+                func:
+                  Var:
+                    name: convert
+                    span:
+                      - 562
+                      - 569
+                args:
+                  - Var:
+                      name: x
+                      span:
+                        - 570
+                        - 571
+                is_ufcs: false
+                span:
+                  - 562
+                  - 572
+          is_ufcs: false
+          span:
+            - 557
+            - 573
+      span:
+        - 477
+        - 573
+  - DefTrait:
+      platform: ~
+      visibility: Private
+      name: Codec
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 648
+            - 649
+        - name: b
+          arity: 0
+          span:
+            - 651
+            - 652
+      superclasses:
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 660
+                  - 661
+            - Var:
+                name: b
+                span:
+                  - 671
+                  - 672
+          span:
+            - 660
+            - 673
+      methods:
+        - platform: ~
+          name: decode
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                Var:
+                  name: b
+                  span:
+                    - 692
+                    - 693
+              span:
+                - 689
+                - 693
+          constraints: []
+          return_type:
+            Var:
+              name: a
+              span:
+                - 698
+                - 699
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 678
+                - 699
+          span:
+            - 678
+            - 699
+      span:
+        - 636
+        - 701
+  - DefTrait:
+      platform: ~
+      visibility: Private
+      name: Codec2
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 756
+            - 757
+        - name: b
+          arity: 0
+          span:
+            - 759
+            - 760
+      superclasses:
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 768
+                  - 769
+            - Var:
+                name: b
+                span:
+                  - 779
+                  - 780
+          span:
+            - 768
+            - 781
+        - trait_name: Monoid
+          type_args:
+            - Var:
+                name: b
+                span:
+                  - 783
+                  - 784
+          span:
+            - 783
+            - 792
+      methods:
+        - platform: ~
+          name: decode
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                Var:
+                  name: b
+                  span:
+                    - 811
+                    - 812
+              span:
+                - 808
+                - 812
+          constraints: []
+          return_type:
+            Var:
+              name: a
+              span:
+                - 817
+                - 818
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 797
+                - 818
+          span:
+            - 797
+            - 818
+      span:
+        - 743
+        - 820
+  - DefTrait:
+      platform: ~
+      visibility: Private
+      name: Tern
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 886
+            - 887
+        - name: b
+          arity: 0
+          span:
+            - 889
+            - 890
+        - name: c
+          arity: 0
+          span:
+            - 892
+            - 893
+      superclasses:
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 909
+                  - 910
+            - Var:
+                name: b
+                span:
+                  - 912
+                  - 913
+          span:
+            - 901
+            - 914
+      methods:
+        - platform: ~
+          name: tern
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 931
+                    - 932
+              span:
+                - 928
+                - 932
+            - name: y
+              ty:
+                Var:
+                  name: b
+                  span:
+                    - 937
+                    - 938
+              span:
+                - 934
+                - 938
+          constraints: []
+          return_type:
+            Var:
+              name: c
+              span:
+                - 943
+                - 944
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 919
+                - 944
+          span:
+            - 919
+            - 944
+      span:
+        - 875
+        - 946
+  - DefImpl:
+      platform: ~
+      trait_name: Convert
+      type_args:
+        - App:
+            name: Pair
+            args:
+              - Var:
+                  name: a
+                  span:
+                    - 1023
+                    - 1024
+              - Var:
+                  name: b
+                  span:
+                    - 1026
+                    - 1027
+            span:
+              - 1018
+              - 1028
+        - Named:
+            name: String
+            span:
+              - 1030
+              - 1036
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 1004
+            - 1005
+        - name: b
+          arity: 0
+          span:
+            - 1007
+            - 1008
+      type_constraints:
+        - trait_name: Show
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 1044
+                  - 1045
+          span:
+            - 1044
+            - 1064
+        - trait_name: Convert
+          type_args:
+            - Var:
+                name: a
+                span:
+                  - 1044
+                  - 1045
+            - Var:
+                name: b
+                span:
+                  - 1062
+                  - 1063
+          span:
+            - 1044
+            - 1064
+      methods:
+        - platform: ~
+          name: convert
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                App:
+                  name: Pair
+                  args:
+                    - Var:
+                        name: a
+                        span:
+                          - 1089
+                          - 1090
+                    - Var:
+                        name: b
+                        span:
+                          - 1092
+                          - 1093
+                  span:
+                    - 1084
+                    - 1094
+              span:
+                - 1081
+                - 1094
+          constraints: []
+          return_type:
+            Named:
+              name: String
+              span:
+                - 1099
+                - 1105
+          body:
+            App:
+              func:
+                Var:
+                  name: show
+                  span:
+                    - 1108
+                    - 1112
+              args:
+                - Var:
+                    name: x
+                    span:
+                      - 1113
+                      - 1114
+              is_ufcs: false
+              span:
+                - 1108
+                - 1115
+          span:
+            - 1069
+            - 1115
+      span:
+        - 999
+        - 1117

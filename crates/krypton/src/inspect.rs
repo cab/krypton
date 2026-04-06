@@ -843,9 +843,15 @@ pub fn render_inspect(
                         if i > 0 {
                             output.push_str(", ");
                         }
-                        output.push_str(&c.type_var);
-                        output.push_str(": ");
-                        output.push_str(&c.trait_name);
+                        // Pre-M30-T4: only single-parameter constraints are supported;
+                        // fall back to raw trait name if the shape is unsupported.
+                        if let Some(tv) = c.as_single_param_var() {
+                            output.push_str(tv);
+                            output.push_str(": ");
+                            output.push_str(&c.trait_name);
+                        } else {
+                            output.push_str(&c.trait_name);
+                        }
                     }
                 }
                 output.push_str(" {\n");
