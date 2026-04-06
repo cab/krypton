@@ -5,7 +5,7 @@ use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 use krypton_typechecker::typed_ast::{
     AutoCloseInfo, ExternFnInfo, FnTypeEntry, InstanceDefInfo, InstanceMethod, QualifiedName,
-    ResolvedBindingRef, ResolvedConstraint, ResolvedTraitMethodRef, SumDecl, TraitDefInfo,
+    ResolvedBindingRef, ResolvedConstraint, ResolvedTraitMethodRef, ScopeId, SumDecl, TraitDefInfo,
     TraitName, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{Type, TypeScheme, TypeVarGen};
@@ -477,6 +477,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
                 render_trait_id.clone(),
             ),
             close_self_type: None,
+            fn_scope_id: ScopeId(u32::MAX),
         });
     }
 
@@ -491,6 +492,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
             Type::Unit,
         ),
         close_self_type: None,
+        fn_scope_id: ScopeId(u32::MAX),
     });
 
     let fn_types_by_name: std::collections::HashMap<String, usize> = fn_types

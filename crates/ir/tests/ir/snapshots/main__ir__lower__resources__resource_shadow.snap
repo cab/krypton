@@ -28,7 +28,7 @@ fn main() -> Unit =
   auto_close[Handle](v0, dict=v4, null=true)
   let v3: Unit = call println("open2")
   let v5: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-  auto_close[Handle](v0, dict=v5, null=true)
+  auto_close[Handle](v2, dict=v5, null=true)
   v3
 
 fn Resource$$Handle$$close(v6: ~Handle) -> Unit =

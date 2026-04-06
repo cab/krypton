@@ -169,8 +169,8 @@ impl<'a> TypedFormatter<'a> {
                 self.fmt_block_stmts(exprs, &typed_fn.name);
                 // Scope exit closes before closing brace: function-level
                 // exits (~Resource params) plus any block-scoped resources
-                // recorded against the top-level Do block's span.
-                if let Some(bindings) = self.auto_close.fn_exits.get(&typed_fn.name) {
+                // recorded against the body Do scope.
+                if let Some(bindings) = self.auto_close.scope_exits.get(&typed_fn.fn_scope_id) {
                     for binding in bindings {
                         self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
                     }
@@ -897,6 +897,7 @@ pub fn render_inspect(
                                 params: im.params.clone(),
                                 body: im.body.clone(),
                                 close_self_type: None,
+                                fn_scope_id: krypton_typechecker::typed_ast::ScopeId(u32::MAX),
                             };
                             formatter.fmt_impl_method(&m.name, &typed_fn, &im.scheme.ty);
                             output.push_str(&formatter.buf);

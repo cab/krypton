@@ -652,10 +652,6 @@ struct LowerCtx {
     early_return_join: Option<VarId>,
     /// Auto-close info from the typechecker
     auto_close: AutoCloseInfo,
-    /// Names to track for fn_exit auto-close resolution; latest VarId per name
-    fn_exit_track: HashSet<String>,
-    /// Most recent VarId for tracked fn_exit names (survives pop_var)
-    fn_exit_vars: HashMap<String, VarId>,
     /// Active block-scope tracking stack. Each entry records the scope's span,
     /// the names it expects to bind (→ type_name), and VarIds resolved for
     /// those names as push_var runs inside the scope. On scope exit we drain
@@ -771,16 +767,33 @@ impl LowerCtx {
         }
     }
 
-    /// Introduce a non-resource binding into scope. For resource bindings
-    /// (`~T` where `T: Resource`), callers must use [`bind_resource`] so the
-    /// function-wide finally handler and the innermost scope tracker learn
-    /// about the new slot. `push_var` no longer silently enrolls bindings
-    /// into resource tracking — it only manages the name/VarId stack and
-    /// the fn-exit param map.
+    /// Introduce a binding into scope.
+    ///
+    /// For resource bindings (`~T` where `T: Resource`), callers must use
+    /// [`bind_resource`] so the function-wide finally handler and the
+    /// innermost scope tracker learn about the new slot.
+    ///
+    /// In addition to maintaining the name → VarId stack, `push_var` also
+    /// updates any active scope tracker that has *already* resolved this
+    /// name to point at the new VarId. This handles two cases uniformly:
+    ///
+    /// - **Same-scope same-type shadow** (`let h: ~H = …; let h: ~H = …`):
+    ///   the second `bind_resource` reaches `push_var`, sees that some
+    ///   outer tracker already has `h` resolved (from the first binding),
+    ///   and updates it to the new VarId. The scope-exit `auto_close` then
+    ///   targets the live binding rather than the already-shadow-closed one.
+    ///
+    /// - **Recur-join shadow of a fn param**: after `bind_resource` records
+    ///   the param VarId in the fn scope's `resolved` map, the recur-join
+    ///   setup calls `push_var` with the join var. That update flows into
+    ///   `resolved`, so `exit_scope` closes the join var (which holds the
+    ///   actual current resource after recur iterations).
     fn push_var(&mut self, name: &str, id: VarId) {
         self.var_scope.entry(name.to_string()).or_default().push(id);
-        if self.fn_exit_track.contains(name) {
-            self.fn_exit_vars.insert(name.to_string(), id);
+        for scope in self.scope_track_stack.iter_mut() {
+            if scope.resolved.contains_key(name) {
+                scope.resolved.insert(name.to_string(), id);
+            }
         }
     }
 
@@ -964,7 +977,7 @@ impl LowerCtx {
     }
 
     /// Pre-resolve AutoCloseBindings to VarIds and dict info.
-    /// Checks both current var_scope and fn_exit_vars for variable lookup.
+    /// Resolves variable names via the current var_scope.
     fn resolve_close_bindings(
         &mut self,
         bindings: &[AutoCloseBinding],
@@ -974,7 +987,6 @@ impl LowerCtx {
         for binding in bindings {
             let binding_var = self
                 .lookup_var(&binding.name)
-                .or_else(|| self.fn_exit_vars.get(&binding.name).copied())
                 .ok_or_else(|| {
                     LowerError::InternalError(format!(
                         "auto-close: variable '{}' not in scope",
@@ -5610,7 +5622,16 @@ impl LowerCtx {
             }
         }
 
-        // Allocate VarIds for regular params
+        // Enter the fn-level scope BEFORE binding params, so resource params
+        // are recorded against this scope's tracker. The scope_id is the one
+        // allocated by the typechecker's `scope_ids::stamp_functions`.
+        let prev_block_closes = std::mem::take(&mut self.fn_block_scoped_closes);
+        let prev_scope_stack = std::mem::take(&mut self.scope_track_stack);
+        self.enter_scope(Some(decl.fn_scope_id));
+
+        // Allocate VarIds for regular params. Resource params route through
+        // `bind_resource` so they enroll in the fn-level scope tracker AND
+        // in `fn_block_scoped_closes` for the function-wide finally handler.
         let mut regular_param_vars = vec![];
         for (i, param_name) in decl.params.iter().enumerate() {
             let var = self.fresh_var();
@@ -5623,7 +5644,21 @@ impl LowerCtx {
                 Type::Unit
             });
             self.var_types.insert(var, ty.clone());
-            self.push_var(param_name, var);
+            // Skip resource registration for the `self` parameter of a
+            // Resource close impl: closing the receiver from inside `close`
+            // would either recurse infinitely or double-close on exception.
+            // The typechecker already drops it from `scope_exits[fn_scope_id]`.
+            let is_close_self = decl.close_self_type.is_some()
+                && self.resource_type_name(&ty).as_deref() == decl.close_self_type.as_deref();
+            if let Some(type_name) = self.resource_type_name(&ty) {
+                if is_close_self {
+                    self.push_var(param_name, var);
+                } else {
+                    self.bind_resource(param_name, var, &type_name);
+                }
+            } else {
+                self.push_var(param_name, var);
+            }
             params.push((var, ty.into()));
             regular_param_vars.push(var);
         }
@@ -5661,46 +5696,25 @@ impl LowerCtx {
             None
         };
 
-        // Set up fn_exit tracking so push_var records VarIds for auto-close bindings
-        let prev_track = std::mem::take(&mut self.fn_exit_track);
-        let prev_vars = std::mem::take(&mut self.fn_exit_vars);
-        let prev_block_closes = std::mem::take(&mut self.fn_block_scoped_closes);
-        let prev_scope_stack = std::mem::take(&mut self.scope_track_stack);
-        if let Some(close_bindings) = self.auto_close.fn_exits.get(&decl.name) {
-            for binding in close_bindings {
-                self.fn_exit_track.insert(binding.name.clone());
-            }
-        }
-
         let mut body = self.lower_expr(&decl.body)?;
 
-        // Wrap fn_exit close calls at tail positions (vars resolved via fn_exit_vars)
-        let mut finally_closes: Vec<FinallyClose> = Vec::new();
-        if let Some(close_bindings) = self.auto_close.fn_exits.get(&decl.name).cloned() {
-            let resolved = self.resolve_close_bindings(&close_bindings)?;
-            body = self.wrap_tail_with_closes(body, &resolved, CloseMode::Keep)?;
+        // Exit the fn-level scope: emits close+null calls in tail positions
+        // for any resource params still live at function end (the typechecker
+        // recorded them under `scope_exits[fn_scope_id]`).
+        body = self.exit_scope(Some(decl.fn_scope_id), body)?;
 
-            // Record fn_exit_closes for codegen (exception table finally handlers).
-            // close_bindings and resolved are in the same order (1:1 correspondence).
-            finally_closes.extend(close_bindings.iter().zip(resolved.iter()).map(
-                |(binding, rc)| FinallyClose {
-                    resource_var: rc.binding_var,
-                    type_name: binding.type_name.clone(),
-                },
-            ));
-        }
-        // Also register block-scoped (nested) resources collected during body lowering
-        // so the function-wide finally handler pre-allocates slots and handles
-        // exception unwinds. Normal-path close+null already fires at block tails.
-        finally_closes.extend(std::mem::take(&mut self.fn_block_scoped_closes));
+        // `fn_block_scoped_closes` now holds the single, unified record of
+        // all resource bindings introduced anywhere in this function (params
+        // bound via `bind_resource` above, plus body locals bound via
+        // `bind_resource` in `lower_let` / `lower_do_slice`). Codegen turns
+        // these into the function-wide exception-table finally handler.
+        let finally_closes = std::mem::take(&mut self.fn_block_scoped_closes);
         if !finally_closes.is_empty() {
             self.fn_exit_closes
                 .insert(decl.name.clone(), finally_closes);
         }
 
         // Restore tracking state
-        self.fn_exit_track = prev_track;
-        self.fn_exit_vars = prev_vars;
         self.fn_block_scoped_closes = prev_block_closes;
         self.scope_track_stack = prev_scope_stack;
 
@@ -5963,8 +5977,6 @@ pub fn lower_module(
         recur_join: None,
         early_return_join: None,
         auto_close: typed.auto_close.clone(),
-        fn_exit_track: HashSet::new(),
-        fn_exit_vars: HashMap::new(),
         scope_track_stack: Vec::new(),
         fn_block_scoped_closes: Vec::new(),
         fn_exit_closes: HashMap::new(),

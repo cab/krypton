@@ -2502,6 +2502,7 @@ impl ModuleInferenceState {
                 params: decl.params.iter().map(|p| p.name.clone()).collect(),
                 body,
                 close_self_type: None,
+                fn_scope_id: crate::typed_ast::ScopeId(u32::MAX),
             });
         }
         // Build temporary flat list of instance method bodies for internal analysis passes
@@ -2524,6 +2525,7 @@ impl ModuleInferenceState {
                     params: m.params.clone(),
                     body: m.body.clone(),
                     close_self_type,
+                    fn_scope_id: crate::typed_ast::ScopeId(u32::MAX),
                 });
             }
         }

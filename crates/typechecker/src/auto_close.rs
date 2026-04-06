@@ -150,38 +150,26 @@ impl<'a> AutoCloseAnalyzer<'a> {
     ) {
         let mut live: Vec<LiveBinding> = Vec::new();
 
-        // Check function params for ~Resource bindings
-        for (i, param_name) in decl.params.iter().enumerate() {
-            if let Some(param_ty) = fn_param_types.get(i) {
-                if let Some(type_name) = is_owned_resource(param_ty, self.registry) {
-                    // Skip the "self" parameter of a Resource close impl to avoid
-                    // infinite recursion (close calling itself on its own param).
-                    // Other ~Resource params/locals are still auto-closed.
-                    if close_self_type == Some(type_name.as_str()) {
-                        continue;
+        // The fn-level scope owns the parameters and is the parent of the
+        // body's own scope. Routing fn params through `scoped(fn_scope_id, …)`
+        // unifies them with body locals: the same `scope_exits` map records
+        // both, the same `enter_scope`/`exit_scope` machinery in the lowerer
+        // closes both.
+        self.scoped(decl.fn_scope_id, &mut live, |this, live| {
+            for (i, param_name) in decl.params.iter().enumerate() {
+                if let Some(param_ty) = fn_param_types.get(i) {
+                    if let Some(type_name) = is_owned_resource(param_ty, this.registry) {
+                        // Skip the "self" parameter of a Resource close impl to avoid
+                        // infinite recursion (close calling itself on its own param).
+                        if close_self_type == Some(type_name.as_str()) {
+                            continue;
+                        }
+                        live.push((param_name.clone(), type_name));
                     }
-                    live.push((param_name.clone(), type_name));
                 }
             }
-        }
-
-        self.walk_expr(&decl.body, &mut live);
-
-        // Any remaining live bindings need closing at function exit
-        if !live.is_empty() {
-            let mut exits: Vec<AutoCloseBinding> = live
-                .iter()
-                .rev()
-                .map(|(name, type_name)| AutoCloseBinding {
-                    name: name.clone(),
-                    type_name: type_name.clone(),
-                })
-                .collect();
-            // Deduplicate: only keep the last binding per name (the live one)
-            let mut seen = std::collections::HashSet::new();
-            exits.retain(|b| seen.insert(b.name.clone()));
-            self.info.fn_exits.insert(decl.name.clone(), exits);
-        }
+            this.walk_expr(&decl.body, live);
+        });
     }
 
     /// Assert no duplicate span insertion for a HashMap key.

@@ -34,9 +34,12 @@ impl ScopeIdGen {
 pub fn stamp_functions(functions: &mut [TypedFnDecl]) {
     let mut gen = ScopeIdGen::default();
     for decl in functions {
-        // Top-level function body is always a scope node: fn params and
-        // anything bound inside the body belong to this scope.
-        decl.body.scope_id = Some(gen.fresh());
+        // Allocate the fn-level scope (owns params, parent of any body scope).
+        decl.fn_scope_id = gen.fresh();
+        // Walk the body. Scope-bearing body nodes (Do / Let{body:Some} /
+        // LetPattern{body:Some}) get their own ScopeIds inside `walk`.
+        // Non-scope-bearing bodies leave `body.scope_id == None`; the
+        // fn-level scope already covers them.
         walk(&mut decl.body, &mut gen);
     }
 }

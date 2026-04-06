@@ -172,8 +172,6 @@ pub struct AutoCloseBinding {
 
 #[derive(Debug, Clone, Default)]
 pub struct AutoCloseInfo {
-    /// Function end: fn_name → bindings to close (LIFO order)
-    pub fn_exits: HashMap<String, Vec<AutoCloseBinding>>,
     /// Shadow point: let_span → old binding to close before new binding takes effect
     pub shadow_closes: HashMap<Span, AutoCloseBinding>,
     /// QuestionMark early return: qm_span → bindings to close before early return (LIFO order)
@@ -340,6 +338,11 @@ pub struct TypedFnDecl {
     /// For Resource close impl methods, the target type name (e.g., "Handle").
     /// Used by auto-close to skip the self parameter and avoid infinite recursion.
     pub close_self_type: Option<String>,
+    /// Identity of the function-level lexical scope. Owns the fn parameters
+    /// and is the parent of the body's own scope (if the body is a Do/Let).
+    /// Allocated by `scope_ids::stamp_functions`. The sentinel `ScopeId(u32::MAX)`
+    /// is used at construction time before stamping.
+    pub fn_scope_id: ScopeId,
 }
 
 /// A function exported from a module's public API, with optional definition span.
