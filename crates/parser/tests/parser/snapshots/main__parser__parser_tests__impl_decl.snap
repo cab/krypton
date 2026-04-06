@@ -1,0 +1,94 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Point
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 19
+                    - 22
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 27
+                    - 30
+      deriving: []
+      span:
+        - 1
+        - 32
+  - DefImpl:
+      platform: ~
+      trait_name: Eq
+      type_args:
+        - Named:
+            name: Point
+            span:
+              - 41
+              - 46
+      type_params: []
+      type_constraints: []
+      methods:
+        - platform: ~
+          name: eq
+          visibility: Private
+          type_params: []
+          params:
+            - name: a
+              ty: ~
+              span:
+                - 61
+                - 62
+            - name: b
+              ty: ~
+              span:
+                - 64
+                - 65
+          constraints: []
+          return_type: ~
+          body:
+            BinaryOp:
+              op: Eq
+              lhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: a
+                      span:
+                        - 69
+                        - 70
+                  field: x
+                  span:
+                    - 69
+                    - 72
+              rhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: b
+                      span:
+                        - 76
+                        - 77
+                  field: x
+                  span:
+                    - 76
+                    - 79
+              span:
+                - 69
+                - 79
+          span:
+            - 54
+            - 79
+      span:
+        - 33
+        - 81

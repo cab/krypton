@@ -1,0 +1,45 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module exhaustiveness__match_bool_exhaustive
+
+type Pair = MkPair#0(Bool, Bool)
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+
+fn test(v0: Pair) -> Int =
+  switch v0 {
+    0 (v1: Bool, v2: Bool) ->
+      let v6: Bool = eq_int(v1, true)
+      if v6 {
+        1
+      } else {
+        let v5: Bool = eq_int(v1, false)
+        if v5 {
+          let v4: Bool = eq_int(v2, true)
+          if v4 {
+            2
+          } else {
+            let v3: Bool = eq_int(v2, false)
+            if v3 {
+              3
+            } else {
+              ()
+            }
+          }
+        } else {
+          ()
+        }
+      }
+  }

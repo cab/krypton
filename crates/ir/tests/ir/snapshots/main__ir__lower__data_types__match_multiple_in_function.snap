@@ -1,0 +1,67 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module data_types__match_multiple_in_function
+
+type Option[a] = Some#0(a) | None#1
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let_join v23(v0: Int) =
+    let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v4: Unit = call println(v3, v0)
+    let_join v22(v5: Int) =
+      let v8: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v9: Unit = call println(v8, v5)
+      let_join v21(v10: Int) =
+        let v13: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v14: Unit = call println(v13, v10)
+        let_join v20(v15: Int) =
+          let v18: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+          let v19: Unit = call println(v18, v15)
+          v19
+        in
+        let v16: ~Option[Int] = construct Option::Some#0(4)
+        switch v16 {
+          0 (v17: Int) ->
+            jump v20(v17)
+          1 ->
+            jump v20(0)
+        }
+      in
+      let v11: ~Option[Int] = construct Option::Some#0(3)
+      switch v11 {
+        0 (v12: Int) ->
+          jump v21(v12)
+        1 ->
+          jump v21(0)
+      }
+    in
+    let v6: ~Option[Int] = construct Option::Some#0(2)
+    switch v6 {
+      0 (v7: Int) ->
+        jump v22(v7)
+      1 ->
+        jump v22(0)
+    }
+  in
+  let v1: ~Option[Int] = construct Option::Some#0(1)
+  switch v1 {
+    0 (v2: Int) ->
+      jump v23(v2)
+    1 ->
+      jump v23(0)
+  }

@@ -1,0 +1,41 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__derive_show_option
+
+type Option[a] = Some#0(a) | None#1
+instance core/show.Show[Option] { show=Show$$Option$$show }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Option[Int] = construct Option::Some#0(42)
+  let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v3: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v2)
+  let v4: String = trait_call core/show.Show.show(v3, v1)
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v5: Unit = call println(v0, v4)
+  v5
+
+fn Show$$Option$$show(v6: Dict[core/show.Show, a8], v7: Option[a8]) -> String =
+  switch v7 {
+    0 (v8: a8) ->
+      let v9: String = trait_call core/show.Show.show(v6, v8)
+      let v10: String = concat_string("Some(", v9)
+      let v11: String = concat_string(v10, ")")
+      v11
+    1 ->
+      "None"
+  }

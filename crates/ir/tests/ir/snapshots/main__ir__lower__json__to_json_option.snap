@@ -1,0 +1,44 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module json__to_json_option
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/json/json_to_string as json_to_string(Json) -> String
+import core/json/JBool as JBool(Bool) -> Json
+import core/json/JNum as JNum(Float) -> Json
+import core/json/JStr as JStr(String) -> Json
+import core/json/JArr as JArr(List[Json]) -> Json
+import core/json/JObj as JObj(Map[String, Json]) -> Json
+declare json_to_string: (Json) -> String
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Option[Int] = construct Option::None#1()
+  let v0: ~Option[Int] = v1
+  let v2: Dict[core/json.ToJson, Int] = get_dict core/json.ToJson[Int]
+  let v3: Dict[core/json.ToJson, Option[Int]] = make_dict core/json.ToJson[Option[Int]](v2)
+  let v4: Json = trait_call core/json.ToJson.to_json(v3, v0)
+  let v5: String = call json_to_string(v4)
+  let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v7: Unit = call println(v6, v5)
+  let v9: ~Option[Int] = construct Option::Some#0(42)
+  let v10: Dict[core/json.ToJson, Int] = get_dict core/json.ToJson[Int]
+  let v11: Dict[core/json.ToJson, Option[Int]] = make_dict core/json.ToJson[Option[Int]](v10)
+  let v12: Json = trait_call core/json.ToJson.to_json(v11, v9)
+  let v13: String = call json_to_string(v12)
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v14: Unit = call println(v8, v13)
+  v14

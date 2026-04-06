@@ -1,0 +1,35 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module closures__lazy_own_field_access
+
+struct Point { x: Int, y: Int }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+
+fn use_twice(v0: () -> Int) -> Int =
+  let v1: Int = call_closure v0()
+  let v2: Int = call_closure v0()
+  let v3: Int = add_int(v1, v2)
+  v3
+
+fn test() -> Int =
+  let v4: ~Point = construct Point(1, 2)
+  let v5: () -> Int = make_closure(lambda$26, [v4])
+  let v8: Int = call use_twice(v5)
+  v8
+
+fn lambda$26(v6: ~Point) -> Int =
+  let v7: Int = project v6.0
+  v7

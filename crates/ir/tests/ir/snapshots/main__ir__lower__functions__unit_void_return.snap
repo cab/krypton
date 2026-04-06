@@ -1,0 +1,49 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module functions__unit_void_return
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/io/println as println(h) -> Unit
+declare println: (h) -> Unit
+
+fn side_effect() -> Unit =
+  let v0: ~Int = 1
+  ()
+
+fn explicit_unit() -> Unit =
+  ()
+
+fn multi_let() -> Unit =
+  let v1: ~Int = 1
+  let v2: ~Int = 2
+  ()
+
+fn call_void() -> Unit =
+  let v3: Unit = call side_effect()
+  v3
+
+fn expr_discarded() -> Unit =
+  let v4: ~String = "hi"
+  ()
+
+fn main() -> Unit =
+  let v5: Unit = call side_effect()
+  let v6: Unit = call explicit_unit()
+  let v7: Unit = call multi_let()
+  let v8: Unit = call call_void()
+  let v9: Unit = call expr_discarded()
+  let v10: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v11: Unit = call println(v10, "done")
+  v11

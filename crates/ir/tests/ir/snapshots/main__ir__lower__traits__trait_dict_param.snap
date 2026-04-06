@@ -1,0 +1,52 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_dict_param
+
+struct Point { x: Int, y: Int }
+instance core/eq.Eq[Point] { eq=Eq$$Point$$eq }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn are_equal(v0: Dict[core/eq.Eq, l8], v1: l8, v2: l8) -> Bool =
+  let v3: Bool = trait_call core/eq.Eq.eq(v0, v1, v2)
+  v3
+
+fn main() -> Unit =
+  let v5: ~Point = construct Point(1, 2)
+  let v6: ~Point = construct Point(1, 2)
+  let v7: Dict[core/eq.Eq, Point] = get_dict core/eq.Eq[Point]
+  let v8: Bool = call are_equal(v7, v5, v6)
+  let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v9: Unit = call println(v4, v8)
+  v9
+
+fn Eq$$Point$$eq(v10: Point, v11: Point) -> Bool =
+  let_join v21(v16: Bool) =
+    if v16 {
+      let v17: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+      let v18: Int = project v10.1
+      let v19: Int = project v11.1
+      let v20: Bool = trait_call core/eq.Eq.eq(v17, v18, v19)
+      v20
+    } else {
+      false
+    }
+  in
+  let v12: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+  let v13: Int = project v10.0
+  let v14: Int = project v11.0
+  let v15: Bool = trait_call core/eq.Eq.eq(v12, v13, v14)
+  jump v21(v15)

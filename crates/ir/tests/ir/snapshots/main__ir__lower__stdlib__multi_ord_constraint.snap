@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__multi_ord_constraint
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/io/println as println(h) -> Unit
+declare println: (h) -> Unit
+
+fn both_less(v0: Dict[core/ord.Ord, l8], v1: Dict[core/ord.Ord, m8], v2: l8, v3: l8, v4: m8, v5: m8) -> Bool =
+  let_join v13(v6: Bool) =
+    let_join v12(v8: Bool) =
+      let_join v11(v10: Bool) =
+        if v10 {
+          v8
+        } else {
+          false
+        }
+      in
+      jump v11(v6)
+    in
+    let v9: Bool = trait_call core/ord.Ord.lt(v1, v4, v5)
+    jump v12(v9)
+  in
+  let v7: Bool = trait_call core/ord.Ord.lt(v0, v2, v3)
+  jump v13(v7)
+
+fn main() -> Unit =
+  let v15: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v16: Dict[core/ord.Ord, Float] = get_dict core/ord.Ord[Float]
+  let v17: Bool = call both_less(v15, v16, 1, 2, 3.0, 4.0)
+  let v18: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v19: String = trait_call core/show.Show.show(v18, v17)
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v20: Unit = call println(v14, v19)
+  v20

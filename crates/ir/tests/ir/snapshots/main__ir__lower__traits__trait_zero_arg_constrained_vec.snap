@@ -1,0 +1,37 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_zero_arg_constrained_vec
+
+trait Test[k8] { name(): String }
+instance traits__trait_zero_arg_constrained_vec.Test[Vec$$Var0] { name=Test$$Vec$$Var0$$name }
+instance traits__trait_zero_arg_constrained_vec.Test[Int] { name=Test$$Int$$name }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: Dict[traits__trait_zero_arg_constrained_vec.Test, Int] = get_dict traits__trait_zero_arg_constrained_vec.Test[Int]
+  let v2: Dict[traits__trait_zero_arg_constrained_vec.Test, Vec[Int]] = make_dict traits__trait_zero_arg_constrained_vec.Test[Vec[Int]](v1)
+  let v3: String = trait_call traits__trait_zero_arg_constrained_vec.Test.name(v2)
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v4: Unit = call println(v0, v3)
+  v4
+
+fn Test$$Vec$$Var0$$name(v5: Dict[traits__trait_zero_arg_constrained_vec.Test, l8]) -> String =
+  let v6: String = trait_call traits__trait_zero_arg_constrained_vec.Test.name(v5)
+  v6
+
+fn Test$$Int$$name() -> ~String =
+  "yo"

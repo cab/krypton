@@ -1,0 +1,52 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module data_types__or_pattern_literals
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn classify(v0: Int) -> String =
+  let v3: Bool = eq_int(v0, 1)
+  if v3 {
+    "small"
+  } else {
+    let v2: Bool = eq_int(v0, 2)
+    if v2 {
+      "small"
+    } else {
+      let v1: Bool = eq_int(v0, 3)
+      if v1 {
+        "small"
+      } else {
+        "big"
+      }
+    }
+  }
+
+fn main() -> Unit =
+  let v4: String = call classify(1)
+  let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v6: Unit = call println(v5, v4)
+  let v7: String = call classify(2)
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v9: Unit = call println(v8, v7)
+  let v10: String = call classify(3)
+  let v11: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v12: Unit = call println(v11, v10)
+  let v14: String = call classify(99)
+  let v13: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v15: Unit = call println(v13, v14)
+  v15

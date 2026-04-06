@@ -1,0 +1,42 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__list_sort_by
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+declare println: (h) -> Unit
+declare sort_by: (List[w5], (w5) -> l5) -> List[w5]
+
+fn main() -> Unit =
+  let v0: ~List[Int] = construct List::Nil#1()
+  let v1: ~List[Int] = construct List::Cons#0(2, v0)
+  let v2: ~List[Int] = construct List::Cons#0(1, v1)
+  let v3: ~List[Int] = construct List::Cons#0(3, v2)
+  let v5: (Int) -> Int = make_closure(lambda$24, [])
+  let v6: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v7: List[Int] = call sort_by(v6, v3, v5)
+  switch v7 {
+    0 (v8: Int, v9: List[e]) ->
+      let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v11: Unit = call println(v10, v8)
+      v11
+    1 ->
+      let v12: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v13: Unit = call println(v12, 0)
+      v13
+  }
+
+fn lambda$24(v4: Int) -> Int =
+  v4

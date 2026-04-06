@@ -1,0 +1,48 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__derive_show_recursive
+
+type List[a] = Cons#0(a, List[a]) | Nil#1
+instance core/show.Show[List] { show=Show$$List$$show }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: ~List[Int] = construct List::Nil#1()
+  let v2: ~List[Int] = construct List::Cons#0(3, v1)
+  let v3: ~List[Int] = construct List::Cons#0(2, v2)
+  let v4: ~List[Int] = construct List::Cons#0(1, v3)
+  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v6: Dict[core/show.Show, List[Int]] = make_dict core/show.Show[List[Int]](v5)
+  let v7: String = trait_call core/show.Show.show(v6, v4)
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v8: Unit = call println(v0, v7)
+  v8
+
+fn Show$$List$$show(v9: Dict[core/show.Show, a8], v10: List[a8]) -> String =
+  switch v10 {
+    0 (v11: a8, v12: List[a8]) ->
+      let v13: String = trait_call core/show.Show.show(v9, v11)
+      let v14: String = concat_string("Cons(", v13)
+      let v15: String = concat_string(v14, ", ")
+      let v16: Dict[core/show.Show, List[a8]] = make_dict core/show.Show[List[a8]](v9)
+      let v17: String = trait_call core/show.Show.show(v16, v12)
+      let v18: String = concat_string(v15, v17)
+      let v19: String = concat_string(v18, ")")
+      v19
+    1 ->
+      "Nil"
+  }

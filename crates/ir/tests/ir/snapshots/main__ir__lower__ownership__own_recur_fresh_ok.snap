@@ -1,0 +1,42 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module ownership__own_recur_fresh_ok
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+fn consume(v0: ~String) -> String =
+  v0
+
+fn make() -> ~String =
+  "hello"
+
+fn loop(v1: ~String, v2: Int) -> String =
+  let_join [recur] v3(v4: ~String, v5: Int) =
+    let_join v13(v8: Bool) =
+      if v8 {
+        let v9: String = call consume(v4)
+        v9
+      } else {
+        let v10: String = call consume(v4)
+        let v11: ~String = call make()
+        let v12: Int = sub_int(v5, 1)
+        jump v3(v11, v12)
+      }
+    in
+    let v6: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v7: Bool = trait_call core/eq.Eq.eq(v6, v5, 0)
+    jump v13(v7)
+  in
+  jump v3(v1, v2)

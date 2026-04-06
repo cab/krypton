@@ -1,0 +1,56 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module json__json_string_value
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/json/JStr as JStr(String) -> Json
+import core/json/JObj as JObj(Map[String, Json]) -> Json
+import core/json/parse_json as parse_json(String) -> Result[String, Json]
+import core/json/json_get as json_get(Json, String) -> Option[Json]
+import core/json/JBool as JBool(Bool) -> Json
+import core/json/JNum as JNum(Float) -> Json
+import core/json/JArr as JArr(List[Json]) -> Json
+declare json_get: (Json, String) -> Option[Json]
+declare parse_json: (String) -> Result[String, Json]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v0: Result[String, Json] = call parse_json("{"name":"alice"}")
+  switch v0 {
+    0 (v1: Json) ->
+      let v2: Option[Json] = call json_get(v1, "name")
+      switch v2 {
+        0 (v3: d) ->
+          switch v3 {
+            3 (v4: String) ->
+              let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+              let v6: Unit = call println(v5, v4)
+              v6
+            _ ->
+              let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+              let v8: Unit = call println(v7, "FAIL get")
+              v8
+          }
+        _ ->
+          let v9: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v10: Unit = call println(v9, "FAIL get")
+          v10
+      }
+    1 (v11: String) ->
+      let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v13: Unit = call println(v12, v11)
+      v13
+  }

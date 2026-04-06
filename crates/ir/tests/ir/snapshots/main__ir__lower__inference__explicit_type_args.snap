@@ -1,0 +1,40 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module inference__explicit_type_args
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+declare map: (List[v], (v) -> x) -> List[x]
+
+fn identity(v0: l8) -> l8 =
+  v0
+
+fn stringify(v1: Int) -> String =
+  "n"
+
+fn call_site() -> Int =
+  let v2: Int = call identity(42)
+  v2
+
+fn standalone() -> Int =
+  let v3: (Int) -> Int = make_closure(identity, [])
+  let v4: Int = call_closure v3(42)
+  v4
+
+fn method_site(v5: List[Int]) -> List[String] =
+  let v6: (Int) -> String = make_closure(stringify, [])
+  let v7: (Int) -> String = v6
+  let v8: List[String] = call map(v5, v7)
+  v8

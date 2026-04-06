@@ -1,0 +1,56 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module json__json_parse
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/json/JNum as JNum(Float) -> Json
+import core/json/JObj as JObj(Map[String, Json]) -> Json
+import core/json/parse_json as parse_json(String) -> Result[String, Json]
+import core/json/json_to_string as json_to_string(Json) -> String
+import core/json/json_object as json_object(List[(String, Json)]) -> Json
+import core/json/JBool as JBool(Bool) -> Json
+import core/json/JStr as JStr(String) -> Json
+import core/json/JArr as JArr(List[Json]) -> Json
+declare json_object: (List[(String, Json)]) -> Json
+declare json_to_string: (Json) -> String
+declare parse_json: (String) -> Result[String, Json]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Json = construct Json::JNum#2(1.0)
+  let v2: (~String, ~Json) = tuple("a", v1)
+  let v3: ~List[(~String, ~Json)] = construct List::Nil#1()
+  let v4: ~List[(~String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v0: Json = call json_object(v4)
+  let v5: String = call json_to_string(v0)
+  let v6: Result[String, Json] = call parse_json(v5)
+  switch v6 {
+    0 (v7: e) ->
+      switch v7 {
+        5 (v8: Map[String, Json]) ->
+          let v9: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v10: Unit = call println(v9, "JObj")
+          v10
+        _ ->
+          let v11: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v12: Unit = call println(v11, "FAIL")
+          v12
+      }
+    _ ->
+      let v13: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v14: Unit = call println(v13, "FAIL")
+      v14
+  }

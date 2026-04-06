@@ -1,0 +1,75 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__hash_types
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let_join v63(v16: Unit) =
+    let_join v62(v33: Unit) =
+      let_join v61(v50: Unit) =
+        let_join v60(v58: Bool) =
+          let v51: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+          let v59: Unit = call println(v51, v58)
+          v59
+        in
+        let v52: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+        let v53: Dict[core/hash.Hash, Bool] = get_dict core/hash.Hash[Bool]
+        let v54: Int = trait_call core/hash.Hash.hash(v53, true)
+        let v55: Dict[core/hash.Hash, Bool] = get_dict core/hash.Hash[Bool]
+        let v56: Int = trait_call core/hash.Hash.hash(v55, true)
+        let v57: Bool = trait_call core/eq.Eq.eq(v52, v54, v56)
+        jump v60(v57)
+      in
+      let_join v49(v47: Bool) =
+        let v40: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+        let v48: Unit = call println(v40, v47)
+        jump v61(v48)
+      in
+      let v41: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+      let v42: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+      let v43: Int = trait_call core/hash.Hash.hash(v42, "hello")
+      let v44: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+      let v45: Int = trait_call core/hash.Hash.hash(v44, "hello")
+      let v46: Bool = trait_call core/eq.Eq.eq(v41, v43, v45)
+      jump v49(v46)
+    in
+    let_join v32(v30: Bool) =
+      let v23: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+      let v31: Unit = call println(v23, v30)
+      jump v62(v31)
+    in
+    let v24: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v25: Dict[core/hash.Hash, Float] = get_dict core/hash.Hash[Float]
+    let v26: Int = trait_call core/hash.Hash.hash(v25, 3.14)
+    let v27: Dict[core/hash.Hash, Float] = get_dict core/hash.Hash[Float]
+    let v28: Int = trait_call core/hash.Hash.hash(v27, 3.14)
+    let v29: Bool = trait_call core/eq.Eq.eq(v24, v26, v28)
+    jump v32(v29)
+  in
+  let_join v15(v13: Bool) =
+    let v6: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+    let v14: Unit = call println(v6, v13)
+    jump v63(v14)
+  in
+  let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+  let v8: Dict[core/hash.Hash, Int] = get_dict core/hash.Hash[Int]
+  let v9: Int = trait_call core/hash.Hash.hash(v8, 42)
+  let v10: Dict[core/hash.Hash, Int] = get_dict core/hash.Hash[Int]
+  let v11: Int = trait_call core/hash.Hash.hash(v10, 42)
+  let v12: Bool = trait_call core/eq.Eq.eq(v7, v9, v11)
+  jump v15(v12)

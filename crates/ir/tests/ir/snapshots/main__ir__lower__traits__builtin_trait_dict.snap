@@ -1,0 +1,30 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__builtin_trait_dict
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn apply_combine(v0: Dict[core/semigroup.Semigroup, p8], v1: p8, v2: p8) -> p8 =
+  let v3: p8 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
+  v3
+
+fn main() -> Unit =
+  let v5: Dict[core/semigroup.Semigroup, Int] = get_dict core/semigroup.Semigroup[Int]
+  let v6: Int = call apply_combine(v5, 3, 5)
+  let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v7: Unit = call println(v4, v6)
+  v7

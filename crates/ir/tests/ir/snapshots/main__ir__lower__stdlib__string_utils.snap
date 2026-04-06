@@ -1,0 +1,86 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__string_utils
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/string/contains as contains(String, String) -> Bool
+import core/string/starts_with as starts_with(String, String) -> Bool
+import core/string/ends_with as ends_with(String, String) -> Bool
+import core/string/index_of as index_of(String, String) -> Option[Int]
+import core/string/to_lower as to_lower(String) -> String
+import core/string/to_upper as to_upper(String) -> String
+import core/string/replace as replace(String, String, String) -> String
+import core/string/join as join(List[String], String) -> String
+import core/string/char_at as char_at(String, Int) -> Option[String]
+declare char_at: (String, Int) -> Option[String]
+declare contains: (String, String) -> Bool
+declare ends_with: (String, String) -> Bool
+declare index_of: (String, String) -> Option[Int]
+declare join: (List[String], String) -> String
+declare println: (h) -> Unit
+declare replace: (String, String, String) -> String
+declare starts_with: (String, String) -> Bool
+declare to_lower: (String) -> String
+declare to_upper: (String) -> String
+
+fn main() -> Unit =
+  let v0: Bool = call contains("hello world", "world")
+  let v1: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v2: Unit = call println(v1, v0)
+  let v3: Bool = call contains("hello world", "xyz")
+  let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v5: Unit = call println(v4, v3)
+  let v6: Bool = call starts_with("hello world", "hello")
+  let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v8: Unit = call println(v7, v6)
+  let v9: Bool = call ends_with("hello world", "world")
+  let v10: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v11: Unit = call println(v10, v9)
+  let v12: Bool = call ends_with("hello world", "hello")
+  let v13: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v14: Unit = call println(v13, v12)
+  let v15: String = call to_lower("Hello World")
+  let v16: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v17: Unit = call println(v16, v15)
+  let v18: String = call to_upper("hello world")
+  let v19: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v20: Unit = call println(v19, v18)
+  let v21: String = call replace("hello world", "world", "earth")
+  let v22: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v23: Unit = call println(v22, v21)
+  let v24: Option[Int] = call index_of("hello world", "world")
+  let v25: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v26: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v25)
+  let v27: Unit = call println(v26, v24)
+  let v28: Option[Int] = call index_of("hello world", "xyz")
+  let v29: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v30: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v29)
+  let v31: Unit = call println(v30, v28)
+  let v33: ~List[String] = construct List::Nil#1()
+  let v34: ~List[String] = construct List::Cons#0("world", v33)
+  let v32: ~List[String] = construct List::Cons#0("hello", v34)
+  let v35: String = call join(v32, ", ")
+  let v36: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v37: Unit = call println(v36, v35)
+  let v38: Option[String] = call char_at("hello", 1)
+  let v39: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v40: Dict[core/show.Show, Option[String]] = make_dict core/show.Show[Option[String]](v39)
+  let v41: Unit = call println(v40, v38)
+  let v44: Option[String] = call char_at("hello", 10)
+  let v42: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v43: Dict[core/show.Show, Option[String]] = make_dict core/show.Show[Option[String]](v42)
+  let v45: Unit = call println(v43, v44)
+  v45

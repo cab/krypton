@@ -1,0 +1,67 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__question_mark_option_chain
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn first(v0: Int) -> Option[Int] =
+  let v1: ~Option[Int] = construct Option::Some#0(v0)
+  v1
+
+fn second(v2: p8) -> Option[Int] =
+  let v3: ~Option[Int] = construct Option::None#1()
+  v3
+
+fn process(v4: Int) -> Option[Int] =
+  let_join v5(v6: Option[Int]) =
+    v6
+  in
+  let_join v17(v7: Int) =
+    let_join v16(v11: Int) =
+      let v15: ~Option[Int] = construct Option::Some#0(v11)
+      v15
+    in
+    let v12: Option[Int] = call second(v7)
+    switch v12 {
+      0 (v13: Int) ->
+        jump v16(v13)
+      1 ->
+        let v14: Option[Int] = construct Option::None#1()
+        jump v5(v14)
+    }
+  in
+  let v8: Option[Int] = call first(v4)
+  switch v8 {
+    0 (v9: Int) ->
+      jump v17(v9)
+    1 ->
+      let v10: Option[Int] = construct Option::None#1()
+      jump v5(v10)
+  }
+
+fn main() -> Unit =
+  let v18: Option[Int] = call process(21)
+  switch v18 {
+    0 (v19: Int) ->
+      let v20: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v21: Unit = call println(v20, v19)
+      v21
+    1 ->
+      let v22: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v23: Unit = call println(v22, 0)
+      v23
+  }

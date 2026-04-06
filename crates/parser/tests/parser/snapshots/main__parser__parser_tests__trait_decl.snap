@@ -1,0 +1,61 @@
+---
+source: crates/parser/tests/parser_test.rs
+expression: module
+---
+decls:
+  - DefTrait:
+      platform: ~
+      visibility: Private
+      name: Eq
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 10
+            - 11
+      superclasses: []
+      methods:
+        - platform: ~
+          name: eq
+          visibility: Private
+          type_params: []
+          params:
+            - name: self
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 32
+                    - 33
+              span:
+                - 26
+                - 33
+            - name: other
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 42
+                    - 43
+              span:
+                - 35
+                - 43
+          constraints: []
+          return_type:
+            Named:
+              name: Bool
+              span:
+                - 48
+                - 52
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 19
+                - 52
+          span:
+            - 19
+            - 52
+      span:
+        - 1
+        - 54

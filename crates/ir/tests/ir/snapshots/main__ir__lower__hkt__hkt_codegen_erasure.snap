@@ -1,0 +1,64 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module hkt__hkt_codegen_erasure
+
+type Box[a] = Box#0(a)
+trait Functor[l8] { fmap(l8[m8], (m8) -> n8): l8[n8] }
+instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+declare println: (h) -> Unit
+declare to_list: (Vec[z7]) -> List[z7]
+
+fn fold_box(v0: List[v8], v1: p8[v8], v2: (p8[v8], v8) -> p8[v8]) -> p8[v8] =
+  let_join [recur] v3(v4: List[v8], v5: p8[v8], v6: (p8[v8], v8) -> p8[v8]) =
+    switch v4 {
+      1 ->
+        v5
+      0 (v7: v8, v8: List[v8]) ->
+        let v9: p8[v8] = call_closure v6(v5, v7)
+        jump v3(v8, v9, v6)
+    }
+  in
+  jump v3(v0, v1, v2)
+
+fn main() -> Unit =
+  let v11: Vec[Int] = make_vec(1, 2, 4)
+  let v12: List[Int] = call to_list(v11)
+  let v13: ~Box[Int] = construct Box::Box#0(0)
+  let v19: (Box[Int], Int) -> ~Box[Int] = make_closure(lambda$27, [])
+  let v10: Box[Int] = call fold_box(v12, v13, v19)
+  switch v10 {
+    0 (v20: Int) ->
+      let v21: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v22: Unit = call println(v21, v20)
+      v22
+  }
+
+fn Functor$$Box$$fmap(v23: Box[u9], v24: (u9) -> w9) -> ~Box[w9] =
+  switch v23 {
+    0 (v25: u9) ->
+      let v26: w9 = call_closure v24(v25)
+      let v27: ~Box[w9] = construct Box::Box#0(v26)
+      v27
+  }
+
+fn lambda$27(v14: Box[Int], v15: Int) -> ~Box[Int] =
+  switch v14 {
+    0 (v16: Int) ->
+      let v17: Int = add_int(v16, v15)
+      let v18: ~Box[Int] = construct Box::Box#0(v17)
+      v18
+  }

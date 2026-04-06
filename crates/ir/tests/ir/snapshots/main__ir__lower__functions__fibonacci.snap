@@ -1,0 +1,43 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module functions__fibonacci
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn fibonacci(v0: Int) -> Int =
+  let_join v10(v4: Bool) =
+    if v4 {
+      v0
+    } else {
+      let v5: Int = sub_int(v0, 1)
+      let v6: Int = call fibonacci(v5)
+      let v7: Int = sub_int(v0, 2)
+      let v8: Int = call fibonacci(v7)
+      let v9: Int = add_int(v6, v8)
+      v9
+    }
+  in
+  let v1: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v2: Bool = trait_call core/ord.Ord.lt(v1, 1, v0)
+  let v3: Bool = not(v2)
+  jump v10(v3)
+
+fn main() -> Unit =
+  let v12: Int = call fibonacci(10)
+  let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v13: Unit = call println(v11, v12)
+  v13

@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_fn_type_parameterized
+
+trait Test[k8] { test(k8): String }
+instance traits__trait_fn_type_parameterized.Test[$Fun0$$Var0] { test=Test$$$Fun0$$Var0$$test }
+instance traits__trait_fn_type_parameterized.Test[$Fun1$Int$$Var0] { test=Test$$$Fun1$Int$$Var0$$test }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn f() -> String =
+  "hello"
+
+fn g(v0: Int) -> String =
+  "world"
+
+fn main() -> Unit =
+  let v1: () -> String = make_closure(f, [])
+  let v2: Dict[traits__trait_fn_type_parameterized.Test, () -> String] = get_dict traits__trait_fn_type_parameterized.Test[() -> String]
+  let v3: String = trait_call traits__trait_fn_type_parameterized.Test.test(v2, v1)
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v5: Unit = call println(v4, v3)
+  let v7: (Int) -> String = make_closure(g, [])
+  let v8: Dict[traits__trait_fn_type_parameterized.Test, (Int) -> String] = get_dict traits__trait_fn_type_parameterized.Test[(Int) -> String]
+  let v9: String = trait_call traits__trait_fn_type_parameterized.Test.test(v8, v7)
+  let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v10: Unit = call println(v6, v9)
+  v10
+
+fn Test$$$Fun0$$Var0$$test(v11: () -> l8) -> ~String =
+  "got-unit"
+
+fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> m8) -> ~String =
+  "got-int"

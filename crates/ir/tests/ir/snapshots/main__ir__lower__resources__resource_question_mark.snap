@@ -1,0 +1,63 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module resources__resource_question_mark
+
+type Handle = MkHandle#0(String)
+instance core/resource.Resource[Handle] { close=Resource$$Handle$$close }
+extern java "krypton.runtime.KryptonIO" println(a8) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (a8) -> Unit
+
+fn fallible() -> Result[String, Int] =
+  let v0: ~Result[String, Int] = construct Result::Err#1("fail")
+  v0
+
+fn work() -> Result[String, Int] =
+  let_join v1(v2: Result[String, Int]) =
+    v2
+  in
+  let v3: ~Handle = construct Handle::MkHandle#0("test")
+  let v4: Unit = call println("opened")
+  let_join v13(v5: Int) =
+    let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
+    let v14: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
+    let v15: Unit = trait_call core/resource.Resource.close(v14, v3)
+    v12
+  in
+  let v6: Result[String, Int] = call fallible()
+  switch v6 {
+    0 (v7: Int) ->
+      jump v13(v7)
+    1 (v8: String) ->
+      let v9: Result[String, Int] = construct Result::Err#1(v8)
+      let v10: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
+      let v11: Unit = trait_call core/resource.Resource.close(v10, v3)
+      jump v1(v9)
+  }
+
+fn main() -> Unit =
+  let v16: Result[String, Int] = call work()
+  switch v16 {
+    0 (v17: Int) ->
+      let v18: Unit = call println(v17)
+      v18
+    1 (v19: String) ->
+      let v20: Unit = call println("err")
+      v20
+  }
+
+fn Resource$$Handle$$close(v21: ~Handle) -> Unit =
+  let v22: Unit = call println("closed")
+  v22

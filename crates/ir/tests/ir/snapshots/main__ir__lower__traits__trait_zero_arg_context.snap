@@ -1,0 +1,43 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_zero_arg_context
+
+trait Default[k8] { default(): k8 }
+instance traits__trait_zero_arg_context.Default[Int] { default=Default$$Int$$default }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn int_default() -> Int =
+  let v0: Dict[traits__trait_zero_arg_context.Default, Int] = get_dict traits__trait_zero_arg_context.Default[Int]
+  let v1: Int = trait_call traits__trait_zero_arg_context.Default.default(v0)
+  v1
+
+fn default2(v2: Dict[traits__trait_zero_arg_context.Default, r8]) -> r8 =
+  let v3: r8 = trait_call traits__trait_zero_arg_context.Default.default(v2)
+  v3
+
+fn main() -> Unit =
+  let v4: Int = call int_default()
+  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v6: Unit = call println(v5, v4)
+  let v8: Dict[traits__trait_zero_arg_context.Default, Int] = get_dict traits__trait_zero_arg_context.Default[Int]
+  let v9: Int = call default2(v8)
+  let v7: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v10: Unit = call println(v7, v9)
+  v10
+
+fn Default$$Int$$default() -> ~Int =
+  42

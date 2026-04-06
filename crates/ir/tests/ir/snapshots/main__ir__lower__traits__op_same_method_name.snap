@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__op_same_method_name
+
+trait Joinable[k8] { join(k8, k8): k8 }
+instance traits__op_same_method_name.Joinable[String] { join=Joinable$$String$$join }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/io/println as println(h) -> Unit
+declare println: (h) -> Unit
+
+fn apply_combine(v0: Dict[core/semigroup.Semigroup, q8], v1: q8, v2: q8) -> q8 =
+  let v3: q8 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
+  v3
+
+fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, w8], v5: w8, v6: w8) -> w8 =
+  let v7: w8 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
+  v7
+
+fn main() -> Unit =
+  let v8: Dict[core/semigroup.Semigroup, Int] = get_dict core/semigroup.Semigroup[Int]
+  let v9: Int = call apply_combine(v8, 1, 2)
+  let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v11: String = trait_call core/show.Show.show(v10, v9)
+  let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v13: Unit = call println(v12, v11)
+  let v15: Dict[traits__op_same_method_name.Joinable, String] = get_dict traits__op_same_method_name.Joinable[String]
+  let v16: String = call apply_join(v15, "hello", "world")
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v17: Unit = call println(v14, v16)
+  v17
+
+fn Joinable$$String$$join(v18: String, v19: String) -> String =
+  let v20: String = concat_string(v18, " ")
+  let v21: String = concat_string(v20, v19)
+  v21

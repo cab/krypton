@@ -1,0 +1,68 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__question_mark_result_chain
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn parse(v0: Int) -> Result[String, Int] =
+  let v1: ~Result[String, Int] = construct Result::Ok#0(v0)
+  v1
+
+fn double(v2: Int) -> Result[String, Int] =
+  let v3: Int = mul_int(v2, 2)
+  let v4: ~Result[String, Int] = construct Result::Ok#0(v3)
+  v4
+
+fn process(v5: Int) -> Result[String, Int] =
+  let_join v6(v7: Result[String, Int]) =
+    v7
+  in
+  let_join v20(v8: Int) =
+    let_join v19(v13: Int) =
+      let v18: ~Result[String, Int] = construct Result::Ok#0(v13)
+      v18
+    in
+    let v14: Result[String, Int] = call double(v8)
+    switch v14 {
+      0 (v15: Int) ->
+        jump v19(v15)
+      1 (v16: String) ->
+        let v17: Result[String, Int] = construct Result::Err#1(v16)
+        jump v6(v17)
+    }
+  in
+  let v9: Result[String, Int] = call parse(v5)
+  switch v9 {
+    0 (v10: Int) ->
+      jump v20(v10)
+    1 (v11: String) ->
+      let v12: Result[String, Int] = construct Result::Err#1(v11)
+      jump v6(v12)
+  }
+
+fn main() -> Unit =
+  let v21: Result[String, Int] = call process(21)
+  switch v21 {
+    0 (v22: Int) ->
+      let v23: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v24: Unit = call println(v23, v22)
+      v24
+    1 (v25: String) ->
+      let v26: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v27: Unit = call println(v26, v25)
+      v27
+  }

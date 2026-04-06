@@ -1,0 +1,22 @@
+---
+source: crates/krypton/tests/krypton/inspect.rs
+expression: output
+---
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Handle = MkHandle(String)
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun main() -> Unit {
+    let h: ~Handle = MkHandle("1")
+    println("open1")
+    # close(h) [shadow]
+    let h: ~Handle = MkHandle("2")
+    println("open2")
+    # close(h) [scope exit]
+}

@@ -1,0 +1,52 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__js_dict_concrete
+
+struct Point { x: Int, y: Int }
+instance core/eq.Eq[Point] { eq=Eq$$Point$$eq }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn check(v0: Point, v1: Point) -> Bool =
+  let v2: Dict[core/eq.Eq, Point] = get_dict core/eq.Eq[Point]
+  let v3: Bool = trait_call core/eq.Eq.eq(v2, v0, v1)
+  v3
+
+fn main() -> Unit =
+  let v5: ~Point = construct Point(1, 2)
+  let v6: ~Point = construct Point(1, 2)
+  let v7: Bool = call check(v5, v6)
+  let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v8: Unit = call println(v4, v7)
+  v8
+
+fn Eq$$Point$$eq(v9: Point, v10: Point) -> Bool =
+  let_join v20(v15: Bool) =
+    if v15 {
+      let v16: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+      let v17: Int = project v9.1
+      let v18: Int = project v10.1
+      let v19: Bool = trait_call core/eq.Eq.eq(v16, v17, v18)
+      v19
+    } else {
+      false
+    }
+  in
+  let v11: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+  let v12: Int = project v9.0
+  let v13: Int = project v10.0
+  let v14: Bool = trait_call core/eq.Eq.eq(v11, v12, v13)
+  jump v20(v14)

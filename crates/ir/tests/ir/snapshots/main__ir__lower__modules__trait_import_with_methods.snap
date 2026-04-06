@@ -1,0 +1,28 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module modules__trait_import_with_methods
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/io/println as println(h) -> Unit
+import trait_selective_lib/MkWidget as MkWidget(String) -> Widget
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: ~Widget = construct Widget::MkWidget#0("x")
+  let v2: Dict[trait_selective_lib.Describable, Widget] = get_dict trait_selective_lib.Describable[Widget]
+  let v3: String = trait_call trait_selective_lib.Describable.describe(v2, v1)
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v4: Unit = call println(v0, v3)
+  v4

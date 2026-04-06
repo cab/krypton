@@ -1,0 +1,46 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module data_types__branch_with_struct
+
+struct Wrapper { value: Int }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn pick(v0: Int) -> Wrapper =
+  let_join v6(v3: Bool) =
+    if v3 {
+      let v4: ~Wrapper = construct Wrapper(100)
+      v4
+    } else {
+      let v5: ~Wrapper = construct Wrapper(42)
+      v5
+    }
+  in
+  let v1: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v2: Bool = trait_call core/ord.Ord.lt(v1, 0, v0)
+  jump v6(v2)
+
+fn main() -> Unit =
+  let v7: Wrapper = call pick(1)
+  let v9: Int = neg_int(1)
+  let v8: Wrapper = call pick(v9)
+  let v10: Int = project v7.0
+  let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v12: Unit = call println(v11, v10)
+  let v14: Int = project v8.0
+  let v13: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v15: Unit = call println(v13, v14)
+  v15

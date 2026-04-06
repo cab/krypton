@@ -1,0 +1,41 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__stdlib_io_roundtrip
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/io/read_file as read_file(String) -> Result[String, String]
+import core/io/write_file as write_file(String, String) -> Result[String, Unit]
+declare println: (h) -> Unit
+declare read_file: (String) -> Result[String, String]
+declare write_file: (String, String) -> Result[String, Unit]
+
+fn handle(v0: Dict[core/show.Show, r8], v1: Dict[core/show.Show, s8], v2: Result[r8, s8]) -> Unit =
+  switch v2 {
+    0 (v3: s8) ->
+      let v4: Unit = call println(v1, v3)
+      v4
+    1 (v5: r8) ->
+      let v6: Unit = call println(v0, v5)
+      v6
+  }
+
+fn main() -> Unit =
+  let v7: Result[String, Unit] = call write_file("_test_tmp.txt", "hello from file")
+  let v10: Result[String, String] = call read_file("_test_tmp.txt")
+  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v9: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v11: Unit = call handle(v8, v9, v10)
+  v11
