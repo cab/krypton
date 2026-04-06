@@ -1223,7 +1223,11 @@ where
         .then(vis.clone())
         .then_ignore(symbol(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
-        .then(type_param.delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)))
+        .then(type_param.clone()
+            .separated_by(symbol(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)))
         .then(trait_superclasses)
         .then(
             trait_method
@@ -1234,7 +1238,7 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |(((((platform, visibility), name), type_param), (where_constraints, old_syntax)), method_pairs), e| {
+            |(((((platform, visibility), name), type_params), (where_constraints, old_syntax)), method_pairs), e| {
                 let mut methods = Vec::with_capacity(method_pairs.len());
                 let mut warnings = Vec::new();
                 for (method, warning) in method_pairs {
@@ -1250,13 +1254,13 @@ where
                         code: ErrorCode::P0005,
                         message: format!(
                             "use 'where {}: {}' instead of ': {}' for superclass constraints",
-                            type_param.name, joined, joined,
+                            type_params[0].name, joined, joined,
                         ),
                         span,
                     });
                     for trait_name in names {
                         superclasses.push(TypeConstraint {
-                            type_var: type_param.name.clone(),
+                            type_var: type_params[0].name.clone(),
                             trait_name,
                             span,
                         });
@@ -1267,7 +1271,7 @@ where
                         platform,
                         visibility,
                         name,
-                        type_param,
+                        type_params,
                         superclasses,
                         methods,
                         span: to_span(e.span()),
@@ -1318,6 +1322,9 @@ where
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(
             ty.clone()
+                .separated_by(symbol(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
         )
         .then(impl_constraints)
@@ -1329,11 +1336,11 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |(((((platform, type_params), trait_name), target_type), type_constraints), methods), e| {
+            |(((((platform, type_params), trait_name), type_args), type_constraints), methods), e| {
                 Decl::DefImpl {
                     platform,
                     trait_name,
-                    target_type,
+                    type_args,
                     type_params,
                     type_constraints,
                     methods,

@@ -35,6 +35,10 @@ trait Mergeable[a] {
     fun merge(x: a, y: a) -> a
 }
 
+trait Convert[a, b] {
+    fun convert(x: a) -> b
+}
+
 # --- Trait implementations ---
 
 impl Measurable[Shape] {
@@ -47,6 +51,10 @@ impl Measurable[Shape] {
 
 impl Mergeable[Int] {
     fun merge(x: Int, y: Int) -> Int = x + y
+}
+
+impl Convert[Int, Bool] {
+    fun convert(x: Int) -> Bool = x > 0
 }
 
 

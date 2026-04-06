@@ -3285,7 +3285,7 @@ fn register_local_traits(
         if let Decl::DefTrait {
             visibility,
             name,
-            type_param,
+            type_params: trait_type_params,
             superclasses,
             methods,
             span,
@@ -3298,6 +3298,7 @@ fn register_local_traits(
                     *span,
                 ));
             }
+            let type_param = &trait_type_params[0];
             let tv_id = state.gen.fresh();
             let type_var_arity = type_param.arity;
             let mut type_param_map = HashMap::new();
@@ -3670,7 +3671,7 @@ fn register_impl_instances(
     for decl in &module.decls {
         if let Decl::DefImpl {
             trait_name,
-            target_type,
+            type_args,
             type_params,
             type_constraints,
             methods,
@@ -3678,6 +3679,7 @@ fn register_impl_instances(
             ..
         } = decl
         {
+            let target_type = &type_args[0];
             let wildcard_count =
                 validate_impl_wildcards(target_type).map_err(|e| spanned(e, *span))?;
 
@@ -4487,7 +4489,7 @@ fn typecheck_impl_methods(
     for decl in &module.decls {
         if let Decl::DefImpl {
             trait_name,
-            target_type: _,
+            type_args: _,
             methods,
             span,
             ..

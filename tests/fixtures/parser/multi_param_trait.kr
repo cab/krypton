@@ -1,0 +1,12 @@
+# expect: ok
+trait Convert[a, b] {
+  fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+  fun convert(x: Int) -> String = show(x)
+}
+
+impl[a] Convert[Array[a], String] where a: Show {
+  fun convert(x: Array[a]) -> String = show(x)
+}

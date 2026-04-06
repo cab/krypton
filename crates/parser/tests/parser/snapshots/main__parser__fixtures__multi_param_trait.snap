@@ -1,0 +1,204 @@
+---
+source: crates/parser/tests/fixture_test.rs
+expression: module
+---
+decls:
+  - DefTrait:
+      platform: ~
+      visibility: Private
+      name: Convert
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 27
+            - 28
+        - name: b
+          arity: 0
+          span:
+            - 30
+            - 31
+      superclasses: []
+      methods:
+        - platform: ~
+          name: convert
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 52
+                    - 53
+              span:
+                - 49
+                - 53
+          constraints: []
+          return_type:
+            Var:
+              name: b
+              span:
+                - 58
+                - 59
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 37
+                - 59
+          span:
+            - 37
+            - 59
+      span:
+        - 13
+        - 61
+  - DefImpl:
+      platform: ~
+      trait_name: Convert
+      type_args:
+        - Named:
+            name: Int
+            span:
+              - 76
+              - 79
+        - Named:
+            name: String
+            span:
+              - 81
+              - 87
+      type_params: []
+      type_constraints: []
+      methods:
+        - platform: ~
+          name: convert
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                Named:
+                  name: Int
+                  span:
+                    - 108
+                    - 111
+              span:
+                - 105
+                - 111
+          constraints: []
+          return_type:
+            Named:
+              name: String
+              span:
+                - 116
+                - 122
+          body:
+            App:
+              func:
+                Var:
+                  name: show
+                  span:
+                    - 125
+                    - 129
+              args:
+                - Var:
+                    name: x
+                    span:
+                      - 130
+                      - 131
+              is_ufcs: false
+              span:
+                - 125
+                - 132
+          span:
+            - 93
+            - 132
+      span:
+        - 63
+        - 134
+  - DefImpl:
+      platform: ~
+      trait_name: Convert
+      type_args:
+        - App:
+            name: Array
+            args:
+              - Var:
+                  name: a
+                  span:
+                    - 158
+                    - 159
+            span:
+              - 152
+              - 160
+        - Named:
+            name: String
+            span:
+              - 162
+              - 168
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 141
+            - 142
+      type_constraints:
+        - type_var: a
+          trait_name: Show
+          span:
+            - 176
+            - 183
+      methods:
+        - platform: ~
+          name: convert
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                App:
+                  name: Array
+                  args:
+                    - Var:
+                        name: a
+                        span:
+                          - 209
+                          - 210
+                  span:
+                    - 203
+                    - 211
+              span:
+                - 200
+                - 211
+          constraints: []
+          return_type:
+            Named:
+              name: String
+              span:
+                - 216
+                - 222
+          body:
+            App:
+              func:
+                Var:
+                  name: show
+                  span:
+                    - 225
+                    - 229
+              args:
+                - Var:
+                    name: x
+                    span:
+                      - 230
+                      - 231
+              is_ufcs: false
+              span:
+                - 225
+                - 232
+          span:
+            - 188
+            - 232
+      span:
+        - 136
+        - 234

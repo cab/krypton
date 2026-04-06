@@ -23,7 +23,7 @@ pub enum Decl {
         platform: Option<Vec<CompileTarget>>,
         visibility: Visibility,
         name: String,
-        type_param: TypeParam,
+        type_params: Vec<TypeParam>,
         superclasses: Vec<TypeConstraint>,
         methods: Vec<FnDecl>,
         span: Span,
@@ -31,7 +31,7 @@ pub enum Decl {
     DefImpl {
         platform: Option<Vec<CompileTarget>>,
         trait_name: String,
-        target_type: TypeExpr,
+        type_args: Vec<TypeExpr>,
         type_params: Vec<TypeParam>,
         type_constraints: Vec<TypeConstraint>,
         methods: Vec<FnDecl>,

@@ -88,19 +88,19 @@ impl<'a> Formatter<'a> {
                 platform,
                 visibility,
                 name,
-                type_param,
+                type_params,
                 superclasses,
                 methods,
                 ..
             } => {
                 self.fmt_platform(platform);
                 self.fmt_visibility(visibility);
-                self.fmt_trait(name, type_param, superclasses, methods);
+                self.fmt_trait(name, type_params, superclasses, methods);
             }
             Decl::DefImpl {
                 platform,
                 trait_name,
-                target_type,
+                type_args,
                 type_params,
                 type_constraints,
                 methods,
@@ -109,7 +109,7 @@ impl<'a> Formatter<'a> {
                 self.fmt_platform(platform);
                 self.fmt_impl(
                     trait_name,
-                    target_type,
+                    type_args,
                     type_params,
                     type_constraints,
                     methods,
@@ -345,13 +345,13 @@ impl<'a> Formatter<'a> {
     fn fmt_trait(
         &mut self,
         name: &str,
-        type_param: &TypeParam,
+        type_params: &[TypeParam],
         superclasses: &[TypeConstraint],
         methods: &[FnDecl],
     ) {
         self.buf.push_str("trait ");
         self.buf.push_str(name);
-        self.fmt_type_params(std::slice::from_ref(type_param));
+        self.fmt_type_params(type_params);
         if !superclasses.is_empty() {
             self.buf.push_str(" where ");
             // Group constraints by type_var, preserving order
@@ -426,7 +426,7 @@ impl<'a> Formatter<'a> {
     fn fmt_impl(
         &mut self,
         trait_name: &str,
-        target_type: &TypeExpr,
+        type_args: &[TypeExpr],
         type_params: &[TypeParam],
         constraints: &[TypeConstraint],
         methods: &[FnDecl],
@@ -438,7 +438,12 @@ impl<'a> Formatter<'a> {
         self.buf.push(' ');
         self.buf.push_str(trait_name);
         self.buf.push('[');
-        self.fmt_type_expr(target_type);
+        for (i, arg) in type_args.iter().enumerate() {
+            if i > 0 {
+                self.buf.push_str(", ");
+            }
+            self.fmt_type_expr(arg);
+        }
         self.buf.push(']');
         if !constraints.is_empty() {
             self.buf.push_str(" where ");
@@ -475,6 +480,10 @@ impl<'a> Formatter<'a> {
             self.fmt_param(p);
         }
         self.buf.push(')');
+        if let Some(ret) = &m.return_type {
+            self.buf.push_str(" -> ");
+            self.fmt_type_expr(ret);
+        }
         match &*m.body {
             Expr::Do { exprs, .. } => {
                 self.buf.push_str(" {");

@@ -824,11 +824,12 @@ pub fn render_inspect(
             }
             Decl::DefImpl {
                 trait_name,
-                target_type,
+                type_args,
                 type_constraints,
                 methods,
                 ..
             } => {
+                let target_type = &type_args[0];
                 let target_name = type_expr_base_name(target_type);
                 // Print impl header using pretty printer's type formatting
                 output.push_str("impl ");
