@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::trait_registry::TraitRegistry;
 use crate::typed_ast::{
-    AutoCloseBinding, AutoCloseInfo, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern,
+    AutoCloseBinding, AutoCloseInfo, ScopeId, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern,
 };
 use crate::types::Type;
 use crate::unify::{SpannedTypeError, TypeError};
@@ -194,9 +194,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
     }
 
     /// Run `f` with live as a scope. After f returns, any bindings introduced
-    /// inside the scope are drained and recorded in `scope_exits` under `scope_span`
-    /// in LIFO order. This is how nested blocks get their own auto-close tails.
-    fn scoped<F>(&mut self, scope_span: Span, live: &mut Vec<LiveBinding>, f: F)
+    /// inside the scope are drained and recorded in `scope_exits` under
+    /// `scope_id` in LIFO order. This is how nested blocks get their own
+    /// auto-close tails.
+    fn scoped<F>(&mut self, scope_id: ScopeId, live: &mut Vec<LiveBinding>, f: F)
     where
         F: FnOnce(&mut Self, &mut Vec<LiveBinding>),
     {
@@ -209,13 +210,18 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 .rev()
                 .map(|(name, type_name)| AutoCloseBinding { name, type_name })
                 .collect();
-            self.assert_no_duplicate_span(
-                "scope_exits",
-                scope_span,
-                self.info.scope_exits.contains_key(&scope_span),
+            assert!(
+                !self.info.scope_exits.contains_key(&scope_id),
+                "duplicate ScopeId in scope_exits: {:?}",
+                scope_id
             );
-            self.info.scope_exits.insert(scope_span, bindings);
+            self.info.scope_exits.insert(scope_id, bindings);
         }
+    }
+
+    fn expect_scope_id(&self, expr: &TypedExpr, what: &'static str) -> ScopeId {
+        expr.scope_id
+            .unwrap_or_else(|| panic!("ICE: {} node at {:?} has no ScopeId", what, expr.span))
     }
 
     fn walk_expr(&mut self, expr: &TypedExpr, live: &mut Vec<LiveBinding>) {
@@ -243,8 +249,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
 
                 if let Some(body) = body {
                     // `let x = e1 in e2`: x and anything added inside e2
-                    // are scoped to this Let's span.
-                    self.scoped(expr.span, live, |this, live| {
+                    // are scoped to this Let's ScopeId.
+                    let sid = self.expect_scope_id(expr, "Let{body:Some}");
+                    self.scoped(sid, live, |this, live| {
                         if let Some(type_name) = is_owned_resource(&value.ty, this.registry) {
                             live.push((name.clone(), type_name));
                         }
@@ -398,7 +405,8 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 // The Do block is a lexical scope: bindings introduced via
                 // `let x = ...` with body:None are visible to subsequent
                 // siblings and closed at the Do's tail.
-                self.scoped(expr.span, live, |this, live| {
+                let sid = self.expect_scope_id(expr, "Do");
+                self.scoped(sid, live, |this, live| {
                     for e in exprs {
                         this.walk_expr(e, live);
                     }
@@ -449,8 +457,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
 
                 if let Some(body) = body {
                     // `let pat = e1 in e2`: pattern-introduced bindings and
-                    // anything inside e2 are scoped to this LetPattern span.
-                    self.scoped(expr.span, live, |this, live| {
+                    // anything inside e2 are scoped to this LetPattern's ScopeId.
+                    let sid = self.expect_scope_id(expr, "LetPattern{body:Some}");
+                    self.scoped(sid, live, |this, live| {
                         for binding in bindings {
                             live.push(binding);
                         }

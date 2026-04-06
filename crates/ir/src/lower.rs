@@ -6,7 +6,7 @@ use krypton_typechecker::link_context::LinkContext;
 use krypton_typechecker::typed_ast::{
     self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry,
     QualifiedName, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstructorRef,
-    ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, TraitName, TypedExpr,
+    ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, ScopeId, TraitName, TypedExpr,
     TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
@@ -477,6 +477,16 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
                 referenced_vars_walk(d, vars);
             }
         }
+        ExprKind::AutoClose {
+            resource,
+            dict,
+            body,
+            ..
+        } => {
+            vars.insert(*resource);
+            referenced_vars_atom(dict, vars);
+            referenced_vars_walk(body, vars);
+        }
     }
 }
 
@@ -536,9 +546,6 @@ fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
             }
         }
         SimpleExprKind::Atom(atom) => referenced_vars_atom(atom, vars),
-        SimpleExprKind::SetVarNull { var } => {
-            vars.insert(*var);
-        }
     }
 }
 
@@ -548,18 +555,39 @@ fn referenced_vars_atom(atom: &Atom, vars: &mut HashSet<VarId>) {
     }
 }
 
+/// Whether emitting an AutoClose should null the resource's slot after the
+/// close call. Used to unify the "normal path after scope exit" case
+/// (`NullSlot` — fn-wide finally handler skips the already-closed slot)
+/// with the "early-return / question-mark" case (`Keep` — slot stays
+/// alive for any later handlers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseMode {
+    Keep,
+    NullSlot,
+}
+
+impl CloseMode {
+    fn null_slot(self) -> bool {
+        matches!(self, CloseMode::NullSlot)
+    }
+}
+
 /// Pre-resolved auto-close info for a single binding.
 struct ResolvedClose {
+    #[allow(dead_code)]
     trait_name: TraitName,
     binding_var: VarId,
+    type_name: String,
     dict_bindings: Vec<LetBinding>,
     dict_atom: Atom,
 }
 
 /// One level of scope tracking for block-scoped resource auto-close.
-/// Created on `enter_scope(span)` and drained by `exit_scope(span, body)`.
+/// Created on `enter_scope(scope_id)` and drained by
+/// `exit_scope(scope_id, body)`. Identity is the stable `ScopeId`
+/// allocated by the typechecker's `scope_ids` pre-pass, not the span.
 struct ScopeTrack {
-    span: Span,
+    scope_id: ScopeId,
     /// Expected resource names (in scope_exits LIFO order) → type_name.
     expected: Vec<(String, String)>,
     /// VarIds resolved for each expected name, recorded via push_var.
@@ -743,55 +771,104 @@ impl LowerCtx {
         }
     }
 
+    /// Introduce a non-resource binding into scope. For resource bindings
+    /// (`~T` where `T: Resource`), callers must use [`bind_resource`] so the
+    /// function-wide finally handler and the innermost scope tracker learn
+    /// about the new slot. `push_var` no longer silently enrolls bindings
+    /// into resource tracking — it only manages the name/VarId stack and
+    /// the fn-exit param map.
     fn push_var(&mut self, name: &str, id: VarId) {
         self.var_scope.entry(name.to_string()).or_default().push(id);
         if self.fn_exit_track.contains(name) {
             self.fn_exit_vars.insert(name.to_string(), id);
         }
-        // Record VarIds for block-scoped resources. A single name can only
-        // be bound once per scope (shadowing crosses scope boundaries), so
-        // we update the innermost scope that expects this name, and register
-        // a FinallyClose in declaration order for the function-wide handler.
-        let mut found = None;
+    }
+
+    /// Introduce a resource binding (`~T` where `T: Resource`) into scope.
+    /// Wraps `push_var` and additionally registers the binding with the
+    /// innermost scope tracker that expects it (so the scope's exit path
+    /// can emit an AutoClose) and with `fn_block_scoped_closes` so the
+    /// function-wide exception handler pre-allocates the slot and unwinds
+    /// correctly on panic.
+    ///
+    /// The `type_name` is the concrete target type of the resource (e.g.
+    /// `"Handle"`), used both for dict lookup and for the exception table.
+    fn bind_resource(&mut self, name: &str, id: VarId, type_name: &str) {
+        self.push_var(name, id);
+        // Match the innermost scope entry that expects this (name, type)
+        // pair. Matching on `type_name` too is essential: when a scope
+        // shadows a resource binding with a *different* type (e.g.
+        // `let h: ~H1 = …; let h: ~H2 = …`), the typechecker records only
+        // the survivor in `scope_exits` (here: H2). The earlier H1 binding
+        // is handled via `emit_shadow_close` at the shadow point and must
+        // NOT claim the scope's `h` slot, or `exit_scope` would emit an
+        // AutoClose using the wrong VarId.
         for scope in self.scope_track_stack.iter_mut().rev() {
-            if let Some((_, type_name)) = scope.expected.iter().find(|(n, _)| n == name) {
-                let type_name = type_name.clone();
+            let matches = scope
+                .expected
+                .iter()
+                .any(|(n, t)| n == name && t == type_name);
+            if matches && !scope.resolved.contains_key(name) {
                 scope.resolved.insert(name.to_string(), id);
-                found = Some(type_name);
                 break;
             }
         }
-        if let Some(type_name) = found {
-            self.fn_block_scoped_closes.push(FinallyClose {
-                resource_var: id,
-                type_name,
-            });
+        self.fn_block_scoped_closes.push(FinallyClose {
+            resource_var: id,
+            type_name: type_name.to_string(),
+        });
+    }
+
+    /// Return the resource type name if `ty` is `~T` and `T` has a
+    /// `Resource` instance; otherwise `None`.
+    fn resource_type_name(&self, ty: &Type) -> Option<String> {
+        let inner = match ty {
+            Type::Own(inner) => inner.as_ref(),
+            _ => return None,
+        };
+        let name = match inner {
+            Type::Named(n, _) => n.as_str(),
+            _ => return None,
+        };
+        let resource_trait = TraitName::core_resource();
+        let key = (resource_trait.local_name.clone(), name.to_string());
+        if self.instance_exact_index.contains_key(&key) {
+            Some(name.to_string())
+        } else {
+            None
         }
     }
 
-    /// Enter a new block scope. If the typechecker recorded scope_exits for
-    /// `span`, start tracking the expected bindings so push_var can capture
-    /// their VarIds for us to emit close calls at exit.
-    fn enter_scope(&mut self, span: Span) {
-        if let Some(bindings) = self.auto_close.scope_exits.get(&span) {
+    /// Enter a new block scope identified by its stable `ScopeId`. If the
+    /// typechecker recorded scope_exits for it, start tracking the expected
+    /// bindings so push_var can capture their VarIds for us to emit close
+    /// calls at exit. Synthetic scope nodes (no ScopeId) are no-ops.
+    fn enter_scope(&mut self, scope_id: Option<ScopeId>) {
+        let Some(scope_id) = scope_id else { return };
+        if let Some(bindings) = self.auto_close.scope_exits.get(&scope_id) {
             let expected: Vec<(String, String)> = bindings
                 .iter()
                 .map(|b| (b.name.clone(), b.type_name.clone()))
                 .collect();
             self.scope_track_stack.push(ScopeTrack {
-                span,
+                scope_id,
                 expected,
                 resolved: HashMap::new(),
             });
         }
     }
 
-    /// Exit the block scope identified by `span`. If the scope was tracked,
-    /// wrap `body`'s tail positions with close+null calls for each resolved
-    /// binding and register them in `fn_block_scoped_closes` for the
-    /// function-wide finally handler.
-    fn exit_scope(&mut self, span: Span, body: Expr) -> Result<Expr, LowerError> {
-        let Some(idx) = self.scope_track_stack.iter().rposition(|s| s.span == span) else {
+    /// Exit the block scope identified by `scope_id`. If the scope was
+    /// tracked, wrap `body`'s tail positions with close+null calls for each
+    /// resolved binding and register them in `fn_block_scoped_closes` for
+    /// the function-wide finally handler.
+    fn exit_scope(&mut self, scope_id: Option<ScopeId>, body: Expr) -> Result<Expr, LowerError> {
+        let Some(scope_id) = scope_id else { return Ok(body) };
+        let Some(idx) = self
+            .scope_track_stack
+            .iter()
+            .rposition(|s| s.scope_id == scope_id)
+        else {
             return Ok(body);
         };
         let track = self.scope_track_stack.remove(idx);
@@ -813,6 +890,7 @@ impl LowerCtx {
             resolved.push(ResolvedClose {
                 trait_name: trait_name.clone(),
                 binding_var: var_id,
+                type_name: type_name.clone(),
                 dict_bindings,
                 dict_atom,
             });
@@ -820,7 +898,7 @@ impl LowerCtx {
         if resolved.is_empty() {
             return Ok(body);
         }
-        self.wrap_tail_with_closes(body, &resolved, /*null_after_close=*/ true)
+        self.wrap_tail_with_closes(body, &resolved, CloseMode::NullSlot)
     }
 
     fn pop_var(&mut self, name: &str) {
@@ -842,16 +920,24 @@ impl LowerCtx {
 
     /// Emit close() calls for a list of AutoCloseBindings, wrapping `inner`.
     /// Resolves variable names and dicts from current scope.
+    ///
+    /// `mode` determines whether each emitted AutoClose nulls its resource
+    /// slot (block-scoped normal-path exits that coexist with the fn-wide
+    /// exception handler) or keeps it (recur back-edges, early returns).
     fn emit_close_calls(
         &mut self,
         bindings: &[AutoCloseBinding],
         inner: Expr,
+        mode: CloseMode,
     ) -> Result<Expr, LowerError> {
         let resolved = self.resolve_close_bindings(bindings)?;
-        self.emit_resolved_close_calls(&resolved, inner, false)
+        self.emit_resolved_close_calls(&resolved, inner, mode)
     }
 
-    /// Emit a close call for a shadowed binding, wrapping `body`.
+    /// Emit a close call for a shadowed binding, wrapping `body`. Shadowed
+    /// bindings are always nulled so the fn-wide finally handler skips the
+    /// now-dead slot — this is what fixes the "two `let x = r` in one scope
+    /// double-closes on exception" bug (#1 in the architecture cleanup).
     fn emit_shadow_close(
         &mut self,
         binding: &AutoCloseBinding,
@@ -861,21 +947,16 @@ impl LowerCtx {
         let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
         let trait_name = TraitName::core_resource();
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
-        let unit_var = self.fresh_var();
+        let span = body.span;
+        let ty = body.ty.clone();
         let close_expr = expr_at(
-            body.span,
-            body.ty.clone(),
-            ExprKind::Let {
-                bind: unit_var,
-                ty: Type::Unit.into(),
-                value: simple_at(
-                    body.span,
-                    SimpleExprKind::TraitCall {
-                        trait_name,
-                        method_name: "close".to_string(),
-                        args: vec![dict_atom, Atom::Var(old_var)],
-                    },
-                ),
+            span,
+            ty,
+            ExprKind::AutoClose {
+                resource: old_var,
+                dict: dict_atom,
+                type_name: binding.type_name.clone(),
+                null_slot: true,
                 body: Box::new(body),
             },
         );
@@ -905,6 +986,7 @@ impl LowerCtx {
             resolved.push(ResolvedClose {
                 trait_name: trait_name.clone(),
                 binding_var,
+                type_name: binding.type_name.clone(),
                 dict_bindings,
                 dict_atom,
             });
@@ -912,53 +994,34 @@ impl LowerCtx {
         Ok(resolved)
     }
 
-    /// Emit close calls from pre-resolved info, wrapping `inner`.
-    /// If `null_after_close` is true, each close is immediately followed by a
-    /// SetVarNull so the function-wide finally handler skips the slot on
-    /// exception unwind (used for block-scoped resources).
+    /// Emit close calls from pre-resolved info, wrapping `inner`. Each close
+    /// becomes one `ExprKind::AutoClose` IR node, so cleanup is first-class
+    /// in the IR. `mode` selects whether to null the resource slot after
+    /// each close (see `CloseMode`).
+    ///
+    /// Dict bindings (from `resolve_dict`) are emitted as outer `Let`s via
+    /// `wrap_bindings` so the dict atom is in scope when the AutoClose node
+    /// reads it.
     fn emit_resolved_close_calls(
         &mut self,
         resolved: &[ResolvedClose],
         inner: Expr,
-        null_after_close: bool,
+        mode: CloseMode,
     ) -> Result<Expr, LowerError> {
         let mut result = inner;
-        // Process in reverse: first binding becomes outermost let, so it's evaluated (closed) first — LIFO order
+        // Process in reverse: the first binding becomes the outermost
+        // AutoClose, so it runs (closes) first — LIFO declaration order.
         for rc in resolved.iter().rev() {
-            // Optionally emit SetVarNull AFTER the close (inner let body).
-            if null_after_close {
-                let unit_var_null = self.fresh_var();
-                result = expr_at(
-                    result.span,
-                    result.ty.clone(),
-                    ExprKind::Let {
-                        bind: unit_var_null,
-                        ty: Type::Unit.into(),
-                        value: simple_at(
-                            result.span,
-                            SimpleExprKind::SetVarNull {
-                                var: rc.binding_var,
-                            },
-                        ),
-                        body: Box::new(result),
-                    },
-                );
-            }
-            let unit_var = self.fresh_var();
+            let span = result.span;
+            let ty = result.ty.clone();
             let close_expr = expr_at(
-                result.span,
-                result.ty.clone(),
-                ExprKind::Let {
-                    bind: unit_var,
-                    ty: Type::Unit.into(),
-                    value: simple_at(
-                        result.span,
-                        SimpleExprKind::TraitCall {
-                            trait_name: rc.trait_name.clone(),
-                            method_name: "close".to_string(),
-                            args: vec![rc.dict_atom.clone(), Atom::Var(rc.binding_var)],
-                        },
-                    ),
+                span,
+                ty,
+                ExprKind::AutoClose {
+                    resource: rc.binding_var,
+                    dict: rc.dict_atom.clone(),
+                    type_name: rc.type_name.clone(),
+                    null_slot: mode.null_slot(),
                     body: Box::new(result),
                 },
             );
@@ -967,24 +1030,23 @@ impl LowerCtx {
         Ok(result)
     }
 
-    /// Walk tail positions of an expression and wrap each terminal Atom with close calls.
+    /// Walk tail positions of an expression and wrap each terminal Atom with
+    /// close calls. `mode` is threaded unchanged through the recursive cases.
     fn wrap_tail_with_closes(
         &mut self,
         expr: Expr,
         resolved: &[ResolvedClose],
-        null_after_close: bool,
+        mode: CloseMode,
     ) -> Result<Expr, LowerError> {
         match expr.kind {
-            ExprKind::Atom(_) => {
-                self.emit_resolved_close_calls(resolved, expr, null_after_close)
-            }
+            ExprKind::Atom(_) => self.emit_resolved_close_calls(resolved, expr, mode),
             ExprKind::Let {
                 bind,
                 ty,
                 value,
                 body,
             } => {
-                let new_body = self.wrap_tail_with_closes(*body, resolved, null_after_close)?;
+                let new_body = self.wrap_tail_with_closes(*body, resolved, mode)?;
                 Ok(expr_at(
                     value.span,
                     new_body.ty.clone(),
@@ -1000,7 +1062,7 @@ impl LowerCtx {
                 bindings: rec_bindings,
                 body,
             } => {
-                let new_body = self.wrap_tail_with_closes(*body, resolved, null_after_close)?;
+                let new_body = self.wrap_tail_with_closes(*body, resolved, mode)?;
                 Ok(expr_at(
                     new_body.span,
                     new_body.ty.clone(),
@@ -1017,8 +1079,8 @@ impl LowerCtx {
                 body,
                 is_recur,
             } => {
-                let new_join_body = self.wrap_tail_with_closes(*join_body, resolved, null_after_close)?;
-                let new_body = self.wrap_tail_with_closes(*body, resolved, null_after_close)?;
+                let new_join_body = self.wrap_tail_with_closes(*join_body, resolved, mode)?;
+                let new_body = self.wrap_tail_with_closes(*body, resolved, mode)?;
                 Ok(expr_at(
                     new_body.span,
                     new_body.ty.clone(),
@@ -1036,8 +1098,8 @@ impl LowerCtx {
                 true_body,
                 false_body,
             } => {
-                let new_true = self.wrap_tail_with_closes(*true_body, resolved, null_after_close)?;
-                let new_false = self.wrap_tail_with_closes(*false_body, resolved, null_after_close)?;
+                let new_true = self.wrap_tail_with_closes(*true_body, resolved, mode)?;
+                let new_false = self.wrap_tail_with_closes(*false_body, resolved, mode)?;
                 Ok(expr_at(
                     new_true.span,
                     new_true.ty.clone(),
@@ -1056,7 +1118,7 @@ impl LowerCtx {
                 let new_branches = branches
                     .into_iter()
                     .map(|br| {
-                        let new_body = self.wrap_tail_with_closes(br.body, resolved, null_after_close)?;
+                        let new_body = self.wrap_tail_with_closes(br.body, resolved, mode)?;
                         Ok(SwitchBranch {
                             tag: br.tag,
                             bindings: br.bindings,
@@ -1065,7 +1127,7 @@ impl LowerCtx {
                     })
                     .collect::<Result<Vec<_>, LowerError>>()?;
                 let new_default = match default {
-                    Some(d) => Some(Box::new(self.wrap_tail_with_closes(*d, resolved, null_after_close)?)),
+                    Some(d) => Some(Box::new(self.wrap_tail_with_closes(*d, resolved, mode)?)),
                     None => None,
                 };
                 let ty = new_branches
@@ -1087,6 +1149,28 @@ impl LowerCtx {
                         scrutinee,
                         branches: new_branches,
                         default: new_default,
+                    },
+                ))
+            }
+            ExprKind::AutoClose {
+                resource,
+                dict,
+                type_name,
+                null_slot,
+                body,
+            } => {
+                // AutoClose body is a scope point — recurse into it only.
+                // The close itself is not a tail position.
+                let new_body = self.wrap_tail_with_closes(*body, resolved, mode)?;
+                Ok(expr_at(
+                    expr.span,
+                    new_body.ty.clone(),
+                    ExprKind::AutoClose {
+                        resource,
+                        dict,
+                        type_name,
+                        null_slot,
+                        body: Box::new(new_body),
                     },
                 ))
             }
@@ -2171,14 +2255,18 @@ impl LowerCtx {
                 // to the *old* VarId, not the freshly allocated one.
                 let lowered_value = self.try_lower_as_simple(value)?;
 
-                // `let x = v in body` introduces its own lexical scope if
-                // the typechecker recorded scope_exits for its span.
+                // `let x = v in body` introduces its own lexical scope
+                // identified by the ScopeId stamped at scope_ids time.
                 let is_scoped = body.is_some();
                 if is_scoped {
-                    self.enter_scope(expr.span);
+                    self.enter_scope(expr.scope_id);
                 }
 
-                self.push_var(name, bind);
+                if let Some(type_name) = self.resource_type_name(&value.ty) {
+                    self.bind_resource(name, bind, &type_name);
+                } else {
+                    self.push_var(name, bind);
+                }
                 let mut body_expr = if let Some(body) = body {
                     self.lower_expr(body)?
                 } else {
@@ -2187,7 +2275,7 @@ impl LowerCtx {
                 };
 
                 if is_scoped {
-                    body_expr = self.exit_scope(expr.span, body_expr)?;
+                    body_expr = self.exit_scope(expr.scope_id, body_expr)?;
                 }
 
                 // Emit close for the shadowed binding (wraps the body, runs before body)
@@ -2219,7 +2307,7 @@ impl LowerCtx {
                 }
             }
 
-            TypedExprKind::Do(exprs) => self.lower_do(exprs, &expr.ty, expr.span),
+            TypedExprKind::Do(exprs) => self.lower_do(exprs, &expr.ty, expr.scope_id),
 
             TypedExprKind::If { cond, then_, else_ } => {
                 let result_ty = expr.ty.clone();
@@ -2420,15 +2508,16 @@ impl LowerCtx {
                 body,
             } => {
                 // `let pat = e in body` introduces its own lexical scope for
-                // any resource bindings in the pattern + body.
+                // any resource bindings in the pattern + body, identified by
+                // the stamped ScopeId.
                 let is_scoped = body.is_some();
                 if is_scoped {
-                    self.enter_scope(expr.span);
+                    self.enter_scope(expr.scope_id);
                 }
                 let lowered =
                     self.lower_let_pattern(pattern, value, body.as_deref(), &expr.ty)?;
                 if is_scoped {
-                    self.exit_scope(expr.span, lowered)
+                    self.exit_scope(expr.scope_id, lowered)
                 } else {
                     Ok(lowered)
                 }
@@ -2452,7 +2541,11 @@ impl LowerCtx {
                         },
                     );
                     if let Some(ref close_bindings) = recur_close_bindings {
-                        jump_expr = ctx.emit_close_calls(close_bindings, jump_expr)?;
+                        // Null slots before the back-edge so an exception
+                        // later in the same iteration doesn't see already
+                        // closed resources through the fn-wide handler.
+                        jump_expr =
+                            ctx.emit_close_calls(close_bindings, jump_expr, CloseMode::NullSlot)?;
                     }
                     Ok(jump_expr)
                 })
@@ -2489,7 +2582,8 @@ impl LowerCtx {
                             },
                         );
                         if let Some(ref close_bindings) = early_close_bindings {
-                            none_jump = ctx.emit_close_calls(close_bindings, none_jump)?;
+                            none_jump =
+                                ctx.emit_close_calls(close_bindings, none_jump, CloseMode::Keep)?;
                         }
                         expr_at(
                             expr.span,
@@ -2553,7 +2647,8 @@ impl LowerCtx {
                             },
                         );
                         if let Some(ref close_bindings) = early_close_bindings {
-                            err_jump = ctx.emit_close_calls(close_bindings, err_jump)?;
+                            err_jump =
+                                ctx.emit_close_calls(close_bindings, err_jump, CloseMode::Keep)?;
                         }
                         expr_at(
                             expr.span,
@@ -2767,6 +2862,7 @@ impl LowerCtx {
                 ty: Type::Unit,
                 span: (0, 0),
                 resolved_ref: None,
+                scope_id: None,
             }
         };
 
@@ -2848,16 +2944,25 @@ impl LowerCtx {
 
         // First, bind extra_bindings accumulated from specialization of Var patterns
         for (name, atom, ty) in &clause.extra_bindings {
+            let maybe_res = self.resource_type_name(ty);
             match atom {
                 Atom::Var(id) => {
                     self.var_types.insert(*id, ty.clone());
-                    self.push_var(name, *id);
+                    if let Some(type_name) = &maybe_res {
+                        self.bind_resource(name, *id, type_name);
+                    } else {
+                        self.push_var(name, *id);
+                    }
                     bound_names.push(name.clone());
                 }
                 Atom::Lit(lit) => {
                     let var = self.fresh_var();
                     self.var_types.insert(var, ty.clone());
-                    self.push_var(name, var);
+                    if let Some(type_name) = &maybe_res {
+                        self.bind_resource(name, var, type_name);
+                    } else {
+                        self.push_var(name, var);
+                    }
                     bound_names.push(name.clone());
                     lit_bindings.push(LetBinding {
                         bind: var,
@@ -2874,16 +2979,25 @@ impl LowerCtx {
         // Push variable bindings from the remaining pattern row
         for (pat, scrut) in clause.patterns.iter().zip(scrutinees.iter()) {
             if let TypedPattern::Var { name, ty, .. } = pat {
+                let maybe_res = self.resource_type_name(ty);
                 match scrut {
                     Atom::Var(scrut_id) => {
                         self.var_types.insert(*scrut_id, ty.clone());
-                        self.push_var(name, *scrut_id);
+                        if let Some(type_name) = &maybe_res {
+                            self.bind_resource(name, *scrut_id, type_name);
+                        } else {
+                            self.push_var(name, *scrut_id);
+                        }
                         bound_names.push(name.clone());
                     }
                     Atom::Lit(lit) => {
                         let var = self.fresh_var();
                         self.var_types.insert(var, ty.clone());
-                        self.push_var(name, var);
+                        if let Some(type_name) = &maybe_res {
+                            self.bind_resource(name, var, type_name);
+                        } else {
+                            self.push_var(name, var);
+                        }
                         bound_names.push(name.clone());
                         lit_bindings.push(LetBinding {
                             bind: var,
@@ -2934,16 +3048,25 @@ impl LowerCtx {
         let mut lit_bindings: Vec<LetBinding> = Vec::new();
 
         for (name, atom, ty) in &extra_bindings {
+            let maybe_res = self.resource_type_name(ty);
             match atom {
                 Atom::Var(id) => {
                     self.var_types.insert(*id, ty.clone());
-                    self.push_var(name, *id);
+                    if let Some(type_name) = &maybe_res {
+                        self.bind_resource(name, *id, type_name);
+                    } else {
+                        self.push_var(name, *id);
+                    }
                     bound_names.push(name.clone());
                 }
                 Atom::Lit(lit) => {
                     let var = self.fresh_var();
                     self.var_types.insert(var, ty.clone());
-                    self.push_var(name, var);
+                    if let Some(type_name) = &maybe_res {
+                        self.bind_resource(name, var, type_name);
+                    } else {
+                        self.push_var(name, var);
+                    }
                     bound_names.push(name.clone());
                     lit_bindings.push(LetBinding {
                         bind: var,
@@ -2959,16 +3082,25 @@ impl LowerCtx {
 
         for (pat, scrut) in patterns.iter().zip(scrutinees.iter()) {
             if let TypedPattern::Var { name, ty, .. } = pat {
+                let maybe_res = self.resource_type_name(ty);
                 match scrut {
                     Atom::Var(scrut_id) => {
                         self.var_types.insert(*scrut_id, ty.clone());
-                        self.push_var(name, *scrut_id);
+                        if let Some(type_name) = &maybe_res {
+                            self.bind_resource(name, *scrut_id, type_name);
+                        } else {
+                            self.push_var(name, *scrut_id);
+                        }
                         bound_names.push(name.clone());
                     }
                     Atom::Lit(lit) => {
                         let var = self.fresh_var();
                         self.var_types.insert(var, ty.clone());
-                        self.push_var(name, var);
+                        if let Some(type_name) = &maybe_res {
+                            self.bind_resource(name, var, type_name);
+                        } else {
+                            self.push_var(name, var);
+                        }
                         bound_names.push(name.clone());
                         lit_bindings.push(LetBinding {
                             bind: var,
@@ -3692,12 +3824,13 @@ impl LowerCtx {
 
     /// Lower a Do block (sequence of expressions).
     /// Processes left-to-right so Let bindings are in scope for subsequent exprs.
-    /// The `do_span` identifies the Do's lexical scope for block-scoped auto-close.
+    /// The `scope_id` (stamped by the typechecker) identifies the Do's lexical
+    /// scope for block-scoped auto-close.
     fn lower_do(
         &mut self,
         exprs: &[TypedExpr],
         _result_ty: &Type,
-        do_span: Span,
+        scope_id: Option<ScopeId>,
     ) -> Result<Expr, LowerError> {
         if exprs.is_empty() {
             return Ok(atom_expr_at(
@@ -3706,9 +3839,9 @@ impl LowerCtx {
                 Atom::Lit(Literal::Unit),
             ));
         }
-        self.enter_scope(do_span);
+        self.enter_scope(scope_id);
         let body = self.lower_do_slice(exprs)?;
-        self.exit_scope(do_span, body)
+        self.exit_scope(scope_id, body)
     }
 
     /// Recursively lower a slice of Do-block expressions.
@@ -3759,7 +3892,11 @@ impl LowerCtx {
             // to the *old* VarId, not the freshly allocated one.
             let lowered_value = self.try_lower_as_simple(value)?;
 
-            self.push_var(name, bind);
+            if let Some(type_name) = self.resource_type_name(&value.ty) {
+                self.bind_resource(name, bind, &type_name);
+            } else {
+                self.push_var(name, bind);
+            }
             let mut body_expr = self.lower_do_slice(rest)?;
 
             // Emit close for the shadowed binding
@@ -3806,6 +3943,9 @@ impl LowerCtx {
                     ty: rest_ty.clone(),
                     span: rest[0].span,
                     resolved_ref: None,
+                    // Synthetic grouping: not its own scope. The enclosing
+                    // real Do already owns the scope identity for this slice.
+                    scope_id: None,
                 }
             };
             return self.lower_let_pattern(pattern, value, Some(&rest_body), &rest_ty);
@@ -5538,7 +5678,7 @@ impl LowerCtx {
         let mut finally_closes: Vec<FinallyClose> = Vec::new();
         if let Some(close_bindings) = self.auto_close.fn_exits.get(&decl.name).cloned() {
             let resolved = self.resolve_close_bindings(&close_bindings)?;
-            body = self.wrap_tail_with_closes(body, &resolved, /*null_after_close=*/ false)?;
+            body = self.wrap_tail_with_closes(body, &resolved, CloseMode::Keep)?;
 
             // Record fn_exit_closes for codegen (exception table finally handlers).
             // close_bindings and resolved are in the same order (1:1 correspondence).
@@ -6535,6 +6675,29 @@ fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
                 },
             )
         }
+        ExprKind::AutoClose {
+            resource,
+            dict,
+            type_name,
+            null_slot,
+            body,
+        } => {
+            // Recurse into the AutoClose body: the tail atom inside is the
+            // real producer of the enclosing compound value. The close call
+            // itself is not a tail position.
+            let new_body = replace_tail_with_jump(*body, target);
+            expr_at(
+                span,
+                result_ty,
+                ExprKind::AutoClose {
+                    resource,
+                    dict,
+                    type_name,
+                    null_slot,
+                    body: Box::new(new_body),
+                },
+            )
+        }
         // Jump and LetRec shouldn't appear as compound value tails
         _ => expr,
     }
@@ -6938,6 +7101,9 @@ fn collect_tuple_arities_from_expr(expr: &Expr, arities: &mut std::collections::
             if let Some(d) = default {
                 collect_tuple_arities_from_expr(d, arities);
             }
+        }
+        ExprKind::AutoClose { body, .. } => {
+            collect_tuple_arities_from_expr(body, arities);
         }
         ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
     }

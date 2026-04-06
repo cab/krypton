@@ -28,17 +28,15 @@ fn main() -> Unit =
   let v2: ~HandleB = construct HandleB::MkHandleB#0(2)
   let v3: Unit = call println("b")
   let v4: Dict[core/resource.Resource, HandleB] = get_dict core/resource.Resource[HandleB]
-  let v9: Unit = trait_call core/resource.Resource.close(v4, v2)
-  let v8: Unit = set_var_null v2
+  auto_close[HandleB](v2, dict=v4, null=true)
   let v5: Dict[core/resource.Resource, HandleA] = get_dict core/resource.Resource[HandleA]
-  let v7: Unit = trait_call core/resource.Resource.close(v5, v0)
-  let v6: Unit = set_var_null v0
+  auto_close[HandleA](v0, dict=v5, null=true)
   v3
 
-fn Resource$$HandleA$$close(v10: ~HandleA) -> Unit =
-  let v11: Unit = call println("close_a")
-  v11
+fn Resource$$HandleA$$close(v6: ~HandleA) -> Unit =
+  let v7: Unit = call println("close_a")
+  v7
 
-fn Resource$$HandleB$$close(v12: ~HandleB) -> Unit =
-  let v13: Unit = call println("close_b")
-  v13
+fn Resource$$HandleB$$close(v8: ~HandleB) -> Unit =
+  let v9: Unit = call println("close_b")
+  v9

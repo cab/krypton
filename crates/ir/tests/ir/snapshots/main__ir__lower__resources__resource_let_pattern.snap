@@ -31,10 +31,9 @@ fn main() -> Unit =
   let v4: ~Handle = tuple_project v2.1
   let v5: Unit = call println("opened")
   let v6: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-  let v8: Unit = trait_call core/resource.Resource.close(v6, v4)
-  let v7: Unit = set_var_null v4
+  auto_close[Handle](v4, dict=v6, null=true)
   v5
 
-fn Resource$$Handle$$close(v9: ~Handle) -> Unit =
-  let v10: Unit = call println("closed")
-  v10
+fn Resource$$Handle$$close(v7: ~Handle) -> Unit =
+  let v8: Unit = call println("closed")
+  v8

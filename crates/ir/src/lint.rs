@@ -202,6 +202,22 @@ impl LintContext {
                 Ok(())
             }
 
+            ExprKind::AutoClose {
+                resource,
+                dict,
+                body,
+                ..
+            } => {
+                if !self.bound_vars.contains(resource) {
+                    return Err(self.err(format!(
+                        "AutoClose references unbound resource v{}",
+                        resource.0
+                    )));
+                }
+                self.check_atom_not_join(dict)?;
+                self.check_expr(body)
+            }
+
             ExprKind::Atom(atom) => {
                 self.check_atom_not_join(atom)?;
                 Ok(())
@@ -336,8 +352,6 @@ impl LintContext {
             }
 
             SimpleExprKind::Atom(atom) => self.check_atom_not_join(atom),
-
-            SimpleExprKind::SetVarNull { .. } => Ok(()),
         }
     }
 

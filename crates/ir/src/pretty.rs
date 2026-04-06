@@ -167,7 +167,6 @@ impl fmt::Display for SimpleExpr {
                 write!(f, "make_vec({})", fmt_atoms(elements))
             }
             SimpleExprKind::Atom(atom) => write!(f, "{atom}"),
-            SimpleExprKind::SetVarNull { var } => write!(f, "set_var_null {var}"),
         }
     }
 }
@@ -290,7 +289,6 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 write!(self.f, "make_vec({})", fmt_atoms(elements))
             }
             SimpleExprKind::Atom(atom) => write!(self.f, "{atom}"),
-            SimpleExprKind::SetVarNull { var } => write!(self.f, "set_var_null {var}"),
         }
     }
 
@@ -391,6 +389,20 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 }
                 self.write_indent()?;
                 writeln!(self.f, "}}")
+            }
+            ExprKind::AutoClose {
+                resource,
+                dict,
+                type_name,
+                null_slot,
+                body,
+            } => {
+                self.write_indent()?;
+                writeln!(
+                    self.f,
+                    "auto_close[{type_name}]({resource}, dict={dict}, null={null_slot})"
+                )?;
+                self.write_expr(body)
             }
             ExprKind::Atom(atom) => {
                 self.write_indent()?;
@@ -664,6 +676,9 @@ fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
             if let Some(d) = default {
                 collect_referenced_fns(d, ids);
             }
+        }
+        ExprKind::AutoClose { body, .. } => {
+            collect_referenced_fns(body, ids);
         }
         ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
     }

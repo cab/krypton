@@ -182,9 +182,9 @@ pub struct AutoCloseInfo {
     pub recur_closes: HashMap<Span, Vec<AutoCloseBinding>>,
     /// Move/consumption sites: arg_span → consumed bindings
     pub consumptions: HashMap<Span, Vec<AutoCloseBinding>>,
-    /// Block scope exits: scope_span → bindings to close at that scope's tail,
+    /// Block scope exits: scope_id → bindings to close at that scope's tail,
     /// in LIFO order (reverse of declaration order).
-    pub scope_exits: HashMap<Span, Vec<AutoCloseBinding>>,
+    pub scope_exits: HashMap<ScopeId, Vec<AutoCloseBinding>>,
 }
 
 #[derive(Debug, Clone)]
@@ -230,6 +230,18 @@ pub enum TypedPattern {
     },
 }
 
+/// Unique identity for a lexical scope node (Do / Let{body:Some} /
+/// LetPattern{body:Some} / function body). Allocated by `scope_ids`
+/// pre-pass and consumed by both auto-close analysis and IR lowering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ScopeId(pub u32);
+
+impl fmt::Display for ScopeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "scope#{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedExpr {
     pub kind: TypedExprKind,
@@ -238,6 +250,10 @@ pub struct TypedExpr {
     /// Set for resolved callable/trait bindings that survived lookup.
     /// Local/body-local variables leave this as None.
     pub resolved_ref: Option<ResolvedBindingRef>,
+    /// Unique scope identity, `Some` only on Do, Let{body:Some},
+    /// LetPattern{body:Some}, and function body / Lambda body nodes.
+    /// Stamped by the `scope_ids` pre-pass.
+    pub scope_id: Option<ScopeId>,
 }
 
 #[derive(Debug, Clone)]

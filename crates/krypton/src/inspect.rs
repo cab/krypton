@@ -87,6 +87,24 @@ impl<'a> TypedFormatter<'a> {
         self.buf.push('\n');
     }
 
+    /// Emit `# close(name) [scope exit]` lines for any scope-level bindings
+    /// attached to this expression's ScopeId. Called at the tail of nested
+    /// Do / Let{body:Some} / LetPattern{body:Some} blocks so the inspect
+    /// output shows cleanup at every nesting level, not just the function's
+    /// top-level Do.
+    fn emit_scope_exit_comments(&mut self, expr: &TypedExpr) {
+        if let Some(scope_id) = expr.scope_id {
+            if let Some(bindings) = self.auto_close.scope_exits.get(&scope_id) {
+                for binding in bindings {
+                    self.push_indent_comment(&format!(
+                        "close({}) [scope exit]",
+                        binding.name
+                    ));
+                }
+            }
+        }
+    }
+
     /// Emit close comments for a given span key and close type.
     fn emit_close_comments_for_span(&mut self, span: &(usize, usize), reason: &str) {
         // shadow_closes
@@ -157,11 +175,7 @@ impl<'a> TypedFormatter<'a> {
                         self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
                     }
                 }
-                if let Some(bindings) = self.auto_close.scope_exits.get(&typed_fn.body.span) {
-                    for binding in bindings {
-                        self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
-                    }
-                }
+                self.emit_scope_exit_comments(&typed_fn.body);
                 self.indent_level -= 1;
                 self.indent();
                 self.buf.push('}');
@@ -444,6 +458,7 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str("{\n");
                 self.indent_level += 1;
                 self.fmt_block_stmts(exprs, "");
+                self.emit_scope_exit_comments(expr);
                 self.indent_level -= 1;
                 self.indent();
                 self.buf.push('}');

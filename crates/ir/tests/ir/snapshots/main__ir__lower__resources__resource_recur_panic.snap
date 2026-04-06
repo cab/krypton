@@ -1,0 +1,65 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module resources__resource_recur_panic
+
+type Handle = MkHandle#0(Int)
+instance core/resource.Resource[Handle] { close=Resource$$Handle$$close }
+extern java "krypton.runtime.KryptonIO" println(a8) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare panic
+declare println: (a8) -> Unit
+
+fn loop(v0: Int) -> Unit =
+  let_join [recur] v1(v2: Int) =
+    let v3: ~Handle = construct Handle::MkHandle#0(v2)
+    let_join v17(v6: Bool) =
+      if v6 {
+        let v7: Unit = call println("iter0")
+        let v8: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
+        auto_close[Handle](v3, dict=v8, null=true)
+        jump v1(1)
+      } else {
+        let_join v16(v11: Bool) =
+          if v11 {
+            let v12: Unit = call println("iter1")
+            let v13: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
+            auto_close[Handle](v3, dict=v13, null=true)
+            jump v1(2)
+          } else {
+            let v14: Unit = call println("boom_iter")
+            let v15: Unit = call panic("boom")
+            let v18: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
+            auto_close[Handle](v3, dict=v18, null=true)
+            v15
+          }
+        in
+        let v9: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+        let v10: Bool = trait_call core/eq.Eq.eq(v9, v2, 1)
+        jump v16(v10)
+      }
+    in
+    let v4: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v5: Bool = trait_call core/eq.Eq.eq(v4, v2, 0)
+    jump v17(v5)
+  in
+  jump v1(v0)
+
+fn main() -> Unit =
+  let v19: Unit = call loop(0)
+  v19
+
+fn Resource$$Handle$$close(v20: ~Handle) -> Unit =
+  let v21: Unit = call println("closed")
+  v21

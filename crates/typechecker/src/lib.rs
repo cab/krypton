@@ -7,6 +7,7 @@ pub mod link_context;
 pub mod module_interface;
 pub mod ownership;
 pub mod scc;
+pub mod scope_ids;
 pub mod trait_registry;
 pub mod type_error;
 pub mod type_registry;

@@ -25,24 +25,22 @@ declare println: (a8) -> Unit
 fn main() -> Unit =
   let v0: ~HandleA = construct HandleA::MkHandleA#0(1)
   let v1: Unit = call println("open_a")
-  let_join v9(v7: Unit) =
-    let v8: Unit = call println("after_inner")
-    let v10: Dict[core/resource.Resource, HandleA] = get_dict core/resource.Resource[HandleA]
-    let v12: Unit = trait_call core/resource.Resource.close(v10, v0)
-    let v11: Unit = set_var_null v0
-    v8
+  let_join v7(v5: Unit) =
+    let v6: Unit = call println("after_inner")
+    let v8: Dict[core/resource.Resource, HandleA] = get_dict core/resource.Resource[HandleA]
+    auto_close[HandleA](v0, dict=v8, null=true)
+    v6
   in
   let v2: ~HandleB = construct HandleB::MkHandleB#0(2)
   let v3: Unit = call println("open_b")
   let v4: Dict[core/resource.Resource, HandleB] = get_dict core/resource.Resource[HandleB]
-  let v6: Unit = trait_call core/resource.Resource.close(v4, v2)
-  let v5: Unit = set_var_null v2
-  jump v9(v3)
+  auto_close[HandleB](v2, dict=v4, null=true)
+  jump v7(v3)
 
-fn Resource$$HandleA$$close(v13: ~HandleA) -> Unit =
-  let v14: Unit = call println("close_a")
-  v14
+fn Resource$$HandleA$$close(v9: ~HandleA) -> Unit =
+  let v10: Unit = call println("close_a")
+  v10
 
-fn Resource$$HandleB$$close(v15: ~HandleB) -> Unit =
-  let v16: Unit = call println("close_b")
-  v16
+fn Resource$$HandleB$$close(v11: ~HandleB) -> Unit =
+  let v12: Unit = call println("close_b")
+  v12

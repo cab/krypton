@@ -30,17 +30,15 @@ fn main() -> Unit =
   let v3: Unit = call println("open_b")
   let v4: Unit = call panic("boom")
   let v5: Dict[core/resource.Resource, HandleB] = get_dict core/resource.Resource[HandleB]
-  let v7: Unit = trait_call core/resource.Resource.close(v5, v2)
-  let v6: Unit = set_var_null v2
-  let v8: Dict[core/resource.Resource, HandleA] = get_dict core/resource.Resource[HandleA]
-  let v10: Unit = trait_call core/resource.Resource.close(v8, v0)
-  let v9: Unit = set_var_null v0
+  auto_close[HandleB](v2, dict=v5, null=true)
+  let v6: Dict[core/resource.Resource, HandleA] = get_dict core/resource.Resource[HandleA]
+  auto_close[HandleA](v0, dict=v6, null=true)
   v4
 
-fn Resource$$HandleA$$close(v11: ~HandleA) -> Unit =
-  let v12: Unit = call println("close_a")
-  v12
+fn Resource$$HandleA$$close(v7: ~HandleA) -> Unit =
+  let v8: Unit = call println("close_a")
+  v8
 
-fn Resource$$HandleB$$close(v13: ~HandleB) -> Unit =
-  let v14: Unit = call println("close_b")
-  v14
+fn Resource$$HandleB$$close(v9: ~HandleB) -> Unit =
+  let v10: Unit = call println("close_b")
+  v10

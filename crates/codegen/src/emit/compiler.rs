@@ -1977,30 +1977,6 @@ impl<'link> Compiler<'link> {
                 Ok(JvmType::StructRef(vec_class))
             }
 
-            SimpleExprKind::SetVarNull { var } => {
-                // Store null into the resource's pre-allocated slot so the
-                // function-wide finally handler skips it on exception unwind.
-                let slot = self
-                    .var_locals
-                    .get(var)
-                    .copied()
-                    .map(|(slot, _)| slot)
-                    .or_else(|| self.pre_allocated_slots.get(var).copied())
-                    .ok_or_else(|| {
-                        CodegenError::UndefinedVariable(
-                            format!("SetVarNull: var {:?} has no allocated slot", var),
-                            None,
-                        )
-                    })?;
-                self.builder.emit(Instruction::Aconst_null);
-                self.builder.frame.push_type(VerificationType::Null);
-                self.builder.emit(Instruction::Astore(slot as u8));
-                self.builder.frame.pop_type();
-                // Produce a Unit placeholder on the stack (matches Literal::Unit).
-                self.builder.emit(Instruction::Iconst_0);
-                self.builder.frame.push_type(VerificationType::Integer);
-                Ok(JvmType::Int)
-            }
         }
     }
 
@@ -2262,6 +2238,14 @@ impl<'link> Compiler<'link> {
                     Ok(result_type)
                 }
             }
+
+            krypton_ir::ExprKind::AutoClose {
+                resource,
+                dict,
+                type_name,
+                null_slot,
+                body,
+            } => self.compile_auto_close(*resource, dict, type_name, *null_slot, body, ir_module),
 
             krypton_ir::ExprKind::Jump { target, args } => {
                 let jp = self.join_points.get(target).ok_or_else(|| {
@@ -2934,6 +2918,81 @@ impl<'link> Compiler<'link> {
             descriptor_index: desc_idx,
             attributes: vec![self.builder.finish_method()],
         })
+    }
+
+    /// Compile an `ExprKind::AutoClose` node: evaluate `close(dict, resource)`
+    /// via the Resource trait, optionally null the resource slot so the
+    /// function-wide finally handler skips it, then compile `body`.
+    fn compile_auto_close(
+        &mut self,
+        resource: krypton_ir::VarId,
+        dict: &krypton_ir::Atom,
+        type_name: &str,
+        null_slot: bool,
+        body: &krypton_ir::Expr,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        // Resolve the resource's slot. block-scoped resources may have had
+        // their var_locals entry rolled back by branch restoration; fall
+        // back to pre_allocated_slots which persists for the whole fn.
+        let resource_slot = self
+            .var_locals
+            .get(&resource)
+            .copied()
+            .map(|(slot, _)| slot)
+            .or_else(|| self.pre_allocated_slots.get(&resource).copied())
+            .ok_or_else(|| {
+                CodegenError::UndefinedVariable(
+                    format!("AutoClose: resource var {:?} has no slot", resource),
+                    None,
+                )
+            })?;
+
+        // Resolve the Resource trait dispatch table.
+        let resource_trait = krypton_ir::TraitName::core_resource();
+        let dispatch = self
+            .traits
+            .trait_dispatch
+            .get(&resource_trait)
+            .ok_or_else(|| {
+                CodegenError::UnsupportedExpr(
+                    "no dispatch info for Resource trait in AutoClose".to_string(),
+                    None,
+                )
+            })?;
+        let close_method_ref = dispatch.method_refs["close"];
+        let _ = type_name; // type_name is carried for debug/pretty only
+
+        // Load dict atom
+        let _ = self.compile_ir_atom(dict)?;
+
+        // Load and box the resource value
+        self.builder.emit(Instruction::Aload(resource_slot as u8));
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: self.builder.refs.object_class,
+        });
+
+        // invokeinterface close(dict, resource) — 2 args, returns Object (Unit)
+        self.builder
+            .emit(Instruction::Invokeinterface(close_method_ref, 2));
+        self.builder.frame.pop_type(); // resource
+        self.builder.frame.pop_type(); // dict
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: self.builder.refs.object_class,
+        });
+        self.builder.emit(Instruction::Pop);
+        self.builder.frame.pop_type();
+
+        // Optionally null the slot so the fn-wide finally handler skips it.
+        if null_slot {
+            self.builder.emit(Instruction::Aconst_null);
+            self.builder.frame.push_type(VerificationType::Null);
+            self.builder.emit(Instruction::Astore(resource_slot as u8));
+            self.builder.frame.pop_type();
+        }
+
+        // Continue with the body of the AutoClose (the actual return path).
+        self.compile_ir_expr(body, ir_module)
     }
 
     /// Emit a finally handler that calls close() on resources when an exception occurs.

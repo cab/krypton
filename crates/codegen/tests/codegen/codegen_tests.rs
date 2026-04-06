@@ -231,6 +231,7 @@ fn string_lit(value: &str) -> TypedExpr {
         ty: Type::String,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     }
 }
 
@@ -240,6 +241,7 @@ fn int_lit(value: i64) -> TypedExpr {
         ty: Type::Int,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     }
 }
 
@@ -249,6 +251,7 @@ fn var_expr(name: &str, ty: Type) -> TypedExpr {
         ty,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     }
 }
 
@@ -261,6 +264,7 @@ fn app_expr(name: &str, func_ty: Type, args: Vec<TypedExpr>, ret_ty: Type) -> Ty
         ty: ret_ty,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     }
 }
 
@@ -281,6 +285,7 @@ fn trait_app_expr(
                     trait_name: trait_id.clone(),
                     method_name: name.to_string(),
                 })),
+                scope_id: None,
             }),
             args,
         },
@@ -290,6 +295,7 @@ fn trait_app_expr(
             trait_name: trait_id,
             method_name: name.to_string(),
         })),
+        scope_id: None,
     }
 }
 
@@ -303,6 +309,7 @@ fn concat_expr(lhs: TypedExpr, rhs: TypedExpr) -> TypedExpr {
         ty: Type::String,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     }
 }
 
@@ -386,6 +393,7 @@ fn build_constrained_render_module(use_polymorphic_wrapper: bool, nested: bool) 
         ty: Type::String,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     };
 
     let wrapped_main_value = if nested {

@@ -2682,6 +2682,11 @@ impl ModuleInferenceState {
             .filter(|(name, _)| exported_names.contains(name.as_str()))
             .collect();
 
+        // Stamp ScopeIds on every typed function body before analysis/lowering.
+        // Both auto_close and ir::lower rely on scope identity being stable and
+        // unique — ScopeIds replace the fragile span-based lookup.
+        crate::scope_ids::stamp_functions(&mut functions);
+
         // Only run auto_close if ownership checking passed — auto_close depends on
         // complete ownership results and may encounter unexpected types otherwise.
         let auto_close = if !has_ownership_errors {

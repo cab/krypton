@@ -61,6 +61,28 @@ pub enum ExprKind {
         default: Option<Box<Expr>>,
     },
 
+    /// Auto-close a block-scoped resource, then continue with `body`.
+    ///
+    /// Semantics: evaluate `close(dict, resource)` via trait dispatch,
+    /// optionally null the JVM slot backing `resource` so that the
+    /// function-wide finally handler skips an already-closed resource
+    /// on exception unwind, then evaluate `body` and return its value.
+    ///
+    /// This mirrors the `Drop` terminator from Rust MIR / `destroy_addr`
+    /// from Swift SIL: cleanup is first-class IR, not a side-effecting
+    /// `SetVarNull` store hiding inside a `SimpleExpr`.
+    ///
+    /// `dict` is the pre-resolved `Resource` dictionary atom in scope at
+    /// this AutoClose site (dict bindings are emitted as outer `Let`s by
+    /// the lowerer so the atom is in scope when we read it).
+    AutoClose {
+        resource: VarId,
+        dict: Atom,
+        type_name: String,
+        null_slot: bool,
+        body: Box<Expr>,
+    },
+
     /// Terminal: produce a value.
     Atom(Atom),
 }
@@ -156,13 +178,6 @@ pub enum SimpleExprKind {
 
     /// A trivial atom (used for binding literal scrutinees to variables).
     Atom(Atom),
-
-    /// Store null into a specific variable's JVM slot. Returns Unit.
-    /// Used after normal-path close of a block-scoped resource so that
-    /// the function-wide finally handler (which null-checks each slot
-    /// before calling close) skips the already-closed resource on
-    /// exception unwind.
-    SetVarNull { var: VarId },
 }
 
 /// Trivial values — no computation, no side effects.

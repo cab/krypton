@@ -119,24 +119,28 @@ pub(super) fn synthesize_eq_body(
         ty: target_type.clone(),
         span,
         resolved_ref: None,
+        scope_id: None,
     };
     let param_b = TypedExpr {
         kind: TypedExprKind::Var("__b".to_string()),
         ty: target_type.clone(),
         span,
         resolved_ref: None,
+        scope_id: None,
     };
     let true_expr = || TypedExpr {
         kind: TypedExprKind::Lit(Lit::Bool(true)),
         ty: Type::Bool,
         span,
         resolved_ref: None,
+        scope_id: None,
     };
     let false_expr = || TypedExpr {
         kind: TypedExprKind::Lit(Lit::Bool(false)),
         ty: Type::Bool,
         span,
         resolved_ref: None,
+        scope_id: None,
     };
 
     let body = match &type_info.kind {
@@ -156,6 +160,7 @@ pub(super) fn synthesize_eq_body(
                         ty: field_ty.clone(),
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
                     let rhs = TypedExpr {
                         kind: TypedExprKind::FieldAccess {
@@ -166,6 +171,7 @@ pub(super) fn synthesize_eq_body(
                         ty: field_ty.clone(),
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
                     let cmp = TypedExpr {
                         kind: TypedExprKind::BinaryOp {
@@ -176,6 +182,7 @@ pub(super) fn synthesize_eq_body(
                         ty: Type::Bool,
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
                     result = TypedExpr {
                         kind: TypedExprKind::If {
@@ -186,6 +193,7 @@ pub(super) fn synthesize_eq_body(
                         ty: Type::Bool,
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
                 }
                 result
@@ -253,12 +261,14 @@ pub(super) fn synthesize_eq_body(
                                             ty: ft.clone(),
                                             span,
                                             resolved_ref: None,
+                                            scope_id: None,
                                         };
                                         let y = TypedExpr {
                                             kind: TypedExprKind::Var(format!("__y{}", i)),
                                             ty: ft.clone(),
                                             span,
                                             resolved_ref: None,
+                                            scope_id: None,
                                         };
                                         let cmp = TypedExpr {
                                             kind: TypedExprKind::BinaryOp {
@@ -269,6 +279,7 @@ pub(super) fn synthesize_eq_body(
                                             ty: Type::Bool,
                                             span,
                                             resolved_ref: None,
+                                            scope_id: None,
                                         };
                                         result = TypedExpr {
                                             kind: TypedExprKind::If {
@@ -279,6 +290,7 @@ pub(super) fn synthesize_eq_body(
                                             ty: Type::Bool,
                                             span,
                                             resolved_ref: None,
+                                            scope_id: None,
                                         };
                                     }
                                     TypedMatchArm {
@@ -309,6 +321,7 @@ pub(super) fn synthesize_eq_body(
                         ty: Type::Bool,
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
 
                     TypedMatchArm {
@@ -327,6 +340,7 @@ pub(super) fn synthesize_eq_body(
                 ty: Type::Bool,
                 span,
                 resolved_ref: None,
+                scope_id: None,
             }
         }
     };
@@ -350,6 +364,7 @@ pub(super) fn synthesize_show_body(
         ty: target_type.clone(),
         span,
         resolved_ref: None,
+        scope_id: None,
     };
 
     let str_lit = |s: &str| -> TypedExpr {
@@ -358,6 +373,7 @@ pub(super) fn synthesize_show_body(
             ty: Type::String,
             span,
             resolved_ref: None,
+            scope_id: None,
         }
     };
 
@@ -371,6 +387,7 @@ pub(super) fn synthesize_show_body(
             ty: Type::String,
             span,
             resolved_ref: None,
+            scope_id: None,
         }
     };
 
@@ -385,12 +402,14 @@ pub(super) fn synthesize_show_body(
                     resolved_ref: trait_id
                         .clone()
                         .map(|trait_name| super::trait_method_binding_ref(trait_name, "show")),
+                    scope_id: None,
                 }),
                 args: vec![expr],
             },
             ty: Type::String,
             span,
             resolved_ref: None,
+            scope_id: None,
         }
     };
 
@@ -411,6 +430,7 @@ pub(super) fn synthesize_show_body(
                     ty: field_ty.clone(),
                     span,
                     resolved_ref: None,
+                    scope_id: None,
                 };
                 result = str_concat(result, show_call(field_access));
             }
@@ -453,6 +473,7 @@ pub(super) fn synthesize_show_body(
                                 ty: ft.clone(),
                                 span,
                                 resolved_ref: None,
+                                scope_id: None,
                             };
                             result = str_concat(result, show_call(var_expr));
                         }
@@ -471,6 +492,7 @@ pub(super) fn synthesize_show_body(
                 ty: Type::String,
                 span,
                 resolved_ref: None,
+                scope_id: None,
             }
         }
     };
@@ -490,6 +512,7 @@ pub(super) fn synthesize_hash_body(
         ty: target_type.clone(),
         span,
         resolved_ref: None,
+        scope_id: None,
     };
 
     let int_lit = |n: i64| -> TypedExpr {
@@ -498,6 +521,7 @@ pub(super) fn synthesize_hash_body(
             ty: Type::Int,
             span,
             resolved_ref: None,
+            scope_id: None,
         }
     };
 
@@ -512,12 +536,14 @@ pub(super) fn synthesize_hash_body(
                     resolved_ref: trait_id
                         .clone()
                         .map(|trait_name| super::trait_method_binding_ref(trait_name, "hash")),
+                    scope_id: None,
                 }),
                 args: vec![expr],
             },
             ty: Type::Int,
             span,
             resolved_ref: None,
+            scope_id: None,
         }
     };
 
@@ -532,6 +558,7 @@ pub(super) fn synthesize_hash_body(
             ty: Type::Int,
             span,
             resolved_ref: None,
+            scope_id: None,
         };
         TypedExpr {
             kind: TypedExprKind::BinaryOp {
@@ -542,6 +569,7 @@ pub(super) fn synthesize_hash_body(
             ty: Type::Int,
             span,
             resolved_ref: None,
+            scope_id: None,
         }
     };
 
@@ -561,6 +589,7 @@ pub(super) fn synthesize_hash_body(
                         ty: field_ty.clone(),
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
                     hash_call(field_access)
                 };
@@ -574,6 +603,7 @@ pub(super) fn synthesize_hash_body(
                         ty: field_ty.clone(),
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     };
                     result = combine_hash(result, hash_call(field_access));
                 }
@@ -611,6 +641,7 @@ pub(super) fn synthesize_hash_body(
                             ty: ft.clone(),
                             span,
                             resolved_ref: None,
+                            scope_id: None,
                         };
                         result = combine_hash(result, hash_call(var_expr));
                     }
@@ -631,6 +662,7 @@ pub(super) fn synthesize_hash_body(
                 ty: Type::Int,
                 span,
                 resolved_ref: None,
+                scope_id: None,
             }
         }
     };

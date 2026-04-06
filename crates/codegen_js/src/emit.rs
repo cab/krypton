@@ -725,6 +725,7 @@ fn collect_referenced_fns_expr(expr: &Expr, ids: &mut HashMap<FnId, Span>) {
                 collect_referenced_fns_expr(default, ids);
             }
         }
+        ExprKind::AutoClose { body, .. } => collect_referenced_fns_expr(body, ids),
         ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
     }
 }
@@ -821,6 +822,7 @@ fn collect_dict_refs_expr(
                 collect_dict_refs_expr(default, refs, seen);
             }
         }
+        ExprKind::AutoClose { body, .. } => collect_dict_refs_expr(body, refs, seen),
         ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
     }
 }
@@ -1929,6 +1931,22 @@ impl<'a> JsEmitter<'a> {
                     self.emit_expr(body, tail);
                 }
             }
+            ExprKind::AutoClose {
+                resource,
+                dict,
+                type_name: _,
+                null_slot: _,
+                body,
+            } => {
+                // JS has no fn-wide exception handler so `null_slot` is meaningless.
+                // Emit the Resource.close trait call directly, then fall through
+                // to `body`. Dict resolution has been pre-inlined as outer Lets.
+                let dict_str = self.emit_atom(dict);
+                let res_str = self.var_name(*resource);
+                self.write_indent();
+                self.write(&format!("{dict_str}.close({res_str});\n"));
+                self.emit_expr(body, tail);
+            }
             ExprKind::Jump { target, args } => {
                 if let Some(info) = self.recur_joins.get(target) {
                     let is_loop = info.phase == RecurPhase::Loop;
@@ -2264,13 +2282,6 @@ impl<'a> JsEmitter<'a> {
             SimpleExprKind::MakeVec { elements, .. } => {
                 let elems: Vec<String> = elements.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("[{}]", elems.join(", ")));
-            }
-            SimpleExprKind::SetVarNull { var: _ } => {
-                // JS has no exception-table-based finally handler for
-                // resources, so nulling the binding is unnecessary. Emit a
-                // Unit placeholder to keep the surrounding `const v$n = ...`
-                // wrapper well-formed.
-                self.write("null");
             }
         }
     }

@@ -806,6 +806,7 @@ pub fn instance_summary_to_def_info(is: &InstanceSummary) -> InstanceDefInfo {
         ty: Type::Unit,
         span: (0, 0),
         resolved_ref: None,
+        scope_id: None,
     };
     InstanceDefInfo {
         trait_name: is.trait_name.clone(),

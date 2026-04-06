@@ -30,35 +30,34 @@ fn work() -> Result[String, Int] =
   in
   let v3: ~Handle = construct Handle::MkHandle#0("test")
   let v4: Unit = call println("opened")
-  let_join v13(v5: Int) =
-    let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
-    let v14: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-    let v16: Unit = trait_call core/resource.Resource.close(v14, v3)
-    let v15: Unit = set_var_null v3
-    v12
+  let_join v12(v5: Int) =
+    let v11: ~Result[String, Int] = construct Result::Ok#0(v5)
+    let v13: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
+    auto_close[Handle](v3, dict=v13, null=true)
+    v11
   in
   let v6: Result[String, Int] = call fallible()
   switch v6 {
     0 (v7: Int) ->
-      jump v13(v7)
+      jump v12(v7)
     1 (v8: String) ->
       let v9: Result[String, Int] = construct Result::Err#1(v8)
       let v10: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-      let v11: Unit = trait_call core/resource.Resource.close(v10, v3)
+      auto_close[Handle](v3, dict=v10, null=false)
       jump v1(v9)
   }
 
 fn main() -> Unit =
-  let v17: Result[String, Int] = call work()
-  switch v17 {
-    0 (v18: Int) ->
-      let v19: Unit = call println(v18)
-      v19
-    1 (v20: String) ->
-      let v21: Unit = call println("err")
-      v21
+  let v14: Result[String, Int] = call work()
+  switch v14 {
+    0 (v15: Int) ->
+      let v16: Unit = call println(v15)
+      v16
+    1 (v17: String) ->
+      let v18: Unit = call println("err")
+      v18
   }
 
-fn Resource$$Handle$$close(v22: ~Handle) -> Unit =
-  let v23: Unit = call println("closed")
-  v23
+fn Resource$$Handle$$close(v19: ~Handle) -> Unit =
+  let v20: Unit = call println("closed")
+  v20

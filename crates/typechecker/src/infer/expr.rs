@@ -263,6 +263,7 @@ impl<'a> InferenceContext<'a> {
             },
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -378,6 +379,7 @@ impl<'a> InferenceContext<'a> {
             ty: func_ty.clone(),
             span,
             resolved_ref: export.resolved_ref.clone(),
+            scope_id: None,
         };
         let actual_args = &args[1..];
         self.infer_call_args_and_unify(func_typed, &func_ty, actual_args, is_constructor, span)
@@ -434,6 +436,7 @@ impl<'a> InferenceContext<'a> {
             },
             span,
             resolved_ref: export.resolved_ref.clone(),
+            scope_id: None,
         };
 
         Some(self.infer_call_args_and_unify(func_typed, &func_ty, args, is_constructor, span))
@@ -631,6 +634,7 @@ impl<'a> InferenceContext<'a> {
             ty,
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -711,6 +715,7 @@ impl<'a> InferenceContext<'a> {
             ty,
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -776,6 +781,7 @@ impl<'a> InferenceContext<'a> {
             ty: specialized_ty,
             span,
             resolved_ref,
+            scope_id: None,
         })
     }
 
@@ -857,6 +863,7 @@ impl<'a> InferenceContext<'a> {
                         ty,
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     }
                 }
                 None => {
@@ -870,6 +877,7 @@ impl<'a> InferenceContext<'a> {
                         ty: Type::Unit,
                         span,
                         resolved_ref: None,
+                        scope_id: None,
                     }
                 }
             };
@@ -925,6 +933,7 @@ impl<'a> InferenceContext<'a> {
             ty,
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -967,6 +976,7 @@ impl<'a> InferenceContext<'a> {
                         ty,
                         span,
                         resolved_ref: export.resolved_ref.clone(),
+                        scope_id: None,
                     });
                 }
             }
@@ -1012,6 +1022,7 @@ impl<'a> InferenceContext<'a> {
             ty,
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -1077,6 +1088,7 @@ impl<'a> InferenceContext<'a> {
             ty,
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -1130,6 +1142,7 @@ impl<'a> InferenceContext<'a> {
                     ty,
                     span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
             None => {
@@ -1144,6 +1157,7 @@ impl<'a> InferenceContext<'a> {
                     ty: Type::Unit,
                     span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
         }
@@ -1231,6 +1245,7 @@ impl<'a> InferenceContext<'a> {
                     ty: Type::Own(Box::new(struct_ty)),
                     span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
             _ => Err(super::spanned(
@@ -1396,6 +1411,7 @@ impl<'a> InferenceContext<'a> {
             ty: result_ty,
             span,
             resolved_ref: None,
+            scope_id: None,
         })
     }
 
@@ -1418,6 +1434,7 @@ impl<'a> InferenceContext<'a> {
                     ty: Type::Own(Box::new(ty)),
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1438,6 +1455,7 @@ impl<'a> InferenceContext<'a> {
                         ty,
                         span: *span,
                         resolved_ref,
+                        scope_id: None,
                     })
                 }
                 None => {
@@ -1517,6 +1535,7 @@ impl<'a> InferenceContext<'a> {
                     ty,
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1529,6 +1548,7 @@ impl<'a> InferenceContext<'a> {
                         ty: Type::Unit,
                         span: *span,
                         resolved_ref: None,
+                        scope_id: None,
                     });
                 }
                 let mut typed_exprs = Vec::new();
@@ -1542,6 +1562,7 @@ impl<'a> InferenceContext<'a> {
                     ty,
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1568,6 +1589,7 @@ impl<'a> InferenceContext<'a> {
                     ty,
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1604,6 +1626,7 @@ impl<'a> InferenceContext<'a> {
                     ty,
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1630,6 +1653,7 @@ impl<'a> InferenceContext<'a> {
                     ty: resolved,
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1650,6 +1674,7 @@ impl<'a> InferenceContext<'a> {
                     ty,
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
 
@@ -1682,6 +1707,7 @@ impl<'a> InferenceContext<'a> {
                     ty: Type::Named("Vec".to_string(), vec![resolved_elem]),
                     span: *span,
                     resolved_ref: None,
+                    scope_id: None,
                 })
             }
             Expr::QuestionMark { expr, span } => self.infer_question_mark(expr, *span),

@@ -290,6 +290,9 @@ fn walk_expr(
                 );
             }
         }
+        ExprKind::AutoClose { body, .. } => {
+            walk_expr(body, module, mod_idx, closure_origins, var_types, fn_edges);
+        }
         ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
     }
 }

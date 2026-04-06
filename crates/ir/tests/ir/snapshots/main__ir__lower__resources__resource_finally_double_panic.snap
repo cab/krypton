@@ -26,10 +26,9 @@ fn main() -> Unit =
   let v1: Unit = call println("opened")
   let v2: Unit = call panic("original")
   let v3: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-  let v5: Unit = trait_call core/resource.Resource.close(v3, v0)
-  let v4: Unit = set_var_null v0
+  auto_close[Handle](v0, dict=v3, null=true)
   v2
 
-fn Resource$$Handle$$close(v6: ~Handle) -> t8 =
-  let v7: t8 = call panic("close failed")
-  v7
+fn Resource$$Handle$$close(v4: ~Handle) -> t8 =
+  let v5: t8 = call panic("close failed")
+  v5
