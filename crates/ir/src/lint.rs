@@ -336,6 +336,8 @@ impl LintContext {
             }
 
             SimpleExprKind::Atom(atom) => self.check_atom_not_join(atom),
+
+            SimpleExprKind::SetVarNull { .. } => Ok(()),
         }
     }
 

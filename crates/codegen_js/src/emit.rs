@@ -2265,6 +2265,13 @@ impl<'a> JsEmitter<'a> {
                 let elems: Vec<String> = elements.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("[{}]", elems.join(", ")));
             }
+            SimpleExprKind::SetVarNull { var: _ } => {
+                // JS has no exception-table-based finally handler for
+                // resources, so nulling the binding is unnecessary. Emit a
+                // Unit placeholder to keep the surrounding `const v$n = ...`
+                // wrapper well-formed.
+                self.write("null");
+            }
         }
     }
 

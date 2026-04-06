@@ -1976,6 +1976,31 @@ impl<'link> Compiler<'link> {
 
                 Ok(JvmType::StructRef(vec_class))
             }
+
+            SimpleExprKind::SetVarNull { var } => {
+                // Store null into the resource's pre-allocated slot so the
+                // function-wide finally handler skips it on exception unwind.
+                let slot = self
+                    .var_locals
+                    .get(var)
+                    .copied()
+                    .map(|(slot, _)| slot)
+                    .or_else(|| self.pre_allocated_slots.get(var).copied())
+                    .ok_or_else(|| {
+                        CodegenError::UndefinedVariable(
+                            format!("SetVarNull: var {:?} has no allocated slot", var),
+                            None,
+                        )
+                    })?;
+                self.builder.emit(Instruction::Aconst_null);
+                self.builder.frame.push_type(VerificationType::Null);
+                self.builder.emit(Instruction::Astore(slot as u8));
+                self.builder.frame.pop_type();
+                // Produce a Unit placeholder on the stack (matches Literal::Unit).
+                self.builder.emit(Instruction::Iconst_0);
+                self.builder.frame.push_type(VerificationType::Integer);
+                Ok(JvmType::Int)
+            }
         }
     }
 
@@ -2002,7 +2027,10 @@ impl<'link> Compiler<'link> {
 
                 // Use pre-allocated slot if one exists (resource vars null-initialized
                 // at function entry for JVM verifier compatibility in finally handlers).
-                let slot = if let Some(existing_slot) = self.pre_allocated_slots.remove(bind) {
+                // The slot mapping is kept (not removed) so the function-wide finally
+                // handler can still find block-scoped resources whose `var_locals`
+                // entries were rolled back by branch restoration.
+                let slot = if let Some(&existing_slot) = self.pre_allocated_slots.get(bind) {
                     self.builder.emit_store(existing_slot, jvm_ty);
                     existing_slot
                 } else {
@@ -2961,10 +2989,15 @@ impl<'link> Compiler<'link> {
 
         // Close each resource in LIFO order (reverse of declaration order)
         for fc in finally_closes.iter().rev() {
-            let (resource_slot, _resource_jvm_type) = self
+            // var_locals may have been rolled back for block-scoped resources
+            // declared inside branches; fall back to pre_allocated_slots which
+            // is populated once at function entry and never restored.
+            let resource_slot = self
                 .var_locals
                 .get(&fc.resource_var)
                 .copied()
+                .map(|(slot, _)| slot)
+                .or_else(|| self.pre_allocated_slots.get(&fc.resource_var).copied())
                 .ok_or_else(|| {
                     CodegenError::UndefinedVariable(
                         format!(

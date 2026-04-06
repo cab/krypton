@@ -1,0 +1,21 @@
+# expect: output "before\nopened\nclosed\nafter"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Handle = MkHandle(Int)
+
+impl Resource[Handle] {
+    fun close(h: ~Handle) -> Unit = println("closed")
+}
+
+fun main() -> Unit = {
+    println("before")
+    if true {
+        let h: ~Handle = MkHandle(1)
+        println("opened")
+    } else {
+        ()
+    }
+    println("after")
+}

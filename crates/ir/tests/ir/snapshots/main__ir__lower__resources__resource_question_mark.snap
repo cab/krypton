@@ -33,7 +33,8 @@ fn work() -> Result[String, Int] =
   let_join v13(v5: Int) =
     let v12: ~Result[String, Int] = construct Result::Ok#0(v5)
     let v14: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-    let v15: Unit = trait_call core/resource.Resource.close(v14, v3)
+    let v16: Unit = trait_call core/resource.Resource.close(v14, v3)
+    let v15: Unit = set_var_null v3
     v12
   in
   let v6: Result[String, Int] = call fallible()
@@ -48,16 +49,16 @@ fn work() -> Result[String, Int] =
   }
 
 fn main() -> Unit =
-  let v16: Result[String, Int] = call work()
-  switch v16 {
-    0 (v17: Int) ->
-      let v18: Unit = call println(v17)
-      v18
-    1 (v19: String) ->
-      let v20: Unit = call println("err")
-      v20
+  let v17: Result[String, Int] = call work()
+  switch v17 {
+    0 (v18: Int) ->
+      let v19: Unit = call println(v18)
+      v19
+    1 (v20: String) ->
+      let v21: Unit = call println("err")
+      v21
   }
 
-fn Resource$$Handle$$close(v21: ~Handle) -> Unit =
-  let v22: Unit = call println("closed")
-  v22
+fn Resource$$Handle$$close(v22: ~Handle) -> Unit =
+  let v23: Unit = call println("closed")
+  v23

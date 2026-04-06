@@ -167,6 +167,7 @@ impl fmt::Display for SimpleExpr {
                 write!(f, "make_vec({})", fmt_atoms(elements))
             }
             SimpleExprKind::Atom(atom) => write!(f, "{atom}"),
+            SimpleExprKind::SetVarNull { var } => write!(f, "set_var_null {var}"),
         }
     }
 }
@@ -289,6 +290,7 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 write!(self.f, "make_vec({})", fmt_atoms(elements))
             }
             SimpleExprKind::Atom(atom) => write!(self.f, "{atom}"),
+            SimpleExprKind::SetVarNull { var } => write!(self.f, "set_var_null {var}"),
         }
     }
 

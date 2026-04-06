@@ -149,8 +149,15 @@ impl<'a> TypedFormatter<'a> {
                 self.buf.push_str(" {\n");
                 self.indent_level += 1;
                 self.fmt_block_stmts(exprs, &typed_fn.name);
-                // Scope exit closes before closing brace
+                // Scope exit closes before closing brace: function-level
+                // exits (~Resource params) plus any block-scoped resources
+                // recorded against the top-level Do block's span.
                 if let Some(bindings) = self.auto_close.fn_exits.get(&typed_fn.name) {
+                    for binding in bindings {
+                        self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
+                    }
+                }
+                if let Some(bindings) = self.auto_close.scope_exits.get(&typed_fn.body.span) {
                     for binding in bindings {
                         self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
                     }

@@ -156,6 +156,13 @@ pub enum SimpleExprKind {
 
     /// A trivial atom (used for binding literal scrutinees to variables).
     Atom(Atom),
+
+    /// Store null into a specific variable's JVM slot. Returns Unit.
+    /// Used after normal-path close of a block-scoped resource so that
+    /// the function-wide finally handler (which null-checks each slot
+    /// before calling close) skips the already-closed resource on
+    /// exception unwind.
+    SetVarNull { var: VarId },
 }
 
 /// Trivial values — no computation, no side effects.

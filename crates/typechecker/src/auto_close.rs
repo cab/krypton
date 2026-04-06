@@ -193,6 +193,31 @@ impl<'a> AutoCloseAnalyzer<'a> {
         );
     }
 
+    /// Run `f` with live as a scope. After f returns, any bindings introduced
+    /// inside the scope are drained and recorded in `scope_exits` under `scope_span`
+    /// in LIFO order. This is how nested blocks get their own auto-close tails.
+    fn scoped<F>(&mut self, scope_span: Span, live: &mut Vec<LiveBinding>, f: F)
+    where
+        F: FnOnce(&mut Self, &mut Vec<LiveBinding>),
+    {
+        let base = live.len();
+        f(self, live);
+        if live.len() > base {
+            let drained: Vec<LiveBinding> = live.drain(base..).collect();
+            let bindings: Vec<AutoCloseBinding> = drained
+                .into_iter()
+                .rev()
+                .map(|(name, type_name)| AutoCloseBinding { name, type_name })
+                .collect();
+            self.assert_no_duplicate_span(
+                "scope_exits",
+                scope_span,
+                self.info.scope_exits.contains_key(&scope_span),
+            );
+            self.info.scope_exits.insert(scope_span, bindings);
+        }
+    }
+
     fn walk_expr(&mut self, expr: &TypedExpr, live: &mut Vec<LiveBinding>) {
         match &expr.kind {
             TypedExprKind::Let { name, value, body } => {
@@ -216,13 +241,22 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     );
                 }
 
-                // Check if this let introduces a ~Resource binding
-                if let Some(type_name) = is_owned_resource(&value.ty, self.registry) {
-                    live.push((name.clone(), type_name));
-                }
-
                 if let Some(body) = body {
-                    self.walk_expr(body, live);
+                    // `let x = e1 in e2`: x and anything added inside e2
+                    // are scoped to this Let's span.
+                    self.scoped(expr.span, live, |this, live| {
+                        if let Some(type_name) = is_owned_resource(&value.ty, this.registry) {
+                            live.push((name.clone(), type_name));
+                        }
+                        this.walk_expr(body, live);
+                    });
+                } else {
+                    // `let x = e1` with body: None — used in Do blocks where
+                    // the binding is visible to later siblings. The enclosing
+                    // Do scopes the binding.
+                    if let Some(type_name) = is_owned_resource(&value.ty, self.registry) {
+                        live.push((name.clone(), type_name));
+                    }
                 }
             }
 
@@ -361,9 +395,14 @@ impl<'a> AutoCloseAnalyzer<'a> {
             }
 
             TypedExprKind::Do(exprs) => {
-                for expr in exprs {
-                    self.walk_expr(expr, live);
-                }
+                // The Do block is a lexical scope: bindings introduced via
+                // `let x = ...` with body:None are visible to subsequent
+                // siblings and closed at the Do's tail.
+                self.scoped(expr.span, live, |this, live| {
+                    for e in exprs {
+                        this.walk_expr(e, live);
+                    }
+                });
             }
 
             TypedExprKind::Var(name) => {
@@ -407,12 +446,21 @@ impl<'a> AutoCloseAnalyzer<'a> {
 
                 // #3: Track resource bindings from destructured patterns
                 let bindings = collect_resource_bindings(pattern, self.registry);
-                for binding in bindings {
-                    live.push(binding);
-                }
 
                 if let Some(body) = body {
-                    self.walk_expr(body, live);
+                    // `let pat = e1 in e2`: pattern-introduced bindings and
+                    // anything inside e2 are scoped to this LetPattern span.
+                    self.scoped(expr.span, live, |this, live| {
+                        for binding in bindings {
+                            live.push(binding);
+                        }
+                        this.walk_expr(body, live);
+                    });
+                } else {
+                    // body: None — visible to later siblings via enclosing Do.
+                    for binding in bindings {
+                        live.push(binding);
+                    }
                 }
             }
 

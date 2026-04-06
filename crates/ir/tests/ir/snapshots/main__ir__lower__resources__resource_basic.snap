@@ -24,9 +24,10 @@ fn main() -> Unit =
   let v0: ~Handle = construct Handle::MkHandle#0("test")
   let v1: Unit = call println("opened")
   let v2: Dict[core/resource.Resource, Handle] = get_dict core/resource.Resource[Handle]
-  let v3: Unit = trait_call core/resource.Resource.close(v2, v0)
+  let v4: Unit = trait_call core/resource.Resource.close(v2, v0)
+  let v3: Unit = set_var_null v0
   v1
 
-fn Resource$$Handle$$close(v4: ~Handle) -> Unit =
-  let v5: Unit = call println("closed")
-  v5
+fn Resource$$Handle$$close(v5: ~Handle) -> Unit =
+  let v6: Unit = call println("closed")
+  v6

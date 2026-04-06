@@ -182,6 +182,9 @@ pub struct AutoCloseInfo {
     pub recur_closes: HashMap<Span, Vec<AutoCloseBinding>>,
     /// Move/consumption sites: arg_span → consumed bindings
     pub consumptions: HashMap<Span, Vec<AutoCloseBinding>>,
+    /// Block scope exits: scope_span → bindings to close at that scope's tail,
+    /// in LIFO order (reverse of declaration order).
+    pub scope_exits: HashMap<Span, Vec<AutoCloseBinding>>,
 }
 
 #[derive(Debug, Clone)]
