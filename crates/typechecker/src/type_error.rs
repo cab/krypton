@@ -56,6 +56,9 @@ pub enum TypeErrorCode {
     E0509, // Duplicate import name (same name from different modules)
     E0510, // Unknown export (name does not exist in module)
     E0013, // Redundant match arm
+    E0015, // Duplicate constructor across types (value namespace)
+    E0016, // Type/trait name collision (type namespace)
+    E0318, // Duplicate trait (type namespace)
     E0511, // Wildcard not allowed in this position
     E0512, // Nested wildcard in impl head
     E0307, // Unknown trait
@@ -112,6 +115,17 @@ pub enum TypeError {
         actual: Type,
     },
     DuplicateType {
+        name: String,
+    },
+    DuplicateConstructor {
+        name: String,
+        first_type: String,
+        second_type: String,
+    },
+    DuplicateTrait {
+        name: String,
+    },
+    TypeTraitNameConflict {
         name: String,
     },
     UnknownField {
@@ -360,6 +374,9 @@ impl TypeError {
         match self {
             TypeError::Mismatch { .. } => TypeErrorCode::E0001,
             TypeError::DuplicateType { .. } => TypeErrorCode::E0002,
+            TypeError::DuplicateConstructor { .. } => TypeErrorCode::E0015,
+            TypeError::TypeTraitNameConflict { .. } => TypeErrorCode::E0016,
+            TypeError::DuplicateTrait { .. } => TypeErrorCode::E0318,
             TypeError::UnknownVariable { .. } => TypeErrorCode::E0003,
             TypeError::NotAFunction { .. } => TypeErrorCode::E0004,
             TypeError::WrongArity { .. } => TypeErrorCode::E0005,
@@ -460,6 +477,19 @@ impl TypeError {
             }
             TypeError::DuplicateType { name } => {
                 Some(format!("type `{}` is already defined", name))
+            }
+            TypeError::DuplicateConstructor { name, first_type, second_type } => {
+                Some(format!(
+                    "constructor `{name}` is already defined by type `{first_type}`; rename the constructor in `{second_type}` or qualify it"
+                ))
+            }
+            TypeError::DuplicateTrait { name } => {
+                Some(format!("trait `{name}` is already defined; rename this trait or remove the earlier definition"))
+            }
+            TypeError::TypeTraitNameConflict { name } => {
+                Some(format!(
+                    "`{name}` is already declared as a type in this module; types and traits share a namespace — rename one to disambiguate"
+                ))
             }
             TypeError::UnknownVariable { name } => {
                 Some(format!("did you mean to define `{}` first?", name))
@@ -872,6 +902,18 @@ impl fmt::Display for TypeError {
             }
             TypeError::DuplicateType { name } => {
                 write!(f, "duplicate type definition: {}", name)
+            }
+            TypeError::DuplicateConstructor { name, first_type, second_type } => {
+                write!(
+                    f,
+                    "duplicate constructor `{name}`: already defined by type `{first_type}`, redefined by type `{second_type}`"
+                )
+            }
+            TypeError::DuplicateTrait { name } => {
+                write!(f, "duplicate trait definition: {}", name)
+            }
+            TypeError::TypeTraitNameConflict { name } => {
+                write!(f, "name `{}` conflicts: declared as both a type and a trait", name)
             }
             TypeError::NotAFunction { actual } => {
                 let actual = actual.renumber_for_display();

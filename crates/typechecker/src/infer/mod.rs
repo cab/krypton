@@ -2311,6 +2311,33 @@ impl ModuleInferenceState {
                     type_registry::process_type_decl(type_decl, &mut self.registry, &mut self.gen)
                         .map_err(|e| spanned(e, type_decl.span))?;
                 for (name, scheme) in constructors {
+                    // Value-namespace check: a constructor may not collide with
+                    // another local constructor of a *different* type. Prelude
+                    // constructors are shadowable and therefore skipped.
+                    if let Some(existing) = self.env.lookup_entry(&name) {
+                        if let BindingSource::Constructor {
+                            type_qualified_name,
+                            ..
+                        } = &existing.source
+                        {
+                            if type_qualified_name.local_name != type_decl.name {
+                                let existing_is_prelude = self
+                                    .registry
+                                    .lookup_type(&type_qualified_name.local_name)
+                                    .map_or(false, |t| t.is_prelude);
+                                if !existing_is_prelude {
+                                    return Err(spanned(
+                                        TypeError::DuplicateConstructor {
+                                            name: name.clone(),
+                                            first_type: type_qualified_name.local_name.clone(),
+                                            second_type: type_decl.name.clone(),
+                                        },
+                                        type_decl.span,
+                                    ));
+                                }
+                            }
+                        }
+                    }
                     self.env.bind_constructor(
                         name.clone(),
                         scheme.clone(),
@@ -3310,11 +3337,25 @@ fn register_local_traits(
             ..
         } = decl
         {
-            if trait_registry.lookup_trait_by_name(name).is_some() {
-                return Err(spanned(
-                    TypeError::DuplicateType { name: name.clone() },
-                    *span,
-                ));
+            // Type-namespace check: `name` must not already exist as a type
+            // (or type alias) in this module. Prelude types are shadowable.
+            if let Some(existing_type) = state.registry.lookup_type(name) {
+                if !existing_type.is_prelude {
+                    return Err(spanned(
+                        TypeError::TypeTraitNameConflict { name: name.clone() },
+                        *span,
+                    ));
+                }
+            }
+            // Type-namespace check: `name` must not already be declared as a
+            // trait in this module. Prelude traits are shadowable.
+            if let Some(existing_trait) = trait_registry.lookup_trait_by_name(name) {
+                if !existing_trait.is_prelude {
+                    return Err(spanned(
+                        TypeError::DuplicateTrait { name: name.clone() },
+                        *span,
+                    ));
+                }
             }
             // M30-T4: index the first trait type parameter for arity/InstanceInfo
             // but register ALL trait type parameters in the method resolution
