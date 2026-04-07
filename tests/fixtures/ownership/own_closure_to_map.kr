@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # Owned closure passed to map: f is RequiresU, ~fn can't unify with fn
 fun map[A, B](xs: List[A], f: (A) -> B) -> List[B] =
     match xs { Nil => Nil, Cons(h, rest) => Cons(f(h), map(rest, f)) }

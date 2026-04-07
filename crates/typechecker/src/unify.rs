@@ -8,8 +8,10 @@
 //!
 //! - `coerce_unify(actual, expected)` — directional. Allows Own(T) → T
 //!   (dropping ownership) but not T → Own(T) (fabrication). Also allows
-//!   fn → ~fn (multi-use satisfies single-use). Use at value-flow sites:
-//!   argument → parameter, value → annotation, body → return type.
+//!   fn → ~fn (multi-use satisfies single-use), but rejects ~fn → fn with
+//!   a specialized `FnCapabilityMismatch` (E0104) diagnostic. Use at
+//!   value-flow sites: argument → parameter, value → annotation, body →
+//!   return type.
 //!
 //! - `join_types(a, b)` — peer merge at branch join points (if/match arms,
 //!   list elements). Strips Own from either side to find the common type.
@@ -463,6 +465,19 @@ fn coerce_unify_inner(
             if let Type::Fn(..) = inner.as_ref() {
                 return coerce_unify_inner(&actual, inner, subst, in_constructor);
             }
+        }
+    }
+
+    // ~fn → fn rejection: specialized closure-capability error (E0104 family).
+    // A single-use closure cannot satisfy a multi-use function slot.
+    if let Type::Own(actual_inner) = &actual {
+        if matches!(actual_inner.as_ref(), Type::Fn(_, _))
+            && matches!(&expected, Type::Fn(_, _))
+        {
+            return Err(TypeError::FnCapabilityMismatch {
+                expected: expected.clone(),
+                actual: actual.clone(),
+            });
         }
     }
 

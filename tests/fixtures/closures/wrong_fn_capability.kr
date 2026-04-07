@@ -1,0 +1,4 @@
+# expect: error E0104
+# ~fn → fn rejected: single-use closure cannot satisfy multi-use fn slot
+fun call_many(f: () -> Int) -> Int = f()
+fun bad(x: ~Int) -> Int = call_many(() -> x)

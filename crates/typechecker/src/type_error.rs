@@ -369,6 +369,13 @@ pub enum TypeError {
         existing: String,
         incoming: String,
     },
+    /// `~fn` (single-use closure) used where bare `fn` (multi-use function)
+    /// is expected. Specialized form of ownership mismatch in the coerce path:
+    /// a single-use closure cannot satisfy a multi-use function slot.
+    FnCapabilityMismatch {
+        expected: Type,
+        actual: Type,
+    },
     UnsupportedConstraint {
         trait_name: String,
         reason: &'static str,
@@ -456,6 +463,7 @@ impl TypeError {
             TypeError::InstanceConstructorOnJsTarget { .. } => TypeErrorCode::E0609,
             TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
             TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
+            TypeError::FnCapabilityMismatch { .. } => TypeErrorCode::E0104,
             TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
         }
     }
@@ -465,23 +473,14 @@ impl TypeError {
         match self {
             TypeError::Mismatch { expected, actual } => {
                 match (expected, actual) {
-                    (Type::Own(inner_e), _)
-                        if matches!(inner_e.as_ref(), Type::Fn(_, _))
-                            && matches!(actual, Type::Fn(_, _)) =>
-                    {
-                        Some("a single-use closure (`~fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
-                    }
-                    (_, Type::Own(inner_a))
-                        if matches!(inner_a.as_ref(), Type::Fn(_, _))
-                            && matches!(expected, Type::Fn(_, _)) =>
-                    {
-                        Some("a single-use closure (`~fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
-                    }
                     (Type::Own(_), _) | (_, Type::Own(_)) => {
                         Some("a `~` (owned) value must be passed to a parameter that requires ownership".to_string())
                     }
                     _ => None,
                 }
+            }
+            TypeError::FnCapabilityMismatch { .. } => {
+                Some("a single-use closure (`~fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
             }
             TypeError::DuplicateType { name } => {
                 Some(format!("type `{}` is already defined", name))
@@ -803,6 +802,13 @@ impl TypeError {
                     format_type_with_var_map(actual, names),
                 )
             }
+            TypeError::FnCapabilityMismatch { expected, actual } => {
+                format!(
+                    "closure capability mismatch: expected `{}`, found `{}`",
+                    format_type_with_var_map(expected, names),
+                    format_type_with_var_map(actual, names),
+                )
+            }
             TypeError::InvalidImpl {
                 trait_name,
                 target_type,
@@ -971,6 +977,14 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "ownership mismatch: expected `{}`, found `{}`",
+                    renamed[0], renamed[1]
+                )
+            }
+            TypeError::FnCapabilityMismatch { expected, actual } => {
+                let renamed = renumber_types_for_display(&[expected, actual]);
+                write!(
+                    f,
+                    "closure capability mismatch: expected `{}`, found `{}`",
                     renamed[0], renamed[1]
                 )
             }

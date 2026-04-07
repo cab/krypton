@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # ~fn does NOT coerce to fn param
 fun call_many(f: () -> String) -> String = f()
 

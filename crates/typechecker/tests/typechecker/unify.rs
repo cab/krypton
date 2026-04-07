@@ -240,7 +240,7 @@ fn coerce_own_fn_to_bare_fn_fails() {
     let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
     // ~fn → fn rejected
     let err = coerce_unify(&own_fn, &bare_fn, &mut subst).unwrap_err();
-    assert!(matches!(err, TypeError::Mismatch { .. }));
+    assert!(matches!(err, TypeError::FnCapabilityMismatch { .. }));
 }
 
 #[test]

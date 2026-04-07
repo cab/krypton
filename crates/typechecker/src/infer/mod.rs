@@ -4461,7 +4461,10 @@ fn infer_function_bodies<'a>(
                             }
                         }
                         let mut err = spanned(e, decl.span);
-                        if matches!(&*err.error, TypeError::Mismatch { .. }) {
+                        if matches!(
+                            &*err.error,
+                            TypeError::Mismatch { .. } | TypeError::FnCapabilityMismatch { .. }
+                        ) {
                             let terminal = match &body_typed.kind {
                                 crate::typed_ast::TypedExprKind::Do(exprs) => {
                                     exprs.last().unwrap_or(&body_typed)

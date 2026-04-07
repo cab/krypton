@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 fun call_many(f: () -> String) -> String = f()
 
 fun consume(buf: ~String) -> String = buf

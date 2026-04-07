@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 fun bad(r: ~String) -> Int {
     let f: () -> String = () -> r;
     0

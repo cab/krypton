@@ -138,7 +138,7 @@ fn own_fn_capture_note_e0101() {
 }
 
 #[test]
-fn own_fn_capture_note_e0001() {
+fn own_fn_capture_note_e0104() {
     let src = "fun call_many(f: () -> String) -> String = f()\nfun bad(x: ~String) -> String = call_many(() -> x)";
     let output = render_module_error(src);
     assert!(

@@ -562,7 +562,10 @@ impl<'a> InferenceContext<'a> {
                                 err.note = Some(note);
                             }
                         }
-                        if matches!(&*err.error, TypeError::Mismatch { .. }) {
+                        if matches!(
+                            &*err.error,
+                            TypeError::Mismatch { .. } | TypeError::FnCapabilityMismatch { .. }
+                        ) {
                             if let Some(ref captures) = self.lambda_own_captures {
                                 for arg in args.iter() {
                                     if let Expr::Lambda { span: lspan, .. } = arg {
@@ -805,7 +808,10 @@ impl<'a> InferenceContext<'a> {
                     let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
                     coerce_unify(&val_typed.ty, &annotated_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
-                        if matches!(&*err.error, TypeError::Mismatch { .. }) {
+                        if matches!(
+                            &*err.error,
+                            TypeError::Mismatch { .. } | TypeError::FnCapabilityMismatch { .. }
+                        ) {
                             if let Expr::Lambda { span: lspan, .. } = value {
                                 if let Some(ref captures) = self.lambda_own_captures {
                                     if let Some(cap_name) = captures.get(lspan) {

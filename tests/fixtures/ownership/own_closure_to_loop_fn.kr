@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # Owned closure passed to recur-based loop: f is used twice per iteration (RequiresU)
 fun repeat(f, n: Int) -> String =
     if n == 0 { "done" }
