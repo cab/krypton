@@ -1,0 +1,6 @@
+# expect: ok
+type MyList = Cons(Int, MyList) | Nil
+
+fun literals_in_list() -> MyList = Cons(1, Cons(2, Cons(3, Nil)))
+
+fun owned_param_in_list(buf: ~Int) -> MyList = Cons(buf, Nil)
