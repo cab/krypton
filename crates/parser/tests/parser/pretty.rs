@@ -397,7 +397,13 @@ fn zero_spans_type_expr(ty: &TypeExpr) -> TypeExpr {
             span: (0, 0),
         },
         TypeExpr::Fn { params, ret, .. } => TypeExpr::Fn {
-            params: params.iter().map(zero_spans_type_expr).collect(),
+            params: params
+                .iter()
+                .map(|p| krypton_parser::ast::FnTypeParam {
+                    mode: p.mode,
+                    ty: zero_spans_type_expr(&p.ty),
+                })
+                .collect(),
             ret: Box::new(zero_spans_type_expr(ret)),
             span: (0, 0),
         },
@@ -959,4 +965,32 @@ fn roundtrip_trait_with_plus_superclasses() {
     fun method_c(x: a) -> Int
 }"#,
     );
+}
+
+#[test]
+fn roundtrip_fn_type_borrow_slot() {
+    assert_surface_roundtrip(
+        "fun apply(f: (&~File, Int) -> Int, x: ~File) -> Int = 0",
+    );
+}
+
+#[test]
+fn fn_type_borrow_slot_ast_shape() {
+    let src = "fun apply(f: (&~File, Int) -> Int) -> Int = 0";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let Decl::DefFn(decl) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    let Some(TypeExpr::Fn { params, .. }) = &decl.params[0].ty else {
+        panic!("expected Fn type");
+    };
+    assert_eq!(params[0].mode, ParamMode::Borrow);
+    assert!(matches!(params[0].ty, TypeExpr::Own { .. }));
+    assert_eq!(params[1].mode, ParamMode::Consume);
+}
+
+#[test]
+fn roundtrip_fn_type_all_consume() {
+    assert_surface_roundtrip("fun apply(f: (Int, String) -> Bool) -> Bool = true");
 }

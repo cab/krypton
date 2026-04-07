@@ -1,4 +1,4 @@
-use krypton_parser::ast::{Decl, Module, TypeExpr};
+use krypton_parser::ast::{Decl, Module, ParamMode, TypeExpr};
 use krypton_typechecker::typed_ast::{
     AutoCloseInfo, FnTypeEntry, InstanceDefInfo, TypedExpr, TypedExprKind, TypedFnDecl,
     TypedPattern,
@@ -780,7 +780,17 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
             format!("{}[{}]", name, as_.join(", "))
         }
         TypeExpr::Fn { params, ret, .. } => {
-            let ps: Vec<String> = params.iter().map(|p| fmt_type_expr_source(p)).collect();
+            let ps: Vec<String> = params
+                .iter()
+                .map(|p| {
+                    let inner = fmt_type_expr_source(&p.ty);
+                    if p.mode == ParamMode::Borrow {
+                        format!("&{}", inner)
+                    } else {
+                        inner
+                    }
+                })
+                .collect();
             format!("({}) -> {}", ps.join(", "), fmt_type_expr_source(ret))
         }
         TypeExpr::Own { inner, .. } => format!("~{}", fmt_type_expr_source(inner)),

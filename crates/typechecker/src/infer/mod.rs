@@ -399,7 +399,7 @@ fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut 
         }
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
             for param in params {
-                collect_type_expr_var_names(param, out);
+                collect_type_expr_var_names(&param.ty, out);
             }
             collect_type_expr_var_names(ret, out);
         }
@@ -443,7 +443,7 @@ fn validate_impl_wildcards(texpr: &krypton_parser::ast::TypeExpr) -> Result<usiz
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
             let mut wildcard_count = 0;
             for param in params {
-                match param {
+                match &param.ty {
                     krypton_parser::ast::TypeExpr::Wildcard { .. } => wildcard_count += 1,
                     other => {
                         if contains_wildcard(other) {
@@ -476,7 +476,7 @@ fn contains_wildcard(texpr: &krypton_parser::ast::TypeExpr) -> bool {
         krypton_parser::ast::TypeExpr::Wildcard { .. } => true,
         krypton_parser::ast::TypeExpr::App { args, .. } => args.iter().any(contains_wildcard),
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
-            params.iter().any(contains_wildcard) || contains_wildcard(ret)
+            params.iter().any(|p| contains_wildcard(&p.ty)) || contains_wildcard(ret)
         }
         krypton_parser::ast::TypeExpr::Own { inner, .. } => contains_wildcard(inner),
         krypton_parser::ast::TypeExpr::Tuple { elements, .. } => {
@@ -494,7 +494,7 @@ fn wildcard_span(texpr: &krypton_parser::ast::TypeExpr) -> Option<krypton_parser
         krypton_parser::ast::TypeExpr::App { args, .. } => args.iter().find_map(wildcard_span),
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => params
             .iter()
-            .find_map(wildcard_span)
+            .find_map(|p| wildcard_span(&p.ty))
             .or_else(|| wildcard_span(ret)),
         krypton_parser::ast::TypeExpr::Own { inner, .. } => wildcard_span(inner),
         krypton_parser::ast::TypeExpr::Tuple { elements, .. } => {
@@ -569,7 +569,7 @@ fn resolve_impl_target(
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
             let mut resolved_params = Vec::new();
             for p in params {
-                match p {
+                match &p.ty {
                     krypton_parser::ast::TypeExpr::Wildcard { .. } => {
                         resolved_params.push(Type::Var(gen.fresh()));
                     }

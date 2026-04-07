@@ -140,3 +140,44 @@ fn test_p0005_old_superclass_syntax() {
         .collect();
     insta::assert_snapshot!(plain);
 }
+
+fn assert_slot_not_a_type(source: &str) {
+    let (_module, errors) = parse(source);
+    assert!(!errors.is_empty(), "expected a parse error for {source:?}");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.message.contains("`&~T` is a parameter-slot calling convention")),
+        "expected slot-not-a-type message for {source:?}, got: {errors:?}"
+    );
+}
+
+#[test]
+fn slot_borrow_in_let_type_rejected() {
+    assert_slot_not_a_type("fun f() -> Unit = { let x: &~File = file; () }");
+}
+
+#[test]
+fn slot_borrow_in_generic_arg_rejected() {
+    assert_slot_not_a_type("fun f(xs: List[&~File]) -> Unit = ()");
+}
+
+#[test]
+fn slot_borrow_in_option_arg_rejected() {
+    assert_slot_not_a_type("fun f(x: Option[&~File]) -> Unit = ()");
+}
+
+#[test]
+fn slot_borrow_in_return_position_rejected() {
+    assert_slot_not_a_type("fun f() -> &~File = file");
+}
+
+#[test]
+fn slot_borrow_in_record_field_rejected() {
+    assert_slot_not_a_type("type R = { f: &~File }");
+}
+
+#[test]
+fn slot_borrow_in_tuple_position_rejected() {
+    assert_slot_not_a_type("fun f(x: (&~File, Int)) -> Unit = ()");
+}

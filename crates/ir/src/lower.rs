@@ -6938,7 +6938,7 @@ fn resolve_type_expr_simple(
         TypeExpr::Fn { params, ret, .. } => {
             let param_types: Vec<Type> = params
                 .iter()
-                .map(|p| resolve_type_expr_simple(p, type_param_map))
+                .map(|p| resolve_type_expr_simple(&p.ty, type_param_map))
                 .collect();
             let ret_type = resolve_type_expr_simple(ret, type_param_map);
             Type::Fn(param_types, Box::new(ret_type))

@@ -300,7 +300,7 @@ pub fn resolve_type_expr(
             let mut param_types = Vec::new();
             for p in params {
                 param_types.push(resolve_type_expr(
-                    p,
+                    &p.ty,
                     type_param_map,
                     type_param_arity,
                     registry,

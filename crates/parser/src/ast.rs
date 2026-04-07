@@ -337,6 +337,12 @@ pub enum Pattern {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FnTypeParam {
+    pub mode: ParamMode,
+    pub ty: TypeExpr,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypeExpr {
     Named {
         name: String,
@@ -357,7 +363,7 @@ pub enum TypeExpr {
         span: Span,
     },
     Fn {
-        params: Vec<TypeExpr>,
+        params: Vec<FnTypeParam>,
         ret: Box<TypeExpr>,
         span: Span,
     },

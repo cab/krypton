@@ -231,7 +231,10 @@ impl<'a> Formatter<'a> {
                     if i > 0 {
                         self.buf.push_str(", ");
                     }
-                    self.fmt_type_expr(p);
+                    if p.mode == ParamMode::Borrow {
+                        self.buf.push('&');
+                    }
+                    self.fmt_type_expr(&p.ty);
                 }
                 self.buf.push_str(") -> ");
                 self.fmt_type_expr(ret);

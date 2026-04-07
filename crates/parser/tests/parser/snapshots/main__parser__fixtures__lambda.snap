@@ -13,11 +13,13 @@ decls:
           ty:
             Fn:
               params:
-                - Named:
-                    name: Int
-                    span:
-                      - 27
-                      - 30
+                - mode: Consume
+                  ty:
+                    Named:
+                      name: Int
+                      span:
+                        - 27
+                        - 30
               ret:
                 Named:
                   name: Int
@@ -80,11 +82,13 @@ decls:
       return_type:
         Fn:
           params:
-            - Named:
-                name: Int
-                span:
-                  - 76
-                  - 79
+            - mode: Consume
+              ty:
+                Named:
+                  name: Int
+                  span:
+                    - 76
+                    - 79
           ret:
             Named:
               name: Int
@@ -138,16 +142,20 @@ decls:
       return_type:
         Fn:
           params:
-            - Named:
-                name: Int
-                span:
-                  - 120
-                  - 123
-            - Named:
-                name: Int
-                span:
-                  - 125
-                  - 128
+            - mode: Consume
+              ty:
+                Named:
+                  name: Int
+                  span:
+                    - 120
+                    - 123
+            - mode: Consume
+              ty:
+                Named:
+                  name: Int
+                  span:
+                    - 125
+                    - 128
           ret:
             Named:
               name: Int

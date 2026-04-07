@@ -55,6 +55,9 @@ fn to_span(s: LexSpan) -> Span {
 const BORROW_REQUIRES_OWNED: &str =
     "borrow mode requires an owned parameter type: write '&name: ~T'";
 
+const SLOT_NOT_A_TYPE: &str =
+    "`&~T` is a parameter-slot calling convention, not a type";
+
 fn is_uppercase(s: &str) -> bool {
     s.starts_with(|c: char| c.is_uppercase())
 }
@@ -100,15 +103,43 @@ where
                 span: to_span(e.span()),
             });
 
+        // Function-type parameter slot: optional `&` then a type. Borrow mode
+        // is permitted only when the inner type is `~T`.
+        let fn_type_slot = symbol(Token::Amp)
+            .or_not()
+            .then(ty.clone())
+            .map(|(amp, ty)| FnTypeParam {
+                mode: if amp.is_some() {
+                    ParamMode::Borrow
+                } else {
+                    ParamMode::Consume
+                },
+                ty,
+            })
+            .validate(|p, e, emitter| {
+                if p.mode == ParamMode::Borrow && !matches!(p.ty, TypeExpr::Own { .. }) {
+                    emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+                }
+                p
+            });
+
         // Parenthesized: tuple type or fn type or grouping
         // (Type, Type) → Tuple
         // (Type, Type) -> RetType → Fn
-        let paren_type = ty
+        // Slots are parsed unconditionally; if no `->` follows, any borrow
+        // slot is reported as `&~T` used outside a function-type slot.
+        let paren_type = fn_type_slot
             .clone()
             .separated_by(symbol(Token::Comma))
             .collect::<Vec<_>>()
             .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .then(symbol(Token::Arrow).ignore_then(ty.clone()).or_not())
+            .validate(|(params, ret), e, emitter| {
+                if ret.is_none() && params.iter().any(|p| p.mode == ParamMode::Borrow) {
+                    emitter.emit(Rich::custom(e.span(), SLOT_NOT_A_TYPE.to_string()));
+                }
+                (params, ret)
+            })
             .map_with(|(params, ret), e| {
                 if let Some(ret) = ret {
                     TypeExpr::Fn {
@@ -118,10 +149,24 @@ where
                     }
                 } else {
                     TypeExpr::Tuple {
-                        elements: params,
+                        elements: params.into_iter().map(|p| p.ty).collect(),
                         span: to_span(e.span()),
                     }
                 }
+            });
+
+        // Reject `&T` in any non-slot type position with a clear message.
+        let slot_in_type_position = symbol(Token::Amp)
+            .ignore_then(ty.clone())
+            .map_with(|inner, e| {
+                let _ = inner;
+                TypeExpr::Wildcard {
+                    span: to_span(e.span()),
+                }
+            })
+            .validate(|t, e, emitter| {
+                emitter.emit(Rich::custom(e.span(), SLOT_NOT_A_TYPE.to_string()));
+                t
             });
 
         // Wildcard: _ in type position (for partial application in impl heads)
@@ -157,7 +202,13 @@ where
             });
 
         // Base types — own, paren/fn, wildcard don't accept [args]
-        choice((own_type, paren_type, wildcard_type, named_with_app))
+        choice((
+            own_type,
+            paren_type,
+            wildcard_type,
+            named_with_app,
+            slot_in_type_position,
+        ))
     })
 }
 
@@ -1702,7 +1753,9 @@ where
 
 fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
     match e.reason() {
-        chumsky::error::RichReason::Custom(msg) if msg == BORROW_REQUIRES_OWNED => {
+        chumsky::error::RichReason::Custom(msg)
+            if msg == BORROW_REQUIRES_OWNED || msg == SLOT_NOT_A_TYPE =>
+        {
             return ErrorCode::P0006;
         }
         chumsky::error::RichReason::ExpectedFound { expected, found } => {
