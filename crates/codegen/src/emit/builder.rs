@@ -351,21 +351,6 @@ impl BytecodeBuilder {
         self.pop_jvm_type(ty);
     }
 
-    /// Allocate a named local variable, returning its slot index.
-    /// Updates locals map, next_local, and frame local_types.
-    pub(super) fn alloc_local(&mut self, name: String, ty: JvmType) -> u16 {
-        let slot = self.next_local;
-        let slot_size: u16 = match ty {
-            JvmType::Long | JvmType::Double => 2,
-            _ => 1,
-        };
-        self.next_local += slot_size;
-        self.locals.insert(name, (slot, ty));
-        let vtypes = self.jvm_type_to_vtypes(ty);
-        self.frame.local_types.extend(vtypes);
-        slot
-    }
-
     /// Allocate an anonymous local variable (no name in locals map), returning its slot.
     pub(super) fn alloc_anonymous_local(&mut self, ty: JvmType) -> u16 {
         let slot = self.next_local;
@@ -412,11 +397,6 @@ impl BytecodeBuilder {
     /// Record a StackMapTable frame at the current bytecode offset.
     pub(super) fn record_frame(&mut self) {
         self.frame.record_frame(self.code.len() as u16);
-    }
-
-    /// Record a StackMapTable frame at a specific offset.
-    pub(super) fn record_frame_at(&mut self, offset: u16) {
-        self.frame.record_frame(offset);
     }
 
     /// Build StackMapTable code attributes for the current method.

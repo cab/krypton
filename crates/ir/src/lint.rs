@@ -27,8 +27,6 @@ struct LintContext {
     join_points: HashSet<VarId>,
     known_fns: HashSet<FnId>,
     known_traits: HashSet<String>,
-    /// (trait_name, target_type_name) pairs for concrete instances.
-    known_instances: HashSet<(TraitName, String)>,
     /// trait_name → sub_dict count for each instance.
     instance_sub_dict_counts: Vec<(TraitName, String, usize)>,
 }
@@ -38,12 +36,6 @@ impl LintContext {
         let known_fns: HashSet<FnId> = module.fn_names().keys().copied().collect();
 
         let known_traits: HashSet<String> = module.traits.iter().map(|t| t.name.clone()).collect();
-
-        let known_instances: HashSet<(TraitName, String)> = module
-            .instances
-            .iter()
-            .map(|i| (i.trait_name.clone(), i.target_type_name.clone()))
-            .collect();
 
         let instance_sub_dict_counts: Vec<(TraitName, String, usize)> = module
             .instances
@@ -63,7 +55,6 @@ impl LintContext {
             join_points: HashSet::new(),
             known_fns,
             known_traits,
-            known_instances,
             instance_sub_dict_counts,
         }
     }

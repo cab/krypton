@@ -56,180 +56,164 @@ pub fn build_module_graph(
     resolver: &dyn ModuleResolver,
     target: CompileTarget,
 ) -> Result<ModuleGraph, ModuleGraphError> {
-    let mut visited: HashSet<String> = HashSet::new();
-    let mut stack: Vec<String> = Vec::new();
-    let mut stack_set: HashSet<String> = HashSet::new();
-    let mut result: Vec<ResolvedModule> = Vec::new();
-
-    // Auto-add prelude and its transitive deps (uses stdlib resolver internally)
-    visit_prelude_tree(
-        "prelude",
+    let mut builder = ModuleGraphBuilder {
         resolver,
         target,
-        &mut visited,
-        &mut stack,
-        &mut stack_set,
-        &mut result,
-    )?;
+        visited: HashSet::new(),
+        stack: Vec::new(),
+        stack_set: HashSet::new(),
+        result: Vec::new(),
+    };
 
-    let prelude_tree_paths: HashSet<String> = result.iter().map(|m| m.path.clone()).collect();
+    // Auto-add prelude and its transitive deps (uses stdlib resolver internally)
+    builder.visit_prelude_tree("prelude")?;
+
+    let prelude_tree_paths: HashSet<String> =
+        builder.result.iter().map(|m| m.path.clone()).collect();
 
     // Walk root imports with proper span tracking for error messages
     for decl in &root.decls {
         if let Decl::Import { path, span, .. } = decl {
-            visit_user_module(
-                path,
-                *span,
-                resolver,
-                target,
-                &mut visited,
-                &mut stack,
-                &mut stack_set,
-                &mut result,
-            )?;
+            builder.visit_user_module(path, *span)?;
         }
     }
 
     Ok(ModuleGraph {
-        modules: result,
+        modules: builder.result,
         prelude_tree_paths,
     })
 }
 
-/// DFS visit a prelude-tree module (stdlib fallback, zero spans for errors).
-fn visit_prelude_tree(
-    path: &str,
-    resolver: &dyn ModuleResolver,
+/// Mutable accumulators used during module graph traversal.
+struct ModuleGraphBuilder<'a> {
+    resolver: &'a dyn ModuleResolver,
     target: CompileTarget,
-    visited: &mut HashSet<String>,
-    stack: &mut Vec<String>,
-    stack_set: &mut HashSet<String>,
-    result: &mut Vec<ResolvedModule>,
-) -> Result<(), ModuleGraphError> {
-    if visited.contains(path) {
-        return Ok(());
-    }
+    visited: HashSet<String>,
+    stack: Vec<String>,
+    stack_set: HashSet<String>,
+    result: Vec<ResolvedModule>,
+}
 
-    if stack_set.contains(path) {
-        let mut cycle = stack.clone();
-        cycle.push(path.to_string());
-        return Err(ModuleGraphError::CircularImport {
-            cycle,
-            span: (0, 0),
-        });
-    }
+impl<'a> ModuleGraphBuilder<'a> {
+    /// DFS visit a prelude-tree module (stdlib fallback, zero spans for errors).
+    fn visit_prelude_tree(&mut self, path: &str) -> Result<(), ModuleGraphError> {
+        if self.visited.contains(path) {
+            return Ok(());
+        }
 
-    // For prelude tree, try stdlib first, then user resolver
-    let source = StdlibLoader::get_source(path)
-        .map(|s| s.to_string())
-        .or_else(|| resolver.resolve(path));
-
-    let source = match source {
-        Some(s) => s,
-        None => {
-            return Err(ModuleGraphError::UnknownModule {
-                path: path.to_string(),
+        if self.stack_set.contains(path) {
+            let mut cycle = self.stack.clone();
+            cycle.push(path.to_string());
+            return Err(ModuleGraphError::CircularImport {
+                cycle,
                 span: (0, 0),
             });
         }
-    };
 
-    let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
-    if !parse_errors.is_empty() {
-        return Err(ModuleGraphError::ParseError {
-            path: path.to_string(),
-            source,
-            errors: parse_errors,
-        });
-    }
+        // For prelude tree, try stdlib first, then user resolver
+        let source = StdlibLoader::get_source(path)
+            .map(|s| s.to_string())
+            .or_else(|| self.resolver.resolve(path));
 
-    filter_by_platform(&mut module, target);
+        let source = match source {
+            Some(s) => s,
+            None => {
+                return Err(ModuleGraphError::UnknownModule {
+                    path: path.to_string(),
+                    span: (0, 0),
+                });
+            }
+        };
 
-    stack.push(path.to_string());
-    stack_set.insert(path.to_string());
-
-    for decl in &module.decls {
-        if let Decl::Import { path: dep_path, .. } = decl {
-            visit_prelude_tree(dep_path, resolver, target, visited, stack, stack_set, result)?;
+        let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
+        if !parse_errors.is_empty() {
+            return Err(ModuleGraphError::ParseError {
+                path: path.to_string(),
+                source,
+                errors: parse_errors,
+            });
         }
-    }
 
-    stack.pop();
-    stack_set.remove(path);
-    visited.insert(path.to_string());
+        filter_by_platform(&mut module, self.target);
 
-    result.push(ResolvedModule {
-        path: path.to_string(),
-        module,
-    });
+        self.stack.push(path.to_string());
+        self.stack_set.insert(path.to_string());
 
-    Ok(())
-}
-
-/// DFS visit a user-imported module with proper span tracking.
-fn visit_user_module(
-    path: &str,
-    import_span: Span,
-    resolver: &dyn ModuleResolver,
-    target: CompileTarget,
-    visited: &mut HashSet<String>,
-    stack: &mut Vec<String>,
-    stack_set: &mut HashSet<String>,
-    result: &mut Vec<ResolvedModule>,
-) -> Result<(), ModuleGraphError> {
-    if visited.contains(path) {
-        return Ok(());
-    }
-
-    if stack_set.contains(path) {
-        let mut cycle = stack.clone();
-        cycle.push(path.to_string());
-        return Err(ModuleGraphError::CircularImport {
-            cycle,
-            span: import_span,
-        });
-    }
-
-    let source = resolver
-        .resolve(path)
-        .ok_or_else(|| ModuleGraphError::UnknownModule {
-            path: path.to_string(),
-            span: import_span,
-        })?;
-
-    let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
-    if !parse_errors.is_empty() {
-        return Err(ModuleGraphError::ParseError {
-            path: path.to_string(),
-            source,
-            errors: parse_errors,
-        });
-    }
-
-    filter_by_platform(&mut module, target);
-
-    stack.push(path.to_string());
-    stack_set.insert(path.to_string());
-
-    for decl in &module.decls {
-        if let Decl::Import {
-            path: dep_path,
-            span,
-            ..
-        } = decl
-        {
-            visit_user_module(dep_path, *span, resolver, target, visited, stack, stack_set, result)?;
+        for decl in &module.decls {
+            if let Decl::Import { path: dep_path, .. } = decl {
+                self.visit_prelude_tree(dep_path)?;
+            }
         }
+
+        self.stack.pop();
+        self.stack_set.remove(path);
+        self.visited.insert(path.to_string());
+
+        self.result.push(ResolvedModule {
+            path: path.to_string(),
+            module,
+        });
+
+        Ok(())
     }
 
-    stack.pop();
-    stack_set.remove(path);
-    visited.insert(path.to_string());
+    /// DFS visit a user-imported module with proper span tracking.
+    fn visit_user_module(&mut self, path: &str, import_span: Span) -> Result<(), ModuleGraphError> {
+        if self.visited.contains(path) {
+            return Ok(());
+        }
 
-    result.push(ResolvedModule {
-        path: path.to_string(),
-        module,
-    });
+        if self.stack_set.contains(path) {
+            let mut cycle = self.stack.clone();
+            cycle.push(path.to_string());
+            return Err(ModuleGraphError::CircularImport {
+                cycle,
+                span: import_span,
+            });
+        }
 
-    Ok(())
+        let source = self
+            .resolver
+            .resolve(path)
+            .ok_or_else(|| ModuleGraphError::UnknownModule {
+                path: path.to_string(),
+                span: import_span,
+            })?;
+
+        let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
+        if !parse_errors.is_empty() {
+            return Err(ModuleGraphError::ParseError {
+                path: path.to_string(),
+                source,
+                errors: parse_errors,
+            });
+        }
+
+        filter_by_platform(&mut module, self.target);
+
+        self.stack.push(path.to_string());
+        self.stack_set.insert(path.to_string());
+
+        for decl in &module.decls {
+            if let Decl::Import {
+                path: dep_path,
+                span,
+                ..
+            } = decl
+            {
+                self.visit_user_module(dep_path, *span)?;
+            }
+        }
+
+        self.stack.pop();
+        self.stack_set.remove(path);
+        self.visited.insert(path.to_string());
+
+        self.result.push(ResolvedModule {
+            path: path.to_string(),
+            module,
+        });
+
+        Ok(())
+    }
 }

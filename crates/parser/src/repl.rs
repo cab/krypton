@@ -46,8 +46,8 @@ pub fn classify_input(input: &str) -> ReplInputKind {
     let trimmed = input.trim();
 
     // Check for let binding: "let <name> = <rhs>"
-    if trimmed.starts_with("let ") {
-        let rest = trimmed[4..].trim_start();
+    if let Some(rest) = trimmed.strip_prefix("let ") {
+        let rest = rest.trim_start();
         if let Some(eq_pos) = rest.find('=') {
             let name = rest[..eq_pos].trim();
             if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
@@ -61,8 +61,8 @@ pub fn classify_input(input: &str) -> ReplInputKind {
     }
 
     // Check for function def: "fun <name>..."
-    if trimmed.starts_with("fun ") {
-        let rest = trimmed[4..].trim_start();
+    if let Some(rest) = trimmed.strip_prefix("fun ") {
+        let rest = rest.trim_start();
         let name_end = rest
             .find(|c: char| !c.is_alphanumeric() && c != '_')
             .unwrap_or(rest.len());
@@ -111,11 +111,11 @@ pub fn classify_input(input: &str) -> ReplInputKind {
     }
 
     // Impl def: "impl "
-    if trimmed.starts_with("impl ") {
-        let key = trimmed
+    if let Some(rest) = trimmed.strip_prefix("impl ") {
+        let key = rest
             .find('{')
-            .map(|i| trimmed[5..i].trim())
-            .unwrap_or(&trimmed[5..])
+            .map(|i| rest[..i].trim())
+            .unwrap_or(rest)
             .to_string();
         return ReplInputKind::ImplDef {
             key,

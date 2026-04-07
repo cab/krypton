@@ -482,10 +482,7 @@ impl TraitRegistry {
                         .constraints
                         .iter()
                         .filter_map(|constraint| {
-                            let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var)
-                            else {
-                                return None;
-                            };
+                            let type_var_id = inst.type_var_ids.get(&constraint.type_var)?;
                             let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
                             if self
                                 .find_instance(&constraint.trait_name, bound_ty)
@@ -528,12 +525,8 @@ impl TraitRegistry {
                 .constraints
                 .iter()
                 .filter_map(|constraint| {
-                    let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
-                        return None;
-                    };
-                    let Some(bound_ty) = bindings.get(type_var_id) else {
-                        return None;
-                    };
+                    let type_var_id = inst.type_var_ids.get(&constraint.type_var)?;
+                    let bound_ty = bindings.get(type_var_id)?;
                     if self
                         .find_instance(&constraint.trait_name, bound_ty)
                         .is_none()

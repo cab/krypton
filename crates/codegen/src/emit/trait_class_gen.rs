@@ -804,17 +804,38 @@ pub(super) fn generate_builtin_trait_instance_class(
     Ok(buffer)
 }
 
+/// JVM class name triple required to emit a parameterized instance class.
+pub(super) struct TraitClassNames<'a> {
+    pub class: &'a str,
+    pub trait_interface: &'a str,
+    pub main: &'a str,
+}
+
+/// Per-method JVM signature info needed to bridge each trait method.
+pub(super) struct TraitMethodSignatures<'a> {
+    pub methods: &'a [(String, String, usize, String)],
+    pub param_jvm_types: &'a HashMap<String, Vec<JvmType>>,
+    pub return_jvm_types: &'a HashMap<String, JvmType>,
+    pub param_class_names: &'a HashMap<String, Vec<Option<String>>>,
+}
+
 /// Generate a parameterized instance class with constructor taking subdictionaries.
 pub(super) fn generate_parameterized_instance_class(
-    class_name: &str,
-    trait_interface_name: &str,
-    main_class_name: &str,
-    methods: &[(String, String, usize, String)],
-    param_jvm_types: &HashMap<String, Vec<JvmType>>,
-    return_jvm_types: &HashMap<String, JvmType>,
-    param_class_names: &HashMap<String, Vec<Option<String>>>,
+    names: TraitClassNames<'_>,
+    sigs: TraitMethodSignatures<'_>,
     subdict_count: usize,
 ) -> Result<Vec<u8>, CodegenError> {
+    let TraitClassNames {
+        class: class_name,
+        trait_interface: trait_interface_name,
+        main: main_class_name,
+    } = names;
+    let TraitMethodSignatures {
+        methods,
+        param_jvm_types,
+        return_jvm_types,
+        param_class_names,
+    } = sigs;
     let mut cp = ConstantPool::default();
 
     let this_class = cp.add_class(class_name)?;
@@ -866,10 +887,10 @@ pub(super) fn generate_parameterized_instance_class(
         Instruction::Aload_0,
         Instruction::Invokespecial(object_init),
     ];
-    for i in 0..subdict_count {
+    for (i, &field_ref) in subdict_field_refs.iter().enumerate().take(subdict_count) {
         init_code.push(Instruction::Aload_0);
         init_code.push(Instruction::Aload((i + 1) as u8));
-        init_code.push(Instruction::Putfield(subdict_field_refs[i]));
+        init_code.push(Instruction::Putfield(field_ref));
     }
     init_code.push(Instruction::Return);
 
@@ -911,9 +932,9 @@ pub(super) fn generate_parameterized_instance_class(
         let mut bridge_code: Vec<Instruction> = Vec::new();
 
         // Load subdicts from fields first (these become the dict params for the static method)
-        for i in 0..subdict_count {
+        for &field_ref in subdict_field_refs.iter().take(subdict_count) {
             bridge_code.push(Instruction::Aload_0);
-            bridge_code.push(Instruction::Getfield(subdict_field_refs[i]));
+            bridge_code.push(Instruction::Getfield(field_ref));
         }
 
         // Load and unbox user params

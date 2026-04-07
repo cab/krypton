@@ -16,6 +16,10 @@ impl Expr {
 }
 
 #[derive(Debug, Clone)]
+// `Let` is the dominant variant in lowered IR (every binding is a Let), so
+// boxing its `SimpleExpr` would cost an extra allocation per binding on the
+// hot path. The size disparity is intentional.
+#[allow(clippy::large_enum_variant)]
 pub enum ExprKind {
     /// Bind the result of a simple expression.
     /// `let x: T = value in body`

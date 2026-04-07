@@ -170,14 +170,14 @@ impl<'a> InferenceContext<'a> {
                         if let Some(cname) = callee_name {
                             if let Some(def) = self.env.get_def_span(cname) {
                                 let resolved_fn_ty = self.subst.apply(func_ty);
-                                err.secondary_span = Some(SecondaryLabel {
+                                err.secondary_span = Some(Box::new(SecondaryLabel {
                                     span: def.span,
                                     message: format!(
                                         "`{cname}` defined here, expects {}",
                                         resolved_fn_ty.renumber_for_display()
                                     ),
                                     source_file: def.source_module.clone(),
-                                });
+                                }));
                             }
                         }
                     }
@@ -208,7 +208,7 @@ impl<'a> InferenceContext<'a> {
                 {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
-                        if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
+                        if matches!(&*err.error, TypeError::OwnershipMismatch { .. }) {
                             if let Some(cname) = callee_name {
                                 let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
                                     format!("`{cname}` requires an owned argument, but `{arg_name}` is not owned")
@@ -222,11 +222,11 @@ impl<'a> InferenceContext<'a> {
                             if let Some(cname) = callee_name {
                                 if let Some(def) = self.env.get_def_span(cname) {
                                     let resolved_fn_ty = self.subst.apply(func_ty);
-                                    err.secondary_span = Some(SecondaryLabel {
+                                    err.secondary_span = Some(Box::new(SecondaryLabel {
                                         span: def.span,
                                         message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
                                         source_file: def.source_module.clone(),
-                                    });
+                                    }));
                                 }
                             }
                         }
@@ -494,14 +494,14 @@ impl<'a> InferenceContext<'a> {
                         if let Some(cname) = callee_name {
                             if let Some(def) = self.env.get_def_span(cname) {
                                 let resolved_fn_ty = self.subst.apply(&func_typed.ty);
-                                err.secondary_span = Some(SecondaryLabel {
+                                err.secondary_span = Some(Box::new(SecondaryLabel {
                                     span: def.span,
                                     message: format!(
                                         "`{cname}` defined here, expects {}",
                                         resolved_fn_ty.renumber_for_display()
                                     ),
                                     source_file: def.source_module.clone(),
-                                });
+                                }));
                             }
                         }
                     }
@@ -552,7 +552,7 @@ impl<'a> InferenceContext<'a> {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         // Add ownership-specific notes
-                        if matches!(&err.error, TypeError::OwnershipMismatch { .. }) {
+                        if matches!(&*err.error, TypeError::OwnershipMismatch { .. }) {
                             if let Some(cname) = callee_name {
                                 let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
                                     format!("`{cname}` requires an owned argument, but `{arg_name}` is not owned")
@@ -562,7 +562,7 @@ impl<'a> InferenceContext<'a> {
                                 err.note = Some(note);
                             }
                         }
-                        if matches!(&err.error, TypeError::Mismatch { .. }) {
+                        if matches!(&*err.error, TypeError::Mismatch { .. }) {
                             if let Some(ref captures) = self.lambda_own_captures {
                                 for arg in args.iter() {
                                     if let Expr::Lambda { span: lspan, .. } = arg {
@@ -591,11 +591,11 @@ impl<'a> InferenceContext<'a> {
                             if let Some(cname) = callee_name {
                                 if let Some(def) = self.env.get_def_span(cname) {
                                     let resolved_fn_ty = self.subst.apply(&func_typed.ty);
-                                    err.secondary_span = Some(SecondaryLabel {
+                                    err.secondary_span = Some(Box::new(SecondaryLabel {
                                         span: def.span,
                                         message: format!("`{cname}` defined here, expects {}", resolved_fn_ty.renumber_for_display()),
                                         source_file: def.source_module.clone(),
-                                    });
+                                    }));
                                 }
                             }
                         }
@@ -805,7 +805,7 @@ impl<'a> InferenceContext<'a> {
                     let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
                     coerce_unify(&val_typed.ty, &annotated_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
-                        if matches!(&err.error, TypeError::Mismatch { .. }) {
+                        if matches!(&*err.error, TypeError::Mismatch { .. }) {
                             if let Expr::Lambda { span: lspan, .. } = value {
                                 if let Some(ref captures) = self.lambda_own_captures {
                                     if let Some(cap_name) = captures.get(lspan) {

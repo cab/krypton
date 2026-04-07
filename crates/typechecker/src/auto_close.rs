@@ -317,10 +317,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     if in_then != in_else {
                         // Consumed in one branch but not the other
                         self.errors.push(SpannedTypeError {
-                            error: TypeError::ResourceBranchLeak {
+                            error: Box::new(TypeError::ResourceBranchLeak {
                                 name: name.clone(),
                                 type_name: type_name.clone(),
-                            },
+                            }),
                             span: expr.span,
                             note: None,
                             secondary_span: None,
@@ -361,10 +361,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     if present_count > 0 && present_count < branch_lives.len() {
                         // Consumed in some branches but not all
                         self.errors.push(SpannedTypeError {
-                            error: TypeError::ResourceBranchLeak {
+                            error: Box::new(TypeError::ResourceBranchLeak {
                                 name: name.clone(),
                                 type_name: type_name.clone(),
-                            },
+                            }),
                             span: expr.span,
                             note: None,
                             secondary_span: None,

@@ -253,13 +253,15 @@ impl ModuleInferenceState {
                     _ => {
                         let binding_source = self.imports.bind_import(
                             &mut self.env,
-                            effective_name.clone(),
-                            ef.scheme.clone(),
-                            ef.origin.clone(),
-                            path.to_string(),
-                            ef.name.clone(),
-                            is_synthetic_prelude_import,
-                            span,
+                            crate::infer::ImportBinding {
+                                name: effective_name.clone(),
+                                scheme: ef.scheme.clone(),
+                                origin: ef.origin.clone(),
+                                source_module: path.to_string(),
+                                original_name: ef.name.clone(),
+                                is_prelude: is_synthetic_prelude_import,
+                                span,
+                            },
                         )?;
                         if let Some(ds) = ef.def_span {
                             self.env.bind_with_source_and_def_span(
@@ -410,13 +412,15 @@ impl ModuleInferenceState {
                     _ => {
                         let binding_source = self.imports.bind_import(
                             &mut self.env,
-                            effective_name.clone(),
-                            ef.scheme.clone(),
-                            ef.origin.clone(),
-                            original_prov.0.clone(),
-                            original_prov.1.clone(),
-                            is_synthetic_prelude_import,
-                            span,
+                            crate::infer::ImportBinding {
+                                name: effective_name.clone(),
+                                scheme: ef.scheme.clone(),
+                                origin: ef.origin.clone(),
+                                source_module: original_prov.0.clone(),
+                                original_name: original_prov.1.clone(),
+                                is_prelude: is_synthetic_prelude_import,
+                                span,
+                            },
                         )?;
                         if let Some(ds) = ef.def_span {
                             self.env.bind_with_source_and_def_span(
@@ -750,13 +754,15 @@ impl ModuleInferenceState {
                         };
                         self.imports.bind_import(
                             &mut self.env,
-                            method.name.clone(),
-                            scheme,
-                            origin.clone(),
-                            path.to_string(),
-                            method.name.clone(),
-                            is_synthetic_prelude_import,
-                            span,
+                            crate::infer::ImportBinding {
+                                name: method.name.clone(),
+                                scheme,
+                                origin: origin.clone(),
+                                source_module: path.to_string(),
+                                original_name: method.name.clone(),
+                                is_prelude: is_synthetic_prelude_import,
+                                span,
+                            },
                         )?;
                     }
                 }
@@ -805,7 +811,7 @@ impl ModuleInferenceState {
                         .imports
                         .imported_type_info
                         .get(&effective_name)
-                        .map(|(_, vis)| vis.clone())
+                        .map(|(_, vis)| *vis)
                         .unwrap_or(Visibility::Opaque);
                     self.reexported_type_visibility
                         .insert(effective_name.clone(), original_vis);

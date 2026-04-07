@@ -747,20 +747,19 @@ pub(super) fn check_trait_instances(
                         for (req_trait, req_var) in &method.constraints {
                             if let Some(resolved) = bindings.get(req_var) {
                                 let concrete = strip_own(resolved);
-                                if leading_type_var(&concrete).is_none() {
-                                    if trait_registry.lookup_trait(req_trait).is_some()
-                                        && trait_registry
-                                            .find_instance(req_trait, &concrete)
-                                            .is_none()
-                                    {
-                                        return Err(no_instance_error(
-                                            trait_registry,
-                                            req_trait,
-                                            &concrete,
-                                            expr.span,
-                                            var_names,
-                                        ));
-                                    }
+                                if leading_type_var(&concrete).is_none()
+                                    && trait_registry.lookup_trait(req_trait).is_some()
+                                    && trait_registry
+                                        .find_instance(req_trait, &concrete)
+                                        .is_none()
+                                {
+                                    return Err(no_instance_error(
+                                        trait_registry,
+                                        req_trait,
+                                        &concrete,
+                                        expr.span,
+                                        var_names,
+                                    ));
                                 }
                             }
                         }
@@ -789,7 +788,7 @@ pub(super) fn check_trait_instances(
                                                 return None;
                                             }
                                         }
-                                        if bindings.get(type_var).is_none() {
+                                        if !bindings.contains_key(type_var) {
                                             // Also try return type
                                             let ret_actual = subst.apply(&func.ty);
                                             if let Type::Fn(_, actual_ret) = &ret_actual {
@@ -867,20 +866,19 @@ pub(super) fn check_trait_instances(
                 };
                 if let Some(ref trait_name) = trait_name {
                     let operand_ty = strip_own(&subst.apply(&lhs.ty));
-                    if !matches!(operand_ty, Type::Var(_)) {
-                        if trait_registry.lookup_trait(trait_name).is_some()
-                            && trait_registry
-                                .find_instance(trait_name, &operand_ty)
-                                .is_none()
-                        {
-                            return Err(no_instance_error(
-                                trait_registry,
-                                trait_name,
-                                &operand_ty,
-                                expr.span,
-                                var_names,
-                            ));
-                        }
+                    if !matches!(operand_ty, Type::Var(_))
+                        && trait_registry.lookup_trait(trait_name).is_some()
+                        && trait_registry
+                            .find_instance(trait_name, &operand_ty)
+                            .is_none()
+                    {
+                        return Err(no_instance_error(
+                            trait_registry,
+                            trait_name,
+                            &operand_ty,
+                            expr.span,
+                            var_names,
+                        ));
                     }
                 }
                 work.push(lhs);
@@ -890,20 +888,19 @@ pub(super) fn check_trait_instances(
                 if matches!(op, UnaryOp::Neg) {
                     let neg_trait = TraitName::core_neg();
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
-                    if !matches!(operand_ty, Type::Var(_)) {
-                        if trait_registry.lookup_trait(&neg_trait).is_some()
-                            && trait_registry
-                                .find_instance(&neg_trait, &operand_ty)
-                                .is_none()
-                        {
-                            return Err(no_instance_error(
-                                trait_registry,
-                                &neg_trait,
-                                &operand_ty,
-                                expr.span,
-                                var_names,
-                            ));
-                        }
+                    if !matches!(operand_ty, Type::Var(_))
+                        && trait_registry.lookup_trait(&neg_trait).is_some()
+                        && trait_registry
+                            .find_instance(&neg_trait, &operand_ty)
+                            .is_none()
+                    {
+                        return Err(no_instance_error(
+                            trait_registry,
+                            &neg_trait,
+                            &operand_ty,
+                            expr.span,
+                            var_names,
+                        ));
                     }
                 }
                 work.push(operand);

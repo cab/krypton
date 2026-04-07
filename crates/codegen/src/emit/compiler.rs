@@ -1547,8 +1547,7 @@ impl<'link> Compiler<'link> {
 
                     // Load capture args with proper unboxing to match target param types
                     let mut bridge_slot = 0u16;
-                    for i in 0..capture_count {
-                        let capture_target_type = target_param_types[i];
+                    for &capture_target_type in target_param_types.iter().take(capture_count) {
                         self.load_bridge_arg(bridge_slot, capture_target_type);
                         bridge_slot += 1;
                     }
@@ -2065,10 +2064,11 @@ impl<'link> Compiler<'link> {
                     let val_type = self.compile_ir_simple_expr(&make_closure, ty, ir_module)?;
                     let &(slot, jvm_ty) = self.var_locals.get(var_id).unwrap();
                     // Coerce if needed
-                    if jvm_ty != val_type {
-                        if matches!(jvm_ty, JvmType::StructRef(_)) && !val_type.is_reference() {
-                            self.builder.box_if_needed(val_type);
-                        }
+                    if jvm_ty != val_type
+                        && matches!(jvm_ty, JvmType::StructRef(_))
+                        && !val_type.is_reference()
+                    {
+                        self.builder.box_if_needed(val_type);
                     }
                     self.builder.emit_store(slot, jvm_ty);
                 }
@@ -3141,11 +3141,9 @@ impl<'link> Compiler<'link> {
             // after_inner: patch the goto and null check
             let after_inner = self.builder.current_offset();
             self.builder
-                .patch(goto_placeholder, Instruction::Goto(after_inner as u16));
-            self.builder.patch(
-                null_check_placeholder,
-                Instruction::Ifnull(after_inner as u16),
-            );
+                .patch(goto_placeholder, Instruction::Goto(after_inner));
+            self.builder
+                .patch(null_check_placeholder, Instruction::Ifnull(after_inner));
 
             // Record frame at after_inner (merge point of goto, null check, and inner catch)
             self.builder.frame.stack_types.clear();

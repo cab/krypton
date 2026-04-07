@@ -4,7 +4,6 @@ mod repl_compile;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
-use krypton_ir::pass::IrPass;
 use krypton_modules::module_resolver::CompositeResolver;
 use std::path::PathBuf;
 use std::process;
@@ -624,7 +623,7 @@ fn main() {
                             phases.push(("node", t.elapsed()));
 
                             if !status.success() && debug_js {
-                                let kept_dir = dir.into_path();
+                                let kept_dir = dir.keep();
                                 eprintln!(
                                     "KRYPTON_DEBUG_JS: preserved generated JS in {}",
                                     kept_dir.display()

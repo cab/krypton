@@ -8,7 +8,7 @@ use krypton_ir::lower::lower_all;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
-use krypton_typechecker::diagnostics::{lower_infer_error, lower_infer_errors};
+use krypton_typechecker::diagnostics::lower_infer_errors;
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
 
@@ -86,7 +86,7 @@ fn run_program_with_resolver(
 
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
 
-fn should_skip(path: &PathBuf) -> bool {
+fn should_skip(path: &Path) -> bool {
     path.components().any(|c| {
         SKIP_DIRS
             .iter()

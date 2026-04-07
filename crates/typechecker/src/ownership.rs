@@ -7,6 +7,9 @@ use crate::typed_ast::{ParamQualifier, TypedExpr, TypedExprKind, TypedFnDecl, Ty
 use crate::types::{Type, TypeScheme, TypeVarId};
 use crate::unify::{SecondaryLabel, SpannedTypeError, TypeError};
 
+/// (consumed, partially_consumed) maps recorded for one branch of an if/match.
+type BranchConsumeMaps = (HashMap<String, Span>, HashMap<String, Span>);
+
 /// Check if a type contains `Type::Own` anywhere within it.
 fn type_contains_own(ty: &Type) -> bool {
     match ty {
@@ -528,6 +531,11 @@ pub struct OwnershipResult {
 
 /// Affine verification: track `own` bindings and flag double-use as E0101,
 /// partial-branch use as E0102, and qualifier mismatches as E0104.
+///
+/// Public analysis entry point: each arg is an independent typechecker artifact
+/// produced by an earlier phase. Bundling them into a struct would just be a
+/// namespace shim with no shared lifetime or reuse across other call sites.
+#[allow(clippy::too_many_arguments)]
 pub fn check_ownership(
     module: &Module,
     typed_fns: &[TypedFnDecl],
@@ -685,32 +693,32 @@ impl<'a> OwnershipChecker<'a> {
     ) -> Result<(), SpannedTypeError> {
         if let Some(&first_span) = self.consumed.get(name) {
             return Err(SpannedTypeError {
-                error: TypeError::AlreadyMoved {
+                error: Box::new(TypeError::AlreadyMoved {
                     name: name.to_string(),
-                },
+                }),
                 span,
                 note,
-                secondary_span: Some(SecondaryLabel {
+                secondary_span: Some(Box::new(SecondaryLabel {
                     span: first_span,
                     message: "first use here".into(),
                     source_file: None,
-                }),
+                })),
                 source_file: None,
                 var_names: None,
             });
         }
         if let Some(&branch_span) = self.partially_consumed.get(name) {
             return Err(SpannedTypeError {
-                error: TypeError::MovedInBranch {
+                error: Box::new(TypeError::MovedInBranch {
                     name: name.to_string(),
-                },
+                }),
                 span,
                 note: None,
-                secondary_span: Some(SecondaryLabel {
+                secondary_span: Some(Box::new(SecondaryLabel {
                     span: branch_span,
                     message: "consumed here".into(),
                     source_file: None,
-                }),
+                })),
                 source_file: None,
                 var_names: None,
             });
@@ -728,7 +736,7 @@ impl<'a> OwnershipChecker<'a> {
     fn check_branch(
         &mut self,
         expr: &TypedExpr,
-    ) -> Result<(HashMap<String, Span>, HashMap<String, Span>), SpannedTypeError> {
+    ) -> Result<BranchConsumeMaps, SpannedTypeError> {
         let saved_consumed = self.consumed.clone();
         let saved_partial = self.partially_consumed.clone();
         self.check_expr(expr)?;
@@ -742,7 +750,7 @@ impl<'a> OwnershipChecker<'a> {
         pattern: &TypedPattern,
         guard: Option<&TypedExpr>,
         body: &TypedExpr,
-    ) -> Result<(HashMap<String, Span>, HashMap<String, Span>), SpannedTypeError> {
+    ) -> Result<BranchConsumeMaps, SpannedTypeError> {
         let saved_owned = self.owned.clone();
         let saved_consumed = self.consumed.clone();
         let saved_partial = self.partially_consumed.clone();
@@ -758,7 +766,7 @@ impl<'a> OwnershipChecker<'a> {
                 for (name, span) in &self.consumed {
                     if !saved_consumed.contains_key(name) && self.owned.contains(name) {
                         return Err(SpannedTypeError {
-                            error: TypeError::MovedInGuard { name: name.clone() },
+                            error: Box::new(TypeError::MovedInGuard { name: name.clone() }),
                             span: *span,
                             note: None,
                             secondary_span: None,
@@ -807,11 +815,11 @@ impl<'a> OwnershipChecker<'a> {
                                             .unwrap_or("<anonymous>")
                                             .to_string();
                                         return Err(SpannedTypeError {
-                                            error: TypeError::QualifierMismatch {
+                                            error: Box::new(TypeError::QualifierMismatch {
                                                 name: arg_name.clone(),
                                                 callee: callee_name,
                                                 param: param_name.clone(),
-                                            },
+                                            }),
                                             span: arg.span,
                                             note: None,
                                             secondary_span: None,
@@ -843,11 +851,11 @@ impl<'a> OwnershipChecker<'a> {
                                                 .unwrap_or("<anonymous>")
                                                 .to_string();
                                             return Err(SpannedTypeError {
-                                                error: TypeError::QualifierMismatch {
+                                                error: Box::new(TypeError::QualifierMismatch {
                                                     name: "<lambda>".to_string(),
                                                     callee: callee_name,
                                                     param: param_name.clone(),
-                                                },
+                                                }),
                                                 span: arg.span,
                                                 note: Some(
                                                     self.lambda_own_captures
@@ -904,10 +912,10 @@ impl<'a> OwnershipChecker<'a> {
                     if !is_own_fn && !self.is_owned_expr(value) {
                         let t = Type::Named("T".into(), vec![]);
                         return Err(SpannedTypeError {
-                            error: TypeError::Mismatch {
+                            error: Box::new(TypeError::Mismatch {
                                 expected: Type::Own(Box::new(t.clone())),
                                 actual: t,
-                            },
+                            }),
                             span: expr.span,
                             note: Some(format!(
                                 "annotation `~` on `{}` requires an owned value",
@@ -954,10 +962,10 @@ impl<'a> OwnershipChecker<'a> {
                     if !is_own_fn && !self.is_owned_expr(value) {
                         let t = Type::Named("T".into(), vec![]);
                         return Err(SpannedTypeError {
-                            error: TypeError::Mismatch {
+                            error: Box::new(TypeError::Mismatch {
                                 expected: Type::Own(Box::new(t.clone())),
                                 actual: t,
-                            },
+                            }),
                             span: expr.span,
                             note: Some("annotation `~` requires an owned value".into()),
                             secondary_span: None,
@@ -1089,14 +1097,14 @@ impl<'a> OwnershipChecker<'a> {
                         .or_else(|| self.partially_consumed.get(name))
                     {
                         return Err(SpannedTypeError {
-                            error: TypeError::CapturedMoved { name: name.clone() },
+                            error: Box::new(TypeError::CapturedMoved { name: name.clone() }),
                             span: expr.span,
                             note: None,
-                            secondary_span: Some(SecondaryLabel {
+                            secondary_span: Some(Box::new(SecondaryLabel {
                                 span: first_span,
                                 message: "consumed here".into(),
                                 source_file: None,
-                            }),
+                            })),
                             source_file: None,
                             var_names: None,
                         });
@@ -1203,10 +1211,10 @@ impl<'a> OwnershipChecker<'a> {
                             }
                         };
                         return Err(SpannedTypeError {
-                            error: TypeError::Mismatch {
+                            error: Box::new(TypeError::Mismatch {
                                 expected: expected_ty,
                                 actual: actual_ty,
-                            },
+                            }),
                             span: base.span,
                             note: Some(format!(
                                 "struct update on shared `{}` would fabricate owned field(s): {}",

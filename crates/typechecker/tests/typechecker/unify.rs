@@ -293,10 +293,10 @@ fn mismatch_with_var_names() {
     let mut gen = TypeVarGen::new();
     let var_a = gen.fresh();
     let err = SpannedTypeError {
-        error: TypeError::Mismatch {
+        error: Box::new(TypeError::Mismatch {
             expected: Type::Fn(vec![Type::Var(var_a)], Box::new(Type::Int)),
             actual: Type::String,
-        },
+        }),
         span: (0, 1),
         note: None,
         secondary_span: None,
@@ -314,10 +314,10 @@ fn mismatch_with_var_names() {
 #[test]
 fn mismatch_without_var_names() {
     let err = krypton_typechecker::unify::SpannedTypeError {
-        error: TypeError::Mismatch {
+        error: Box::new(TypeError::Mismatch {
             expected: Type::Int,
             actual: Type::String,
-        },
+        }),
         span: (0, 1),
         note: None,
         secondary_span: None,

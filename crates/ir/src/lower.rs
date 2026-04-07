@@ -371,7 +371,7 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
             contains_expr_kind(value, pred)
                 || body
                     .as_deref()
-                    .map_or(false, |b| contains_expr_kind(b, pred))
+                    .is_some_and(|b| contains_expr_kind(b, pred))
         }
         TypedExprKind::Do(exprs) => exprs.iter().any(|e| contains_expr_kind(e, pred)),
         TypedExprKind::Lambda { .. } => false, // don't cross lambda boundaries
@@ -394,7 +394,7 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
             contains_expr_kind(value, pred)
                 || body
                     .as_deref()
-                    .map_or(false, |b| contains_expr_kind(b, pred))
+                    .is_some_and(|b| contains_expr_kind(b, pred))
         }
     }
 }
@@ -610,6 +610,9 @@ fn simple_at(span: Span, kind: SimpleExprKind) -> SimpleExpr {
 // Lowering context
 // ---------------------------------------------------------------------------
 
+/// Per-trait method signature info: (type_var_id, method_name → (param_types, return_type))
+type TraitMethodTypeInfo = (TypeVarId, HashMap<String, (Vec<Type>, Type)>);
+
 struct LowerCtx {
     next_var: u32,
     next_fn: u32,
@@ -637,7 +640,7 @@ struct LowerCtx {
     /// (trait_name, target_type, type_var_ids, constraints)
     param_instances: Vec<ParamInstanceInfo>,
     /// trait_name → (type_var_id, method_name → (param_types, return_type))
-    trait_method_types: HashMap<TraitName, (TypeVarId, HashMap<String, (Vec<Type>, Type)>)>,
+    trait_method_types: HashMap<TraitName, TraitMethodTypeInfo>,
     /// trait_name → (method_name → Vec<(TraitName, TypeVarId)>) for method-level where constraints
     trait_method_constraints: HashMap<TraitName, HashMap<String, Vec<(TraitName, TypeVarId)>>>,
     /// Recursion depth counter for dict resolution (cycle detection)
@@ -692,14 +695,6 @@ impl LowerCtx {
         CanonicalRef {
             module: ModulePath::new(type_ref.qualified_name.module_path.clone()),
             symbol: LocalSymbolKey::Type(type_ref.qualified_name.local_name.clone()),
-        }
-    }
-
-    /// Build a CanonicalRef for a type from module_path + local_name.
-    fn type_canonical_ref_from_parts(&self, module_path: &str, local_name: &str) -> CanonicalRef {
-        CanonicalRef {
-            module: ModulePath::new(module_path),
-            symbol: LocalSymbolKey::Type(local_name.to_string()),
         }
     }
 
@@ -6259,7 +6254,7 @@ pub fn lower_module(
     }
 
     // 6b. Append lifted lambdas
-    functions.extend(ctx.lifted_fns.drain(..));
+    functions.append(&mut ctx.lifted_fns);
 
     // 7. Build fn_identities lookup (includes lifted lambdas registered in fn_ids)
     let callable_by_id: HashMap<FnId, &QualifiedName> = ctx

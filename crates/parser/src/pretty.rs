@@ -125,27 +125,9 @@ impl<'a> Formatter<'a> {
                 self.fmt_platform(platform);
                 self.fmt_import(*is_pub, path, names);
             }
-            Decl::Extern {
-                platform,
-                target,
-                module_path,
-                alias,
-                alias_visibility,
-                is_trait,
-                type_params,
-                methods,
-                ..
-            } => {
+            Decl::Extern { platform, .. } => {
                 self.fmt_platform(platform);
-                self.fmt_extern(
-                    target,
-                    module_path,
-                    alias.as_deref(),
-                    alias_visibility.as_ref(),
-                    *is_trait,
-                    type_params,
-                    methods,
-                );
+                self.fmt_extern(decl);
             }
         }
     }
@@ -575,16 +557,20 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn fmt_extern(
-        &mut self,
-        target: &ExternTarget,
-        module_path: &str,
-        alias: Option<&str>,
-        alias_visibility: Option<&Visibility>,
-        is_trait: bool,
-        type_params: &[String],
-        methods: &[ExternMethod],
-    ) {
+    fn fmt_extern(&mut self, decl: &Decl) {
+        let Decl::Extern {
+            target,
+            module_path,
+            alias,
+            alias_visibility,
+            is_trait,
+            type_params,
+            methods,
+            ..
+        } = decl
+        else {
+            unreachable!("fmt_extern called on non-Extern decl");
+        };
         self.buf.push_str("extern ");
         match target {
             ExternTarget::Java => self.buf.push_str("java"),
@@ -595,7 +581,7 @@ impl<'a> Formatter<'a> {
         self.buf.push('"');
         if let Some(name) = alias {
             self.buf.push_str(" as ");
-            if is_trait {
+            if *is_trait {
                 self.buf.push_str("trait ");
             } else if matches!(alias_visibility, Some(Visibility::Pub)) {
                 self.buf.push_str("pub ");

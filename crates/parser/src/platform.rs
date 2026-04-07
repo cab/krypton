@@ -37,11 +37,10 @@ pub fn filter_by_platform(module: &mut Module, target: CompileTarget) {
             ..
         } = decl
         {
-            return match (extern_target, target) {
-                (ExternTarget::Java, CompileTarget::Jvm) => true,
-                (ExternTarget::Js, CompileTarget::Js) => true,
-                _ => false,
-            };
+            return matches!(
+                (extern_target, target),
+                (ExternTarget::Java, CompileTarget::Jvm) | (ExternTarget::Js, CompileTarget::Js)
+            );
         }
         true
     });

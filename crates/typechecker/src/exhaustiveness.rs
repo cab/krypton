@@ -58,7 +58,7 @@ fn expand_nested_or(pat: &TypedPattern) -> Vec<Pat> {
             vec![p]
         }
         TypedPattern::Constructor { name, args, .. } => {
-            let sub_expansions: Vec<Vec<Pat>> = args.iter().map(|a| expand_nested_or(a)).collect();
+            let sub_expansions: Vec<Vec<Pat>> = args.iter().map(expand_nested_or).collect();
             let combos = cartesian_product(&sub_expansions);
             combos
                 .into_iter()
@@ -66,8 +66,7 @@ fn expand_nested_or(pat: &TypedPattern) -> Vec<Pat> {
                 .collect()
         }
         TypedPattern::Tuple { elements, .. } => {
-            let sub_expansions: Vec<Vec<Pat>> =
-                elements.iter().map(|e| expand_nested_or(e)).collect();
+            let sub_expansions: Vec<Vec<Pat>> = elements.iter().map(expand_nested_or).collect();
             let combos = cartesian_product(&sub_expansions);
             combos
                 .into_iter()
@@ -529,12 +528,12 @@ pub fn check_exhaustiveness(
         // Redundancy: check against unguarded prior rows only.
         // A guarded arm can never make a later arm unreachable.
         let any_useful = converted.iter().any(|row| {
-            is_useful(&unguarded_matrix, &[row.clone()], &types, registry, 0)
+            is_useful(&unguarded_matrix, std::slice::from_ref(row), &types, registry, 0)
         });
         if !any_useful && !checked_arms.contains(&arm_idx) {
             let arm_span = arm.pattern.span();
             return Err(SpannedTypeError {
-                error: TypeError::RedundantPattern,
+                error: Box::new(TypeError::RedundantPattern),
                 span: arm_span,
                 note: Some("this arm can never be reached".to_string()),
                 secondary_span: None,
@@ -556,7 +555,7 @@ pub fn check_exhaustiveness(
     if let Some(w) = witness(&unguarded_matrix, &types, registry, 0) {
         let missing = format_witness(&w);
         return Err(SpannedTypeError {
-            error: TypeError::NonExhaustive { missing },
+            error: Box::new(TypeError::NonExhaustive { missing }),
             span,
             note: None,
             secondary_span: None,

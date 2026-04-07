@@ -363,12 +363,10 @@ fn resolve_named(
         "Bool" => Ok(Type::Bool),
         "String" => Ok(Type::String),
         "Unit" => Ok(Type::Unit),
-        "Self" => {
-            return match self_type {
-                Some(ty) => Ok(ty.clone()),
-                None => Err(TypeError::SelfOutsideImpl),
-            };
-        }
+        "Self" => match self_type {
+            Some(ty) => Ok(ty.clone()),
+            None => Err(TypeError::SelfOutsideImpl),
+        },
         _ => {
             let is_available = match context {
                 ResolutionContext::UserAnnotation => registry.is_user_visible(name),

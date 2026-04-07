@@ -28,7 +28,7 @@ impl SuspendSummary {
     pub fn fn_suspends(&self, module_index: usize, id: FnId) -> bool {
         self.suspending
             .get(&module_index)
-            .map_or(false, |s| s.contains(&id))
+            .is_some_and(|s| s.contains(&id))
     }
 
     /// All suspending FnIds in a module (empty set if none).
@@ -90,27 +90,26 @@ pub fn analyze_suspend(modules: &[Module]) -> SuspendSummary {
         // Phase 3 — Import edges: for each imported fn, add an edge to the
         // original function in the source module.
         for imp in &module.imported_fns {
-            if let Some(identity) = module.fn_identities.get(&imp.id) {
-                if let FnIdentity::Imported { canonical, .. } = identity {
-                    let source_path = canonical.module.as_str();
-                    if let Some(&source_mod_idx) = mod_path_to_idx.get(source_path) {
-                        let source_mod = &modules[source_mod_idx];
-                        let original_name = canonical.symbol.local_name();
-                        // Find the FnId in the source module by name.
-                        if let Some((&src_fn_id, _)) = source_mod
-                            .fn_identities
-                            .iter()
-                            .find(|(_, fi)| fi.name() == original_name)
-                        {
-                            let entry = edges
-                                .entry((mod_idx, imp.id))
-                                .or_insert_with(|| FnEdges {
-                                    call_targets: Vec::new(),
-                                    has_unresolved_closure_call: false,
-                                    has_unresolved_trait_call: false,
-                                });
-                            entry.call_targets.push((source_mod_idx, src_fn_id));
-                        }
+            if let Some(FnIdentity::Imported { canonical, .. }) = module.fn_identities.get(&imp.id)
+            {
+                let source_path = canonical.module.as_str();
+                if let Some(&source_mod_idx) = mod_path_to_idx.get(source_path) {
+                    let source_mod = &modules[source_mod_idx];
+                    let original_name = canonical.symbol.local_name();
+                    // Find the FnId in the source module by name.
+                    if let Some((&src_fn_id, _)) = source_mod
+                        .fn_identities
+                        .iter()
+                        .find(|(_, fi)| fi.name() == original_name)
+                    {
+                        let entry = edges
+                            .entry((mod_idx, imp.id))
+                            .or_insert_with(|| FnEdges {
+                                call_targets: Vec::new(),
+                                has_unresolved_closure_call: false,
+                                has_unresolved_trait_call: false,
+                            });
+                        entry.call_targets.push((source_mod_idx, src_fn_id));
                     }
                 }
             }
@@ -221,7 +220,7 @@ fn walk_expr(
             params,
             join_body,
             body,
-            is_recur,
+            is_recur: _,
         } => {
             for (var_id, ty) in params {
                 var_types.insert(*var_id, ty.clone());
@@ -334,18 +333,16 @@ fn walk_simple_expr(
             // args[0] is the dict. Try to resolve to a concrete method
             // using the dict's type (which carries the trait name and target).
             if let Some(Atom::Var(dict_var)) = args.first() {
-                if let Some(dict_type) = var_types.get(dict_var) {
-                    if let Type::Dict {
-                        trait_name: dict_trait,
-                        target,
-                    } = dict_type
+                if let Some(Type::Dict {
+                    trait_name: dict_trait,
+                    target,
+                }) = var_types.get(dict_var)
+                {
+                    if let Some(fn_id) =
+                        resolve_trait_method(module, dict_trait, target, method_name)
                     {
-                        if let Some(fn_id) =
-                            resolve_trait_method(module, dict_trait, target, method_name)
-                        {
-                            fn_edges.call_targets.push((mod_idx, fn_id));
-                            return;
-                        }
+                        fn_edges.call_targets.push((mod_idx, fn_id));
+                        return;
                     }
                 }
             }

@@ -19,7 +19,8 @@ use super::intrinsics;
 use super::trait_class_gen::{
     generate_builtin_show_instance_class, generate_builtin_trait_instance_class,
     generate_extern_trait_bridge_class, generate_instance_class,
-    generate_parameterized_instance_class, generate_trait_interface_class,
+    generate_parameterized_instance_class, generate_trait_interface_class, TraitClassNames,
+    TraitMethodSignatures,
 };
 use super::{
     jvm_type_to_field_descriptor, qualify_ir, type_has_vars, type_references_var,
@@ -910,13 +911,17 @@ impl<'link> Compiler<'link> {
                 );
             } else {
                 let instance_bytes = generate_parameterized_instance_class(
-                    &instance_class_name,
-                    &q_trait,
-                    class_name,
-                    &method_info,
-                    &param_jvm_types_map,
-                    &return_jvm_types_map,
-                    &param_class_names_map,
+                    TraitClassNames {
+                        class: &instance_class_name,
+                        trait_interface: &q_trait,
+                        main: class_name,
+                    },
+                    TraitMethodSignatures {
+                        methods: &method_info,
+                        param_jvm_types: &param_jvm_types_map,
+                        return_jvm_types: &return_jvm_types_map,
+                        param_class_names: &param_class_names_map,
+                    },
                     dict_requirements.len(),
                 )?;
                 result_classes.push((instance_class_name.clone(), instance_bytes));

@@ -5,20 +5,12 @@ use std::process::Command;
 use krypton_codegen_js::compile_modules_js;
 use krypton_diagnostics::{DiagnosticRenderer, PlainTextRenderer};
 use krypton_ir::lower::lower_all;
-use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
+use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_test_harness::{load_fixture, Expectation};
-use krypton_typechecker::diagnostics::{lower_infer_error, lower_infer_errors};
+use krypton_typechecker::diagnostics::lower_infer_errors;
 use krypton_typechecker::infer::infer_module;
 use rstest::rstest;
-
-struct NoopResolver;
-
-impl ModuleResolver for NoopResolver {
-    fn resolve(&self, _module_path: &str) -> Option<String> {
-        None
-    }
-}
 
 fn compile_js_result_with_resolver(
     source: &str,
@@ -279,7 +271,7 @@ fn actor_module_compiles_to_js() {
 
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
 
-fn should_skip(path: &PathBuf) -> bool {
+fn should_skip(path: &Path) -> bool {
     path.components().any(|c| {
         SKIP_DIRS
             .iter()

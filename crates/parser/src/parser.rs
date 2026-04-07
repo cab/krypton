@@ -430,7 +430,7 @@ where
                         }
                     } else if exprs.len() == 1 {
                         // Single expression block — just return the expr with the block span
-                        let mut single = exprs.into_iter().next().unwrap();
+                        let single = exprs.into_iter().next().unwrap();
                         // For consistency, wrap in Do if it's a let
                         match &single {
                             Expr::Let { .. } | Expr::LetPattern { .. } => Expr::Do {
@@ -915,30 +915,6 @@ fn get_span(expr: &Expr) -> Span {
         | Expr::StructLit { span, .. }
         | Expr::StructUpdate { span, .. }
         | Expr::LetPattern { span, .. } => *span,
-    }
-}
-
-fn set_span(expr: &mut Expr, new_span: Span) {
-    match expr {
-        Expr::Lit { span, .. }
-        | Expr::Var { span, .. }
-        | Expr::App { span, .. }
-        | Expr::TypeApp { span, .. }
-        | Expr::If { span, .. }
-        | Expr::Let { span, .. }
-        | Expr::Do { span, .. }
-        | Expr::Match { span, .. }
-        | Expr::Lambda { span, .. }
-        | Expr::FieldAccess { span, .. }
-        | Expr::Recur { span, .. }
-        | Expr::QuestionMark { span, .. }
-        | Expr::List { span, .. }
-        | Expr::Tuple { span, .. }
-        | Expr::BinaryOp { span, .. }
-        | Expr::UnaryOp { span, .. }
-        | Expr::StructLit { span, .. }
-        | Expr::StructUpdate { span, .. }
-        | Expr::LetPattern { span, .. } => *span = new_span,
     }
 }
 

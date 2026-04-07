@@ -155,7 +155,6 @@ pub(super) fn generate_struct_class(
 }
 
 /// Generate a sealed interface class file for a sum type.
-
 pub(super) fn generate_sealed_interface_class(
     name: &str,
     variant_class_names: &[&str],
@@ -195,7 +194,6 @@ pub(super) fn generate_sealed_interface_class(
 }
 
 /// Generate a variant class file that implements a sealed interface.
-
 pub(super) fn generate_variant_class(
     variant_name: &str,
     interface_name: &str,

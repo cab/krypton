@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use krypton_ir::lint::LintPass;
 use krypton_ir::lower::lower_module;
@@ -13,7 +13,7 @@ use rstest::rstest;
 
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "inspect"];
 
-fn should_skip(path: &PathBuf) -> bool {
+fn should_skip(path: &Path) -> bool {
     path.components().any(|c| {
         SKIP_DIRS
             .iter()

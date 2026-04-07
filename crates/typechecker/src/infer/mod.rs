@@ -677,7 +677,7 @@ pub(super) fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> Type
 /// Attach a span to a TypeError, producing a SpannedTypeError.
 pub(super) fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> SpannedTypeError {
     SpannedTypeError {
-        error,
+        error: Box::new(error),
         span,
         note: None,
         secondary_span: None,
@@ -697,7 +697,7 @@ pub(super) fn spanned_with_names(
         .map(|(name, &id)| (id, name.clone()))
         .collect();
     SpannedTypeError {
-        error,
+        error: Box::new(error),
         span,
         note: None,
         secondary_span: None,
@@ -713,14 +713,14 @@ pub(super) fn duplicate_instance_spanned(
     existing_span: krypton_parser::ast::Span,
 ) -> SpannedTypeError {
     SpannedTypeError {
-        error,
+        error: Box::new(error),
         span,
         note: None,
-        secondary_span: Some(crate::unify::SecondaryLabel {
+        secondary_span: Some(Box::new(crate::unify::SecondaryLabel {
             span: existing_span,
             message: "first implementation here".into(),
             source_file: None,
-        }),
+        })),
         source_file: None,
         var_names: None,
     }
@@ -863,7 +863,7 @@ pub(super) fn instantiate_field_type(
 
 /// Return the name of the first free variable (not in `params`) whose type in
 /// `env` (after substitution) is `Own(...)`.
-pub(crate) fn collect_parser_pattern_bindings<'a>(pattern: &'a Pattern) -> Vec<&'a str> {
+pub(crate) fn collect_parser_pattern_bindings(pattern: &Pattern) -> Vec<&str> {
     fn collect_inner<'a>(pattern: &'a Pattern, out: &mut Vec<&'a str>) {
         match pattern {
             Pattern::Var { name, .. } => out.push(name.as_str()),
@@ -1045,10 +1045,10 @@ pub(super) fn first_own_capture(
             if !params.contains(name.as_str()) {
                 if let Some(scheme) = env.lookup(name) {
                     let ty = subst.apply(&scheme.ty);
-                    if matches!(ty, Type::Own(_)) {
-                        if capture_demands_own(typed_body, name, subst) {
-                            return Some(name.clone());
-                        }
+                    if matches!(ty, Type::Own(_))
+                        && capture_demands_own(typed_body, name, subst)
+                    {
+                        return Some(name.clone());
                     }
                 }
             }
@@ -1259,6 +1259,12 @@ pub(super) struct PendingExternTrait {
 
 /// Process extern methods from an `extern "class" { ... }` block, binding their
 /// types into the environment and returning `ExternFnInfo` entries for codegen.
+// Extern method processing — each arg reflects a distinct lexical input from
+// the surface `extern` declaration (target language, env, gen, registry, trait
+// lookup, type-param map/arity/names, alias). Bundling them into a struct
+// would just be a namespace shim, since this is only called from a couple of
+// extern-loading sites and shares no fields with anything else.
+#[allow(clippy::too_many_arguments)]
 fn process_extern_methods(
     class_name: &str,
     target: &ExternTarget,
@@ -1499,7 +1505,7 @@ fn process_extern_methods(
         bindings.push(ExternBindingInfo {
             name: bind_name.clone(),
             scheme,
-            visibility: method.visibility.clone(),
+            visibility: method.visibility,
             def_span: method.span,
         });
 
@@ -1802,14 +1808,17 @@ impl ImportContext {
     /// (non-prelude) module. The user must alias one import to resolve the conflict.
     fn register_import_binding(
         &mut self,
-        name: String,
-        scheme: TypeScheme,
-        origin: Option<TraitName>,
-        source_module: String,
-        original_name: String,
-        is_prelude: bool,
-        span: Span,
+        b: ImportBinding,
     ) -> Result<BindingSource, SpannedTypeError> {
+        let ImportBinding {
+            name,
+            scheme,
+            origin,
+            source_module,
+            original_name,
+            is_prelude,
+            span,
+        } = b;
         let same_symbol_as_prelude = !is_prelude
             && self.get_by_name(&name).any(|existing| {
                 existing.is_prelude
@@ -1873,23 +1882,11 @@ impl ImportContext {
     fn bind_import(
         &mut self,
         env: &mut TypeEnv,
-        name: String,
-        scheme: TypeScheme,
-        origin: Option<TraitName>,
-        source_module: String,
-        original_name: String,
-        is_prelude: bool,
-        span: Span,
+        b: ImportBinding,
     ) -> Result<BindingSource, SpannedTypeError> {
-        let binding_source = self.register_import_binding(
-            name.clone(),
-            scheme.clone(),
-            origin,
-            source_module,
-            original_name,
-            is_prelude,
-            span,
-        )?;
+        let name = b.name.clone();
+        let scheme = b.scheme.clone();
+        let binding_source = self.register_import_binding(b)?;
         env.bind_with_source(name, scheme, binding_source.clone());
         Ok(binding_source)
     }
@@ -1912,6 +1909,10 @@ impl ImportContext {
         });
     }
 
+    // Imported constructor binding takes one arg per distinct surface attribute
+    // (binding name, scheme, defining type info, kind, prelude flag); a wrapping
+    // struct here would just be a namespace shim for one call site.
+    #[allow(clippy::too_many_arguments)]
     fn bind_imported_constructor(
         &mut self,
         env: &mut TypeEnv,
@@ -1992,6 +1993,49 @@ impl ImportContext {
     }
 }
 
+/// Result of `infer_function_bodies`: fn decls, schemes, typed bodies,
+/// constraint requirements, and shared type vars per fn.
+type InferFunctionBodiesResult<'a> = (
+    Vec<&'a krypton_parser::ast::FnDecl>,
+    Vec<Option<TypeScheme>>,
+    Vec<Option<TypedExpr>>,
+    HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    HashMap<String, HashSet<String>>,
+);
+
+/// Result of `process_traits_and_deriving`: trait registry, exported defs,
+/// extern trait infos, derived/imported instance defs, and trait method map.
+type TraitsAndDerivingResult = (
+    TraitRegistry,
+    Vec<ExportedTraitDef>,
+    Vec<ExternTraitInfo>,
+    Vec<InstanceDefInfo>,
+    Vec<InstanceDefInfo>,
+    HashMap<String, TraitName>,
+);
+
+/// Result of processing a module's local extern declarations.
+type LocalExternResult = (
+    Vec<ExternFnInfo>,
+    Vec<ExternTypeInfo>,
+    Vec<ExternBindingInfo>,
+    HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    Vec<PendingExternTrait>,
+);
+
+/// All inputs needed to register an imported function binding.
+/// Bundled to keep `register_import_binding`/`bind_import` arity manageable —
+/// every field is a distinct lexical input from the surface import statement.
+pub(super) struct ImportBinding {
+    pub(super) name: String,
+    pub(super) scheme: TypeScheme,
+    pub(super) origin: Option<TraitName>,
+    pub(super) source_module: String,
+    pub(super) original_name: String,
+    pub(super) is_prelude: bool,
+    pub(super) span: Span,
+}
+
 /// State accumulated during the bootstrap phases of module inference
 /// (env setup, import processing, extern loading, type registration).
 /// Consumed by `assemble_typed_module` at the end.
@@ -2051,16 +2095,7 @@ impl ModuleInferenceState {
         &mut self,
         module: &Module,
         mod_path: &str,
-    ) -> Result<
-        (
-            Vec<ExternFnInfo>,
-            Vec<ExternTypeInfo>,
-            Vec<ExternBindingInfo>,
-            HashMap<String, Vec<(TraitName, TypeVarId)>>,
-            Vec<PendingExternTrait>,
-        ),
-        SpannedTypeError,
-    > {
+    ) -> Result<LocalExternResult, SpannedTypeError> {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
         let mut extern_types: Vec<ExternTypeInfo> = Vec::new();
         let mut extern_bindings: Vec<ExternBindingInfo> = Vec::new();
@@ -2315,7 +2350,7 @@ impl ModuleInferenceState {
                                 let existing_is_prelude = self
                                     .registry
                                     .lookup_type(&type_qualified_name.local_name)
-                                    .map_or(false, |t| t.is_prelude);
+                                    .is_some_and(|t| t.is_prelude);
                                 if !existing_is_prelude {
                                     return Err(spanned(
                                         TypeError::DuplicateConstructor {
@@ -2345,6 +2380,12 @@ impl ModuleInferenceState {
     }
 
     /// Assemble the final TypedModule from accumulated state and inference-phase outputs.
+    ///
+    /// Extracted from `infer_module_inner` specifically to reduce that function's
+    /// stack frame size — bundling the args into a struct here would risk pushing
+    /// the inputs back onto the caller's frame and undoing that optimization, so
+    /// the wide signature is intentional.
+    #[allow(clippy::too_many_arguments)]
     fn assemble_typed_module(
         self,
         module: &Module,
@@ -2498,7 +2539,7 @@ impl ModuleInferenceState {
             typed_ast::apply_subst(&mut body, &self.subst);
             functions.push(TypedFnDecl {
                 name: decl.name.clone(),
-                visibility: decl.visibility.clone(),
+                visibility: decl.visibility,
                 params: decl.params.iter().map(|p| p.name.clone()).collect(),
                 body,
                 close_self_type: None,
@@ -2620,7 +2661,7 @@ impl ModuleInferenceState {
         }
 
         let mut trait_defs = Vec::new();
-        for (_qualified_key, info) in trait_registry.traits() {
+        for info in trait_registry.traits().values() {
             let is_imported = self.imported_trait_names.contains(&info.name);
             let method_info: Vec<(String, usize)> = info
                 .methods
@@ -2667,7 +2708,7 @@ impl ModuleInferenceState {
             &self.registry,
             &self.let_own_spans,
             &self.lambda_own_captures,
-            &shared_type_vars,
+            shared_type_vars,
             &self.imports.imported_fn_qualifiers,
         );
         let has_ownership_errors = !ownership_errors.is_empty();
@@ -2763,7 +2804,7 @@ impl ModuleInferenceState {
         let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
         for decl in &module.decls {
             if let Decl::DefType(td) = decl {
-                type_visibility.insert(td.name.clone(), td.visibility.clone());
+                type_visibility.insert(td.name.clone(), td.visibility);
             }
             if let Decl::Extern {
                 alias: Some(name),
@@ -2774,7 +2815,7 @@ impl ModuleInferenceState {
             {
                 type_visibility.insert(
                     name.clone(),
-                    alias_visibility.clone().unwrap_or(Visibility::Private),
+                    alias_visibility.unwrap_or(Visibility::Private),
                 );
             }
         }
@@ -2910,17 +2951,7 @@ fn process_traits_and_deriving(
     module_path: &str,
     is_core_module: bool,
     pending_extern_traits: Vec<PendingExternTrait>,
-) -> Result<
-    (
-        TraitRegistry,
-        Vec<ExportedTraitDef>,
-        Vec<ExternTraitInfo>,
-        Vec<InstanceDefInfo>,
-        Vec<InstanceDefInfo>,
-        HashMap<String, TraitName>,
-    ),
-    SpannedTypeError,
-> {
+) -> Result<TraitsAndDerivingResult, SpannedTypeError> {
     let mut trait_registry = TraitRegistry::new();
 
     // Phase 1: Import instances from cached modules via orphan-rule lookup
@@ -2970,7 +3001,7 @@ fn process_traits_and_deriving(
         if let Some(existing) = trait_method_map.get(&method_name) {
             let existing_is_prelude = trait_registry
                 .lookup_trait(existing)
-                .map_or(false, |info| info.is_prelude);
+                .is_some_and(|info| info.is_prelude);
             if !existing_is_prelude && !is_prelude {
                 // Two non-prelude traits with same method name → error
                 return Err(spanned(
@@ -3017,7 +3048,7 @@ fn import_cached_instances(
     // in the defining module. The orphan rule guarantees instances live in the
     // module defining the type or the trait.
     let mut source_modules: HashSet<&str> = HashSet::new();
-    for (_, (source_path, _)) in imported_type_info {
+    for (source_path, _) in imported_type_info.values() {
         source_modules.insert(source_path.as_str());
     }
     // Include modules that define imported traits (covers core modules
@@ -3155,7 +3186,6 @@ fn register_extern_traits(
     let mut exported_defs = Vec::new();
     let mut extern_trait_infos = Vec::new();
 
-    let empty_tp_map: HashMap<String, TypeVarId> = HashMap::new();
     let empty_tp_arity: HashMap<String, usize> = HashMap::new();
 
     for ext in pending {
@@ -3554,7 +3584,7 @@ fn register_local_traits(
                 .map_err(|e| spanned(e, *span))?;
 
             exported_trait_defs.push(ExportedTraitDef {
-                visibility: visibility.clone(),
+                visibility: *visibility,
                 name: name.clone(),
                 module_path: module_path.to_string(),
                 type_var: type_param.name.clone(),
@@ -3958,18 +3988,17 @@ fn register_impl_instances(
             let target_display_name = joined_display.clone();
 
             for constraint in type_constraints {
-                if constraint.trait_name != "shared" {
-                    if trait_registry
+                if constraint.trait_name != "shared"
+                    && trait_registry
                         .lookup_trait_by_name(&constraint.trait_name)
                         .is_none()
-                    {
-                        return Err(spanned(
-                            TypeError::UnknownTrait {
-                                name: constraint.trait_name.clone(),
-                            },
-                            constraint.span,
-                        ));
-                    }
+                {
+                    return Err(spanned(
+                        TypeError::UnknownTrait {
+                            name: constraint.trait_name.clone(),
+                        },
+                        constraint.span,
+                    ));
                 }
             }
 
@@ -4100,17 +4129,17 @@ fn check_trait_name_conflicts(
             if let Decl::DefFn(f) = decl {
                 if let Some((trait_name, method_span)) = user_trait_methods.get(&f.name) {
                     return Err(SpannedTypeError {
-                        error: TypeError::DefinitionConflictsWithTraitMethod {
+                        error: Box::new(TypeError::DefinitionConflictsWithTraitMethod {
                             def_name: f.name.clone(),
                             trait_name: trait_name.clone(),
-                        },
+                        }),
                         span: f.span,
                         note: None,
-                        secondary_span: Some(crate::unify::SecondaryLabel {
+                        secondary_span: Some(Box::new(crate::unify::SecondaryLabel {
                             span: *method_span,
                             message: "trait method defined here".into(),
                             source_file: None,
-                        }),
+                        })),
                         source_file: None,
                         var_names: None,
                     });
@@ -4118,10 +4147,10 @@ fn check_trait_name_conflicts(
                 if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
                     if let Some(trait_id) = trait_method_map.get(&f.name) {
                         return Err(SpannedTypeError {
-                            error: TypeError::DefinitionConflictsWithTraitMethod {
+                            error: Box::new(TypeError::DefinitionConflictsWithTraitMethod {
                                 def_name: f.name.clone(),
                                 trait_name: trait_id.local_name.clone(),
-                            },
+                            }),
                             span: f.span,
                             note: None,
                             secondary_span: None,
@@ -4165,16 +4194,7 @@ fn infer_function_bodies<'a>(
     trait_registry: &TraitRegistry,
     trait_method_map: &HashMap<String, TraitName>,
     mod_path: &str,
-) -> Result<
-    (
-        Vec<&'a krypton_parser::ast::FnDecl>,
-        Vec<Option<TypeScheme>>,
-        Vec<Option<TypedExpr>>,
-        HashMap<String, Vec<(TraitName, TypeVarId)>>,
-        HashMap<String, HashSet<String>>,
-    ),
-    SpannedTypeError,
-> {
+) -> Result<InferFunctionBodiesResult<'a>, SpannedTypeError> {
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
         .iter()
@@ -4266,18 +4286,17 @@ fn infer_function_bodies<'a>(
                 }
 
                 for constraint in &decl.constraints {
-                    if constraint.trait_name != "shared" {
-                        if trait_registry
+                    if constraint.trait_name != "shared"
+                        && trait_registry
                             .lookup_trait_by_name(&constraint.trait_name)
                             .is_none()
-                        {
-                            return Err(spanned(
-                                TypeError::UnknownTrait {
-                                    name: constraint.trait_name.clone(),
-                                },
-                                constraint.span,
-                            ));
-                        }
+                    {
+                        return Err(spanned(
+                            TypeError::UnknownTrait {
+                                name: constraint.trait_name.clone(),
+                            },
+                            constraint.span,
+                        ));
                     }
                 }
 
@@ -4428,21 +4447,21 @@ fn infer_function_bodies<'a>(
                                     _ => body_typed.span,
                                 };
                                 return SpannedTypeError {
-                                    error: e,
+                                    error: Box::new(e),
                                     span: body_span,
                                     note: None,
-                                    secondary_span: Some(SecondaryLabel {
+                                    secondary_span: Some(Box::new(SecondaryLabel {
                                         span: ret_ty_expr.span(),
                                         message: "return type declared here".to_string(),
                                         source_file: None,
-                                    }),
+                                    })),
                                     source_file: None,
                                     var_names: Some(var_names),
                                 };
                             }
                         }
                         let mut err = spanned(e, decl.span);
-                        if matches!(&err.error, TypeError::Mismatch { .. }) {
+                        if matches!(&*err.error, TypeError::Mismatch { .. }) {
                             let terminal = match &body_typed.kind {
                                 crate::typed_ast::TypedExprKind::Do(exprs) => {
                                     exprs.last().unwrap_or(&body_typed)

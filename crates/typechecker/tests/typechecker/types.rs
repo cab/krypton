@@ -246,7 +246,7 @@ fn type_scheme_instantiate() {
     let c = gen.fresh(); // this is the 5th var (index 4), but we need the 3rd and 4th
                          // gen produced vars 2 and 3 during instantiate; var 4 is `c` above
                          // Instead, just check the structure: two fresh vars replaced a and b
-    drop(c);
+    let _ = c;
     // Re-check: instantiate consumed vars 2,3 from gen. Verify the result has them.
     match &instantiated {
         Type::Fn(params, ret) => {

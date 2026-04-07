@@ -166,7 +166,7 @@ impl<'a> TypedFormatter<'a> {
             TypedExprKind::Do(exprs) => {
                 self.buf.push_str(" {\n");
                 self.indent_level += 1;
-                self.fmt_block_stmts(exprs, &typed_fn.name);
+                self.fmt_block_stmts(exprs);
                 // Scope exit closes before closing brace: function-level
                 // exits (~Resource params) plus any block-scoped resources
                 // recorded against the body Do scope.
@@ -214,7 +214,7 @@ impl<'a> TypedFormatter<'a> {
             TypedExprKind::Do(exprs) => {
                 self.buf.push_str(" {\n");
                 self.indent_level += 1;
-                self.fmt_block_stmts(exprs, &typed_fn.name);
+                self.fmt_block_stmts(exprs);
                 self.indent_level -= 1;
                 self.indent();
                 self.buf.push('}');
@@ -242,7 +242,7 @@ impl<'a> TypedFormatter<'a> {
         }
     }
 
-    fn fmt_block_stmts(&mut self, exprs: &[TypedExpr], fn_name: &str) {
+    fn fmt_block_stmts(&mut self, exprs: &[TypedExpr]) {
         for (i, expr) in exprs.iter().enumerate() {
             let is_last = i == exprs.len() - 1;
 
@@ -266,7 +266,7 @@ impl<'a> TypedFormatter<'a> {
             }
 
             self.indent();
-            self.fmt_stmt(expr, fn_name);
+            self.fmt_stmt(expr);
 
             // Semicolons between statements (not after last)
             if !is_last {
@@ -304,7 +304,8 @@ impl<'a> TypedFormatter<'a> {
         }
     }
 
-    fn fmt_stmt(&mut self, expr: &TypedExpr, fn_name: &str) {
+    fn fmt_stmt(&mut self, expr: &TypedExpr) {
+
         match &expr.kind {
             TypedExprKind::Let {
                 name,
@@ -333,7 +334,7 @@ impl<'a> TypedFormatter<'a> {
                 self.emit_move_comments_for_span(&value.span);
                 self.emit_nested_moves(value);
                 self.indent();
-                self.fmt_stmt(body, fn_name);
+                self.fmt_stmt(body);
             }
             TypedExprKind::LetPattern {
                 pattern,
@@ -362,7 +363,7 @@ impl<'a> TypedFormatter<'a> {
                 self.emit_move_comments_for_span(&value.span);
                 self.emit_nested_moves(value);
                 self.indent();
-                self.fmt_stmt(body, fn_name);
+                self.fmt_stmt(body);
             }
             _ => self.fmt_expr(expr),
         }
@@ -457,7 +458,7 @@ impl<'a> TypedFormatter<'a> {
             TypedExprKind::Do(exprs) => {
                 self.buf.push_str("{\n");
                 self.indent_level += 1;
-                self.fmt_block_stmts(exprs, "");
+                self.fmt_block_stmts(exprs);
                 self.emit_scope_exit_comments(expr);
                 self.indent_level -= 1;
                 self.indent();
@@ -776,7 +777,7 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
         TypeExpr::Named { name, .. } | TypeExpr::Var { name, .. } => name.clone(),
         TypeExpr::Qualified { module, name, .. } => format!("{module}.{name}"),
         TypeExpr::App { name, args, .. } => {
-            let as_: Vec<String> = args.iter().map(|a| fmt_type_expr_source(a)).collect();
+            let as_: Vec<String> = args.iter().map(fmt_type_expr_source).collect();
             format!("{}[{}]", name, as_.join(", "))
         }
         TypeExpr::Fn { params, ret, .. } => {
@@ -795,7 +796,7 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
         }
         TypeExpr::Own { inner, .. } => format!("~{}", fmt_type_expr_source(inner)),
         TypeExpr::Tuple { elements, .. } => {
-            let es: Vec<String> = elements.iter().map(|e| fmt_type_expr_source(e)).collect();
+            let es: Vec<String> = elements.iter().map(fmt_type_expr_source).collect();
             format!("({})", es.join(", "))
         }
         TypeExpr::Wildcard { .. } => "_".to_string(),

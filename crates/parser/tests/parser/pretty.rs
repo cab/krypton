@@ -24,7 +24,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             ..
         } => Decl::DefTrait {
             platform: None,
-            visibility: visibility.clone(),
+            visibility: *visibility,
             name: name.clone(),
             type_params: type_params
                 .iter()
@@ -101,7 +101,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             target: target.clone(),
             module_path: module_path.clone(),
             alias: alias.clone(),
-            alias_visibility: alias_visibility.clone(),
+            alias_visibility: *alias_visibility,
             is_trait: *is_trait,
             type_params: type_params.clone(),
             methods: methods
@@ -111,7 +111,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                     throws: m.throws,
                     instance: m.instance,
                     constructor: m.constructor,
-                    visibility: m.visibility.clone(),
+                    visibility: m.visibility,
                     name: m.name.clone(),
                     type_params: m.type_params.clone(),
                     params: m
@@ -141,7 +141,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
     FnDecl {
         platform: f.platform.clone(),
         name: f.name.clone(),
-        visibility: f.visibility.clone(),
+        visibility: f.visibility,
         type_params: f.type_params.clone(),
         params: f
             .params
@@ -172,7 +172,7 @@ fn zero_spans_type_decl(t: &TypeDecl) -> TypeDecl {
     TypeDecl {
         platform: t.platform.clone(),
         name: t.name.clone(),
-        visibility: t.visibility.clone(),
+        visibility: t.visibility,
         type_params: t.type_params.clone(),
         kind: match &t.kind {
             TypeDeclKind::Record { fields } => TypeDeclKind::Record {

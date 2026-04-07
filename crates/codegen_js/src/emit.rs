@@ -899,6 +899,10 @@ impl<'a> JsEmitter<'a> {
     const NULLABLE_SOME_ALIAS: &'static str = "__krypton_nullable_Some";
     const NULLABLE_NONE_ALIAS: &'static str = "__krypton_nullable_None";
 
+    // Emitter constructor: each arg is a borrowed input held for the lifetime
+    // of emission. A builder would just forward each field, so the wide arg
+    // list is intentional.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         module: &'a Module,
         is_main: bool,
@@ -1199,7 +1203,7 @@ impl<'a> JsEmitter<'a> {
         for imp in &self.module.imported_fns {
             fn_imports.push((&imp.source_module, &imp.original_name, &imp.name));
         }
-        fn_imports.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        fn_imports.sort_by(|a, b| a.0.cmp(b.0).then(a.1.cmp(b.1)));
         fn_imports.dedup();
 
         // 2b. Constructor imports (sorted by source_module, then name)
@@ -1218,7 +1222,7 @@ impl<'a> JsEmitter<'a> {
         for (trait_name, ty) in &dict_refs {
             let js_name = self.resolve_dict_js_name(trait_name, ty);
             if let Some(source) = self.registry.find_source_module(trait_name, ty) {
-                if source == &self.module.name || source == self.module.module_path.as_str() {
+                if source == self.module.name || source == self.module.module_path.as_str() {
                     continue;
                 }
                 let is_local = self.module.instances.iter().any(|inst| {
@@ -1261,8 +1265,6 @@ impl<'a> JsEmitter<'a> {
         }
 
         // ── 4. Emit import statements ──
-
-        let mut emitted_any = false;
 
         // 4a. Krypton function + constructor imports grouped by module
         {
@@ -1307,7 +1309,6 @@ impl<'a> JsEmitter<'a> {
                         specifiers.join(", "),
                         rel_path
                     ));
-                    emitted_any = true;
                 }
             }
         }
@@ -1347,7 +1348,6 @@ impl<'a> JsEmitter<'a> {
                 names.join(", "),
                 resolved_path
             ));
-            emitted_any = true;
         }
 
         // 4c. Nullable extern Option imports
@@ -1364,7 +1364,6 @@ impl<'a> JsEmitter<'a> {
                 Self::NULLABLE_NONE_ALIAS,
                 rel_path
             ));
-            emitted_any = true;
         }
 
         // 4d. Cross-module dict imports
@@ -1398,7 +1397,6 @@ impl<'a> JsEmitter<'a> {
                     names.join(", "),
                     rel_path
                 ));
-                emitted_any = true;
             }
         }
 
@@ -1409,7 +1407,6 @@ impl<'a> JsEmitter<'a> {
                 "import {{ KryptonPanic }} from '{}';",
                 runtime_path
             ));
-            emitted_any = true;
         }
 
         if self.is_main && self.module.functions.iter().any(|f| f.name == "main") {
@@ -1417,9 +1414,7 @@ impl<'a> JsEmitter<'a> {
             self.writeln(&format!("import {{ runMain }} from '{}';", runtime_path));
         }
 
-        if emitted_any {
-            self.write("\n");
-        }
+        self.write("\n");
     }
 
     /// Compute the relative path from this module to a runtime JS file.
@@ -2484,13 +2479,17 @@ pub fn js_intrinsic_body(
         .map(|(_, _, _, body)| *body)
 }
 
-/// Group intrinsics by (trait, type) for dict emission. Returns (trait, type, [(method, body)]).
-fn js_intrinsic_dicts() -> Vec<(
+/// (trait_name, type_name, methods) entry from `js_intrinsic_dicts`, where each
+/// method is `(method_name, js_body)`.
+type JsIntrinsicDict = (
     &'static str,
     &'static str,
     Vec<(&'static str, &'static str)>,
-)> {
-    let mut map: Vec<(&str, &str, Vec<(&str, &str)>)> = Vec::new();
+);
+
+/// Group intrinsics by (trait, type) for dict emission. Returns (trait, type, [(method, body)]).
+fn js_intrinsic_dicts() -> Vec<JsIntrinsicDict> {
+    let mut map: Vec<JsIntrinsicDict> = Vec::new();
     for &(trait_name, type_name, method_name, body) in JS_INTRINSICS {
         if let Some(entry) = map
             .iter_mut()
@@ -2509,15 +2508,13 @@ mod tests {
     use super::*;
     use krypton_ir::lower::lower_all;
     use krypton_ir::{
-        CanonicalRef, ExternCallKind, ExternFnDef, ExternTarget, FnDef, ImportedFnDef,
-        LocalSymbolKey, Module, ModulePath,
+        ExternCallKind, ExternFnDef, ExternTarget, FnDef, ImportedFnDef, Module, ModulePath,
     };
     use krypton_modules::module_resolver::CompositeResolver;
     use krypton_parser::parser::parse;
     use krypton_typechecker::infer::infer_module;
     use krypton_typechecker::link_context::LinkContext;
     use krypton_typechecker::module_interface::ModuleInterface;
-    use krypton_typechecker::typed_ast::ParamQualifier;
     use std::collections::{BTreeSet, HashMap, HashSet};
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
@@ -3023,8 +3020,8 @@ fun main() = render_key[String]("hi")
         variant_lookup.insert(("core/option/Option".to_string(), 1), "None".to_string());
 
         // Ensure there is no bare "Option" key
-        assert!(variant_lookup.get(&("Option".to_string(), 0)).is_none());
-        assert!(variant_lookup.get(&("Option".to_string(), 1)).is_none());
+        assert!(!variant_lookup.contains_key(&("Option".to_string(), 0)));
+        assert!(!variant_lookup.contains_key(&("Option".to_string(), 1)));
 
         // Qualified keys work
         assert_eq!(

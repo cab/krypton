@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
@@ -44,7 +44,7 @@ fn infer_module_snapshot_with_resolver(
 
 const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
 
-fn should_skip(path: &PathBuf) -> bool {
+fn should_skip(path: &Path) -> bool {
     path.components().any(|c| {
         SKIP_DIRS
             .iter()

@@ -98,7 +98,7 @@ impl WasmReplSession {
 
 thread_local! {
     static SESSIONS: RefCell<HashMap<u32, WasmReplSession>> = RefCell::new(HashMap::new());
-    static NEXT_ID: RefCell<u32> = RefCell::new(1);
+    static NEXT_ID: RefCell<u32> = const { RefCell::new(1) };
 }
 
 // ---------------------------------------------------------------------------
