@@ -194,6 +194,9 @@ impl<'a> Formatter<'a> {
     }
 
     fn fmt_param(&mut self, p: &Param) {
+        if p.mode == ParamMode::Borrow {
+            self.buf.push('&');
+        }
         self.buf.push_str(&p.name);
         if let Some(ty) = &p.ty {
             self.buf.push_str(": ");

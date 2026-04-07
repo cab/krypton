@@ -26,6 +26,7 @@ decls:
               span:
                 - 75
                 - 76
+          mode: Consume
           span:
             - 72
             - 76
@@ -95,6 +96,7 @@ decls:
               span:
                 - 191
                 - 192
+          mode: Consume
           span:
             - 188
             - 192
@@ -159,6 +161,7 @@ decls:
               span:
                 - 312
                 - 315
+          mode: Consume
           span:
             - 309
             - 315
@@ -228,6 +231,7 @@ decls:
               span:
                 - 498
                 - 499
+          mode: Consume
           span:
             - 495
             - 499
@@ -360,6 +364,7 @@ decls:
                   span:
                     - 692
                     - 693
+              mode: Consume
               span:
                 - 689
                 - 693
@@ -436,6 +441,7 @@ decls:
                   span:
                     - 811
                     - 812
+              mode: Consume
               span:
                 - 808
                 - 812
@@ -507,6 +513,7 @@ decls:
                   span:
                     - 931
                     - 932
+              mode: Consume
               span:
                 - 928
                 - 932
@@ -517,6 +524,7 @@ decls:
                   span:
                     - 937
                     - 938
+              mode: Consume
               span:
                 - 934
                 - 938
@@ -625,6 +633,7 @@ decls:
                   span:
                     - 1084
                     - 1094
+              mode: Consume
               span:
                 - 1081
                 - 1094

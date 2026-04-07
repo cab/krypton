@@ -37,6 +37,7 @@ decls:
                   span:
                     - 42
                     - 43
+              mode: Consume
               span:
                 - 39
                 - 43
@@ -47,6 +48,7 @@ decls:
                   span:
                     - 48
                     - 49
+              mode: Consume
               span:
                 - 45
                 - 49

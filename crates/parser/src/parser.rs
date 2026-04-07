@@ -52,6 +52,9 @@ fn to_span(s: LexSpan) -> Span {
     (s.start, s.end)
 }
 
+const BORROW_REQUIRES_OWNED: &str =
+    "borrow mode requires an owned parameter type: write '&name: ~T'";
+
 fn is_uppercase(s: &str) -> bool {
     s.starts_with(|c: char| c.is_uppercase())
 }
@@ -507,13 +510,28 @@ where
             });
 
         // Lambda: x -> body, (x, y) -> body, (x: Int) -> body
-        // Lambda params with optional type annotation
-        let lambda_param = select! { Token::Ident(s) => s.to_string() }
+        // Lambda params with optional type annotation; supports leading `&` for borrow mode.
+        let lambda_param = symbol(Token::Amp)
+            .or_not()
+            .then(select! { Token::Ident(s) => s.to_string() })
             .then(symbol(Token::Colon).ignore_then(ty.clone()).or_not())
-            .map_with(|(name, ty_ann), e| Param {
+            .map_with(|((amp, name), ty_ann), e| Param {
                 name,
                 ty: ty_ann,
+                mode: if amp.is_some() {
+                    ParamMode::Borrow
+                } else {
+                    ParamMode::Consume
+                },
                 span: to_span(e.span()),
+            })
+            .validate(|p, e, emitter| {
+                if p.mode == ParamMode::Borrow
+                    && !matches!(p.ty, Some(TypeExpr::Own { .. }))
+                {
+                    emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+                }
+                p
             });
 
         // Zero-arg lambda: () -> body
@@ -547,6 +565,7 @@ where
             .map_with(|name, e| Param {
                 name,
                 ty: None,
+                mode: ParamMode::Consume,
                 span: to_span(e.span()),
             })
             .then_ignore(symbol(Token::Arrow))
@@ -1033,13 +1052,29 @@ where
 
     let where_clause = where_clause_parser();
 
-    // --- Param: name or name: Type ---
-    let param = select! { Token::Ident(s) => s.to_string() }
+    // --- Param: [&]name or [&]name: Type ---
+    // A leading `&` opts the parameter into borrow mode and requires `~T`.
+    let param = symbol(Token::Amp)
+        .or_not()
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(symbol(Token::Colon).ignore_then(ty.clone()).or_not())
-        .map_with(|(name, ty_ann), e| Param {
+        .map_with(|((amp, name), ty_ann), e| Param {
             name,
             ty: ty_ann,
+            mode: if amp.is_some() {
+                ParamMode::Borrow
+            } else {
+                ParamMode::Consume
+            },
             span: to_span(e.span()),
+        })
+        .validate(|p, e, emitter| {
+            if p.mode == ParamMode::Borrow
+                && !matches!(p.ty, Some(TypeExpr::Own { .. }))
+            {
+                emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+            }
+            p
         });
 
     // --- Type params: [a, f[_], g[_, _]] ---
@@ -1187,20 +1222,36 @@ where
 
     // --- Trait declaration ---
     // trait Name[tvar] { methods } or trait Name[tvar] where tvar: Super { methods }
-    let trait_method_param = select! {
-        Token::Ident(s) => s.to_string(),
-        Token::Self_ => "self".to_string(),
-    }
-    .then_ignore(
-        symbol(Token::Colon)
-            .labelled("type annotation — trait method parameters require types, e.g. (x: a, y: a)"),
-    )
-    .then(ty.clone())
-    .map_with(|(name, ty_ann), e| Param {
-        name,
-        ty: Some(ty_ann),
-        span: to_span(e.span()),
-    });
+    let trait_method_param = symbol(Token::Amp)
+        .or_not()
+        .then(select! {
+            Token::Ident(s) => s.to_string(),
+            Token::Self_ => "self".to_string(),
+        })
+        .then_ignore(
+            symbol(Token::Colon).labelled(
+                "type annotation — trait method parameters require types, e.g. (x: a, y: a)",
+            ),
+        )
+        .then(ty.clone())
+        .map_with(|((amp, name), ty_ann), e| Param {
+            name,
+            ty: Some(ty_ann),
+            mode: if amp.is_some() {
+                ParamMode::Borrow
+            } else {
+                ParamMode::Consume
+            },
+            span: to_span(e.span()),
+        })
+        .validate(|p, e, emitter| {
+            if p.mode == ParamMode::Borrow
+                && !matches!(p.ty, Some(TypeExpr::Own { .. }))
+            {
+                emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+            }
+            p
+        });
 
     let trait_method = symbol(Token::Pub)
         .map_with(|_, e| Some(to_span(e.span())))
@@ -1650,18 +1701,24 @@ where
 }
 
 fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
-    if let chumsky::error::RichReason::ExpectedFound { expected, found } = e.reason() {
-        if found.is_none() {
-            return ErrorCode::P0002;
+    match e.reason() {
+        chumsky::error::RichReason::Custom(msg) if msg == BORROW_REQUIRES_OWNED => {
+            return ErrorCode::P0006;
         }
-        for pat in expected {
-            if let chumsky::error::RichPattern::Token(tok) = pat {
-                let tok: &Token = tok;
-                if matches!(tok, Token::RParen | Token::RBracket | Token::RBrace) {
-                    return ErrorCode::P0002;
+        chumsky::error::RichReason::ExpectedFound { expected, found } => {
+            if found.is_none() {
+                return ErrorCode::P0002;
+            }
+            for pat in expected {
+                if let chumsky::error::RichPattern::Token(tok) = pat {
+                    let tok: &Token = tok;
+                    if matches!(tok, Token::RParen | Token::RBracket | Token::RBrace) {
+                        return ErrorCode::P0002;
+                    }
                 }
             }
         }
+        _ => {}
     }
     ErrorCode::P0001
 }

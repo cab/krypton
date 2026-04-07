@@ -1,6 +1,5 @@
 ---
-source: crates/parser/tests/fixture_test.rs
-assertion_line: 28
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
@@ -73,6 +72,7 @@ decls:
       params:
         - name: s
           ty: ~
+          mode: Consume
           span:
             - 98
             - 99

@@ -1,11 +1,11 @@
 ---
-source: crates/typechecker/tests/diagnostics_test.rs
+source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
-[P0002] Error: found '=' expected '\n', something else, or ')'
+[P0002] Error: found '=' expected '\n', '&', something else, or ')'
    ╭─[ bad:1:8 ]
    │
  1 │ fun f( = 42
    │        ┬  
-   │        ╰── P0002: found '=' expected '\n', something else, or ')'
+   │        ╰── P0002: found '=' expected '\n', '&', something else, or ')'
 ───╯

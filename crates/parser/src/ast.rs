@@ -128,10 +128,17 @@ pub struct FnDecl {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ParamMode {
+    Consume,
+    Borrow,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Param {
     pub name: String,
     pub ty: Option<TypeExpr>,
+    pub mode: ParamMode,
     pub span: Span,
 }
 

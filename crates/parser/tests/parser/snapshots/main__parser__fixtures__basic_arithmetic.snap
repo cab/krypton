@@ -1,6 +1,5 @@
 ---
-source: crates/parser/tests/fixture_test.rs
-assertion_line: 28
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
@@ -12,11 +11,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 21
             - 22
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 24
             - 25
@@ -51,11 +52,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 44
             - 45
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 47
             - 48
@@ -90,11 +93,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 67
             - 68
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 70
             - 71
@@ -129,11 +134,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 90
             - 91
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 93
             - 94
@@ -168,11 +175,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 112
             - 113
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 115
             - 116
@@ -207,11 +216,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 136
             - 137
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 139
             - 140
@@ -246,11 +257,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 159
             - 160
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 162
             - 163
@@ -285,11 +298,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 181
             - 182
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 184
             - 185
@@ -324,11 +339,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 203
             - 204
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 206
             - 207
@@ -363,11 +380,13 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 226
             - 227
         - name: y
           ty: ~
+          mode: Consume
           span:
             - 229
             - 230

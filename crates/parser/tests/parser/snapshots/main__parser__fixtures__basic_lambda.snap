@@ -1,6 +1,5 @@
 ---
-source: crates/parser/tests/fixture_test.rs
-assertion_line: 28
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
@@ -12,6 +11,7 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 26
             - 27
@@ -34,16 +34,19 @@ decls:
       params:
         - name: a
           ty: ~
+          mode: Consume
           span:
             - 50
             - 51
         - name: b
           ty: ~
+          mode: Consume
           span:
             - 53
             - 54
         - name: c
           ty: ~
+          mode: Consume
           span:
             - 56
             - 57
@@ -90,11 +93,13 @@ decls:
       params:
         - name: f
           ty: ~
+          mode: Consume
           span:
             - 91
             - 92
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 94
             - 95
@@ -129,6 +134,7 @@ decls:
       params:
         - name: x
           ty: ~
+          mode: Consume
           span:
             - 117
             - 118
@@ -139,6 +145,7 @@ decls:
           params:
             - name: y
               ty: ~
+              mode: Consume
               span:
                 - 122
                 - 123

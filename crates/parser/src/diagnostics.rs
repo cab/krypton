@@ -9,6 +9,7 @@ pub enum ErrorCode {
     P0003, // Invalid literal / lex error
     P0004, // Unnecessary syntax
     P0005, // Deprecated syntax
+    P0006, // Invalid binding mode
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -19,6 +20,7 @@ impl std::fmt::Display for ErrorCode {
             ErrorCode::P0003 => write!(f, "P0003"),
             ErrorCode::P0004 => write!(f, "P0004"),
             ErrorCode::P0005 => write!(f, "P0005"),
+            ErrorCode::P0006 => write!(f, "P0006"),
         }
     }
 }

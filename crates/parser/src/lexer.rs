@@ -71,6 +71,7 @@ pub enum Token<'src> {
     Semicolon,
     And,
     Or,
+    Amp,
     Bang,
     Tilde,
     At,
@@ -140,6 +141,7 @@ impl fmt::Display for Token<'_> {
             Token::Semicolon => write!(f, ";"),
             Token::And => write!(f, "&&"),
             Token::Or => write!(f, "||"),
+            Token::Amp => write!(f, "&"),
             Token::Bang => write!(f, "!"),
             Token::Tilde => write!(f, "~"),
             Token::At => write!(f, "@"),
@@ -261,6 +263,7 @@ pub fn lexer<'src>(
         just(';').to(Token::Semicolon),
         just('~').to(Token::Tilde),
         just('@').to(Token::At),
+        just('&').to(Token::Amp),
         just('_').to(Token::Underscore),
     ));
 

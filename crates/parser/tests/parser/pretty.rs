@@ -149,6 +149,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
             .map(|p| Param {
                 name: p.name.clone(),
                 ty: p.ty.as_ref().map(zero_spans_type_expr),
+                mode: p.mode,
                 span: (0, 0),
             })
             .collect(),
@@ -223,6 +224,7 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
                 .map(|p| Param {
                     name: p.name.clone(),
                     ty: p.ty.as_ref().map(zero_spans_type_expr),
+                    mode: p.mode,
                     span: (0, 0),
                 })
                 .collect(),
@@ -918,6 +920,36 @@ fn roundtrip_trait_with_multiple_superclasses() {
     fun method_c(x: a) -> Int
 }"#,
     );
+}
+
+#[test]
+fn roundtrip_borrow_param() {
+    assert_surface_roundtrip("fun read(&r: ~File, n: Int) -> Int = 0");
+    let (module, errors) = parse("fun read(&r: ~File, n: Int) -> Int = 0");
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    if let Decl::DefFn(f) = &module.decls[0] {
+        assert_eq!(f.params[0].mode, ParamMode::Borrow);
+        assert_eq!(f.params[1].mode, ParamMode::Consume);
+    } else {
+        panic!("expected DefFn");
+    }
+}
+
+#[test]
+fn roundtrip_borrow_param_only() {
+    assert_surface_roundtrip("fun close(&r: ~File) -> Unit = ()");
+}
+
+#[test]
+fn roundtrip_consume_param_unchanged() {
+    assert_surface_roundtrip("fun close(r: ~File) -> Unit = ()");
+    let (module, errors) = parse("fun close(r: ~File) -> Unit = ()");
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    if let Decl::DefFn(f) = &module.decls[0] {
+        assert_eq!(f.params[0].mode, ParamMode::Consume);
+    } else {
+        panic!("expected DefFn");
+    }
 }
 
 #[test]

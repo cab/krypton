@@ -16,6 +16,7 @@ decls:
               span:
                 - 15
                 - 16
+          mode: Consume
           span:
             - 12
             - 16
@@ -26,6 +27,7 @@ decls:
               span:
                 - 21
                 - 22
+          mode: Consume
           span:
             - 18
             - 22

@@ -108,6 +108,23 @@ fn test_pub_opaque_on_type_still_works() {
 }
 
 #[test]
+fn test_p0006_borrow_requires_owned() {
+    let source = "fun read(&r: File) -> Int = 0";
+    let (_module, errors) = parse(source);
+    assert!(!errors.is_empty(), "expected at least one error");
+    assert!(
+        errors.iter().any(|e| e.code == ErrorCode::P0006),
+        "expected P0006 error, got: {errors:?}"
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.message.contains("borrow mode requires an owned parameter type")),
+        "expected helpful message, got: {errors:?}"
+    );
+}
+
+#[test]
 fn test_p0005_old_superclass_syntax() {
     let source = "trait Foo[a] : Bar { fun foo(x: a) -> a }";
     let (_module, errors) = parse(source);

@@ -1,6 +1,5 @@
 ---
-source: crates/parser/tests/fixture_test.rs
-assertion_line: 28
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
@@ -17,6 +16,7 @@ decls:
               span:
                 - 24
                 - 27
+          mode: Consume
           span:
             - 21
             - 27
@@ -27,6 +27,7 @@ decls:
               span:
                 - 32
                 - 35
+          mode: Consume
           span:
             - 29
             - 35
@@ -169,6 +170,7 @@ decls:
               span:
                 - 137
                 - 140
+          mode: Consume
           span:
             - 134
             - 140
@@ -179,6 +181,7 @@ decls:
               span:
                 - 145
                 - 148
+          mode: Consume
           span:
             - 142
             - 148

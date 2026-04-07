@@ -1,5 +1,5 @@
 ---
-source: crates/parser/tests/parser_test.rs
+source: crates/parser/tests/parser/parser_tests.rs
 expression: module
 ---
 decls:
@@ -46,11 +46,13 @@ decls:
           params:
             - name: a
               ty: ~
+              mode: Consume
               span:
                 - 61
                 - 62
             - name: b
               ty: ~
+              mode: Consume
               span:
                 - 64
                 - 65

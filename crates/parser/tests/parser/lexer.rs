@@ -171,6 +171,26 @@ fn test_error_recovery() {
     );
 }
 
+// --- Borrow-mode `&` ---
+
+#[test]
+fn test_amp_single() {
+    let toks = surface_lex("&");
+    assert_eq!(toks, vec![Token::Amp]);
+}
+
+#[test]
+fn test_amp_amp_still_one_token() {
+    let toks = surface_lex("&&");
+    assert_eq!(toks, vec![Token::And]);
+}
+
+#[test]
+fn test_amp_then_amp() {
+    let toks = surface_lex("& &");
+    assert_eq!(toks, vec![Token::Amp, Token::Amp]);
+}
+
 // --- Spans ---
 
 #[test]
