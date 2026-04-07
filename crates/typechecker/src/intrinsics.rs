@@ -8,7 +8,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
         "panic".to_string(),
         TypeScheme {
             vars: vec![a],
-            ty: Type::Fn(vec![Type::String], Box::new(Type::Var(a))),
+            ty: Type::fn_consuming(vec![Type::String], Type::Var(a)),
             constraints: Vec::new(),
             var_names: HashMap::new(),
         },
@@ -21,7 +21,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
             "__krypton_intrinsic".to_string(),
             TypeScheme {
                 vars: vec![b],
-                ty: Type::Fn(vec![], Box::new(Type::Var(b))),
+                ty: Type::fn_consuming(vec![], Type::Var(b)),
                 constraints: Vec::new(),
                 var_names: HashMap::new(),
             },

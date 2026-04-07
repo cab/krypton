@@ -103,7 +103,9 @@ impl<'a> InferenceContext<'a> {
                                     ));
                                 }
                                 let mut typed_args = Vec::new();
-                                for (arg_pat, param_ty) in args.iter().zip(param_types.iter()) {
+                                for (arg_pat, (_, param_ty)) in
+                                    args.iter().zip(param_types.iter())
+                                {
                                     let resolved_param = self.subst.apply(param_ty);
                                     typed_args.push(self.check_pattern(
                                         arg_pat,

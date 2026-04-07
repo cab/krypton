@@ -393,6 +393,52 @@ fn extract_interface_no_transitive_deps() {
 // ===========================================================================
 
 #[test]
+fn extract_interface_reexported_fn_preserves_borrow_mode() {
+    use krypton_typechecker::types::{ParamMode, Type};
+    let iface = extract_multi(
+        "pub import mylib.{read}",
+        vec![(
+            "mylib",
+            "pub type File = { fd: Int }\npub fun read(&r: ~File, n: Int) -> Int = n",
+        )],
+    );
+    let reex = iface
+        .reexported_fns
+        .iter()
+        .find(|f| f.local_name == "read")
+        .expect("read should be in reexported_fns");
+    let Type::Fn(params, _) = &reex.scheme.ty else {
+        panic!("expected Fn, got {:?}", reex.scheme.ty);
+    };
+    assert_eq!(params[0].0, ParamMode::Borrow);
+    assert_eq!(params[1].0, ParamMode::Consume);
+}
+
+#[test]
+fn extract_interface_reexported_trait_preserves_borrow_mode_on_method() {
+    use krypton_typechecker::types::ParamMode;
+    let iface = extract_multi(
+        "pub import mylib.{IO}",
+        vec![(
+            "mylib",
+            "pub trait IO[a] {\n  fun read(&r: ~a, n: Int) -> Int\n}",
+        )],
+    );
+    let io = iface
+        .exported_traits
+        .iter()
+        .find(|t| t.name == "IO")
+        .expect("IO should be in exported_traits");
+    let read = io
+        .methods
+        .iter()
+        .find(|m| m.name == "read")
+        .expect("IO should have method 'read'");
+    assert_eq!(read.param_types[0].0, ParamMode::Borrow);
+    assert_eq!(read.param_types[1].0, ParamMode::Consume);
+}
+
+#[test]
 fn extract_interface_reexported_fn_has_canonical_ref() {
     let iface = extract_multi(
         "pub import mylib.{helper}",

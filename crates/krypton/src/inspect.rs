@@ -29,7 +29,12 @@ fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
         Type::Fn(params, ret) => {
             let ps: Vec<String> = params
                 .iter()
-                .map(|p| type_to_source(p, var_names))
+                .map(|(mode, p)| match (mode, p) {
+                    (krypton_typechecker::types::ParamMode::Borrow, Type::Own(inner)) => {
+                        format!("&~{}", type_to_source(inner, var_names))
+                    }
+                    _ => type_to_source(p, var_names),
+                })
                 .collect();
             format!("({}) -> {}", ps.join(", "), type_to_source(ret, var_names))
         }
@@ -148,12 +153,15 @@ impl<'a> TypedFormatter<'a> {
         self.buf.push_str("fun ");
         self.buf.push_str(&typed_fn.name);
         self.buf.push('(');
-        for (i, param_name) in typed_fn.params.iter().enumerate() {
+        for (i, param) in typed_fn.params.iter().enumerate() {
             if i > 0 {
                 self.buf.push_str(", ");
             }
-            self.buf.push_str(param_name);
-            if let Some(ty) = param_types.get(i) {
+            if param.mode == krypton_typechecker::types::ParamMode::Borrow {
+                self.buf.push('&');
+            }
+            self.buf.push_str(&param.name);
+            if let Some((_, ty)) = param_types.get(i) {
                 self.buf.push_str(": ");
                 self.buf.push_str(&self.type_str(ty));
             }
@@ -197,12 +205,15 @@ impl<'a> TypedFormatter<'a> {
         self.buf.push_str("fun ");
         self.buf.push_str(display_name);
         self.buf.push('(');
-        for (i, param_name) in typed_fn.params.iter().enumerate() {
+        for (i, param) in typed_fn.params.iter().enumerate() {
             if i > 0 {
                 self.buf.push_str(", ");
             }
-            self.buf.push_str(param_name);
-            if let Some(ty) = param_types.get(i) {
+            if param.mode == krypton_typechecker::types::ParamMode::Borrow {
+                self.buf.push('&');
+            }
+            self.buf.push_str(&param.name);
+            if let Some((_, ty)) = param_types.get(i) {
                 self.buf.push_str(": ");
                 self.buf.push_str(&self.type_str(ty));
             }
@@ -506,7 +517,7 @@ impl<'a> TypedFormatter<'a> {
                             }
                             self.buf.push_str(p);
                             if let Some(ref pts) = param_types {
-                                if let Some(ty) = pts.get(i) {
+                                if let Some((_, ty)) = pts.get(i) {
                                     self.buf.push_str(": ");
                                     self.buf.push_str(&self.type_str(ty));
                                 }

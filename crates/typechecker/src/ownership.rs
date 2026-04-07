@@ -14,7 +14,9 @@ type BranchConsumeMaps = (HashMap<String, Span>, HashMap<String, Span>);
 fn type_contains_own(ty: &Type) -> bool {
     match ty {
         Type::Own(_) => true,
-        Type::Fn(params, ret) => params.iter().any(type_contains_own) || type_contains_own(ret),
+        Type::Fn(params, ret) => {
+            params.iter().any(|(_, p)| type_contains_own(p)) || type_contains_own(ret)
+        }
         Type::Named(_, args) => args.iter().any(type_contains_own),
         Type::Tuple(elems) => elems.iter().any(type_contains_own),
         _ => false,
@@ -223,7 +225,7 @@ fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSe
             vars.extend(collect_quantified_vars(inner, quantified));
         }
         Type::Fn(params, ret) => {
-            for p in params {
+            for (_, p) in params {
                 vars.extend(collect_quantified_vars(p, quantified));
             }
             vars.extend(collect_quantified_vars(ret, quantified));
@@ -274,7 +276,7 @@ fn compute_fn_qualifiers(
 
         let mut qualifiers = Vec::new();
 
-        for (i, param_ty) in param_types.iter().enumerate() {
+        for (i, (_, param_ty)) in param_types.iter().enumerate() {
             let inner = match param_ty {
                 Type::Own(inner) => inner.as_ref(),
                 other => other,
@@ -568,7 +570,10 @@ pub fn check_ownership(
             continue;
         }
         if let Type::Fn(params, _) = &scheme.ty {
-            let own_params: Vec<bool> = params.iter().map(|t| matches!(t, Type::Own(_))).collect();
+            let own_params: Vec<bool> = params
+                .iter()
+                .map(|(_, t)| matches!(t, Type::Own(_)))
+                .collect();
             fn_param_info.insert(name.clone(), own_params);
         }
     }
@@ -587,7 +592,8 @@ pub fn check_ownership(
     let mut fn_scheme_params: HashMap<String, Vec<Type>> = HashMap::new();
     for (name, scheme, _) in fn_types {
         if let Type::Fn(params, _) = &scheme.ty {
-            fn_scheme_params.insert(name.clone(), params.clone());
+            fn_scheme_params
+                .insert(name.clone(), params.iter().map(|(_, t)| t.clone()).collect());
         }
     }
 
@@ -1262,10 +1268,10 @@ fn check_fn(
 
     // Build owned/affine sets from resolved param types
     if let Some(scheme_params) = fn_scheme_params.get(typed_fn.name.as_str()) {
-        for (param_name, param_ty) in typed_fn.params.iter().zip(scheme_params.iter()) {
+        for (param, param_ty) in typed_fn.params.iter().zip(scheme_params.iter()) {
             if matches!(param_ty, Type::Own(_)) || type_is_affine(param_ty, registry) {
-                owned.insert(param_name.clone());
-                affine.insert(param_name.clone());
+                owned.insert(param.name.clone());
+                affine.insert(param.name.clone());
             }
         }
     }

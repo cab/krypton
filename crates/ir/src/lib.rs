@@ -44,7 +44,7 @@ impl From<krypton_typechecker::types::Type> for Type {
             TcType::String => Type::String,
             TcType::Unit => Type::Unit,
             TcType::Fn(params, ret) => Type::Fn(
-                params.into_iter().map(Into::into).collect(),
+                params.into_iter().map(|(_, t)| t.into()).collect(),
                 Box::new((*ret).into()),
             ),
             TcType::Var(id) => Type::Var(id),

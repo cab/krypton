@@ -249,7 +249,7 @@ fn substitute_type_params(
         Type::Fn(params, ret) => Type::Fn(
             params
                 .iter()
-                .map(|p| substitute_type_params(p, param_vars, type_args))
+                .map(|(m, p)| (*m, substitute_type_params(p, param_vars, type_args)))
                 .collect(),
             Box::new(substitute_type_params(ret, param_vars, type_args)),
         ),

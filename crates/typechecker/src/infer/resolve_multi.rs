@@ -135,7 +135,7 @@ fn collect_entries(
                         {
                             // Collect bindings: trait_type_var_id -> Type.
                             let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
-                            for (pattern, arg) in
+                            for ((_, pattern), arg) in
                                 method.param_types.iter().zip(args.iter())
                             {
                                 collect_type_var_bindings_strict(
@@ -261,7 +261,9 @@ fn typed_callee_resolved_ref(expr: &TypedExpr) -> Option<&ResolvedBindingRef> {
 fn contains_type_var(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
-        Type::Fn(params, ret) => params.iter().any(contains_type_var) || contains_type_var(ret),
+        Type::Fn(params, ret) => {
+            params.iter().any(|(_, p)| contains_type_var(p)) || contains_type_var(ret)
+        }
         Type::Named(_, args) => args.iter().any(contains_type_var),
         Type::App(ctor, args) => contains_type_var(ctor) || args.iter().any(contains_type_var),
         Type::Tuple(elems) => elems.iter().any(contains_type_var),

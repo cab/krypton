@@ -199,7 +199,7 @@ pub struct TraitSummary {
 #[derive(Clone, Debug)]
 pub struct TraitMethodSummary {
     pub name: String,
-    pub param_types: Vec<Type>,
+    pub param_types: Vec<(crate::types::ParamMode, Type)>,
     pub return_type: Type,
     pub constraints: Vec<(TraitName, TypeVarId)>,
 }
@@ -698,7 +698,12 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
                 let params = m
                     .param_types
                     .iter()
-                    .map(|p| format!("{p}"))
+                    .map(|(mode, p)| match (mode, p) {
+                        (crate::types::ParamMode::Borrow, Type::Own(inner)) => {
+                            format!("&~{inner}")
+                        }
+                        _ => format!("{p}"),
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 out.push_str(&format!(

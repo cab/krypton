@@ -14,8 +14,57 @@ fn display_primitives() {
 
 #[test]
 fn display_fn_type() {
-    let ty = Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::Bool));
+    let ty = Type::fn_consuming(vec![Type::Int, Type::Int], Type::Bool);
     assert_eq!(ty.to_string(), "(Int, Int) -> Bool");
+}
+
+#[test]
+fn type_fn_carries_param_modes() {
+    let file_t = Type::Named("File".into(), vec![]);
+    let ty = Type::Fn(
+        vec![
+            (ParamMode::Borrow, Type::Own(Box::new(file_t.clone()))),
+            (ParamMode::Consume, Type::Int),
+        ],
+        Box::new(Type::Unit),
+    );
+    match &ty {
+        Type::Fn(params, ret) => {
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].0, ParamMode::Borrow);
+            assert_eq!(params[1].0, ParamMode::Consume);
+            assert_eq!(**ret, Type::Unit);
+        }
+        _ => panic!("expected Type::Fn"),
+    }
+    assert_eq!(ty.to_string(), "(&~File, Int) -> Unit");
+}
+
+#[test]
+fn type_fn_consuming_helper_default() {
+    let ty = Type::fn_consuming(vec![Type::Int, Type::Bool], Type::Unit);
+    match &ty {
+        Type::Fn(params, _) => {
+            assert!(params.iter().all(|(m, _)| *m == ParamMode::Consume));
+            assert_eq!(params.len(), 2);
+        }
+        _ => panic!("expected Type::Fn"),
+    }
+}
+
+#[test]
+fn type_fn_display_borrow_slot() {
+    let file_t = Type::Named("File".into(), vec![]);
+    let borrow = Type::Fn(
+        vec![(ParamMode::Borrow, Type::Own(Box::new(file_t.clone())))],
+        Box::new(Type::Unit),
+    );
+    assert_eq!(borrow.to_string(), "(&~File) -> Unit");
+    let consume = Type::Fn(
+        vec![(ParamMode::Consume, Type::Own(Box::new(file_t)))],
+        Box::new(Type::Unit),
+    );
+    assert_eq!(consume.to_string(), "(~File) -> Unit");
 }
 
 #[test]
@@ -63,7 +112,7 @@ fn display_all_types_snapshot() {
         ("Unit", Type::Unit),
         (
             "Fn",
-            Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::Bool)),
+            Type::fn_consuming(vec![Type::Int, Type::Int], Type::Bool),
         ),
         ("Var", Type::Var(a)),
         ("Named", Type::Named("List".into(), vec![Type::Int])),
@@ -94,10 +143,10 @@ fn substitute_fn_type() {
     let mut gen = TypeVarGen::new();
     let a = gen.fresh();
     // Fn([Var(a)], Var(a)) with {a -> Int} → Fn([Int], Int)
-    let ty = Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(a)));
+    let ty = Type::fn_consuming(vec![Type::Var(a)], Type::Var(a));
     let sub = Substitution::bind(a, Type::Int);
     let result = sub.apply(&ty);
-    assert_eq!(result, Type::Fn(vec![Type::Int], Box::new(Type::Int)));
+    assert_eq!(result, Type::fn_consuming(vec![Type::Int], Type::Int));
     assert_eq!(result.to_string(), "(Int) -> Int");
 }
 
@@ -111,7 +160,7 @@ fn empty_substitution_is_identity() {
     let ty = Type::Var(a);
     assert_eq!(sub.apply(&ty), Type::Var(a));
 
-    let complex = Type::Fn(vec![Type::Var(a)], Box::new(Type::Int));
+    let complex = Type::fn_consuming(vec![Type::Var(a)], Type::Int);
     assert_eq!(sub.apply(&complex), complex);
 }
 
@@ -146,7 +195,7 @@ fn composed_equals_sequential() {
     let s2 = Substitution::bind(b, Type::Int); // b -> Int
     let composed = s2.compose(&s1);
 
-    let ty = Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b)));
+    let ty = Type::fn_consuming(vec![Type::Var(a)], Type::Var(b));
     // Sequential: apply s1 first, then s2
     let sequential = s2.apply(&s1.apply(&ty));
     let via_composed = composed.apply(&ty);
@@ -225,7 +274,7 @@ fn type_scheme_poly_display() {
     let scheme = TypeScheme {
         vars: vec![a, b],
         constraints: Vec::new(),
-        ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
+        ty: Type::fn_consuming(vec![Type::Var(a)], Type::Var(b)),
         var_names: HashMap::new(),
     };
     insta::assert_snapshot!(scheme.to_string(), @"forall a b. (a) -> b");
@@ -239,7 +288,7 @@ fn type_scheme_instantiate() {
     let scheme = TypeScheme {
         vars: vec![a, b],
         constraints: Vec::new(),
-        ty: Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(b))),
+        ty: Type::fn_consuming(vec![Type::Var(a)], Type::Var(b)),
         var_names: HashMap::new(),
     };
     let instantiated = scheme.instantiate(&mut || gen.fresh());
@@ -251,7 +300,7 @@ fn type_scheme_instantiate() {
     match &instantiated {
         Type::Fn(params, ret) => {
             // params[0] and ret should both be Var, and different from a,b
-            match (&params[0], ret.as_ref()) {
+            match (&params[0].1, ret.as_ref()) {
                 (Type::Var(v1), Type::Var(v2)) => {
                     assert_ne!(*v1, a);
                     assert_ne!(*v1, b);
@@ -290,7 +339,7 @@ fn apply_scheme_respects_quantified_vars() {
     let scheme = TypeScheme {
         vars: vec![a],
         constraints: Vec::new(),
-        ty: Type::Fn(vec![Type::Var(a), Type::Var(b)], Box::new(Type::Var(a))),
+        ty: Type::fn_consuming(vec![Type::Var(a), Type::Var(b)], Type::Var(a)),
         var_names: HashMap::new(),
     };
     // Substituting {a -> Int, b -> Bool}: var a is quantified so should NOT be substituted
@@ -300,6 +349,6 @@ fn apply_scheme_respects_quantified_vars() {
     let result = sub.apply_scheme(&scheme);
     assert_eq!(
         result.ty,
-        Type::Fn(vec![Type::Var(a), Type::Bool], Box::new(Type::Var(a)))
+        Type::fn_consuming(vec![Type::Var(a), Type::Bool], Type::Var(a))
     );
 }

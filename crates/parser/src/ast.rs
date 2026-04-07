@@ -128,7 +128,7 @@ pub struct FnDecl {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum ParamMode {
     Consume,
     Borrow,

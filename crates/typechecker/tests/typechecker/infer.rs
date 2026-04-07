@@ -42,6 +42,24 @@ fn infer_module_fn(src: &str, fn_name: &str) -> String {
     }
 }
 
+fn infer_module_scheme(src: &str, fn_name: &str) -> krypton_typechecker::types::TypeScheme {
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {:?}", errors);
+    let (modules, _) = infer::infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("inference failed");
+    modules[0]
+        .fn_types
+        .iter()
+        .find(|e| e.name == fn_name)
+        .map(|e| e.scheme.clone())
+        .unwrap_or_else(|| panic!("function {fn_name} not found"))
+}
+
 fn infer(src: &str) -> String {
     let expr = parse_expr_via_module(src);
 
@@ -3030,4 +3048,31 @@ fn infer_anonymous_vars_renumbered() {
         infer_module_fn("fun id(x) = x", "id"),
         @"forall a. (a) -> a"
     );
+}
+
+#[test]
+fn borrow_slot_preserved_in_scheme() {
+    use krypton_typechecker::types::{ParamMode, Type};
+    let scheme = infer_module_scheme(
+        "type File = { fd: Int }\nfun read(&r: ~File, n: Int) -> Int = 0",
+        "read",
+    );
+    let Type::Fn(params, _) = &scheme.ty else {
+        panic!("expected Fn, got {:?}", scheme.ty);
+    };
+    assert_eq!(params[0].0, ParamMode::Borrow);
+    assert_eq!(params[1].0, ParamMode::Consume);
+}
+
+#[test]
+fn consume_slot_stays_consume_in_scheme() {
+    use krypton_typechecker::types::{ParamMode, Type};
+    let scheme = infer_module_scheme(
+        "type File = { fd: Int }\nfun close(r: ~File) -> Unit = ()",
+        "close",
+    );
+    let Type::Fn(params, _) = &scheme.ty else {
+        panic!("expected Fn, got {:?}", scheme.ty);
+    };
+    assert_eq!(params[0].0, ParamMode::Consume);
 }

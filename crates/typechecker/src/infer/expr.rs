@@ -104,9 +104,9 @@ impl<'a> InferenceContext<'a> {
 
     pub fn extract_fn_params(&self, ty: &Type) -> Option<Vec<Type>> {
         match ty {
-            Type::Fn(params, _) => Some(params.clone()),
+            Type::Fn(params, _) => Some(params.iter().map(|(_, t)| t.clone()).collect()),
             Type::Own(inner) => match inner.as_ref() {
-                Type::Fn(params, _) => Some(params.clone()),
+                Type::Fn(params, _) => Some(params.iter().map(|(_, t)| t.clone()).collect()),
                 _ => None,
             },
             _ => None,
@@ -204,7 +204,8 @@ impl<'a> InferenceContext<'a> {
                     ));
                 }
                 // Per-arg coerce_unify: directional, catches fabrication structurally
-                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate()
+                for (i, (arg_ty, (_, param_ty))) in
+                    arg_types.iter().zip(param_types.iter()).enumerate()
                 {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
@@ -245,7 +246,7 @@ impl<'a> InferenceContext<'a> {
                 // MaybeOwn preserves the possibility of ~T being needed once the callee resolves.
                 let deferred_args: Vec<Type> =
                     arg_types.iter().map(|t| super::defer_own(t, self.subst)).collect();
-                let expected_fn = Type::Fn(deferred_args, Box::new(ret_var.clone()));
+                let expected_fn = Type::fn_consuming(deferred_args, ret_var.clone());
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
@@ -461,7 +462,7 @@ impl<'a> InferenceContext<'a> {
                 other => other,
             };
             if let Type::Fn(params, _) = unwrapped {
-                Some(params.clone())
+                Some(params.iter().map(|(_, t)| t.clone()).collect())
             } else {
                 None
             }
@@ -547,7 +548,8 @@ impl<'a> InferenceContext<'a> {
                     ));
                 }
                 // Per-arg coerce_unify: directional, catches fabrication structurally
-                for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate()
+                for (i, (arg_ty, (_, param_ty))) in
+                    arg_types.iter().zip(param_types.iter()).enumerate()
                 {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
@@ -617,7 +619,7 @@ impl<'a> InferenceContext<'a> {
                 // MaybeOwn preserves the possibility of ~T being needed once the callee resolves.
                 let deferred_args: Vec<Type> =
                     arg_types.iter().map(|t| super::defer_own(t, self.subst)).collect();
-                let expected_fn = Type::Fn(deferred_args, Box::new(ret_var.clone()));
+                let expected_fn = Type::fn_consuming(deferred_args, ret_var.clone());
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
@@ -651,16 +653,17 @@ impl<'a> InferenceContext<'a> {
         expected_type: Option<&Type>,
     ) -> Result<TypedExpr, SpannedTypeError> {
         // Extract expected parameter types from the expected_type if it's a function type.
-        let expected_params: Option<&[Type]> = expected_type.and_then(|et| {
-            let unwrapped = match et {
-                Type::Own(inner) => inner.as_ref(),
-                other => other,
-            };
-            match unwrapped {
-                Type::Fn(params, _) => Some(params.as_slice()),
-                _ => None,
-            }
-        });
+        let expected_params: Option<&[(crate::types::ParamMode, Type)]> =
+            expected_type.and_then(|et| {
+                let unwrapped = match et {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                match unwrapped {
+                    Type::Fn(params, _) => Some(params.as_slice()),
+                    _ => None,
+                }
+            });
         let mut seen_params = HashSet::new();
         for p in params.iter() {
             if !seen_params.insert(&p.name) {
@@ -676,7 +679,7 @@ impl<'a> InferenceContext<'a> {
         for (i, p) in params.iter().enumerate() {
             let tv = Type::Var(self.fresh());
             if let Some(expected) = expected_params {
-                if let Some(expected_ty) = expected.get(i) {
+                if let Some((_, expected_ty)) = expected.get(i) {
                     unify(&tv, expected_ty, self.subst)
                         .map_err(|e| super::spanned(e, p.span))?;
                 }
@@ -697,7 +700,12 @@ impl<'a> InferenceContext<'a> {
         self.env.pop_scope();
         let param_types: Vec<Type> = param_types.iter().map(|t| self.subst.apply(t)).collect();
         let body_ty = self.subst.apply(&body_typed.ty);
-        let fn_ty = Type::Fn(param_types, Box::new(body_ty));
+        let fn_params: Vec<(crate::types::ParamMode, Type)> = params
+            .iter()
+            .zip(param_types)
+            .map(|(p, ty)| (p.mode, ty))
+            .collect();
+        let fn_ty = Type::Fn(fn_params, Box::new(body_ty));
         let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
         let ty = if let Some(cap_name) =
             super::first_own_capture(body, &param_names, self.env, self.subst, &body_typed)

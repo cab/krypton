@@ -345,9 +345,9 @@ pub(super) fn synthesize_eq_body(
         }
     };
 
-    let fn_ty = Type::Fn(
+    let fn_ty = Type::fn_consuming(
         vec![target_type.clone(), target_type.clone()],
-        Box::new(Type::Bool),
+        Type::Bool,
     );
     (body, fn_ty)
 }
@@ -397,7 +397,7 @@ pub(super) fn synthesize_show_body(
             kind: TypedExprKind::App {
                 func: Box::new(TypedExpr {
                     kind: TypedExprKind::Var("show".to_string()),
-                    ty: Type::Fn(vec![arg_ty], Box::new(Type::String)),
+                    ty: Type::fn_consuming(vec![arg_ty], Type::String),
                     span,
                     resolved_ref: trait_id
                         .clone()
@@ -497,7 +497,7 @@ pub(super) fn synthesize_show_body(
         }
     };
 
-    let fn_ty = Type::Fn(vec![target_type.clone()], Box::new(Type::String));
+    let fn_ty = Type::fn_consuming(vec![target_type.clone()], Type::String);
     (body, fn_ty)
 }
 
@@ -531,7 +531,7 @@ pub(super) fn synthesize_hash_body(
             kind: TypedExprKind::App {
                 func: Box::new(TypedExpr {
                     kind: TypedExprKind::Var("hash".to_string()),
-                    ty: Type::Fn(vec![arg_ty], Box::new(Type::Int)),
+                    ty: Type::fn_consuming(vec![arg_ty], Type::Int),
                     span,
                     resolved_ref: trait_id
                         .clone()
@@ -667,6 +667,6 @@ pub(super) fn synthesize_hash_body(
         }
     };
 
-    let fn_ty = Type::Fn(vec![target_type.clone()], Box::new(Type::Int));
+    let fn_ty = Type::fn_consuming(vec![target_type.clone()], Type::Int);
     (body, fn_ty)
 }

@@ -29,12 +29,14 @@ fn bare_function_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedCallableRef)> {
 fn resolve_function_ref_requirement_type(
     trait_name: &str,
     type_var: TypeVarId,
-    declared_param_types: &[Type],
-    actual_param_types: &[Type],
+    declared_param_types: &[(crate::types::ParamMode, Type)],
+    actual_param_types: &[(crate::types::ParamMode, Type)],
 ) -> Option<Type> {
     let _ = trait_name;
     let mut bindings = HashMap::new();
-    for (declared, actual) in declared_param_types.iter().zip(actual_param_types.iter()) {
+    for ((_, declared), (_, actual)) in
+        declared_param_types.iter().zip(actual_param_types.iter())
+    {
         if !match_type_with_bindings(declared, actual, &mut bindings) {
             return None;
         }
@@ -124,7 +126,7 @@ pub(super) fn collect_type_var_bindings_strict(
             p_params
                 .iter()
                 .zip(a_params.iter())
-                .all(|(p, a)| collect_type_var_bindings_strict(p, a, bindings))
+                .all(|((_, p), (_, a))| collect_type_var_bindings_strict(p, a, bindings))
                 && collect_type_var_bindings_strict(p_ret, a_ret, bindings)
         }
         (Type::Tuple(p_elems), Type::Tuple(a_elems)) => p_elems
@@ -440,7 +442,9 @@ fn walk_trait_method_calls(
                     if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
                         if !method.constraints.is_empty() {
                             let mut bindings = HashMap::new();
-                            for (pattern, arg) in method.param_types.iter().zip(args.iter()) {
+                            for ((_, pattern), arg) in
+                                method.param_types.iter().zip(args.iter())
+                            {
                                 collect_type_var_bindings_strict(
                                     pattern,
                                     &subst.apply(&arg.ty),
@@ -483,8 +487,10 @@ fn walk_trait_method_calls(
                                 Type::Fn(params, _) => params.as_slice(),
                                 _ => &[],
                             };
-                            let actual_param_types: Vec<Type> =
-                                args.iter().map(|a| subst.apply(&a.ty)).collect();
+                            let actual_param_types: Vec<(crate::types::ParamMode, Type)> = args
+                                .iter()
+                                .map(|a| (crate::types::ParamMode::Consume, subst.apply(&a.ty)))
+                                .collect();
                             for (req_trait, req_var) in &scheme.constraints {
                                 if let Some(resolved) = resolve_function_ref_requirement_type(
                                     &req_trait.local_name,
@@ -630,7 +636,9 @@ pub(super) fn check_trait_instances(
                     if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
                         let mut bindings = HashMap::new();
                         // Bind from params
-                        for (pattern, arg) in method.param_types.iter().zip(args.iter()) {
+                        for ((_, pattern), arg) in
+                            method.param_types.iter().zip(args.iter())
+                        {
                             collect_type_var_bindings_strict(
                                 pattern,
                                 &subst.apply(&arg.ty),
@@ -779,7 +787,9 @@ pub(super) fn check_trait_instances(
                                 let resolved_ty = fn_scheme.and_then(|scheme| {
                                     if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                                         let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
-                                        for (pattern, arg) in param_types.iter().zip(args.iter()) {
+                                        for ((_, pattern), arg) in
+                                            param_types.iter().zip(args.iter())
+                                        {
                                             if !collect_type_var_bindings_strict(
                                                 pattern,
                                                 &subst.apply(&arg.ty),

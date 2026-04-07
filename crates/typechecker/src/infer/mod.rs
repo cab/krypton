@@ -323,7 +323,7 @@ pub(super) fn match_type_with_bindings(
                 && lhs_params
                     .iter()
                     .zip(rhs_params.iter())
-                    .all(|(lhs, rhs)| match_type_with_bindings(lhs, rhs, bindings))
+                    .all(|((_, lhs), (_, rhs))| match_type_with_bindings(lhs, rhs, bindings))
                 && match_type_with_bindings(lhs_ret, rhs_ret, bindings)
         }
         (Type::Named(lhs_name, lhs_args), Type::Named(rhs_name, rhs_args)) => {
@@ -345,7 +345,7 @@ fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
             out.insert(*id);
         }
         Type::Fn(params, ret) => {
-            for p in params {
+            for (_, p) in params {
                 free_vars_into(p, out);
             }
             free_vars_into(ret, out);
@@ -567,23 +567,20 @@ fn resolve_impl_target(
             ))
         }
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
-            let mut resolved_params = Vec::new();
+            let mut resolved_params: Vec<(crate::types::ParamMode, Type)> = Vec::new();
             for p in params {
-                match &p.ty {
-                    krypton_parser::ast::TypeExpr::Wildcard { .. } => {
-                        resolved_params.push(Type::Var(gen.fresh()));
-                    }
-                    other => {
-                        resolved_params.push(type_registry::resolve_type_expr(
-                            other,
-                            type_param_map,
-                            type_param_arity,
-                            registry,
-                            type_registry::ResolutionContext::UserAnnotation,
-                            None,
-                        )?);
-                    }
-                }
+                let ty = match &p.ty {
+                    krypton_parser::ast::TypeExpr::Wildcard { .. } => Type::Var(gen.fresh()),
+                    other => type_registry::resolve_type_expr(
+                        other,
+                        type_param_map,
+                        type_param_arity,
+                        registry,
+                        type_registry::ResolutionContext::UserAnnotation,
+                        None,
+                    )?,
+                };
+                resolved_params.push((p.mode, ty));
             }
             let resolved_ret = match ret.as_ref() {
                 krypton_parser::ast::TypeExpr::Wildcard { .. } => Type::Var(gen.fresh()),
@@ -629,9 +626,9 @@ fn strip_anon_type_args(ty: &Type, type_var_ids: &HashMap<String, TypeVarId>) ->
             Type::Named(name.clone(), kept)
         }
         Type::Fn(params, ret) => {
-            let kept_params: Vec<Type> = params
+            let kept_params: Vec<(crate::types::ParamMode, Type)> = params
                 .iter()
-                .filter(|p| match p {
+                .filter(|(_, p)| match p {
                     Type::Var(id) => known_var_ids.contains(id),
                     _ => true,
                 })
@@ -755,7 +752,10 @@ fn remap_type_vars(ty: &Type, remap: &HashMap<TypeVarId, TypeVarId>) -> Type {
     match ty {
         Type::Var(id) => Type::Var(remap.get(id).copied().unwrap_or(*id)),
         Type::Fn(params, ret) => Type::Fn(
-            params.iter().map(|p| remap_type_vars(p, remap)).collect(),
+            params
+                .iter()
+                .map(|(m, p)| (*m, remap_type_vars(p, remap)))
+                .collect(),
             Box::new(remap_type_vars(ret, remap)),
         ),
         Type::Named(name, args) => Type::Named(
@@ -954,7 +954,7 @@ fn capture_demands_own(
                 if is_capture(arg, capture_name) {
                     // Determine if this arg position demands own
                     let demands = if let Some(params) = fn_params {
-                        if let Some(pty) = params.get(i) {
+                        if let Some((_, pty)) = params.get(i) {
                             let resolved = subst.apply(pty);
                             matches!(resolved, Type::Own(_) | Type::Var(_) | Type::MaybeOwn(_, _))
                         } else {
@@ -1172,7 +1172,7 @@ fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type
         Type::Fn(params, ret) => {
             let new_params = params
                 .iter()
-                .map(|p| substitute_type_var(p, var_id, replacement))
+                .map(|(m, p)| (*m, substitute_type_var(p, var_id, replacement)))
                 .collect();
             let new_ret = substitute_type_var(ret, var_id, replacement);
             Type::Fn(new_params, Box::new(new_ret))
@@ -1485,7 +1485,7 @@ fn process_extern_methods(
             }
         }
 
-        let fn_ty = Type::Fn(param_types.clone(), Box::new(ret));
+        let fn_ty = Type::fn_consuming(param_types.clone(), ret);
         let scheme = if scheme_vars.is_empty() {
             TypeScheme::mono(fn_ty)
         } else {
@@ -2540,7 +2540,14 @@ impl ModuleInferenceState {
             functions.push(TypedFnDecl {
                 name: decl.name.clone(),
                 visibility: decl.visibility,
-                params: decl.params.iter().map(|p| p.name.clone()).collect(),
+                params: decl
+                    .params
+                    .iter()
+                    .map(|p| crate::typed_ast::TypedParam {
+                        name: p.name.clone(),
+                        mode: p.mode,
+                    })
+                    .collect(),
                 body,
                 close_self_type: None,
                 fn_scope_id: crate::typed_ast::ScopeId(u32::MAX),
@@ -2605,7 +2612,7 @@ impl ModuleInferenceState {
             let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
             if let Some(scheme) = fn_schemes.get(&func.name) {
                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
-                    for pty in param_types.iter() {
+                    for (_, pty) in param_types.iter() {
                         for v in free_vars(pty) {
                             fn_type_param_vars.insert(v);
                         }
@@ -2668,7 +2675,7 @@ impl ModuleInferenceState {
                 .iter()
                 .map(|m| (m.name.clone(), m.param_types.len()))
                 .collect();
-            let method_tc_types: HashMap<String, (Vec<Type>, Type)> = info
+            let method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)> = info
                 .methods
                 .iter()
                 .map(|m| {
@@ -3132,10 +3139,10 @@ fn register_imported_trait_defs(
 
         let mut trait_methods = Vec::new();
         for method in &trait_def.methods {
-            let param_types: Vec<Type> = method
+            let param_types: Vec<(crate::types::ParamMode, Type)> = method
                 .param_types
                 .iter()
-                .map(|t| remap_type_vars(t, &remap))
+                .map(|(m, t)| (*m, remap_type_vars(t, &remap)))
                 .collect();
             let return_type = remap_type_vars(&method.return_type, &remap);
 
@@ -3266,9 +3273,9 @@ fn register_extern_traits(
             .map_err(|e| spanned(e, method.span))?;
 
             // Build TypeScheme for the method: forall [tv_id]. param_types -> return_type
-            let fn_type = Type::Fn(
+            let fn_type = Type::fn_consuming(
                 param_types.clone(),
-                Box::new(return_type.clone()),
+                return_type.clone(),
             );
             let var_names: HashMap<TypeVarId, String> = all_tv_ids
                 .iter()
@@ -3305,16 +3312,22 @@ fn register_extern_traits(
                 .map(|(_, t)| t.clone())
                 .collect();
 
+            let param_types_with_modes: Vec<(crate::types::ParamMode, Type)> = param_types
+                .iter()
+                .cloned()
+                .map(|t| (crate::types::ParamMode::Consume, t))
+                .collect();
+
             trait_methods.push(TraitMethod {
                 name: method.name.clone(),
-                param_types: param_types.clone(),
+                param_types: param_types_with_modes.clone(),
                 return_type: return_type.clone(),
                 constraints: vec![],
             });
 
             exported_methods.push(ExportedTraitMethod {
                 name: method.name.clone(),
-                param_types: param_types.clone(),
+                param_types: param_types_with_modes.clone(),
                 return_type: return_type.clone(),
                 constraints: vec![],
             });
@@ -3458,7 +3471,9 @@ fn register_local_traits(
                 }
 
                 let mut param_types = Vec::new();
+                let mut param_modes: Vec<crate::types::ParamMode> = Vec::new();
                 for p in &method.params {
+                    param_modes.push(p.mode);
                     if let Some(ref ty_expr) = p.ty {
                         param_types.push(
                             type_registry::resolve_type_expr(
@@ -3491,7 +3506,14 @@ fn register_local_traits(
                     Type::Var(state.gen.fresh())
                 };
 
-                let fn_ty = Type::Fn(param_types.clone(), Box::new(return_type.clone()));
+                let fn_ty = Type::Fn(
+                    param_modes
+                        .iter()
+                        .copied()
+                        .zip(param_types.iter().cloned())
+                        .collect(),
+                    Box::new(return_type.clone()),
+                );
                 // Include ALL trait type parameter ids (not just the primary) so
                 // `scheme.instantiate()` freshens secondary trait params at every
                 // call site. Without this, `b` in `Convert[a, b]` would leak across
@@ -3536,16 +3558,22 @@ fn register_local_traits(
                     }
                 }
 
+                let param_types_with_modes: Vec<(crate::types::ParamMode, Type)> = param_modes
+                    .iter()
+                    .copied()
+                    .zip(param_types.iter().cloned())
+                    .collect();
+
                 exported_methods.push(ExportedTraitMethod {
                     name: method.name.clone(),
-                    param_types: param_types.clone(),
+                    param_types: param_types_with_modes.clone(),
                     return_type: return_type.clone(),
                     constraints: method_constraints.clone(),
                 });
 
                 trait_methods.push(TraitMethod {
                     name: method.name.clone(),
-                    param_types,
+                    param_types: param_types_with_modes,
                     return_type,
                     constraints: method_constraints,
                 });
@@ -3726,9 +3754,13 @@ fn process_deriving(
                     _ => continue,
                 };
 
-                let params = match trait_name.as_str() {
-                    "Eq" => vec!["__a".to_string(), "__b".to_string()],
-                    "Show" | "Hash" => vec!["__a".to_string()],
+                let mk_param = |n: &str| crate::typed_ast::TypedParam {
+                    name: n.to_string(),
+                    mode: crate::types::ParamMode::Consume,
+                };
+                let params: Vec<crate::typed_ast::TypedParam> = match trait_name.as_str() {
+                    "Eq" => vec![mk_param("__a"), mk_param("__b")],
+                    "Show" | "Hash" => vec![mk_param("__a")],
                     _ => vec![],
                 };
 
@@ -4492,7 +4524,13 @@ fn infer_function_bodies<'a>(
             // Use join_types (not unify) to reconcile the inferred fn type with the pre-bound
             // SCC type. This is not a value flow — it's two views of the same function that may
             // differ in Own wrappers (e.g. body infers Int, recursive call bound ~Int from literals).
-            let fn_ty = Type::Fn(param_types, Box::new(ret_ty.clone()));
+            let fn_params: Vec<(crate::types::ParamMode, Type)> = decl
+                .params
+                .iter()
+                .zip(param_types.into_iter())
+                .map(|(p, t)| (p.mode, t))
+                .collect();
+            let fn_ty = Type::Fn(fn_params, Box::new(ret_ty.clone()));
             crate::unify::join_types(&fn_ty, tv, &mut state.subst)
                 .map_err(|e| spanned(e, decl.span))?;
 
@@ -4578,7 +4616,7 @@ fn infer_function_bodies<'a>(
             let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
             if let Some(scheme) = &result_schemes[idx] {
                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
-                    for pty in param_types.iter() {
+                    for (_, pty) in param_types.iter() {
                         for v in free_vars(pty) {
                             fn_type_param_vars.insert(v);
                         }
@@ -4725,7 +4763,7 @@ fn typecheck_impl_methods(
                 // freshened per-impl so that unifications from one impl do not
                 // leak into the shared substitution and pollute the next impl.
                 let mut extra_subst: HashMap<TypeVarId, Type> = HashMap::new();
-                for pt in &trait_method.param_types {
+                for (_, pt) in &trait_method.param_types {
                     for v in free_vars(pt) {
                         if v != tv_id {
                             extra_subst
@@ -4752,7 +4790,7 @@ fn typecheck_impl_methods(
                 let concrete_param_types: Vec<Type> = trait_method
                     .param_types
                     .iter()
-                    .map(|t| substitute_type_var(&freshen_extras(t), tv_id, &resolved_target))
+                    .map(|(_, t)| substitute_type_var(&freshen_extras(t), tv_id, &resolved_target))
                     .collect();
                 let _concrete_ret_type = substitute_type_var(
                     &freshen_extras(&trait_method.return_type),
@@ -4926,7 +4964,13 @@ fn typecheck_impl_methods(
                     },
                 )?;
 
-                let fn_ty = Type::Fn(final_param_types, Box::new(final_ret_type));
+                let fn_params: Vec<(crate::types::ParamMode, Type)> = method
+                    .params
+                    .iter()
+                    .zip(final_param_types.into_iter())
+                    .map(|(p, t)| (p.mode, t))
+                    .collect();
+                let fn_ty = Type::Fn(fn_params, Box::new(final_ret_type));
                 let scheme = TypeScheme {
                     vars: vec![],
                     constraints: Vec::new(),
@@ -4936,7 +4980,14 @@ fn typecheck_impl_methods(
 
                 instance_methods.push(typed_ast::InstanceMethod {
                     name: method.name.clone(),
-                    params: method.params.iter().map(|p| p.name.clone()).collect(),
+                    params: method
+                        .params
+                        .iter()
+                        .map(|p| crate::typed_ast::TypedParam {
+                            name: p.name.clone(),
+                            mode: p.mode,
+                        })
+                        .collect(),
                     body: body_typed,
                     scheme,
                     constraint_pairs: method_constraint_pairs,

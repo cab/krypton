@@ -64,7 +64,7 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
     match &ty {
         Type::Var(id) => *id == var,
         Type::Fn(params, ret) => {
-            params.iter().any(|p| occurs_in(var, p, subst)) || occurs_in(var, ret, subst)
+            params.iter().any(|(_, p)| occurs_in(var, p, subst)) || occurs_in(var, ret, subst)
         }
         Type::Named(_, args) => args.iter().any(|a| occurs_in(var, a, subst)),
         Type::App(ctor, args) => {
@@ -160,7 +160,7 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
                     actual: p2.len(),
                 });
             }
-            for (a, b) in p1.iter().zip(p2.iter()) {
+            for ((_, a), (_, b)) in p1.iter().zip(p2.iter()) {
                 unify(a, b, subst)?;
             }
             unify(r1, r2, subst)
@@ -489,7 +489,7 @@ fn coerce_unify_inner(
                 actual: params_a.len(),
             });
         }
-        for (pa, pb) in params_a.iter().zip(params_b.iter()) {
+        for ((_, pa), (_, pb)) in params_a.iter().zip(params_b.iter()) {
             coerce_unify_inner(pb, pa, subst, false)?; // FLIP: contravariant; fn positions are not constructor
         }
         return coerce_unify_inner(ret_a, ret_b, subst, false); // covariant
@@ -587,7 +587,7 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
                 actual: params_b.len(),
             });
         }
-        for (pa, pb) in params_a.iter().zip(params_b.iter()) {
+        for ((_, pa), (_, pb)) in params_a.iter().zip(params_b.iter()) {
             join_types(pa, pb, subst)?;
         }
         return join_types(ret_a, ret_b, subst);

@@ -44,7 +44,7 @@ impl TraitInfo {
 
 pub struct TraitMethod {
     pub name: String,
-    pub param_types: Vec<Type>,
+    pub param_types: Vec<(crate::types::ParamMode, Type)>,
     pub return_type: Type,
     /// Constraints on the method's own type parameters (not the trait's type param).
     /// e.g., `fun traverse[b](x: f[a]) -> f[b] where b: Default` stores `[(Default, TypeVarId_for_b)]`
@@ -692,7 +692,7 @@ fn types_match_with_bindings(
                 && params1
                     .iter()
                     .zip(params2)
-                    .all(|(a, b)| types_match_with_bindings(a, b, bindings))
+                    .all(|((_, a), (_, b))| types_match_with_bindings(a, b, bindings))
                 && types_match_with_bindings(ret1, ret2, bindings)
         }
         (Type::Tuple(a), Type::Tuple(b)) => {
@@ -719,10 +719,10 @@ fn reconstruct_ctor_type(ctor: &CtorId, bound_args: &[Type]) -> Type {
     match ctor {
         CtorId::Fn(_) => {
             if bound_args.is_empty() {
-                Type::Fn(vec![], Box::new(Type::FnHole))
+                Type::fn_consuming(vec![], Type::FnHole)
             } else {
                 let (params, ret) = bound_args.split_at(bound_args.len() - 1);
-                Type::Fn(params.to_vec(), Box::new(ret[0].clone()))
+                Type::fn_consuming(params.to_vec(), ret[0].clone())
             }
         }
         CtorId::Named(name) => Type::Named(name.clone(), bound_args.to_vec()),
@@ -733,7 +733,7 @@ fn split_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
     match ty {
         Type::Named(name, args) => Some((CtorId::Named(name.clone()), args.clone())),
         Type::Fn(params, ret) => {
-            let mut args: Vec<Type> = params.clone();
+            let mut args: Vec<Type> = params.iter().map(|(_, t)| t.clone()).collect();
             args.push(*ret.clone());
             Some((CtorId::Fn(params.len()), args))
         }
@@ -746,7 +746,7 @@ fn split_instance_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
     match ty {
         Type::Named(name, args) => Some((CtorId::Named(name.clone()), args.clone())),
         Type::Fn(params, ret) => {
-            let mut args: Vec<Type> = params.clone();
+            let mut args: Vec<Type> = params.iter().map(|(_, t)| t.clone()).collect();
             args.push(*ret.clone());
             Some((CtorId::Fn(params.len()), args))
         }
@@ -833,7 +833,9 @@ fn freshen_type_vars(ty: &Type, gen: &mut TypeVarGen) -> Type {
 fn contains_type_var(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
-        Type::Fn(params, ret) => params.iter().any(contains_type_var) || contains_type_var(ret),
+        Type::Fn(params, ret) => {
+            params.iter().any(|(_, p)| contains_type_var(p)) || contains_type_var(ret)
+        }
         Type::Named(_, args) => args.iter().any(contains_type_var),
         Type::App(ctor, args) => contains_type_var(ctor) || args.iter().any(contains_type_var),
         Type::Tuple(elems) => elems.iter().any(contains_type_var),
@@ -865,7 +867,7 @@ fn freshen_inner(
         Type::Fn(params, ret) => Type::Fn(
             params
                 .iter()
-                .map(|p| freshen_inner(p, var_map, gen))
+                .map(|(m, p)| (*m, freshen_inner(p, var_map, gen)))
                 .collect(),
             Box::new(freshen_inner(ret, var_map, gen)),
         ),
@@ -1277,11 +1279,8 @@ mod tests {
     #[test]
     fn types_overlap_fn_type_subsumption() {
         let mut gen = TypeVarGen::new();
-        let a = Type::Fn(
-            vec![Type::Var(gen.fresh())],
-            Box::new(Type::Var(gen.fresh())),
-        );
-        let b = Type::Fn(vec![Type::Int], Box::new(Type::Var(gen.fresh())));
+        let a = Type::fn_consuming(vec![Type::Var(gen.fresh())], Type::Var(gen.fresh()));
+        let b = Type::fn_consuming(vec![Type::Int], Type::Var(gen.fresh()));
         assert!(super::types_overlap(&a, &b));
     }
 

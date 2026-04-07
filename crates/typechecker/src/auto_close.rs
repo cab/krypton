@@ -156,7 +156,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
         // both, the same `enter_scope`/`exit_scope` machinery in the lowerer
         // closes both.
         self.scoped(decl.fn_scope_id, &mut live, |this, live| {
-            for (i, param_name) in decl.params.iter().enumerate() {
+            for (i, param) in decl.params.iter().enumerate() {
                 if let Some(param_ty) = fn_param_types.get(i) {
                     if let Some(type_name) = is_owned_resource(param_ty, this.registry) {
                         // Skip the "self" parameter of a Resource close impl to avoid
@@ -164,7 +164,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                         if close_self_type == Some(type_name.as_str()) {
                             continue;
                         }
-                        live.push((param_name.clone(), type_name));
+                        live.push((param.name.clone(), type_name));
                     }
                 }
             }
@@ -522,7 +522,7 @@ pub fn compute_auto_close(
             .find(|(name, _, _)| name == &decl.name)
             .and_then(|(_, scheme, _)| {
                 if let Type::Fn(params, _) = &scheme.ty {
-                    Some(params.clone())
+                    Some(params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>())
                 } else {
                     None
                 }

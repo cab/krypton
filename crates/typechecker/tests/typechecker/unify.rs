@@ -43,8 +43,8 @@ fn unify_fn_binds_return_var() {
     let a = fresh_var(&mut gen);
     let mut subst = Substitution::new();
 
-    let t1 = Type::Fn(vec![Type::Int], Box::new(a.clone()));
-    let t2 = Type::Fn(vec![Type::Int], Box::new(Type::Bool));
+    let t1 = Type::fn_consuming(vec![Type::Int], a.clone());
+    let t2 = Type::fn_consuming(vec![Type::Int], Type::Bool);
     assert!(unify(&t1, &t2, &mut subst).is_ok());
     assert_eq!(subst.apply(&a), Type::Bool);
 }
@@ -64,8 +64,8 @@ fn unify_infinite_type_fails() {
 #[test]
 fn unify_fn_wrong_arity() {
     let mut subst = Substitution::new();
-    let t1 = Type::Fn(vec![Type::Int], Box::new(Type::Bool));
-    let t2 = Type::Fn(vec![Type::Int, Type::Float], Box::new(Type::Bool));
+    let t1 = Type::fn_consuming(vec![Type::Int], Type::Bool);
+    let t2 = Type::fn_consuming(vec![Type::Int, Type::Float], Type::Bool);
     let err = unify(&t1, &t2, &mut subst).unwrap_err();
     assert_eq!(
         err,
@@ -123,8 +123,8 @@ fn unify_own_vs_bare_succeeds_for_non_fn() {
     let err = unify(&t1, &Type::Int, &mut subst).unwrap_err();
     assert!(matches!(err, TypeError::Mismatch { .. }));
     // own fn(...) vs fn(...) should still fail
-    let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
-    let bare_fn = Type::Fn(vec![], Box::new(Type::Int));
+    let own_fn = Type::Own(Box::new(Type::fn_consuming(vec![], Type::Int)));
+    let bare_fn = Type::fn_consuming(vec![], Type::Int);
     let err = unify(&own_fn, &bare_fn, &mut subst).unwrap_err();
     assert!(matches!(err, TypeError::Mismatch { .. }));
 }
@@ -227,8 +227,8 @@ fn coerce_own_to_own_ok() {
 #[test]
 fn coerce_fn_to_own_fn_ok() {
     let mut subst = Substitution::new();
-    let bare_fn = Type::Fn(vec![], Box::new(Type::Int));
-    let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
+    let bare_fn = Type::fn_consuming(vec![], Type::Int);
+    let own_fn = Type::Own(Box::new(Type::fn_consuming(vec![], Type::Int)));
     // fn → ~fn coercion is OK
     assert!(coerce_unify(&bare_fn, &own_fn, &mut subst).is_ok());
 }
@@ -236,8 +236,8 @@ fn coerce_fn_to_own_fn_ok() {
 #[test]
 fn coerce_own_fn_to_bare_fn_fails() {
     let mut subst = Substitution::new();
-    let bare_fn = Type::Fn(vec![], Box::new(Type::Int));
-    let own_fn = Type::Own(Box::new(Type::Fn(vec![], Box::new(Type::Int))));
+    let bare_fn = Type::fn_consuming(vec![], Type::Int);
+    let own_fn = Type::Own(Box::new(Type::fn_consuming(vec![], Type::Int)));
     // ~fn → fn rejected
     let err = coerce_unify(&own_fn, &bare_fn, &mut subst).unwrap_err();
     assert!(matches!(err, TypeError::FnCapabilityMismatch { .. }));
@@ -251,8 +251,8 @@ fn coerce_fn_param_contravariant_preserves_own() {
     // coerce_unify(Fn([Own(Int)], Int), Fn([Var(a)], Int))
     // Fn params are contravariant: coerce_unify(pb, pa) → coerce_unify(Var(a), Own(Int))
     // Var(a) is on actual side, so it binds to Own(Int) without stripping.
-    let fn_own_param = Type::Fn(vec![Type::Own(Box::new(Type::Int))], Box::new(Type::Int));
-    let fn_var_param = Type::Fn(vec![a.clone()], Box::new(Type::Int));
+    let fn_own_param = Type::fn_consuming(vec![Type::Own(Box::new(Type::Int))], Type::Int);
+    let fn_var_param = Type::fn_consuming(vec![a.clone()], Type::Int);
     assert!(coerce_unify(&fn_own_param, &fn_var_param, &mut subst).is_ok());
     // Contravariant: Var on actual side preserves Own
     assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
@@ -294,7 +294,7 @@ fn mismatch_with_var_names() {
     let var_a = gen.fresh();
     let err = SpannedTypeError {
         error: Box::new(TypeError::Mismatch {
-            expected: Type::Fn(vec![Type::Var(var_a)], Box::new(Type::Int)),
+            expected: Type::fn_consuming(vec![Type::Var(var_a)], Type::Int),
             actual: Type::String,
         }),
         span: (0, 1),

@@ -297,16 +297,17 @@ pub fn resolve_type_expr(
             ))
         }
         TypeExpr::Fn { params, ret, .. } => {
-            let mut param_types = Vec::new();
+            let mut param_types: Vec<(crate::types::ParamMode, Type)> = Vec::new();
             for p in params {
-                param_types.push(resolve_type_expr(
+                let ty = resolve_type_expr(
                     &p.ty,
                     type_param_map,
                     type_param_arity,
                     registry,
                     context,
                     self_type,
-                )?);
+                )?;
+                param_types.push((p.mode, ty));
             }
             let ret_type = resolve_type_expr(
                 ret,
@@ -454,7 +455,7 @@ pub fn process_type_decl(
 
             // Record constructor: positional fn(field_types...) -> NamedType
             let field_types: Vec<Type> = resolved_fields.iter().map(|(_, t)| t.clone()).collect();
-            let ctor_ty = Type::Fn(field_types, Box::new(named_type.clone()));
+            let ctor_ty = Type::fn_consuming(field_types, named_type.clone());
             constructors.push((
                 decl.name.clone(),
                 TypeScheme {
@@ -490,7 +491,7 @@ pub fn process_type_decl(
                     named_type.clone()
                 } else {
                     // Constructor function: fn(fields...) -> NamedType
-                    Type::Fn(resolved_fields.clone(), Box::new(named_type.clone()))
+                    Type::fn_consuming(resolved_fields.clone(), named_type.clone())
                 };
 
                 constructors.push((
@@ -564,7 +565,7 @@ pub fn register_type_from_export(
                 .collect();
 
             let field_types: Vec<Type> = resolved_fields.iter().map(|(_, t)| t.clone()).collect();
-            let ctor_ty = Type::Fn(field_types, Box::new(named_type.clone()));
+            let ctor_ty = Type::fn_consuming(field_types, named_type.clone());
             constructors.push((
                 info.name.clone(),
                 TypeScheme {
@@ -591,7 +592,7 @@ pub fn register_type_from_export(
                 let ctor_ty = if resolved_fields.is_empty() {
                     named_type.clone()
                 } else {
-                    Type::Fn(resolved_fields.clone(), Box::new(named_type.clone()))
+                    Type::fn_consuming(resolved_fields.clone(), named_type.clone())
                 };
 
                 constructors.push((
@@ -642,7 +643,10 @@ fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
             args.iter().map(|a| remap_vars(a, mapping)).collect(),
         ),
         Type::Fn(params, ret) => Type::Fn(
-            params.iter().map(|p| remap_vars(p, mapping)).collect(),
+            params
+                .iter()
+                .map(|(m, p)| (*m, remap_vars(p, mapping)))
+                .collect(),
             Box::new(remap_vars(ret, mapping)),
         ),
         Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| remap_vars(e, mapping)).collect()),

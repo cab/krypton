@@ -330,10 +330,16 @@ pub struct TypedMatchArm {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypedParam {
+    pub name: String,
+    pub mode: crate::types::ParamMode,
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedFnDecl {
     pub name: String,
     pub visibility: Visibility,
-    pub params: Vec<String>,
+    pub params: Vec<TypedParam>,
     pub body: TypedExpr,
     /// For Resource close impl methods, the target type name (e.g., "Handle").
     /// Used by auto-close to skip the self parameter and avoid infinite recursion.
@@ -360,7 +366,7 @@ pub struct TraitDefInfo {
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
     pub is_imported: bool,
     pub type_var_id: TypeVarId,
-    pub method_tc_types: HashMap<String, (Vec<Type>, Type)>, // name -> (param_types, return_type)
+    pub method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)>, // name -> (param_types, return_type)
     /// Method-level constraints: method_name -> Vec<(TraitName, TypeVarId)>
     pub method_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
 }
@@ -386,7 +392,7 @@ pub struct ExportedTraitDef {
 #[derive(Clone)]
 pub struct ExportedTraitMethod {
     pub name: String,
-    pub param_types: Vec<Type>,
+    pub param_types: Vec<(crate::types::ParamMode, Type)>,
     pub return_type: Type,
     /// Method-level constraints on method's own type parameters.
     /// TypeVarIds here are the method's own vars (not the trait's type param), so they don't
@@ -396,8 +402,8 @@ pub struct ExportedTraitMethod {
 
 #[derive(Clone)]
 pub struct InstanceMethod {
-    pub name: String,        // original method name, e.g. "show"
-    pub params: Vec<String>, // parameter names
+    pub name: String,            // original method name, e.g. "show"
+    pub params: Vec<TypedParam>, // parameter names + modes
     pub body: TypedExpr,     // typed method body
     pub scheme: TypeScheme,  // type scheme for the method
     /// Method-level constraints as resolved (TraitName, TypeVarId) pairs for IR lowering.

@@ -610,8 +610,12 @@ fn simple_at(span: Span, kind: SimpleExprKind) -> SimpleExpr {
 // Lowering context
 // ---------------------------------------------------------------------------
 
-/// Per-trait method signature info: (type_var_id, method_name → (param_types, return_type))
-type TraitMethodTypeInfo = (TypeVarId, HashMap<String, (Vec<Type>, Type)>);
+/// Per-trait method signature info: (type_var_id, method_name → (param_types, return_type)).
+/// `param_types` carries `ParamMode` alongside each parameter type so the mode flows
+/// from `TraitMethod` through `TraitDefInfo` into IR; IR itself still strips modes at
+/// point of use (see consumer sites below).
+type TraitMethodTypeInfo =
+    (TypeVarId, HashMap<String, (Vec<(types::ParamMode, Type)>, Type)>);
 
 struct LowerCtx {
     next_var: u32,
@@ -1451,7 +1455,9 @@ impl LowerCtx {
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         let (param_types, return_type) = match &expr.ty {
             Type::Fn(param_types, return_type) => {
-                (param_types.clone(), return_type.as_ref().clone())
+                let stripped: Vec<krypton_typechecker::types::Type> =
+                    param_types.iter().map(|(_, t)| t.clone()).collect();
+                (stripped, return_type.as_ref().clone())
             }
             other => {
                 return Err(LowerError::InternalError(format!(
@@ -1528,7 +1534,9 @@ impl LowerCtx {
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         let (param_types, return_type) = match &expr.ty {
             Type::Fn(param_types, return_type) => {
-                (param_types.clone(), return_type.as_ref().clone())
+                let stripped: Vec<krypton_typechecker::types::Type> =
+                    param_types.iter().map(|(_, t)| t.clone()).collect();
+                (stripped, return_type.as_ref().clone())
             }
             other => {
                 return Err(LowerError::InternalError(format!(
@@ -5011,7 +5019,7 @@ impl LowerCtx {
 
             // Bind from argument types matched against param patterns
             if let Type::Fn(ref param_patterns, _) = scheme.ty {
-                for (pattern, arg) in param_patterns.iter().zip(args.iter()) {
+                for ((_, pattern), arg) in param_patterns.iter().zip(args.iter()) {
                     bind_type_vars(pattern, &arg.ty, &mut type_bindings);
                 }
             }
@@ -5089,8 +5097,11 @@ impl LowerCtx {
                 .or_insert_with(|| type_args[0].clone());
         }
 
-        // Bind from matching the method signature against the concrete type
-        let pattern_fn_ty = Type::Fn(param_patterns.clone(), Box::new(ret_pattern.clone()));
+        // Bind from matching the method signature against the concrete type.
+        // IR strips modes here — it only cares about the type-shape half.
+        let stripped_params: Vec<Type> =
+            param_patterns.iter().map(|(_, t)| t.clone()).collect();
+        let pattern_fn_ty = Type::fn_consuming(stripped_params, ret_pattern.clone());
         let concrete = strip_own(concrete_method_ty);
         bind_type_vars(&pattern_fn_ty, concrete, &mut bindings);
 
@@ -5147,8 +5158,11 @@ impl LowerCtx {
 
         // Extract user param types from expr_ty
         let unwrapped = strip_own(expr_ty);
-        let (user_param_types, return_type) = match unwrapped {
-            Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+        let (user_param_types, return_type): (Vec<Type>, Type) = match unwrapped {
+            Type::Fn(params, ret) => (
+                params.iter().map(|(_, t)| t.clone()).collect(),
+                ret.as_ref().clone(),
+            ),
             other => (vec![], other.clone()),
         };
 
@@ -5252,8 +5266,11 @@ impl LowerCtx {
 
         // 3. Extract user param types from expr_ty
         let unwrapped = strip_own(expr_ty);
-        let (user_param_types, return_type) = match unwrapped {
-            Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+        let (user_param_types, return_type): (Vec<Type>, Type) = match unwrapped {
+            Type::Fn(params, ret) => (
+                params.iter().map(|(_, t)| t.clone()).collect(),
+                ret.as_ref().clone(),
+            ),
             other => (vec![], other.clone()),
         };
 
@@ -5344,8 +5361,11 @@ impl LowerCtx {
             Type::Own(inner) => inner.as_ref(),
             other => other,
         };
-        let (param_types, return_type) = match unwrapped_ty {
-            Type::Fn(param_tys, ret_ty) => (param_tys.clone(), ret_ty.as_ref().clone()),
+        let (param_types, return_type): (Vec<Type>, Type) = match unwrapped_ty {
+            Type::Fn(param_tys, ret_ty) => (
+                param_tys.iter().map(|(_, t)| t.clone()).collect(),
+                ret_ty.as_ref().clone(),
+            ),
             other => {
                 return Err(LowerError::InternalError(format!(
                     "lambda has non-function type: {other:?}"
@@ -5628,7 +5648,8 @@ impl LowerCtx {
         // `bind_resource` so they enroll in the fn-level scope tracker AND
         // in `fn_block_scoped_closes` for the function-wide finally handler.
         let mut regular_param_vars = vec![];
-        for (i, param_name) in decl.params.iter().enumerate() {
+        for (i, param) in decl.params.iter().enumerate() {
+            let param_name = &param.name;
             let var = self.fresh_var();
             let ty = param_types.get(i).cloned().unwrap_or_else(|| {
                 eprintln!(
@@ -5665,14 +5686,14 @@ impl LowerCtx {
         let recur_join_info = if has_recur {
             let join_name = self.fresh_var();
             let mut join_param_vars = vec![];
-            for (i, param_name) in decl.params.iter().enumerate() {
+            for (i, param) in decl.params.iter().enumerate() {
                 let join_var = self.fresh_var();
                 let ty = param_types.get(i).cloned().unwrap_or_else(|| {
                     panic!("ICE: recur join: param_types index {i} out of range (len={})", param_types.len())
                 });
                 self.var_types.insert(join_var, ty);
                 // Shadow the original param with the join param
-                self.push_var(param_name, join_var);
+                self.push_var(&param.name, join_var);
                 join_param_vars.push(join_var);
             }
             self.recur_join = Some((join_name, join_param_vars.clone()));
@@ -5715,16 +5736,16 @@ impl LowerCtx {
 
         // Pop recur join params (they were pushed on top of regular params)
         if recur_join_info.is_some() {
-            for param_name in decl.params.iter().rev() {
-                self.pop_var(param_name);
+            for param in decl.params.iter().rev() {
+                self.pop_var(&param.name);
             }
         }
         self.recur_join = None;
         self.early_return_join = None;
 
         // Pop regular params
-        for param_name in decl.params.iter().rev() {
-            self.pop_var(param_name);
+        for param in decl.params.iter().rev() {
+            self.pop_var(&param.name);
         }
 
         // Wrap body with early return join if needed
@@ -5882,9 +5903,9 @@ pub fn lower_module(
     for ext in &typed.extern_fns {
         if !ext.constraints.is_empty() {
             let vars: Vec<TypeVarId> = ext.constraints.iter().map(|(_, tv)| *tv).collect();
-            let fn_ty = krypton_typechecker::types::Type::Fn(
+            let fn_ty = krypton_typechecker::types::Type::fn_consuming(
                 ext.param_types.clone(),
-                Box::new(ext.return_type.clone()),
+                ext.return_type.clone(),
             );
             fn_schemes.insert(
                 QualifiedName::new(typed.module_path.clone(), ext.name.clone()),
@@ -6430,7 +6451,10 @@ pub fn lower_module(
                     name: entry.name.clone(),
                     source_module: entry.qualified_name.module_path.clone(),
                     original_name: entry.qualified_name.local_name.clone(),
-                    param_types: param_types.iter().cloned().map(Into::into).collect(),
+                    param_types: param_types
+                        .iter()
+                        .map(|(_, t)| t.clone().into())
+                        .collect(),
                     return_type: (**ret).clone().into(),
                 });
             }
@@ -6459,7 +6483,11 @@ pub fn lower_module(
                 Ok(TraitMethodDef {
                     name: method_name.clone(),
                     param_count: *param_count + method_constraint_count,
-                    param_types: param_types.into_iter().map(Into::into).collect(),
+                    // IR strips modes at point of use; only the type half crosses the boundary.
+                    param_types: param_types
+                        .into_iter()
+                        .map(|(_, t)| t.into())
+                        .collect(),
                     return_type: return_type.into(),
                 })
             })
@@ -6871,7 +6899,12 @@ fn get_fn_param_types(
     for entry in fn_types {
         if entry.name == name {
             match &entry.scheme.ty {
-                Type::Fn(params, ret) => return Ok((params.clone(), *ret.clone())),
+                Type::Fn(params, ret) => {
+                    return Ok((
+                        params.iter().map(|(_, t)| t.clone()).collect(),
+                        *ret.clone(),
+                    ))
+                }
                 other => return Ok((vec![], other.clone())),
             }
         }
@@ -6936,7 +6969,7 @@ fn resolve_type_expr_simple(
                 .map(|p| resolve_type_expr_simple(&p.ty, type_param_map))
                 .collect();
             let ret_type = resolve_type_expr_simple(ret, type_param_map);
-            Type::Fn(param_types, Box::new(ret_type))
+            Type::fn_consuming(param_types, ret_type)
         }
         TypeExpr::Own { inner, .. } => {
             Type::Own(Box::new(resolve_type_expr_simple(inner, type_param_map)))
@@ -6976,7 +7009,7 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
                 && p_params
                     .iter()
                     .zip(a_params.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+                    .all(|((_, p), (_, a))| bind_type_vars(p, a, bindings))
                 && bind_type_vars(p_ret, a_ret, bindings)
         }
         (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {

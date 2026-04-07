@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+pub use krypton_parser::ast::ParamMode;
+
 use crate::type_error::TypeError;
 use crate::typed_ast::TraitName;
 
@@ -62,7 +64,7 @@ pub enum Type {
     Bool,
     String,
     Unit,
-    Fn(Vec<Type>, Box<Type>),
+    Fn(Vec<(ParamMode, Type)>, Box<Type>),
     Var(TypeVarId),
     Named(std::string::String, Vec<Type>),
     /// Type constructor application where the constructor is a type variable.
@@ -78,6 +80,23 @@ pub enum Type {
     /// constructors. Used by HKT machinery — never appears in user-facing types.
     /// Consumed by `normalize_app` when applying type arguments.
     FnHole,
+}
+
+impl Type {
+    /// Build a function type whose parameter slots are all consume-mode.
+    /// Use this at internal construction sites that synthesize function types
+    /// (HKT machinery, intrinsic registry, type registry, partial application,
+    /// unification, etc.) — sites that legitimately produce a borrow slot must
+    /// build the `Vec<(ParamMode, Type)>` explicitly.
+    pub fn fn_consuming(params: Vec<Type>, ret: Type) -> Type {
+        Type::Fn(
+            params
+                .into_iter()
+                .map(|t| (ParamMode::Consume, t))
+                .collect(),
+            Box::new(ret),
+        )
+    }
 }
 
 /// Normalize a type application: if the constructor is a zero-arg Named type,
@@ -105,9 +124,14 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
                 Type::FnHole,
                 "normalize_app: expected FnHole sentinel in partial fn constructor"
             );
-            // Multiple holes: first args extend params, last becomes ret
+            // Multiple holes: first args extend params (as consume slots), last becomes ret
             let ret = args.last().unwrap().clone();
-            params.extend(args[..args.len() - 1].iter().cloned());
+            params.extend(
+                args[..args.len() - 1]
+                    .iter()
+                    .cloned()
+                    .map(|t| (ParamMode::Consume, t)),
+            );
             Type::Fn(params, Box::new(ret))
         }
         _ => Type::App(Box::new(ctor), args),
@@ -123,7 +147,7 @@ pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {
 ///
 /// Returns `None` if `applied_count` is 0 or exceeds total arity (params + ret).
 pub fn decompose_fn_for_app(
-    params: &[Type],
+    params: &[(ParamMode, Type)],
     ret: &Type,
     applied_count: usize,
 ) -> Option<(Type, Vec<Type>)> {
@@ -133,7 +157,10 @@ pub fn decompose_fn_for_app(
     }
     let ctor_count = total - applied_count;
     let ctor = Type::Fn(params[..ctor_count].to_vec(), Box::new(Type::FnHole));
-    let mut remaining: Vec<Type> = params[ctor_count..].to_vec();
+    let mut remaining: Vec<Type> = params[ctor_count..]
+        .iter()
+        .map(|(_, t)| t.clone())
+        .collect();
     remaining.push(ret.clone());
     Some((ctor, remaining))
 }
@@ -164,7 +191,7 @@ impl Type {
             Type::Fn(params, ret) => Type::Fn(
                 params
                     .iter()
-                    .map(|p| p.renumber_inner(mapping, next_id))
+                    .map(|(m, p)| (*m, p.renumber_inner(mapping, next_id)))
                     .collect(),
                 Box::new(ret.renumber_inner(mapping, next_id)),
             ),
@@ -199,7 +226,10 @@ impl Type {
         match self {
             Type::Var(id) => Type::Var(*mapping.get(id).unwrap_or(id)),
             Type::Fn(params, ret) => Type::Fn(
-                params.iter().map(|p| p.remap_vars(mapping)).collect(),
+                params
+                    .iter()
+                    .map(|(m, p)| (*m, p.remap_vars(mapping)))
+                    .collect(),
                 Box::new(ret.remap_vars(mapping)),
             ),
             Type::Named(n, args) => Type::Named(
@@ -242,11 +272,22 @@ impl fmt::Display for Type {
             Type::Unit => write!(f, "Unit"),
             Type::Fn(params, ret) => {
                 write!(f, "(")?;
-                for (i, p) in params.iter().enumerate() {
+                for (i, (mode, p)) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", p)?;
+                    match (mode, p) {
+                        (ParamMode::Borrow, Type::Own(inner)) => write!(f, "&~{}", inner)?,
+                        (ParamMode::Borrow, _) => {
+                            debug_assert!(
+                                false,
+                                "borrow slot must wrap an Own type, got {:?}",
+                                p
+                            );
+                            write!(f, "&{}", p)?;
+                        }
+                        (ParamMode::Consume, _) => write!(f, "{}", p)?,
+                    }
                 }
                 write!(f, ") -> {}", ret)
             }
@@ -463,7 +504,23 @@ fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
             }
         }
         Type::Fn(params, ret) => {
-            let ps: Vec<String> = params.iter().map(|p| format_type_impl(p, names)).collect();
+            let ps: Vec<String> = params
+                .iter()
+                .map(|(mode, p)| match (mode, p) {
+                    (ParamMode::Borrow, Type::Own(inner)) => {
+                        format!("&~{}", format_type_impl(inner, names))
+                    }
+                    (ParamMode::Borrow, _) => {
+                        debug_assert!(
+                            false,
+                            "borrow slot must wrap an Own type, got {:?}",
+                            p
+                        );
+                        format!("&{}", format_type_impl(p, names))
+                    }
+                    (ParamMode::Consume, _) => format_type_impl(p, names),
+                })
+                .collect();
             format!("({}) -> {}", ps.join(", "), format_type_impl(ret, names))
         }
         Type::Named(name, args) => {
@@ -521,7 +578,7 @@ fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSe
             }
         }
         Type::Fn(params, ret) => {
-            for p in params {
+            for (_, p) in params {
                 free_vars_ordered_into(p, out, seen);
             }
             free_vars_ordered_into(ret, out, seen);
@@ -690,7 +747,7 @@ impl Substitution {
             Type::Fn(params, ret) => Type::Fn(
                 params
                     .iter()
-                    .map(|p| self.apply_inner(p, visiting, chain))
+                    .map(|(m, p)| (*m, self.apply_inner(p, visiting, chain)))
                     .collect(),
                 Box::new(self.apply_inner(ret, visiting, chain)),
             ),
@@ -1277,7 +1334,7 @@ impl Type {
             Type::MaybeOwn(_, _) => true,
             Type::Own(inner) => inner.contains_maybe_own(),
             Type::Fn(params, ret) => {
-                params.iter().any(|p| p.contains_maybe_own()) || ret.contains_maybe_own()
+                params.iter().any(|(_, p)| p.contains_maybe_own()) || ret.contains_maybe_own()
             }
             Type::Named(_, args) | Type::App(_, args) => {
                 args.iter().any(|a| a.contains_maybe_own())
@@ -1330,7 +1387,7 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
         Type::Fn(params, ret) => {
             let mut parts: Vec<String> = params
                 .iter()
-                .map(|p| canonical_name_inner(p, var_map))
+                .map(|(_, p)| canonical_name_inner(p, var_map))
                 .collect();
             parts.push(canonical_name_inner(ret, var_map));
             format!("$Fun{}${}", params.len(), parts.join("$"))
@@ -1389,12 +1446,12 @@ mod tests {
     fn canonical_name_fn() {
         // () -> Int
         assert_eq!(
-            type_to_canonical_name(&Type::Fn(vec![], Box::new(Type::Int))),
+            type_to_canonical_name(&Type::fn_consuming(vec![], Type::Int)),
             "$Fun0$Int"
         );
         // (Int) -> Bool
         assert_eq!(
-            type_to_canonical_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))),
+            type_to_canonical_name(&Type::fn_consuming(vec![Type::Int], Type::Bool)),
             "$Fun1$Int$Bool"
         );
     }
@@ -1402,8 +1459,8 @@ mod tests {
     #[test]
     fn canonical_name_vars_normalized_by_occurrence() {
         // (a) -> Int and (b) -> Int should produce the same name
-        let ty_a = Type::Fn(vec![Type::Var(TypeVarId(5))], Box::new(Type::Int));
-        let ty_b = Type::Fn(vec![Type::Var(TypeVarId(99))], Box::new(Type::Int));
+        let ty_a = Type::fn_consuming(vec![Type::Var(TypeVarId(5))], Type::Int);
+        let ty_b = Type::fn_consuming(vec![Type::Var(TypeVarId(99))], Type::Int);
         assert_eq!(type_to_canonical_name(&ty_a), "$Fun1$$Var0$Int");
         assert_eq!(type_to_canonical_name(&ty_a), type_to_canonical_name(&ty_b));
     }
@@ -1411,13 +1468,13 @@ mod tests {
     #[test]
     fn canonical_name_distinct_vars_no_collision() {
         // (a) -> a  vs  (a) -> b  must differ
-        let same = Type::Fn(
+        let same = Type::fn_consuming(
             vec![Type::Var(TypeVarId(0))],
-            Box::new(Type::Var(TypeVarId(0))),
+            Type::Var(TypeVarId(0)),
         );
-        let diff = Type::Fn(
+        let diff = Type::fn_consuming(
             vec![Type::Var(TypeVarId(0))],
-            Box::new(Type::Var(TypeVarId(1))),
+            Type::Var(TypeVarId(1)),
         );
         assert_eq!(type_to_canonical_name(&same), "$Fun1$$Var0$$Var0");
         assert_eq!(type_to_canonical_name(&diff), "$Fun1$$Var0$$Var1");
@@ -1427,8 +1484,8 @@ mod tests {
     #[test]
     fn canonical_name_different_concrete_returns_no_collision() {
         // (a) -> Int  vs  (a) -> Bool
-        let ty_int = Type::Fn(vec![Type::Var(TypeVarId(0))], Box::new(Type::Int));
-        let ty_bool = Type::Fn(vec![Type::Var(TypeVarId(0))], Box::new(Type::Bool));
+        let ty_int = Type::fn_consuming(vec![Type::Var(TypeVarId(0))], Type::Int);
+        let ty_bool = Type::fn_consuming(vec![Type::Var(TypeVarId(0))], Type::Bool);
         assert_ne!(
             type_to_canonical_name(&ty_int),
             type_to_canonical_name(&ty_bool)
@@ -1440,7 +1497,7 @@ mod tests {
         // Fn([Int], Bool) -> "$Fun1$Int$Bool"
         // Named("Fun1", [Int, Bool]) -> "Fun1$Int$Bool"
         // The $ prefix on function types prevents collision with user type "Fun1"
-        let fn_ty = Type::Fn(vec![Type::Int], Box::new(Type::Bool));
+        let fn_ty = Type::fn_consuming(vec![Type::Int], Type::Bool);
         let named_ty = Type::Named("Fun1".into(), vec![Type::Int, Type::Bool]);
         assert_ne!(
             type_to_canonical_name(&fn_ty),
@@ -1451,7 +1508,7 @@ mod tests {
     #[test]
     fn canonical_name_jvm_safe() {
         // Parameterized fn type impl should produce JVM-safe identifiers (no spaces, parens, arrows)
-        let ty = Type::Fn(vec![], Box::new(Type::Var(TypeVarId(42))));
+        let ty = Type::fn_consuming(vec![], Type::Var(TypeVarId(42)));
         let name = type_to_canonical_name(&ty);
         assert!(
             !name.contains(' '),
@@ -1483,11 +1540,11 @@ mod tests {
             "Vec"
         );
         assert_eq!(
-            head_type_name(&Type::Fn(vec![], Box::new(Type::Int))),
+            head_type_name(&Type::fn_consuming(vec![], Type::Int)),
             "$Fun0"
         );
         assert_eq!(
-            head_type_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))),
+            head_type_name(&Type::fn_consuming(vec![Type::Int], Type::Bool)),
             "$Fun1"
         );
         assert_eq!(
@@ -1501,14 +1558,14 @@ mod tests {
         // A user type "Fun1" must not collide with the head name for (a) -> b
         assert_ne!(
             head_type_name(&Type::Named("Fun1".into(), vec![])),
-            head_type_name(&Type::Fn(vec![Type::Int], Box::new(Type::Bool))),
+            head_type_name(&Type::fn_consuming(vec![Type::Int], Type::Bool)),
         );
     }
 
     #[test]
     fn format_with_var_map_simple() {
         let id = TypeVarId(5);
-        let ty = Type::Fn(vec![Type::Int], Box::new(Type::Var(id)));
+        let ty = Type::fn_consuming(vec![Type::Int], Type::Var(id));
         let names: HashMap<TypeVarId, &str> = [(id, "b")].into_iter().collect();
         assert_eq!(format_type_with_var_map(&ty, &names), "(Int) -> b");
     }
@@ -1517,12 +1574,63 @@ mod tests {
     fn format_with_var_map_nested_fn() {
         let a = TypeVarId(10);
         let b = TypeVarId(11);
-        let ty = Type::Fn(
+        let ty = Type::fn_consuming(
             vec![Type::Var(a)],
-            Box::new(Type::Fn(vec![Type::Var(b)], Box::new(Type::Int))),
+            Type::fn_consuming(vec![Type::Var(b)], Type::Int),
         );
         let names: HashMap<TypeVarId, &str> = [(a, "x"), (b, "y")].into_iter().collect();
         assert_eq!(format_type_with_var_map(&ty, &names), "(x) -> (y) -> Int");
+    }
+
+    #[test]
+    fn type_fn_carries_param_modes() {
+        let file_t = Type::Named("File".into(), vec![]);
+        let ty = Type::Fn(
+            vec![
+                (ParamMode::Borrow, Type::Own(Box::new(file_t.clone()))),
+                (ParamMode::Consume, Type::Int),
+            ],
+            Box::new(Type::Unit),
+        );
+        match &ty {
+            Type::Fn(params, ret) => {
+                assert_eq!(params.len(), 2);
+                assert_eq!(params[0].0, ParamMode::Borrow);
+                assert_eq!(params[1].0, ParamMode::Consume);
+                assert_eq!(**ret, Type::Unit);
+            }
+            _ => panic!("expected Type::Fn"),
+        }
+        assert_eq!(format!("{}", ty), "(&~File, Int) -> Unit");
+    }
+
+    #[test]
+    fn type_fn_consuming_helper_default() {
+        let ty = Type::fn_consuming(vec![Type::Int, Type::Bool], Type::Unit);
+        match &ty {
+            Type::Fn(params, _) => {
+                assert!(params.iter().all(|(m, _)| *m == ParamMode::Consume));
+                assert_eq!(params.len(), 2);
+            }
+            _ => panic!("expected Type::Fn"),
+        }
+    }
+
+    #[test]
+    fn type_fn_display_borrow_slot() {
+        let file_t = Type::Named("File".into(), vec![]);
+        // Single borrow slot
+        let borrow = Type::Fn(
+            vec![(ParamMode::Borrow, Type::Own(Box::new(file_t.clone())))],
+            Box::new(Type::Unit),
+        );
+        assert_eq!(format!("{}", borrow), "(&~File) -> Unit");
+        // Single consume slot — asymmetric, no `&`
+        let consume = Type::Fn(
+            vec![(ParamMode::Consume, Type::Own(Box::new(file_t)))],
+            Box::new(Type::Unit),
+        );
+        assert_eq!(format!("{}", consume), "(~File) -> Unit");
     }
 
     #[test]
