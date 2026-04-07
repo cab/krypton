@@ -4495,7 +4495,9 @@ fn infer_function_bodies<'a>(
                         let mut err = spanned(e, decl.span);
                         if matches!(
                             &*err.error,
-                            TypeError::Mismatch { .. } | TypeError::FnCapabilityMismatch { .. }
+                            TypeError::Mismatch { .. }
+                                | TypeError::FnCapabilityMismatch { .. }
+                                | TypeError::ParamModeMismatch { .. }
                         ) {
                             let terminal = match &body_typed.kind {
                                 crate::typed_ast::TypedExprKind::Do(exprs) => {

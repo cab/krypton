@@ -1,0 +1,11 @@
+# expect: error E0108
+type File = { fd: Int }
+
+fun take_consume_slot(f: (~File) -> Unit, x: ~File) -> Unit = f(x)
+
+fun borrow_it(&y: ~File) -> Unit = ()
+
+fun main() -> Unit = {
+    let f: ~File = File { fd = 1 }
+    take_consume_slot(borrow_it, f)
+}

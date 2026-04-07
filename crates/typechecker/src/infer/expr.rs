@@ -566,7 +566,9 @@ impl<'a> InferenceContext<'a> {
                         }
                         if matches!(
                             &*err.error,
-                            TypeError::Mismatch { .. } | TypeError::FnCapabilityMismatch { .. }
+                            TypeError::Mismatch { .. }
+                                | TypeError::FnCapabilityMismatch { .. }
+                                | TypeError::ParamModeMismatch { .. }
                         ) {
                             if let Some(ref captures) = self.lambda_own_captures {
                                 for arg in args.iter() {
@@ -818,7 +820,9 @@ impl<'a> InferenceContext<'a> {
                         let mut err = super::spanned(e, span);
                         if matches!(
                             &*err.error,
-                            TypeError::Mismatch { .. } | TypeError::FnCapabilityMismatch { .. }
+                            TypeError::Mismatch { .. }
+                                | TypeError::FnCapabilityMismatch { .. }
+                                | TypeError::ParamModeMismatch { .. }
                         ) {
                             if let Expr::Lambda { span: lspan, .. } = value {
                                 if let Some(ref captures) = self.lambda_own_captures {

@@ -1,0 +1,2 @@
+# expect: error E0106
+fun bad[a](&x: ~a) -> Unit where a: shared = ()

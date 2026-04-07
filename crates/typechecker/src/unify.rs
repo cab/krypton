@@ -160,7 +160,16 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
                     actual: p2.len(),
                 });
             }
-            for ((_, a), (_, b)) in p1.iter().zip(p2.iter()) {
+            for (i, ((m1, a), (m2, b))) in p1.iter().zip(p2.iter()).enumerate() {
+                if m1 != m2 {
+                    return Err(TypeError::ParamModeMismatch {
+                        expected: t1.clone(),
+                        actual: t2.clone(),
+                        param_index: i,
+                        expected_mode: *m1,
+                        actual_mode: *m2,
+                    });
+                }
                 unify(a, b, subst)?;
             }
             unify(r1, r2, subst)
@@ -489,7 +498,16 @@ fn coerce_unify_inner(
                 actual: params_a.len(),
             });
         }
-        for ((_, pa), (_, pb)) in params_a.iter().zip(params_b.iter()) {
+        for (i, ((ma, pa), (mb, pb))) in params_a.iter().zip(params_b.iter()).enumerate() {
+            if ma != mb {
+                return Err(TypeError::ParamModeMismatch {
+                    expected: expected.clone(),
+                    actual: actual.clone(),
+                    param_index: i,
+                    expected_mode: *mb,
+                    actual_mode: *ma,
+                });
+            }
             coerce_unify_inner(pb, pa, subst, false)?; // FLIP: contravariant; fn positions are not constructor
         }
         return coerce_unify_inner(ret_a, ret_b, subst, false); // covariant

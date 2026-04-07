@@ -1,0 +1,11 @@
+# expect: ok
+type File = { fd: Int }
+
+fun take_borrow_slot(f: (&~File) -> Unit, x: ~File) -> Unit = ()
+
+fun borrow_it(&y: ~File) -> Unit = ()
+
+fun main() -> Unit = {
+    let f: ~File = File { fd = 1 }
+    take_borrow_slot(borrow_it, f)
+}

@@ -1,8 +1,16 @@
 use krypton_parser::ast::Span;
 
-use crate::types::{format_type_with_var_map, renumber_types_for_display, Type, TypeVarId};
+use crate::types::{format_type_with_var_map, renumber_types_for_display, ParamMode, Type, TypeVarId};
 use std::collections::HashMap;
 use std::fmt;
+
+/// Human-readable label for a parameter mode.
+fn mode_label(m: ParamMode) -> &'static str {
+    match m {
+        ParamMode::Consume => "consume (`~T`)",
+        ParamMode::Borrow => "borrow (`&~T`)",
+    }
+}
 
 /// Check if the infinite type is just an ownership wrapper around the variable itself,
 /// e.g. `a` vs `~a`. This is not a genuine recursive type — it's an ownership mismatch.
@@ -83,6 +91,7 @@ pub enum TypeErrorCode {
     E0608, // @constructor with self param
     E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
+    E0108, // Function-type parameter mode mismatch (consume vs borrow)
     E0610, // Duplicate parameter name
     E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
 }
@@ -376,6 +385,16 @@ pub enum TypeError {
         expected: Type,
         actual: Type,
     },
+    /// Function-type slot mode mismatch: `(~T) -> U` vs `(&~T) -> U`.
+    /// Consume and borrow are distinct per-slot capabilities and do not
+    /// adapt to each other; unification must compare modes structurally.
+    ParamModeMismatch {
+        expected: Type,
+        actual: Type,
+        param_index: usize,
+        expected_mode: ParamMode,
+        actual_mode: ParamMode,
+    },
     UnsupportedConstraint {
         trait_name: String,
         reason: &'static str,
@@ -464,6 +483,7 @@ impl TypeError {
             TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
             TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
             TypeError::FnCapabilityMismatch { .. } => TypeErrorCode::E0104,
+            TypeError::ParamModeMismatch { .. } => TypeErrorCode::E0108,
             TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
         }
     }
@@ -481,6 +501,12 @@ impl TypeError {
             }
             TypeError::FnCapabilityMismatch { .. } => {
                 Some("a single-use closure (`~fn`) cannot be used where a multi-use function (`fn`) is expected".to_string())
+            }
+            TypeError::ParamModeMismatch { expected_mode, actual_mode, .. } => {
+                let (exp, act) = (mode_label(*expected_mode), mode_label(*actual_mode));
+                Some(format!(
+                    "consume (`~T`) and borrow (`&~T`) are distinct slot capabilities — expected {exp} slot does not adapt from {act} slot, and vice versa"
+                ))
             }
             TypeError::DuplicateType { name } => {
                 Some(format!("type `{}` is already defined", name))
@@ -809,6 +835,22 @@ impl TypeError {
                     format_type_with_var_map(actual, names),
                 )
             }
+            TypeError::ParamModeMismatch {
+                expected,
+                actual,
+                param_index,
+                expected_mode,
+                actual_mode,
+            } => {
+                format!(
+                    "function type mode mismatch at parameter {}: expected {} slot, found {} slot in `{}` vs `{}` — slot modes must match exactly",
+                    param_index,
+                    mode_label(*expected_mode),
+                    mode_label(*actual_mode),
+                    format_type_with_var_map(expected, names),
+                    format_type_with_var_map(actual, names),
+                )
+            }
             TypeError::InvalidImpl {
                 trait_name,
                 target_type,
@@ -986,6 +1028,24 @@ impl fmt::Display for TypeError {
                     f,
                     "closure capability mismatch: expected `{}`, found `{}`",
                     renamed[0], renamed[1]
+                )
+            }
+            TypeError::ParamModeMismatch {
+                expected,
+                actual,
+                param_index,
+                expected_mode,
+                actual_mode,
+            } => {
+                let renamed = renumber_types_for_display(&[expected, actual]);
+                write!(
+                    f,
+                    "function type mode mismatch at parameter {}: expected {} slot, found {} slot in `{}` vs `{}` — slot modes must match exactly",
+                    param_index,
+                    mode_label(*expected_mode),
+                    mode_label(*actual_mode),
+                    renamed[0],
+                    renamed[1]
                 )
             }
             TypeError::UnsupportedExpr { description } => {
