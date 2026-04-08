@@ -8,8 +8,8 @@ extern java "krypton.runtime.KryptonIO" {
 
 type Handle = MkHandle(String)
 
-impl Resource[Handle] {
-    fun close(h: ~Handle) -> Unit = println("closed")
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = println("closed")
 }
 
 fun main() -> Unit {

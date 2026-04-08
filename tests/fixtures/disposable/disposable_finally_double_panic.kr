@@ -1,0 +1,18 @@
+# skip: js(java-only extern)
+# expect: panic "original"
+# expect: output "opened"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Handle = MkHandle(String)
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = panic("close failed")
+}
+
+fun main() -> Unit = {
+    let h: ~Handle = MkHandle("test")
+    println("opened")
+    panic("original")
+}

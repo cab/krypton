@@ -2562,7 +2562,7 @@ impl ModuleInferenceState {
                     &m.name,
                 );
                 let close_self_type =
-                    if inst.trait_name.local_name == "Resource" && m.name == "close" {
+                    if inst.trait_name.local_name == "Disposable" && m.name == "dispose" {
                         Some(inst.target_type_name.clone())
                     } else {
                         None

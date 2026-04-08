@@ -76,7 +76,7 @@ pub enum ExprKind {
     /// from Swift SIL: cleanup is first-class IR, not a side-effecting
     /// `SetVarNull` store hiding inside a `SimpleExpr`.
     ///
-    /// `dict` is the pre-resolved `Resource` dictionary atom in scope at
+    /// `dict` is the pre-resolved `Disposable` dictionary atom in scope at
     /// this AutoClose site (dict bindings are emitted as outer `Let`s by
     /// the lowerer so the atom is in scope when we read it).
     AutoClose {

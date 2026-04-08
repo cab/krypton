@@ -83,8 +83,8 @@ impl TraitName {
     pub fn core_neg() -> Self {
         TraitName::new("core/neg".into(), "Neg".into())
     }
-    pub fn core_resource() -> Self {
-        TraitName::new("core/resource".into(), "Resource".into())
+    pub fn core_disposable() -> Self {
+        TraitName::new("core/disposable".into(), "Disposable".into())
     }
 }
 
@@ -341,7 +341,7 @@ pub struct TypedFnDecl {
     pub visibility: Visibility,
     pub params: Vec<TypedParam>,
     pub body: TypedExpr,
-    /// For Resource close impl methods, the target type name (e.g., "Handle").
+    /// For Disposable dispose impl methods, the target type name (e.g., "Handle").
     /// Used by auto-close to skip the self parameter and avoid infinite recursion.
     pub close_self_type: Option<String>,
     /// Identity of the function-level lexical scope. Owns the fn parameters
@@ -553,7 +553,7 @@ pub struct TypedModule {
     /// Pre-resolved type registrations for exported types.
     /// Used by importers to register types without re-resolving from AST.
     pub exported_type_infos: HashMap<String, ExportedTypeInfo>,
-    /// Auto-close info for Resource bindings.
+    /// Auto-close info for Disposable bindings.
     pub auto_close: AutoCloseInfo,
     /// Pre-computed per-param qualifier info for exported functions.
     /// Downstream modules use this for cross-module ownership checking.

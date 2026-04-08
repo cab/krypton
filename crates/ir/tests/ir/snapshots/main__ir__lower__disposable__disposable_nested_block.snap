@@ -1,0 +1,46 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module disposable__disposable_nested_block
+
+type HandleA = MkHandleA#0(Int)
+type HandleB = MkHandleB#0(Int)
+instance core/disposable.Disposable[HandleA] { dispose=Disposable$$HandleA$$dispose }
+instance core/disposable.Disposable[HandleB] { dispose=Disposable$$HandleB$$dispose }
+extern java "krypton.runtime.KryptonIO" println(a8) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (a8) -> Unit
+
+fn main() -> Unit =
+  let v0: ~HandleA = construct HandleA::MkHandleA#0(1)
+  let v1: Unit = call println("open_a")
+  let_join v7(v5: Unit) =
+    let v6: Unit = call println("after_inner")
+    let v8: Dict[core/disposable.Disposable, HandleA] = get_dict core/disposable.Disposable[HandleA]
+    auto_close[HandleA](v0, dict=v8, null=true)
+    v6
+  in
+  let v2: ~HandleB = construct HandleB::MkHandleB#0(2)
+  let v3: Unit = call println("open_b")
+  let v4: Dict[core/disposable.Disposable, HandleB] = get_dict core/disposable.Disposable[HandleB]
+  auto_close[HandleB](v2, dict=v4, null=true)
+  jump v7(v3)
+
+fn Disposable$$HandleA$$dispose(v9: ~HandleA) -> Unit =
+  let v10: Unit = call println("close_a")
+  v10
+
+fn Disposable$$HandleB$$dispose(v11: ~HandleB) -> Unit =
+  let v12: Unit = call println("close_b")
+  v12

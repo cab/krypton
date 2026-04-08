@@ -1934,12 +1934,12 @@ impl<'a> JsEmitter<'a> {
                 body,
             } => {
                 // JS has no fn-wide exception handler so `null_slot` is meaningless.
-                // Emit the Resource.close trait call directly, then fall through
+                // Emit the Disposable.dispose trait call directly, then fall through
                 // to `body`. Dict resolution has been pre-inlined as outer Lets.
                 let dict_str = self.emit_atom(dict);
                 let res_str = self.var_name(*resource);
                 self.write_indent();
-                self.write(&format!("{dict_str}.close({res_str});\n"));
+                self.write(&format!("{dict_str}.dispose({res_str});\n"));
                 self.emit_expr(body, tail);
             }
             ExprKind::Jump { target, args } => {

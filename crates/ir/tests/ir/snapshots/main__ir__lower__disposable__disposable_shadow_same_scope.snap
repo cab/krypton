@@ -1,0 +1,46 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module disposable__disposable_shadow_same_scope
+
+type H1 = MkH1#0
+type H2 = MkH2#0
+instance core/disposable.Disposable[H1] { dispose=Disposable$$H1$$dispose }
+instance core/disposable.Disposable[H2] { dispose=Disposable$$H2$$dispose }
+extern java "krypton.runtime.KryptonIO" println(a8) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare panic
+declare println: (a8) -> Unit
+
+fn main() -> Unit =
+  let v1: ~H1 = construct H1::MkH1#0()
+  let v0: ~H1 = v1
+  let v2: Unit = call println("open1")
+  let v4: ~H2 = construct H2::MkH2#0()
+  let v3: ~H2 = v4
+  let v7: Dict[core/disposable.Disposable, H1] = get_dict core/disposable.Disposable[H1]
+  auto_close[H1](v0, dict=v7, null=true)
+  let v5: Unit = call println("open2")
+  let v6: Unit = call panic("boom")
+  let v8: Dict[core/disposable.Disposable, H2] = get_dict core/disposable.Disposable[H2]
+  auto_close[H2](v3, dict=v8, null=true)
+  v6
+
+fn Disposable$$H1$$dispose(v9: ~H1) -> Unit =
+  let v10: Unit = call println("close1")
+  v10
+
+fn Disposable$$H2$$dispose(v11: ~H2) -> Unit =
+  let v12: Unit = call println("close2")
+  v12

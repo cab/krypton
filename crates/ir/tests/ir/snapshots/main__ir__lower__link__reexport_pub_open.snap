@@ -78,9 +78,9 @@ instance core/hash.Hash[Int] {  } [intrinsic]
 instance core/hash.Hash[Float] {  } [intrinsic]
 instance core/hash.Hash[String] {  } [intrinsic]
 instance core/hash.Hash[Bool] {  } [intrinsic]
-module core/resource
+module core/disposable
 
-trait Resource[d] { close(~d): Unit }
+trait Disposable[d] { dispose(~d): Unit }
 module core/peek
 
 fn peek(v0: e) -> e =

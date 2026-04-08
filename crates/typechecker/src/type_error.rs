@@ -58,7 +58,7 @@ pub enum TypeErrorCode {
     E0506, // Parse error in imported module
     E0507, // Kind mismatch (type applied with wrong number of type args)
     E0508, // Unknown qualified export
-    E0105, // Resource branch leak (consumed in some branches but not all)
+    E0105, // Disposable branch leak (consumed in some branches but not all)
     E0106, // Qualifier bound violation (shared + ~T)
     E0012, // Reserved name
     E0509, // Duplicate import name (same name from different modules)
@@ -263,7 +263,7 @@ pub enum TypeError {
         expected_arity: usize,
         actual_arity: usize,
     },
-    ResourceBranchLeak {
+    DisposableBranchLeak {
         name: String,
         type_name: String,
     },
@@ -451,7 +451,7 @@ impl TypeError {
             TypeError::PrivateReexport { .. } => TypeErrorCode::E0505,
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
             TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
-            TypeError::ResourceBranchLeak { .. } => TypeErrorCode::E0105,
+            TypeError::DisposableBranchLeak { .. } => TypeErrorCode::E0105,
             TypeError::QualifierBoundViolation { .. } => TypeErrorCode::E0106,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
             TypeError::DuplicateImport { .. } => TypeErrorCode::E0509,
@@ -690,8 +690,8 @@ impl TypeError {
             TypeError::KindMismatch { type_name, expected_arity, actual_arity } => {
                 Some(format!("`{}` expects {} type argument(s) but was given {}", type_name, expected_arity, actual_arity))
             }
-            TypeError::ResourceBranchLeak { name, type_name } => {
-                Some(format!("`~{}` resource `{}` is closed in some branches but not all — this will leak the resource", type_name, name))
+            TypeError::DisposableBranchLeak { name, type_name } => {
+                Some(format!("`~{}` disposable `{}` is disposed in some branches but not all — this will leak the disposable", type_name, name))
             }
             TypeError::ReservedName { name } => {
                 Some(format!("names starting with `__krypton_` are reserved for compiler internals; rename `{}`", name))
@@ -1211,10 +1211,10 @@ impl fmt::Display for TypeError {
                     type_name, expected_arity, actual_arity
                 )
             }
-            TypeError::ResourceBranchLeak { name, type_name } => {
+            TypeError::DisposableBranchLeak { name, type_name } => {
                 write!(
                     f,
-                    "resource `{}` (~{}) consumed in some branches but not all",
+                    "disposable `{}` (~{}) consumed in some branches but not all",
                     name, type_name
                 )
             }

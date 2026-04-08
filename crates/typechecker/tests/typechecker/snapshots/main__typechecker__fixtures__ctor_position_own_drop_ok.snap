@@ -1,6 +1,5 @@
 ---
 source: crates/typechecker/tests/typechecker/fixtures.rs
-assertion_line: 89
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -12,7 +11,7 @@ div: forall a. (a, a) -> a
 neg: forall a. (a) -> a
 show: forall a. (a) -> String
 hash: forall a. (a) -> Int
-close: forall a. (~a) -> Unit
+dispose: forall a. (~a) -> Unit
 peek: forall a. (a) -> a
 last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord

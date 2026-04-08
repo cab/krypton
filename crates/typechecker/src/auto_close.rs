@@ -8,7 +8,7 @@ use crate::types::Type;
 use crate::unify::{SpannedTypeError, TypeError};
 use krypton_parser::ast::Span;
 
-/// A live resource binding: (name, type_name).
+/// A live disposable binding: (name, type_name).
 type LiveBinding = (String, String);
 
 fn concrete_type_name(ty: &Type) -> Option<&str> {
@@ -22,13 +22,13 @@ fn concrete_type_name(ty: &Type) -> Option<&str> {
     }
 }
 
-/// Check if a type is ~T where T implements Resource.
+/// Check if a type is ~T where T implements Disposable.
 fn is_owned_resource(ty: &Type, registry: &TraitRegistry) -> Option<String> {
     if let Type::Own(inner) = ty {
         if let Some(name) = concrete_type_name(inner) {
             {
-                let resource_tn = crate::typed_ast::TraitName::core_resource();
-                if registry.find_instance(&resource_tn, inner).is_some() {
+                let disposable_tn = crate::typed_ast::TraitName::core_disposable();
+                if registry.find_instance(&disposable_tn, inner).is_some() {
                     return Some(name.to_string());
                 }
             }
@@ -82,7 +82,7 @@ fn collect_moved_vars_inner(
     }
 }
 
-/// Recursively collect resource bindings from a pattern.
+/// Recursively collect disposable bindings from a pattern.
 fn collect_resource_bindings(pattern: &TypedPattern, registry: &TraitRegistry) -> Vec<LiveBinding> {
     let mut result = Vec::new();
     collect_resource_bindings_inner(pattern, registry, &mut result);
@@ -159,8 +159,8 @@ impl<'a> AutoCloseAnalyzer<'a> {
             for (i, param) in decl.params.iter().enumerate() {
                 if let Some(param_ty) = fn_param_types.get(i) {
                     if let Some(type_name) = is_owned_resource(param_ty, this.registry) {
-                        // Skip the "self" parameter of a Resource close impl to avoid
-                        // infinite recursion (close calling itself on its own param).
+                        // Skip the "self" parameter of a Disposable dispose impl to avoid
+                        // infinite recursion (dispose calling itself on its own param).
                         if close_self_type == Some(type_name.as_str()) {
                             continue;
                         }
@@ -310,14 +310,14 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 self.walk_expr(then_, &mut then_live);
                 self.walk_expr(else_, &mut else_live);
 
-                // #1: Check for asymmetric branch consumption of ~Resource values
+                // #1: Check for asymmetric branch consumption of ~Disposable values
                 for (name, type_name) in live.iter() {
                     let in_then = then_live.iter().any(|(n, _)| n == name);
                     let in_else = else_live.iter().any(|(n, _)| n == name);
                     if in_then != in_else {
                         // Consumed in one branch but not the other
                         self.errors.push(SpannedTypeError {
-                            error: Box::new(TypeError::ResourceBranchLeak {
+                            error: Box::new(TypeError::DisposableBranchLeak {
                                 name: name.clone(),
                                 type_name: type_name.clone(),
                             }),
@@ -352,7 +352,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     branch_lives.push(arm_live);
                 }
 
-                // #1: Check for asymmetric branch consumption of ~Resource values
+                // #1: Check for asymmetric branch consumption of ~Disposable values
                 for (name, type_name) in live.iter() {
                     let present_count = branch_lives
                         .iter()
@@ -361,7 +361,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     if present_count > 0 && present_count < branch_lives.len() {
                         // Consumed in some branches but not all
                         self.errors.push(SpannedTypeError {
-                            error: Box::new(TypeError::ResourceBranchLeak {
+                            error: Box::new(TypeError::DisposableBranchLeak {
                                 name: name.clone(),
                                 type_name: type_name.clone(),
                             }),
@@ -383,7 +383,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
             }
 
             TypedExprKind::Lambda { body, .. } => {
-                // Lambda captures don't consume resources for auto-close purposes;
+                // Lambda captures don't consume disposables for auto-close purposes;
                 // the lambda body has its own scope
                 let mut lambda_live = Vec::new();
                 self.walk_expr(body, &mut lambda_live);
@@ -440,7 +440,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
             } => {
                 self.walk_expr(value, live);
 
-                // #3: Track resource bindings from destructured patterns
+                // #3: Track disposable bindings from destructured patterns
                 let bindings = collect_resource_bindings(pattern, self.registry);
 
                 if let Some(body) = body {
@@ -462,7 +462,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
             }
 
             TypedExprKind::Recur(args) => {
-                // #2: Auto-close before recur — close live resources before jumping back
+                // #2: Auto-close before recur — close live disposables before jumping back
                 // Record snapshot of current live bindings for recur point
                 if !live.is_empty() {
                     let bindings: Vec<AutoCloseBinding> = live
@@ -509,8 +509,8 @@ pub fn compute_auto_close(
     registry: &TraitRegistry,
     ownership_moves: &HashMap<Span, String>,
 ) -> (AutoCloseInfo, Vec<SpannedTypeError>) {
-    let resource_tn = crate::typed_ast::TraitName::core_resource();
-    if registry.lookup_trait(&resource_tn).is_none() {
+    let disposable_tn = crate::typed_ast::TraitName::core_disposable();
+    if registry.lookup_trait(&disposable_tn).is_none() {
         return (AutoCloseInfo::default(), Vec::new());
     }
 

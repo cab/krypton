@@ -1,0 +1,4 @@
+# Disposable trait for infallible auto-cleanup on owned values.
+pub trait Disposable[a] {
+    fun dispose(x: ~a) -> Unit
+}

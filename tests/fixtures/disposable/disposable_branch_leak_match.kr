@@ -1,0 +1,19 @@
+# expect: error E0105
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Handle = MkHandle(String)
+type Choice = Yes | No
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = println("closed")
+}
+
+fun main() -> Unit = {
+    let h: ~Handle = MkHandle("test")
+    match Yes {
+        Yes => dispose(h),
+        No => (),
+    }
+}

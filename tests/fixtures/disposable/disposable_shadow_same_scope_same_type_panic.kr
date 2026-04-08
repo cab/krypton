@@ -1,0 +1,30 @@
+# skip: js(java-only extern)
+# Regression: same-scope shadow with the SAME resource type. The first
+# binding is closed by the shadow_close path; the second is closed by the
+# function-wide finally handler on the panic. Both must close the *correct*
+# VarId — before the unification fix, the scope-exit close used the
+# already-shadow-closed first VarId, hiding a NullPointerException latent
+# behind close impls that ignored their argument.
+# expect: panic "boom"
+# expect: output "open1\nclose1\nopen2\nclose2"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Handle = MkHandle(Int)
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = match h {
+        MkHandle(1) => println("close1"),
+        MkHandle(2) => println("close2"),
+        MkHandle(_) => println("close?"),
+    }
+}
+
+fun main() -> Unit = {
+    let h: ~Handle = MkHandle(1)
+    println("open1")
+    let h: ~Handle = MkHandle(2)
+    println("open2")
+    panic("boom")
+}

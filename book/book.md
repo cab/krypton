@@ -119,9 +119,9 @@ The WASM-compiled Krypton compiler runs entirely in-browser. No backend server.
 ### Chapter 10: Ownership
 - **00 Shared Values** — default behavior, values can be reused freely
 - **01 Owned Values** — `~T`, affine types, use-at-most-once
-- **02 The Resource Trait** — `trait Resource[T] { fun close(x: ~T) -> Unit }`
-- **03 Automatic Cleanup** — compiler-inserted `close()` calls
-- **04 The Question Mark Operator** — `expr?`, early return on error with cleanup of live `~Resource` values in LIFO order
+- **02 The Disposable Trait** — `trait Disposable[T] { fun dispose(x: ~T) -> Unit }`
+- **03 Automatic Cleanup** — compiler-inserted `dispose()` calls
+- **04 The Question Mark Operator** — `expr?`, early return on error with cleanup of live `~Disposable` values in LIFO order
 - **05 Ownership in Practice** — file handles, connections, real-world patterns
 - **06 Koan: Ownership** — exercises: spot the use-after-move, fix ownership errors
 

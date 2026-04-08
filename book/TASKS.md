@@ -106,7 +106,7 @@ moving on.
 ### Ch 10: Ownership
 - [ ] 00 Shared Values
 - [ ] 01 Owned Values
-- [ ] 02 The Resource Trait
+- [ ] 02 The Disposable Trait
 - [ ] 03 Automatic Cleanup
 - [ ] 04 The Question Mark Operator
 - [ ] 05 Ownership in Practice

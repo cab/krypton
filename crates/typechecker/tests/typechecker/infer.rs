@@ -352,7 +352,7 @@ fn infer_forward_reference() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -403,7 +403,7 @@ fn infer_module_forward_ref() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -443,7 +443,7 @@ fn infer_mutual_recursion() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -497,7 +497,7 @@ fn infer_record_constructor() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -537,7 +537,7 @@ fn infer_sum_constructor() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -578,7 +578,7 @@ fn infer_bare_variant() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -629,7 +629,7 @@ fn infer_scc_generalization_order() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -670,7 +670,7 @@ fn infer_field_access() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -710,7 +710,7 @@ fn infer_struct_update() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -780,7 +780,7 @@ fn infer_match_option() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -821,7 +821,7 @@ fn infer_match_literal() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -860,7 +860,7 @@ fn infer_match_variable() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -899,7 +899,7 @@ fn infer_match_nested_constructor() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -950,7 +950,7 @@ fn infer_tuple_in_match() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -994,7 +994,7 @@ fn infer_tuple_polymorphic() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -1043,7 +1043,7 @@ fn test_exhaustive_complete() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -1094,7 +1094,7 @@ fn test_exhaustive_wildcard_covers_all() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -1145,7 +1145,7 @@ fn infer_call_site_coercion_borrow() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -1185,7 +1185,7 @@ fn infer_call_site_coercion_no_collection() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
@@ -2961,7 +2961,7 @@ fn lambda_params_inferred_from_higher_order_fn() {
     neg: forall a. (a) -> a
     show: forall a. (a) -> String
     hash: forall a. (a) -> Int
-    close: forall a. (~a) -> Unit
+    dispose: forall a. (~a) -> Unit
     peek: forall a. (a) -> a
     last: forall a. (List[a]) -> Option[a]
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord

@@ -2000,10 +2000,10 @@ impl<'link> Compiler<'link> {
                 // Coerce if needed (actual=val_type → target=jvm_ty)
                 self.emit_type_coercion(val_type, jvm_ty);
 
-                // Use pre-allocated slot if one exists (resource vars null-initialized
+                // Use pre-allocated slot if one exists (disposable vars null-initialized
                 // at function entry for JVM verifier compatibility in finally handlers).
                 // The slot mapping is kept (not removed) so the function-wide finally
-                // handler can still find block-scoped resources whose `var_locals`
+                // handler can still find block-scoped disposables whose `var_locals`
                 // entries were rolled back by branch restoration.
                 let slot = if let Some(&existing_slot) = self.pre_allocated_slots.get(bind) {
                     self.builder.emit_store(existing_slot, jvm_ty);
@@ -2858,10 +2858,10 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = fn_params;
         self.builder.fn_return_type = Some(return_type);
 
-        // Pre-allocate and null-initialize resource locals for finally handler.
+        // Pre-allocate and null-initialize disposable locals for finally handler.
         // This ensures the JVM verifier sees valid Object types in these slots
         // at every PC in the exception table's protected range. Same pattern as
-        // javac's try-with-resources: `Resource r = null; try { r = ...; } finally { ... }`
+        // javac's try-with-resources: `R r = null; try { r = ...; } finally { ... }`
         if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
             for fc in finally_closes {
                 let slot = self
@@ -2880,7 +2880,7 @@ impl<'link> Compiler<'link> {
         self.builder.recur_target = body_start;
         self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
 
-        // Save handler-safe locals (only params + null-initialized resource slots)
+        // Save handler-safe locals (only params + null-initialized disposable slots)
         let handler_locals = self.builder.frame.local_types.clone();
 
         let body_type = self.compile_ir_expr(&fn_def.body, ir_module)?;
@@ -2896,7 +2896,7 @@ impl<'link> Compiler<'link> {
         };
         self.builder.emit(ret_instr);
 
-        // Emit finally handler for resource auto-close on panic
+        // Emit finally handler for disposable auto-close on panic
         if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
             if !finally_closes.is_empty() {
                 self.emit_finally_handler(finally_closes, body_start, &handler_locals)?;
@@ -2920,8 +2920,8 @@ impl<'link> Compiler<'link> {
         })
     }
 
-    /// Compile an `ExprKind::AutoClose` node: evaluate `close(dict, resource)`
-    /// via the Resource trait, optionally null the resource slot so the
+    /// Compile an `ExprKind::AutoClose` node: evaluate `dispose(dict, resource)`
+    /// via the Disposable trait, optionally null the resource slot so the
     /// function-wide finally handler skips it, then compile `body`.
     fn compile_auto_close(
         &mut self,
@@ -2932,7 +2932,7 @@ impl<'link> Compiler<'link> {
         body: &krypton_ir::Expr,
         ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
-        // Resolve the resource's slot. block-scoped resources may have had
+        // Resolve the resource's slot. block-scoped disposables may have had
         // their var_locals entry rolled back by branch restoration; fall
         // back to pre_allocated_slots which persists for the whole fn.
         let resource_slot = self
@@ -2948,19 +2948,19 @@ impl<'link> Compiler<'link> {
                 )
             })?;
 
-        // Resolve the Resource trait dispatch table.
-        let resource_trait = krypton_ir::TraitName::core_resource();
+        // Resolve the Disposable trait dispatch table.
+        let disposable_trait = krypton_ir::TraitName::core_disposable();
         let dispatch = self
             .traits
             .trait_dispatch
-            .get(&resource_trait)
+            .get(&disposable_trait)
             .ok_or_else(|| {
                 CodegenError::UnsupportedExpr(
-                    "no dispatch info for Resource trait in AutoClose".to_string(),
+                    "no dispatch info for Disposable trait in AutoClose".to_string(),
                     None,
                 )
             })?;
-        let close_method_ref = dispatch.method_refs["close"];
+        let close_method_ref = dispatch.method_refs["dispose"];
         let _ = type_name; // type_name is carried for debug/pretty only
 
         // Load dict atom
@@ -2972,7 +2972,7 @@ impl<'link> Compiler<'link> {
             cpool_index: self.builder.refs.object_class,
         });
 
-        // invokeinterface close(dict, resource) — 2 args, returns Object (Unit)
+        // invokeinterface dispose(dict, resource) — 2 args, returns Object (Unit)
         self.builder
             .emit(Instruction::Invokeinterface(close_method_ref, 2));
         self.builder.frame.pop_type(); // resource
@@ -2995,9 +2995,9 @@ impl<'link> Compiler<'link> {
         self.compile_ir_expr(body, ir_module)
     }
 
-    /// Emit a finally handler that calls close() on resources when an exception occurs.
-    /// Follows the Java try-with-resources pattern: close each resource in LIFO order,
-    /// suppress any exception thrown by close() itself, then re-throw the original.
+    /// Emit a finally handler that calls dispose() on disposables when an exception occurs.
+    /// Follows the Java try-with-resources pattern: dispose each value in LIFO order,
+    /// suppress any exception thrown by dispose() itself, then re-throw the original.
     fn emit_finally_handler(
         &mut self,
         finally_closes: &[krypton_ir::FinallyClose],
@@ -3007,7 +3007,7 @@ impl<'link> Compiler<'link> {
         let handler_start = self.builder.current_offset();
 
         // Set up StackMapTable frame at handler entry: stack = [Throwable],
-        // locals = only params + pre-initialized resource slots (valid at all PCs in protected range)
+        // locals = only params + pre-initialized disposable slots (valid at all PCs in protected range)
         self.builder.frame.stack_types.clear();
         self.builder.frame.push_type(VerificationType::Object {
             cpool_index: self.builder.refs.throwable_class,
@@ -3032,23 +3032,23 @@ impl<'link> Compiler<'link> {
         });
         self.builder.frame.local_types = active_locals.clone();
 
-        let resource_trait = krypton_ir::TraitName::core_resource();
+        let disposable_trait = krypton_ir::TraitName::core_disposable();
         let dispatch = self
             .traits
             .trait_dispatch
-            .get(&resource_trait)
+            .get(&disposable_trait)
             .ok_or_else(|| {
                 CodegenError::UnsupportedExpr(
-                    "no dispatch info for Resource trait in finally handler".to_string(),
+                    "no dispatch info for Disposable trait in finally handler".to_string(),
                     None,
                 )
             })?;
-        let close_method_ref = dispatch.method_refs["close"];
+        let close_method_ref = dispatch.method_refs["dispose"];
         let iface_class = dispatch.interface_class;
 
-        // Close each resource in LIFO order (reverse of declaration order)
+        // Dispose each disposable in LIFO order (reverse of declaration order)
         for fc in finally_closes.iter().rev() {
-            // var_locals may have been rolled back for block-scoped resources
+            // var_locals may have been rolled back for block-scoped disposables
             // declared inside branches; fall back to pre_allocated_slots which
             // is populated once at function entry and never restored.
             let resource_slot = self
@@ -3078,9 +3078,9 @@ impl<'link> Compiler<'link> {
             // Inner try: protect close() call so double-panic is suppressed
             let inner_try_start = self.builder.current_offset();
 
-            // Load dict for Resource[type_name]
+            // Load dict for Disposable[type_name]
             let resource_type = krypton_ir::Type::Named(fc.type_name.clone(), vec![]);
-            self.emit_dict_argument_for_type(&resource_trait, &resource_type, iface_class)?;
+            self.emit_dict_argument_for_type(&disposable_trait, &resource_type, iface_class)?;
 
             // Load and box the resource value
             self.builder.emit(Instruction::Aload(resource_slot as u8));
@@ -3088,12 +3088,12 @@ impl<'link> Compiler<'link> {
                 cpool_index: self.builder.refs.object_class,
             });
 
-            // invokeinterface close(dict, resource) — 2 args
+            // invokeinterface dispose(dict, resource) — 2 args
             self.builder
                 .emit(Instruction::Invokeinterface(close_method_ref, 2));
             self.builder.frame.pop_type(); // resource
             self.builder.frame.pop_type(); // dict
-                                           // close returns Object (boxed Unit) — pop it
+                                           // dispose returns Object (boxed Unit) — pop it
             self.builder.frame.push_type(VerificationType::Object {
                 cpool_index: self.builder.refs.object_class,
             });

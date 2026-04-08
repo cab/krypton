@@ -664,11 +664,11 @@ struct LowerCtx {
     /// those names as push_var runs inside the scope. On scope exit we drain
     /// the entry and emit close+null for each resolved binding.
     scope_track_stack: Vec<ScopeTrack>,
-    /// All block-scoped resources bound within the current function. These
+    /// All block-scoped disposables bound within the current function. These
     /// accumulate into fn_exit_closes at function end so the function-wide
     /// finally handler pre-allocates slots and handles exception unwinds.
     fn_block_scoped_closes: Vec<FinallyClose>,
-    /// Accumulated fn_exit_closes for the module (fn_name → resources to close on unwind)
+    /// Accumulated fn_exit_closes for the module (fn_name → disposables to close on unwind)
     fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
     /// Module path of the module being lowered (for filtering local dict refs).
     module_path: String,
@@ -768,7 +768,7 @@ impl LowerCtx {
 
     /// Introduce a binding into scope.
     ///
-    /// For resource bindings (`~T` where `T: Resource`), callers must use
+    /// For disposable bindings (`~T` where `T: Disposable`), callers must use
     /// [`bind_resource`] so the function-wide finally handler and the
     /// innermost scope tracker learn about the new slot.
     ///
@@ -796,7 +796,7 @@ impl LowerCtx {
         }
     }
 
-    /// Introduce a resource binding (`~T` where `T: Resource`) into scope.
+    /// Introduce a disposable binding (`~T` where `T: Disposable`) into scope.
     /// Wraps `push_var` and additionally registers the binding with the
     /// innermost scope tracker that expects it (so the scope's exit path
     /// can emit an AutoClose) and with `fn_block_scoped_closes` so the
@@ -831,8 +831,8 @@ impl LowerCtx {
         });
     }
 
-    /// Return the resource type name if `ty` is `~T` and `T` has a
-    /// `Resource` instance; otherwise `None`.
+    /// Return the disposable type name if `ty` is `~T` and `T` has a
+    /// `Disposable` instance; otherwise `None`.
     fn resource_type_name(&self, ty: &Type) -> Option<String> {
         let inner = match ty {
             Type::Own(inner) => inner.as_ref(),
@@ -842,8 +842,8 @@ impl LowerCtx {
             Type::Named(n, _) => n.as_str(),
             _ => return None,
         };
-        let resource_trait = TraitName::core_resource();
-        let key = (resource_trait.local_name.clone(), name.to_string());
+        let disposable_trait = TraitName::core_disposable();
+        let key = (disposable_trait.local_name.clone(), name.to_string());
         if self.instance_exact_index.contains_key(&key) {
             Some(name.to_string())
         } else {
@@ -889,7 +889,7 @@ impl LowerCtx {
         // declaration). emit_resolved_close_calls processes in reverse, so
         // the last-pushed binding (first-declared) becomes the outermost let
         // — closes run innermost-first (LIFO).
-        let trait_name = TraitName::core_resource();
+        let trait_name = TraitName::core_disposable();
         let mut resolved: Vec<ResolvedClose> = Vec::new();
         for (name, type_name) in &track.expected {
             let Some(&var_id) = track.resolved.get(name) else {
@@ -957,7 +957,7 @@ impl LowerCtx {
         body: Expr,
     ) -> Result<Expr, LowerError> {
         let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
-        let trait_name = TraitName::core_resource();
+        let trait_name = TraitName::core_disposable();
         let (dict_bindings, dict_atom) = self.resolve_dict(&trait_name, &dict_ty)?;
         let span = body.span;
         let ty = body.ty.clone();
@@ -981,7 +981,7 @@ impl LowerCtx {
         &mut self,
         bindings: &[AutoCloseBinding],
     ) -> Result<Vec<ResolvedClose>, LowerError> {
-        let trait_name = TraitName::core_resource();
+        let trait_name = TraitName::core_disposable();
         let mut resolved = Vec::with_capacity(bindings.len());
         for binding in bindings {
             let binding_var = self
@@ -2558,7 +2558,7 @@ impl LowerCtx {
                     if let Some(ref close_bindings) = recur_close_bindings {
                         // Null slots before the back-edge so an exception
                         // later in the same iteration doesn't see already
-                        // closed resources through the fn-wide handler.
+                        // closed disposables through the fn-wide handler.
                         jump_expr =
                             ctx.emit_close_calls(close_bindings, jump_expr, CloseMode::NullSlot)?;
                     }
@@ -5637,14 +5637,14 @@ impl LowerCtx {
             }
         }
 
-        // Enter the fn-level scope BEFORE binding params, so resource params
+        // Enter the fn-level scope BEFORE binding params, so disposable params
         // are recorded against this scope's tracker. The scope_id is the one
         // allocated by the typechecker's `scope_ids::stamp_functions`.
         let prev_block_closes = std::mem::take(&mut self.fn_block_scoped_closes);
         let prev_scope_stack = std::mem::take(&mut self.scope_track_stack);
         self.enter_scope(Some(decl.fn_scope_id));
 
-        // Allocate VarIds for regular params. Resource params route through
+        // Allocate VarIds for regular params. Disposable params route through
         // `bind_resource` so they enroll in the fn-level scope tracker AND
         // in `fn_block_scoped_closes` for the function-wide finally handler.
         let mut regular_param_vars = vec![];
@@ -5660,9 +5660,9 @@ impl LowerCtx {
                 Type::Unit
             });
             self.var_types.insert(var, ty.clone());
-            // Skip resource registration for the `self` parameter of a
-            // Resource close impl: closing the receiver from inside `close`
-            // would either recurse infinitely or double-close on exception.
+            // Skip disposable registration for the `self` parameter of a
+            // Disposable dispose impl: disposing the receiver from inside `dispose`
+            // would either recurse infinitely or double-dispose on exception.
             // The typechecker already drops it from `scope_exits[fn_scope_id]`.
             let is_close_self = decl.close_self_type.is_some()
                 && self.resource_type_name(&ty).as_deref() == decl.close_self_type.as_deref();

@@ -496,7 +496,7 @@ pub struct Module {
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
-    /// Function name → resources that must be cleaned up at function exit.
+    /// Function name → disposables that must be cleaned up at function exit.
     /// Target-neutral metadata: each backend decides enforcement mechanism
     /// (JVM: exception table finally handlers, JS: try/finally, etc.).
     ///

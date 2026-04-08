@@ -176,7 +176,7 @@ impl<'a> TypedFormatter<'a> {
                 self.indent_level += 1;
                 self.fmt_block_stmts(exprs);
                 // Scope exit closes before closing brace: function-level
-                // exits (~Resource params) plus any block-scoped resources
+                // exits (~Disposable params) plus any block-scoped disposables
                 // recorded against the body Do scope.
                 if let Some(bindings) = self.auto_close.scope_exits.get(&typed_fn.fn_scope_id) {
                     for binding in bindings {

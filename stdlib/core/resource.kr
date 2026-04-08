@@ -1,4 +1,0 @@
-# Resource trait for auto-close semantics on owned values.
-pub trait Resource[a] {
-    fun close(x: ~a) -> Unit
-}

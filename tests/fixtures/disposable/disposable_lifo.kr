@@ -1,0 +1,22 @@
+# expect: output "a\nb\nclose_b\nclose_a"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type HandleA = MkHandleA(Int)
+type HandleB = MkHandleB(Int)
+
+impl Disposable[HandleA] {
+    fun dispose(h: ~HandleA) -> Unit = println("close_a")
+}
+
+impl Disposable[HandleB] {
+    fun dispose(h: ~HandleB) -> Unit = println("close_b")
+}
+
+fun main() -> Unit = {
+    let a: ~HandleA = MkHandleA(1)
+    println("a")
+    let b: ~HandleB = MkHandleB(2)
+    println("b")
+}
