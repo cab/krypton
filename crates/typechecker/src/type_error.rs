@@ -416,9 +416,6 @@ pub enum TypeError {
         name: String,
         type_name: String,
         reason: LeakReason,
-        /// Optional hint for an explicit-consume function the user could
-        /// call, e.g. `"free"` → renders as `free(x)`.
-        consume_hint: Option<String>,
     },
     UnsupportedConstraint {
         trait_name: String,
@@ -812,7 +809,7 @@ impl TypeError {
             TypeError::QualifierConflict { .. } => {
                 Some("a value cannot be both owned (~) and shared in the same position".to_string())
             }
-            TypeError::LinearValueNotConsumed { name, type_name, reason, consume_hint } => {
+            TypeError::LinearValueNotConsumed { name, type_name, reason } => {
                 let base = match reason {
                     LeakReason::ScopeExit => format!(
                         "`~{type_name}` value `{name}` is never consumed before it goes out of scope"
@@ -827,14 +824,9 @@ impl TypeError {
                         "`~{type_name}` value `{name}` is still live at this early return (`?`)"
                     ),
                 };
-                let mut parts = vec![base];
-                parts.push(format!(
-                    "consume `{name}` explicitly (e.g. by passing it to a function that takes `~{type_name}`), or `impl Disposable[{type_name}]` so the compiler can auto-close it"
-                ));
-                if let Some(hint) = consume_hint {
-                    parts.push(format!("e.g. `{hint}({name})`"));
-                }
-                Some(parts.join("; "))
+                Some(format!(
+                    "{base}; consume `{name}` explicitly (e.g. by passing it to a function that takes `~{type_name}`), or `impl Disposable[{type_name}]` so the compiler can auto-close it"
+                ))
             }
             TypeError::UnsupportedConstraint { reason, .. } => Some((*reason).to_string()),
         }

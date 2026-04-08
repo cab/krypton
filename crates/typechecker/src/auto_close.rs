@@ -17,9 +17,8 @@ enum OwnedKind {
     Disposable(String),
     /// `~T` where `T` is not Disposable — must be consumed explicitly before
     /// scope exit, otherwise E0108 fires. The `String` is the pretty-printed
-    /// inner type used in the diagnostic; the `Option<String>` is an optional
-    /// consume-hint function name.
-    Linear(String, Option<String>),
+    /// inner type used in the diagnostic.
+    Linear(String),
     /// Not an `~T` value at all.
     NotOwned,
 }
@@ -35,17 +34,16 @@ fn concrete_type_name(ty: &Type) -> Option<&str> {
     }
 }
 
-/// Pretty-print a type for use in a diagnostic. Falls back to `{:?}` only as
-/// a last resort; the analyzer never panics on unfamiliar shapes.
-fn pretty_type(ty: &Type) -> String {
-    format!("{}", ty)
-}
-
 /// Classify an `~T` value for the leak checker.
 ///
 /// `scheme_constraints` is the current function's where-clause, used to
 /// recognize a polymorphic `~Var(a)` whose type variable carries a
 /// `Disposable[a]` bound (body-sensitive rule).
+///
+/// Caller must have normalized the type. `Type::Own(Type::Own(_))`,
+/// `Type::Own(Type::MaybeOwn(..))`, and `Type::Own(Type::FnHole)` are treated
+/// as ICEs — if any slip through, the bug is in the caller, not here. The
+/// inner panics stay as defense-in-depth.
 fn classify_owned(
     ty: &Type,
     registry: &TraitRegistry,
@@ -67,7 +65,7 @@ fn classify_owned(
             if is_disposable {
                 OwnedKind::Disposable(name.clone())
             } else {
-                OwnedKind::Linear(name.clone(), None)
+                OwnedKind::Linear(name.clone())
             }
         }
 
@@ -82,26 +80,26 @@ fn classify_owned(
             if has_bound {
                 OwnedKind::Disposable(display)
             } else {
-                OwnedKind::Linear(display, None)
+                OwnedKind::Linear(display)
             }
         }
 
         // Aggregates and other shapes: never Disposable in v0 (M39-T3 scope).
         // Replaces the prior ICE at this site.
         Type::App(_, _) | Type::Tuple(_) | Type::Fn(_, _) => {
-            OwnedKind::Linear(pretty_type(inner), None)
+            OwnedKind::Linear(inner.to_string())
         }
 
         // Primitives wrapped in Own — degenerate but legal under M39-T3.
         Type::Int | Type::Float | Type::Bool | Type::String => {
-            OwnedKind::Linear(pretty_type(inner), None)
+            OwnedKind::Linear(inner.to_string())
         }
 
         // Genuine compiler bugs: nested Own, MaybeOwn at this level, etc.
         Type::Own(_) => {
             panic!("ICE: Type::Own(Type::Own(_)) reached auto_close — possible compiler bug")
         }
-        Type::Unit => OwnedKind::Linear("Unit".to_string(), None),
+        Type::Unit => OwnedKind::Linear("Unit".to_string()),
         Type::MaybeOwn(_, _) => {
             panic!(
                 "ICE: Type::Own(Type::MaybeOwn(..)) reached auto_close — possible compiler bug"
@@ -119,7 +117,7 @@ fn classify_owned(
 #[derive(Debug, Clone)]
 enum LiveKind {
     Disposable,
-    Linear { consume_hint: Option<String> },
+    Linear,
 }
 
 #[derive(Debug, Clone)]
@@ -139,10 +137,10 @@ impl LiveBinding {
                 kind: LiveKind::Disposable,
                 binding_span,
             }),
-            OwnedKind::Linear(type_name, consume_hint) => Some(LiveBinding {
+            OwnedKind::Linear(type_name) => Some(LiveBinding {
                 name,
                 type_name,
-                kind: LiveKind::Linear { consume_hint },
+                kind: LiveKind::Linear,
                 binding_span,
             }),
             OwnedKind::NotOwned => None,
@@ -285,13 +283,12 @@ fn collect_owned_bindings_inner(
         }
         TypedPattern::Wildcard { ty, span } => {
             let kind = classify_owned(ty, registry, has_disposable_trait, scheme_constraints);
-            if let OwnedKind::Linear(type_name, hint) = kind {
+            if let OwnedKind::Linear(type_name) = kind {
                 errors.push(SpannedTypeError {
                     error: Box::new(TypeError::LinearValueNotConsumed {
                         name: "_".to_string(),
                         type_name,
                         reason: LeakReason::ScopeExit,
-                        consume_hint: hint,
                     }),
                     span: *span,
                     note: Some(
@@ -392,6 +389,74 @@ impl<'a> AutoCloseAnalyzer<'a> {
         }
     }
 
+    /// Find the live binding with the given name. Uses LIFO (rposition) to match
+    /// lexical scoping for name-resolved references. The analyzer maintains the
+    /// invariant "at most one live binding per name" via the Let-shadow handler,
+    /// so this is equivalent to position() today — rposition is used for
+    /// defense-in-depth should the invariant ever relax.
+    fn find_live(live: &[LiveBinding], name: &str) -> Option<usize> {
+        let found = live.iter().rposition(|b| b.name == name);
+        assert!(
+            live.iter().filter(|b| b.name == name).count() <= 1,
+            "ICE: auto_close invariant violated: multiple live bindings named `{name}`"
+        );
+        found
+    }
+
+    /// Walk `branch` against an empty `self.info`, returning the info delta
+    /// produced by the branch. The caller is responsible for restoring
+    /// `self.info` to its pre-branch state and merging the returned delta.
+    fn walk_branch_isolated(
+        &mut self,
+        branch: &TypedExpr,
+        branch_live: &mut Vec<LiveBinding>,
+    ) -> AutoCloseInfo {
+        let prior = std::mem::take(&mut self.info);
+        self.walk_expr(branch, branch_live);
+        std::mem::replace(&mut self.info, prior)
+    }
+
+    /// Merge a branch's info deltas back into `self.info`. Panics on key
+    /// collisions (which would indicate duplicate spans across branches — a
+    /// desugaring bug).
+    fn merge_branch_info(&mut self, branch_info: AutoCloseInfo) {
+        for (k, v) in branch_info.shadow_closes {
+            assert!(
+                self.info.shadow_closes.insert(k, v).is_none(),
+                "duplicate shadow_closes span across branches: {:?}",
+                k
+            );
+        }
+        for (k, v) in branch_info.early_returns {
+            assert!(
+                self.info.early_returns.insert(k, v).is_none(),
+                "duplicate early_returns span across branches: {:?}",
+                k
+            );
+        }
+        for (k, v) in branch_info.recur_closes {
+            assert!(
+                self.info.recur_closes.insert(k, v).is_none(),
+                "duplicate recur_closes span across branches: {:?}",
+                k
+            );
+        }
+        for (k, v) in branch_info.consumptions {
+            assert!(
+                self.info.consumptions.insert(k, v).is_none(),
+                "duplicate consumptions span across branches: {:?}",
+                k
+            );
+        }
+        for (k, v) in branch_info.scope_exits {
+            assert!(
+                self.info.scope_exits.insert(k, v).is_none(),
+                "duplicate scope_exits ScopeId across branches: {:?}",
+                k
+            );
+        }
+    }
+
     fn classify(&self, ty: &Type) -> OwnedKind {
         classify_owned(
             ty,
@@ -410,16 +475,11 @@ impl<'a> AutoCloseAnalyzer<'a> {
         {
             return;
         }
-        let consume_hint = match &binding.kind {
-            LiveKind::Linear { consume_hint } => consume_hint.clone(),
-            LiveKind::Disposable => None,
-        };
         self.errors.push(SpannedTypeError {
             error: Box::new(TypeError::LinearValueNotConsumed {
                 name: binding.name.clone(),
                 type_name: binding.type_name.clone(),
                 reason,
-                consume_hint,
             }),
             span: leak_span,
             note: None,
@@ -474,7 +534,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
             // each ending in some `x`), treat those as consumed by the return.
             let tail_vars = collect_tail_vars(&decl.body);
             for var_name in tail_vars {
-                if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                if let Some(pos) = Self::find_live(live, &var_name) {
                     live.remove(pos);
                 }
             }
@@ -507,7 +567,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     LiveKind::Disposable => {
                         disposable_bindings.push(b.as_auto_close());
                     }
-                    LiveKind::Linear { .. } => {
+                    LiveKind::Linear => {
                         self.emit_linear_leak(&b, b.binding_span, LeakReason::ScopeExit);
                     }
                 }
@@ -535,7 +595,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
 
                 // Shadow check: a let that re-binds an already-live name closes
                 // the previous binding (Disposable) or leaks it (Linear).
-                if let Some(pos) = live.iter().position(|b| &b.name == name) {
+                if let Some(pos) = Self::find_live(live, name) {
                     let removed = live.remove(pos);
                     match &removed.kind {
                         LiveKind::Disposable => {
@@ -548,7 +608,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                                 .shadow_closes
                                 .insert(expr.span, removed.as_auto_close());
                         }
-                        LiveKind::Linear { .. } => {
+                        LiveKind::Linear => {
                             self.emit_linear_leak(&removed, expr.span, LeakReason::ScopeExit);
                         }
                     }
@@ -581,7 +641,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for arg in args {
                     let consumed = collect_moved_vars(arg, self.ownership_moves);
                     for var_name in consumed {
-                        if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                        if let Some(pos) = Self::find_live(live, &var_name) {
                             let removed = live.remove(pos);
                             // Only Disposable consumptions get tooling-tracked;
                             // linear bindings are silently consumed.
@@ -608,7 +668,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     for b in live.iter().rev() {
                         match &b.kind {
                             LiveKind::Disposable => disposable_snapshot.push(b.as_auto_close()),
-                            LiveKind::Linear { .. } => {
+                            LiveKind::Linear => {
                                 let cloned = b.clone();
                                 self.emit_linear_leak(
                                     &cloned,
@@ -633,8 +693,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 self.walk_expr(cond, live);
                 let mut then_live = live.clone();
                 let mut else_live = live.clone();
-                self.walk_expr(then_, &mut then_live);
-                self.walk_expr(else_, &mut else_live);
+                let then_info = self.walk_branch_isolated(then_, &mut then_live);
+                let else_info = self.walk_branch_isolated(else_, &mut else_live);
+                self.merge_branch_info(then_info);
+                self.merge_branch_info(else_info);
 
                 for binding in live.iter() {
                     let in_then = then_live.iter().any(|b| b.name == binding.name);
@@ -654,7 +716,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                                     var_names: None,
                                 });
                             }
-                            LiveKind::Linear { .. } => {
+                            LiveKind::Linear => {
                                 let cloned = binding.clone();
                                 self.emit_linear_leak(
                                     &cloned,
@@ -679,13 +741,20 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     return;
                 }
                 let mut branch_lives: Vec<Vec<LiveBinding>> = Vec::new();
+                let mut branch_infos: Vec<AutoCloseInfo> = Vec::new();
                 for arm in arms {
                     let mut arm_live = live.clone();
+                    let prior = std::mem::take(&mut self.info);
                     if let Some(guard) = &arm.guard {
                         self.walk_expr(guard, &mut arm_live);
                     }
                     self.walk_expr(&arm.body, &mut arm_live);
+                    let arm_info = std::mem::replace(&mut self.info, prior);
                     branch_lives.push(arm_live);
+                    branch_infos.push(arm_info);
+                }
+                for arm_info in branch_infos {
+                    self.merge_branch_info(arm_info);
                 }
 
                 for binding in live.iter() {
@@ -708,7 +777,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                                     var_names: None,
                                 });
                             }
-                            LiveKind::Linear { .. } => {
+                            LiveKind::Linear => {
                                 let cloned = binding.clone();
                                 self.emit_linear_leak(
                                     &cloned,
@@ -727,6 +796,18 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 });
             }
 
+            // Lambda soundness chain:
+            //   1. `infer_lambda` (crates/typechecker/src/infer/expr.rs:712-718,
+            //      `first_own_capture`) promotes any closure that captures a `~T`
+            //      to `~fn`.
+            //   2. The ownership checker enforces single-call semantics on `~fn`
+            //      (crates/typechecker/src/ownership.rs:844-847).
+            // Therefore: walking the lambda body and removing consumed linears
+            // from the outer `live` is sound — the linear is "transferred into"
+            // the closure, which itself appears in outer `live` as a `Linear ~fn`
+            // and will be leak-checked normally. If the closure is never called,
+            // the leak is reported on the closure binding (not the captured
+            // value); if called twice, ownership flags the double-use.
             TypedExprKind::Lambda { body, .. } => {
                 // Walk the lambda body with a clone of the outer live list so
                 // that linear bindings captured by the closure are seen as
@@ -737,7 +818,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 let mut lambda_live = live.clone();
                 self.walk_expr(body, &mut lambda_live);
                 live.retain(|b| {
-                    if matches!(b.kind, LiveKind::Linear { .. }) {
+                    if matches!(b.kind, LiveKind::Linear) {
                         lambda_live.iter().any(|lb| lb.name == b.name)
                     } else {
                         true
@@ -761,8 +842,8 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 // most once per binding. Disposable bindings keep the existing
                 // semantics: only App-arg moves count, attributed via the
                 // App-handler's deep consumption walk.
-                if let Some(pos) = live.iter().position(|b| &b.name == name) {
-                    if matches!(live[pos].kind, LiveKind::Linear { .. }) {
+                if let Some(pos) = Self::find_live(live, name) {
+                    if matches!(live[pos].kind, LiveKind::Linear) {
                         live.remove(pos);
                     }
                 }
@@ -789,7 +870,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for (_, e) in fields {
                     let consumed = collect_moved_vars(e, self.ownership_moves);
                     for var_name in consumed {
-                        if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                        if let Some(pos) = Self::find_live(live, &var_name) {
                             live.remove(pos);
                         }
                     }
@@ -813,7 +894,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 // Destructuring may move owned vars from the value expression.
                 let consumed = collect_moved_vars(value, self.ownership_moves);
                 for var_name in consumed {
-                    if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                    if let Some(pos) = Self::find_live(live, &var_name) {
                         live.remove(pos);
                     }
                 }
@@ -842,12 +923,18 @@ impl<'a> AutoCloseAnalyzer<'a> {
             }
 
             TypedExprKind::Recur(args) => {
+                // Walk args first so any linear forwarded through `recur(b, ...)`
+                // is removed from `live` before the back-edge leak check runs.
+                // Mirrors the QuestionMark handler.
+                for arg in args {
+                    self.walk_expr(arg, live);
+                }
                 if !live.is_empty() {
                     let mut disposable_snapshot: Vec<AutoCloseBinding> = Vec::new();
                     for b in live.iter().rev() {
                         match &b.kind {
                             LiveKind::Disposable => disposable_snapshot.push(b.as_auto_close()),
-                            LiveKind::Linear { .. } => {
+                            LiveKind::Linear => {
                                 let cloned = b.clone();
                                 self.emit_linear_leak(&cloned, expr.span, LeakReason::RecurBack);
                             }
@@ -862,9 +949,6 @@ impl<'a> AutoCloseAnalyzer<'a> {
                         self.info.recur_closes.insert(expr.span, disposable_snapshot);
                     }
                 }
-                for arg in args {
-                    self.walk_expr(arg, live);
-                }
             }
 
             TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
@@ -875,7 +959,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for arg in args {
                     let consumed = collect_moved_vars(arg, self.ownership_moves);
                     for var_name in consumed {
-                        if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                        if let Some(pos) = Self::find_live(live, &var_name) {
                             live.remove(pos);
                         }
                     }

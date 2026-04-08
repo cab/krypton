@@ -1,0 +1,13 @@
+# expect: ok
+# A linear parameter is forwarded through `recur(...)` to the loop head.
+# Without the args-walked-first ordering fix in auto_close, this fires a
+# spurious E0108 RecurBack on `b` even though `b` is consumed by the recur arg.
+type Buf = MkBuf(String)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun loop(b: ~Buf, n: Int) -> Unit =
+    if n == 0 { take(b) }
+    else { recur(b, n - 1) }
+
+fun main() -> Unit = loop(MkBuf("x"), 3)

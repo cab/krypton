@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module linear__linear_recur_forward
+
+type Buf = MkBuf#0(String)
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+
+fn take(v0: ~Buf) -> Unit =
+  switch v0 {
+    0 (v1: String) ->
+      ()
+  }
+
+fn loop(v2: ~Buf, v3: Int) -> Unit =
+  let_join [recur] v4(v5: ~Buf, v6: Int) =
+    let_join v12(v9: Bool) =
+      if v9 {
+        let v10: Unit = call take(v5)
+        v10
+      } else {
+        let v11: Int = sub_int(v6, 1)
+        jump v4(v5, v11)
+      }
+    in
+    let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v8: Bool = trait_call core/eq.Eq.eq(v7, v6, 0)
+    jump v12(v8)
+  in
+  jump v4(v2, v3)
+
+fn main() -> Unit =
+  let v13: ~Buf = construct Buf::MkBuf#0("x")
+  let v14: Unit = call loop(v13, 3)
+  v14

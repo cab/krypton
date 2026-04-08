@@ -1,0 +1,6 @@
+# expect: ok
+# An infinite loop carrying a linear parameter through recur. The arg walk
+# must run before the leak check at the back-edge for this to type-check.
+type Buf = MkBuf(String)
+
+fun forever(b: ~Buf) -> Unit = recur(b)
